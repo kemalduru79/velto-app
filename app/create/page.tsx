@@ -2535,24 +2535,62 @@ export default function CreatePage() {
                 <div>
                   <h3 className="text-xl font-semibold">Final Film</h3>
                   <p className="mt-1 text-sm text-gray-300">
-                    Sahne videoları birleştirildi. Aşağıdan izleyebilirsin.
+                    Sahne videoları birleştirildi. Aşağıdan izleyebilir, indirebilir veya linki paylaşabilirsin.
                   </p>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm text-gray-300">Final Video URL</p>
+                  <a
+                    href={exportedMovieUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block break-all text-sm text-cyan-300 underline"
+                  >
+                    {exportedMovieUrl}
+                  </a>
                 </div>
 
                 <video
                   src={exportedMovieUrl}
                   controls
-                  className="w-full rounded-xl"
+                  className="w-full rounded-xl border border-white/10 bg-black"
                 />
 
-                <a
-                  href={exportedMovieUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-block rounded-lg border border-white/20 px-4 py-2 text-sm"
-                >
-                  Yeni sekmede aç
-                </a>
+                <div className="flex flex-wrap gap-3">
+                  <a
+                    href={exportedMovieUrl}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105"
+                  >
+                    Download
+                  </a>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(exportedMovieUrl);
+                        alert("Link kopyalandı");
+                      } catch {
+                        alert("Link kopyalanamadı");
+                      }
+                    }}
+                    className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
+                  >
+                    Linki Kopyala
+                  </button>
+
+                  <a
+                    href={exportedMovieUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
+                  >
+                    Yeni sekmede aç
+                  </a>
+                </div>
               </div>
             )}
 

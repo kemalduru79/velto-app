@@ -68,7 +68,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ❌ rewrite tamamen kaldırıldı
     const cleanText = text;
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -168,11 +167,21 @@ export async function POST(req: NextRequest) {
       .from("audio")
       .getPublicUrl(filePath);
 
+    const settingsKey = [
+      voiceId,
+      modelId,
+      stability,
+      similarityBoost,
+      style,
+      speed,
+    ].join("-");
+
     return NextResponse.json({
       ok: true,
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
-      audioSourceText: text,
+      audioSourceText: cleanText,
+      settingsKey,
     });
   } catch (error: any) {
     console.error("store-audio error:", error);
