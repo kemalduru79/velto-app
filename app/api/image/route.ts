@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
 
 type Character = {
   name: string;
@@ -22,6 +20,18 @@ type VisualBible = {
   consistencyRules: string;
 };
 
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
+
 function buildCharacterBlock(characters?: Character[]) {
   if (!Array.isArray(characters) || characters.length === 0) {
     return "No character bible provided.";
@@ -39,7 +49,11 @@ Appearance: ${character.appearance || "Not specified"}
 Outfit: ${character.outfit || "Not specified"}
 Accessory: ${character.accessory || "No accessory"}
 Personality: ${character.personality || "Not specified"}
-Reference status: ${hasReference ? "A reference design image has already been generated for this character. Treat that prior design as the canonical look." : "No reference image generated yet. Use the written character bible as canonical."}
+Reference status: ${
+        hasReference
+          ? "A reference design image has already been generated for this character. Treat that prior design as the canonical look."
+          : "No reference image generated yet. Use the written character bible as canonical."
+      }
 
 Canonical design rules for this character:
 - keep the same face shape
@@ -74,6 +88,8 @@ Consistency rules: ${visualBible.consistencyRules}
 
 export async function POST(req: Request) {
   try {
+    const client = getOpenAIClient();
+
     const {
       title,
       sceneText,
@@ -186,8 +202,14 @@ high-quality animated movie frame, consistent characters, polished lighting, cin
     });
   } catch (error) {
     console.error("image error:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Görsel oluşturulurken hata oluştu.";
+
     return NextResponse.json(
-      { error: "Görsel oluşturulurken hata oluştu." },
+      { error: message || "Görsel oluşturulurken hata oluştu." },
       { status: 500 }
     );
   }

@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
 
 function parseJsonSafely(rawText: string) {
   const cleaned = rawText
@@ -51,12 +61,7 @@ function extractTextFromResponse(response: any) {
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY eksik." },
-        { status: 500 }
-      );
-    }
+    const client = getOpenAIClient();
 
     const body = await req.json().catch(() => null);
     const prompt = body?.prompt;
@@ -184,9 +189,14 @@ ${prompt.trim()}
   } catch (error: any) {
     console.error("story-setup error:", error);
 
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Başlangıç tasarımı oluşturulurken hata oluştu.";
+
     return NextResponse.json(
       {
-        error: "Başlangıç tasarımı oluşturulurken hata oluştu.",
+        error: message || "Başlangıç tasarımı oluşturulurken hata oluştu.",
         details:
           process.env.NODE_ENV === "development"
             ? error?.message || "Bilinmeyen hata"

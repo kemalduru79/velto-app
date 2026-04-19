@@ -1,12 +1,47 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
+
+function parseJsonSafely(rawText: string) {
+  const cleaned = rawText
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      const sliced = cleaned.slice(firstBrace, lastBrace + 1);
+      return JSON.parse(sliced);
+    }
+
+    throw new Error("JSON parse edilemedi");
+  }
+}
 
 export async function POST(req: Request) {
   try {
+    const client = getOpenAIClient();
+
     const { prompt } = await req.json();
 
     if (!prompt || !prompt.trim()) {
@@ -73,9 +108,9 @@ ${prompt.trim()}
 
     const rawText = response.output_text || "";
 
-    let parsed;
+    let parsed: any;
     try {
-      parsed = JSON.parse(rawText);
+      parsed = parseJsonSafely(rawText);
     } catch {
       return NextResponse.json(
         {
@@ -106,8 +141,12 @@ ${prompt.trim()}
     });
   } catch (error) {
     console.error("story error:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Hikaye oluşturulurken hata oluştu.";
+
     return NextResponse.json(
-      { error: "Hikaye oluşturulurken hata oluştu." },
+      { error: message || "Hikaye oluşturulurken hata oluştu." },
       { status: 500 }
     );
   }
