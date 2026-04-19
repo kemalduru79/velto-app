@@ -1,0 +1,114 @@
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export async function POST(req: Request) {
+  try {
+    const { prompt } = await req.json();
+
+    if (!prompt || !prompt.trim()) {
+      return NextResponse.json(
+        { error: "Prompt zorunludur." },
+        { status: 400 }
+      );
+    }
+
+    const storyPrompt = `
+Sen 8-12 yaş grubu için yaratıcı, görsel olarak güçlü ve çocuk dostu hikaye tasarlayan bir yardımcı yazarsın.
+
+Görevin:
+- Tek bir ana hikaye başlığı üret.
+- 1 veya 2 ana karakter oluştur.
+- Karakterleri sahneler boyunca görsel olarak tutarlı kalacak biçimde tarif et.
+- Sabit bir görsel stil rehberi üret.
+- Tam olarak 5 sahne yaz.
+- Sahneler kısa, net ve güçlü görselleştirilebilir olsun.
+- JSON dışında hiçbir şey yazma.
+
+Kurallar:
+- Karakter tariflerinde saç, yüz, yaş, kıyafet, aksesuar gibi görsel detaylar net olsun.
+- Kıyafet mümkün olduğunca sabit kalsın.
+- Stil çocuklara uygun, sıcak, sinematik ve çizgi film benzeri olsun.
+- Sahne metinleri karakter tasarımını bozacak kadar rastgele yeni görünüşler önermesin.
+
+Şu formatta cevap ver:
+{
+  "title": "string",
+  "characters": [
+    {
+      "name": "string",
+      "age": "string",
+      "appearance": "string",
+      "outfit": "string",
+      "accessory": "string",
+      "personality": "string"
+    }
+  ],
+  "visualBible": {
+    "style": "string",
+    "palette": "string",
+    "camera": "string",
+    "consistencyRules": "string"
+  },
+  "scenes": [
+    { "id": 1, "text": "string" },
+    { "id": 2, "text": "string" },
+    { "id": 3, "text": "string" },
+    { "id": 4, "text": "string" },
+    { "id": 5, "text": "string" }
+  ]
+}
+
+Kullanıcının hikaye fikri:
+${prompt.trim()}
+`;
+
+    const response = await client.responses.create({
+      model: "gpt-4.1-mini",
+      input: storyPrompt,
+    });
+
+    const rawText = response.output_text || "";
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Model çıktısı JSON olarak parse edilemedi.",
+          raw: rawText,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !parsed?.title ||
+      !Array.isArray(parsed?.characters) ||
+      !parsed?.visualBible ||
+      !Array.isArray(parsed?.scenes)
+    ) {
+      return NextResponse.json(
+        { error: "Hikaye formatı geçersiz.", raw: parsed },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      title: parsed.title,
+      characters: parsed.characters,
+      visualBible: parsed.visualBible,
+      scenes: parsed.scenes,
+    });
+  } catch (error) {
+    console.error("story error:", error);
+    return NextResponse.json(
+      { error: "Hikaye oluşturulurken hata oluştu." },
+      { status: 500 }
+    );
+  }
+}
