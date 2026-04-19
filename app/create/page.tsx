@@ -2823,6 +2823,51 @@ export default function CreatePage() {
                         {redrawLoadingId === scene.id ? "Yeniden çiziliyor..." : "Yeniden Çiz"}
                       </button>
                     </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Scene previews</p>
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                          <span className={`rounded-full px-2.5 py-1 ${hasImage ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
+                            {hasImage ? "Image ready" : "Image pending"}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-1 ${hasVideo ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
+                            {hasVideo ? "Video ready" : "Video pending"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {scene.image ? (
+                        <div className="space-y-2">
+                          <p className="text-xs text-slate-400">Hazır sahne görseli</p>
+                          <img
+                            src={scene.image}
+                            alt={`Sahne ${scene.id} görseli`}
+                            className="w-full rounded-2xl border border-white/10 bg-black/30 object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                          Bu sahne için henüz görsel önizleme yok. Görsel üretildiğinde burada görünecek.
+                        </div>
+                      )}
+
+                      {scene.videoUrl && scene.videoStatus === "done" ? (
+                        <div className="space-y-2">
+                          <p className="text-xs text-slate-400">Hazır sahne videosu</p>
+                          <video
+                            src={scene.videoUrl}
+                            controls
+                            playsInline
+                            className="w-full rounded-2xl border border-white/10 bg-black/30"
+                          />
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                          Bu sahne için henüz video önizleme yok. Video hazır olduğunda burada görünecek.
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                     {editingSceneId === scene.id && (

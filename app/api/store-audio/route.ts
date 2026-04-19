@@ -42,67 +42,6 @@ async function fetchWithTimeout(
   }
 }
 
-async function rewriteNarration(text: string) {
-  try {
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return text;
-    }
-
-    const res = await fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You rewrite children's story narration for expressive text-to-speech performance.",
-            },
-            {
-              role: "user",
-              content: `
-Rewrite this narration for a professional children's storyteller voice.
-
-Rules:
-- Keep the meaning the same
-- Use shorter spoken sentences
-- Add natural pauses using "..." where appropriate
-- Add light emotional direction tags like [warm], [curious], [soft], [gentle surprise]
-- Do not overact
-- Do not make it theatrical
-- Make it sound natural for narration
-- Keep it concise
-
-Narration:
-${text}
-              `,
-            },
-          ],
-          temperature: 0.7,
-        }),
-      },
-      15000
-    );
-
-    if (!res.ok) {
-      return text;
-    }
-
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content?.trim() || text;
-  } catch {
-    return text;
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -129,7 +68,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const enhancedText = await rewriteNarration(text);
+    // ❌ rewrite tamamen kaldırıldı
+    const cleanText = text;
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const fallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
@@ -159,7 +99,7 @@ export async function POST(req: NextRequest) {
     const stability =
       typeof narratorSettings.stability === "number"
         ? narratorSettings.stability
-        : 0.32;
+        : 0.4;
 
     const similarityBoost =
       typeof narratorSettings.similarityBoost === "number"
@@ -169,12 +109,12 @@ export async function POST(req: NextRequest) {
     const style =
       typeof narratorSettings.style === "number"
         ? narratorSettings.style
-        : 0.35;
+        : 0.2;
 
     const speed =
       typeof narratorSettings.speed === "number"
         ? narratorSettings.speed
-        : 0.93;
+        : 0.95;
 
     const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
@@ -185,7 +125,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: enhancedText,
+          text: cleanText,
           model_id: modelId,
           voice_settings: {
             stability,
@@ -196,7 +136,7 @@ export async function POST(req: NextRequest) {
           },
         }),
       },
-      45000
+      30000
     );
 
     if (!elevenRes.ok) {
@@ -233,15 +173,6 @@ export async function POST(req: NextRequest) {
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
       audioSourceText: text,
-      enhancedText,
-      settingsKey: [
-        voiceId,
-        modelId,
-        stability,
-        similarityBoost,
-        style,
-        speed,
-      ].join("-"),
     });
   } catch (error: any) {
     console.error("store-audio error:", error);
