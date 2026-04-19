@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
 
 type Scene = {
   id: number;
@@ -15,6 +13,18 @@ type Scene = {
   motionHint: string;
   image?: string;
 };
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
 
 function parseJsonSafely(rawText: string) {
   const cleaned = rawText
@@ -41,6 +51,8 @@ function parseJsonSafely(rawText: string) {
 
 export async function POST(req: Request) {
   try {
+    const client = getOpenAIClient();
+
     const body = await req.json();
     const {
       title,
@@ -174,8 +186,14 @@ ${directionText}
     });
   } catch (error) {
     console.error("continue-story error:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Yeni sahne üretilirken hata oluştu.";
+
     return NextResponse.json(
-      { error: "Yeni sahne üretilirken hata oluştu." },
+      { error: message || "Yeni sahne üretilirken hata oluştu." },
       { status: 500 }
     );
   }
