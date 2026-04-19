@@ -3,17 +3,52 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
+function buildEnvDebug() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  return {
+    SUPABASE_URL: {
+      exists: typeof supabaseUrl === "string",
+      nonEmpty: !!supabaseUrl?.trim(),
+      length: supabaseUrl?.length || 0,
+      preview: supabaseUrl ? `${supabaseUrl.slice(0, 18)}...` : "",
+    },
+    NEXT_PUBLIC_SUPABASE_URL: {
+      exists: typeof publicSupabaseUrl === "string",
+      nonEmpty: !!publicSupabaseUrl?.trim(),
+      length: publicSupabaseUrl?.length || 0,
+      preview: publicSupabaseUrl ? `${publicSupabaseUrl.slice(0, 18)}...` : "",
+    },
+    SUPABASE_SERVICE_ROLE_KEY: {
+      exists: typeof serviceRoleKey === "string",
+      nonEmpty: !!serviceRoleKey?.trim(),
+      length: serviceRoleKey?.length || 0,
+      preview: serviceRoleKey ? `${serviceRoleKey.slice(0, 10)}...` : "",
+    },
+  };
+}
+
 function getSupabaseAdmin() {
   const supabaseUrl =
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
+    const envDebug = buildEnvDebug();
+    throw new Error(
+      `SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing | debug=${JSON.stringify(
+        envDebug
+      )}`
+    );
   }
 
   if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
+    const envDebug = buildEnvDebug();
+    throw new Error(
+      `SUPABASE_SERVICE_ROLE_KEY is missing | debug=${JSON.stringify(envDebug)}`
+    );
   }
 
   return createClient(supabaseUrl, serviceRoleKey);

@@ -1872,17 +1872,162 @@ export default function CreatePage() {
   const readyVideoCount = scenes.filter(
     (scene) => scene.videoUrl && scene.videoStatus === "done"
   ).length;
+  const audioReadyCount = scenes.filter((scene) => getSceneAudioStatus(scene)).length;
+  const freezeNeededCount = scenes.filter((scene) => scene.timing?.needsFreezeFrame).length;
+  const dialogueReadyCount = scenes.filter((scene) => !!scene.dialogueAudioUrl).length;
+  const totalTargetDuration = scenes.reduce(
+    (sum, scene) => sum + (scene.timing?.targetSceneDuration || 0),
+    0
+  );
+
+  const currentWorkflowStep = !setupReady
+    ? 1
+    : scenes.length === 0
+    ? 2
+    : readyVideoCount === 0
+    ? 3
+    : 4;
+
+  const workflowSteps = [
+    {
+      id: 1,
+      title: "Fikir ve kurulum",
+      description: "Hikaye fikrini gir, başlangıç tasarımını oluştur.",
+      active: currentWorkflowStep === 1,
+      complete: setupReady,
+    },
+    {
+      id: 2,
+      title: "Dünya ve karakterler",
+      description: "Karakterleri, sesleri ve görsel dili netleştir.",
+      active: currentWorkflowStep === 2,
+      complete: setupReady && scenes.length > 0,
+    },
+    {
+      id: 3,
+      title: "Sahne üretimi",
+      description: "Görsel, ses, timing ve video katmanlarını üret.",
+      active: currentWorkflowStep === 3,
+      complete: readyVideoCount > 0,
+    },
+    {
+      id: 4,
+      title: "Final çıktı",
+      description: "Film export al ve içerik üretim hattına bağla.",
+      active: currentWorkflowStep === 4,
+      complete: !!exportedMovieUrl,
+    },
+  ];
 
   return (
-    <main className="min-h-screen bg-black px-6 py-12 text-white">
-      <div className="mx-auto w-full max-w-5xl space-y-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-3xl font-bold">VELTO</h1>
-          <p className="text-gray-300">
-            Önce karakterleri ve görsel dünyayı kur, sonra hikayeyi sahnelere dönüştür.
-          </p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
+      <div className="mx-auto w-full max-w-7xl space-y-8">
+        <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
+          <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
+            <div className="space-y-4">
+              <div className="inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-cyan-200">
+                AI Story Studio
+              </div>
+              <div className="space-y-3">
+                <h1 className="text-3xl font-bold tracking-tight md:text-5xl">VELTO</h1>
+                <p className="max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
+                  Hikâye, sahne, görsel, anlatıcı sesi, karakter diyaloğu, video ve final film çıktısını aynı akışta üreten üretim stüdyosu.
+                  Bu ekran artık sadece geliştirme paneli değil, AI Experience Lab içindeki ortak üretim çekirdeği olarak kurgulanıyor.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-slate-300 md:text-sm">
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Story setup</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Scene timing</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Voice + Dialogue</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Runway video</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Final export</div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Sahne Durumu</p>
+                <p className="mt-3 text-3xl font-semibold">{scenes.length}</p>
+                <p className="mt-2 text-sm text-slate-300">Toplam sahne</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hazır Video</p>
+                <p className="mt-3 text-3xl font-semibold">{readyVideoCount}</p>
+                <p className="mt-2 text-sm text-slate-300">Export için kullanılabilir sahne</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hazır Ses</p>
+                <p className="mt-3 text-3xl font-semibold">{audioReadyCount}</p>
+                <p className="mt-2 text-sm text-slate-300">Narrator cache hazır</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Tahmini Süre</p>
+                <p className="mt-3 text-3xl font-semibold">{totalTargetDuration.toFixed(1)} sn</p>
+                <p className="mt-2 text-sm text-slate-300">Toplam hedef film akışı</p>
+              </div>
+            </div>
+          </div>
         </div>
 
+        <div className="grid gap-8 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.05] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">Workflow</p>
+              <h2 className="mt-3 text-xl font-semibold text-white">Studio Route Map</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Bu ekran artık sadece üretim paneli değil; Experience Lab ve hızlı içerik üretimi için ortak akış merkezi.
+              </p>
+
+              <div className="mt-5 space-y-3">
+                {workflowSteps.map((step) => (
+                  <div
+                    key={step.id}
+                    className={`rounded-2xl border p-4 transition ${
+                      step.active
+                        ? "border-cyan-400/30 bg-cyan-400/10"
+                        : step.complete
+                        ? "border-emerald-400/20 bg-emerald-400/10"
+                        : "border-white/10 bg-black/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+                          step.complete
+                            ? "bg-emerald-400/20 text-emerald-200"
+                            : step.active
+                            ? "bg-cyan-400/20 text-cyan-100"
+                            : "bg-white/10 text-slate-300"
+                        }`}
+                      >
+                        {step.complete ? "✓" : step.id}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{step.title}</p>
+                        <p className="mt-1 text-xs text-slate-300">{step.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-violet-400/20 bg-violet-500/10 p-5 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
+              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">Next Surface</p>
+              <h3 className="mt-3 text-lg font-semibold text-white">Quick Content Mode</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Bir sonraki ürün katmanında bu stüdyonun üstüne hızlı YouTube içerik üretim modu gelecek. Bu ekran onun için çekirdek üretim altyapısıdır.
+              </p>
+
+              <div className="mt-4 space-y-2 text-xs text-slate-200">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Tek prompt ile bölüm üretimi</div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Seri formatı + export hazır akış</div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Experience Lab içerikleriyle ortak evren</div>
+              </div>
+            </div>
+          </aside>
+
+          <div className="space-y-8">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <h2 className="text-xl font-semibold">Kayıtlı Projeyi Yükle</h2>
 
@@ -1945,8 +2090,31 @@ export default function CreatePage() {
           </div>
         )}
 
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Studio Snapshot</p>
+            <p className="mt-3 text-lg font-semibold text-white">{setupReady ? "Kurulum hazır" : "Kurulum bekliyor"}</p>
+            <p className="mt-2 text-sm text-slate-300">Karakter ve görsel dünya hazırlandığında hikâye üretimine geçilir.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Dialogue Layer</p>
+            <p className="mt-3 text-lg font-semibold text-white">{dialogueReadyCount} sahne</p>
+            <p className="mt-2 text-sm text-slate-300">Karakter sesleri hazırlanmış sahne sayısı.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Freeze Riski</p>
+            <p className="mt-3 text-lg font-semibold text-white">{freezeNeededCount} sahne</p>
+            <p className="mt-2 text-sm text-slate-300">Video süresinin ses akışını taşımakta zorlandığı sahneler.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Quick Mode Hazırlığı</p>
+            <p className="mt-3 text-lg font-semibold text-white">Aktif plan</p>
+            <p className="mt-2 text-sm text-slate-300">Bu ekran bir sonraki adımda hızlı YouTube üretim moduna ayrışacak.</p>
+          </div>
+        </div>
+
         {setupReady && (
-          <div className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
             <div className="space-y-2">
               <h2 className="text-2xl font-bold">Başlangıç Tasarımı</h2>
               <p className="text-sm text-gray-300">
@@ -2320,7 +2488,8 @@ export default function CreatePage() {
 
         {scenes.length > 0 && (
           <>
-            <div className="flex flex-wrap justify-center gap-3">
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+              <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={saveProject}
                 disabled={isSavingProject}
@@ -2358,6 +2527,7 @@ export default function CreatePage() {
                   ? "Film oluşturuluyor..."
                   : `🎞 Filmi Oluştur (${readyVideoCount})`}
               </button>
+              </div>
             </div>
 
             {exportedMovieUrl && (
@@ -2387,136 +2557,201 @@ export default function CreatePage() {
             )}
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Sahneler</h2>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold">Sahneler</h2>
+                  <p className="mt-1 text-sm text-slate-300">Her sahne kartı üretim, ses, video ve export kararını aynı yüzeyde gösterir.</p>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">
+                  Studio Timeline View
+                </div>
+              </div>
 
               {scenes.map((scene) => {
                 const isLastScene = scene.id === scenes[scenes.length - 1]?.id;
                 const isAudioReady = getSceneAudioStatus(scene);
+                const hasDialogue = !!scene.dialogue?.trim();
+                const hasImage = !!scene.image;
+                const hasVideo = !!scene.videoUrl && scene.videoStatus === "done";
+                const narrationReady = !!scene.audioUrl;
+                const dialogueReady = !hasDialogue || !!scene.dialogueAudioUrl;
+                const totalDuration = scene.timing?.targetSceneDuration || 0;
+                const totalAudio = scene.timing?.totalAudioDuration || 0;
+                const productionScore =
+                  [hasImage, narrationReady, dialogueReady, hasVideo].filter(Boolean).length;
 
                 return (
                   <div
                     key={scene.id}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                    className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="mb-2 text-lg font-semibold">Sahne {scene.id}</h3>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
+                            Scene {scene.id}
+                          </div>
 
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs ${
-                            isAudioReady
-                              ? "border border-green-500/30 bg-green-500/10 text-green-200"
-                              : "border border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
-                          }`}
-                        >
-                          {isAudioReady ? "Ses hazır" : "Ses hazır değil"}
-                        </span>
+                          <div
+                            className={`rounded-full px-3 py-1 text-xs ${
+                              isAudioReady
+                                ? "border border-green-500/30 bg-green-500/10 text-green-200"
+                                : "border border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
+                            }`}
+                          >
+                            {isAudioReady ? "Narration ready" : "Narration pending"}
+                          </div>
 
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs ${
-                            scene.videoStatus === "done"
-                              ? "border border-green-500/30 bg-green-500/10 text-green-200"
+                          <div
+                            className={`rounded-full px-3 py-1 text-xs ${
+                              dialogueReady
+                                ? "border border-pink-500/30 bg-pink-500/10 text-pink-200"
+                                : "border border-orange-500/30 bg-orange-500/10 text-orange-200"
+                            }`}
+                          >
+                            {dialogueReady ? "Dialogue ready" : "Dialogue pending"}
+                          </div>
+
+                          <div
+                            className={`rounded-full px-3 py-1 text-xs ${
+                              scene.videoStatus === "done"
+                                ? "border border-green-500/30 bg-green-500/10 text-green-200"
+                                : scene.videoStatus === "processing"
+                                ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
+                                : scene.videoStatus === "error"
+                                ? "border border-red-500/30 bg-red-500/10 text-red-200"
+                                : "border border-gray-500/30 bg-gray-500/10 text-gray-200"
+                            }`}
+                          >
+                            {scene.videoStatus === "done"
+                              ? "Video ready"
                               : scene.videoStatus === "processing"
-                              ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
+                              ? "Video rendering"
                               : scene.videoStatus === "error"
-                              ? "border border-red-500/30 bg-red-500/10 text-red-200"
-                              : "border border-gray-500/30 bg-gray-500/10 text-gray-200"
-                          }`}
-                        >
-                          {scene.videoStatus === "done"
-                            ? "Video hazır"
-                            : scene.videoStatus === "processing"
-                            ? "Video hazırlanıyor"
-                            : scene.videoStatus === "error"
-                            ? "Video hatası"
-                            : "Video yok"}
-                        </span>
+                              ? "Video error"
+                              : "Video pending"}
+                          </div>
 
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs ${
-                            playingDialogueSceneId === scene.id
-                              ? "border border-pink-500/30 bg-pink-500/10 text-pink-200"
-                              : "border border-white/20 bg-white/5 text-gray-300"
-                          }`}
-                        >
-                          {playingDialogueSceneId === scene.id
-                            ? "Diyalog oynuyor"
-                            : "Diyalog hazır"}
-                        </span>
+                          {isLastScene && (
+                            <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">
+                              Son sahne
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <h3 className="text-xl font-semibold text-white">Production Scene Card</h3>
+                          <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                            Bu kart sahnenin hikâye, ses, video ve export kararını tek bakışta yönetmen için tasarlandı.
+                          </p>
+                        </div>
                       </div>
 
-                      {isLastScene && (
-                        <span className="rounded-full border border-white/20 px-3 py-1 text-xs text-gray-300">
-                          Son sahne
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-gray-200">{scene.text}</p>
-
-                    <div className="mt-4 grid gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-gray-200">
-                      <p><strong>Anlatıcı:</strong> {scene.narration}</p>
-                      <p><strong>Diyalog:</strong> {scene.dialogue || "Yok"}</p>
-                      <p><strong>Kamera:</strong> {scene.cameraDirection}</p>
-                      <p><strong>Duygu:</strong> {scene.emotion}</p>
-                      <p><strong>Hareket:</strong> {scene.motionHint}</p>
-                    </div>
-
-                    <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-50">
-                      <p className="mb-2 font-semibold">Sahne Zamanlama Analizi</p>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <p>
-                          <strong>Narration:</strong>{" "}
-                          {scene.timing?.narrationDuration?.toFixed(2) || "0.00"} sn
-                        </p>
-                        <p>
-                          <strong>Dialogue:</strong>{" "}
-                          {scene.timing?.dialogueDuration?.toFixed(2) || "0.00"} sn
-                        </p>
-                        <p>
-                          <strong>Toplam Ses:</strong>{" "}
-                          {scene.timing?.totalAudioDuration?.toFixed(2) || "0.00"} sn
-                        </p>
-                        <p>
-                          <strong>Hedef Sahne Süresi:</strong>{" "}
-                          {scene.timing?.targetSceneDuration?.toFixed(2) || "0.00"} sn
-                        </p>
-                        <p>
-                          <strong>Freeze Süresi:</strong>{" "}
-                          {scene.timing?.freezeDuration?.toFixed(2) || "0.00"} sn
-                        </p>
-                        <p>
-                          <strong>Karar:</strong>{" "}
-                          {scene.timing?.needsFreezeFrame
-                            ? "Video sonuna freeze gerekli"
-                            : "Mevcut video süresi yeterli"}
-                        </p>
+                      <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 lg:w-[360px]">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Production score</p>
+                          <p className="mt-2 text-2xl font-semibold text-white">{productionScore}/4</p>
+                          <p className="mt-1 text-xs text-slate-400">Image, narration, dialogue ve video durumu.</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Target duration</p>
+                          <p className="mt-2 text-2xl font-semibold text-white">{totalDuration.toFixed(1)}s</p>
+                          <p className="mt-1 text-xs text-slate-400">Audio + video ritmi için hesaplanan hedef.</p>
+                        </div>
                       </div>
                     </div>
 
-                    {scene.image ? (
-                      <img
-                        src={scene.image}
-                        alt={`Sahne ${scene.id}`}
-                        className="mt-4 w-full rounded-xl"
-                      />
-                    ) : (
-                      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-400">
-                        {redrawLoadingId === scene.id
-                          ? "Görsel yeniden hazırlanıyor..."
-                          : "Görsel hazırlanıyor..."}
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-base leading-7 text-gray-100">{scene.text}</p>
+                        </div>
+
+                        <div className="grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-gray-200 md:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Narration</p>
+                            <p>{scene.narration}</p>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Dialogue</p>
+                            <p>{scene.dialogue || "Yok"}</p>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Camera</p>
+                            <p>{scene.cameraDirection}</p>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Emotion</p>
+                            <p>{scene.emotion}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Motion hint</p>
+                            <p>{scene.motionHint}</p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-50">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <p className="font-semibold">Timing & export kararları</p>
+                            <span
+                              className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                                scene.timing?.needsFreezeFrame
+                                  ? "border border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
+                                  : "border border-green-500/30 bg-green-500/10 text-green-200"
+                              }`}
+                            >
+                              {scene.timing?.needsFreezeFrame ? "Freeze required" : "Video sufficient"}
+                            </span>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Audio total</p>
+                              <p className="mt-2 text-lg font-semibold text-white">{totalAudio.toFixed(2)}s</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Target scene</p>
+                              <p className="mt-2 text-lg font-semibold text-white">{totalDuration.toFixed(2)}s</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Freeze need</p>
+                              <p className="mt-2 text-lg font-semibold text-white">{(scene.timing?.freezeDuration || 0).toFixed(2)}s</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
 
-                    {scene.videoUrl && (
-                      <video
-                        src={scene.videoUrl}
-                        controls
-                        className="mt-4 w-full rounded-xl"
-                      />
-                    )}
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Scene pipeline</p>
+                          <div className="mt-3 grid gap-2">
+                            {[
+                              { label: "Image", ready: hasImage, pending: redrawLoadingId === scene.id },
+                              { label: "Narration", ready: narrationReady, pending: loadingAudioSceneId === scene.id },
+                              { label: "Dialogue", ready: dialogueReady, pending: loadingDialogueSceneId === scene.id && hasDialogue },
+                              { label: "Video", ready: hasVideo, pending: scene.videoStatus === "processing" },
+                            ].map((item) => (
+                              <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <span className="text-sm text-slate-200">{item.label}</span>
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[11px] ${
+                                    item.pending
+                                      ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
+                                      : item.ready
+                                      ? "border border-green-500/30 bg-green-500/10 text-green-200"
+                                      : "border border-white/15 bg-white/5 text-slate-400"
+                                  }`}
+                                >
+                                  {item.pending ? "Processing" : item.ready ? "Ready" : "Pending"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
 
-                    <div className="mt-4 flex flex-wrap gap-3">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Quick actions</p>
+                          <div className="mt-3 flex flex-wrap gap-3">
                       <button
                         onClick={() => playNarration(scene.id, scene.narration)}
                         disabled={
@@ -2588,6 +2823,7 @@ export default function CreatePage() {
                         {redrawLoadingId === scene.id ? "Yeniden çiziliyor..." : "Yeniden Çiz"}
                       </button>
                     </div>
+                  </div>
 
                     {editingSceneId === scene.id && (
                       <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
@@ -2679,6 +2915,8 @@ export default function CreatePage() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
                 );
               })}
             </div>
@@ -2710,6 +2948,8 @@ export default function CreatePage() {
             </div>
           </>
         )}
+      </div>
+        </div>
       </div>
     </main>
   );
