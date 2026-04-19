@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+
+function getSupabaseAdmin() {
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
+function safeName(value: string) {
+  return value.replace(/[^a-zA-Z0-9-_]/g, "_");
+}
 
 async function rewriteNarration(text: string) {
   try {
@@ -17,7 +38,7 @@ async function rewriteNarration(text: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-3",
+        model: "gpt-4.1-mini",
         messages: [
           {
             role: "system",
@@ -65,6 +86,16 @@ export async function POST(req: NextRequest) {
 
     const text =
       typeof body?.text === "string" ? body.text.trim() : "";
+
+    const sceneId =
+      typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
+        ? String(body.sceneId)
+        : "unknown";
+
+    const projectKey =
+      typeof body?.projectKey === "string" && body.projectKey.trim()
+        ? body.projectKey.trim()
+        : "temp-project";
 
     const narratorSettings = body?.narratorSettings || {};
 
@@ -152,12 +183,41 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await elevenRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store",
-      },
+    const supabase = getSupabaseAdmin();
+
+    const safeProjectKey = safeName(projectKey);
+    const safeSceneId = safeName(sceneId);
+    const filePath = `${safeProjectKey}/scene-${safeSceneId}-narration-${Date.now()}.mp3`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("audio")
+      .upload(filePath, buffer, {
+        contentType: "audio/mpeg",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicData } = supabase.storage
+      .from("audio")
+      .getPublicUrl(filePath);
+
+    return NextResponse.json({
+      ok: true,
+      audioUrl: publicData.publicUrl,
+      audioPath: filePath,
+      audioSourceText: text,
+      enhancedText,
+      settingsKey: [
+        voiceId,
+        modelId,
+        stability,
+        similarityBoost,
+        style,
+        speed,
+      ].join("-"),
     });
   } catch (error: any) {
     console.error("store-audio error:", error);
