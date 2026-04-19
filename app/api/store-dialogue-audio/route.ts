@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import ffmpegStatic from "ffmpeg-static";
-import { spawn, spawnSync } from "child_process";
-import fs from "fs";
-import os from "os";
-import path from "path";
 
 export const runtime = "nodejs";
 
@@ -34,144 +29,18 @@ function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
 }
 
-function resolveFfmpegBinary() {
-  const envPath =
-    typeof process.env.FFMPEG_PATH === "string" && process.env.FFMPEG_PATH.trim()
-      ? process.env.FFMPEG_PATH.trim()
-      : "";
-
-  if (envPath && fs.existsSync(envPath)) {
-    return envPath;
-  }
-
-  const staticPath =
-    typeof ffmpegStatic === "string" && ffmpegStatic.trim()
-      ? ffmpegStatic.trim()
-      : "";
-
-  if (staticPath && fs.existsSync(staticPath)) {
-    return staticPath;
-  }
-
-  const whichResult = spawnSync("which", ["ffmpeg"], { encoding: "utf8" });
-  const systemPath = whichResult.stdout?.trim();
-
-  if (systemPath && fs.existsSync(systemPath)) {
-    return systemPath;
-  }
-
-  throw new Error(
-    "FFmpeg binary bulunamadı. Gerekirse .env.local içine FFMPEG_PATH ekle."
-  );
-}
-
-async function runFfmpeg(args: string[]) {
-  const ffmpegBinary = resolveFfmpegBinary();
-
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(ffmpegBinary, args);
-
-    let stderr = "";
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(stderr || `ffmpeg failed with exit code ${code}`));
-    });
-  });
-}
-
-async function synthesizeLineToFile({
-  text,
-  voiceId,
-  modelId,
-  stability,
-  similarityBoost,
-  outputPath,
-}: {
-  text: string;
-  voiceId?: string;
-  modelId: string;
-  stability: number;
-  similarityBoost: number;
-  outputPath: string;
-}) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const fallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
-
-  if (!apiKey) {
-    throw new Error("ELEVENLABS_API_KEY is missing");
-  }
-
-  const finalVoiceId = voiceId?.trim() || fallbackVoiceId?.trim();
-
-  if (!finalVoiceId) {
-    throw new Error("No voiceId provided for dialogue synthesis");
-  }
-
-  const elevenRes = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text,
-        model_id: modelId,
-        voice_settings: {
-          stability,
-          similarity_boost: similarityBoost,
-          use_speaker_boost: true,
-        },
-      }),
-    }
-  );
-
-  if (!elevenRes.ok) {
-    const errorText = await elevenRes.text().catch(() => "");
-    throw new Error(errorText || "ElevenLabs dialogue synthesis failed");
-  }
-
-  const arrayBuffer = await elevenRes.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  await fs.promises.writeFile(outputPath, buffer);
-}
-
-async function concatAudioFiles(listFilePath: string, outputFilePath: string) {
-  await runFfmpeg([
-    "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listFilePath,
-    "-c:a",
-    "libmp3lame",
-    "-q:a",
-    "2",
-    outputFilePath,
-  ]);
+function buildDialogueText(lines: DialogueLine[]) {
+  return lines
+    .filter((line) => line?.text?.trim())
+    .map((line) => {
+      const speaker = line.speaker?.trim() || "Karakter";
+      const text = line.text.trim();
+      return `${speaker}: ${text}`;
+    })
+    .join("\n");
 }
 
 export async function POST(req: NextRequest) {
-  const tempDir = await fs.promises.mkdtemp(
-    path.join(os.tmpdir(), "velto-dialogue-")
-  );
-
   try {
     const body = await req.json();
 
@@ -205,47 +74,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const audioLinePaths: string[] = [];
+    const fullText = buildDialogueText(lines);
 
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i];
-
-      if (!line?.text?.trim()) {
-        continue;
-      }
-
-      const outputPath = path.join(tempDir, `line-${i + 1}.mp3`);
-
-      await synthesizeLineToFile({
-        text: line.text.trim(),
-        voiceId: line.voiceId,
-        modelId,
-        stability,
-        similarityBoost,
-        outputPath,
-      });
-
-      audioLinePaths.push(outputPath);
-    }
-
-    if (!audioLinePaths.length) {
+    if (!fullText.trim()) {
       return NextResponse.json(
         { ok: false, error: "No dialogue audio could be generated" },
         { status: 400 }
       );
     }
 
-    const listFilePath = path.join(tempDir, "dialogue-list.txt");
-    const listFileContent = audioLinePaths
-      .map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`)
-      .join("\n");
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const fallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
 
-    await fs.promises.writeFile(listFilePath, listFileContent, "utf8");
+    if (!apiKey) {
+      throw new Error("ELEVENLABS_API_KEY is missing");
+    }
 
-    const outputFilePath = path.join(tempDir, "scene-dialogue.mp3");
-    await concatAudioFiles(listFilePath, outputFilePath);
+    const firstLineVoiceId =
+      lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
+    const finalVoiceId = firstLineVoiceId || fallbackVoiceId?.trim();
 
-    const outputBuffer = await fs.promises.readFile(outputFilePath);
+    if (!finalVoiceId) {
+      throw new Error("No voiceId provided for dialogue synthesis");
+    }
+
+    const elevenRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: fullText,
+          model_id: modelId,
+          voice_settings: {
+            stability,
+            similarity_boost: similarityBoost,
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
+
+    if (!elevenRes.ok) {
+      const errorText = await elevenRes.text().catch(() => "");
+      throw new Error(errorText || "ElevenLabs dialogue synthesis failed");
+    }
+
+    const arrayBuffer = await elevenRes.arrayBuffer();
+    const outputBuffer = Buffer.from(arrayBuffer);
 
     const supabase = getSupabaseAdmin();
 
@@ -285,9 +164,5 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 }
     );
-  } finally {
-    try {
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-    } catch {}
   }
 }
