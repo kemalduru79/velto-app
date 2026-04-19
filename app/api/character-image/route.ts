@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
 
 type Character = {
   name: string;
@@ -21,8 +19,22 @@ type VisualBible = {
   consistencyRules: string;
 };
 
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
+
 export async function POST(req: Request) {
   try {
+    const client = getOpenAIClient();
+
     const {
       title,
       character,
@@ -58,7 +70,10 @@ Visual bible:
 Style: ${visualBible?.style || "warm child-friendly animated film"}
 Palette: ${visualBible?.palette || "soft vibrant colors"}
 Camera: ${visualBible?.camera || "clean character presentation"}
-Consistency rules: ${visualBible?.consistencyRules || "keep same face, same hair, same outfit, same age look"}
+Consistency rules: ${
+      visualBible?.consistencyRules ||
+      "keep same face, same hair, same outfit, same age look"
+    }
 
 Instructions:
 - show only this character as the clear main subject
@@ -91,8 +106,14 @@ Instructions:
     });
   } catch (error) {
     console.error("character-image error:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Karakter referans görseli oluşturulurken hata oluştu.";
+
     return NextResponse.json(
-      { error: "Karakter referans görseli oluşturulurken hata oluştu." },
+      { error: message || "Karakter referans görseli oluşturulurken hata oluştu." },
       { status: 500 }
     );
   }
