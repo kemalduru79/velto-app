@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
 
 type Character = {
   name: string;
@@ -20,6 +18,18 @@ type VisualBible = {
   camera: string;
   consistencyRules: string;
 };
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  return new OpenAI({
+    apiKey,
+  });
+}
 
 function parseJsonSafely(rawText: string) {
   const cleaned = rawText
@@ -46,6 +56,8 @@ function parseJsonSafely(rawText: string) {
 
 export async function POST(req: Request) {
   try {
+    const client = getOpenAIClient();
+
     const {
       title,
       storyPremise,
@@ -168,8 +180,12 @@ Tutarlılık kuralları: ${visualBible.consistencyRules}
     });
   } catch (error) {
     console.error("build-story error:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Hikaye oluşturulurken hata oluştu.";
+
     return NextResponse.json(
-      { error: "Hikaye oluşturulurken hata oluştu." },
+      { error: message || "Hikaye oluşturulurken hata oluştu." },
       { status: 500 }
     );
   }
