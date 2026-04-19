@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -23,6 +24,24 @@ function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
 }
 
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function rewriteNarration(text: string) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -31,23 +50,25 @@ async function rewriteNarration(text: string) {
       return text;
     }
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You rewrite children's story narration for expressive text-to-speech performance.",
-          },
-          {
-            role: "user",
-            content: `
+    const res = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You rewrite children's story narration for expressive text-to-speech performance.",
+            },
+            {
+              role: "user",
+              content: `
 Rewrite this narration for a professional children's storyteller voice.
 
 Rules:
@@ -62,12 +83,14 @@ Rules:
 
 Narration:
 ${text}
-            `,
-          },
-        ],
-        temperature: 0.7,
-      }),
-    });
+              `,
+            },
+          ],
+          temperature: 0.7,
+        }),
+      },
+      15000
+    );
 
     if (!res.ok) {
       return text;
@@ -153,7 +176,7 @@ export async function POST(req: NextRequest) {
         ? narratorSettings.speed
         : 0.93;
 
-    const elevenRes = await fetch(
+    const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
       {
         method: "POST",
@@ -172,7 +195,8 @@ export async function POST(req: NextRequest) {
             use_speaker_boost: true,
           },
         }),
-      }
+      },
+      45000
     );
 
     if (!elevenRes.ok) {
