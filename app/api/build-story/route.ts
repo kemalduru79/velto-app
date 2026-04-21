@@ -98,16 +98,36 @@ Kişilik: ${character.personality}
       .join("\n");
 
     const prompt = `
-Sen 8-12 yaş grubu için yaratıcı, sinematik, tutarlı hikaye sahneleri yazan bir yardımcı yazarsın.
+Sen 8-12 yaş grubu için yaratıcı, sinematik, görsel düşünerek yazan bir çocuk animasyon senaristisin.
 
 Görevin:
-- Verilen karakter tasarımı ve görsel stile sadık kalarak tam 5 sahne üret.
-- Her sahnede görsel, ses ve animasyon üretimine uygun metadata da ver.
-- Karakter sayısını ve ilişkileri bozma.
-- Karakterlerin görünüşünü ve kimliğini sahnelerde tutarlı kullan.
+- Verilen karakter tasarımı ve görsel stile sadık kalarak TAM 5 sahne üret.
+- Her sahne, 8-10 saniyelik kısa animasyon sahnesi olacak şekilde yazılmalı.
+- Sahne temposu hızlı, net, çocuk dostu ve görselleştirilebilir olmalı.
+- Karakterleri, görünüşlerini, ilişkilerini ve tonunu tutarlı koru.
+- Hikaye akışlı olsun ama sahneler gereksiz uzun olmasın.
 - Sadece geçerli JSON döndür.
 - Kod bloğu kullanma.
 - Açıklama yazma.
+
+ÇOK KRİTİK KURALLAR:
+- Her sahne kolay canlandırılabilir olmalı.
+- "text" görsel olarak ne olduğunu anlatmalı.
+- "narration" tek cümle olmalı.
+- "narration" maksimum 12-14 kelime olmalı.
+- "dialogue" boş olabilir.
+- "dialogue" varsa çok kısa olmalı.
+- Her karakter için maksimum 8 kelime kullan.
+- Maksimum 1 kısa konuşma alışverişi olsun.
+- Uzun açıklama, iç monolog, karmaşık olay anlatımı yapma.
+- Her sahne tek ana fikre sahip olsun.
+
+HİKAYE YAPISI:
+- Sahne 1: merak uyandıran giriş / hook
+- Sahne 2: durumun netleşmesi
+- Sahne 3: gelişme / küçük değişim
+- Sahne 4: mini kriz / gerilim
+- Sahne 5: çözüm + devam hissi / merak
 
 Format:
 {
@@ -124,13 +144,13 @@ Format:
   ]
 }
 
-Kurallar:
-- text: sahnenin ana olayını anlatır
-- narration: anlatıcının okuyabileceği kısa metin
+Alan kuralları:
+- text: sahnenin görsel olayını net anlat
+- narration: anlatıcının okuyacağı çok kısa tek cümle
 - dialogue: kısa konuşma ya da boş string
-- cameraDirection: örn. "wide shot", "close-up", "over the shoulder"
-- emotion: tek baskın duygu veya kısa duygu ifadesi
-- motionHint: Runway benzeri video üretimi için hareket ipucu
+- cameraDirection: örn. "wide shot", "close-up", "tracking shot", "over the shoulder"
+- emotion: sahnenin baskın duygusu
+- motionHint: animasyon hareketi için net ve kısa ipucu
 
 Hikaye başlığı:
 ${title.trim()}

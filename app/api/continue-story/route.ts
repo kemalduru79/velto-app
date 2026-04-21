@@ -109,19 +109,29 @@ Duygu: ${scene.emotion}`
         : "Önemli: Bu yeni sahne mevcut son sahneden sonra doğal bir devam sahnesi olmalı.";
 
     const prompt = `
-Sen 8-12 yaş grubu için yaratıcı, sinematik, tutarlı hikaye sahneleri yazan bir yardımcı yazarsın.
+Sen 8-12 yaş grubu için yaratıcı, sinematik, hızlı tempolu çocuk animasyonu sahneleri yazan bir yardımcı yazarsın.
 
 Görevin:
 - Mevcut hikayenin devamına SADECE 1 yeni sahne yaz.
 - Önceki sahnelerle tutarlı ol.
 - Tekrar yapma.
-- Yeni sahne kısa ve görselleştirilebilir olsun.
+- Yeni sahne görsel olarak net, kolay canlandırılabilir ve 8-10 saniyelik animasyona uygun olsun.
 - Çocuk dostu dil kullan.
 - Hikaye ilerlesin ama tamamen kapanmasın.
-- Sahneye çizgi film üretimi için metadata ekle.
 - Sadece geçerli JSON döndür.
 - Kod bloğu kullanma.
 - Açıklama yazma.
+
+ÇOK KRİTİK KURALLAR:
+- Sahne kısa, ritmik ve görselleştirilebilir olmalı.
+- narration tek cümle olmalı.
+- narration maksimum 12-14 kelime olmalı.
+- dialogue boş olabilir.
+- dialogue varsa çok kısa olmalı.
+- Karakter başına maksimum 8 kelime kullan.
+- Maksimum 1 kısa konuşma alışverişi olsun.
+- Sahne tek bir ana aksiyon içermeli.
+- Uzun anlatım, açıklama ve karmaşık olay zinciri kullanma.
 
 Format:
 {
