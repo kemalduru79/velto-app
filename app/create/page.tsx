@@ -6,6 +6,7 @@ type SceneTiming = {
   dialogueDuration: number;
   totalAudioDuration: number;
   targetSceneDuration: number;
+  maxSpeechDuration?: number;
   freezeDuration: number;
   needsFreezeFrame: boolean;
 };
@@ -98,9 +99,12 @@ const defaultNarratorSettings: NarratorSettings = {
   speed: 0.93,
 };
 
-const DEFAULT_VIDEO_DURATION_SECONDS = 4;
-const MIN_SCENE_DURATION_SECONDS = 3.5;
+const DEFAULT_VIDEO_DURATION_SECONDS = 8;
+const TARGET_SCENE_DURATION_SECONDS = 8;
+const MAX_SCENE_DURATION_SECONDS = 10;
+const MIN_SCENE_DURATION_SECONDS = 6.5;
 const FREEZE_TOLERANCE_SECONDS = 0.35;
+const MAX_SPEECH_RATIO = 0.82;
 
 const getAudioDurationFromUrl = (url?: string) => {
   return new Promise<number>((resolve) => {
@@ -138,10 +142,14 @@ const buildSceneTiming = (
   const safeNarration = Number.isFinite(narrationDuration) ? narrationDuration : 0;
   const safeDialogue = Number.isFinite(dialogueDuration) ? dialogueDuration : 0;
   const totalAudioDuration = safeNarration + safeDialogue;
-  const targetSceneDuration = Math.max(
-    totalAudioDuration,
-    MIN_SCENE_DURATION_SECONDS
+  const audioDrivenTarget = totalAudioDuration > 0
+    ? Math.max(TARGET_SCENE_DURATION_SECONDS, totalAudioDuration)
+    : TARGET_SCENE_DURATION_SECONDS;
+  const targetSceneDuration = Math.min(
+    MAX_SCENE_DURATION_SECONDS,
+    Math.max(audioDrivenTarget, MIN_SCENE_DURATION_SECONDS)
   );
+  const maxSpeechDuration = Number((targetSceneDuration * MAX_SPEECH_RATIO).toFixed(2));
   const freezeDuration = Math.max(
     0,
     targetSceneDuration - DEFAULT_VIDEO_DURATION_SECONDS
@@ -153,6 +161,7 @@ const buildSceneTiming = (
     dialogueDuration: safeDialogue,
     totalAudioDuration,
     targetSceneDuration,
+    maxSpeechDuration,
     freezeDuration,
     needsFreezeFrame,
   };
@@ -997,7 +1006,7 @@ export default function CreatePage() {
           motionHint: scene.motionHint,
           cameraDirection: scene.cameraDirection,
           emotion: scene.emotion,
-          duration: 4,
+          duration: DEFAULT_VIDEO_DURATION_SECONDS,
         }),
       });
 
