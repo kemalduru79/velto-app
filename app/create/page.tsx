@@ -73,6 +73,15 @@ type ParsedDialogueLine = {
   voiceId?: string;
 };
 
+type ExportMovieResult = {
+  movieUrl: string;
+  downloadUrl?: string;
+  fileName?: string;
+  sizeBytes?: number;
+  durationSeconds?: number;
+  sceneCount?: number;
+};
+
 const emptyVisualBible: VisualBible = {
   style: "",
   palette: "",
@@ -193,6 +202,7 @@ export default function CreatePage() {
 
   const [isExportingMovie, setIsExportingMovie] = useState(false);
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
+  const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
 
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(
     defaultNarratorSettings
@@ -208,6 +218,36 @@ export default function CreatePage() {
   const dialoguePlaybackTokenRef = useRef(0);
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
+  const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+  const formatDurationLabel = (seconds?: number) => {
+    if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
+      return "-";
+    }
+
+    if (seconds < 60) {
+      return `${seconds.toFixed(1)} sn`;
+    }
+
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins} dk ${secs} sn`;
+  };
+
+  const formatFileSizeLabel = (sizeBytes?: number) => {
+    if (!sizeBytes || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+      return "-";
+    }
+
+    const mb = sizeBytes / (1024 * 1024);
+
+    if (mb < 1) {
+      const kb = sizeBytes / 1024;
+      return `${kb.toFixed(0)} KB`;
+    }
+
+    return `${mb.toFixed(2)} MB`;
+  };
 
   const updateSceneTimingData = (sceneId: number, timing: SceneTiming) => {
     setScenes((prev) =>
@@ -393,6 +433,7 @@ export default function CreatePage() {
     setIsPreparingAudio(false);
     setIsExportingMovie(false);
     setExportedMovieUrl("");
+    setExportMovieResult(null);
     setNarratorSettings(defaultNarratorSettings);
     draftProjectKeyRef.current = `draft-${crypto.randomUUID()}`;
   };
@@ -930,6 +971,7 @@ export default function CreatePage() {
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
+    setExportMovieResult(null);
 
     setScenes((prev) =>
       prev.map((s) =>
@@ -1006,13 +1048,19 @@ export default function CreatePage() {
       return;
     }
 
+    if (!exportApiBase) {
+      setError("Export servisi URL'i tanımlı değil. Vercel ortam değişkenlerinde NEXT_PUBLIC_EXPORT_API_URL eklenmeli.");
+      return;
+    }
+
     setIsExportingMovie(true);
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
+    setExportMovieResult(null);
 
     try {
-      const res = await fetch("/api/export-movie", {
+      const res = await fetch(`${exportApiBase}/export-movie`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1033,7 +1081,17 @@ export default function CreatePage() {
         throw new Error(data?.error || "Film export işlemi başarısız oldu.");
       }
 
-      setExportedMovieUrl(data.movieUrl);
+      const nextExportResult: ExportMovieResult = {
+        movieUrl: data.movieUrl,
+        downloadUrl: data.downloadUrl || data.movieUrl,
+        fileName: data.fileName || "",
+        sizeBytes: data.sizeBytes || 0,
+        durationSeconds: data.durationSeconds || 0,
+        sceneCount: data.sceneCount || videoScenes.length,
+      };
+
+      setExportedMovieUrl(nextExportResult.movieUrl);
+      setExportMovieResult(nextExportResult);
       setSaveMessage("Film oluşturuldu ✅");
     } catch (e: any) {
       console.error("handleExportMovie error:", e);
@@ -1299,6 +1357,7 @@ export default function CreatePage() {
       );
 
       setExportedMovieUrl("");
+    setExportMovieResult(null);
       setStorySetup({
         title: project.title || "",
         storyPremise: project.story_premise || "",
@@ -1493,6 +1552,7 @@ export default function CreatePage() {
     stopDialoguePlayback();
     stopStoryPlayback();
     setExportedMovieUrl("");
+    setExportMovieResult(null);
 
     try {
       const res = await fetch("/api/build-story", {
@@ -1562,6 +1622,7 @@ export default function CreatePage() {
     try {
       clearVideoPollForScene(scene.id);
       setExportedMovieUrl("");
+    setExportMovieResult(null);
 
       setScenes((prev) =>
         prev.map((item) =>
@@ -1625,6 +1686,7 @@ export default function CreatePage() {
       clearSceneDialogueAudioData(sceneId);
       clearVideoPollForScene(sceneId);
       setExportedMovieUrl("");
+    setExportMovieResult(null);
 
       setScenes((prevScenes) =>
         prevScenes.map((scene) =>
@@ -1723,6 +1785,7 @@ export default function CreatePage() {
 
       setContinuePrompt("");
       setExportedMovieUrl("");
+    setExportMovieResult(null);
     } catch {
       setError("Hikayenin devamı oluşturulurken bir hata oluştu.");
     } finally {
@@ -1803,6 +1866,7 @@ export default function CreatePage() {
 
       setBranchingSceneId(null);
       setExportedMovieUrl("");
+    setExportMovieResult(null);
     } catch {
       setError("Bu sahneden devam oluşturulurken bir hata oluştu.");
     } finally {
@@ -2539,15 +2603,36 @@ export default function CreatePage() {
                   </p>
                 </div>
 
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Dosya</p>
+                    <p className="mt-2 text-sm font-medium text-white break-all">
+                      {exportMovieResult?.fileName || "-"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Süre</p>
+                    <p className="mt-2 text-sm font-medium text-white">
+                      {formatDurationLabel(exportMovieResult?.durationSeconds)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Boyut</p>
+                    <p className="mt-2 text-sm font-medium text-white">
+                      {formatFileSizeLabel(exportMovieResult?.sizeBytes)}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                   <p className="text-sm text-gray-300">Final Video URL</p>
                   <a
-                    href={exportedMovieUrl}
+                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="mt-2 block break-all text-sm text-cyan-300 underline"
                   >
-                    {exportedMovieUrl}
+                    {exportMovieResult?.downloadUrl || exportedMovieUrl}
                   </a>
                 </div>
 
@@ -2559,8 +2644,8 @@ export default function CreatePage() {
 
                 <div className="flex flex-wrap gap-3">
                   <a
-                    href={exportedMovieUrl}
-                    download
+                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
+                    download={exportMovieResult?.fileName || true}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105"
@@ -2571,10 +2656,10 @@ export default function CreatePage() {
                   <button
                     onClick={async () => {
                       try {
-                        await navigator.clipboard.writeText(exportedMovieUrl);
-                        alert("Link kopyalandı");
+                        await navigator.clipboard.writeText(exportMovieResult?.downloadUrl || exportedMovieUrl);
+                        setSaveMessage("Final film linki kopyalandı ✅");
                       } catch {
-                        alert("Link kopyalanamadı");
+                        setError("Link kopyalanamadı.");
                       }
                     }}
                     className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
@@ -2583,7 +2668,7 @@ export default function CreatePage() {
                   </button>
 
                   <a
-                    href={exportedMovieUrl}
+                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
