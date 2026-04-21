@@ -143,16 +143,20 @@ const buildSceneTiming = (
   const safeDialogue = Number.isFinite(dialogueDuration) ? dialogueDuration : 0;
   const totalAudioDuration = safeNarration + safeDialogue;
 
-  const maxSpeechDuration = TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO;
-  const boundedSpeech = Math.min(totalAudioDuration, maxSpeechDuration);
+  const maxSpeechFromTarget = TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO;
+  const boundedSpeechDuration = Math.min(totalAudioDuration, maxSpeechFromTarget);
 
   const targetSceneDuration = Math.min(
     MAX_SCENE_DURATION_SECONDS,
     Math.max(
       TARGET_SCENE_DURATION_SECONDS,
-      boundedSpeech,
+      boundedSpeechDuration,
       MIN_SCENE_DURATION_SECONDS
     )
+  );
+
+  const maxSpeechDuration = Number(
+    (targetSceneDuration * MAX_SPEECH_RATIO).toFixed(2)
   );
 
   const freezeDuration = Math.max(
@@ -160,14 +164,16 @@ const buildSceneTiming = (
     targetSceneDuration - DEFAULT_VIDEO_DURATION_SECONDS
   );
 
+  const needsFreezeFrame = freezeDuration > FREEZE_TOLERANCE_SECONDS;
+
   return {
     narrationDuration: safeNarration,
     dialogueDuration: safeDialogue,
     totalAudioDuration,
     targetSceneDuration,
-    maxSpeechDuration: Number((targetSceneDuration * MAX_SPEECH_RATIO).toFixed(2)),
+    maxSpeechDuration,
     freezeDuration,
-    needsFreezeFrame: freezeDuration > FREEZE_TOLERANCE_SECONDS,
+    needsFreezeFrame,
   };
 };
 
@@ -260,21 +266,6 @@ export default function CreatePage() {
     }
 
     return `${mb.toFixed(2)} MB`;
-  };
-
-  const getSceneHealth = (scene: Scene) => {
-    const timing = scene.timing || buildSceneTiming(0, 0);
-    const maxSpeechDuration = timing.maxSpeechDuration || Number((timing.targetSceneDuration * MAX_SPEECH_RATIO).toFixed(2));
-    const totalAudioDuration = timing.totalAudioDuration || 0;
-
-    return {
-      timing,
-      maxSpeechDuration,
-      totalAudioDuration,
-      isTooLong: totalAudioDuration > maxSpeechDuration,
-      isBalanced: totalAudioDuration > 0 && totalAudioDuration <= maxSpeechDuration,
-      needsAttention: totalAudioDuration === 0 || totalAudioDuration > maxSpeechDuration,
-    };
   };
 
   const updateSceneTimingData = (sceneId: number, timing: SceneTiming) => {
@@ -1071,6 +1062,20 @@ export default function CreatePage() {
       (scene) => scene.videoUrl && scene.videoStatus === "done"
     );
 
+    for (const scene of videoScenes) {
+      const timing = scene.timing || buildSceneTiming(0, 0);
+
+      if (
+        timing.maxSpeechDuration &&
+        timing.totalAudioDuration > timing.maxSpeechDuration
+      ) {
+        setError(
+          `Sahne ${scene.id}: Konuşma çok uzun. Lütfen sahneyi kısalt veya yeniden üret.`
+        );
+        return;
+      }
+    }
+
     if (videoScenes.length === 0) {
       setError("Film oluşturmak için en az bir hazır sahne videosu gerekli.");
       return;
@@ -1088,15 +1093,6 @@ export default function CreatePage() {
     setExportMovieResult(null);
 
     try {
-      for (const scene of videoScenes) {
-        const timing = scene.timing || buildSceneTiming(0, 0);
-
-        if (timing.totalAudioDuration > (timing.maxSpeechDuration || TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO)) {
-          setError(`Sahne ${scene.id}: Konuşma çok uzun. Sahneyi kısalt veya yeniden üret.`);
-          return;
-        }
-      }
-
       const res = await fetch(`${exportApiBase}/export-movie`, {
         method: "POST",
         headers: {
@@ -1108,7 +1104,10 @@ export default function CreatePage() {
           scenes: videoScenes.map((scene) => {
             const timing = scene.timing || buildSceneTiming(0, 0);
             const normalizedTarget = Math.min(
-              Math.max(timing.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS, TARGET_SCENE_DURATION_SECONDS),
+              Math.max(
+                timing.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+                TARGET_SCENE_DURATION_SECONDS
+              ),
               MAX_SCENE_DURATION_SECONDS
             );
 
@@ -1117,7 +1116,9 @@ export default function CreatePage() {
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
-                maxSpeechDuration: Number((normalizedTarget * MAX_SPEECH_RATIO).toFixed(2)),
+                maxSpeechDuration: Number(
+                  (normalizedTarget * MAX_SPEECH_RATIO).toFixed(2)
+                ),
               },
             };
           }),
@@ -2833,30 +2834,6 @@ export default function CreatePage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                      {(() => {
-                        const health = getSceneHealth(scene);
-                        return (
-                          <>
-                            <div className="flex flex-wrap gap-3 text-xs text-slate-300">
-                              <span>🎯 Hedef: {health.timing.targetSceneDuration.toFixed(1)} sn</span>
-                              <span>🎤 Konuşma: {health.totalAudioDuration.toFixed(1)} sn</span>
-                              <span>🧊 Freeze: {health.timing.freezeDuration.toFixed(1)} sn</span>
-                              <span>📏 Limit: {health.maxSpeechDuration.toFixed(1)} sn</span>
-                            </div>
-
-                            {health.isTooLong ? (
-                              <p className="mt-3 text-sm text-rose-300">⚠️ Konuşma süresi bu sahne için fazla uzun. Export öncesi kısaltman önerilir.</p>
-                            ) : health.isBalanced ? (
-                              <p className="mt-3 text-sm text-emerald-300">✅ Sahne ritmi ve konuşma süresi uyumlu görünüyor.</p>
-                            ) : (
-                              <p className="mt-3 text-sm text-amber-300">ℹ️ Ses henüz hazır değil. Hazırlandığında süre dengesi burada görünür.</p>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-
                     <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
                       <div className="space-y-4">
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -3066,7 +3043,23 @@ export default function CreatePage() {
                     </div>
                   </div>
 
-                    {editingSceneId === scene.id && (
+                    
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                  <div className="flex flex-wrap gap-3">
+                    <span>🎯 Hedef: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} sn</span>
+                    <span>🎤 Konuşma: {(scene.timing?.totalAudioDuration || 0).toFixed(1)} sn</span>
+                    <span>🧊 Freeze: {(scene.timing?.freezeDuration || 0).toFixed(1)} sn</span>
+                  </div>
+
+                  {(scene.timing?.maxSpeechDuration || TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO) <
+                  (scene.timing?.totalAudioDuration || 0) ? (
+                    <p className="mt-2 text-rose-300">⚠️ Konuşma bu sahne için fazla uzun. Düzenleyip kısalt.</p>
+                  ) : (
+                    <p className="mt-2 text-emerald-300">✅ Sahne ve konuşma süresi uyumlu.</p>
+                  )}
+                </div>
+
+{editingSceneId === scene.id && (
                       <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
                         <label className="block text-sm text-gray-300">
                           Bu sahnede neyi değiştirmek istiyorsun?
