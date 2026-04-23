@@ -2276,13 +2276,7 @@ export default function CreatePage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
-      <div style={{ background: "red", color: "white", padding: 12 }}>
-  TEST-123-CREATE-PAGE
-  <div style={{ background: "green", color: "white", padding: 12, marginTop: 8 }}>
-  LANGUAGE-TEST: {language}
-</div>
-</div>
-<div className="mx-auto w-full max-w-7xl space-y-8">
+      <div className="mx-auto w-full max-w-7xl space-y-8">
         {userRole === "admin" && (
           <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
             Admin Mode aktif → YouTube Engine burada konumlanacak.
@@ -2517,11 +2511,12 @@ export default function CreatePage() {
             </div>
           </div>
 
-          <label className="block text-sm font-medium text-gray-300">
-            {language === "tr"
-              ? "Nasıl bir hikaye yapmak istiyorsun?"
-              : "What kind of story do you want to create?"}
-          </label>
+
+<label className="block text-sm font-medium text-gray-300">
+  {language === "tr"
+    ? "Nasıl bir hikaye yapmak istiyorsun?"
+    : "What kind of story do you want to create?"}
+</label>
 
           <textarea
             className="min-h-36 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
