@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -81,6 +83,11 @@ type ExportMovieResult = {
   sizeBytes?: number;
   durationSeconds?: number;
   sceneCount?: number;
+};
+
+type ChildProfile = {
+  id: string;
+  nickname: string;
 };
 
 const emptyVisualBible: VisualBible = {
@@ -178,6 +185,17 @@ const buildSceneTiming = (
 };
 
 export default function CreatePage() {
+  const router = useRouter();
+  const [authLoading, setAuthLoading] = useState(true);
+  const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState("");
+  const [newChildName, setNewChildName] = useState("");
+  const [childrenLoading, setChildrenLoading] = useState(false);
+  const [addingChild, setAddingChild] = useState(false);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
+  const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -238,6 +256,182 @@ export default function CreatePage() {
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+
+      if (error || !data.user) {
+        router.push("/login");
+      } else {
+        setAuthLoading(false);
+      }
+    };
+
+    checkUser();
+  }, [router]);
+
+  useEffect(() => {
+    if (!authLoading) {
+      fetchProjects();
+      fetchUserRole();
+    }
+  }, [authLoading]);
+
+  useEffect(() => {
+    const loadChildren = async () => {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !authData.user) {
+        return;
+      }
+
+      setChildrenLoading(true);
+
+      const { data, error } = await supabase
+        .from("children")
+        .select("id, nickname")
+        .eq("parent_id", authData.user.id)
+        .order("created_at", { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        const nextChildren = data as ChildProfile[];
+        setChildren(nextChildren);
+
+        if (nextChildren.length > 0) {
+          setSelectedChildId((prev) => prev || nextChildren[0].id);
+        }
+      }
+
+      setChildrenLoading(false);
+    };
+
+    loadChildren();
+  }, []);
+
+  const handleAddChild = async () => {
+    const nickname = newChildName.trim();
+
+    if (!nickname) {
+      setError("Lütfen çocuk adı / nickname gir.");
+      return;
+    }
+
+    setAddingChild(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !authData.user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("children")
+        .insert({
+          parent_id: authData.user.id,
+          nickname,
+        })
+        .select("id, nickname")
+        .single();
+
+      if (error || !data) {
+        throw new Error(error?.message || "Çocuk kaydedilemedi.");
+      }
+
+      setChildren((prev) => [...prev, data as ChildProfile]);
+      setSelectedChildId(data.id);
+      setNewChildName("");
+      setSaveMessage("Çocuk profili eklendi ✅");
+    } catch (e: any) {
+      setError(e?.message || "Çocuk eklenirken bir hata oluştu.");
+    } finally {
+      setAddingChild(false);
+    }
+  };
+
+  const selectedChild = children.find((child) => child.id === selectedChildId) || null;
+
+  const getAccessTokenOrThrow = async () => {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    if (error || !session?.access_token) {
+      throw new Error("Oturum bulunamadı. Lütfen tekrar giriş yap.");
+    }
+
+    return session.access_token;
+  };
+
+
+  const fetchUserRole = async () => {
+    try {
+      setRoleLoading(true);
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !userData.user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("roles")
+        .select("role")
+        .eq("user_id", userData.user.id)
+        .single();
+
+      if (error || !data?.role) {
+        setUserRole("parent");
+        return;
+      }
+
+      setUserRole(data.role as "parent" | "admin");
+    } catch (e) {
+      console.error("fetchUserRole error:", e);
+      setUserRole("parent");
+    } finally {
+      setRoleLoading(false);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      setLoadingProjects(true);
+
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Projeler yüklenemedi.");
+      }
+
+      setProjects(Array.isArray(data.projects) ? data.projects : []);
+    } catch (e) {
+      console.error("fetchProjects error:", e);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const loadProjectById = async (projectId: string) => {
+    setLoadProjectId(projectId);
+    await loadProject(projectId);
+  };
 
   const formatDurationLabel = (seconds?: number) => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
@@ -1291,13 +1485,22 @@ export default function CreatePage() {
       return;
     }
 
+    if (!selectedChildId) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    const accessToken = await getAccessTokenOrThrow();
+
     const res = await fetch("/api/save-project", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         projectId: currentProjectId || undefined,
+        childId: selectedChildId,
         title,
         inputPrompt: input,
         storyPremise: storySetup?.storyPremise || "",
@@ -1318,6 +1521,8 @@ export default function CreatePage() {
       setLoadProjectId(data.project.id);
     }
 
+    await fetchProjects();
+
     if (showManualMessage) {
       setSaveMessage(
         data.mode === "created" ? "Proje kaydedildi ✅" : "Proje güncellendi ✅"
@@ -1331,22 +1536,29 @@ export default function CreatePage() {
       return;
     }
 
+    if (!selectedChildId) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
     setIsSavingProject(true);
     setError("");
     setSaveMessage("");
 
     try {
       await persistProject(true);
-    } catch {
-      setError("Kaydetme sırasında hata oluştu.");
+    } catch (e: any) {
+      setError(e?.message || "Kaydetme sırasında hata oluştu.");
     } finally {
       setIsSavingProject(false);
     }
   };
 
-  const loadProject = async () => {
-    if (!loadProjectId.trim()) {
-      setError("Lütfen bir proje ID gir.");
+  const loadProject = async (projectIdOverride?: string) => {
+    const projectIdToLoad = (projectIdOverride || loadProjectId).trim();
+
+    if (!projectIdToLoad) {
+      setError("Lütfen bir proje seç veya proje ID gir.");
       return;
     }
 
@@ -1355,8 +1567,13 @@ export default function CreatePage() {
     setSaveMessage("");
 
     try {
-      const res = await fetch(`/api/load-project/${loadProjectId}`, {
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch(`/api/load-project/${projectIdToLoad}`, {
         method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
 
       const data = await res.json();
@@ -1375,6 +1592,8 @@ export default function CreatePage() {
       stopStoryPlayback();
 
       setCurrentProjectId(project.id || "");
+      setLoadProjectId(project.id || projectIdToLoad);
+      setSelectedChildId(project.child_id || "");
       setTitle(project.title || "");
       setInput(project.input_prompt || "");
       setCharacters(
@@ -1407,7 +1626,7 @@ export default function CreatePage() {
       );
 
       setExportedMovieUrl("");
-    setExportMovieResult(null);
+      setExportMovieResult(null);
       setStorySetup({
         title: project.title || "",
         storyPremise: project.story_premise || "",
@@ -1426,14 +1645,19 @@ export default function CreatePage() {
         isHydratingRef.current = false;
         skipAutosaveRef.current = false;
       }, 0);
-    } catch {
-      setError("Yükleme sırasında hata oluştu.");
+    } catch (e: any) {
+      setError(e?.message || "Yükleme sırasında hata oluştu.");
     } finally {
       setIsLoadingProject(false);
     }
   };
 
   const createSetup = async () => {
+    if (!selectedChildId) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
     if (!input.trim()) {
       setError("Lütfen önce hikaye fikrini yaz.");
       return;
@@ -2033,9 +2257,28 @@ export default function CreatePage() {
     },
   ];
 
+  if (authLoading) {
+    return <div style={{ padding: 40 }}>Loading...</div>;
+  }
+
+  if (roleLoading) {
+    return <div style={{ padding: 40 }}>Role yükleniyor...</div>;
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
       <div className="mx-auto w-full max-w-7xl space-y-8">
+        {userRole === "admin" && (
+          <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
+            Admin Mode aktif → YouTube Engine burada konumlanacak.
+          </div>
+        )}
+
+        {userRole === "parent" && (
+          <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-cyan-200">
+            Experience Lab Mode aktif.
+          </div>
+        )}
         <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
             <div className="space-y-4">
@@ -2143,24 +2386,101 @@ export default function CreatePage() {
 
           <div className="space-y-8">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Kayıtlı Projeyi Yükle</h2>
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold">Çocuk Profili</h2>
+            {selectedChild ? (
+              <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+                Aktif: {selectedChild.nickname}
+              </span>
+            ) : (
+              <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200">
+                Çocuk seçilmedi
+              </span>
+            )}
+          </div>
 
-          <input
-            className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-            placeholder="Proje ID gir"
-            value={loadProjectId}
-            onChange={(e) => setLoadProjectId(e.target.value)}
-          />
-
-          <div className="flex justify-center">
-            <button
-              onClick={loadProject}
-              disabled={isLoadingProject}
-              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <select
+              className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+              value={selectedChildId}
+              onChange={(e) => setSelectedChildId(e.target.value)}
+              disabled={childrenLoading}
             >
-              {isLoadingProject ? "Yükleniyor..." : "Projeyi Yükle"}
+              <option value="">Çocuk seç</option>
+              {children.map((child) => (
+                <option key={child.id} value={child.id}>
+                  {child.nickname}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex gap-2">
+              <input
+                className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                placeholder="Yeni çocuk adı"
+                value={newChildName}
+                onChange={(e) => setNewChildName(e.target.value)}
+              />
+              <button
+                onClick={handleAddChild}
+                disabled={addingChild}
+                className="rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+              >
+                {addingChild ? "Ekleniyor..." : "Ekle"}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-sm text-slate-300">
+            Experience Lab akışında hikâye üretmeden önce aktif çocuk profili seçilmelidir.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold">Projelerim</h2>
+            <button
+              onClick={fetchProjects}
+              disabled={loadingProjects}
+              className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50"
+            >
+              {loadingProjects ? "Yenileniyor..." : "Yenile"}
             </button>
           </div>
+
+          {loadingProjects ? (
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+              Projeler yükleniyor...
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+              Henüz kayıtlı proje yok. İlk hikayeni oluşturduğunda burada görünecek.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => loadProjectById(project.id)}
+                  disabled={isLoadingProject}
+                  className="w-full rounded-xl border border-gray-700 bg-black/20 p-4 text-left transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="font-semibold text-white">{project.title || "Başlıksız Proje"}</div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        Son güncelleme: {project.updated_at ? new Date(project.updated_at).toLocaleString() : "-"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
+                      Aç
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">

@@ -3,11 +3,34 @@ import { createServerSupabaseClient } from "../../../lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
+    const authHeader = req.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "").trim();
+
+    if (!token) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const supabase = createServerSupabaseClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
     const {
       projectId,
+      childId,
       title,
       inputPrompt,
       storyPremise,
@@ -23,10 +46,18 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!childId) {
+      return NextResponse.json(
+        { error: "childId zorunlu" },
+        { status: 400 }
+      );
+    }
+
     if (projectId) {
       const { data, error } = await supabase
         .from("velto_projects")
         .update({
+          child_id: childId,
           title,
           input_prompt: inputPrompt || "",
           story_premise: storyPremise || "",
@@ -35,6 +66,7 @@ export async function POST(req: Request) {
           scenes: scenes || [],
         })
         .eq("id", projectId)
+        .eq("owner_user_id", user.id)
         .select()
         .single();
 
@@ -56,6 +88,8 @@ export async function POST(req: Request) {
       .from("velto_projects")
       .insert([
         {
+          owner_user_id: user.id,
+          child_id: childId,
           title,
           input_prompt: inputPrompt || "",
           story_premise: storyPremise || "",

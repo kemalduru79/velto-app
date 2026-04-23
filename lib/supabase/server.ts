@@ -8,5 +8,11 @@ export function createServerSupabaseClient() {
     throw new Error("Supabase environment variables eksik.");
   }
 
-  return createClient(url, serviceRoleKey);
+  return createClient(url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
 }

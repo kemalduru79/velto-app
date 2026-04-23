@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import { createServerSupabaseClient } from "../../../lib/supabase/server";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ projectId: string }> }
-) {
+export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "").trim();
@@ -13,15 +10,6 @@ export async function GET(
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
-      );
-    }
-
-    const { projectId } = await context.params;
-
-    if (!projectId) {
-      return NextResponse.json(
-        { error: "projectId zorunlu" },
-        { status: 400 }
       );
     }
 
@@ -41,25 +29,24 @@ export async function GET(
 
     const { data, error } = await supabase
       .from("velto_projects")
-      .select("*")
-      .eq("id", projectId)
+      .select("id, title, child_id, created_at, updated_at")
       .eq("owner_user_id", user.id)
-      .single();
+      .order("updated_at", { ascending: false });
 
     if (error) {
       return NextResponse.json(
-        { error: error.message || "Proje bulunamadı." },
-        { status: 404 }
+        { error: error.message },
+        { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      project: data,
+      projects: data || [],
     });
   } catch (e) {
     return NextResponse.json(
-      { error: "Yükleme sırasında hata oluştu" },
+      { error: "Projeler yüklenirken hata oluştu" },
       { status: 500 }
     );
   }
