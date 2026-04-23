@@ -25,7 +25,7 @@ export default function SignupPage() {
     setMessage("");
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
       });
@@ -34,31 +34,8 @@ export default function SignupPage() {
         throw new Error(error.message);
       }
 
-      const user = data.user;
-
-      if (!user) {
-        throw new Error("Kullanıcı oluşturulamadı.");
-      }
-
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: user.id,
-        email: user.email,
-      });
-
-      if (profileError) {
-        throw new Error(profileError.message);
-      }
-
-      const { error: roleError } = await supabase.from("roles").upsert({
-        user_id: user.id,
-        role: "parent",
-      });
-
-      if (roleError) {
-        throw new Error(roleError.message);
-      }
-
       setMessage("Kayıt başarılı. Şimdi giriş yapabilirsin.");
+
       setTimeout(() => {
         router.push("/login");
       }, 1200);
