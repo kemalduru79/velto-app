@@ -14,6 +14,8 @@ type Scene = {
   image?: string;
 };
 
+type SupportedLanguage = "tr" | "en";
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -49,6 +51,10 @@ function parseJsonSafely(rawText: string) {
   }
 }
 
+function normalizeLanguage(value: unknown): SupportedLanguage {
+  return value === "en" ? "en" : "tr";
+}
+
 export async function POST(req: Request) {
   try {
     const client = getOpenAIClient();
@@ -59,12 +65,16 @@ export async function POST(req: Request) {
       scenes,
       childDirection,
       fromSceneId,
+      language,
     }: {
       title: string;
       scenes: Scene[];
       childDirection?: string;
       fromSceneId?: number;
+      language?: SupportedLanguage;
     } = body;
+
+    const normalizedLanguage = normalizeLanguage(language);
 
     if (!title || !Array.isArray(scenes) || scenes.length === 0) {
       return NextResponse.json(
@@ -89,9 +99,13 @@ export async function POST(req: Request) {
     const nextSceneId = lastSceneId + 1;
 
     const storySoFar = contextScenes
-      .map(
-        (scene) =>
-          `Sahne ${scene.id}: ${scene.text}
+      .map((scene) =>
+        normalizedLanguage === "en"
+          ? `Scene ${scene.id}: ${scene.text}
+Narration: ${scene.narration}
+Dialogue: ${scene.dialogue}
+Emotion: ${scene.emotion}`
+          : `Sahne ${scene.id}: ${scene.text}
 Anlatıcı: ${scene.narration}
 Diyalog: ${scene.dialogue}
 Duygu: ${scene.emotion}`
@@ -100,15 +114,75 @@ Duygu: ${scene.emotion}`
 
     const directionText =
       childDirection && childDirection.trim()
-        ? `Çocuğun yönlendirmesi: ${childDirection.trim()}`
+        ? normalizedLanguage === "en"
+          ? `Child direction: ${childDirection.trim()}`
+          : `Çocuğun yönlendirmesi: ${childDirection.trim()}`
+        : normalizedLanguage === "en"
+        ? "The child did not give extra direction. Continue the story naturally, with curiosity and child-friendly tone."
         : "Çocuk ek yönlendirme vermedi. Hikayeyi doğal, merak uyandırıcı ve çocuk dostu biçimde ilerlet.";
 
     const modeText =
       typeof fromSceneId === "number"
-        ? `Önemli: Yeni sahne, özellikle Sahne ${fromSceneId} sonrasındaki yeni akışı başlatmalı.`
+        ? normalizedLanguage === "en"
+          ? `Important: The new scene must start the new branch especially after Scene ${fromSceneId}.`
+          : `Önemli: Yeni sahne, özellikle Sahne ${fromSceneId} sonrasındaki yeni akışı başlatmalı.`
+        : normalizedLanguage === "en"
+        ? "Important: This new scene must naturally continue after the current final scene."
         : "Önemli: Bu yeni sahne mevcut son sahneden sonra doğal bir devam sahnesi olmalı.";
 
-    const prompt = `
+    const prompt =
+      normalizedLanguage === "en"
+        ? `
+You are a creative assistant writing cinematic, fast-paced children's animation scenes for ages 8-12.
+
+Your task:
+- Write ONLY 1 new scene that continues the current story.
+- Stay consistent with previous scenes.
+- Do not repeat yourself.
+- The new scene must be visually clear, easy to animate, and suitable for an 8-10 second animation.
+- Use child-friendly language.
+- Advance the story without fully closing it.
+- Return valid JSON only.
+- Do not use markdown code fences.
+- Do not write explanations.
+
+VERY IMPORTANT RULES:
+- The scene must be short, rhythmic, and visual.
+- narration must be exactly one sentence.
+- narration must be at most 12-14 words.
+- dialogue may be empty.
+- if dialogue exists, it must be very short.
+- use a maximum of 8 words per character line.
+- use at most 1 short exchange.
+- the scene must contain one main action only.
+- avoid long explanations or complicated plot chains.
+
+Format:
+{
+  "scene": {
+    "id": ${nextSceneId},
+    "text": "string",
+    "narration": "string",
+    "dialogue": "string",
+    "cameraDirection": "string",
+    "emotion": "string",
+    "motionHint": "string"
+  }
+}
+
+${modeText}
+
+Story title:
+${title}
+
+Previous scenes:
+${storySoFar}
+
+${directionText}
+
+Generate every output field in English.
+`
+        : `
 Sen 8-12 yaş grubu için yaratıcı, sinematik, hızlı tempolu çocuk animasyonu sahneleri yazan bir yardımcı yazarsın.
 
 Görevin:
@@ -193,6 +267,7 @@ ${directionText}
 
     return NextResponse.json({
       scene: parsed.scene,
+      language: normalizedLanguage,
     });
   } catch (error) {
     console.error("continue-story error:", error);

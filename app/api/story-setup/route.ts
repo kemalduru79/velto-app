@@ -3,6 +3,8 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
+type SupportedLanguage = "tr" | "en";
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -59,12 +61,17 @@ function extractTextFromResponse(response: any) {
   return textParts.join("\n").trim();
 }
 
+function normalizeLanguage(value: unknown): SupportedLanguage {
+  return value === "en" ? "en" : "tr";
+}
+
 export async function POST(req: Request) {
   try {
     const client = getOpenAIClient();
 
     const body = await req.json().catch(() => null);
     const prompt = body?.prompt;
+    const language = normalizeLanguage(body?.language);
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return NextResponse.json(
@@ -73,7 +80,53 @@ export async function POST(req: Request) {
       );
     }
 
-    const setupPrompt = `
+    const setupPrompt =
+      language === "en"
+        ? `
+You are a creative children's story development assistant for ages 8-12.
+
+Your task:
+- Only generate the initial setup.
+- Do not generate scenes yet.
+- Create a title that matches the user's idea.
+- Create a short story premise / direction.
+- Make sure the character count and relationships are correct.
+- For example, if the user says "3 siblings", there must be exactly 3 siblings.
+- Write clear and editable visual character descriptions.
+- Generate a visual style guide.
+- Return valid JSON only.
+- Do not use markdown code fences.
+- Do not add any explanation.
+- Do not output any text outside JSON.
+
+Format:
+{
+  "title": "string",
+  "storyPremise": "string",
+  "characters": [
+    {
+      "name": "string",
+      "age": "string",
+      "appearance": "string",
+      "outfit": "string",
+      "accessory": "string",
+      "personality": "string"
+    }
+  ],
+  "visualBible": {
+    "style": "string",
+    "palette": "string",
+    "camera": "string",
+    "consistencyRules": "string"
+  }
+}
+
+Generate every text field in English.
+
+User idea:
+${prompt.trim()}
+`
+        : `
 Sen 8-12 yaş grubu için yaratıcı çocuk hikayeleri tasarlayan bir yardımcı yazarsın.
 
 Görevin:
@@ -185,6 +238,7 @@ ${prompt.trim()}
       storyPremise: parsed.storyPremise,
       characters: normalizedCharacters,
       visualBible: normalizedVisualBible,
+      language,
     });
   } catch (error: any) {
     console.error("story-setup error:", error);

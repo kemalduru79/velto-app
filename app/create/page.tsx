@@ -90,6 +90,8 @@ type ChildProfile = {
   nickname: string;
 };
 
+type ContentLanguage = "tr" | "en";
+
 const emptyVisualBible: VisualBible = {
   style: "",
   palette: "",
@@ -197,6 +199,7 @@ export default function CreatePage() {
   const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
+  const [language, setLanguage] = useState<ContentLanguage>("tr");
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
   const [title, setTitle] = useState("");
@@ -1503,6 +1506,7 @@ export default function CreatePage() {
         childId: selectedChildId,
         title,
         inputPrompt: input,
+        language,
         storyPremise: storySetup?.storyPremise || "",
         characters,
         visualBible,
@@ -1596,6 +1600,7 @@ export default function CreatePage() {
       setSelectedChildId(project.child_id || "");
       setTitle(project.title || "");
       setInput(project.input_prompt || "");
+      setLanguage(project.language === "en" ? "en" : "tr");
       setCharacters(
         Array.isArray(project.characters)
           ? project.characters.map((character: Character) => ({
@@ -1674,7 +1679,7 @@ export default function CreatePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt: input }),
+        body: JSON.stringify({ prompt: input, language }),
       });
 
       const data = await res.json().catch(() => null);
@@ -1836,6 +1841,7 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           title,
+          language,
           storyPremise: storySetup?.storyPremise || "",
           characters,
           visualBible,
@@ -1943,6 +1949,7 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           title,
+          language,
           scenes,
           sceneId,
           userInstruction,
@@ -2020,6 +2027,7 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           title,
+          language,
           scenes,
           childDirection: continuePrompt,
         }),
@@ -2092,6 +2100,7 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           title,
+          language,
           scenes: baseScenes,
           childDirection,
           fromSceneId,
@@ -2267,7 +2276,13 @@ export default function CreatePage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
-      <div className="mx-auto w-full max-w-7xl space-y-8">
+      <div style={{ background: "red", color: "white", padding: 12 }}>
+  TEST-123-CREATE-PAGE
+  <div style={{ background: "green", color: "white", padding: 12, marginTop: 8 }}>
+  LANGUAGE-TEST: {language}
+</div>
+</div>
+<div className="mx-auto w-full max-w-7xl space-y-8">
         {userRole === "admin" && (
           <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
             Admin Mode aktif → YouTube Engine burada konumlanacak.
@@ -2484,15 +2499,35 @@ export default function CreatePage() {
         </div>
 
         <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-300">İçerik Dili</label>
+              <select
+                className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
+              >
+                <option value="tr">Türkçe</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+              Seçilen dil; hikaye, narration, dialogue ve devam sahneleri için içerik üretim dilini belirler.
+            </div>
+          </div>
+
           <label className="block text-sm font-medium text-gray-300">
-            Nasıl bir hikaye yapmak istiyorsun?
+            {language === "tr"
+              ? "Nasıl bir hikaye yapmak istiyorsun?"
+              : "What kind of story do you want to create?"}
           </label>
 
           <textarea
             className="min-h-36 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Örn: 3 kardeşin ormandaki gizemli macerası"
+            placeholder={language === "tr" ? "Örn: 3 kardeşin ormandaki gizemli macerası" : "Example: 3 siblings on a mysterious forest adventure"}
           />
 
           <div className="flex justify-center">
@@ -2501,7 +2536,7 @@ export default function CreatePage() {
               disabled={loadingSetup}
               className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
             >
-              {loadingSetup ? "Kurulum hazırlanıyor..." : "Karakterleri Oluştur"}
+              {loadingSetup ? (language === "tr" ? "Kurulum hazırlanıyor..." : "Preparing setup...") : (language === "tr" ? "Karakterleri Oluştur" : "Create Characters")}
             </button>
           </div>
         </div>

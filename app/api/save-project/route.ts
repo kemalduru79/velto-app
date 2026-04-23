@@ -3,17 +3,19 @@ import { createServerSupabaseClient } from "../../../lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "").trim();
+    const supabase = createServerSupabaseClient();
+
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.replace("Bearer ", "").trim()
+      : "";
 
     if (!token) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Yetkisiz istek." },
         { status: 401 }
       );
     }
-
-    const supabase = createServerSupabaseClient();
 
     const {
       data: { user },
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
 
     if (userError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Geçersiz oturum." },
         { status: 401 }
       );
     }
@@ -34,6 +36,7 @@ export async function POST(req: Request) {
       title,
       inputPrompt,
       storyPremise,
+      language,
       characters,
       visualBible,
       scenes,
@@ -53,20 +56,55 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: childRecord, error: childError } = await supabase
+      .from("children")
+      .select("id, parent_id")
+      .eq("id", childId)
+      .eq("parent_id", user.id)
+      .single();
+
+    if (childError || !childRecord) {
+      return NextResponse.json(
+        { error: "Bu çocuk profiline erişim yetkin yok." },
+        { status: 403 }
+      );
+    }
+
     if (projectId) {
+      const { data: existingProject, error: existingProjectError } = await supabase
+        .from("velto_projects")
+        .select("id, owner_user_id")
+        .eq("id", projectId)
+        .single();
+
+      if (existingProjectError || !existingProject) {
+        return NextResponse.json(
+          { error: "Proje bulunamadı." },
+          { status: 404 }
+        );
+      }
+
+      if (existingProject.owner_user_id !== user.id) {
+        return NextResponse.json(
+          { error: "Bu projeyi güncelleme yetkin yok." },
+          { status: 403 }
+        );
+      }
+
       const { data, error } = await supabase
         .from("velto_projects")
         .update({
+          owner_user_id: user.id,
           child_id: childId,
           title,
           input_prompt: inputPrompt || "",
           story_premise: storyPremise || "",
+          language: language === "en" ? "en" : "tr",
           visual_bible: visualBible || {},
           characters: characters || [],
           scenes: scenes || [],
         })
         .eq("id", projectId)
-        .eq("owner_user_id", user.id)
         .select()
         .single();
 
@@ -93,6 +131,7 @@ export async function POST(req: Request) {
           title,
           input_prompt: inputPrompt || "",
           story_premise: storyPremise || "",
+          language: language === "en" ? "en" : "tr",
           visual_bible: visualBible || {},
           characters: characters || [],
           scenes: scenes || [],

@@ -14,6 +14,8 @@ type Scene = {
   image?: string;
 };
 
+type SupportedLanguage = "tr" | "en";
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -49,6 +51,10 @@ function parseJsonSafely(rawText: string) {
   }
 }
 
+function normalizeLanguage(value: unknown): SupportedLanguage {
+  return value === "en" ? "en" : "tr";
+}
+
 export async function POST(req: Request) {
   try {
     const client = getOpenAIClient();
@@ -59,12 +65,16 @@ export async function POST(req: Request) {
       scenes,
       sceneId,
       userInstruction,
+      language,
     }: {
       title: string;
       scenes: Scene[];
       sceneId: number;
       userInstruction: string;
+      language?: SupportedLanguage;
     } = body;
+
+    const normalizedLanguage = normalizeLanguage(language);
 
     if (!title || !Array.isArray(scenes) || !sceneId || !userInstruction?.trim()) {
       return NextResponse.json(
@@ -83,16 +93,78 @@ export async function POST(req: Request) {
 
     const previousScenes = scenes
       .filter((scene) => scene.id < sceneId)
-      .map(
-        (scene) =>
-          `Sahne ${scene.id}: ${scene.text}
+      .map((scene) =>
+        normalizedLanguage === "en"
+          ? `Scene ${scene.id}: ${scene.text}
+Narration: ${scene.narration}
+Dialogue: ${scene.dialogue}
+Emotion: ${scene.emotion}`
+          : `Sahne ${scene.id}: ${scene.text}
 Anlatıcı: ${scene.narration}
 Diyalog: ${scene.dialogue}
 Duygu: ${scene.emotion}`
       )
       .join("\n\n");
 
-    const prompt = `
+    const prompt =
+      normalizedLanguage === "en"
+        ? `
+You are an assistant who edits cinematic, consistent children's animation scenes for ages 8-12.
+
+Your task:
+- Rewrite only the target scene.
+- Stay consistent with previous scenes.
+- Do not break character, tone, location, or story continuity.
+- Reflect the child's direction clearly in the rewritten scene.
+- The scene must fit an 8-10 second animation.
+- The scene must be visual, clear, fast-paced, and easy to animate.
+- Return valid JSON only.
+- Do not use markdown code fences.
+- Do not write explanations.
+
+VERY IMPORTANT RULES:
+- narration must be one sentence only.
+- narration must be at most 12-14 words.
+- dialogue may be empty.
+- if dialogue exists, it must be short.
+- use a maximum of 8 words per character line.
+- use at most 1 short exchange.
+- the scene must have one dominant action.
+- avoid long explanation or complex narration.
+
+Format:
+{
+  "updatedScene": {
+    "id": ${sceneId},
+    "text": "string",
+    "narration": "string",
+    "dialogue": "string",
+    "cameraDirection": "string",
+    "emotion": "string",
+    "motionHint": "string"
+  }
+}
+
+Story title:
+${title}
+
+Previous scenes:
+${previousScenes || "There are no earlier scenes before this one."}
+
+Current scene to edit:
+Scene ${targetScene.id}: ${targetScene.text}
+Narration: ${targetScene.narration}
+Dialogue: ${targetScene.dialogue}
+Camera: ${targetScene.cameraDirection}
+Emotion: ${targetScene.emotion}
+Motion: ${targetScene.motionHint}
+
+Child direction:
+${userInstruction.trim()}
+
+Generate every output field in English.
+`
+        : `
 Sen 8-12 yaş grubu için yaratıcı, sinematik, tutarlı çocuk animasyonu sahneleri düzenleyen bir yardımcı yazarsın.
 
 Görevin:
@@ -176,6 +248,7 @@ ${userInstruction.trim()}
 
     return NextResponse.json({
       updatedScene: parsed.updatedScene,
+      language: normalizedLanguage,
     });
   } catch (error) {
     console.error("edit-scene error:", error);

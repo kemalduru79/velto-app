@@ -6,16 +6,6 @@ export async function GET(
   context: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "").trim();
-
-    if (!token) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     const { projectId } = await context.params;
 
     if (!projectId) {
@@ -27,6 +17,18 @@ export async function GET(
 
     const supabase = createServerSupabaseClient();
 
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.replace("Bearer ", "").trim()
+      : "";
+
+    if (!token) {
+      return NextResponse.json(
+        { error: "Yetkisiz istek." },
+        { status: 401 }
+      );
+    }
+
     const {
       data: { user },
       error: userError,
@@ -34,7 +36,7 @@ export async function GET(
 
     if (userError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Geçersiz oturum." },
         { status: 401 }
       );
     }
@@ -46,9 +48,9 @@ export async function GET(
       .eq("owner_user_id", user.id)
       .single();
 
-    if (error) {
+    if (error || !data) {
       return NextResponse.json(
-        { error: error.message || "Proje bulunamadı." },
+        { error: "Proje bulunamadı ya da erişim yetkin yok." },
         { status: 404 }
       );
     }

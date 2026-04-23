@@ -19,6 +19,8 @@ type VisualBible = {
   consistencyRules: string;
 };
 
+type SupportedLanguage = "tr" | "en";
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -54,6 +56,10 @@ function parseJsonSafely(rawText: string) {
   }
 }
 
+function normalizeLanguage(value: unknown): SupportedLanguage {
+  return value === "en" ? "en" : "tr";
+}
+
 export async function POST(req: Request) {
   try {
     const client = getOpenAIClient();
@@ -63,12 +69,16 @@ export async function POST(req: Request) {
       storyPremise,
       characters,
       visualBible,
+      language,
     }: {
       title: string;
       storyPremise: string;
       characters: Character[];
       visualBible: VisualBible;
+      language?: SupportedLanguage;
     } = await req.json();
+
+    const normalizedLanguage = normalizeLanguage(language);
 
     if (
       !title?.trim() ||
@@ -85,7 +95,17 @@ export async function POST(req: Request) {
 
     const characterText = characters
       .map((character, index) => {
-        return `
+        return normalizedLanguage === "en"
+          ? `
+Character ${index + 1}
+Name: ${character.name}
+Age: ${character.age}
+Appearance: ${character.appearance}
+Outfit: ${character.outfit}
+Accessory: ${character.accessory || "None"}
+Personality: ${character.personality}
+`
+          : `
 Karakter ${index + 1}
 Ad: ${character.name}
 Yaş: ${character.age}
@@ -97,7 +117,81 @@ Kişilik: ${character.personality}
       })
       .join("\n");
 
-    const prompt = `
+    const prompt =
+      normalizedLanguage === "en"
+        ? `
+You are a creative, cinematic children's animation writer for ages 8-12.
+
+Your task:
+- Generate EXACTLY 5 scenes using the given character setup and visual style.
+- Each scene must be suitable for a short 8-10 second animation.
+- The pacing should be fast, clear, child-friendly, and easy to visualize.
+- Keep characters, appearance, relationships, and tone consistent.
+- The story should flow, but scenes should not be overly long.
+- Return valid JSON only.
+- Do not use markdown code fences.
+- Do not write explanations.
+
+VERY IMPORTANT RULES:
+- Every scene must be easy to animate.
+- "text" must describe the visual action clearly.
+- "narration" must be one sentence only.
+- "narration" must be at most 12-14 words.
+- "dialogue" may be empty.
+- If "dialogue" exists, it must be very short.
+- Use a maximum of 8 words per character line.
+- Use at most 1 short exchange.
+- Avoid long explanations, internal monologue, or complex plot exposition.
+- Each scene must have one main idea.
+
+STORY STRUCTURE:
+- Scene 1: intriguing opening / hook
+- Scene 2: situation becomes clearer
+- Scene 3: development / small change
+- Scene 4: mini crisis / tension
+- Scene 5: resolution + sense of continuation / curiosity
+
+Format:
+{
+  "scenes": [
+    {
+      "id": 1,
+      "text": "string",
+      "narration": "string",
+      "dialogue": "string",
+      "cameraDirection": "string",
+      "emotion": "string",
+      "motionHint": "string"
+    }
+  ]
+}
+
+Field rules:
+- text: clearly describe the visual event
+- narration: a very short narrator sentence
+- dialogue: short spoken line or empty string
+- cameraDirection: e.g. "wide shot", "close-up", "tracking shot", "over the shoulder"
+- emotion: dominant emotion of the scene
+- motionHint: short, clear animation movement cue
+
+Story title:
+${title.trim()}
+
+Story direction:
+${storyPremise.trim()}
+
+Character design:
+${characterText}
+
+Visual style:
+Style: ${visualBible.style}
+Palette: ${visualBible.palette}
+Camera: ${visualBible.camera}
+Consistency rules: ${visualBible.consistencyRules}
+
+Generate every output field in English.
+`
+        : `
 Sen 8-12 yaş grubu için yaratıcı, sinematik, görsel düşünerek yazan bir çocuk animasyon senaristisin.
 
 Görevin:
@@ -197,6 +291,7 @@ Tutarlılık kuralları: ${visualBible.consistencyRules}
 
     return NextResponse.json({
       scenes: parsed.scenes,
+      language: normalizedLanguage,
     });
   } catch (error) {
     console.error("build-story error:", error);
