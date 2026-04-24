@@ -406,10 +406,14 @@ async function createImageClipWithAudio({
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const videoFilter =
+  const durationText = resolvedTargetDuration.toFixed(3);
+  const videoBaseFilter =
     "scale=1280:720:force_original_aspect_ratio=decrease," +
     "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
     "setsar=1," +
+    "fps=25," +
+    `trim=duration=${durationText},` +
+    "setpts=PTS-STARTPTS," +
     "format=yuv420p";
 
   if (audioPath) {
@@ -423,14 +427,14 @@ async function createImageClipWithAudio({
       imagePath,
       "-i",
       audioPath,
-      "-t",
-      resolvedTargetDuration.toFixed(3),
-      "-vf",
-      videoFilter,
+      "-filter_complex",
+      `[0:v]${videoBaseFilter}[v];` +
+        `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+        `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
       "-map",
-      "0:v:0",
+      "[v]",
       "-map",
-      "1:a:0",
+      "[a]",
       "-c:v",
       "libx264",
       "-preset",
@@ -464,18 +468,15 @@ async function createImageClipWithAudio({
     imagePath,
     "-f",
     "lavfi",
-    "-t",
-    resolvedTargetDuration.toFixed(3),
     "-i",
     "anullsrc=r=44100:cl=stereo",
-    "-t",
-    resolvedTargetDuration.toFixed(3),
-    "-vf",
-    videoFilter,
+    "-filter_complex",
+    `[0:v]${videoBaseFilter}[v];` +
+      `[1:a]atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
     "-map",
-    "0:v:0",
+    "[v]",
     "-map",
-    "1:a:0",
+    "[a]",
     "-c:v",
     "libx264",
     "-preset",
@@ -509,36 +510,39 @@ async function createSceneClipWithAudio({
     Number.isFinite(targetDuration) &&
     targetDuration > 0
       ? targetDuration
-      : undefined;
+      : TARGET_SCENE_DURATION;
 
+  const durationText = resolvedTargetDuration.toFixed(3);
   const videoDuration = await getMediaDuration(videoPath);
+  const freezeDuration = Math.max(0, resolvedTargetDuration - videoDuration + 0.05);
+
+  const videoBaseFilter =
+    "scale=1280:720:force_original_aspect_ratio=decrease," +
+    "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
+    "setsar=1," +
+    "fps=25," +
+    (freezeDuration > 0
+      ? `tpad=stop_mode=clone:stop_duration=${freezeDuration.toFixed(3)},`
+      : "") +
+    `trim=duration=${durationText},` +
+    "setpts=PTS-STARTPTS," +
+    "format=yuv420p";
 
   if (audioPath) {
-    const shouldFreeze =
-      resolvedTargetDuration !== undefined &&
-      resolvedTargetDuration > videoDuration + 0.05;
-
-    const videoFilter = shouldFreeze
-      ? `tpad=stop_mode=clone:stop_duration=${Math.max(
-          0,
-          resolvedTargetDuration - videoDuration + 0.05
-        ).toFixed(3)}`
-      : null;
-
     await runFfmpeg([
       "-y",
       "-i",
       videoPath,
       "-i",
       audioPath,
-      ...(videoFilter ? ["-filter:v", videoFilter] : []),
+      "-filter_complex",
+      `[0:v]${videoBaseFilter}[v];` +
+        `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+        `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
       "-map",
-      "0:v:0",
+      "[v]",
       "-map",
-      "1:a:0",
-      ...(resolvedTargetDuration
-        ? ["-t", resolvedTargetDuration.toFixed(3)]
-        : []),
+      "[a]",
       "-c:v",
       "libx264",
       "-preset",
@@ -555,26 +559,12 @@ async function createSceneClipWithAudio({
       "44100",
       "-ac",
       "2",
+      "-movflags",
+      "+faststart",
       outputPath,
     ]);
     return;
   }
-
-  const shouldFreezeSilence =
-    resolvedTargetDuration !== undefined &&
-    resolvedTargetDuration > videoDuration + 0.05;
-
-  const videoFilter = shouldFreezeSilence
-    ? `tpad=stop_mode=clone:stop_duration=${Math.max(
-        0,
-        resolvedTargetDuration - videoDuration + 0.05
-      ).toFixed(3)}`
-    : null;
-
-  const finalSilenceDuration =
-    resolvedTargetDuration && resolvedTargetDuration > 0
-      ? resolvedTargetDuration
-      : Math.max(videoDuration, TARGET_SCENE_DURATION);
 
   await runFfmpeg([
     "-y",
@@ -582,18 +572,15 @@ async function createSceneClipWithAudio({
     videoPath,
     "-f",
     "lavfi",
-    "-t",
-    finalSilenceDuration.toFixed(3),
     "-i",
     "anullsrc=r=44100:cl=stereo",
-    ...(videoFilter ? ["-filter:v", videoFilter] : []),
+    "-filter_complex",
+    `[0:v]${videoBaseFilter}[v];` +
+      `[1:a]atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
     "-map",
-    "0:v:0",
+    "[v]",
     "-map",
-    "1:a:0",
-    ...(resolvedTargetDuration
-      ? ["-t", resolvedTargetDuration.toFixed(3)]
-      : []),
+    "[a]",
     "-c:v",
     "libx264",
     "-preset",
@@ -610,6 +597,8 @@ async function createSceneClipWithAudio({
     "44100",
     "-ac",
     "2",
+    "-movflags",
+    "+faststart",
     outputPath,
   ]);
 }
@@ -761,6 +750,11 @@ app.post("/export-movie", async (req, res) => {
         scene,
         fallbackAudioDuration
       );
+
+      console.log(
+        `Export scene ${i + 1}: source=${sourceType}, audio=${fallbackAudioDuration.toFixed(2)}s, target=${targetDuration.toFixed(2)}s`
+      );
+
       const speechDurationLimit = getSpeechDurationLimit(
         scene,
         targetDuration
@@ -841,6 +835,8 @@ app.post("/export-movie", async (req, res) => {
       audioMixProfileAware: true,
       mixedExportAware: true,
       imageClipAware: true,
+      deterministicSceneTimelineAware: true,
+      sceneAudioPaddedAware: true,
     });
   } catch (error) {
     console.error("export-movie error:", error);
