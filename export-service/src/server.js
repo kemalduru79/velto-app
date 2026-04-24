@@ -17,10 +17,41 @@ app.use(
 );
 
 app.use(express.json({ limit: "10mb" }));
+
+function loadLocalEnvFile() {
+  const envPath = path.join(process.cwd(), ".env");
+
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
+
+  const raw = fs.readFileSync(envPath, "utf8");
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed.slice(separatorIndex + 1).trim().replace(/^["']|["']$/g, "");
+
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadLocalEnvFile();
+
 const TARGET_SCENE_DURATION = 8;
 const MAX_SCENE_DURATION = 10;
 const MAX_SPEECH_RATIO = 0.82;
 const MIN_SCENE_DURATION = 6.5;
+const AUDIO_PADDING_SECONDS = 0.35;
+const MAX_EXPORT_SCENE_DURATION = 30;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -187,30 +218,27 @@ function getSceneAudioMixProfile(scene) {
 
 function getSceneTargetDuration(scene, fallbackAudioDuration) {
   const requestedTarget = Number(scene?.timing?.targetSceneDuration || 0);
-  const maxSceneDuration =
-    Number(scene?.timing?.maxSceneDuration || 0) || MAX_SCENE_DURATION;
+  const audioDrivenTarget =
+    fallbackAudioDuration > 0 ? fallbackAudioDuration + AUDIO_PADDING_SECONDS : 0;
 
-  const baseTarget =
-    requestedTarget > 0
-      ? requestedTarget
-      : fallbackAudioDuration > 0
-      ? Math.max(TARGET_SCENE_DURATION, fallbackAudioDuration)
-      : TARGET_SCENE_DURATION;
-
-  return Math.min(
-    Math.max(baseTarget, MIN_SCENE_DURATION),
-    Math.max(maxSceneDuration, MIN_SCENE_DURATION)
+  const baseTarget = Math.max(
+    TARGET_SCENE_DURATION,
+    MIN_SCENE_DURATION,
+    requestedTarget,
+    audioDrivenTarget
   );
+
+  const explicitMax = Number(scene?.timing?.maxSceneDuration || 0);
+  const maxSceneDuration =
+    Number.isFinite(explicitMax) && explicitMax > 0
+      ? Math.max(explicitMax, baseTarget)
+      : MAX_EXPORT_SCENE_DURATION;
+
+  return Math.min(baseTarget, Math.max(maxSceneDuration, MIN_SCENE_DURATION));
 }
 
-function getSpeechDurationLimit(scene, targetDuration) {
-  const explicitLimit = Number(scene?.timing?.maxSpeechDuration || 0);
-
-  if (Number.isFinite(explicitLimit) && explicitLimit > 0) {
-    return explicitLimit;
-  }
-
-  return Number((targetDuration * MAX_SPEECH_RATIO).toFixed(2));
+function getSpeechDurationLimit(_scene, targetDuration) {
+  return Number((targetDuration + AUDIO_PADDING_SECONDS).toFixed(2));
 }
 
 async function concatAudioFiles(listFilePath, outputFilePath) {
@@ -767,15 +795,10 @@ app.post("/export-movie", async (req, res) => {
       );
 
       if (fallbackAudioDuration > speechDurationLimit) {
-        return res.status(400).json({
-          ok: false,
-          error: `Sahne ${i + 1} için konuşma süresi çok uzun. Maksimum ${speechDurationLimit} sn olmalı.`,
-          sceneIndex: i,
-          sceneId: scene?.id ?? i + 1,
-          targetDuration,
-          speechDuration: Number(fallbackAudioDuration.toFixed(2)),
-          maxSpeechDuration: speechDurationLimit,
-        });
+        console.warn(
+          `Scene ${scene?.id ?? i + 1} audio duration exceeded target tolerance. ` +
+            `target=${targetDuration.toFixed(2)}s audio=${fallbackAudioDuration.toFixed(2)}s`
+        );
       }
 
       if (sourceType === "video") {
@@ -849,6 +872,8 @@ app.post("/export-movie", async (req, res) => {
       audioMixProfileAware: true,
       mixedExportAware: true,
       imageClipAware: true,
+      sceneSyncedAudioAware: true,
+      audioDrivenDurationAware: true,
     });
   } catch (error) {
     console.error("export-movie error:", error);
