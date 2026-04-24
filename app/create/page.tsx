@@ -1255,11 +1255,13 @@ export default function CreatePage() {
   };
 
   const handleExportMovie = async () => {
-    const videoScenes = scenes.filter(
-      (scene) => scene.videoUrl && scene.videoStatus === "done"
+    const exportScenes = scenes.filter(
+      (scene) =>
+        (scene.videoUrl && scene.videoStatus === "done") ||
+        scene.image
     );
 
-    for (const scene of videoScenes) {
+    for (const scene of exportScenes) {
       const timing = scene.timing || buildSceneTiming(0, 0);
 
       if (
@@ -1273,8 +1275,8 @@ export default function CreatePage() {
       }
     }
 
-    if (videoScenes.length === 0) {
-      setError("Film oluşturmak için en az bir hazır sahne videosu gerekli.");
+    if (exportScenes.length === 0) {
+      setError("Film oluşturmak için en az bir görsel veya hazır video içeren sahne gerekli.");
       return;
     }
 
@@ -1298,7 +1300,8 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           projectId: getProjectKey(),
-          scenes: videoScenes.map((scene) => {
+          exportMode: "mixed",
+          scenes: exportScenes.map((scene) => {
             const timing = scene.timing || buildSceneTiming(0, 0);
             const normalizedTarget = Math.min(
               Math.max(
@@ -1310,6 +1313,8 @@ export default function CreatePage() {
 
             return {
               ...scene,
+              exportSource:
+                scene.videoUrl && scene.videoStatus === "done" ? "video" : "image",
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
@@ -1334,7 +1339,7 @@ export default function CreatePage() {
         fileName: data.fileName || "",
         sizeBytes: data.sizeBytes || 0,
         durationSeconds: data.durationSeconds || 0,
-        sceneCount: data.sceneCount || videoScenes.length,
+        sceneCount: data.sceneCount || exportScenes.length,
       };
 
       setExportedMovieUrl(nextExportResult.movieUrl);
@@ -2219,6 +2224,9 @@ export default function CreatePage() {
   const readyVideoCount = scenes.filter(
     (scene) => scene.videoUrl && scene.videoStatus === "done"
   ).length;
+  const readyExportCount = scenes.filter(
+    (scene) => (scene.videoUrl && scene.videoStatus === "done") || scene.image
+  ).length;
   const audioReadyCount = scenes.filter((scene) => getSceneAudioStatus(scene)).length;
   const freezeNeededCount = scenes.filter((scene) => scene.timing?.needsFreezeFrame).length;
   const dialogueReadyCount = scenes.filter((scene) => !!scene.dialogueAudioUrl).length;
@@ -2231,7 +2239,7 @@ export default function CreatePage() {
     ? 1
     : scenes.length === 0
     ? 2
-    : readyVideoCount === 0
+    : readyExportCount === 0
     ? 3
     : 4;
 
@@ -2255,7 +2263,7 @@ export default function CreatePage() {
       title: "Sahne üretimi",
       description: "Görsel, ses, timing ve video katmanlarını üret.",
       active: currentWorkflowStep === 3,
-      complete: readyVideoCount > 0,
+      complete: readyExportCount > 0,
     },
     {
       id: 4,
@@ -2317,9 +2325,9 @@ export default function CreatePage() {
                 <p className="mt-2 text-sm text-slate-300">Toplam sahne</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hazır Video</p>
-                <p className="mt-3 text-3xl font-semibold">{readyVideoCount}</p>
-                <p className="mt-2 text-sm text-slate-300">Export için kullanılabilir sahne</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Export Hazır</p>
+                <p className="mt-3 text-3xl font-semibold">{readyExportCount}</p>
+                <p className="mt-2 text-sm text-slate-300">Video veya görsel ile export edilebilir sahne</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hazır Ses</p>
@@ -2984,12 +2992,12 @@ export default function CreatePage() {
 
               <button
                 onClick={handleExportMovie}
-                disabled={isExportingMovie || readyVideoCount === 0}
+                disabled={isExportingMovie || readyExportCount === 0}
                 className="rounded-xl bg-orange-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
                 {isExportingMovie
                   ? "Film oluşturuluyor..."
-                  : `🎞 Filmi Oluştur (${readyVideoCount})`}
+                  : `🎞 Filmi Oluştur (${readyExportCount})`}
               </button>
               </div>
             </div>
