@@ -104,10 +104,7 @@ export async function POST(req: NextRequest) {
     const speed = 1.0;
 
     // 🎧 PROMPT ENRICHMENT
-    const finalText =
-      language === "en"
-        ? `[calm, warm storytelling tone] ${text}`
-        : `[sakin, doğal anlatım tonu] ${text}`;
+    const finalText = text;
 
     const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
