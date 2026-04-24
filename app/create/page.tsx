@@ -768,6 +768,7 @@ export default function CreatePage() {
         sceneId: scene.id,
         projectKey: getProjectKey(),
         narratorSettings,
+        language, // 🔥 EKLENDİ
       }),
     });
 
@@ -924,6 +925,7 @@ export default function CreatePage() {
         modelId: narratorSettings.modelId,
         stability: narratorSettings.stability,
         similarityBoost: narratorSettings.similarityBoost,
+        language, // 🔥 EKLENDİ
       }),
     });
 

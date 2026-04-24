@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         : "temp-project";
 
     const narratorSettings = body?.narratorSettings || {};
+    const language = body?.language === "en" ? "en" : "tr";
 
     if (!text) {
       return NextResponse.json(
@@ -68,25 +69,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleanText = text;
-
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    const fallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
 
     if (!apiKey) {
       throw new Error("ELEVENLABS_API_KEY is missing");
     }
 
+    // 🔥 VOICE LOGIC (EN KRİTİK KISIM)
+    const fallbackVoiceId =
+      language === "en"
+        ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
+        : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID;
+
     const voiceId =
       typeof narratorSettings.voiceId === "string" &&
       narratorSettings.voiceId.trim()
         ? narratorSettings.voiceId.trim()
-        : fallbackVoiceId?.trim();
+        : fallbackVoiceId;
 
     if (!voiceId) {
-      throw new Error(
-        "No narrator voiceId provided. Set narratorSettings.voiceId or ELEVENLABS_VOICE_ID."
-      );
+      throw new Error("Narrator voiceId missing");
     }
 
     const modelId =
@@ -95,25 +97,17 @@ export async function POST(req: NextRequest) {
         ? narratorSettings.modelId.trim()
         : "eleven_multilingual_v2";
 
-    const stability =
-      typeof narratorSettings.stability === "number"
-        ? narratorSettings.stability
-        : 0.4;
+    // 🎯 PROFESYONEL AYARLAR
+    const stability = language === "en" ? 0.65 : 0.6;
+    const similarityBoost = language === "en" ? 0.85 : 0.8;
+    const style = 0.1;
+    const speed = 1.0;
 
-    const similarityBoost =
-      typeof narratorSettings.similarityBoost === "number"
-        ? narratorSettings.similarityBoost
-        : 0.8;
-
-    const style =
-      typeof narratorSettings.style === "number"
-        ? narratorSettings.style
-        : 0.2;
-
-    const speed =
-      typeof narratorSettings.speed === "number"
-        ? narratorSettings.speed
-        : 0.95;
+    // 🎧 PROMPT ENRICHMENT
+    const finalText =
+      language === "en"
+        ? `[calm, warm storytelling tone] ${text}`
+        : `[sakin, doğal anlatım tonu] ${text}`;
 
     const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
@@ -124,7 +118,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: cleanText,
+          text: finalText,
           model_id: modelId,
           voice_settings: {
             stability,
@@ -150,6 +144,7 @@ export async function POST(req: NextRequest) {
 
     const safeProjectKey = safeName(projectKey);
     const safeSceneId = safeName(sceneId);
+
     const filePath = `${safeProjectKey}/scene-${safeSceneId}-narration-${Date.now()}.mp3`;
 
     const { error: uploadError } = await supabase.storage
@@ -167,21 +162,12 @@ export async function POST(req: NextRequest) {
       .from("audio")
       .getPublicUrl(filePath);
 
-    const settingsKey = [
-      voiceId,
-      modelId,
-      stability,
-      similarityBoost,
-      style,
-      speed,
-    ].join("-");
-
     return NextResponse.json({
       ok: true,
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
-      audioSourceText: cleanText,
-      settingsKey,
+      audioSourceText: finalText,
+      language,
     });
   } catch (error: any) {
     console.error("store-audio error:", error);

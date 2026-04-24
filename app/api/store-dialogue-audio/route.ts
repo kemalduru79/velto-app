@@ -32,12 +32,26 @@ function safeName(value: string) {
 function buildDialogueText(lines: DialogueLine[]) {
   return lines
     .filter((line) => line?.text?.trim())
-    .map((line) => {
-      const speaker = line.speaker?.trim() || "Karakter";
-      const text = line.text.trim();
-      return `${speaker}: ${text}`;
-    })
+    .map((line) => line.text.trim())
     .join("\n");
+}
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -45,27 +59,26 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const lines: DialogueLine[] = Array.isArray(body?.lines) ? body.lines : [];
+
     const projectKey =
       typeof body?.projectKey === "string" && body.projectKey.trim()
         ? body.projectKey.trim()
         : "temp-project";
+
     const sceneId =
       typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
         ? String(body.sceneId)
         : "unknown";
+
     const sourceText =
       typeof body?.sourceText === "string" ? body.sourceText : "";
+
+    const language = body?.language === "en" ? "en" : "tr";
 
     const modelId =
       typeof body?.modelId === "string" && body.modelId.trim()
         ? body.modelId.trim()
         : "eleven_multilingual_v2";
-
-    const stability =
-      typeof body?.stability === "number" ? body.stability : 0.5;
-
-    const similarityBoost =
-      typeof body?.similarityBoost === "number" ? body.similarityBoost : 0.8;
 
     if (!lines.length) {
       return NextResponse.json(
@@ -84,21 +97,57 @@ export async function POST(req: NextRequest) {
     }
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
-    const fallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
 
     if (!apiKey) {
       throw new Error("ELEVENLABS_API_KEY is missing");
     }
 
+    const defaultCharacterVoiceId =
+      language === "en"
+        ? process.env.ELEVENLABS_EN_CHARACTER_VOICE_ID
+        : process.env.ELEVENLABS_TR_CHARACTER_VOICE_ID;
+
+    const legacyFallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
+
     const firstLineVoiceId =
       lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
-    const finalVoiceId = firstLineVoiceId || fallbackVoiceId?.trim();
+
+    const finalVoiceId =
+      firstLineVoiceId ||
+      defaultCharacterVoiceId?.trim() ||
+      legacyFallbackVoiceId?.trim();
 
     if (!finalVoiceId) {
-      throw new Error("No voiceId provided for dialogue synthesis");
+      throw new Error(
+        "No character voiceId provided. Set character voiceId or ELEVENLABS_TR_CHARACTER_VOICE_ID / ELEVENLABS_EN_CHARACTER_VOICE_ID."
+      );
     }
 
-    const elevenRes = await fetch(
+    const stability =
+      typeof body?.stability === "number"
+        ? body.stability
+        : language === "en"
+        ? 0.5
+        : 0.48;
+
+    const similarityBoost =
+      typeof body?.similarityBoost === "number"
+        ? body.similarityBoost
+        : language === "en"
+        ? 0.82
+        : 0.78;
+
+    const style =
+      typeof body?.style === "number"
+        ? body.style
+        : language === "en"
+        ? 0.22
+        : 0.18;
+
+    const speed =
+      typeof body?.speed === "number" ? body.speed : 1.0;
+
+    const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
       {
         method: "POST",
@@ -112,10 +161,13 @@ export async function POST(req: NextRequest) {
           voice_settings: {
             stability,
             similarity_boost: similarityBoost,
+            style,
+            speed,
             use_speaker_boost: true,
           },
         }),
-      }
+      },
+      30000
     );
 
     if (!elevenRes.ok) {
@@ -147,12 +199,24 @@ export async function POST(req: NextRequest) {
       .from("dialogue-audio")
       .getPublicUrl(filePath);
 
+    const settingsKey = [
+      finalVoiceId,
+      modelId,
+      stability,
+      similarityBoost,
+      style,
+      speed,
+      language,
+    ].join("-");
+
     return NextResponse.json({
       ok: true,
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
       sourceText,
-      settingsKey: `${modelId}-${stability}-${similarityBoost}`,
+      language,
+      voiceId: finalVoiceId,
+      settingsKey,
     });
   } catch (error: any) {
     console.error("store-dialogue-audio error:", error);
