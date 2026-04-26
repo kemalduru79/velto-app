@@ -49,20 +49,39 @@ Appearance: ${character.appearance || "Not specified"}
 Outfit: ${character.outfit || "Not specified"}
 Accessory: ${character.accessory || "No accessory"}
 Personality: ${character.personality || "Not specified"}
-Reference status: ${
+
+REFERENCE IMAGE STATUS:
+${
         hasReference
-          ? "A reference design image has already been generated for this character. Treat that prior design as the canonical look."
-          : "No reference image generated yet. Use the written character bible as canonical."
+          ? "A reference design image exists for this character. Treat that design as the canonical master look."
+          : "No reference image exists yet. Use the written character bible as the canonical look."
       }
 
-Canonical design rules for this character:
-- keep the same face shape
-- keep the same hair style and hair color
-- keep the same apparent age
-- keep the same outfit unless the scene explicitly requires a change
-- keep the same accessory unless the scene explicitly requires a change
-- keep the same body proportions
-- do not redesign or reinterpret this character
+REFERENCE IMAGE VALUE:
+${character.referenceImage || "No reference image yet"}
+
+CRITICAL CHARACTER LOCK:
+- This character MUST look IDENTICAL across all scenes.
+- If a reference image exists, it OVERRIDES all text description.
+- NEVER redesign this character.
+- NEVER change face shape.
+- NEVER change eye shape.
+- NEVER change nose proportions.
+- NEVER change hairstyle or hair color.
+- NEVER change outfit unless the scene explicitly requires it.
+- NEVER change accessory unless the scene explicitly requires it.
+- NEVER change body proportions.
+- NEVER change apparent age.
+- NEVER swap gender.
+- NEVER merge this character with another character.
+- NEVER invent a visually different replacement.
+
+STRICT VISUAL LOCK:
+- Treat the reference image as the FINAL DESIGN when available.
+- Do not reinterpret the character.
+- Do not stylize the character differently.
+- Do not drift from the established animation universe.
+- Same character means same exact visual identity.
 `;
     })
     .join("\n");
@@ -145,6 +164,9 @@ Motion feeling:
 ${motionHint || "gentle cinematic movement"}
 
 High-priority continuity instructions:
+- if a reference image exists, treat it as the ONLY valid design
+- do not generate alternative versions of the same character
+- do not create visual variations
 - this is NOT a new interpretation of the characters
 - this is the SAME cast from the same film
 - preserve the exact same hero design across scenes
@@ -168,6 +190,12 @@ Cinematic direction:
 - preserve continuity more than novelty
 
 Negative guidance:
+- no alternate character design
+- no redesigned character identity
+- no inconsistent face
+- no inconsistent hair
+- no inconsistent outfit
+- no inconsistent age appearance
 - no redesign
 - no different haircut
 - no different face proportions

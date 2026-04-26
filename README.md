@@ -1,36 +1,210 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 AI Experience Lab & Video Platform (VELTO)
 
-## Getting Started
+Bu proje, AI destekli içerik üretimi ve çocuklar için deneyim odaklı bir **AI Experience Lab platformudur**.
 
-First, run the development server:
+Platform, tek bir üretim aracı olmaktan çıkarılarak:
+
+* çoklu deneyim akışları (flows)
+* modüler yapı
+* içerik üretim pipeline’ı
+
+üzerine kurgulanmıştır.
+
+---
+
+# 🎯 Ana Amaç
+
+Tek bir platform üzerinden:
+
+* 🎬 AI destekli video üretimi (hikâye, sahne, görsel, ses, video)
+* 🧠 çocuklar için deneyimsel öğrenme (AI Experience Lab)
+* 📺 YouTube / Shorts içerik üretimi
+* 🧩 modüler ve genişletilebilir SaaS altyapı
+
+---
+
+# 🧩 Platform Mimarisi
+
+## Core Engine
+
+Platformun çekirdeği:
+
+* Story generation
+* Scene breakdown
+* Image generation
+* Voice generation
+* Video generation (Runway)
+* Export pipeline
+
+Bu engine tüm deneyim akışları tarafından ortak kullanılır.
+
+---
+
+## 🔥 Experience Flows (7 Ürün)
+
+Platform 7 farklı deneyim akışı üzerine kuruludur:
+
+### 1. Storyverse Lab
+
+AI destekli çizgi film ve hikâye üretimi
+→ Çizgi film + karakter kartı
+
+### 2. AI Career Simulation
+
+Meslek deneyimi ve görev simülasyonu
+→ Deneyim raporu
+
+### 3. Interactive Quest
+
+Dallanan hikâye ve seçimli görev
+→ Kişisel hikâye
+
+### 4. Build Your AI Character
+
+Kişisel AI karakter tasarımı
+→ AI karakter profili
+
+### 5. AI Thinking Lab
+
+Problem çözme ve düşünme becerisi
+→ Düşünme raporu
+
+### 6. Content Creator Lab
+
+YouTube / Shorts içerik üretimi
+→ Publish-ready video
+
+### 7. AI + Maker Hybrid
+
+AI → fiziksel üretim → VR deneyimi
+→ Hibrit proje çıktısı
+
+---
+
+# 🖥️ UI Yapısı
+
+```text
+/dashboard        → 7 flow ürün ekranı
+/create           → üretim stüdyosu (core engine)
+/create?flow=x    → seçilen flow ile üretim
+```
+
+---
+
+# ⚙️ Teknoloji Stack
+
+* Next.js (App Router)
+* Node.js
+* OpenAI (text + logic)
+* OpenAI Image
+* ElevenLabs (voice)
+* Runway (video)
+* Supabase (auth + data)
+* Vercel (deployment)
+* Railway (backend)
+
+---
+
+# 📁 Proje Yapısı
+
+```text
+app/
+  dashboard/
+    page.tsx          → Flow dashboard
+
+  create/
+    page.tsx          → Core production engine
+
+components/
+  FlowCard.tsx        → Flow kart component
+
+lib/
+  flows.ts            → Flow registry (ürün tanımı)
+```
+
+---
+
+# 🧠 Geliştirme Prensipleri
+
+* ❗ Mevcut çalışan sistemi bozma
+* 🔹 Küçük ve test edilebilir adımlar
+* 🔹 Over-engineering yapma
+* 🔹 Copy-paste ile ilerlenebilir kod
+* 🔹 Modüler yapı (flow bazlı genişleme)
+
+---
+
+# 🚀 Getting Started
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Tarayıcıda aç:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000/dashboard
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+# 🔄 Yol Haritası
 
-To learn more about Next.js, take a look at the following resources:
+## Faz 1
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+* Dashboard + Flow registry
+* Create page flow awareness
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Faz 2
 
-## Deploy on Vercel
+* Storyverse tam entegrasyon
+* Scenario Engine başlangıcı
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Faz 3
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* Diğer flow’ların aktif hale gelmesi
+* Video pipeline stabilizasyonu
+
+## Faz 4
+
+* YouTube automation
+* Experience Lab fiziksel entegrasyon
+
+---
+
+# ⚠️ Not
+
+Bu proje klasik bir eğitim platformu değildir.
+
+👉 Bu bir **AI deneyim ve üretim platformudur**
+
+---
+
+# 👤 Kullanım Modları
+
+* 👨‍👩‍👧 Parent Mode → Experience Lab
+* 🛠 Admin Mode → Content Engine
+
+---
+
+# 📌 Gelecek Vizyon
+
+* AI + VR + Maker birleşimi
+* Çocuklar için üretim odaklı eğitim
+* AI içerik üretim pipeline’ı
+* global YouTube içerik ağı
+
+---
+
+# 🧩 Katkı
+
+Bu proje aktif olarak geliştirme aşamasındadır.
+Tüm geliştirmeler **ürünleşme ve deneyim odaklı** ilerlemektedir.
+
+---
+## 🎧 TTS Not
+
+ElevenLabs kullanılırken, sahne veya anlatım yönlendirmeleri
+(ör: "sakin, doğal anlatım tonu") otomatik olarak temizlenir.
+
+Bu sayede seslendirme sadece konuşma metni üzerinden yapılır.

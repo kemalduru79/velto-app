@@ -75,6 +75,19 @@ Consistency rules: ${
       "keep same face, same hair, same outfit, same age look"
     }
 
+CRITICAL:
+This generated image will be used as the MASTER reference for all future scenes.
+
+Requirements:
+- extremely clear face
+- extremely clear hairstyle and hair color
+- extremely clear outfit
+- extremely readable silhouette
+- no ambiguity in design
+- must be reusable across multiple scenes
+- avoid temporary props that could confuse the canonical design
+- avoid dramatic lighting that hides the character identity
+
 Instructions:
 - show only this character as the clear main subject
 - create a clean reference-style image
@@ -84,6 +97,8 @@ Instructions:
 - no extra main characters
 - polished lighting
 - strong character clarity
+- stable front-facing or three-quarter character presentation
+- clean, reusable master character identity
 `;
 
     const image = await client.images.generate({

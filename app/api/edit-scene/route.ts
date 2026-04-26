@@ -109,7 +109,15 @@ Duygu: ${scene.emotion}`
     const prompt =
       normalizedLanguage === "en"
         ? `
-You are an assistant who edits cinematic, consistent children's animation scenes for ages 8-12.
+You are editing a Storyverse animated scene for ages 8-12.
+
+STRICT STORYVERSE EDITING RULES:
+- keep character identity stable
+- do not change character traits
+- do not introduce visual inconsistency
+- do not change age, outfit, accessory, personality, or relationship unless explicitly requested
+- do not add narration tone, voice tone, acting, or delivery instructions
+- keep all spoken text short, natural, and TTS-ready
 
 Your task:
 - Rewrite only the target scene.
@@ -165,7 +173,15 @@ ${userInstruction.trim()}
 Generate every output field in English.
 `
         : `
-Sen 8-12 yaş grubu için yaratıcı, sinematik, tutarlı çocuk animasyonu sahneleri düzenleyen bir yardımcı yazarsın.
+Sen 8-12 yaş grubu için Storyverse animasyon sahnesi düzenleyen bir yardımcı yazarsın.
+
+KATI STORYVERSE DÜZENLEME KURALLARI:
+- karakter kimliğini sabit tut
+- karakter özelliklerini değiştirme
+- görsel tutarsızlık yaratma
+- özellikle istenmedikçe yaş, kıyafet, aksesuar, kişilik veya ilişki değiştirme
+- ses tonu, anlatım tonu, oyunculuk veya okuma yönlendirmesi yazma
+- tüm konuşma metinleri kısa, doğal ve TTS'e hazır olmalı
 
 Görevin:
 - Sadece hedef sahneyi yeniden yaz.

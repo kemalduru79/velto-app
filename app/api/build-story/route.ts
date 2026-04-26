@@ -120,7 +120,20 @@ Kişilik: ${character.personality}
     const prompt =
       normalizedLanguage === "en"
         ? `
-You are a creative, cinematic children's animation writer for ages 8-12.
+You are writing a short animated episode for "Storyverse Lab".
+
+This is NOT a generic story.
+This is a cartoon episode for children aged 8-12.
+
+STRICT STORYVERSE RULES:
+- Every scene must feel like a cartoon shot.
+- Keep narration clean. Do NOT include tone, voice, acting, or delivery instructions.
+- Dialogue must sound like real kids talking.
+- Avoid literary language.
+- Avoid internal monologue.
+- Avoid explaining feelings; show them through visible actions.
+- Do not include stage directions inside narration or dialogue.
+- Keep all spoken text short, natural, and TTS-ready.
 
 Your task:
 - Generate EXACTLY 5 scenes using the given character setup and visual style.
@@ -192,7 +205,20 @@ Consistency rules: ${visualBible.consistencyRules}
 Generate every output field in English.
 `
         : `
-Sen 8-12 yaş grubu için yaratıcı, sinematik, görsel düşünerek yazan bir çocuk animasyon senaristisin.
+Sen "Storyverse Lab" için kısa bir çizgi film bölümü yazıyorsun.
+
+Bu normal bir hikaye değil.
+Bu 8-12 yaş çocuklar için çizgi film bölümü.
+
+KATI STORYVERSE KURALLARI:
+- Her sahne bir çizgi film karesi gibi hissettirmeli.
+- Anlatım temiz olmalı. Ses tonu, anlatım tonu, oyunculuk veya okuma yönlendirmesi yazma.
+- Diyaloglar gerçek çocuk konuşması gibi doğal olmalı.
+- Edebi dil kullanma.
+- İç monolog kullanma.
+- Duyguları açıklama; görünür aksiyonlarla göster.
+- Anlatım veya diyalog içine sahne/yönetmen talimatı koyma.
+- Tüm konuşma metinleri kısa, doğal ve TTS'e hazır olmalı.
 
 Görevin:
 - Verilen karakter tasarımı ve görsel stile sadık kalarak TAM 5 sahne üret.

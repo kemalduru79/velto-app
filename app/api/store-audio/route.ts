@@ -24,6 +24,44 @@ function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
 }
 
+function cleanTextForTTS(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  let text = value;
+
+  text = text
+    .replace(
+      /\([^)]*(?:ton|anlatım|duygu|emotion|style|voice|narrator|ses|sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)[^)]*\)/gi,
+      ""
+    )
+    .replace(
+      /\[[^\]]*(?:ton|anlatım|duygu|emotion|style|voice|narrator|ses|sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)[^\]]*\]/gi,
+      ""
+    )
+    .replace(
+      /(?:^|\n)\s*(?:ses\s*tonu|anlatım\s*tonu|duygu|emotion|voice\s*style|narration\s*style)\s*:\s*[^\n.]*[.\n]?/gi,
+      "\n"
+    )
+    .replace(
+      /(?:sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)\s*,?\s*(?:ve\s*)?(?:sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)?\s*(?:anlatım\s*)?tonu\.?/gi,
+      ""
+    )
+    .replace(
+      /(?:calm|natural|warm|excited|gentle|soft|emotional|cheerful|curious)\s*(?:and\s*)?(?:calm|natural|warm|excited|gentle|soft|emotional|cheerful|curious)?\s*(?:narration\s*)?(?:tone|voice)\.?/gi,
+      ""
+    )
+    .replace(/\*\*/g, "")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
+}
+
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
@@ -46,8 +84,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const text =
-      typeof body?.text === "string" ? body.text.trim() : "";
+    const rawText = typeof body?.text === "string" ? body.text.trim() : "";
+    const text = cleanTextForTTS(rawText);
 
     const sceneId =
       typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
@@ -64,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     if (!text) {
       return NextResponse.json(
-        { ok: false, error: "Text is required" },
+        { ok: false, error: "Text is required after TTS cleanup" },
         { status: 400 }
       );
     }
@@ -75,7 +113,6 @@ export async function POST(req: NextRequest) {
       throw new Error("ELEVENLABS_API_KEY is missing");
     }
 
-    // 🔥 VOICE LOGIC (EN KRİTİK KISIM)
     const fallbackVoiceId =
       language === "en"
         ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
@@ -97,13 +134,11 @@ export async function POST(req: NextRequest) {
         ? narratorSettings.modelId.trim()
         : "eleven_multilingual_v2";
 
-    // 🎯 PROFESYONEL AYARLAR
     const stability = language === "en" ? 0.65 : 0.6;
     const similarityBoost = language === "en" ? 0.85 : 0.8;
     const style = 0.1;
     const speed = 1.0;
 
-    // 🎧 PROMPT ENRICHMENT
     const finalText = text;
 
     const elevenRes = await fetchWithTimeout(
@@ -164,6 +199,8 @@ export async function POST(req: NextRequest) {
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
       audioSourceText: finalText,
+      cleanedText: finalText,
+      originalText: rawText,
       language,
     });
   } catch (error: any) {

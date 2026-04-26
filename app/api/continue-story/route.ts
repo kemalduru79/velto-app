@@ -133,7 +133,21 @@ Duygu: ${scene.emotion}`
     const prompt =
       normalizedLanguage === "en"
         ? `
-You are a creative assistant writing cinematic, fast-paced children's animation scenes for ages 8-12.
+You are continuing a cartoon episode for "Storyverse Lab".
+
+The story must:
+- remain consistent
+- feel episodic
+- keep curiosity alive
+- preserve the established characters
+
+STRICT STORYVERSE RULES:
+- Do NOT resolve everything unless the user explicitly asks for an ending.
+- Do NOT add narration tone, voice tone, acting, or delivery instructions.
+- Keep scenes dynamic, visual, and easy to animate.
+- Dialogue must sound natural and child-friendly.
+- Do not include stage directions inside narration or dialogue.
+- Keep all spoken text short and TTS-ready.
 
 Your task:
 - Write ONLY 1 new scene that continues the current story.
@@ -183,7 +197,21 @@ ${directionText}
 Generate every output field in English.
 `
         : `
-Sen 8-12 yaş grubu için yaratıcı, sinematik, hızlı tempolu çocuk animasyonu sahneleri yazan bir yardımcı yazarsın.
+Sen "Storyverse Lab" için bir çizgi film bölümünü devam ettiriyorsun.
+
+Hikaye:
+- tutarlı kalmalı
+- bölüm hissi vermeli
+- merakı canlı tutmalı
+- mevcut karakterleri korumalı
+
+KATI STORYVERSE KURALLARI:
+- Kullanıcı özellikle final istemedikçe her şeyi çözme.
+- Ses tonu, anlatım tonu, oyunculuk veya okuma yönlendirmesi yazma.
+- Sahne dinamik, görsel ve kolay canlandırılabilir olmalı.
+- Diyaloglar doğal ve çocuk dostu olmalı.
+- Anlatım veya diyalog içine sahne/yönetmen talimatı koyma.
+- Tüm konuşma metinleri kısa ve TTS'e hazır olmalı.
 
 Görevin:
 - Mevcut hikayenin devamına SADECE 1 yeni sahne yaz.

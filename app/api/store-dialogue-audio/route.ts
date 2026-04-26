@@ -29,10 +29,49 @@ function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
 }
 
+function cleanTextForTTS(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  let text = value;
+
+  text = text
+    .replace(
+      /\([^)]*(?:ton|anlatım|duygu|emotion|style|voice|narrator|ses|sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)[^)]*\)/gi,
+      ""
+    )
+    .replace(
+      /\[[^\]]*(?:ton|anlatım|duygu|emotion|style|voice|narrator|ses|sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)[^\]]*\]/gi,
+      ""
+    )
+    .replace(
+      /(?:^|\n)\s*(?:ses\s*tonu|anlatım\s*tonu|duygu|emotion|voice\s*style|narration\s*style)\s*:\s*[^\n.]*[.\n]?/gi,
+      "\n"
+    )
+    .replace(
+      /(?:sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)\s*,?\s*(?:ve\s*)?(?:sakin|doğal|heyecanlı|neşeli|duygusal|yumuşak|enerjik|meraklı|sıcak)?\s*(?:anlatım\s*)?tonu\.?/gi,
+      ""
+    )
+    .replace(
+      /(?:calm|natural|warm|excited|gentle|soft|emotional|cheerful|curious)\s*(?:and\s*)?(?:calm|natural|warm|excited|gentle|soft|emotional|cheerful|curious)?\s*(?:narration\s*)?(?:tone|voice)\.?/gi,
+      ""
+    )
+    .replace(/\*\*/g, "")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
+}
+
 function buildDialogueText(lines: DialogueLine[]) {
   return lines
     .filter((line) => line?.text?.trim())
-    .map((line) => line.text.trim())
+    .map((line) => cleanTextForTTS(line.text))
+    .filter((text) => text.trim())
     .join("\n");
 }
 
@@ -91,7 +130,7 @@ export async function POST(req: NextRequest) {
 
     if (!fullText.trim()) {
       return NextResponse.json(
-        { ok: false, error: "No dialogue audio could be generated" },
+        { ok: false, error: "No dialogue audio could be generated after TTS cleanup" },
         { status: 400 }
       );
     }
@@ -214,6 +253,7 @@ export async function POST(req: NextRequest) {
       audioUrl: publicData.publicUrl,
       audioPath: filePath,
       sourceText,
+      cleanedText: fullText,
       language,
       voiceId: finalVoiceId,
       settingsKey,

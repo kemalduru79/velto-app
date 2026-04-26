@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { getFlowByKey, type FlowZone } from "../../lib/flows";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -188,6 +189,9 @@ const buildSceneTiming = (
 
 export default function CreatePage() {
   const router = useRouter();
+  const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
+  const selectedFlow = getFlowByKey(selectedFlowKey);
+  const isStoryverseFlow = selectedFlow.key === "storyverse";
   const [authLoading, setAuthLoading] = useState(true);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChildId, setSelectedChildId] = useState("");
@@ -244,6 +248,10 @@ export default function CreatePage() {
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
   const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
 
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(
     defaultNarratorSettings
   );
@@ -259,6 +267,11 @@ export default function CreatePage() {
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setSelectedFlowKey(params.get("flow") || "storyverse");
+  }, []);
 
 
   useEffect(() => {
@@ -650,6 +663,8 @@ export default function CreatePage() {
     setIsExportingMovie(false);
     setExportedMovieUrl("");
     setExportMovieResult(null);
+    setShareUrl("");
+    setShareCopied(false);
     setNarratorSettings(defaultNarratorSettings);
     draftProjectKeyRef.current = `draft-${crypto.randomUUID()}`;
   };
@@ -1355,6 +1370,64 @@ export default function CreatePage() {
     }
   };
 
+  const handleCreateShareLink = async () => {
+    if (!currentProjectId) {
+      setError("Paylaşım linki için önce projeyi kaydetmelisin.");
+      return;
+    }
+
+    setShareLoading(true);
+    setShareCopied(false);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch("/api/share-project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: currentProjectId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.shareId) {
+        throw new Error(data?.error || "Paylaşım linki oluşturulamadı.");
+      }
+
+      const nextShareUrl =
+        data.shareUrl || `${window.location.origin}/episode/public/${data.shareId}`;
+
+      setShareUrl(nextShareUrl);
+      setSaveMessage("Paylaşım linki oluşturuldu ✅");
+    } catch (e: any) {
+      setError(e?.message || "Paylaşım linki oluşturulurken hata oluştu.");
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareUrl) {
+      setError("Kopyalanacak paylaşım linki yok.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setSaveMessage("Paylaşım linki kopyalandı ✅");
+    } catch {
+      setError("Link kopyalanamadı. Lütfen manuel kopyala.");
+    }
+  };
+
   const prepareAllAudio = async () => {
     if (scenes.length === 0) {
       setError("Önce sahneleri oluşturmalısın.");
@@ -1513,6 +1586,8 @@ export default function CreatePage() {
         childId: selectedChildId,
         title,
         inputPrompt: input,
+        flowKey: selectedFlow.key,
+        flowTitle: selectedFlow.title,
         language,
         storyPremise: storySetup?.storyPremise || "",
         characters,
@@ -1639,6 +1714,8 @@ export default function CreatePage() {
 
       setExportedMovieUrl("");
       setExportMovieResult(null);
+      setShareUrl(project.share_id ? `${window.location.origin}/episode/public/${project.share_id}` : "");
+      setShareCopied(false);
       setStorySetup({
         title: project.title || "",
         storyPremise: project.story_premise || "",
@@ -1664,6 +1741,57 @@ export default function CreatePage() {
     }
   };
 
+  const buildFlowAwarePrompt = (rawPrompt: string) => {
+    const trimmedPrompt = rawPrompt.trim();
+
+    if (!isStoryverseFlow) {
+      return trimmedPrompt;
+    }
+
+    const storyverseFrame =
+      language === "en"
+        ? [
+            "PRODUCT FLOW: Storyverse Lab.",
+            "Create a child-safe AI cartoon/story experience.",
+            "The output should support character creation, a coherent visual world, short scenes, narration, dialogue, and later video generation.",
+            "Avoid including voice direction metadata inside narration or dialogue text.",
+            "User idea:",
+          ].join("\n")
+        : [
+            "ÜRÜN AKIŞI: Storyverse Lab.",
+            "Çocuklara uygun, güvenli bir AI çizgi film / hikaye deneyimi oluştur.",
+            "Çıktı; karakter oluşturma, tutarlı görsel dünya, kısa sahneler, anlatıcı metni, karakter diyaloğu ve ileride video üretimini desteklemeli.",
+            "Anlatıcı veya diyalog metinlerinin içine ses tonu / anlatım tonu gibi metadata ekleme.",
+            "Kullanıcı fikri:",
+          ].join("\n");
+
+    return `${storyverseFrame}\n${trimmedPrompt}`;
+  };
+
+  const getFlowAwareInputLabel = () => {
+    if (!isStoryverseFlow) {
+      return language === "tr"
+        ? "Bu flow için nasıl bir deneyim başlatmak istiyorsun?"
+        : "What kind of experience do you want to start for this flow?";
+    }
+
+    return language === "tr"
+      ? "Storyverse için nasıl bir çizgi film / hikaye yapmak istiyorsun?"
+      : "What kind of cartoon / story do you want to create in Storyverse?";
+  };
+
+  const getFlowAwarePlaceholder = () => {
+    if (!isStoryverseFlow) {
+      return language === "tr"
+        ? "Örn: Çocuğun karar verdiği kısa ve güvenli bir deneyim akışı"
+        : "Example: A short, safe experience flow where the child makes choices";
+    }
+
+    return language === "tr"
+      ? "Örn: Deniz kenarında yaşayan meraklı bir çocuğun kayıp yıldız haritasını bulması"
+      : "Example: A curious child by the sea discovers a lost star map";
+  };
+
   const createSetup = async () => {
     if (!selectedChildId) {
       setError("Lütfen önce bir çocuk seç.");
@@ -1686,7 +1814,13 @@ export default function CreatePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt: input, language }),
+        body: JSON.stringify({
+          prompt: buildFlowAwarePrompt(input),
+          originalPrompt: input,
+          flowKey: selectedFlow.key,
+          flowTitle: selectedFlow.title,
+          language,
+        }),
       });
 
       const data = await res.json().catch(() => null);
@@ -1849,6 +1983,8 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
+          flowKey: selectedFlow.key,
+          flowTitle: selectedFlow.title,
           storyPremise: storySetup?.storyPremise || "",
           characters,
           visualBible,
@@ -2035,6 +2171,8 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
+          flowKey: selectedFlow.key,
+          flowTitle: selectedFlow.title,
           scenes,
           childDirection: continuePrompt,
         }),
@@ -2108,6 +2246,8 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
+          flowKey: selectedFlow.key,
+          flowTitle: selectedFlow.title,
           scenes: baseScenes,
           childDirection,
           fromSceneId,
@@ -2287,6 +2427,126 @@ export default function CreatePage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
       <div className="mx-auto w-full max-w-7xl space-y-8">
+{/* 🚀 EPISODE PACKAGE PANEL */}
+<div className="rounded-3xl border border-purple-400/20 bg-purple-500/10 p-6 mb-6">
+  <div className="flex items-center justify-between">
+    <div>
+      <p className="text-xs uppercase tracking-[0.25em] text-purple-300">
+        Episode Package
+      </p>
+      <h3 className="mt-1 text-xl font-semibold text-white">
+        {title || "Henüz oluşturulmadı"}
+      </h3>
+      <p className="text-sm text-purple-200/80 mt-1">
+        Storyverse çıktısı artık ürün formatında
+      </p>
+    </div>
+
+    <div className="text-right text-sm text-purple-200">
+      <div>Flow: {selectedFlow.shortTitle}</div>
+      <div>Dil: {language.toUpperCase()}</div>
+    </div>
+  </div>
+
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 text-center">
+    <div>
+      <p className="text-2xl font-bold">{characters.length}</p>
+      <p className="text-xs text-purple-200/70">Karakter</p>
+    </div>
+    <div>
+      <p className="text-2xl font-bold">{scenes.length}</p>
+      <p className="text-xs text-purple-200/70">Sahne</p>
+    </div>
+    <div>
+      <p className="text-2xl font-bold">{audioReadyCount}</p>
+      <p className="text-xs text-purple-200/70">Ses Hazır</p>
+    </div>
+    <div>
+      <p className="text-2xl font-bold">{readyVideoCount}</p>
+      <p className="text-xs text-purple-200/70">Video Hazır</p>
+    </div>
+  </div>
+
+  <div className="mt-6 flex flex-wrap gap-3">
+    <button
+      onClick={handleExportMovie}
+      disabled={isExportingMovie}
+      className="rounded-xl bg-purple-500 px-4 py-2 text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
+    >
+      🎬 Film Oluştur
+    </button>
+
+    <button
+      onClick={handleCreateShareLink}
+      disabled={shareLoading || !currentProjectId}
+      className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
+      title={!currentProjectId ? "Önce projeyi kaydetmelisin" : "Public paylaşım linki oluştur"}
+    >
+      {shareLoading ? "Link oluşturuluyor..." : "🔗 Paylaşım Linki Oluştur"}
+    </button>
+
+    {shareUrl && (
+      <button
+        onClick={handleCopyShareLink}
+        className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm text-cyan-100"
+      >
+        {shareCopied ? "✅ Kopyalandı" : "📋 Linki Kopyala"}
+      </button>
+    )}
+
+    {exportMovieResult?.downloadUrl && (
+      <a
+        href={exportMovieResult.downloadUrl}
+        target="_blank"
+        className="rounded-xl border border-purple-300/40 px-4 py-2 text-sm"
+      >
+        ⬇️ İndir
+      </a>
+    )}
+  </div>
+
+  {shareUrl && (
+    <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
+      <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Public Episode Link</p>
+      <a
+        href={shareUrl}
+        target="_blank"
+        className="mt-1 block break-all text-cyan-50 underline decoration-cyan-300/50 underline-offset-4"
+      >
+        {shareUrl}
+      </a>
+    </div>
+  )}
+
+
+
+  {shareUrl && (
+    <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-purple-300/20 bg-purple-500/10 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-purple-200">
+        QR ile telefonda aç
+      </p>
+
+      <img
+        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`}
+        alt="QR Code"
+        className="rounded-xl bg-white p-2"
+      />
+
+      <p className="max-w-xs text-center text-xs text-purple-200/70">
+        Telefon kamerasıyla okutarak hikayeyi public episode sayfasında açabilirsiniz.
+      </p>
+    </div>
+  )}
+
+  {exportMovieResult && (
+    <div className="mt-4 text-sm text-purple-200/80">
+      <div>Süre: {formatDurationLabel(exportMovieResult.durationSeconds)}</div>
+      <div>Boyut: {formatFileSizeLabel(exportMovieResult.sizeBytes)}</div>
+      <div>Sahne: {exportMovieResult.sceneCount}</div>
+    </div>
+  )}
+</div>
+
         {userRole === "admin" && (
           <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
             Admin Mode aktif → YouTube Engine burada konumlanacak.
@@ -2298,6 +2558,35 @@ export default function CreatePage() {
             Experience Lab Mode aktif.
           </div>
         )}
+
+        <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-cyan-50">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">Seçili Flow</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">{selectedFlow.title}</h2>
+              <p className="mt-1 text-sm leading-6 text-cyan-100/90">{selectedFlow.description}</p>
+              {isStoryverseFlow && (
+                <p className="mt-2 text-xs leading-5 text-cyan-100/80">
+                  Aktif ürün davranışı: Storyverse, hikaye fikrini çocuk dostu çizgi film üretim akışına göre çerçeveler.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.ageBand}</span>
+              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.durationMin} dk</span>
+              {selectedFlow.zones.map((zone: FlowZone) => (
+                <span key={zone} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">
+                  {zone}
+                </span>
+              ))}
+            </div>
+          </div>
+          {selectedFlow.key !== "storyverse" && (
+            <p className="mt-3 rounded-xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
+              Bu flow şu anda pilot/roadmap modunda. Mevcut çalışan üretim motoru Storyverse üzerinden güvenli şekilde kullanılmaya devam eder.
+            </p>
+          )}
+        </div>
         <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
             <div className="space-y-4">
@@ -2523,16 +2812,14 @@ export default function CreatePage() {
 
 
 <label className="block text-sm font-medium text-gray-300">
-  {language === "tr"
-    ? "Nasıl bir hikaye yapmak istiyorsun?"
-    : "What kind of story do you want to create?"}
+  {getFlowAwareInputLabel()}
 </label>
 
           <textarea
             className="min-h-36 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={language === "tr" ? "Örn: 3 kardeşin ormandaki gizemli macerası" : "Example: 3 siblings on a mysterious forest adventure"}
+            placeholder={getFlowAwarePlaceholder()}
           />
 
           <div className="flex justify-center">
