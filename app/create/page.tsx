@@ -2640,6 +2640,7 @@ export default function CreatePage() {
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
           language,
+          youtubeData: youtubeResearchVideos,
         }),
       });
 
