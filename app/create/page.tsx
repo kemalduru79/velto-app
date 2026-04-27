@@ -145,6 +145,18 @@ type CreatorProductionPackage = {
   caption: string;
 };
 
+type YoutubeResearchVideo = {
+  id: string;
+  title: string;
+  channel: string;
+  publishedAt: string;
+  views: number;
+  likes: number;
+  durationSec: number;
+  thumbnail: string;
+  url: string;
+};
+
 const CREATOR_COUNTRY_OPTIONS = [
   { value: "global", label: "Global / International" },
   { value: "us", label: "United States" },
@@ -412,6 +424,14 @@ const UI_TEXT = {
     refiningScenes: "Sahneler geliştiriliyor...",
     refinedScenesReady: "Sahneler AI ile geliştirildi ✅",
     refinedScenesNote: "Refine edilen sahneler hazır. Artık sahne üretimine geçebilirsin.",
+    youtubeResearchTitle: "YouTube Trend Analizi",
+    youtubeResearchDesc: "Seçilen konu ve hedef pazara göre YouTube'daki mevcut video sinyallerini inceler. Bu adım yalnızca pazar verisi toplar; üretim akışını değiştirmez.",
+    youtubeResearchButton: "YouTube Trend Analizi Yap",
+    youtubeResearchLoading: "YouTube verisi analiz ediliyor...",
+    youtubeResearchEmpty: "YouTube tarafında uygun video sonucu bulunamadı.",
+    youtubeResearchViews: "izlenme",
+    youtubeResearchLikes: "beğeni",
+    youtubeResearchDuration: "süre",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
     projectUpdated: "Proje güncellendi ✅",
@@ -629,6 +649,14 @@ const UI_TEXT = {
     refiningScenes: "Refining scenes...",
     refinedScenesReady: "Scenes refined with AI ✅",
     refinedScenesNote: "Refined scenes are ready. You can now continue to scene production.",
+    youtubeResearchTitle: "YouTube Trend Analysis",
+    youtubeResearchDesc: "Reviews current YouTube video signals for the selected topic and target market. This step only collects market data; it does not change the production flow.",
+    youtubeResearchButton: "Run YouTube Trend Analysis",
+    youtubeResearchLoading: "Analyzing YouTube data...",
+    youtubeResearchEmpty: "No suitable YouTube video results were found.",
+    youtubeResearchViews: "views",
+    youtubeResearchLikes: "likes",
+    youtubeResearchDuration: "duration",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
     projectUpdated: "Project updated ✅",
@@ -756,6 +784,10 @@ export default function CreatePage() {
     CreatorProductionScene[]
   >([]);
   const [refineScenesLoading, setRefineScenesLoading] = useState(false);
+  const [youtubeResearchVideos, setYoutubeResearchVideos] = useState<
+    YoutubeResearchVideo[]
+  >([]);
+  const [youtubeResearchLoading, setYoutubeResearchLoading] = useState(false);
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -1003,6 +1035,33 @@ export default function CreatePage() {
     return (project?.flow_type || "storyverse") === "creator_lab"
       ? "Creator Lab"
       : "Storyverse";
+  };
+
+  const formatYoutubeNumber = (value?: number) => {
+    const safeValue = Number(value || 0);
+
+    if (safeValue >= 1_000_000) {
+      return `${(safeValue / 1_000_000).toFixed(1)}M`;
+    }
+
+    if (safeValue >= 1_000) {
+      return `${(safeValue / 1_000).toFixed(1)}K`;
+    }
+
+    return `${safeValue}`;
+  };
+
+  const formatYoutubeDuration = (seconds?: number) => {
+    const safeSeconds = Number(seconds || 0);
+
+    if (!safeSeconds) {
+      return "-";
+    }
+
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+
+    return `${mins}:${String(secs).padStart(2, "0")}`;
   };
 
 
@@ -1313,6 +1372,7 @@ export default function CreatePage() {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setYoutubeResearchVideos([]);
     setRefinedCreatorScenes([]);
     setTitle("");
     setCharacters([]);
@@ -2491,6 +2551,61 @@ export default function CreatePage() {
       CREATOR_CONTENT_TYPE_OPTIONS.find((option) => option.value === creatorContentType)
         ?.label || creatorContentType
     );
+  };
+
+  const handleYoutubeResearch = async () => {
+    if (!input.trim()) {
+      setError(
+        uiLanguage === "en"
+          ? "Please enter a topic or video idea before running YouTube analysis."
+          : "YouTube analizi için önce bir konu veya video fikri yaz."
+      );
+      return;
+    }
+
+    setYoutubeResearchLoading(true);
+    setYoutubeResearchVideos([]);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/youtube-research", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: creatorCountry,
+          countryLabel: getCreatorCountryLabel(),
+          language,
+          maxResults: 12,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "YouTube research could not be completed."
+              : "YouTube araştırması tamamlanamadı.")
+        );
+      }
+
+      setYoutubeResearchVideos(Array.isArray(data.videos) ? data.videos : []);
+    } catch (e: any) {
+      console.error("handleYoutubeResearch error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "YouTube research failed."
+            : "YouTube araştırması sırasında hata oluştu.")
+      );
+    } finally {
+      setYoutubeResearchLoading(false);
+    }
   };
 
   const handleCreatorMentorAnalysis = async () => {
@@ -4025,6 +4140,96 @@ export default function CreatePage() {
                   </select>
                 </div>
               </div>
+            </div>
+          )}
+
+          {isCreatorLabFlow && (
+            <div className="rounded-2xl border border-red-300/20 bg-red-500/10 p-5 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-red-200">
+                    Phase-2A
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-white">
+                    {ui.youtubeResearchTitle}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-red-50/80">
+                    {ui.youtubeResearchDesc}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleYoutubeResearch}
+                  disabled={youtubeResearchLoading}
+                  className="rounded-2xl bg-red-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {youtubeResearchLoading
+                    ? ui.youtubeResearchLoading
+                    : ui.youtubeResearchButton}
+                </button>
+              </div>
+
+              {youtubeResearchVideos.length > 0 && (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {youtubeResearchVideos.map((video) => (
+                    <article
+                      key={video.id}
+                      className="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                    >
+                      <div className="h-32 w-full overflow-hidden bg-black/40">
+                        {video.thumbnail ? (
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                            YouTube
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 p-3">
+                        <h4 className="line-clamp-2 text-sm font-semibold leading-5 text-white">
+                          {video.title}
+                        </h4>
+                        <p className="text-xs text-slate-400">{video.channel}</p>
+
+                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+                          <span>
+                            {formatYoutubeNumber(video.views)} {ui.youtubeResearchViews}
+                          </span>
+                          <span>•</span>
+                          <span>
+                            {formatYoutubeNumber(video.likes)} {ui.youtubeResearchLikes}
+                          </span>
+                          <span>•</span>
+                          <span>
+                            {ui.youtubeResearchDuration}: {formatYoutubeDuration(video.durationSec)}
+                          </span>
+                        </div>
+
+                        <a
+                          href={video.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-white/10"
+                        >
+                          YouTube
+                        </a>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {!youtubeResearchLoading && youtubeResearchVideos.length === 0 && (
+                <p className="text-sm text-red-50/70">
+                  {ui.youtubeResearchEmpty}
+                </p>
+              )}
             </div>
           )}
 
