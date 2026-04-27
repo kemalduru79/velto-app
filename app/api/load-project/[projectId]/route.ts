@@ -9,10 +9,7 @@ export async function GET(
     const { projectId } = await context.params;
 
     if (!projectId) {
-      return NextResponse.json(
-        { error: "projectId zorunlu" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "projectId zorunlu" }, { status: 400 });
     }
 
     const supabase = createServerSupabaseClient();
@@ -23,10 +20,7 @@ export async function GET(
       : "";
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Yetkisiz istek." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Yetkisiz istek." }, { status: 401 });
     }
 
     const {
@@ -35,10 +29,7 @@ export async function GET(
     } = await supabase.auth.getUser(token);
 
     if (userError || !user) {
-      return NextResponse.json(
-        { error: "Geçersiz oturum." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
     }
 
     const { data, error } = await supabase
@@ -55,14 +46,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      project: data,
-    });
-  } catch (e) {
-    return NextResponse.json(
-      { error: "Yükleme sırasında hata oluştu" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, project: data });
+
+  } catch {
+    return NextResponse.json({ error: "Yükleme sırasında hata oluştu" }, { status: 500 });
   }
 }

@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useLanguage } from "@/lib/useLanguage";
 import { getFlowByKey, type FlowZone } from "../../lib/flows";
+import { flowCardMessages } from "@/lib/i18n/flowCard";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -116,6 +118,384 @@ const MIN_SCENE_DURATION_SECONDS = 6.5;
 const FREEZE_TOLERANCE_SECONDS = 0.35;
 const MAX_SPEECH_RATIO = 0.82;
 
+const UI_TEXT = {
+  tr: {
+    loading: "Yükleniyor...",
+    roleLoading: "Rol yükleniyor...",
+    episodePackage: "Bölüm Paketi",
+    notCreatedYet: "Henüz oluşturulmadı",
+    episodePackageSubtitle: "Storyverse çıktısı artık paylaşılabilir bir ürün haline geldi.",
+    flow: "Akış",
+    language: "Dil",
+    character: "Karakter",
+    scene: "Sahne",
+    audioReady: "Ses Hazır",
+    videoReady: "Video Hazır",
+    createMovie: "🎬 Film Oluştur",
+    shareLinkCreate: "🔗 Paylaşım Linki Oluştur",
+    shareLinkCreating: "Link oluşturuluyor...",
+    copyLink: "📋 Linki Kopyala",
+    copied: "✅ Kopyalandı",
+    download: "⬇️ İndir",
+    shareLink: "Paylaşım Linki",
+    openQr: "QR ile telefonda aç",
+    qrHint: "Telefon kamerasıyla okutarak hikayeyi public episode sayfasında açabilirsiniz.",
+    duration: "Süre",
+    size: "Boyut",
+    adminMode: "Admin Mode aktif → YouTube Engine burada konumlanacak.",
+    parentMode: "Experience Lab Mode aktif.",
+    selectedFlow: "Seçili Akış",
+    activeProductBehavior: "Aktif ürün davranışı: Storyverse, hikaye fikrini çocuk dostu çizgi film üretim akışına göre çerçeveler.",
+    nonStoryversePilot: "Bu akış şu anda pilot/roadmap modunda. Mevcut çalışan üretim motoru Storyverse üzerinden güvenli şekilde kullanılmaya devam eder.",
+    studioBadge: "AI Hikaye Stüdyosu",
+    studioTitle: "VELTO",
+    studioDescription: "Hikaye, sahne, görsel, anlatıcı sesi, karakter diyaloğu, video ve final film çıktısını aynı akışta üreten üretim stüdyosu. Bu ekran artık sadece geliştirme paneli değil, AI Experience Lab içindeki ortak üretim çekirdeği olarak kurgulanıyor.",
+    storySetupChip: "Hikaye kurulumu",
+    sceneTimingChip: "Sahne zamanlaması",
+    voiceDialogueChip: "Ses + Diyalog",
+    runwayVideoChip: "Runway video",
+    finalExportChip: "Final export",
+    sceneStatus: "Sahne Durumu",
+    totalScene: "Toplam sahne",
+    exportReady: "Export Hazır",
+    exportReadyDesc: "Video veya görsel ile export edilebilir sahne",
+    readyAudio: "Hazır Ses",
+    readyAudioDesc: "Anlatıcı cache hazır",
+    estimatedDuration: "Tahmini Süre",
+    estimatedDurationDesc: "Toplam hedef film akışı",
+    workflow: "İş Akışı",
+    studioRouteMap: "Stüdyo Yol Haritası",
+    studioRouteMapDesc: "Bu ekran artık sadece üretim paneli değil; Experience Lab ve hızlı içerik üretimi için ortak akış merkezi.",
+    nextSurface: "Sonraki Katman",
+    quickContentMode: "Hızlı İçerik Modu",
+    quickContentModeDesc: "Bir sonraki ürün katmanında bu stüdyonun üstüne hızlı YouTube içerik üretim modu gelecek. Bu ekran onun için çekirdek üretim altyapısıdır.",
+    quickItem1: "Tek prompt ile bölüm üretimi",
+    quickItem2: "Seri formatı + export hazır akış",
+    quickItem3: "Experience Lab içerikleriyle ortak evren",
+    childProfile: "Çocuk Profili",
+    activeChild: "Aktif",
+    noChildSelected: "Çocuk seçilmedi",
+    chooseChild: "Çocuk seç",
+    newChildName: "Yeni çocuk adı",
+    add: "Ekle",
+    adding: "Ekleniyor...",
+    childProfileHint: "Experience Lab akışında hikaye üretmeden önce aktif çocuk profili seçilmelidir.",
+    myProjects: "Projelerim",
+    refresh: "Yenile",
+    refreshing: "Yenileniyor...",
+    projectsLoading: "Projeler yükleniyor...",
+    noProjects: "Henüz kayıtlı proje yok. İlk hikayeni oluşturduğunda burada görünecek.",
+    untitledProject: "Başlıksız Proje",
+    lastUpdate: "Son güncelleme",
+    open: "Aç",
+    contentLanguage: "İçerik Dili",
+    contentLanguageHint: "Seçilen dil; hikaye, narration, dialogue ve devam sahneleri için içerik üretim dilini belirler.",
+    turkish: "Türkçe",
+    english: "English",
+    storyPromptLabel: "Storyverse için nasıl bir çizgi film / hikaye yapmak istiyorsun?",
+    storyPromptPlaceholder: "Örn: Deniz kenarında yaşayan meraklı bir çocuğun kayıp yıldız haritasını bulması",
+    genericPromptLabel: "Bu akış için nasıl bir deneyim başlatmak istiyorsun?",
+    genericPromptPlaceholder: "Örn: Çocuğun karar verdiği kısa ve güvenli bir deneyim akışı",
+    preparingSetup: "Kurulum hazırlanıyor...",
+    createCharacters: "Karakterleri Oluştur",
+    studioSnapshot: "Stüdyo Özeti",
+    setupReady: "Kurulum hazır",
+    setupWaiting: "Kurulum bekliyor",
+    studioSnapshotDesc: "Karakter ve görsel dünya hazırlandığında hikaye üretimine geçilir.",
+    dialogueLayer: "Diyalog Katmanı",
+    sceneCountLabel: "sahne",
+    dialogueLayerDesc: "Karakter sesleri hazırlanmış sahne sayısı.",
+    freezeRisk: "Freeze Riski",
+    freezeRiskDesc: "Video süresinin ses akışını taşımakta zorlandığı sahneler.",
+    quickModePrep: "Quick Mode Hazırlığı",
+    activePlan: "Aktif plan",
+    quickModePrepDesc: "Bu ekran bir sonraki adımda hızlı YouTube üretim moduna ayrışacak.",
+    initialDesign: "Başlangıç Tasarımı",
+    initialDesignHint: "Buradaki bilgileri düzelt. Her şey doğruysa sahneleri daha sonra oluştur.",
+    storyTitle: "Hikaye Başlığı",
+    minuteShort: "dk",
+    secondShort: "sn",
+    episodePackageProductDesc: "Storyverse çıktısı artık ürün formatında",
+    saveProjectFirstTitle: "Önce projeyi kaydetmelisin",
+    publicShareTitle: "Public paylaşım linki oluştur",
+    projectId: "Proje ID",
+    storyPremiseLabel: "Hikaye Özeti / Yönü",
+    narratorSettings: "Anlatıcı Ayarları",
+    narratorVoiceHint: "Boş bırakırsan sunucu tarafındaki varsayılan narrator voice kullanılır.",
+    narratorRecommended: "Önerilen narrator başlangıcı:",
+    narratorCacheHint: "Ses kimliği değişirse mevcut narrator ve dialogue cache’leri temizlenir.",
+    charactersTitle: "Karakterler",
+    addCharacter: "Karakter Ekle",
+    characterLabel: "Karakter",
+    delete: "Sil",
+    namePlaceholder: "Ad",
+    agePlaceholder: "Yaş",
+    appearancePlaceholder: "Dış görünüş",
+    outfitPlaceholder: "Kıyafet",
+    accessoryPlaceholder: "Aksesuar",
+    personalityPlaceholder: "Karakter enerjisi / kişiliği",
+    characterVoicePlaceholder: "Karakter voiceId (ElevenLabs)",
+    characterVoiceHint: "Diyaloglarda karakter sesi için buraya ElevenLabs voiceId girebilirsin. Boş bırakılırsa sistem varsayılan sesle devam eder.",
+    preparingReferenceImage: "Referans görsel hazırlanıyor...",
+    generateReferenceImage: "Referans Görsel Üret",
+    referenceImageAlt: "referans görseli",
+    noCharacterReference: "Bu karakter için henüz referans görsel üretilmedi.",
+    visualStyle: "Görsel Stil",
+    stylePlaceholder: "Stil",
+    palettePlaceholder: "Renk paleti",
+    cameraPlaceholder: "Kamera yaklaşımı",
+    consistencyRulesPlaceholder: "Tutarlılık kuralları",
+    buildingStory: "Hikaye kuruluyor...",
+    buildStoryAndScenes: "Hikayeyi ve Sahneleri Oluştur",
+    savingProject: "Kaydediliyor...",
+    saveProject: "Projeyi Kaydet",
+    preparingAudio: "Sesler hazırlanıyor...",
+    prepareAudio: "Sesleri Hazırla",
+    stopStory: "Hikayeyi Durdur",
+    listenStory: "Hikayeyi Dinle",
+    creatingMovie: "Film oluşturuluyor...",
+    createFinalMovieWithCount: "🎞 Filmi Oluştur",
+    finalMovie: "Final Film",
+    finalMovieDesc: "Sahne videoları birleştirildi. Aşağıdan izleyebilir, indirebilir veya linki paylaşabilirsin.",
+    sceneProductionPanel: "Sahne Üretim Paneli",
+    sceneProductionPanelDesc: "Her sahne kartı üretim, ses, video ve export kararını aynı yüzeyde gösterir.",
+    lastScene: "Son sahne",
+    sceneCardPurpose: "Bu kart sahnenin hikaye, ses, video ve export kararını tek bakışta yönetmen için tasarlandı.",
+    videoCreating: "Video oluşturuluyor...",
+    convertToVideo: "🎬 Videoya Çevir",
+    editScene: "Sahneyi Düzenle",
+    branchAfterScene: "Bu Sahneden Sonra Devam Et",
+    redrawing: "Yeniden çiziliyor...",
+    redraw: "Yeniden Çiz",
+    scenePreviews: "Scene previews",
+    imageReady: "Image ready",
+    imagePending: "Image pending",
+    videoPending: "Video pending",
+    readySceneImage: "Hazır sahne görseli",
+    noSceneImagePreview: "Bu sahne için henüz görsel önizleme yok. Görsel üretildiğinde burada görünecek.",
+    readySceneVideo: "Hazır sahne videosu",
+    noSceneVideoPreview: "Bu sahne için henüz video önizleme yok. Video hazır olduğunda burada görünecek.",
+    target: "Hedef",
+    speech: "Konuşma",
+    speechTooLong: "⚠️ Konuşma bu sahne için fazla uzun. Düzenleyip kısalt.",
+    speechTimingOk: "✅ Sahne ve konuşma süresi uyumlu.",
+    sceneEditQuestion: "Bu sahnede neyi değiştirmek istiyorsun?",
+    sceneEditPlaceholder: "Buraya bir robot gelsin, sahne daha komik olsun...",
+    updating: "Güncelleniyor...",
+    updateScene: "Sahneyi Güncelle",
+    cancel: "Vazgeç",
+    branchQuestion: "Bu sahneden sonra hikaye nasıl devam etsin?",
+    branchPlaceholder: "Örn: Bu sahneden sonra çocuklar gizli bir geçit keşfetsin.",
+    branchWarning: "Bu işlem, bu sahneden sonraki mevcut akışı kaldırır ve yeni bir devam sahnesi üretir.",
+    writingNewFlow: "Yeni akış yazılıyor...",
+    continueFromHere: "Bu Noktadan Devam Et",
+    continueFromLastScene: "Son Sahneden Devam Et",
+    continueFromLastSceneDesc: "Hikayenin mevcut son sahnesinden sonra ne olmasını istediğini yaz.",
+    continuePromptPlaceholder: "Örn: Çocuklar mağaranın içinde parlayan bir kapı bulsun.",
+    writingContinue: "Devam yazılıyor...",
+    writeContinue: "Devamını Yaz",
+    sceneListTitle: "Sahneler",
+    autoSaved: "Otomatik kaydedildi ✅",
+    projectSaved: "Proje kaydedildi ✅",
+    projectUpdated: "Proje güncellendi ✅",
+    childAdded: "Çocuk profili eklendi ✅",
+    projectLoaded: "Proje yüklendi ✅",
+    movieCreated: "Film oluşturuldu ✅",
+    videoReadySaved: "Video hazırlandı ve kaydedildi ✅",
+    allAudioReady: "Tüm sahne sesleri ve diyalogları hazırlandı ✅",
+    shareCreated: "Paylaşım linki oluşturuldu ✅",
+    shareCopied: "Paylaşım linki kopyalandı ✅",
+  },
+  en: {
+    loading: "Loading...",
+    roleLoading: "Loading role...",
+    episodePackage: "Episode Package",
+    notCreatedYet: "Not created yet",
+    episodePackageSubtitle: "The Storyverse output is now a shareable product package.",
+    flow: "Flow",
+    language: "Language",
+    character: "Characters",
+    scene: "Scenes",
+    audioReady: "Audio Ready",
+    videoReady: "Video Ready",
+    createMovie: "🎬 Create Movie",
+    shareLinkCreate: "🔗 Create Share Link",
+    shareLinkCreating: "Creating link...",
+    copyLink: "📋 Copy Link",
+    copied: "✅ Copied",
+    download: "⬇️ Download",
+    shareLink: "Share Link",
+    openQr: "Open on phone with QR",
+    qrHint: "Scan with a phone camera to open the story on the public episode page.",
+    duration: "Duration",
+    size: "Size",
+    adminMode: "Admin Mode active → YouTube Engine will be positioned here.",
+    parentMode: "Experience Lab Mode active.",
+    selectedFlow: "Selected Flow",
+    activeProductBehavior: "Active product behavior: Storyverse frames the story idea as a child-safe cartoon production flow.",
+    nonStoryversePilot: "This flow is currently in pilot/roadmap mode. The working production engine continues safely through Storyverse.",
+    studioBadge: "AI Story Studio",
+    studioTitle: "VELTO",
+    studioDescription: "A production studio that generates story, scenes, visuals, narrator voice, character dialogue, video, and final movie output in one flow. This screen is no longer just a development panel; it is designed as the shared production core of AI Experience Lab.",
+    storySetupChip: "Story setup",
+    sceneTimingChip: "Scene timing",
+    voiceDialogueChip: "Voice + Dialogue",
+    runwayVideoChip: "Runway video",
+    finalExportChip: "Final export",
+    sceneStatus: "Scene Status",
+    totalScene: "Total scenes",
+    exportReady: "Export Ready",
+    exportReadyDesc: "Scenes exportable with video or image",
+    readyAudio: "Ready Audio",
+    readyAudioDesc: "Narrator cache ready",
+    estimatedDuration: "Estimated Duration",
+    estimatedDurationDesc: "Total target movie flow",
+    workflow: "Workflow",
+    studioRouteMap: "Studio Route Map",
+    studioRouteMapDesc: "This screen is no longer only a production panel; it is the shared flow hub for Experience Lab and fast content creation.",
+    nextSurface: "Next Surface",
+    quickContentMode: "Quick Content Mode",
+    quickContentModeDesc: "The next product layer will add a fast YouTube content generation mode on top of this studio. This screen is its core production infrastructure.",
+    quickItem1: "Episode generation with one prompt",
+    quickItem2: "Series format + export-ready flow",
+    quickItem3: "Shared universe with Experience Lab content",
+    childProfile: "Child Profile",
+    activeChild: "Active",
+    noChildSelected: "No child selected",
+    chooseChild: "Choose child",
+    newChildName: "New child name",
+    add: "Add",
+    adding: "Adding...",
+    childProfileHint: "An active child profile must be selected before generating a story in the Experience Lab flow.",
+    myProjects: "My Projects",
+    refresh: "Refresh",
+    refreshing: "Refreshing...",
+    projectsLoading: "Loading projects...",
+    noProjects: "No saved projects yet. Your first story will appear here after you create it.",
+    untitledProject: "Untitled Project",
+    lastUpdate: "Last update",
+    open: "Open",
+    contentLanguage: "Content Language",
+    contentLanguageHint: "The selected language controls the generation language for story, narration, dialogue, and continuation scenes.",
+    turkish: "Türkçe",
+    english: "English",
+    storyPromptLabel: "What kind of cartoon / story do you want to create in Storyverse?",
+    storyPromptPlaceholder: "Example: A curious child by the sea discovers a lost star map",
+    genericPromptLabel: "What kind of experience do you want to start for this flow?",
+    genericPromptPlaceholder: "Example: A short, safe experience flow where the child makes choices",
+    preparingSetup: "Preparing setup...",
+    createCharacters: "Create Characters",
+    studioSnapshot: "Studio Snapshot",
+    setupReady: "Setup ready",
+    setupWaiting: "Setup waiting",
+    studioSnapshotDesc: "Once the characters and visual world are ready, you can continue to story production.",
+    dialogueLayer: "Dialogue Layer",
+    sceneCountLabel: "scenes",
+    dialogueLayerDesc: "Number of scenes with prepared character voices.",
+    freezeRisk: "Freeze Risk",
+    freezeRiskDesc: "Scenes where the video duration may not carry the audio flow comfortably.",
+    quickModePrep: "Quick Mode Preparation",
+    activePlan: "Active plan",
+    quickModePrepDesc: "This screen will later branch into a fast YouTube production mode.",
+    initialDesign: "Initial Design",
+    initialDesignHint: "Review and correct the setup information. If everything looks right, generate the scenes next.",
+    storyTitle: "Story Title",
+    minuteShort: "min",
+    secondShort: "sec",
+    episodePackageProductDesc: "Storyverse output is now a product-ready package.",
+    saveProjectFirstTitle: "Save the project first",
+    publicShareTitle: "Create public share link",
+    projectId: "Project ID",
+    storyPremiseLabel: "Story Summary / Direction",
+    narratorSettings: "Narrator Settings",
+    narratorVoiceHint: "If left empty, the default server-side narrator voice will be used.",
+    narratorRecommended: "Recommended narrator starting point:",
+    narratorCacheHint: "If the voice identity changes, existing narrator and dialogue caches will be cleared.",
+    charactersTitle: "Characters",
+    addCharacter: "Add Character",
+    characterLabel: "Character",
+    delete: "Delete",
+    namePlaceholder: "Name",
+    agePlaceholder: "Age",
+    appearancePlaceholder: "Appearance",
+    outfitPlaceholder: "Outfit",
+    accessoryPlaceholder: "Accessory",
+    personalityPlaceholder: "Character energy / personality",
+    characterVoicePlaceholder: "Character voiceId (ElevenLabs)",
+    characterVoiceHint: "You can enter an ElevenLabs voiceId here for character dialogue. If left empty, the system will continue with the default voice.",
+    preparingReferenceImage: "Preparing reference image...",
+    generateReferenceImage: "Generate Reference Image",
+    referenceImageAlt: "reference image",
+    noCharacterReference: "No reference image has been generated for this character yet.",
+    visualStyle: "Visual Style",
+    stylePlaceholder: "Style",
+    palettePlaceholder: "Color palette",
+    cameraPlaceholder: "Camera approach",
+    consistencyRulesPlaceholder: "Consistency rules",
+    buildingStory: "Building story...",
+    buildStoryAndScenes: "Create Story and Scenes",
+    savingProject: "Saving...",
+    saveProject: "Save Project",
+    preparingAudio: "Preparing audio...",
+    prepareAudio: "Prepare Audio",
+    stopStory: "Stop Story",
+    listenStory: "Listen to Story",
+    creatingMovie: "Creating movie...",
+    createFinalMovieWithCount: "🎞 Create Movie",
+    finalMovie: "Final Movie",
+    finalMovieDesc: "Scene videos have been merged. You can watch, download, or share the link below.",
+    sceneProductionPanel: "Scene Production Panel",
+    sceneProductionPanelDesc: "Each scene card shows production, audio, video, and export decisions on one surface.",
+    lastScene: "Last scene",
+    sceneCardPurpose: "This card is designed to manage story, audio, video, and export decisions for the scene at a glance.",
+    videoCreating: "Creating video...",
+    convertToVideo: "🎬 Convert to Video",
+    editScene: "Edit Scene",
+    branchAfterScene: "Continue After This Scene",
+    redrawing: "Redrawing...",
+    redraw: "Redraw",
+    scenePreviews: "Scene previews",
+    imageReady: "Image ready",
+    imagePending: "Image pending",
+    videoPending: "Video pending",
+    readySceneImage: "Ready scene image",
+    noSceneImagePreview: "No image preview for this scene yet. It will appear here once generated.",
+    readySceneVideo: "Ready scene video",
+    noSceneVideoPreview: "No video preview for this scene yet. It will appear here once ready.",
+    target: "Target",
+    speech: "Speech",
+    speechTooLong: "⚠️ Speech is too long for this scene. Edit and shorten it.",
+    speechTimingOk: "✅ Scene and speech duration are aligned.",
+    sceneEditQuestion: "What do you want to change in this scene?",
+    sceneEditPlaceholder: "Example: Add a robot and make the scene funnier...",
+    updating: "Updating...",
+    updateScene: "Update Scene",
+    cancel: "Cancel",
+    branchQuestion: "How should the story continue after this scene?",
+    branchPlaceholder: "Example: After this scene, the children discover a secret passage.",
+    branchWarning: "This action removes the current flow after this scene and generates a new continuation scene.",
+    writingNewFlow: "Writing new flow...",
+    continueFromHere: "Continue From Here",
+    continueFromLastScene: "Continue From Last Scene",
+    continueFromLastSceneDesc: "Write what you want to happen after the current final scene of the story.",
+    continuePromptPlaceholder: "Example: The children find a glowing door inside the cave.",
+    writingContinue: "Writing continuation...",
+    writeContinue: "Write Continuation",
+    sceneListTitle: "Scenes",
+    autoSaved: "Autosaved ✅",
+    projectSaved: "Project saved ✅",
+    projectUpdated: "Project updated ✅",
+    childAdded: "Child profile added ✅",
+    projectLoaded: "Project loaded ✅",
+    movieCreated: "Movie created ✅",
+    videoReadySaved: "Video prepared and saved ✅",
+    allAudioReady: "All scene narration and dialogue audio are ready ✅",
+    shareCreated: "Share link created ✅",
+    shareCopied: "Share link copied ✅",
+  },
+};
+
+
 const getAudioDurationFromUrl = (url?: string) => {
   return new Promise<number>((resolve) => {
     if (!url) {
@@ -203,7 +583,13 @@ export default function CreatePage() {
   const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
-  const [language, setLanguage] = useState<ContentLanguage>("tr");
+  const { language: uiLanguage } = useLanguage();
+  const [language, setLanguage] = useState<ContentLanguage>(
+    uiLanguage === "en" ? "en" : "tr"
+  );
+  const ui = UI_TEXT[uiLanguage] ?? UI_TEXT.tr;
+  const localizedFlowMessages = flowCardMessages[uiLanguage] ?? flowCardMessages.tr;
+  const localizedSelectedFlow = localizedFlowMessages.flows[selectedFlow.key] ?? selectedFlow;
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
   const [title, setTitle] = useState("");
@@ -247,6 +633,7 @@ export default function CreatePage() {
   const [isExportingMovie, setIsExportingMovie] = useState(false);
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
   const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
+  const [exportSignature, setExportSignature] = useState("");
 
   const [shareUrl, setShareUrl] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
@@ -267,6 +654,27 @@ export default function CreatePage() {
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+  useEffect(() => {
+    if (isHydratingRef.current) {
+      return;
+    }
+
+    const hasStartedStory = Boolean(
+      title ||
+        input ||
+        storySetup ||
+        characters.length > 0 ||
+        visualBible ||
+        scenes.length > 0
+    );
+
+    if (hasStartedStory) {
+      return;
+    }
+
+    setLanguage(uiLanguage === "en" ? "en" : "tr");
+  }, [uiLanguage, title, input, storySetup, characters.length, visualBible, scenes.length]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -362,7 +770,7 @@ export default function CreatePage() {
       setChildren((prev) => [...prev, data as ChildProfile]);
       setSelectedChildId(data.id);
       setNewChildName("");
-      setSaveMessage("Çocuk profili eklendi ✅");
+      setSaveMessage(ui.childAdded);
     } catch (e: any) {
       setError(e?.message || "Çocuk eklenirken bir hata oluştu.");
     } finally {
@@ -455,12 +863,12 @@ export default function CreatePage() {
     }
 
     if (seconds < 60) {
-      return `${seconds.toFixed(1)} sn`;
+      return `${seconds.toFixed(1)} ${ui.secondShort}`;
     }
 
     const mins = Math.floor(seconds / 60);
     const secs = Math.round(seconds % 60);
-    return `${mins} dk ${secs} sn`;
+    return `${mins} ${ui.minuteShort} ${secs} ${ui.secondShort}`;
   };
 
   const formatFileSizeLabel = (sizeBytes?: number) => {
@@ -476,6 +884,39 @@ export default function CreatePage() {
     }
 
     return `${mb.toFixed(2)} MB`;
+  };
+
+  const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
+    const exportableScenes = nextScenes
+      .filter((scene) => (scene.videoUrl && scene.videoStatus === "done") || scene.image)
+      .map((scene) => ({
+        id: scene.id,
+        text: scene.text || "",
+        narration: scene.narration || "",
+        dialogue: scene.dialogue || "",
+        cameraDirection: scene.cameraDirection || "",
+        emotion: scene.emotion || "",
+        motionHint: scene.motionHint || "",
+        image: scene.image || "",
+        videoUrl: scene.videoUrl || "",
+        videoStatus: scene.videoStatus || "idle",
+        timing: scene.timing || null,
+      }));
+
+    return JSON.stringify({
+      title: nextTitle || "",
+      scenes: exportableScenes,
+    });
+  };
+
+  const getCurrentExportSignature = () => buildExportSignature(title, scenes);
+
+  const hasReusableExport = () => {
+    if (!exportedMovieUrl || !exportSignature) {
+      return false;
+    }
+
+    return exportSignature === getCurrentExportSignature();
   };
 
   const updateSceneTimingData = (sceneId: number, timing: SceneTiming) => {
@@ -663,6 +1104,7 @@ export default function CreatePage() {
     setIsExportingMovie(false);
     setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
     setShareUrl("");
     setShareCopied(false);
     setNarratorSettings(defaultNarratorSettings);
@@ -1143,7 +1585,7 @@ export default function CreatePage() {
             )
           );
 
-          setSaveMessage("Video hazırlandı ve kaydedildi ✅");
+          setSaveMessage(ui.videoReadySaved);
           return;
         }
 
@@ -1205,6 +1647,7 @@ export default function CreatePage() {
     setSaveMessage("");
     setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
 
     setScenes((prev) =>
       prev.map((s) =>
@@ -1302,11 +1745,25 @@ export default function CreatePage() {
       return;
     }
 
+    const currentSignature = buildExportSignature(title, scenes);
+
+    if (exportedMovieUrl && exportSignature === currentSignature) {
+      setError("");
+      setSaveMessage(ui.movieCreated);
+
+      if (typeof window !== "undefined") {
+        window.open(exportMovieResult?.downloadUrl || exportedMovieUrl, "_blank", "noopener,noreferrer");
+      }
+
+      return;
+    }
+
     setIsExportingMovie(true);
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
 
     try {
       const res = await fetch(`${exportApiBase}/export-movie`, {
@@ -1361,7 +1818,47 @@ export default function CreatePage() {
 
       setExportedMovieUrl(nextExportResult.movieUrl);
       setExportMovieResult(nextExportResult);
-      setSaveMessage("Film oluşturuldu ✅");
+      setExportSignature(currentSignature);
+
+      try {
+        const accessToken = await getAccessTokenOrThrow();
+
+        const saveRes = await fetch("/api/save-project", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            projectId: currentProjectId || undefined,
+            childId: selectedChildId,
+            title,
+            inputPrompt: input,
+            flowKey: selectedFlow.key,
+            flowTitle: selectedFlow.title,
+            language,
+            storyPremise: storySetup?.storyPremise || "",
+            characters,
+            visualBible,
+            scenes,
+            exportedMovieUrl: nextExportResult.movieUrl,
+            exportedMovieResult: nextExportResult,
+            exportSignature: currentSignature,
+          }),
+        });
+
+        const saveData = await saveRes.json();
+
+        if (saveRes.ok && saveData?.project?.id) {
+          setCurrentProjectId(saveData.project.id);
+          setLoadProjectId(saveData.project.id);
+          await fetchProjects();
+        }
+      } catch (saveError) {
+        console.error("export cache save error:", saveError);
+      }
+
+      setSaveMessage(ui.movieCreated);
     } catch (e: any) {
       console.error("handleExportMovie error:", e);
       setError(e?.message || "Film export sırasında hata oluştu.");
@@ -1382,6 +1879,8 @@ export default function CreatePage() {
     setSaveMessage("");
 
     try {
+      await persistProject(false);
+
       const accessToken = await getAccessTokenOrThrow();
 
       const res = await fetch("/api/share-project", {
@@ -1405,7 +1904,7 @@ export default function CreatePage() {
         data.shareUrl || `${window.location.origin}/episode/public/${data.shareId}`;
 
       setShareUrl(nextShareUrl);
-      setSaveMessage("Paylaşım linki oluşturuldu ✅");
+      setSaveMessage(ui.shareCreated);
     } catch (e: any) {
       setError(e?.message || "Paylaşım linki oluşturulurken hata oluştu.");
     } finally {
@@ -1422,7 +1921,7 @@ export default function CreatePage() {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setShareCopied(true);
-      setSaveMessage("Paylaşım linki kopyalandı ✅");
+      setSaveMessage(ui.shareCopied);
     } catch {
       setError("Link kopyalanamadı. Lütfen manuel kopyala.");
     }
@@ -1460,7 +1959,7 @@ export default function CreatePage() {
         });
       }
 
-      setSaveMessage("Tüm sahne sesleri ve diyalogları hazırlandı ✅");
+      setSaveMessage(ui.allAudioReady);
     } catch (e: any) {
       console.error("prepareAllAudio error:", e);
       setError(e?.message || "Sesler hazırlanırken bir hata oluştu.");
@@ -1593,6 +2092,9 @@ export default function CreatePage() {
         characters,
         visualBible,
         scenes,
+        exportedMovieUrl: hasReusableExport() ? exportedMovieUrl : null,
+        exportedMovieResult: hasReusableExport() ? exportMovieResult : null,
+        exportSignature: hasReusableExport() ? exportSignature : null,
       }),
     });
 
@@ -1611,7 +2113,7 @@ export default function CreatePage() {
 
     if (showManualMessage) {
       setSaveMessage(
-        data.mode === "created" ? "Proje kaydedildi ✅" : "Proje güncellendi ✅"
+        data.mode === "created" ? ui.projectSaved : ui.projectUpdated
       );
     }
   };
@@ -1682,6 +2184,7 @@ export default function CreatePage() {
       setSelectedChildId(project.child_id || "");
       setTitle(project.title || "");
       setInput(project.input_prompt || "");
+      // SADECE content language güncellensin
       setLanguage(project.language === "en" ? "en" : "tr");
       setCharacters(
         Array.isArray(project.characters)
@@ -1712,8 +2215,9 @@ export default function CreatePage() {
           : []
       );
 
-      setExportedMovieUrl("");
-      setExportMovieResult(null);
+      setExportedMovieUrl(project.exported_movie_url || "");
+      setExportMovieResult(project.exported_movie_result || null);
+      setExportSignature(project.export_signature || "");
       setShareUrl(project.share_id ? `${window.location.origin}/episode/public/${project.share_id}` : "");
       setShareCopied(false);
       setStorySetup({
@@ -1728,7 +2232,7 @@ export default function CreatePage() {
         visualBible: project.visual_bible || emptyVisualBible,
       });
 
-      setSaveMessage("Proje yüklendi ✅");
+      setSaveMessage(ui.projectLoaded);
 
       setTimeout(() => {
         isHydratingRef.current = false;
@@ -1769,27 +2273,11 @@ export default function CreatePage() {
   };
 
   const getFlowAwareInputLabel = () => {
-    if (!isStoryverseFlow) {
-      return language === "tr"
-        ? "Bu flow için nasıl bir deneyim başlatmak istiyorsun?"
-        : "What kind of experience do you want to start for this flow?";
-    }
-
-    return language === "tr"
-      ? "Storyverse için nasıl bir çizgi film / hikaye yapmak istiyorsun?"
-      : "What kind of cartoon / story do you want to create in Storyverse?";
+    return isStoryverseFlow ? ui.storyPromptLabel : ui.genericPromptLabel;
   };
 
   const getFlowAwarePlaceholder = () => {
-    if (!isStoryverseFlow) {
-      return language === "tr"
-        ? "Örn: Çocuğun karar verdiği kısa ve güvenli bir deneyim akışı"
-        : "Example: A short, safe experience flow where the child makes choices";
-    }
-
-    return language === "tr"
-      ? "Örn: Deniz kenarında yaşayan meraklı bir çocuğun kayıp yıldız haritasını bulması"
-      : "Example: A curious child by the sea discovers a lost star map";
+    return isStoryverseFlow ? ui.storyPromptPlaceholder : ui.genericPromptPlaceholder;
   };
 
   const createSetup = async () => {
@@ -1973,6 +2461,7 @@ export default function CreatePage() {
     stopStoryPlayback();
     setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
 
     try {
       const res = await fetch("/api/build-story", {
@@ -2046,6 +2535,7 @@ export default function CreatePage() {
       clearVideoPollForScene(scene.id);
       setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
 
       setScenes((prev) =>
         prev.map((item) =>
@@ -2111,6 +2601,7 @@ export default function CreatePage() {
       clearVideoPollForScene(sceneId);
       setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
 
       setScenes((prevScenes) =>
         prevScenes.map((scene) =>
@@ -2213,6 +2704,7 @@ export default function CreatePage() {
       setContinuePrompt("");
       setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
     } catch {
       setError("Hikayenin devamı oluşturulurken bir hata oluştu.");
     } finally {
@@ -2297,6 +2789,7 @@ export default function CreatePage() {
       setBranchingSceneId(null);
       setExportedMovieUrl("");
     setExportMovieResult(null);
+    setExportSignature("");
     } catch {
       setError("Bu sahneden devam oluşturulurken bir hata oluştu.");
     } finally {
@@ -2341,7 +2834,7 @@ export default function CreatePage() {
     autosaveTimerRef.current = setTimeout(async () => {
       try {
         await persistProject(false);
-        setSaveMessage("Otomatik kaydedildi ✅");
+        setSaveMessage(ui.autoSaved);
       } catch {
         setError("Otomatik kaydetme sırasında hata oluştu.");
       }
@@ -2388,40 +2881,40 @@ export default function CreatePage() {
   const workflowSteps = [
     {
       id: 1,
-      title: "Fikir ve kurulum",
-      description: "Hikaye fikrini gir, başlangıç tasarımını oluştur.",
+      title: ui.storySetupChip,
+      description: ui.studioRouteMapDesc,
       active: currentWorkflowStep === 1,
       complete: setupReady,
     },
     {
       id: 2,
-      title: "Dünya ve karakterler",
-      description: "Karakterleri, sesleri ve görsel dili netleştir.",
+      title: ui.initialDesign,
+      description: ui.initialDesignHint,
       active: currentWorkflowStep === 2,
       complete: setupReady && scenes.length > 0,
     },
     {
       id: 3,
-      title: "Sahne üretimi",
-      description: "Görsel, ses, timing ve video katmanlarını üret.",
+      title: ui.sceneTimingChip,
+      description: ui.exportReadyDesc,
       active: currentWorkflowStep === 3,
       complete: readyExportCount > 0,
     },
     {
       id: 4,
-      title: "Final çıktı",
-      description: "Film export al ve içerik üretim hattına bağla.",
+      title: ui.finalExportChip,
+      description: ui.quickItem2,
       active: currentWorkflowStep === 4,
       complete: !!exportedMovieUrl,
     },
   ];
 
   if (authLoading) {
-    return <div style={{ padding: 40 }}>Loading...</div>;
+    return <div style={{ padding: 40 }}>{ui.loading}</div>;
   }
 
   if (roleLoading) {
-    return <div style={{ padding: 40 }}>Role yükleniyor...</div>;
+    return <div style={{ padding: 40 }}>{ui.roleLoading}</div>;
   }
 
   return (
@@ -2432,38 +2925,38 @@ export default function CreatePage() {
   <div className="flex items-center justify-between">
     <div>
       <p className="text-xs uppercase tracking-[0.25em] text-purple-300">
-        Episode Package
+        {ui.episodePackage}
       </p>
       <h3 className="mt-1 text-xl font-semibold text-white">
-        {title || "Henüz oluşturulmadı"}
+        {title || ui.notCreatedYet}
       </h3>
       <p className="text-sm text-purple-200/80 mt-1">
-        Storyverse çıktısı artık ürün formatında
+        {ui.episodePackageProductDesc}
       </p>
     </div>
 
     <div className="text-right text-sm text-purple-200">
-      <div>Flow: {selectedFlow.shortTitle}</div>
-      <div>Dil: {language.toUpperCase()}</div>
+      <div>{ui.flow}: {localizedSelectedFlow.shortTitle}</div>
+      <div>{ui.language}: {language.toUpperCase()}</div>
     </div>
   </div>
 
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 text-center">
     <div>
       <p className="text-2xl font-bold">{characters.length}</p>
-      <p className="text-xs text-purple-200/70">Karakter</p>
+      <p className="text-xs text-purple-200/70">{ui.character}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{scenes.length}</p>
-      <p className="text-xs text-purple-200/70">Sahne</p>
+      <p className="text-xs text-purple-200/70">{ui.scene}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{audioReadyCount}</p>
-      <p className="text-xs text-purple-200/70">Ses Hazır</p>
+      <p className="text-xs text-purple-200/70">{ui.audioReady}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{readyVideoCount}</p>
-      <p className="text-xs text-purple-200/70">Video Hazır</p>
+      <p className="text-xs text-purple-200/70">{ui.videoReady}</p>
     </div>
   </div>
 
@@ -2473,16 +2966,18 @@ export default function CreatePage() {
       disabled={isExportingMovie}
       className="rounded-xl bg-purple-500 px-4 py-2 text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
     >
-      🎬 Film Oluştur
+      {exportedMovieUrl && hasReusableExport()
+        ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
+        : ui.createMovie}
     </button>
 
     <button
       onClick={handleCreateShareLink}
       disabled={shareLoading || !currentProjectId}
       className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
-      title={!currentProjectId ? "Önce projeyi kaydetmelisin" : "Public paylaşım linki oluştur"}
+      title={!currentProjectId ? ui.saveProjectFirstTitle : ui.publicShareTitle}
     >
-      {shareLoading ? "Link oluşturuluyor..." : "🔗 Paylaşım Linki Oluştur"}
+      {shareLoading ? ui.shareLinkCreating : ui.shareLinkCreate}
     </button>
 
     {shareUrl && (
@@ -2490,7 +2985,7 @@ export default function CreatePage() {
         onClick={handleCopyShareLink}
         className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm text-cyan-100"
       >
-        {shareCopied ? "✅ Kopyalandı" : "📋 Linki Kopyala"}
+        {shareCopied ? ui.copied : ui.copyLink}
       </button>
     )}
 
@@ -2500,14 +2995,14 @@ export default function CreatePage() {
         target="_blank"
         className="rounded-xl border border-purple-300/40 px-4 py-2 text-sm"
       >
-        ⬇️ İndir
+        {ui.download}
       </a>
     )}
   </div>
 
   {shareUrl && (
     <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
-      <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Public Episode Link</p>
+      <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">{ui.shareLink}</p>
       <a
         href={shareUrl}
         target="_blank"
@@ -2523,7 +3018,7 @@ export default function CreatePage() {
   {shareUrl && (
     <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-purple-300/20 bg-purple-500/10 p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-purple-200">
-        QR ile telefonda aç
+        {ui.openQr}
       </p>
 
       <img
@@ -2533,47 +3028,47 @@ export default function CreatePage() {
       />
 
       <p className="max-w-xs text-center text-xs text-purple-200/70">
-        Telefon kamerasıyla okutarak hikayeyi public episode sayfasında açabilirsiniz.
+        {ui.qrHint}
       </p>
     </div>
   )}
 
   {exportMovieResult && (
     <div className="mt-4 text-sm text-purple-200/80">
-      <div>Süre: {formatDurationLabel(exportMovieResult.durationSeconds)}</div>
-      <div>Boyut: {formatFileSizeLabel(exportMovieResult.sizeBytes)}</div>
-      <div>Sahne: {exportMovieResult.sceneCount}</div>
+      <div>{ui.duration}: {formatDurationLabel(exportMovieResult.durationSeconds)}</div>
+      <div>{ui.size}: {formatFileSizeLabel(exportMovieResult.sizeBytes)}</div>
+      <div>{ui.scene}: {exportMovieResult.sceneCount}</div>
     </div>
   )}
 </div>
 
         {userRole === "admin" && (
           <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
-            Admin Mode aktif → YouTube Engine burada konumlanacak.
+            {ui.adminMode}
           </div>
         )}
 
         {userRole === "parent" && (
           <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-cyan-200">
-            Experience Lab Mode aktif.
+            {ui.parentMode}
           </div>
         )}
 
         <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-cyan-50">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">Seçili Flow</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">{selectedFlow.title}</h2>
-              <p className="mt-1 text-sm leading-6 text-cyan-100/90">{selectedFlow.description}</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">{ui.selectedFlow}</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">{localizedSelectedFlow.title}</h2>
+              <p className="mt-1 text-sm leading-6 text-cyan-100/90">{localizedSelectedFlow.description}</p>
               {isStoryverseFlow && (
                 <p className="mt-2 text-xs leading-5 text-cyan-100/80">
-                  Aktif ürün davranışı: Storyverse, hikaye fikrini çocuk dostu çizgi film üretim akışına göre çerçeveler.
+                  {ui.activeProductBehavior}
                 </p>
               )}
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.ageBand}</span>
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.durationMin} dk</span>
+              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.durationMin} {ui.minuteShort}</span>
               {selectedFlow.zones.map((zone: FlowZone) => (
                 <span key={zone} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">
                   {zone}
@@ -2583,7 +3078,7 @@ export default function CreatePage() {
           </div>
           {selectedFlow.key !== "storyverse" && (
             <p className="mt-3 rounded-xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
-              Bu flow şu anda pilot/roadmap modunda. Mevcut çalışan üretim motoru Storyverse üzerinden güvenli şekilde kullanılmaya devam eder.
+              {ui.nonStoryversePilot}
             </p>
           )}
         </div>
@@ -2591,44 +3086,43 @@ export default function CreatePage() {
           <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
             <div className="space-y-4">
               <div className="inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-cyan-200">
-                AI Story Studio
+                {ui.studioBadge}
               </div>
               <div className="space-y-3">
                 <h1 className="text-3xl font-bold tracking-tight md:text-5xl">VELTO</h1>
                 <p className="max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
-                  Hikâye, sahne, görsel, anlatıcı sesi, karakter diyaloğu, video ve final film çıktısını aynı akışta üreten üretim stüdyosu.
-                  Bu ekran artık sadece geliştirme paneli değil, AI Experience Lab içindeki ortak üretim çekirdeği olarak kurgulanıyor.
+                  {ui.studioDescription}
                 </p>
               </div>
               <div className="flex flex-wrap gap-3 text-xs text-slate-300 md:text-sm">
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Story setup</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Scene timing</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Voice + Dialogue</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Runway video</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Final export</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.storySetupChip}</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.sceneTimingChip}</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.voiceDialogueChip}</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.runwayVideoChip}</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.finalExportChip}</div>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Sahne Durumu</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.sceneStatus}</p>
                 <p className="mt-3 text-3xl font-semibold">{scenes.length}</p>
-                <p className="mt-2 text-sm text-slate-300">Toplam sahne</p>
+                <p className="mt-2 text-sm text-slate-300">{ui.totalScene}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Export Hazır</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.exportReady}</p>
                 <p className="mt-3 text-3xl font-semibold">{readyExportCount}</p>
-                <p className="mt-2 text-sm text-slate-300">Video veya görsel ile export edilebilir sahne</p>
+                <p className="mt-2 text-sm text-slate-300">{ui.exportReadyDesc}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Hazır Ses</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.readyAudio}</p>
                 <p className="mt-3 text-3xl font-semibold">{audioReadyCount}</p>
-                <p className="mt-2 text-sm text-slate-300">Narrator cache hazır</p>
+                <p className="mt-2 text-sm text-slate-300">{ui.readyAudioDesc}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Tahmini Süre</p>
-                <p className="mt-3 text-3xl font-semibold">{totalTargetDuration.toFixed(1)} sn</p>
-                <p className="mt-2 text-sm text-slate-300">Toplam hedef film akışı</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.estimatedDuration}</p>
+                <p className="mt-3 text-3xl font-semibold">{totalTargetDuration.toFixed(1)} {ui.secondShort}</p>
+                <p className="mt-2 text-sm text-slate-300">{ui.estimatedDurationDesc}</p>
               </div>
             </div>
           </div>
@@ -2637,10 +3131,10 @@ export default function CreatePage() {
         <div className="grid gap-8 xl:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
             <div className="rounded-[28px] border border-white/10 bg-white/[0.05] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">Workflow</p>
-              <h2 className="mt-3 text-xl font-semibold text-white">Studio Route Map</h2>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">{ui.workflow}</p>
+              <h2 className="mt-3 text-xl font-semibold text-white">{ui.studioRouteMap}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-300">
-                Bu ekran artık sadece üretim paneli değil; Experience Lab ve hızlı içerik üretimi için ortak akış merkezi.
+                {ui.studioRouteMapDesc}
               </p>
 
               <div className="mt-5 space-y-3">
@@ -2678,16 +3172,16 @@ export default function CreatePage() {
             </div>
 
             <div className="rounded-[28px] border border-violet-400/20 bg-violet-500/10 p-5 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
-              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">Next Surface</p>
-              <h3 className="mt-3 text-lg font-semibold text-white">Quick Content Mode</h3>
+              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">{ui.nextSurface}</p>
+              <h3 className="mt-3 text-lg font-semibold text-white">{ui.quickContentMode}</h3>
               <p className="mt-2 text-sm leading-6 text-slate-300">
-                Bir sonraki ürün katmanında bu stüdyonun üstüne hızlı YouTube içerik üretim modu gelecek. Bu ekran onun için çekirdek üretim altyapısıdır.
+                {ui.quickContentModeDesc}
               </p>
 
               <div className="mt-4 space-y-2 text-xs text-slate-200">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Tek prompt ile bölüm üretimi</div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Seri formatı + export hazır akış</div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">Experience Lab içerikleriyle ortak evren</div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem1}</div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem2}</div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem3}</div>
               </div>
             </div>
           </aside>
@@ -2695,14 +3189,14 @@ export default function CreatePage() {
           <div className="space-y-8">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Çocuk Profili</h2>
+            <h2 className="text-xl font-semibold">{ui.childProfile}</h2>
             {selectedChild ? (
               <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                Aktif: {selectedChild.nickname}
+                {ui.activeChild}: {selectedChild.nickname}
               </span>
             ) : (
               <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200">
-                Çocuk seçilmedi
+                {ui.noChildSelected}
               </span>
             )}
           </div>
@@ -2714,7 +3208,7 @@ export default function CreatePage() {
               onChange={(e) => setSelectedChildId(e.target.value)}
               disabled={childrenLoading}
             >
-              <option value="">Çocuk seç</option>
+              <option value="">{ui.chooseChild}</option>
               {children.map((child) => (
                 <option key={child.id} value={child.id}>
                   {child.nickname}
@@ -2725,7 +3219,7 @@ export default function CreatePage() {
             <div className="flex gap-2">
               <input
                 className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                placeholder="Yeni çocuk adı"
+                placeholder={ui.newChildName}
                 value={newChildName}
                 onChange={(e) => setNewChildName(e.target.value)}
               />
@@ -2734,35 +3228,35 @@ export default function CreatePage() {
                 disabled={addingChild}
                 className="rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
-                {addingChild ? "Ekleniyor..." : "Ekle"}
+                {addingChild ? ui.adding : ui.add}
               </button>
             </div>
           </div>
 
           <p className="text-sm text-slate-300">
-            Experience Lab akışında hikâye üretmeden önce aktif çocuk profili seçilmelidir.
+            {ui.childProfileHint}
           </p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Projelerim</h2>
+            <h2 className="text-xl font-semibold">{ui.myProjects}</h2>
             <button
               onClick={fetchProjects}
               disabled={loadingProjects}
               className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50"
             >
-              {loadingProjects ? "Yenileniyor..." : "Yenile"}
+              {loadingProjects ? ui.refreshing : ui.refresh}
             </button>
           </div>
 
           {loadingProjects ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-              Projeler yükleniyor...
+              {ui.projectsLoading}
             </div>
           ) : projects.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-              Henüz kayıtlı proje yok. İlk hikayeni oluşturduğunda burada görünecek.
+              {ui.noProjects}
             </div>
           ) : (
             <div className="space-y-2">
@@ -2775,14 +3269,14 @@ export default function CreatePage() {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="font-semibold text-white">{project.title || "Başlıksız Proje"}</div>
+                      <div className="font-semibold text-white">{project.title || ui.untitledProject}</div>
                       <div className="mt-1 text-xs text-slate-400">
-                        Son güncelleme: {project.updated_at ? new Date(project.updated_at).toLocaleString() : "-"}
+                        {ui.lastUpdate}: {project.updated_at ? new Date(project.updated_at).toLocaleString() : "-"}
                       </div>
                     </div>
 
                     <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
-                      Aç
+                      {ui.open}
                     </div>
                   </div>
                 </button>
@@ -2794,19 +3288,19 @@ export default function CreatePage() {
         <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">İçerik Dili</label>
+              <label className="mb-2 block text-sm font-medium text-gray-300">{ui.contentLanguage}</label>
               <select
                 className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
               >
-                <option value="tr">Türkçe</option>
-                <option value="en">English</option>
+                <option value="tr">{ui.turkish}</option>
+                <option value="en">{ui.english}</option>
               </select>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-              Seçilen dil; hikaye, narration, dialogue ve devam sahneleri için içerik üretim dilini belirler.
+              {ui.contentLanguageHint}
             </div>
           </div>
 
@@ -2828,7 +3322,7 @@ export default function CreatePage() {
               disabled={loadingSetup}
               className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
             >
-              {loadingSetup ? (language === "tr" ? "Kurulum hazırlanıyor..." : "Preparing setup...") : (language === "tr" ? "Karakterleri Oluştur" : "Create Characters")}
+              {loadingSetup ? ui.preparingSetup : ui.createCharacters}
             </button>
           </div>
         </div>
@@ -2847,44 +3341,44 @@ export default function CreatePage() {
 
         {currentProjectId && (
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
-            Proje ID: <span className="font-mono">{currentProjectId}</span>
+            {ui.projectId}: <span className="font-mono">{currentProjectId}</span>
           </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Studio Snapshot</p>
-            <p className="mt-3 text-lg font-semibold text-white">{setupReady ? "Kurulum hazır" : "Kurulum bekliyor"}</p>
-            <p className="mt-2 text-sm text-slate-300">Karakter ve görsel dünya hazırlandığında hikâye üretimine geçilir.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.studioSnapshot}</p>
+            <p className="mt-3 text-lg font-semibold text-white">{setupReady ? ui.setupReady : ui.setupWaiting}</p>
+            <p className="mt-2 text-sm text-slate-300">{ui.studioSnapshotDesc}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Dialogue Layer</p>
-            <p className="mt-3 text-lg font-semibold text-white">{dialogueReadyCount} sahne</p>
-            <p className="mt-2 text-sm text-slate-300">Karakter sesleri hazırlanmış sahne sayısı.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.dialogueLayer}</p>
+            <p className="mt-3 text-lg font-semibold text-white">{dialogueReadyCount} {ui.sceneCountLabel}</p>
+            <p className="mt-2 text-sm text-slate-300">{ui.dialogueLayerDesc}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Freeze Riski</p>
-            <p className="mt-3 text-lg font-semibold text-white">{freezeNeededCount} sahne</p>
-            <p className="mt-2 text-sm text-slate-300">Video süresinin ses akışını taşımakta zorlandığı sahneler.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.freezeRisk}</p>
+            <p className="mt-3 text-lg font-semibold text-white">{freezeNeededCount} {ui.sceneCountLabel}</p>
+            <p className="mt-2 text-sm text-slate-300">{ui.freezeRiskDesc}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Quick Mode Hazırlığı</p>
-            <p className="mt-3 text-lg font-semibold text-white">Aktif plan</p>
-            <p className="mt-2 text-sm text-slate-300">Bu ekran bir sonraki adımda hızlı YouTube üretim moduna ayrışacak.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.quickModePrep}</p>
+            <p className="mt-3 text-lg font-semibold text-white">{ui.activePlan}</p>
+            <p className="mt-2 text-sm text-slate-300">{ui.quickModePrepDesc}</p>
           </div>
         </div>
 
         {setupReady && (
           <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Başlangıç Tasarımı</h2>
+              <h2 className="text-2xl font-bold">{ui.initialDesign}</h2>
               <p className="text-sm text-gray-300">
-                Buradaki bilgileri düzelt. Her şey doğruysa sahneleri daha sonra oluştur.
+                {ui.initialDesignHint}
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm text-gray-300">Hikaye Başlığı</label>
+              <label className="block text-sm text-gray-300">{ui.storyTitle}</label>
               <input
                 className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
                 value={title}
@@ -2893,7 +3387,7 @@ export default function CreatePage() {
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm text-gray-300">Hikaye Özeti / Yönü</label>
+              <label className="block text-sm text-gray-300">{ui.storyPremiseLabel}</label>
               <textarea
                 className="min-h-24 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
                 value={storySetup?.storyPremise || ""}
@@ -2911,7 +3405,7 @@ export default function CreatePage() {
             </div>
 
             <div className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-4">
-  <h3 className="text-xl font-semibold">Anlatıcı Ayarları</h3>
+  <h3 className="text-xl font-semibold">{ui.narratorSettings}</h3>
 
   <div className="grid gap-4 md:grid-cols-2">
     <div className="space-y-2">
@@ -2933,7 +3427,7 @@ export default function CreatePage() {
         }}
       />
       <p className="text-xs text-gray-400">
-        Boş bırakırsan sunucu tarafındaki varsayılan narrator voice kullanılır.
+        {ui.narratorVoiceHint}
       </p>
     </div>
 
@@ -3062,25 +3556,25 @@ export default function CreatePage() {
 
   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-gray-400 space-y-1">
     <p>
-      Önerilen narrator başlangıcı:
+      {ui.narratorRecommended}
       <span className="ml-1 text-gray-200">
         stability 0.28–0.35 / similarity 0.75–0.82 / style 0.30–0.45 / speed 0.90–0.95
       </span>
     </p>
     <p>
-      Ses kimliği değişirse mevcut narrator ve dialogue cache’leri temizlenir.
+      {ui.narratorCacheHint}
     </p>
   </div>
 </div>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold">Karakterler</h3>
+                <h3 className="text-xl font-semibold">{ui.charactersTitle}</h3>
                 <button
                   onClick={addCharacter}
                   className="rounded-lg border border-white/20 px-4 py-2 text-sm"
                 >
-                  Karakter Ekle
+                  {ui.addCharacter}
                 </button>
               </div>
 
@@ -3090,13 +3584,13 @@ export default function CreatePage() {
                   className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-4"
                 >
                   <div className="flex items-center justify-between">
-                    <h4 className="font-semibold">Karakter {index + 1}</h4>
+                    <h4 className="font-semibold">{ui.characterLabel} {index + 1}</h4>
                     {characters.length > 1 && (
                       <button
                         onClick={() => removeCharacter(index)}
                         className="rounded-lg border border-red-400/30 px-3 py-1 text-xs text-red-200"
                       >
-                        Sil
+                        {ui.delete}
                       </button>
                     )}
                   </div>
@@ -3104,13 +3598,13 @@ export default function CreatePage() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
                       className="rounded-xl border border-gray-700 bg-white p-3 text-black"
-                      placeholder="Ad"
+                      placeholder={ui.namePlaceholder}
                       value={character.name}
                       onChange={(e) => updateCharacter(index, "name", e.target.value)}
                     />
                     <input
                       className="rounded-xl border border-gray-700 bg-white p-3 text-black"
-                      placeholder="Yaş"
+                      placeholder={ui.agePlaceholder}
                       value={character.age}
                       onChange={(e) => updateCharacter(index, "age", e.target.value)}
                     />
@@ -3118,42 +3612,41 @@ export default function CreatePage() {
 
                   <textarea
                     className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                    placeholder="Dış görünüş"
+                    placeholder={ui.appearancePlaceholder}
                     value={character.appearance}
                     onChange={(e) => updateCharacter(index, "appearance", e.target.value)}
                   />
 
                   <textarea
                     className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                    placeholder="Kıyafet"
+                    placeholder={ui.outfitPlaceholder}
                     value={character.outfit}
                     onChange={(e) => updateCharacter(index, "outfit", e.target.value)}
                   />
 
                   <input
                     className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                    placeholder="Aksesuar"
+                    placeholder={ui.accessoryPlaceholder}
                     value={character.accessory || ""}
                     onChange={(e) => updateCharacter(index, "accessory", e.target.value)}
                   />
 
                   <textarea
                     className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                    placeholder="Karakter enerjisi / kişiliği"
+                    placeholder={ui.personalityPlaceholder}
                     value={character.personality}
                     onChange={(e) => updateCharacter(index, "personality", e.target.value)}
                   />
 
                   <input
                     className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                    placeholder="Karakter voiceId (ElevenLabs)"
+                    placeholder={ui.characterVoicePlaceholder}
                     value={character.voiceId || ""}
                     onChange={(e) => updateCharacter(index, "voiceId", e.target.value)}
                   />
 
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-gray-400">
-                    Diyaloglarda karakter sesi için buraya ElevenLabs voiceId girebilirsin.
-                    Boş bırakılırsa sistem varsayılan sesle devam eder.
+                    {ui.characterVoiceHint}
                   </div>
 
                   <div className="space-y-3">
@@ -3163,19 +3656,19 @@ export default function CreatePage() {
                       className="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
                     >
                       {characterLoadingIndex === index
-                        ? "Referans görsel hazırlanıyor..."
-                        : "Referans Görsel Üret"}
+                        ? ui.preparingReferenceImage
+                        : ui.generateReferenceImage}
                     </button>
 
                     {character.referenceImage ? (
                       <img
                         src={character.referenceImage}
-                        alt={`${character.name || `Karakter ${index + 1}`} referans görseli`}
+                        alt={`${character.name || `${ui.characterLabel} ${index + 1}`} ${ui.referenceImageAlt}`}
                         className="w-full max-w-md rounded-xl"
                       />
                     ) : (
                       <div className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-gray-400">
-                        Bu karakter için henüz referans görsel üretilmedi.
+                        {ui.noCharacterReference}
                       </div>
                     )}
                   </div>
@@ -3184,11 +3677,11 @@ export default function CreatePage() {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xl font-semibold">Görsel Stil</h3>
+              <h3 className="text-xl font-semibold">{ui.visualStyle}</h3>
 
               <textarea
                 className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                placeholder="Stil"
+                placeholder={ui.stylePlaceholder}
                 value={visualBible?.style || ""}
                 onChange={(e) =>
                   setVisualBible((prev) => ({
@@ -3200,7 +3693,7 @@ export default function CreatePage() {
 
               <textarea
                 className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                placeholder="Renk paleti"
+                placeholder={ui.palettePlaceholder}
                 value={visualBible?.palette || ""}
                 onChange={(e) =>
                   setVisualBible((prev) => ({
@@ -3212,7 +3705,7 @@ export default function CreatePage() {
 
               <textarea
                 className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                placeholder="Kamera yaklaşımı"
+                placeholder={ui.cameraPlaceholder}
                 value={visualBible?.camera || ""}
                 onChange={(e) =>
                   setVisualBible((prev) => ({
@@ -3224,7 +3717,7 @@ export default function CreatePage() {
 
               <textarea
                 className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
-                placeholder="Tutarlılık kuralları"
+                placeholder={ui.consistencyRulesPlaceholder}
                 value={visualBible?.consistencyRules || ""}
                 onChange={(e) =>
                   setVisualBible((prev) => ({
@@ -3241,7 +3734,7 @@ export default function CreatePage() {
                 disabled={buildingStory}
                 className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
               >
-                {buildingStory ? "Hikaye kuruluyor..." : "Hikayeyi ve Sahneleri Oluştur"}
+                {buildingStory ? ui.buildingStory : ui.buildStoryAndScenes}
               </button>
             </div>
           </div>
@@ -3256,7 +3749,7 @@ export default function CreatePage() {
                 disabled={isSavingProject}
                 className="rounded-xl bg-green-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
-                {isSavingProject ? "Kaydediliyor..." : "Projeyi Kaydet"}
+                {isSavingProject ? ui.savingProject : ui.saveProject}
               </button>
 
               <button
@@ -3264,7 +3757,7 @@ export default function CreatePage() {
                 disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null}
                 className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
-                {isPreparingAudio ? "Sesler hazırlanıyor..." : "Sesleri Hazırla"}
+                {isPreparingAudio ? ui.preparingAudio : ui.prepareAudio}
               </button>
 
               <button
@@ -3276,7 +3769,7 @@ export default function CreatePage() {
                 }
                 className="rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
-                {isPlayingStory ? "Hikayeyi Durdur" : "Hikayeyi Dinle"}
+                {isPlayingStory ? ui.stopStory : ui.listenStory}
               </button>
 
               <button
@@ -3285,8 +3778,10 @@ export default function CreatePage() {
                 className="rounded-xl bg-orange-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
                 {isExportingMovie
-                  ? "Film oluşturuluyor..."
-                  : `🎞 Filmi Oluştur (${readyExportCount})`}
+                  ? ui.creatingMovie
+                  : exportedMovieUrl && hasReusableExport()
+                    ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
+                    : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
               </button>
               </div>
             </div>
@@ -3294,9 +3789,9 @@ export default function CreatePage() {
             {exportedMovieUrl && (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
                 <div>
-                  <h3 className="text-xl font-semibold">Final Film</h3>
+                  <h3 className="text-xl font-semibold">{ui.finalMovie}</h3>
                   <p className="mt-1 text-sm text-gray-300">
-                    Sahne videoları birleştirildi. Aşağıdan izleyebilir, indirebilir veya linki paylaşabilirsin.
+                    {ui.finalMovieDesc}
                   </p>
                 </div>
 
@@ -3379,8 +3874,8 @@ export default function CreatePage() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-2xl font-bold">Sahneler</h2>
-                  <p className="mt-1 text-sm text-slate-300">Her sahne kartı üretim, ses, video ve export kararını aynı yüzeyde gösterir.</p>
+                  <h2 className="text-2xl font-bold">{ui.sceneListTitle}</h2>
+                  <p className="mt-1 text-sm text-slate-300">{ui.sceneProductionPanelDesc}</p>
                 </div>
                 <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">
                   Studio Timeline View
@@ -3454,7 +3949,7 @@ export default function CreatePage() {
 
                           {isLastScene && (
                             <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">
-                              Son sahne
+                              {ui.lastScene}
                             </span>
                           )}
                         </div>
@@ -3462,7 +3957,7 @@ export default function CreatePage() {
                         <div>
                           <h3 className="text-xl font-semibold text-white">Production Scene Card</h3>
                           <p className="mt-1 max-w-2xl text-sm text-slate-300">
-                            Bu kart sahnenin hikâye, ses, video ve export kararını tek bakışta yönetmen için tasarlandı.
+                            {ui.sceneCardPurpose}
                           </p>
                         </div>
                       </div>
@@ -3611,8 +4106,8 @@ export default function CreatePage() {
                         className="rounded-lg border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
                       >
                         {scene.videoStatus === "processing"
-                          ? "Video oluşturuluyor..."
-                          : "🎬 Videoya Çevir"}
+                          ? ui.videoCreating
+                          : ui.convertToVideo}
                       </button>
 
                       <button
@@ -3622,7 +4117,7 @@ export default function CreatePage() {
                         }}
                         className="rounded-lg border border-white/20 px-4 py-2 text-sm"
                       >
-                        Sahneyi Düzenle
+                        {ui.editScene}
                       </button>
 
                       <button
@@ -3632,7 +4127,7 @@ export default function CreatePage() {
                         }}
                         className="rounded-lg border border-white/20 px-4 py-2 text-sm"
                       >
-                        Bu Sahneden Sonra Devam Et
+                        {ui.branchAfterScene}
                       </button>
 
                       <button
@@ -3640,41 +4135,41 @@ export default function CreatePage() {
                         disabled={redrawLoadingId === scene.id}
                         className="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
                       >
-                        {redrawLoadingId === scene.id ? "Yeniden çiziliyor..." : "Yeniden Çiz"}
+                        {redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}
                       </button>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Scene previews</p>
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{ui.scenePreviews}</p>
                         <div className="flex flex-wrap gap-2 text-[11px]">
                           <span className={`rounded-full px-2.5 py-1 ${hasImage ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
-                            {hasImage ? "Image ready" : "Image pending"}
+                            {hasImage ? ui.imageReady : ui.imagePending}
                           </span>
                           <span className={`rounded-full px-2.5 py-1 ${hasVideo ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
-                            {hasVideo ? "Video ready" : "Video pending"}
+                            {hasVideo ? ui.videoReady : ui.videoPending}
                           </span>
                         </div>
                       </div>
 
                       {scene.image ? (
                         <div className="space-y-2">
-                          <p className="text-xs text-slate-400">Hazır sahne görseli</p>
+                          <p className="text-xs text-slate-400">{ui.readySceneImage}</p>
                           <img
                             src={scene.image}
-                            alt={`Sahne ${scene.id} görseli`}
+                            alt={`${ui.scene} ${scene.id}`}
                             className="w-full rounded-2xl border border-white/10 bg-black/30 object-cover"
                           />
                         </div>
                       ) : (
                         <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
-                          Bu sahne için henüz görsel önizleme yok. Görsel üretildiğinde burada görünecek.
+                          {ui.noSceneImagePreview}
                         </div>
                       )}
 
                       {scene.videoUrl && scene.videoStatus === "done" ? (
                         <div className="space-y-2">
-                          <p className="text-xs text-slate-400">Hazır sahne videosu</p>
+                          <p className="text-xs text-slate-400">{ui.readySceneVideo}</p>
                           <video
                             src={scene.videoUrl}
                             controls
@@ -3684,7 +4179,7 @@ export default function CreatePage() {
                         </div>
                       ) : (
                         <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
-                          Bu sahne için henüz video önizleme yok. Video hazır olduğunda burada görünecek.
+                          {ui.noSceneVideoPreview}
                         </div>
                       )}
                     </div>
@@ -3693,23 +4188,23 @@ export default function CreatePage() {
                     
                 <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
                   <div className="flex flex-wrap gap-3">
-                    <span>🎯 Hedef: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} sn</span>
-                    <span>🎤 Konuşma: {(scene.timing?.totalAudioDuration || 0).toFixed(1)} sn</span>
-                    <span>🧊 Freeze: {(scene.timing?.freezeDuration || 0).toFixed(1)} sn</span>
+                    <span>🎯 {ui.target}: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} {ui.secondShort}</span>
+                    <span>🎤 {ui.speech}: {(scene.timing?.totalAudioDuration || 0).toFixed(1)} {ui.secondShort}</span>
+                    <span>🧊 Freeze: {(scene.timing?.freezeDuration || 0).toFixed(1)} {ui.secondShort}</span>
                   </div>
 
                   {(scene.timing?.maxSpeechDuration || TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO) <
                   (scene.timing?.totalAudioDuration || 0) ? (
-                    <p className="mt-2 text-rose-300">⚠️ Konuşma bu sahne için fazla uzun. Düzenleyip kısalt.</p>
+                    <p className="mt-2 text-rose-300">{ui.speechTooLong}</p>
                   ) : (
-                    <p className="mt-2 text-emerald-300">✅ Sahne ve konuşma süresi uyumlu.</p>
+                    <p className="mt-2 text-emerald-300">{ui.speechTimingOk}</p>
                   )}
                 </div>
 
 {editingSceneId === scene.id && (
                       <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
                         <label className="block text-sm text-gray-300">
-                          Bu sahnede neyi değiştirmek istiyorsun?
+                          {ui.sceneEditQuestion}
                         </label>
 
                         <textarea
@@ -3721,7 +4216,7 @@ export default function CreatePage() {
                               [scene.id]: e.target.value,
                             }))
                           }
-                          placeholder="Buraya bir robot gelsin, sahne daha komik olsun..."
+                          placeholder={ui.sceneEditPlaceholder}
                         />
 
                         <div className="flex gap-3">
@@ -3730,7 +4225,7 @@ export default function CreatePage() {
                             disabled={sceneLoadingId === scene.id}
                             className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
                           >
-                            {sceneLoadingId === scene.id ? "Güncelleniyor..." : "Sahneyi Güncelle"}
+                            {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
                           </button>
 
                           <button
@@ -3743,7 +4238,7 @@ export default function CreatePage() {
                             }}
                             className="rounded-lg border border-white/20 px-4 py-2 text-sm"
                           >
-                            Vazgeç
+                            {ui.cancel}
                           </button>
                         </div>
                       </div>
@@ -3752,7 +4247,7 @@ export default function CreatePage() {
                     {branchingSceneId === scene.id && (
                       <div className="mt-4 space-y-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
                         <label className="block text-sm text-yellow-100">
-                          Bu sahneden sonra hikaye nasıl devam etsin?
+                          {ui.branchQuestion}
                         </label>
 
                         <textarea
@@ -3764,11 +4259,11 @@ export default function CreatePage() {
                               [scene.id]: e.target.value,
                             }))
                           }
-                          placeholder="Örn: Bu sahneden sonra çocuklar gizli bir geçit keşfetsin."
+                          placeholder={ui.branchPlaceholder}
                         />
 
                         <p className="text-xs text-gray-300">
-                          Bu işlem, bu sahneden sonraki mevcut akışı kaldırır ve yeni bir devam sahnesi üretir.
+                          {ui.branchWarning}
                         </p>
 
                         <div className="flex gap-3">
@@ -3777,7 +4272,7 @@ export default function CreatePage() {
                             disabled={branchLoadingId === scene.id}
                             className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
                           >
-                            {branchLoadingId === scene.id ? "Yeni akış yazılıyor..." : "Bu Noktadan Devam Et"}
+                            {branchLoadingId === scene.id ? ui.writingNewFlow : ui.continueFromHere}
                           </button>
 
                           <button
@@ -3790,7 +4285,7 @@ export default function CreatePage() {
                             }}
                             className="rounded-lg border border-white/20 px-4 py-2 text-sm"
                           >
-                            Vazgeç
+                            {ui.cancel}
                           </button>
                         </div>
                       </div>
@@ -3804,9 +4299,9 @@ export default function CreatePage() {
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
               <div>
-                <h3 className="text-xl font-semibold">Son Sahneden Devam Et</h3>
+                <h3 className="text-xl font-semibold">{ui.continueFromLastScene}</h3>
                 <p className="mt-1 text-sm text-gray-300">
-                  Hikayenin mevcut son sahnesinden sonra ne olmasını istediğini yaz.
+                  {ui.continueFromLastSceneDesc}
                 </p>
               </div>
 
@@ -3814,7 +4309,7 @@ export default function CreatePage() {
                 className="min-h-28 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
                 value={continuePrompt}
                 onChange={(e) => setContinuePrompt(e.target.value)}
-                placeholder="Örn: Çocuklar mağaranın içinde parlayan bir kapı bulsun."
+                placeholder={ui.continuePromptPlaceholder}
               />
 
               <div>
@@ -3823,7 +4318,7 @@ export default function CreatePage() {
                   disabled={isContinuing}
                   className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
                 >
-                  {isContinuing ? "Devam yazılıyor..." : "Devamını Yaz"}
+                  {isContinuing ? ui.writingContinue : ui.writeContinue}
                 </button>
               </div>
             </div>

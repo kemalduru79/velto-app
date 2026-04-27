@@ -1,14 +1,11 @@
 import Link from "next/link";
-import type { ExperienceFlow, FlowZone } from "../lib/flows";
+import type { ExperienceFlow, FlowZone } from "@/lib/flows";
+import type { Language } from "@/lib/useLanguage";
+import { flowCardMessages } from "@/lib/i18n/flowCard";
 
 type FlowCardProps = {
   flow: ExperienceFlow;
-};
-
-const statusLabelMap: Record<ExperienceFlow["status"], string> = {
-  active: "Aktif",
-  pilot: "Pilot",
-  coming_soon: "Yakında",
+  language: Language;
 };
 
 const statusClassMap: Record<ExperienceFlow["status"], string> = {
@@ -23,7 +20,10 @@ const zoneClassMap: Record<FlowZone, string> = {
   VR: "border-violet-400/30 bg-violet-500/10 text-violet-100",
 };
 
-export default function FlowCard({ flow }: FlowCardProps) {
+export default function FlowCard({ flow, language }: FlowCardProps) {
+  const t = flowCardMessages[language] ?? flowCardMessages.tr;
+  const localizedFlow = t.flows[flow.key] ?? flow;
+
   const isComingSoon = flow.status === "coming_soon";
 
   return (
@@ -32,10 +32,10 @@ export default function FlowCard({ flow }: FlowCardProps) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
-              {flow.shortTitle}
+              {localizedFlow.shortTitle}
             </p>
             <h2 className="mt-2 text-xl font-semibold text-white">
-              {flow.title}
+              {localizedFlow.title}
             </h2>
           </div>
 
@@ -44,12 +44,17 @@ export default function FlowCard({ flow }: FlowCardProps) {
               statusClassMap[flow.status]
             }`}
           >
-            {statusLabelMap[flow.status]}
+            {t.statusLabels[flow.status]}
           </span>
         </div>
 
-        <p className="text-sm font-medium text-slate-200">{flow.subtitle}</p>
-        <p className="text-sm leading-6 text-slate-300">{flow.description}</p>
+        <p className="text-sm font-medium text-slate-200">
+          {localizedFlow.subtitle}
+        </p>
+
+        <p className="text-sm leading-6 text-slate-300">
+          {localizedFlow.description}
+        </p>
 
         <div className="flex flex-wrap gap-2">
           {flow.zones.map((zone: FlowZone) => (
@@ -64,25 +69,25 @@ export default function FlowCard({ flow }: FlowCardProps) {
 
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-slate-400">Yaş</p>
+            <p className="text-xs text-slate-400">{t.labels.age}</p>
             <p className="mt-1 font-semibold text-white">{flow.ageBand}</p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-slate-400">Süre</p>
+            <p className="text-xs text-slate-400">{t.labels.duration}</p>
             <p className="mt-1 font-semibold text-white">
-              {flow.durationMin} dk
+              {flow.durationMin} {t.labels.durationSuffix}
             </p>
           </div>
         </div>
 
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-            Çıktılar
+            {t.labels.outputs}
           </p>
 
           <div className="flex flex-wrap gap-2">
-            {flow.outputs.map((output: string) => (
+            {localizedFlow.outputs.map((output: string) => (
               <span
                 key={output}
                 className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-slate-200"
@@ -100,14 +105,14 @@ export default function FlowCard({ flow }: FlowCardProps) {
             disabled
             className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-400"
           >
-            {flow.ctaLabel}
+            {localizedFlow.ctaLabel}
           </button>
         ) : (
           <Link
             href={`/create?flow=${flow.key}`}
             className="block w-full rounded-2xl bg-cyan-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
           >
-            {flow.ctaLabel}
+            {localizedFlow.ctaLabel}
           </Link>
         )}
       </div>

@@ -11,10 +11,7 @@ export async function POST(req: Request) {
       : "";
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Yetkisiz istek." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Yetkisiz istek." }, { status: 401 });
     }
 
     const {
@@ -23,13 +20,11 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser(token);
 
     if (userError || !user) {
-      return NextResponse.json(
-        { error: "Geçersiz oturum." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
     }
 
     const body = await req.json();
+
     const {
       projectId,
       childId,
@@ -40,57 +35,20 @@ export async function POST(req: Request) {
       characters,
       visualBible,
       scenes,
+      exportedMovieUrl,
+      exportedMovieResult,
+      exportSignature,
     } = body;
 
     if (!title || !scenes) {
-      return NextResponse.json(
-        { error: "title ve scenes zorunlu" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "title ve scenes zorunlu" }, { status: 400 });
     }
 
     if (!childId) {
-      return NextResponse.json(
-        { error: "childId zorunlu" },
-        { status: 400 }
-      );
-    }
-
-    const { data: childRecord, error: childError } = await supabase
-      .from("children")
-      .select("id, parent_id")
-      .eq("id", childId)
-      .eq("parent_id", user.id)
-      .single();
-
-    if (childError || !childRecord) {
-      return NextResponse.json(
-        { error: "Bu çocuk profiline erişim yetkin yok." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
 
     if (projectId) {
-      const { data: existingProject, error: existingProjectError } = await supabase
-        .from("velto_projects")
-        .select("id, owner_user_id")
-        .eq("id", projectId)
-        .single();
-
-      if (existingProjectError || !existingProject) {
-        return NextResponse.json(
-          { error: "Proje bulunamadı." },
-          { status: 404 }
-        );
-      }
-
-      if (existingProject.owner_user_id !== user.id) {
-        return NextResponse.json(
-          { error: "Bu projeyi güncelleme yetkin yok." },
-          { status: 403 }
-        );
-      }
-
       const { data, error } = await supabase
         .from("velto_projects")
         .update({
@@ -103,59 +61,48 @@ export async function POST(req: Request) {
           visual_bible: visualBible || {},
           characters: characters || [],
           scenes: scenes || [],
+          exported_movie_url: exportedMovieUrl || null,
+          exported_movie_result: exportedMovieResult || null,
+          export_signature: exportSignature || null,
         })
         .eq("id", projectId)
+        .eq("owner_user_id", user.id)
         .select()
         .single();
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      return NextResponse.json({
-        success: true,
-        mode: "updated",
-        project: data,
-      });
+      return NextResponse.json({ success: true, mode: "updated", project: data });
     }
 
     const { data, error } = await supabase
       .from("velto_projects")
-      .insert([
-        {
-          owner_user_id: user.id,
-          child_id: childId,
-          title,
-          input_prompt: inputPrompt || "",
-          story_premise: storyPremise || "",
-          language: language === "en" ? "en" : "tr",
-          visual_bible: visualBible || {},
-          characters: characters || [],
-          scenes: scenes || [],
-        },
-      ])
+      .insert([{
+        owner_user_id: user.id,
+        child_id: childId,
+        title,
+        input_prompt: inputPrompt || "",
+        story_premise: storyPremise || "",
+        language: language === "en" ? "en" : "tr",
+        visual_bible: visualBible || {},
+        characters: characters || [],
+        scenes: scenes || [],
+        exported_movie_url: exportedMovieUrl || null,
+        exported_movie_result: exportedMovieResult || null,
+        export_signature: exportSignature || null,
+      }])
       .select()
       .single();
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      mode: "created",
-      project: data,
-    });
-  } catch (e) {
-    return NextResponse.json(
-      { error: "Kayıt sırasında hata oluştu" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, mode: "created", project: data });
+
+  } catch {
+    return NextResponse.json({ error: "Kayıt sırasında hata oluştu" }, { status: 500 });
   }
 }

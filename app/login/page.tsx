@@ -32,7 +32,7 @@ export default function LoginPage() {
         throw new Error(error.message);
       }
 
-      router.push("/create");
+      router.push("/dashboard");
     } catch (e: any) {
       setError(e?.message || "Giriş sırasında hata oluştu.");
     } finally {

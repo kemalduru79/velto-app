@@ -11,6 +11,7 @@ type PublicProject = {
   characters?: any[];
   scenes?: any[];
   published_at?: string;
+  exported_movie_url?: string;
 };
 
 function formatPublishedDate(value?: string) {
@@ -91,6 +92,7 @@ export default function PublicEpisodePage() {
   const firstVideoScene = readyVideoScenes[0] || null;
   const firstImageScene = readyImageScenes[0] || null;
   const heroScene = firstVideoScene || firstImageScene || scenes[0] || null;
+  const exportedMovieUrl = project?.exported_movie_url || "";
   const publishedDate = formatPublishedDate(project?.published_at);
 
   const scrollToScene = (index: number) => {
@@ -214,10 +216,11 @@ export default function PublicEpisodePage() {
                   </button>
                 )}
 
-                {firstVideoScene?.videoUrl && (
+                {(exportedMovieUrl || firstVideoScene?.videoUrl) && (
                   <a
-                    href={firstVideoScene.videoUrl}
+                    href={exportedMovieUrl || firstVideoScene?.videoUrl}
                     target="_blank"
+                    rel="noreferrer"
                     className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
                   >
                     Videoyu Aç
@@ -256,7 +259,14 @@ export default function PublicEpisodePage() {
             </div>
 
             <div className="relative min-h-[360px] border-t border-white/10 bg-black/30 lg:border-l lg:border-t-0">
-              {heroScene?.videoUrl ? (
+              {exportedMovieUrl ? (
+                <video
+                  src={exportedMovieUrl}
+                  controls
+                  poster={heroScene?.image || undefined}
+                  className="h-full min-h-[360px] w-full object-cover"
+                />
+              ) : heroScene?.videoUrl ? (
                 <video
                   src={heroScene.videoUrl}
                   controls

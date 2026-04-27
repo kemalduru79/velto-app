@@ -17,7 +17,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("velto_projects")
       .select(
-        "id, title, input_prompt, story_premise, language, visual_bible, characters, scenes, share_id, is_public, published_at, created_at, updated_at"
+        "id, title, input_prompt, story_premise, language, visual_bible, characters, scenes, share_id, is_public, published_at, created_at, updated_at, exported_movie_url, exported_movie_result, export_signature"
       )
       .eq("share_id", shareId)
       .eq("is_public", true)
@@ -30,15 +30,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      project: data,
-    });
-  } catch (e: any) {
-    console.error("public-project error:", e);
+    return NextResponse.json({ success: true, project: data });
 
+  } catch {
     return NextResponse.json(
-      { error: e?.message || "Public episode yüklenirken hata oluştu." },
+      { error: "Public episode yüklenirken hata oluştu." },
       { status: 500 }
     );
   }
