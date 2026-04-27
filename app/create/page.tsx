@@ -718,8 +718,10 @@ export default function CreatePage() {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
   const selectedFlow = getFlowByKey(selectedFlowKey);
-  const isStoryverseFlow = selectedFlow.key === "storyverse";
-  const isCreatorLabFlow = selectedFlow.key === "creator_lab";
+  const activeFlowKey =
+    (selectedFlow as any)?.key || (selectedFlow as any)?.id || selectedFlowKey || "storyverse";
+  const isStoryverseFlow = activeFlowKey === "storyverse";
+  const isCreatorLabFlow = activeFlowKey === "creator_lab";
   const [authLoading, setAuthLoading] = useState(true);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChildId, setSelectedChildId] = useState("");
@@ -737,7 +739,7 @@ export default function CreatePage() {
   );
   const ui = UI_TEXT[uiLanguage] ?? UI_TEXT.tr;
   const localizedFlowMessages = flowCardMessages[uiLanguage] ?? flowCardMessages.tr;
-  const localizedSelectedFlow = localizedFlowMessages.flows[selectedFlow.key] ?? selectedFlow;
+  const localizedSelectedFlow = localizedFlowMessages.flows[activeFlowKey] ?? selectedFlow;
 
   const [creatorCountry, setCreatorCountry] = useState("global");
   const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("8-12");
@@ -821,7 +823,7 @@ export default function CreatePage() {
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
 
   const getActiveMaxSpeechRatio = () => {
-    return selectedFlow.key === "creator_lab"
+    return activeFlowKey === "creator_lab"
       ? CREATOR_LAB_MAX_SPEECH_RATIO
       : MAX_SPEECH_RATIO;
   };
@@ -965,14 +967,14 @@ export default function CreatePage() {
   };
 
   const selectedChild = children.find((child) => child.id === selectedChildId) || null;
-  const activeFlowType = selectedFlow.key || "storyverse";
+  const activeFlowType = activeFlowKey;
   const filteredProjects = projects.filter(
     (project) => (project.flow_type || "storyverse") === activeFlowType
   );
   const selectedFlowProjectTitle =
-    selectedFlow.key === "creator_lab"
+    activeFlowKey === "creator_lab"
       ? "Creator Lab Projects"
-      : selectedFlow.key === "storyverse"
+      : activeFlowKey === "storyverse"
         ? "Storyverse Projects"
         : `${localizedSelectedFlow.shortTitle || localizedSelectedFlow.title} Projects`;
 
@@ -2058,7 +2060,7 @@ export default function CreatePage() {
             childId: selectedChildId,
             title,
             inputPrompt: input,
-            flowKey: selectedFlow.key,
+            flowKey: activeFlowKey,
             flowTitle: selectedFlow.title,
             language,
             storyPremise: storySetup?.storyPremise || "",
@@ -2309,9 +2311,9 @@ export default function CreatePage() {
         childId: selectedChildId,
         title,
         inputPrompt: input,
-        flowKey: selectedFlow.key,
+        flowKey: activeFlowKey,
         flowTitle: selectedFlow.title,
-        flowType: selectedFlow.key || "storyverse",
+        flowType: activeFlowKey || "storyverse",
         language,
         storyPremise: storySetup?.storyPremise || "",
         characters,
@@ -2791,7 +2793,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           prompt: buildFlowAwarePrompt(input),
           originalPrompt: input,
-          flowKey: selectedFlow.key,
+          flowKey: activeFlowKey,
           flowTitle: selectedFlow.title,
           language,
         }),
@@ -3024,7 +3026,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
-          flowKey: selectedFlow.key,
+          flowKey: activeFlowKey,
           flowTitle: selectedFlow.title,
           storyPremise: storySetup?.storyPremise || "",
           characters,
@@ -3214,7 +3216,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
-          flowKey: selectedFlow.key,
+          flowKey: activeFlowKey,
           flowTitle: selectedFlow.title,
           scenes,
           childDirection: continuePrompt,
@@ -3290,7 +3292,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           title,
           language,
-          flowKey: selectedFlow.key,
+          flowKey: activeFlowKey,
           flowTitle: selectedFlow.title,
           scenes: baseScenes,
           childDirection,
@@ -3628,7 +3630,7 @@ export default function CreatePage() {
               ))}
             </div>
           </div>
-          {selectedFlow.key !== "storyverse" && (
+          {activeFlowKey !== "storyverse" && (
             <p className="mt-3 rounded-xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
               {ui.nonStoryversePilot}
             </p>
@@ -3807,7 +3809,7 @@ export default function CreatePage() {
               type="button"
               onClick={() => setSelectedFlowKey("storyverse")}
               className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                selectedFlow.key === "storyverse"
+                activeFlowKey === "storyverse"
                   ? "bg-cyan-400 text-slate-950"
                   : "text-slate-300 hover:bg-white/10 hover:text-white"
               }`}
@@ -3819,7 +3821,7 @@ export default function CreatePage() {
               type="button"
               onClick={() => setSelectedFlowKey("creator_lab")}
               className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                selectedFlow.key === "creator_lab"
+                activeFlowKey === "creator_lab"
                   ? "bg-cyan-400 text-slate-950"
                   : "text-slate-300 hover:bg-white/10 hover:text-white"
               }`}
@@ -5068,8 +5070,7 @@ export default function CreatePage() {
                     <span>🧊 Freeze: {(scene.timing?.freezeDuration || 0).toFixed(1)} {ui.secondShort}</span>
                   </div>
 
-                  {(scene.timing?.maxSpeechDuration || TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO) <
-                  (scene.timing?.totalAudioDuration || 0) ? (
+                  {isSceneSpeechTooLong(scene.timing) ? (
                     <p className="mt-2 text-rose-300">{ui.speechTooLong}</p>
                   ) : (
                     <p className="mt-2 text-emerald-300">{ui.speechTimingOk}</p>
