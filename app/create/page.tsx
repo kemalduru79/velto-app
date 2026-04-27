@@ -157,6 +157,36 @@ type YoutubeResearchVideo = {
   url: string;
 };
 
+type YoutubePatternSummary = {
+  topTitlePatterns: string[];
+  hookPatterns: string[];
+  recommendedDurationSec: number;
+  opportunityScore: number;
+  competitionLevel: "low" | "medium" | "high";
+  recommendedContentAngle: string;
+  reasoning: string[];
+};
+
+type CreatorVideoDurationSec = 60 | 90 | 180 | 300;
+
+const CREATOR_DURATION_OPTIONS: Array<{
+  value: CreatorVideoDurationSec;
+  label: string;
+  sceneCount: number;
+}> = [
+  { value: 60, label: "60 sec", sceneCount: 7 },
+  { value: 90, label: "90 sec", sceneCount: 10 },
+  { value: 180, label: "180 sec", sceneCount: 20 },
+  { value: 300, label: "300 sec", sceneCount: 30 },
+];
+
+const getCreatorSceneCountByDuration = (durationSec: CreatorVideoDurationSec) => {
+  return (
+    CREATOR_DURATION_OPTIONS.find((option) => option.value === durationSec)
+      ?.sceneCount || 7
+  );
+};
+
 const CREATOR_COUNTRY_OPTIONS = [
   { value: "global", label: "Global / International" },
   { value: "us", label: "United States" },
@@ -432,6 +462,21 @@ const UI_TEXT = {
     youtubeResearchViews: "izlenme",
     youtubeResearchLikes: "beğeni",
     youtubeResearchDuration: "süre",
+    patternEngineTitle: "Pattern Engine",
+    patternEngineDesc: "YouTube örneklerinden başlık, hook, süre, rekabet ve fırsat sinyallerini çıkarır.",
+    patternEngineButton: "Pattern Engine Çalıştır",
+    patternEngineLoading: "Pattern analiz ediliyor...",
+    patternEngineEmpty: "Pattern analizi için önce YouTube Trend Analizi çalıştır.",
+    patternTopTitles: "Başlık Pattern’leri",
+    patternHooks: "Hook Pattern’leri",
+    patternDuration: "Önerilen Süre",
+    patternOpportunity: "Opportunity Score",
+    patternCompetition: "Rekabet Seviyesi",
+    patternAngle: "Önerilen İçerik Açısı",
+    patternReasoning: "Gerekçe",
+    creatorDurationTitle: "Video Süresi",
+    creatorDurationDesc: "Seçilen süre üretilecek sahne sayısını belirler. Pattern Engine önerisini kullanabilir veya manuel seçim yapabilirsin.",
+    usePatternDuration: "Pattern önerisini kullan",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
     projectUpdated: "Proje güncellendi ✅",
@@ -657,6 +702,21 @@ const UI_TEXT = {
     youtubeResearchViews: "views",
     youtubeResearchLikes: "likes",
     youtubeResearchDuration: "duration",
+    patternEngineTitle: "Pattern Engine",
+    patternEngineDesc: "Extracts title, hook, duration, competition, and opportunity signals from the YouTube sample.",
+    patternEngineButton: "Run Pattern Engine",
+    patternEngineLoading: "Analyzing patterns...",
+    patternEngineEmpty: "Run YouTube Trend Analysis first to use Pattern Engine.",
+    patternTopTitles: "Title Patterns",
+    patternHooks: "Hook Patterns",
+    patternDuration: "Recommended Duration",
+    patternOpportunity: "Opportunity Score",
+    patternCompetition: "Competition Level",
+    patternAngle: "Recommended Content Angle",
+    patternReasoning: "Reasoning",
+    creatorDurationTitle: "Video Duration",
+    creatorDurationDesc: "The selected duration controls the number of production scenes. You can use the Pattern Engine recommendation or choose manually.",
+    usePatternDuration: "Use pattern recommendation",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
     projectUpdated: "Project updated ✅",
@@ -774,6 +834,8 @@ export default function CreatePage() {
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational");
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("shorts_60");
+  const [creatorVideoDurationSec, setCreatorVideoDurationSec] =
+    useState<CreatorVideoDurationSec>(60);
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
@@ -788,6 +850,9 @@ export default function CreatePage() {
     YoutubeResearchVideo[]
   >([]);
   const [youtubeResearchLoading, setYoutubeResearchLoading] = useState(false);
+  const [youtubePatternSummary, setYoutubePatternSummary] =
+    useState<YoutubePatternSummary | null>(null);
+  const [youtubePatternLoading, setYoutubePatternLoading] = useState(false);
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -1373,6 +1438,7 @@ export default function CreatePage() {
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
     setYoutubeResearchVideos([]);
+    setYoutubePatternSummary(null);
     setRefinedCreatorScenes([]);
     setTitle("");
     setCharacters([]);
@@ -1404,22 +1470,72 @@ export default function CreatePage() {
     return currentProjectId || draftProjectKeyRef.current;
   };
 
+  const limitForImagePrompt = (value: unknown, maxLength = 900) => {
+    const textValue = String(value || "")
+      .replace(/data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (textValue.length <= maxLength) {
+      return textValue;
+    }
+
+    return `${textValue.slice(0, maxLength)}...`;
+  };
+
+  const getSafeCharactersForImagePrompt = () => {
+    return characters.slice(0, 6).map((character) => ({
+      name: limitForImagePrompt(character.name, 80),
+      age: limitForImagePrompt(character.age, 40),
+      appearance: limitForImagePrompt(character.appearance, 500),
+      outfit: limitForImagePrompt(character.outfit, 300),
+      accessory: limitForImagePrompt(character.accessory, 250),
+      personality: limitForImagePrompt(character.personality, 300),
+      referenceImage: character.referenceImage?.startsWith("http")
+        ? character.referenceImage
+        : "",
+    }));
+  };
+
+  const getSafeVisualBibleForImagePrompt = () => {
+    return {
+      style: limitForImagePrompt(visualBible?.style, 600),
+      palette: limitForImagePrompt(visualBible?.palette, 500),
+      camera: limitForImagePrompt(visualBible?.camera, 500),
+      consistencyRules: limitForImagePrompt(visualBible?.consistencyRules, 700),
+    };
+  };
+
+  const getSafeSceneForImagePrompt = (
+    scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">
+  ) => {
+    return {
+      id: scene.id,
+      text: limitForImagePrompt(scene.text, 900),
+      cameraDirection: limitForImagePrompt(scene.cameraDirection, 500),
+      emotion: limitForImagePrompt(scene.emotion, 180),
+      motionHint: limitForImagePrompt(scene.motionHint, 600),
+    };
+  };
+
   const generateSceneImage = async (
     scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">
   ) => {
+    const safeScene = getSafeSceneForImagePrompt(scene);
+
     const imageRes = await fetch("/api/image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        title,
-        sceneText: scene.text,
-        cameraDirection: scene.cameraDirection,
-        emotion: scene.emotion,
-        motionHint: scene.motionHint,
-        characters,
-        visualBible,
+        title: limitForImagePrompt(title, 160),
+        sceneText: safeScene.text,
+        cameraDirection: safeScene.cameraDirection,
+        emotion: safeScene.emotion,
+        motionHint: safeScene.motionHint,
+        characters: getSafeCharactersForImagePrompt(),
+        visualBible: getSafeVisualBibleForImagePrompt(),
       }),
     });
 
@@ -2546,6 +2662,43 @@ export default function CreatePage() {
     );
   };
 
+  const getCreatorDurationLabel = () => {
+    return (
+      CREATOR_DURATION_OPTIONS.find(
+        (option) => option.value === creatorVideoDurationSec
+      )?.label || `${creatorVideoDurationSec} sec`
+    );
+  };
+
+  const getCreatorSceneCount = () => {
+    return getCreatorSceneCountByDuration(creatorVideoDurationSec);
+  };
+
+  const applyPatternRecommendedDuration = () => {
+    const recommended = youtubePatternSummary?.recommendedDurationSec;
+
+    if (!recommended) {
+      return;
+    }
+
+    if (recommended <= 75) {
+      setCreatorVideoDurationSec(60);
+      return;
+    }
+
+    if (recommended <= 120) {
+      setCreatorVideoDurationSec(90);
+      return;
+    }
+
+    if (recommended <= 220) {
+      setCreatorVideoDurationSec(180);
+      return;
+    }
+
+    setCreatorVideoDurationSec(300);
+  };
+
   const getCreatorContentTypeLabel = () => {
     return (
       CREATOR_CONTENT_TYPE_OPTIONS.find((option) => option.value === creatorContentType)
@@ -2605,6 +2758,59 @@ export default function CreatePage() {
       );
     } finally {
       setYoutubeResearchLoading(false);
+    }
+  };
+
+  const handleYoutubePatternEngine = async () => {
+    if (!youtubeResearchVideos.length) {
+      setError(ui.patternEngineEmpty);
+      return;
+    }
+
+    setYoutubePatternLoading(true);
+    setYoutubePatternSummary(null);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/youtube-pattern-engine", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          language,
+          videos: youtubeResearchVideos,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success || !data?.summary) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Pattern analysis could not be completed."
+              : "Pattern analizi tamamlanamadı.")
+        );
+      }
+
+      setYoutubePatternSummary(data.summary as YoutubePatternSummary);
+    } catch (e: any) {
+      console.error("handleYoutubePatternEngine error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Pattern analysis failed."
+            : "Pattern analizi sırasında hata oluştu.")
+      );
+    } finally {
+      setYoutubePatternLoading(false);
     }
   };
 
@@ -2706,6 +2912,8 @@ export default function CreatePage() {
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
+          durationSec: creatorVideoDurationSec,
+          sceneCount: getCreatorSceneCount(),
           language,
           mentorAnalysis: creatorMentorResult,
         }),
@@ -2804,6 +3012,8 @@ export default function CreatePage() {
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
+          durationSec: creatorVideoDurationSec,
+          sceneCount: getCreatorSceneCount(),
           language,
           productionPackage: creatorProductionPackage,
           scenes: creatorProductionPackage.scenes,
@@ -4140,6 +4350,27 @@ export default function CreatePage() {
                     ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                    {ui.creatorDurationTitle}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    value={creatorVideoDurationSec}
+                    onChange={(e) =>
+                      setCreatorVideoDurationSec(
+                        Number(e.target.value) as CreatorVideoDurationSec
+                      )
+                    }
+                  >
+                    {CREATOR_DURATION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} / {option.sceneCount} {ui.sceneCountLabel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           )}
@@ -4230,6 +4461,124 @@ export default function CreatePage() {
                 <p className="text-sm text-red-50/70">
                   {ui.youtubeResearchEmpty}
                 </p>
+              )}
+            </div>
+          )}
+
+          {isCreatorLabFlow && (
+            <div className="rounded-2xl border border-purple-300/20 bg-purple-500/10 p-5 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-purple-200">
+                    Phase-2C
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-white">
+                    {ui.patternEngineTitle}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-purple-50/80">
+                    {ui.patternEngineDesc}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleYoutubePatternEngine}
+                  disabled={youtubePatternLoading || youtubeResearchVideos.length === 0}
+                  className="rounded-2xl bg-purple-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {youtubePatternLoading
+                    ? ui.patternEngineLoading
+                    : ui.patternEngineButton}
+                </button>
+              </div>
+
+              {!youtubePatternSummary && !youtubePatternLoading && (
+                <p className="text-sm text-purple-50/70">
+                  {ui.patternEngineEmpty}
+                </p>
+              )}
+
+              {youtubePatternSummary && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">{ui.patternTopTitles}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                      {youtubePatternSummary.topTitlePatterns.map((item, index) => (
+                        <li key={`title-pattern-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">{ui.patternHooks}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                      {youtubePatternSummary.hookPatterns.map((item, index) => (
+                        <li key={`hook-pattern-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">{ui.patternAngle}</h4>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                      {youtubePatternSummary.recommendedContentAngle}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          {ui.patternDuration}
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-white">
+                          {youtubePatternSummary.recommendedDurationSec}s
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          {ui.patternOpportunity}
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-white">
+                          {youtubePatternSummary.opportunityScore}/100
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          {ui.patternCompetition}
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-white capitalize">
+                          {youtubePatternSummary.competitionLevel}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-purple-300/20 bg-purple-400/10 p-3 text-sm text-purple-50">
+                      <p>
+                        {ui.creatorDurationTitle}: {getCreatorDurationLabel()} /{" "}
+                        {getCreatorSceneCount()} {ui.sceneCountLabel}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={applyPatternRecommendedDuration}
+                        className="mt-3 rounded-xl border border-purple-200/30 px-3 py-2 text-xs font-semibold text-purple-50 transition hover:bg-purple-200/10"
+                      >
+                        {ui.usePatternDuration}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:col-span-2">
+                    <h4 className="font-semibold text-white">{ui.patternReasoning}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                      {youtubePatternSummary.reasoning.map((item, index) => (
+                        <li key={`pattern-reasoning-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               )}
             </div>
           )}

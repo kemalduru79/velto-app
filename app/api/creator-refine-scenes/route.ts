@@ -19,6 +19,8 @@ type CreatorRefineRequest = {
   ageGroup?: string;
   contentType?: string;
   format?: string;
+  durationSec?: number;
+  sceneCount?: number;
   language?: "tr" | "en";
   productionPackage?: unknown;
   scenes?: CreatorProductionScene[];
@@ -27,6 +29,31 @@ type CreatorRefineRequest = {
 function asString(value: unknown, fallback = "") {
   const result = String(value || "").trim();
   return result || fallback;
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(numericValue), min), max);
+}
+
+function getPacingBlueprint(sceneCount: number) {
+  const hookEnd = Math.max(1, Math.ceil(sceneCount * 0.15));
+  const setupEnd = Math.max(hookEnd + 1, Math.ceil(sceneCount * 0.3));
+  const developmentEnd = Math.max(setupEnd + 1, Math.ceil(sceneCount * 0.72));
+  const climaxEnd = Math.max(developmentEnd + 1, Math.ceil(sceneCount * 0.88));
+
+  return {
+    hook: `Scenes 1-${hookEnd}: preserve or strengthen the opening hook`,
+    setup: `Scenes ${hookEnd + 1}-${setupEnd}: clarify context and promise`,
+    development: `Scenes ${setupEnd + 1}-${developmentEnd}: improve pacing and visual examples`,
+    climax: `Scenes ${developmentEnd + 1}-${climaxEnd}: sharpen the strongest fact or payoff`,
+    resolution: `Scenes ${climaxEnd + 1}-${sceneCount}: recap and close with a memorable takeaway`,
+  };
 }
 
 function normalizeScenes(value: unknown, fallbackScenes: CreatorProductionScene[]) {
@@ -115,11 +142,16 @@ export async function POST(req: Request) {
     });
 
     const language = body?.language === "tr" ? "Turkish" : "English";
+    const sceneCount = clampNumber(body?.sceneCount, scenes.length, scenes.length, scenes.length);
+    const durationSec = clampNumber(body?.durationSec, sceneCount * 8, 45, 360);
+    const targetSceneDurationSec = Math.max(5, Math.round(durationSec / sceneCount));
+    const pacingBlueprint = getPacingBlueprint(sceneCount);
 
     const systemPrompt = [
       "You are an expert animation director, YouTube retention editor, and child-safe content producer.",
+      "This is Smart Production Sync refinement: improve scenes while preserving duration, scene count, and pacing strategy.",
       "Your job is to refine scene objects for stronger retention, clearer narration, better animation direction, and better first-3-second hook.",
-      "Do not change the number of scenes unless absolutely necessary.",
+      "Do not change the number of scenes.",
       "Keep the same JSON structure.",
       "Return strict JSON only. No markdown. No code fences.",
     ].join(" ");
@@ -132,8 +164,12 @@ export async function POST(req: Request) {
         ageGroup: body?.ageGroup || "8-12",
         contentType: body?.contentType || "Educational",
         format: body?.format || "Shorts / 60 sec",
+        durationSec,
+        sceneCount,
+        targetSceneDurationSec,
         language,
       },
+      pacingBlueprint,
       productionPackage: body?.productionPackage || null,
       scenes,
       requiredJsonShape: {
@@ -151,13 +187,17 @@ export async function POST(req: Request) {
         ]
       },
       rules: [
+        `Return exactly ${sceneCount} scenes.`,
+        `Each scene should fit roughly ${targetSceneDurationSec} seconds.`,
         "Improve hook and pacing.",
+        "Respect beginning-development-climax-resolution flow based on pacingBlueprint.",
         "Keep narration clean: no emotion tags, no sound-effect labels, no voice direction metadata.",
         "Make each scene visually clear for AI image generation.",
         "Keep language age-appropriate.",
         "Do not include unsafe content.",
         "Avoid long narration; each scene should be concise.",
-        "Preserve the educational point of each scene."
+        "Preserve the educational point of each scene.",
+        "Do not collapse multiple scenes into one."
       ]
     };
 
@@ -173,7 +213,7 @@ export async function POST(req: Request) {
           content: JSON.stringify(userPrompt),
         },
       ],
-      temperature: 0.55,
+      temperature: 0.5,
     });
 
     const rawText = response.output_text || "";
@@ -190,11 +230,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const refinedScenes = normalizeScenes(parsed.scenes, scenes);
+    const refinedScenes = normalizeScenes(parsed.scenes, scenes).slice(0, scenes.length);
+
+    if (refinedScenes.length !== scenes.length) {
+      return NextResponse.json(
+        { error: "Refine sonucu sahne sayısını değiştirdiği için reddedildi." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
       scenes: refinedScenes,
+      durationSec,
+      sceneCount,
+      targetSceneDurationSec,
+      pacingBlueprint,
     });
   } catch (e: any) {
     console.error("creator-refine-scenes error:", e);

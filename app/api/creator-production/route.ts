@@ -19,6 +19,8 @@ type CreatorProductionRequest = {
   ageGroup?: string;
   contentType?: string;
   format?: string;
+  durationSec?: number;
+  sceneCount?: number;
   language?: "tr" | "en";
   mentorAnalysis?: CreatorMentorResult;
 };
@@ -26,6 +28,31 @@ type CreatorProductionRequest = {
 function asString(value: unknown, fallback = "") {
   const result = String(value || "").trim();
   return result || fallback;
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(numericValue), min), max);
+}
+
+function getPacingBlueprint(sceneCount: number) {
+  const hookEnd = Math.max(1, Math.ceil(sceneCount * 0.15));
+  const setupEnd = Math.max(hookEnd + 1, Math.ceil(sceneCount * 0.3));
+  const developmentEnd = Math.max(setupEnd + 1, Math.ceil(sceneCount * 0.72));
+  const climaxEnd = Math.max(developmentEnd + 1, Math.ceil(sceneCount * 0.88));
+
+  return {
+    hook: `Scenes 1-${hookEnd}: hook, curiosity gap, and immediate visual payoff`,
+    setup: `Scenes ${hookEnd + 1}-${setupEnd}: setup, context, and the first clear learning promise`,
+    development: `Scenes ${setupEnd + 1}-${developmentEnd}: core explanation with escalating visual examples`,
+    climax: `Scenes ${developmentEnd + 1}-${climaxEnd}: strongest fact, surprise, or visual demonstration`,
+    resolution: `Scenes ${climaxEnd + 1}-${sceneCount}: recap, memorable takeaway, and soft engagement question`,
+  };
 }
 
 function normalizeCharacters(value: unknown) {
@@ -49,12 +76,12 @@ function normalizeCharacters(value: unknown) {
   });
 }
 
-function normalizeScenes(value: unknown) {
+function normalizeScenes(value: unknown, sceneCount: number) {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.slice(0, 14).map((item, index) => {
+  return value.slice(0, sceneCount).map((item, index) => {
     const scene = item as Record<string, unknown>;
 
     return {
@@ -62,9 +89,15 @@ function normalizeScenes(value: unknown) {
       text: asString(scene.text),
       narration: asString(scene.narration),
       dialogue: asString(scene.dialogue),
-      cameraDirection: asString(scene.cameraDirection, "Clean animated framing with clear focus."),
+      cameraDirection: asString(
+        scene.cameraDirection,
+        "Clean animated framing with clear focus."
+      ),
       emotion: asString(scene.emotion, "curious and energetic"),
-      motionHint: asString(scene.motionHint, asString(scene.visualPrompt, "Simple animated movement.")),
+      motionHint: asString(
+        scene.motionHint,
+        asString(scene.visualPrompt, "Simple animated movement.")
+      ),
       visualPrompt: asString(scene.visualPrompt),
     };
   });
@@ -99,8 +132,12 @@ export async function POST(req: Request) {
     const ageGroup = asString(body?.ageGroup, "8-12");
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
+    const durationSec = clampNumber(body?.durationSec, 60, 45, 360);
+    const sceneCount = clampNumber(body?.sceneCount, 7, 5, 36);
+    const targetSceneDurationSec = Math.max(5, Math.round(durationSec / sceneCount));
     const language = body?.language === "tr" ? "tr" : "en";
     const mentorAnalysis = body?.mentorAnalysis || {};
+    const pacingBlueprint = getPacingBlueprint(sceneCount);
 
     if (!topic && !mentorAnalysis?.recommendedIdea?.title) {
       return NextResponse.json(
@@ -121,21 +158,26 @@ export async function POST(req: Request) {
     });
 
     const systemPrompt = [
-      "You are a senior YouTube animated video producer and child-safe storytelling designer.",
+      "You are a senior YouTube animated video producer, retention editor, and child-safe storytelling designer.",
       "You convert a creator mentor analysis into a production-ready package for an AI video generation pipeline.",
+      "This is Smart Production Sync: duration, scene count, pacing, and story structure must match.",
       "Return strict JSON only. No markdown. No code fences.",
       "The output must be compatible with a scene-based animation engine.",
     ].join(" ");
 
     const userPrompt = {
-      task: "Convert the selected content opportunity into a production-ready video package.",
+      task: "Create a synchronized production-ready video package.",
       target: {
         market: country,
         ageGroup,
         contentType,
         format,
+        durationSec,
+        sceneCount,
+        targetSceneDurationSec,
         outputLanguage: language === "en" ? "English" : "Turkish",
       },
+      pacingBlueprint,
       topic,
       mentorAnalysis,
       requiredJsonShape: {
@@ -175,13 +217,19 @@ export async function POST(req: Request) {
         caption: "string"
       },
       rules: [
-        "Use 5-7 scenes for Shorts / 60 sec, 8-10 scenes for 2 min, 10-14 scenes for 5 min.",
+        `Create exactly ${sceneCount} scenes.`,
+        `Design the video for approximately ${durationSec} seconds total.`,
+        `Each scene should fit roughly ${targetSceneDurationSec} seconds.`,
+        "Scene 1 must open with a strong 3-second curiosity hook.",
+        "Follow the provided pacingBlueprint so the video has a clear beginning, development, climax, and resolution.",
+        "Do not create a 7-scene short if sceneCount is larger; match the requested scene count.",
         "Keep narration clean. Do not include emotion tags, voice labels, or sound-effect labels inside narration.",
+        "Keep each narration line concise enough for the target scene duration.",
         "Dialogue may be empty if the format is narrator-led.",
         "Scenes must be visual and easy for AI image/video generation.",
         "Keep content age-appropriate, educational, and safe.",
-        "Use a strong hook in scene 1.",
-        "Create simple reusable characters if the video benefits from character continuity."
+        "Create simple reusable characters if the video benefits from character continuity.",
+        "Avoid repetitive scene openings; each scene should advance the story or explanation."
       ]
     };
 
@@ -197,7 +245,7 @@ export async function POST(req: Request) {
           content: JSON.stringify(userPrompt),
         },
       ],
-      temperature: 0.65,
+      temperature: 0.62,
     });
 
     const rawText = response.output_text || "";
@@ -216,7 +264,7 @@ export async function POST(req: Request) {
     }
 
     const characters = normalizeCharacters(parsed.characters);
-    const scenes = normalizeScenes(parsed.scenes);
+    const scenes = normalizeScenes(parsed.scenes, sceneCount);
 
     if (!characters.length || !scenes.length) {
       return NextResponse.json(
@@ -225,21 +273,49 @@ export async function POST(req: Request) {
       );
     }
 
+    if (scenes.length < Math.max(5, Math.floor(sceneCount * 0.75))) {
+      return NextResponse.json(
+        {
+          error: `Production package beklenen sahne sayısına ulaşamadı. Beklenen: ${sceneCount}, gelen: ${scenes.length}.`,
+        },
+        { status: 500 }
+      );
+    }
+
     const productionPackage = {
-      title: asString(parsed.title, asString(mentorAnalysis?.recommendedIdea?.title, "Creator Lab Video")),
+      title: asString(
+        parsed.title,
+        asString(mentorAnalysis?.recommendedIdea?.title, "Creator Lab Video")
+      ),
       hook: asString(parsed.hook),
       storyPremise: asString(parsed.storyPremise),
       characters,
       visualBible: {
-        style: asString(parsed?.visualBible?.style, "Bright, clean 2D animated style suitable for children."),
-        palette: asString(parsed?.visualBible?.palette, "Vivid but balanced colors with strong subject/background contrast."),
-        camera: asString(parsed?.visualBible?.camera, "Simple clear shots, gentle pans, and occasional close-ups."),
-        consistencyRules: asString(parsed?.visualBible?.consistencyRules, "Keep characters, colors, and accessories consistent across scenes."),
+        style: asString(
+          parsed?.visualBible?.style,
+          "Bright, clean 2D animated style suitable for children."
+        ),
+        palette: asString(
+          parsed?.visualBible?.palette,
+          "Vivid but balanced colors with strong subject/background contrast."
+        ),
+        camera: asString(
+          parsed?.visualBible?.camera,
+          "Simple clear shots, gentle pans, and occasional close-ups."
+        ),
+        consistencyRules: asString(
+          parsed?.visualBible?.consistencyRules,
+          "Keep characters, colors, and accessories consistent across scenes."
+        ),
       },
       scenes,
       thumbnailIdea: asString(parsed.thumbnailIdea),
       youtubeTitle: asString(parsed.youtubeTitle),
       caption: asString(parsed.caption),
+      durationSec,
+      sceneCount,
+      targetSceneDurationSec,
+      pacingBlueprint,
     };
 
     return NextResponse.json({
