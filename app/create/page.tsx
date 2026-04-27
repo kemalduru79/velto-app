@@ -95,6 +95,92 @@ type ChildProfile = {
 
 type ContentLanguage = "tr" | "en";
 
+type CreatorAgeGroup = "6-8" | "8-12" | "10-16" | "13-17";
+type CreatorContentType =
+  | "educational"
+  | "fun_facts"
+  | "story"
+  | "cartoon"
+  | "science"
+  | "history"
+  | "life_skills";
+type CreatorFormat = "shorts_60" | "two_min" | "five_min";
+
+type CreatorVideoIdea = {
+  title: string;
+  concept: string;
+};
+
+type CreatorMentorResult = {
+  audienceInsight: string[];
+  hookPatterns: string[];
+  videoIdeas: CreatorVideoIdea[];
+  recommendedIdea: {
+    title: string;
+    reason: string;
+  };
+  productionPlan: string[];
+};
+
+type CreatorProductionScene = {
+  id: number;
+  text: string;
+  narration: string;
+  dialogue: string;
+  cameraDirection: string;
+  emotion: string;
+  motionHint: string;
+  visualPrompt?: string;
+};
+
+type CreatorProductionPackage = {
+  title: string;
+  hook: string;
+  storyPremise: string;
+  characters: Character[];
+  visualBible: VisualBible;
+  scenes: CreatorProductionScene[];
+  thumbnailIdea: string;
+  youtubeTitle: string;
+  caption: string;
+};
+
+const CREATOR_COUNTRY_OPTIONS = [
+  { value: "global", label: "Global / International" },
+  { value: "us", label: "United States" },
+  { value: "canada", label: "Canada" },
+  { value: "uk", label: "United Kingdom" },
+  { value: "australia", label: "Australia" },
+  { value: "germany", label: "Germany" },
+  { value: "france", label: "France" },
+  { value: "spain", label: "Spain" },
+  { value: "turkey", label: "Türkiye" },
+];
+
+const CREATOR_AGE_GROUP_OPTIONS: Array<{ value: CreatorAgeGroup; label: string }> = [
+  { value: "6-8", label: "6–8" },
+  { value: "8-12", label: "8–12" },
+  { value: "10-16", label: "10–16" },
+  { value: "13-17", label: "13–17" },
+];
+
+const CREATOR_CONTENT_TYPE_OPTIONS: Array<{ value: CreatorContentType; label: string }> = [
+  { value: "educational", label: "Educational" },
+  { value: "fun_facts", label: "Fun Facts" },
+  { value: "story", label: "Storytelling" },
+  { value: "cartoon", label: "Cartoon" },
+  { value: "science", label: "Science" },
+  { value: "history", label: "History" },
+  { value: "life_skills", label: "Life Skills" },
+];
+
+const CREATOR_FORMAT_OPTIONS: Array<{ value: CreatorFormat; label: string }> = [
+  { value: "shorts_60", label: "Shorts / 60 sec" },
+  { value: "two_min", label: "2 min video" },
+  { value: "five_min", label: "5 min video" },
+];
+
+
 const emptyVisualBible: VisualBible = {
   style: "",
   palette: "",
@@ -117,6 +203,7 @@ const MAX_SCENE_DURATION_SECONDS = 10;
 const MIN_SCENE_DURATION_SECONDS = 6.5;
 const FREEZE_TOLERANCE_SECONDS = 0.35;
 const MAX_SPEECH_RATIO = 0.82;
+const CREATOR_LAB_MAX_SPEECH_RATIO = 0.95;
 
 const UI_TEXT = {
   tr: {
@@ -295,6 +382,36 @@ const UI_TEXT = {
     writingContinue: "Devam yazılıyor...",
     writeContinue: "Devamını Yaz",
     sceneListTitle: "Sahneler",
+    creatorMentor: "Content Creator Mentor",
+    creatorStrategySetup: "YouTube Strateji Kurulumu",
+    creatorMentorDesc: "Bu mod, sahne üretmeden önce AI’ın içerik stratejisti gibi düşünmesini sağlar. YouTube Data API entegrasyonu Faz-2 yol haritasındadır; bu MVP önce mentor analiz katmanını kullanır.",
+    targetMarket: "Hedef Pazar",
+    ageGroup: "Yaş Grubu",
+    contentType: "İçerik Tipi",
+    videoFormat: "Video Formatı",
+    analyzeContentOpportunity: "İçerik Fırsatını Analiz Et",
+    analyzingContentOpportunity: "İçerik fırsatı analiz ediliyor...",
+    creatorTopicLabel: "Content Creator Lab hangi konu veya video fikrini analiz etsin?",
+    creatorTopicPlaceholder: "Örn: Ahtapotlar neden çok zeki? veya çocuklara yönelik yüksek potansiyelli bir bilim videosu fikri öner",
+    mentorAnalysisTitle: "Mentor Analizi",
+    audienceInsight: "Audience Insight",
+    hookPatterns: "Hook Patterns",
+    videoIdeas: "Video Fikirleri",
+    recommendedIdea: "Önerilen Fikir",
+    productionPlan: "Production Plan",
+    continueToProduction: "Bu fikri üretim paketine dönüştür",
+    creatorProductionTitle: "Üretim Paketi",
+    creatorProductionDesc: "Önerilen fikri sahneler, anlatım, görsel yönlendirmeler, thumbnail ve caption içeren üretim paketine dönüştürür.",
+    convertingProductionPackage: "Üretim paketi hazırlanıyor...",
+    productionPackageReady: "Üretim paketi hazır ✅",
+    thumbnailIdea: "Thumbnail Fikri",
+    youtubeTitle: "YouTube Başlığı",
+    youtubeCaption: "YouTube Caption",
+    productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
+    refineScenes: "Sahneleri AI ile Geliştir",
+    refiningScenes: "Sahneler geliştiriliyor...",
+    refinedScenesReady: "Sahneler AI ile geliştirildi ✅",
+    refinedScenesNote: "Refine edilen sahneler hazır. Artık sahne üretimine geçebilirsin.",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
     projectUpdated: "Proje güncellendi ✅",
@@ -482,6 +599,36 @@ const UI_TEXT = {
     writingContinue: "Writing continuation...",
     writeContinue: "Write Continuation",
     sceneListTitle: "Scenes",
+    creatorMentor: "Content Creator Mentor",
+    creatorStrategySetup: "YouTube Strategy Setup",
+    creatorMentorDesc: "This mode guides the AI to think like a content strategist before generating scenes. YouTube Data API integration is planned for Phase 2; this MVP uses the mentor analysis layer first.",
+    targetMarket: "Target Market",
+    ageGroup: "Age Group",
+    contentType: "Content Type",
+    videoFormat: "Video Format",
+    analyzeContentOpportunity: "Analyze Content Opportunity",
+    analyzingContentOpportunity: "Analyzing content opportunity...",
+    creatorTopicLabel: "What topic or video idea should Content Creator Lab analyze?",
+    creatorTopicPlaceholder: "Example: Why octopuses are so intelligent, or recommend a high-potential kids science video idea",
+    mentorAnalysisTitle: "Mentor Analysis",
+    audienceInsight: "Audience Insight",
+    hookPatterns: "Hook Patterns",
+    videoIdeas: "Video Ideas",
+    recommendedIdea: "Recommended Idea",
+    productionPlan: "Production Plan",
+    continueToProduction: "Turn this idea into a production package",
+    creatorProductionTitle: "Production Package",
+    creatorProductionDesc: "Turns the recommended idea into a production-ready package with scenes, narration, visual directions, thumbnail, and caption.",
+    convertingProductionPackage: "Preparing production package...",
+    productionPackageReady: "Production package is ready ✅",
+    thumbnailIdea: "Thumbnail Idea",
+    youtubeTitle: "YouTube Title",
+    youtubeCaption: "YouTube Caption",
+    productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
+    refineScenes: "Refine Scenes with AI",
+    refiningScenes: "Refining scenes...",
+    refinedScenesReady: "Scenes refined with AI ✅",
+    refinedScenesNote: "Refined scenes are ready. You can now continue to scene production.",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
     projectUpdated: "Project updated ✅",
@@ -572,6 +719,7 @@ export default function CreatePage() {
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
   const selectedFlow = getFlowByKey(selectedFlowKey);
   const isStoryverseFlow = selectedFlow.key === "storyverse";
+  const isCreatorLabFlow = selectedFlow.key === "creator_lab";
   const [authLoading, setAuthLoading] = useState(true);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChildId, setSelectedChildId] = useState("");
@@ -590,6 +738,23 @@ export default function CreatePage() {
   const ui = UI_TEXT[uiLanguage] ?? UI_TEXT.tr;
   const localizedFlowMessages = flowCardMessages[uiLanguage] ?? flowCardMessages.tr;
   const localizedSelectedFlow = localizedFlowMessages.flows[selectedFlow.key] ?? selectedFlow;
+
+  const [creatorCountry, setCreatorCountry] = useState("global");
+  const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("8-12");
+  const [creatorContentType, setCreatorContentType] =
+    useState<CreatorContentType>("educational");
+  const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("shorts_60");
+  const [creatorMentorResult, setCreatorMentorResult] =
+    useState<CreatorMentorResult | null>(null);
+  const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
+  const [creatorProductionPackage, setCreatorProductionPackage] =
+    useState<CreatorProductionPackage | null>(null);
+  const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
+  const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
+    CreatorProductionScene[]
+  >([]);
+  const [refineScenesLoading, setRefineScenesLoading] = useState(false);
+
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
   const [title, setTitle] = useState("");
@@ -654,6 +819,27 @@ export default function CreatePage() {
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+  const getActiveMaxSpeechRatio = () => {
+    return selectedFlow.key === "creator_lab"
+      ? CREATOR_LAB_MAX_SPEECH_RATIO
+      : MAX_SPEECH_RATIO;
+  };
+
+  const isSceneSpeechTooLong = (timing?: SceneTiming) => {
+    if (!timing) {
+      return false;
+    }
+
+    const targetDuration =
+      timing.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS;
+    const maxSpeechDuration = Number(
+      (targetDuration * getActiveMaxSpeechRatio()).toFixed(2)
+    );
+
+    return timing.totalAudioDuration > maxSpeechDuration;
+  };
+
 
   useEffect(() => {
     if (isHydratingRef.current) {
@@ -779,6 +965,44 @@ export default function CreatePage() {
   };
 
   const selectedChild = children.find((child) => child.id === selectedChildId) || null;
+  const activeFlowType = selectedFlow.key || "storyverse";
+  const filteredProjects = projects.filter(
+    (project) => (project.flow_type || "storyverse") === activeFlowType
+  );
+  const selectedFlowProjectTitle =
+    selectedFlow.key === "creator_lab"
+      ? "Creator Lab Projects"
+      : selectedFlow.key === "storyverse"
+        ? "Storyverse Projects"
+        : `${localizedSelectedFlow.shortTitle || localizedSelectedFlow.title} Projects`;
+
+  const getProjectPreviewImage = (project: any) => {
+    if (!Array.isArray(project?.scenes)) {
+      return "";
+    }
+
+    const previewScene = project.scenes.find((scene: any) => scene?.image);
+    return previewScene?.image || "";
+  };
+
+  const getProjectStatusLabel = (project: any) => {
+    if (project?.exported_movie_url) {
+      return uiLanguage === "en" ? "🎬 Ready" : "🎬 Hazır";
+    }
+
+    if (Array.isArray(project?.scenes) && project.scenes.length > 0) {
+      return uiLanguage === "en" ? "⏳ In Progress" : "⏳ Devam Ediyor";
+    }
+
+    return uiLanguage === "en" ? "🧩 Draft" : "🧩 Taslak";
+  };
+
+  const getProjectFlowLabel = (project: any) => {
+    return (project?.flow_type || "storyverse") === "creator_lab"
+      ? "Creator Lab"
+      : "Storyverse";
+  };
+
 
   const getAccessTokenOrThrow = async () => {
     const {
@@ -1085,6 +1309,9 @@ export default function CreatePage() {
     stopDialoguePlayback();
     stopStoryPlayback();
     setStorySetup(null);
+    setCreatorMentorResult(null);
+    setCreatorProductionPackage(null);
+    setRefinedCreatorScenes([]);
     setTitle("");
     setCharacters([]);
     setVisualBible(null);
@@ -1724,10 +1951,7 @@ export default function CreatePage() {
     for (const scene of exportScenes) {
       const timing = scene.timing || buildSceneTiming(0, 0);
 
-      if (
-        timing.maxSpeechDuration &&
-        timing.totalAudioDuration > timing.maxSpeechDuration
-      ) {
+      if (isSceneSpeechTooLong(timing)) {
         setError(
           `Sahne ${scene.id}: Konuşma çok uzun. Lütfen sahneyi kısalt veya yeniden üret.`
         );
@@ -1793,7 +2017,7 @@ export default function CreatePage() {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
                 maxSpeechDuration: Number(
-                  (normalizedTarget * MAX_SPEECH_RATIO).toFixed(2)
+                  (normalizedTarget * getActiveMaxSpeechRatio()).toFixed(2)
                 ),
               },
             };
@@ -2087,6 +2311,7 @@ export default function CreatePage() {
         inputPrompt: input,
         flowKey: selectedFlow.key,
         flowTitle: selectedFlow.title,
+        flowType: selectedFlow.key || "storyverse",
         language,
         storyPremise: storySetup?.storyPremise || "",
         characters,
@@ -2245,6 +2470,254 @@ export default function CreatePage() {
     }
   };
 
+  const getCreatorCountryLabel = () => {
+    return (
+      CREATOR_COUNTRY_OPTIONS.find((option) => option.value === creatorCountry)?.label ||
+      creatorCountry
+    );
+  };
+
+  const getCreatorFormatLabel = () => {
+    return (
+      CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label ||
+      creatorFormat
+    );
+  };
+
+  const getCreatorContentTypeLabel = () => {
+    return (
+      CREATOR_CONTENT_TYPE_OPTIONS.find((option) => option.value === creatorContentType)
+        ?.label || creatorContentType
+    );
+  };
+
+  const handleCreatorMentorAnalysis = async () => {
+    if (!input.trim()) {
+      setError(
+        uiLanguage === "en"
+          ? "Please enter a topic or video idea first."
+          : "Lütfen önce bir konu veya video fikri yaz."
+      );
+      return;
+    }
+
+    setCreatorMentorLoading(true);
+    setLoadingSetup(true);
+    setCreatorMentorResult(null);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch("/api/creator-mentor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          language,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success || !data?.analysis) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Creator mentor analysis could not be generated."
+              : "Creator mentor analizi oluşturulamadı.")
+        );
+      }
+
+      setCreatorMentorResult(data.analysis as CreatorMentorResult);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Creator mentor analysis is ready ✅"
+          : "Creator mentor analizi hazır ✅"
+      );
+    } catch (e: any) {
+      console.error("handleCreatorMentorAnalysis error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Creator mentor analysis failed."
+            : "Creator mentor analizi sırasında hata oluştu.")
+      );
+    } finally {
+      setCreatorMentorLoading(false);
+      setLoadingSetup(false);
+    }
+  };
+
+
+  const handleCreatorProductionPackage = async () => {
+    if (!creatorMentorResult) {
+      setError(
+        uiLanguage === "en"
+          ? "Please run the mentor analysis first."
+          : "Lütfen önce mentor analizini oluştur."
+      );
+      return;
+    }
+
+    setCreatorProductionLoading(true);
+    setLoadingSetup(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch("/api/creator-production", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          language,
+          mentorAnalysis: creatorMentorResult,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success || !data?.productionPackage) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Production package could not be generated."
+              : "Üretim paketi oluşturulamadı.")
+        );
+      }
+
+      const nextPackage = data.productionPackage as CreatorProductionPackage;
+
+      setCreatorProductionPackage(nextPackage);
+      setRefinedCreatorScenes([]);
+
+      setStorySetup({
+        title: nextPackage.title || "",
+        storyPremise: nextPackage.storyPremise || "",
+        characters: Array.isArray(nextPackage.characters)
+          ? nextPackage.characters.map((character: Character) => ({
+              ...character,
+              voiceId: character.voiceId || "",
+            }))
+          : [],
+        visualBible: nextPackage.visualBible || emptyVisualBible,
+      });
+
+      setTitle(nextPackage.title || "");
+      setCharacters(
+        Array.isArray(nextPackage.characters)
+          ? nextPackage.characters.map((character: Character) => ({
+              ...character,
+              voiceId: character.voiceId || "",
+            }))
+          : []
+      );
+      setVisualBible(nextPackage.visualBible || emptyVisualBible);
+      setScenes([]);
+      setContinuePrompt("");
+      setEditingSceneId(null);
+      setSceneInstructions({});
+      setBranchingSceneId(null);
+      setBranchInstructions({});
+      setExportedMovieUrl("");
+      setExportMovieResult(null);
+      setExportSignature("");
+
+      setSaveMessage(ui.productionPackageReady);
+    } catch (e: any) {
+      console.error("handleCreatorProductionPackage error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Production package generation failed."
+            : "Üretim paketi oluşturulurken hata oluştu.")
+      );
+    } finally {
+      setCreatorProductionLoading(false);
+      setLoadingSetup(false);
+    }
+  };
+
+
+  const handleRefineCreatorScenes = async () => {
+    if (!creatorProductionPackage?.scenes?.length) {
+      setError(
+        uiLanguage === "en"
+          ? "Please create a production package first."
+          : "Lütfen önce üretim paketini oluştur."
+      );
+      return;
+    }
+
+    setRefineScenesLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+
+      const res = await fetch("/api/creator-refine-scenes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          language,
+          productionPackage: creatorProductionPackage,
+          scenes: creatorProductionPackage.scenes,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success || !Array.isArray(data.scenes)) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Scenes could not be refined."
+              : "Sahneler geliştirilemedi.")
+        );
+      }
+
+      setRefinedCreatorScenes(data.scenes as CreatorProductionScene[]);
+      setSaveMessage(ui.refinedScenesReady);
+    } catch (e: any) {
+      console.error("handleRefineCreatorScenes error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Scene refinement failed."
+            : "Sahneler geliştirilirken hata oluştu.")
+      );
+    } finally {
+      setRefineScenesLoading(false);
+    }
+  };
+
   const buildFlowAwarePrompt = (rawPrompt: string) => {
     const trimmedPrompt = rawPrompt.trim();
 
@@ -2273,14 +2746,27 @@ export default function CreatePage() {
   };
 
   const getFlowAwareInputLabel = () => {
+    if (isCreatorLabFlow) {
+      return ui.creatorTopicLabel;
+    }
+
     return isStoryverseFlow ? ui.storyPromptLabel : ui.genericPromptLabel;
   };
 
   const getFlowAwarePlaceholder = () => {
+    if (isCreatorLabFlow) {
+      return ui.creatorTopicPlaceholder;
+    }
+
     return isStoryverseFlow ? ui.storyPromptPlaceholder : ui.genericPromptPlaceholder;
   };
 
   const createSetup = async () => {
+    if (isCreatorLabFlow) {
+      await handleCreatorMentorAnalysis();
+      return;
+    }
+
     if (!selectedChildId) {
       setError("Lütfen önce bir çocuk seç.");
       return;
@@ -2432,6 +2918,72 @@ export default function CreatePage() {
   };
 
   const buildStory = async () => {
+    if (isCreatorLabFlow && creatorProductionPackage?.scenes?.length) {
+      setBuildingStory(true);
+      setError("");
+      setSaveMessage("");
+      setScenes([]);
+      setContinuePrompt("");
+      setEditingSceneId(null);
+      setSceneInstructions({});
+      setBranchingSceneId(null);
+      setBranchInstructions({});
+      clearAllVideoPolls();
+      stopDialoguePlayback();
+      stopStoryPlayback();
+      setExportedMovieUrl("");
+      setExportMovieResult(null);
+      setExportSignature("");
+
+      try {
+        const creatorSourceScenes =
+          refinedCreatorScenes.length > 0
+            ? refinedCreatorScenes
+            : creatorProductionPackage.scenes;
+
+        const packageScenes: Scene[] = creatorSourceScenes.map((scene) => ({
+          id: scene.id,
+          text: scene.text || "",
+          narration: scene.narration || "",
+          dialogue: scene.dialogue || "",
+          cameraDirection: scene.cameraDirection || "",
+          emotion: scene.emotion || "",
+          motionHint: scene.motionHint || scene.visualPrompt || "",
+          image: "",
+          audioUrl: "",
+          audioPath: "",
+          audioSourceText: "",
+          audioSettingsKey: "",
+          dialogueAudioUrl: "",
+          dialogueAudioPath: "",
+          dialogueAudioSourceText: "",
+          dialogueAudioSettingsKey: "",
+          videoUrl: "",
+          videoStatus: "idle",
+          videoJobId: "",
+          timing: buildSceneTiming(0, 0),
+        }));
+
+        setScenes(packageScenes);
+
+        for (const scene of packageScenes) {
+          try {
+            const image = await generateSceneImage(scene);
+
+            setScenes((prev) =>
+              prev.map((s) => (s.id === scene.id ? { ...s, image } : s))
+            );
+          } catch (imageError) {
+            console.error("creator package scene image error:", imageError);
+          }
+        }
+      } finally {
+        setBuildingStory(false);
+      }
+
+      return;
+    }
+
     if (!title.trim()) {
       setError("Başlık boş olamaz.");
       return;
@@ -3240,7 +3792,7 @@ export default function CreatePage() {
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">{ui.myProjects}</h2>
+            <h2 className="text-xl font-semibold">{selectedFlowProjectTitle}</h2>
             <button
               onClick={fetchProjects}
               disabled={loadingProjects}
@@ -3250,37 +3802,119 @@ export default function CreatePage() {
             </button>
           </div>
 
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
+            <button
+              type="button"
+              onClick={() => setSelectedFlowKey("storyverse")}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                selectedFlow.key === "storyverse"
+                  ? "bg-cyan-400 text-slate-950"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              Storyverse
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedFlowKey("creator_lab")}
+              className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                selectedFlow.key === "creator_lab"
+                  ? "bg-cyan-400 text-slate-950"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              Creator Lab
+            </button>
+          </div>
+
           {loadingProjects ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
               {ui.projectsLoading}
             </div>
-          ) : projects.length === 0 ? (
+          ) : filteredProjects.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
               {ui.noProjects}
             </div>
           ) : (
-            <div className="space-y-2">
-              {projects.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => loadProjectById(project.id)}
-                  disabled={isLoadingProject}
-                  className="w-full rounded-xl border border-gray-700 bg-black/20 p-4 text-left transition hover:bg-white/10 disabled:opacity-50"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="font-semibold text-white">{project.title || ui.untitledProject}</div>
-                      <div className="mt-1 text-xs text-slate-400">
-                        {ui.lastUpdate}: {project.updated_at ? new Date(project.updated_at).toLocaleString() : "-"}
-                      </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredProjects.map((project) => {
+                const previewImage = getProjectPreviewImage(project);
+                const projectStatus = getProjectStatusLabel(project);
+                const flowLabel = getProjectFlowLabel(project);
+
+                return (
+                  <article
+                    key={project.id}
+                    className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                  >
+                    <div className="h-36 w-full overflow-hidden bg-black/40">
+                      {previewImage ? (
+                        <img
+                          src={previewImage}
+                          alt={project.title || ui.untitledProject}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                          {uiLanguage === "en" ? "No Preview" : "Önizleme Yok"}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
-                      {ui.open}
+                    <div className="space-y-3 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h3 className="text-sm font-semibold leading-5 text-white">
+                          {project.title || ui.untitledProject}
+                        </h3>
+
+                        <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                          {flowLabel}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                        <span>{projectStatus}</span>
+                        <span>
+                          {project.updated_at
+                            ? new Date(project.updated_at).toLocaleString()
+                            : "-"}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadProjectById(project.id)}
+                          disabled={isLoadingProject}
+                          className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {ui.open}
+                        </button>
+
+                        {project.exported_movie_url ? (
+                          <a
+                            href={project.exported_movie_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl bg-cyan-400 px-3 py-2 text-center text-xs font-semibold text-slate-950 transition hover:bg-cyan-300"
+                          >
+                            {uiLanguage === "en" ? "Movie" : "Film"}
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-500"
+                          >
+                            {uiLanguage === "en" ? "No Movie" : "Film Yok"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
@@ -3304,6 +3938,93 @@ export default function CreatePage() {
             </div>
           </div>
 
+          {isCreatorLabFlow && (
+            <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-5 space-y-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+                  {ui.creatorMentor}
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-white">
+                  {ui.creatorStrategySetup}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-cyan-50/80">
+                  {ui.creatorMentorDesc}
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                    {ui.targetMarket}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    value={creatorCountry}
+                    onChange={(e) => setCreatorCountry(e.target.value)}
+                  >
+                    {CREATOR_COUNTRY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                    {ui.ageGroup}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    value={creatorAgeGroup}
+                    onChange={(e) => setCreatorAgeGroup(e.target.value as CreatorAgeGroup)}
+                  >
+                    {CREATOR_AGE_GROUP_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                    {ui.contentType}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    value={creatorContentType}
+                    onChange={(e) =>
+                      setCreatorContentType(e.target.value as CreatorContentType)
+                    }
+                  >
+                    {CREATOR_CONTENT_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                    {ui.videoFormat}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    value={creatorFormat}
+                    onChange={(e) => setCreatorFormat(e.target.value as CreatorFormat)}
+                  >
+                    {CREATOR_FORMAT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
 <label className="block text-sm font-medium text-gray-300">
   {getFlowAwareInputLabel()}
@@ -3322,7 +4043,13 @@ export default function CreatePage() {
               disabled={loadingSetup}
               className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
             >
-              {loadingSetup ? ui.preparingSetup : ui.createCharacters}
+              {isCreatorLabFlow
+                ? creatorMentorLoading
+                  ? ui.analyzingContentOpportunity
+                  : ui.analyzeContentOpportunity
+                : loadingSetup
+                  ? ui.preparingSetup
+                  : ui.createCharacters}
             </button>
           </div>
         </div>
@@ -3343,6 +4070,154 @@ export default function CreatePage() {
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
             {ui.projectId}: <span className="font-mono">{currentProjectId}</span>
           </div>
+        )}
+
+        {isCreatorLabFlow && creatorMentorResult && (
+          <section className="rounded-[28px] border border-cyan-300/20 bg-cyan-500/[0.08] p-5 text-sm text-slate-200">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200">
+                {ui.creatorMentor}
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                {ui.mentorAnalysisTitle}
+              </h2>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.audienceInsight}</h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                  {creatorMentorResult.audienceInsight.map((item, index) => (
+                    <li key={`audience-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.hookPatterns}</h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                  {creatorMentorResult.hookPatterns.map((item, index) => (
+                    <li key={`hook-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+              <h3 className="font-semibold text-white">{ui.videoIdeas}</h3>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {creatorMentorResult.videoIdeas.map((idea, index) => (
+                  <article
+                    key={`${idea.title}-${index}`}
+                    className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+                  >
+                    <p className="font-semibold text-cyan-100">
+                      {index + 1}. {idea.title}
+                    </p>
+                    <p className="mt-2 leading-6 text-slate-300">{idea.concept}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
+                <h3 className="font-semibold text-emerald-100">
+                  {ui.recommendedIdea}
+                </h3>
+                <p className="mt-3 font-semibold text-white">
+                  {creatorMentorResult.recommendedIdea.title}
+                </p>
+                <p className="mt-2 leading-6 text-emerald-50/85">
+                  {creatorMentorResult.recommendedIdea.reason}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.productionPlan}</h3>
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-slate-300">
+                  {creatorMentorResult.productionPlan.map((item, index) => (
+                    <li key={`plan-${index}`}>{item}</li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-cyan-50">
+              {ui.creatorProductionDesc}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreatorProductionPackage}
+              disabled={creatorProductionLoading}
+              className="mt-5 w-full rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {creatorProductionLoading
+                ? ui.convertingProductionPackage
+                : ui.continueToProduction}
+            </button>
+          </section>
+        )}
+
+        {isCreatorLabFlow && creatorProductionPackage && (
+          <section className="rounded-[28px] border border-emerald-300/20 bg-emerald-500/[0.08] p-5 text-sm text-slate-200">
+            <div className="mb-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">
+                {ui.creatorProductionTitle}
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                {creatorProductionPackage.title}
+              </h2>
+              <p className="mt-3 max-w-4xl leading-6 text-emerald-50/85">
+                {creatorProductionPackage.storyPremise}
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.thumbnailIdea}</h3>
+                <p className="mt-3 leading-6 text-slate-300">
+                  {creatorProductionPackage.thumbnailIdea}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.youtubeTitle}</h3>
+                <p className="mt-3 leading-6 text-slate-300">
+                  {creatorProductionPackage.youtubeTitle}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <h3 className="font-semibold text-white">{ui.youtubeCaption}</h3>
+                <p className="mt-3 leading-6 text-slate-300">
+                  {creatorProductionPackage.caption}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-50">
+              {ui.productionPackageNote}
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-slate-300">
+                {refinedCreatorScenes.length > 0
+                  ? ui.refinedScenesNote
+                  : ui.creatorProductionDesc}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRefineCreatorScenes}
+                disabled={refineScenesLoading}
+                className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {refineScenesLoading ? ui.refiningScenes : ui.refineScenes}
+              </button>
+            </div>
+          </section>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

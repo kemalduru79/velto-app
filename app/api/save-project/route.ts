@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       exportedMovieUrl,
       exportedMovieResult,
       exportSignature,
+      flowType,
     } = body;
 
     if (!title || !scenes) {
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
     if (!childId) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
+
+    const normalizedFlowType = flowType || "storyverse";
 
     if (projectId) {
       const { data, error } = await supabase
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
           exported_movie_url: exportedMovieUrl || null,
           exported_movie_result: exportedMovieResult || null,
           export_signature: exportSignature || null,
+          flow_type: normalizedFlowType,
         })
         .eq("id", projectId)
         .eq("owner_user_id", user.id)
@@ -92,6 +96,7 @@ export async function POST(req: Request) {
         exported_movie_url: exportedMovieUrl || null,
         exported_movie_result: exportedMovieResult || null,
         export_signature: exportSignature || null,
+        flow_type: normalizedFlowType,
       }])
       .select()
       .single();

@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("velto_projects")
-      .select("id, title, child_id, created_at, updated_at")
+      .select("id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url")
       .eq("owner_user_id", user.id)
       .order("updated_at", { ascending: false });
 
