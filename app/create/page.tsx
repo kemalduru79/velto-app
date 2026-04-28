@@ -1322,19 +1322,12 @@ export default function CreatePage() {
   };
 
   const handleStitchVideo = async () => {
-    const stitchScenes = scenes
-      .filter((scene) => scene.videoUrl || scene.image)
-      .map((scene) => ({
-        id: scene.id,
-        imageUrl: scene.image || "",
-        videoUrl: scene.videoStatus === "done" ? scene.videoUrl || "" : "",
-        audioUrl: scene.audioUrl || "",
-        dialogueAudioUrl: scene.dialogueAudioUrl || "",
-        durationSec: CREATOR_SCENE_CLIP_DURATION_SECONDS,
-      }));
+    const videoUrls = scenes
+      .filter((scene) => scene.videoUrl && scene.videoStatus === "done")
+      .map((scene) => scene.videoUrl as string);
 
-    if (stitchScenes.length < 1) {
-      setError("Final video oluşturmak için en az 1 görsel veya video içeren sahne gerekir.");
+    if (videoUrls.length < 2) {
+      setError("Final video oluşturmak için en az 2 hazır sahne videosu gerekir.");
       return;
     }
 
@@ -1348,18 +1341,12 @@ export default function CreatePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ scenes: stitchScenes }),
+        body: JSON.stringify({ videoUrls }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-
-        try {
-          const parsedError = JSON.parse(errorText);
-          throw new Error(parsedError?.error || "Final video oluşturulamadı.");
-        } catch {
-          throw new Error(errorText || "Final video oluşturulamadı.");
-        }
+        throw new Error(errorText || "Final video birleştirilemedi.");
       }
 
       const blob = await response.blob();
@@ -1378,7 +1365,7 @@ export default function CreatePage() {
 
       window.URL.revokeObjectURL(blobUrl);
 
-      setSaveMessage("Final video sesli olarak oluşturuldu ve indirildi ✅");
+      setSaveMessage("Final video oluşturuldu ve indirildi ✅");
     } catch (err: any) {
       console.error("stitch video error:", err);
       setError(err?.message || "Final video oluşturulamadı.");
@@ -1386,7 +1373,6 @@ export default function CreatePage() {
       setIsExportingMovie(false);
     }
   };
-
 
   const updateSceneTimingData = (sceneId: number, timing: SceneTiming) => {
     setScenes((prev) =>
@@ -4242,39 +4228,20 @@ export default function CreatePage() {
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">{selectedFlowProjectTitle}</h2>
+            <div>
+              <h2 className="text-xl font-semibold">{selectedFlowProjectTitle}</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                {activeFlowKey === "creator_lab"
+                  ? "Yalnızca Creator Lab projeleri gösteriliyor."
+                  : "Yalnızca Storyverse projeleri gösteriliyor."}
+              </p>
+            </div>
             <button
               onClick={fetchProjects}
               disabled={loadingProjects}
               className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50"
             >
               {loadingProjects ? ui.refreshing : ui.refresh}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
-            <button
-              type="button"
-              onClick={() => setSelectedFlowKey("storyverse")}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                activeFlowKey === "storyverse"
-                  ? "bg-cyan-400 text-slate-950"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              Storyverse
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedFlowKey("creator_lab")}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                activeFlowKey === "creator_lab"
-                  ? "bg-cyan-400 text-slate-950"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              Creator Lab
             </button>
           </div>
 
@@ -5402,7 +5369,7 @@ export default function CreatePage() {
                     onClick={handleStitchVideo}
                     disabled={
                       isExportingMovie ||
-                      scenes.filter((scene) => scene.videoUrl || scene.image).length < 1
+                      scenes.filter((scene) => scene.videoUrl && scene.videoStatus === "done").length < 2
                     }
                     className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105 disabled:opacity-50"
                   >
@@ -5410,7 +5377,7 @@ export default function CreatePage() {
                       ? ui.creatingMovie
                       : uiLanguage === "en"
                         ? "Stitch Final Video"
-                        : "Sesli Final Video Oluştur"}
+                        : "Final Videoyu Birleştir"}
                   </button>
 
                   <button
