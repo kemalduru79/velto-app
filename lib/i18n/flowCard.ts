@@ -92,7 +92,7 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         description:
           "Kısa video konsepti, senaryo, görsel paket, voice-over ve publish-ready çıktı üretimi için ürünleşmiş akış.",
         outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-        ctaLabel: "Pilot akışı aç",
+        ctaLabel: "Creator Lab ile başla",
       },
       maker_hybrid: {
         title: "AI + Maker Hybrid",
@@ -180,7 +180,7 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         description:
           "A productized flow for short video concepts, scripts, visual packages, voice-over, and publish-ready outputs.",
         outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-        ctaLabel: "Open pilot flow",
+        ctaLabel: "Start Creator Lab",
       },
       maker_hybrid: {
         title: "AI + Maker Hybrid",

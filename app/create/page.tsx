@@ -143,6 +143,9 @@ type CreatorProductionPackage = {
   thumbnailIdea: string;
   youtubeTitle: string;
   caption: string;
+  durationSec?: number;
+  sceneCount?: number;
+  targetSceneDurationSec?: number;
 };
 
 type YoutubeResearchVideo = {
@@ -169,22 +172,29 @@ type YoutubePatternSummary = {
 
 type CreatorVideoDurationSec = 60 | 90 | 180 | 300;
 
+const CREATOR_SCENE_CLIP_DURATION_SECONDS = 7;
+const CREATOR_MAX_SCENE_COUNT = 36;
+
+const getCreatorSceneCountForTargetDuration = (durationSec: number) => {
+  return Math.min(
+    CREATOR_MAX_SCENE_COUNT,
+    Math.max(1, Math.ceil(durationSec / CREATOR_SCENE_CLIP_DURATION_SECONDS))
+  );
+};
+
 const CREATOR_DURATION_OPTIONS: Array<{
   value: CreatorVideoDurationSec;
   label: string;
   sceneCount: number;
 }> = [
-  { value: 60, label: "60 sec", sceneCount: 7 },
-  { value: 90, label: "90 sec", sceneCount: 10 },
-  { value: 180, label: "180 sec", sceneCount: 20 },
-  { value: 300, label: "300 sec", sceneCount: 30 },
+  { value: 60, label: "60 sec", sceneCount: getCreatorSceneCountForTargetDuration(60) },
+  { value: 90, label: "90 sec", sceneCount: getCreatorSceneCountForTargetDuration(90) },
+  { value: 180, label: "180 sec", sceneCount: getCreatorSceneCountForTargetDuration(180) },
+  { value: 300, label: "300 sec", sceneCount: getCreatorSceneCountForTargetDuration(300) },
 ];
 
 const getCreatorSceneCountByDuration = (durationSec: CreatorVideoDurationSec) => {
-  return (
-    CREATOR_DURATION_OPTIONS.find((option) => option.value === durationSec)
-      ?.sceneCount || 7
-  );
+  return getCreatorSceneCountForTargetDuration(durationSec);
 };
 
 const CREATOR_COUNTRY_OPTIONS = [
@@ -475,7 +485,7 @@ const UI_TEXT = {
     patternAngle: "Önerilen İçerik Açısı",
     patternReasoning: "Gerekçe",
     creatorDurationTitle: "Video Süresi",
-    creatorDurationDesc: "Seçilen süre üretilecek sahne sayısını belirler. Pattern Engine önerisini kullanabilir veya manuel seçim yapabilirsin.",
+    creatorDurationDesc: "Seçilen hedef süre, 7 saniyelik güvenli video kliplerine bölünerek üretilecek sahne sayısını belirler. Örn: 60 sn hedef ≈ 9 sahne.",
     usePatternDuration: "Pattern önerisini kullan",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
@@ -715,7 +725,7 @@ const UI_TEXT = {
     patternAngle: "Recommended Content Angle",
     patternReasoning: "Reasoning",
     creatorDurationTitle: "Video Duration",
-    creatorDurationDesc: "The selected duration controls the number of production scenes. You can use the Pattern Engine recommendation or choose manually.",
+    creatorDurationDesc: "The selected target duration is split into safe 7-second video clips to determine the scene count. Example: 60 sec target ≈ 9 scenes.",
     usePatternDuration: "Use pattern recommendation",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
@@ -1268,6 +1278,115 @@ export default function CreatePage() {
 
     return exportSignature === getCurrentExportSignature();
   };
+
+  const handleDownloadVideo = async () => {
+    const downloadSource =
+      exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl;
+
+    if (!downloadSource) {
+      setError("İndirilecek video bulunamadı.");
+      return;
+    }
+
+    try {
+      setError("");
+
+      const response = await fetch(downloadSource);
+
+      if (!response.ok) {
+        throw new Error("Video indirilemedi.");
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = blobUrl;
+      link.download =
+        exportMovieResult?.fileName ||
+        `velto-video-${new Date().toISOString().replace(/[:.]/g, "-")}.mp4`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      console.error("download video error:", err);
+
+      setError(
+        err?.message ||
+          "Video indirilemedi. Linki yeni sekmede açıp manuel indirebilirsin."
+      );
+    }
+  };
+
+  const handleStitchVideo = async () => {
+    const stitchScenes = scenes
+      .filter((scene) => scene.videoUrl || scene.image)
+      .map((scene) => ({
+        id: scene.id,
+        imageUrl: scene.image || "",
+        videoUrl: scene.videoStatus === "done" ? scene.videoUrl || "" : "",
+        audioUrl: scene.audioUrl || "",
+        dialogueAudioUrl: scene.dialogueAudioUrl || "",
+        durationSec: CREATOR_SCENE_CLIP_DURATION_SECONDS,
+      }));
+
+    if (stitchScenes.length < 1) {
+      setError("Final video oluşturmak için en az 1 görsel veya video içeren sahne gerekir.");
+      return;
+    }
+
+    try {
+      setIsExportingMovie(true);
+      setError("");
+      setSaveMessage("");
+
+      const response = await fetch("/api/stitch-video", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ scenes: stitchScenes }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+
+        try {
+          const parsedError = JSON.parse(errorText);
+          throw new Error(parsedError?.error || "Final video oluşturulamadı.");
+        } catch {
+          throw new Error(errorText || "Final video oluşturulamadı.");
+        }
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const fileName = `velto-final-video-${new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")}.mp4`;
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+
+      setSaveMessage("Final video sesli olarak oluşturuldu ve indirildi ✅");
+    } catch (err: any) {
+      console.error("stitch video error:", err);
+      setError(err?.message || "Final video oluşturulamadı.");
+    } finally {
+      setIsExportingMovie(false);
+    }
+  };
+
 
   const updateSceneTimingData = (sceneId: number, timing: SceneTiming) => {
     setScenes((prev) =>
@@ -1941,80 +2060,16 @@ export default function CreatePage() {
   const pollVideoStatus = (sceneId: number, taskId: string) => {
     clearVideoPollForScene(sceneId);
 
-    const maxPollAttempts = 45;
-    let pollAttempts = 0;
-    let lastKnownStatus = "PENDING";
-
     const intervalId = setInterval(async () => {
-      pollAttempts += 1;
-
       try {
         const res = await fetch(`/api/video?taskId=${encodeURIComponent(taskId)}`);
         const data = await res.json();
-
-        console.log("RUNWAY STATUS:", {
-          sceneId,
-          taskId,
-          attempt: pollAttempts,
-          data,
-        });
 
         if (!res.ok || !data.ok) {
           throw new Error(data?.error || "Video durumu alınamadı.");
         }
 
         const status = String(data.status || "").toUpperCase();
-        lastKnownStatus = status || lastKnownStatus;
-
-        if (status === "FAILED") {
-          clearVideoPollForScene(sceneId);
-
-          const failureMessage =
-            data.failureMessage ||
-            data.failureCode ||
-            data?.debug?.note ||
-            "Video oluşturulamadı (Runway FAILED).";
-
-          console.error("RUNWAY FAILED:", data);
-          setError(failureMessage);
-
-          setScenes((prev) =>
-            prev.map((scene) =>
-              scene.id === sceneId
-                ? { ...scene, videoStatus: "error" }
-                : scene
-            )
-          );
-
-          return;
-        }
-
-        if (pollAttempts >= maxPollAttempts) {
-          clearVideoPollForScene(sceneId);
-
-          const timeoutMessage =
-            `Video oluşturma zaman aşımına uğradı. Son Runway status: ${lastKnownStatus}. ` +
-            "Bu genellikle Runway task'ın kuyrukta kalması, tamamlanmaması veya sonuç üretmemesi durumunda olur. Lütfen kısa süre sonra tekrar dene.";
-
-          console.error("RUNWAY POLLING TIMEOUT:", {
-            sceneId,
-            taskId,
-            lastKnownStatus,
-            pollAttempts,
-          });
-
-          setError(timeoutMessage);
-
-          setScenes((prev) =>
-            prev.map((scene) =>
-              scene.id === sceneId
-                ? { ...scene, videoStatus: "error" }
-                : scene
-            )
-          );
-
-          return;
-        }
 
         if (status === "SUCCEEDED") {
           clearVideoPollForScene(sceneId);
@@ -2038,7 +2093,7 @@ export default function CreatePage() {
           const storeData = await storeRes.json();
 
           if (!storeRes.ok || !storeData.ok || !storeData.videoUrl) {
-            throw new Error(storeData?.error || "Video kalıcı olarak kaydedilemedi.");
+            throw new Error(storeData?.error || "Video kaydedilemedi");
           }
 
           setScenes((prev) =>
@@ -2046,8 +2101,9 @@ export default function CreatePage() {
               scene.id === sceneId
                 ? {
                     ...scene,
-                    videoUrl: storeData.videoUrl,
                     videoStatus: "done",
+                    videoUrl: storeData.videoUrl,
+                    videoJobId: taskId,
                   }
                 : scene
             )
@@ -2056,9 +2112,28 @@ export default function CreatePage() {
           setSaveMessage(ui.videoReadySaved);
           return;
         }
+
+        if (status === "FAILED" || status === "CANCELED" || status === "CANCELLED") {
+          clearVideoPollForScene(sceneId);
+
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? {
+                    ...scene,
+                    videoStatus: "error",
+                    videoJobId: taskId,
+                  }
+                : scene
+            )
+          );
+
+          setError(data.failureMessage || `Video oluşturulamadı. Status: ${status}`);
+          return;
+        }
       } catch (e: any) {
-        clearVideoPollForScene(sceneId);
         console.error("pollVideoStatus error:", e);
+        clearVideoPollForScene(sceneId);
 
         setScenes((prev) =>
           prev.map((scene) =>
@@ -2073,11 +2148,10 @@ export default function CreatePage() {
 
         setError(e?.message || "Video durumu kontrol edilirken hata oluştu.");
       }
-    }, 3000);
+    }, 5000);
 
     videoPollIntervalsRef.current[sceneId] = intervalId;
   };
-
 
   const handleGenerateVideo = async (sceneId: number) => {
     const scene = scenes.find((s) => s.id === sceneId);
@@ -3914,14 +3988,14 @@ export default function CreatePage() {
       </button>
     )}
 
-    {exportMovieResult?.downloadUrl && (
-      <a
-        href={exportMovieResult.downloadUrl}
-        target="_blank"
-        className="rounded-xl border border-purple-300/40 px-4 py-2 text-sm"
+    {(exportMovieResult?.downloadUrl || exportedMovieUrl) && (
+      <button
+        type="button"
+        onClick={handleDownloadVideo}
+        className="rounded-xl border border-purple-300/40 px-4 py-2 text-sm transition hover:bg-purple-300/10"
       >
         {ui.download}
-      </a>
+      </button>
     )}
   </div>
 
@@ -5315,15 +5389,29 @@ export default function CreatePage() {
                 />
 
                 <div className="flex flex-wrap gap-3">
-                  <a
-                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
-                    download={exportMovieResult?.fileName || true}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={handleDownloadVideo}
                     className="inline-flex items-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105"
                   >
-                    Download
-                  </a>
+                    {ui.download}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleStitchVideo}
+                    disabled={
+                      isExportingMovie ||
+                      scenes.filter((scene) => scene.videoUrl || scene.image).length < 1
+                    }
+                    className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isExportingMovie
+                      ? ui.creatingMovie
+                      : uiLanguage === "en"
+                        ? "Stitch Final Video"
+                        : "Sesli Final Video Oluştur"}
+                  </button>
 
                   <button
                     onClick={async () => {

@@ -101,10 +101,10 @@ export const experienceFlows: ExperienceFlow[] = [
       "Kısa video konsepti, senaryo, görsel paket, voice-over ve publish-ready çıktı üretimi için ürünleşmiş akış.",
     ageBand: "10-16",
     durationMin: 45,
-    zones: ["AI", "VR"],
+    zones: ["AI"],
     outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-    status: "pilot",
-    ctaLabel: "Pilot akışı aç",
+    status: "active",
+    ctaLabel: "Creator Lab ile başla",
     accent: "sky",
   },
   {

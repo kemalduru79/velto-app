@@ -10,8 +10,13 @@ export default function DashboardPage() {
   const { language, setLanguage } = useLanguage();
   const t = dashboardMessages[language] ?? dashboardMessages.tr;
 
-  const storyverseFlow = experienceFlows.find(
-    (flow) => flow.key === "storyverse"
+  const activeFlows = experienceFlows.filter(
+    (flow) => flow.status === "active"
+  );
+  const storyverseFlow = activeFlows.find((flow) => flow.key === "storyverse");
+  const creatorLabFlow = activeFlows.find((flow) => flow.key === "creator_lab");
+  const otherActiveFlows = activeFlows.filter(
+    (flow) => flow.key !== "storyverse" && flow.key !== "creator_lab"
   );
   const pilotFlows = experienceFlows.filter((flow) => flow.status === "pilot");
   const roadmapFlows = experienceFlows.filter(
@@ -152,8 +157,8 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {storyverseFlow && (
-          <section id="flows" className="space-y-4">
+        {activeFlows.length > 0 && (
+          <section id="flows" className="space-y-5">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">
@@ -168,9 +173,27 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-[32px] border border-emerald-300/20 bg-emerald-500/[0.06] p-1 shadow-[0_20px_70px_rgba(16,185,129,0.08)]">
-              <FlowCard flow={storyverseFlow} language={language} />
+            <div className="grid gap-5 lg:grid-cols-2">
+              {storyverseFlow && (
+                <div className="rounded-[34px] border border-cyan-300/20 bg-cyan-400/[0.055] p-1 shadow-[0_20px_70px_rgba(34,211,238,0.08)]">
+                  <FlowCard flow={storyverseFlow} language={language} />
+                </div>
+              )}
+
+              {creatorLabFlow && (
+                <div className="rounded-[34px] border border-sky-300/25 bg-sky-400/[0.065] p-1 shadow-[0_20px_70px_rgba(14,165,233,0.10)]">
+                  <FlowCard flow={creatorLabFlow} language={language} />
+                </div>
+              )}
             </div>
+
+            {otherActiveFlows.length > 0 && (
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {otherActiveFlows.map((flow) => (
+                  <FlowCard key={flow.key} flow={flow} language={language} />
+                ))}
+              </div>
+            )}
           </section>
         )}
 
