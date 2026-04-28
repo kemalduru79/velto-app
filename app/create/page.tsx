@@ -275,7 +275,7 @@ const UI_TEXT = {
     parentMode: "Experience Lab Mode aktif.",
     selectedFlow: "Seçili Akış",
     activeProductBehavior: "Aktif ürün davranışı: Storyverse, hikaye fikrini çocuk dostu çizgi film üretim akışına göre çerçeveler.",
-    nonStoryversePilot: "Bu akış şu anda pilot/roadmap modunda. Mevcut çalışan üretim motoru Storyverse üzerinden güvenli şekilde kullanılmaya devam eder.",
+    nonStoryversePilot: "Bu akış roadmap aşamasındadır. Mevcut çalışan üretim motoru Storyverse üzerinden güvenli şekilde kullanılmaya devam eder.",
     studioBadge: "AI Hikaye Stüdyosu",
     studioTitle: "VELTO",
     studioDescription: "Hikaye, sahne, görsel, anlatıcı sesi, karakter diyaloğu, video ve final film çıktısını aynı akışta üreten üretim stüdyosu. Bu ekran artık sadece geliştirme paneli değil, AI Experience Lab içindeki ortak üretim çekirdeği olarak kurgulanıyor.",
@@ -515,7 +515,7 @@ const UI_TEXT = {
     parentMode: "Experience Lab Mode active.",
     selectedFlow: "Selected Flow",
     activeProductBehavior: "Active product behavior: Storyverse frames the story idea as a child-safe cartoon production flow.",
-    nonStoryversePilot: "This flow is currently in pilot/roadmap mode. The working production engine continues safely through Storyverse.",
+    nonStoryversePilot: "This flow is currently on the roadmap. The working production engine continues safely through Storyverse.",
     studioBadge: "AI Story Studio",
     studioTitle: "VELTO",
     studioDescription: "A production studio that generates story, scenes, visuals, narrator voice, character dialogue, video, and final movie output in one flow. This screen is no longer just a development panel; it is designed as the shared production core of AI Experience Lab.",
@@ -1941,16 +1941,80 @@ export default function CreatePage() {
   const pollVideoStatus = (sceneId: number, taskId: string) => {
     clearVideoPollForScene(sceneId);
 
+    const maxPollAttempts = 45;
+    let pollAttempts = 0;
+    let lastKnownStatus = "PENDING";
+
     const intervalId = setInterval(async () => {
+      pollAttempts += 1;
+
       try {
         const res = await fetch(`/api/video?taskId=${encodeURIComponent(taskId)}`);
         const data = await res.json();
+
+        console.log("RUNWAY STATUS:", {
+          sceneId,
+          taskId,
+          attempt: pollAttempts,
+          data,
+        });
 
         if (!res.ok || !data.ok) {
           throw new Error(data?.error || "Video durumu alınamadı.");
         }
 
         const status = String(data.status || "").toUpperCase();
+        lastKnownStatus = status || lastKnownStatus;
+
+        if (status === "FAILED") {
+          clearVideoPollForScene(sceneId);
+
+          const failureMessage =
+            data.failureMessage ||
+            data.failureCode ||
+            data?.debug?.note ||
+            "Video oluşturulamadı (Runway FAILED).";
+
+          console.error("RUNWAY FAILED:", data);
+          setError(failureMessage);
+
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? { ...scene, videoStatus: "error" }
+                : scene
+            )
+          );
+
+          return;
+        }
+
+        if (pollAttempts >= maxPollAttempts) {
+          clearVideoPollForScene(sceneId);
+
+          const timeoutMessage =
+            `Video oluşturma zaman aşımına uğradı. Son Runway status: ${lastKnownStatus}. ` +
+            "Bu genellikle Runway task'ın kuyrukta kalması, tamamlanmaması veya sonuç üretmemesi durumunda olur. Lütfen kısa süre sonra tekrar dene.";
+
+          console.error("RUNWAY POLLING TIMEOUT:", {
+            sceneId,
+            taskId,
+            lastKnownStatus,
+            pollAttempts,
+          });
+
+          setError(timeoutMessage);
+
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? { ...scene, videoStatus: "error" }
+                : scene
+            )
+          );
+
+          return;
+        }
 
         if (status === "SUCCEEDED") {
           clearVideoPollForScene(sceneId);
@@ -1974,7 +2038,7 @@ export default function CreatePage() {
           const storeData = await storeRes.json();
 
           if (!storeRes.ok || !storeData.ok || !storeData.videoUrl) {
-            throw new Error(storeData?.error || "Video kaydedilemedi");
+            throw new Error(storeData?.error || "Video kalıcı olarak kaydedilemedi.");
           }
 
           setScenes((prev) =>
@@ -1982,9 +2046,8 @@ export default function CreatePage() {
               scene.id === sceneId
                 ? {
                     ...scene,
-                    videoStatus: "done",
                     videoUrl: storeData.videoUrl,
-                    videoJobId: taskId,
+                    videoStatus: "done",
                   }
                 : scene
             )
@@ -1993,28 +2056,9 @@ export default function CreatePage() {
           setSaveMessage(ui.videoReadySaved);
           return;
         }
-
-        if (status === "FAILED" || status === "CANCELED" || status === "CANCELLED") {
-          clearVideoPollForScene(sceneId);
-
-          setScenes((prev) =>
-            prev.map((scene) =>
-              scene.id === sceneId
-                ? {
-                    ...scene,
-                    videoStatus: "error",
-                    videoJobId: taskId,
-                  }
-                : scene
-            )
-          );
-
-          setError(data.failureMessage || `Video oluşturulamadı. Status: ${status}`);
-          return;
-        }
       } catch (e: any) {
-        console.error("pollVideoStatus error:", e);
         clearVideoPollForScene(sceneId);
+        console.error("pollVideoStatus error:", e);
 
         setScenes((prev) =>
           prev.map((scene) =>
@@ -2029,10 +2073,11 @@ export default function CreatePage() {
 
         setError(e?.message || "Video durumu kontrol edilirken hata oluştu.");
       }
-    }, 5000);
+    }, 3000);
 
     videoPollIntervalsRef.current[sceneId] = intervalId;
   };
+
 
   const handleGenerateVideo = async (sceneId: number) => {
     const scene = scenes.find((s) => s.id === sceneId);
@@ -3949,14 +3994,17 @@ export default function CreatePage() {
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.ageBand}</span>
               <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.durationMin} {ui.minuteShort}</span>
-              {selectedFlow.zones.map((zone: FlowZone) => (
+              {(activeFlowKey === "creator_lab"
+                ? selectedFlow.zones.filter((zone: FlowZone) => zone !== "VR")
+                : selectedFlow.zones
+              ).map((zone: FlowZone) => (
                 <span key={zone} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">
                   {zone}
                 </span>
               ))}
             </div>
           </div>
-          {activeFlowKey !== "storyverse" && (
+          {activeFlowKey !== "storyverse" && activeFlowKey !== "creator_lab" && (
             <p className="mt-3 rounded-xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
               {ui.nonStoryversePilot}
             </p>

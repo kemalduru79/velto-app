@@ -106,6 +106,15 @@ function isImageDataUri(value: string) {
   return /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(value);
 }
 
+async function checkUrlAccessible(url: string) {
+  try {
+    const res = await fetch(url, { method: "HEAD" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 function validateImageInput(imageUrl: unknown) {
   if (!imageUrl || typeof imageUrl !== "string") {
     return "imageUrl is required";
@@ -203,14 +212,20 @@ export async function POST(req: NextRequest) {
     const cameraDirection = body?.cameraDirection ?? "";
     const emotion = body?.emotion ?? "";
 
-    const duration =
-      typeof body?.duration === "number"
-        ? Math.min(10, Math.max(2, Math.round(body.duration)))
-        : 4;
+    const duration = 7;
 
-    const model = getModel();
+    const model: RunwayVideoModel = "gen4_turbo";
 
     const imageValidationError = validateImageInput(imageUrl);
+    if (!imageValidationError && typeof imageUrl === "string" && imageUrl.startsWith("https://")) {
+      const ok = await checkUrlAccessible(imageUrl);
+      if (!ok) {
+        return NextResponse.json(
+          { ok: false, error: "imageUrl not accessible by Runway (HEAD failed)", imageUrl },
+          { status: 400 }
+        );
+      }
+    }
     if (imageValidationError) {
       return NextResponse.json(
         { ok: false, error: imageValidationError },
@@ -218,12 +233,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const promptText = buildPrompt({
-      text,
-      motionHint,
-      cameraDirection,
-      emotion,
-    });
+    const promptText = "Create a clean, stable, short animated video from the image. Smooth gentle motion, no distortion, no artifacts.";
 
     const client = getClient();
 
@@ -232,7 +242,7 @@ export async function POST(req: NextRequest) {
       model,
       imageUrl,
       promptText,
-      requestedRatio: body?.ratio,
+      requestedRatio: "960:960",
       duration,
     });
 
@@ -243,6 +253,7 @@ export async function POST(req: NextRequest) {
       model,
       duration,
       promptText,
+      debug: { imageUrl }
     });
   } catch (error: any) {
     console.error("Runway video create error:", error);
@@ -272,10 +283,18 @@ export async function GET(req: NextRequest) {
     const client = getClient();
     const task = await client.tasks.retrieve(taskId);
     const normalized = normalizeTask(task);
+    const debugTask = task as any;
 
     return NextResponse.json({
       ok: true,
       ...normalized,
+      debug: {
+        rawStatus: debugTask?.status ?? null,
+        createdAt: debugTask?.createdAt ?? null,
+        failureCode: debugTask?.failureCode ?? null,
+        failureMessage: debugTask?.failureMessage ?? null,
+        rawTask: debugTask,
+      },
     });
   } catch (error: any) {
     console.error("Runway video status error:", error);
