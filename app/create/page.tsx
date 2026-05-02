@@ -39,6 +39,16 @@ type Scene = {
   timing?: SceneTiming;
 };
 
+type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
+
+type BatchRenderItem = {
+  sceneId: number;
+  status: BatchSceneStatus;
+  step: "waiting" | "image" | "audio" | "video" | "save" | "complete" | "error";
+  message?: string;
+  updatedAt: string;
+};
+
 type Character = {
   name: string;
   age: string;
@@ -896,6 +906,12 @@ export default function CreatePage() {
 
   const [currentProjectId, setCurrentProjectId] = useState<string>("");
 
+  const [isBatchRendering, setIsBatchRendering] = useState(false);
+  const [batchRenderItems, setBatchRenderItems] = useState<BatchRenderItem[]>([]);
+  const [batchRenderStartedAt, setBatchRenderStartedAt] = useState<string>("");
+  const [retryingSceneId, setRetryingSceneId] = useState<number | null>(null);
+  const batchRenderCancelRef = useRef(false);
+
   const [playingSceneId, setPlayingSceneId] = useState<number | null>(null);
   const [loadingAudioSceneId, setLoadingAudioSceneId] = useState<number | null>(null);
   const [isPlayingStory, setIsPlayingStory] = useState(false);
@@ -933,6 +949,78 @@ export default function CreatePage() {
     return activeFlowKey === "creator_lab"
       ? CREATOR_LAB_MAX_SPEECH_RATIO
       : MAX_SPEECH_RATIO;
+  };
+
+  const getBatchLabel = (key: "start" | "cancel" | "rendering" | "completed" | "failed" | "progress" | "statusTitle" | "retryFailed" | "retryScene" | "retrying") => {
+    const labels = {
+      tr: {
+        start: "🚀 Tüm Sahneleri Üret",
+        cancel: "Durdur",
+        rendering: "Batch render çalışıyor...",
+        completed: "Batch render tamamlandı ✅",
+        failed: "Batch render sırasında bazı sahneler hata aldı.",
+        progress: "İlerleme",
+        statusTitle: "Batch Render Durumu",
+        retryFailed: "🔁 Hatalı Sahneleri Yeniden Üret",
+        retryScene: "Tekrar dene",
+        retrying: "Yeniden deneniyor...",
+      },
+      en: {
+        start: "🚀 Generate All Scenes",
+        cancel: "Stop",
+        rendering: "Batch render is running...",
+        completed: "Batch render completed ✅",
+        failed: "Some scenes failed during batch render.",
+        progress: "Progress",
+        statusTitle: "Batch Render Status",
+        retryFailed: "🔁 Retry Failed Scenes",
+        retryScene: "Retry",
+        retrying: "Retrying...",
+      },
+    } as const;
+
+    return (labels[uiLanguage] ?? labels.tr)[key];
+  };
+
+  const updateBatchRenderItem = (
+    sceneId: number,
+    patch: Partial<Omit<BatchRenderItem, "sceneId">>
+  ) => {
+    setBatchRenderItems((prev) =>
+      prev.map((item) =>
+        item.sceneId === sceneId
+          ? {
+              ...item,
+              ...patch,
+              updatedAt: new Date().toISOString(),
+            }
+          : item
+      )
+    );
+  };
+
+  const resetBatchRenderItems = (nextScenes: Scene[]) => {
+    setBatchRenderItems(
+      nextScenes.map((scene) => ({
+        sceneId: scene.id,
+        status: "pending",
+        step: "waiting",
+        message: "",
+        updatedAt: new Date().toISOString(),
+      }))
+    );
+  };
+
+  const getBatchProgress = () => {
+    if (batchRenderItems.length === 0) {
+      return 0;
+    }
+
+    const finishedCount = batchRenderItems.filter((item) =>
+      ["done", "failed", "skipped"].includes(item.status)
+    ).length;
+
+    return Math.round((finishedCount / batchRenderItems.length) * 100);
   };
 
   const isSceneSpeechTooLong = (timing?: SceneTiming) => {
@@ -1426,10 +1514,11 @@ export default function CreatePage() {
       getAudioDurationFromUrl(dialogueUrl),
     ]);
 
-    updateSceneTimingData(
-      sceneId,
-      buildSceneTiming(narrationDuration, dialogueDuration)
-    );
+    const timing = buildSceneTiming(narrationDuration, dialogueDuration);
+
+    updateSceneTimingData(sceneId, timing);
+
+    return timing;
   };
 
   const clearVideoPollForScene = (sceneId: number) => {
@@ -1558,6 +1647,10 @@ export default function CreatePage() {
     setSaveMessage("");
     setCurrentProjectId("");
     setLoadProjectId("");
+    setIsBatchRendering(false);
+    setBatchRenderItems([]);
+    setBatchRenderStartedAt("");
+    batchRenderCancelRef.current = false;
     setLoadingAudioSceneId(null);
     setLoadingDialogueSceneId(null);
     setIsPreparingAudio(false);
@@ -2223,6 +2316,551 @@ export default function CreatePage() {
       setError(e?.message || "Video oluşturulurken bir hata oluştu.");
     }
   };
+
+  const persistProjectSnapshot = async (snapshotScenes: Scene[]) => {
+    if (!title || snapshotScenes.length === 0) {
+      return;
+    }
+
+    if (!selectedChildId) {
+      throw new Error("Lütfen önce bir çocuk seç.");
+    }
+
+    const accessToken = await getAccessTokenOrThrow();
+
+    const res = await fetch("/api/save-project", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        projectId: currentProjectId || undefined,
+        childId: selectedChildId,
+        title,
+        inputPrompt: input,
+        flowKey: activeFlowKey,
+        flowTitle: selectedFlow.title,
+        flowType: activeFlowKey || "storyverse",
+        language,
+        storyPremise: storySetup?.storyPremise || "",
+        characters,
+        visualBible,
+        scenes: snapshotScenes,
+        exportedMovieUrl: null,
+        exportedMovieResult: null,
+        exportSignature: null,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Kaydedilemedi.");
+    }
+
+    if (data?.project?.id) {
+      setCurrentProjectId(data.project.id);
+      setLoadProjectId(data.project.id);
+    }
+  };
+
+  const waitForRunwayVideoAndStore = async (scene: Scene, taskId: string) => {
+    const maxAttempts = 72; // 72 x 5 sec = max 6 minutes per scene
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (batchRenderCancelRef.current) {
+        throw new Error("Batch render durduruldu.");
+      }
+
+      const res = await fetch(`/api/video?taskId=${encodeURIComponent(taskId)}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || "Video durumu alınamadı.");
+      }
+
+      const status = String(data.status || "").toUpperCase();
+
+      if (status === "SUCCEEDED") {
+        if (!data.videoUrl) {
+          throw new Error("Runway video URL dönmedi.");
+        }
+
+        const storeRes = await fetch("/api/store-video", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            videoUrl: data.videoUrl,
+            sceneId: scene.id,
+            projectId: getProjectKey(),
+          }),
+        });
+
+        const storeData = await storeRes.json();
+
+        if (!storeRes.ok || !storeData.ok || !storeData.videoUrl) {
+          throw new Error(storeData?.error || "Video kaydedilemedi.");
+        }
+
+        return storeData.videoUrl as string;
+      }
+
+      if (status === "FAILED" || status === "CANCELED" || status === "CANCELLED") {
+        throw new Error(data.failureMessage || `Video oluşturulamadı. Status: ${status}`);
+      }
+
+      await wait(5000);
+    }
+
+    throw new Error("Video üretimi zaman aşımına uğradı.");
+  };
+
+  const generateSceneVideoAndWait = async (scene: Scene) => {
+    if (!scene.image) {
+      throw new Error("Video için önce sahne görseli hazırlanmalı.");
+    }
+
+    clearVideoPollForScene(scene.id);
+
+    setScenes((prev) =>
+      prev.map((item) =>
+        item.id === scene.id
+          ? {
+              ...item,
+              videoStatus: "processing",
+              videoUrl: "",
+            }
+          : item
+      )
+    );
+
+    const res = await fetch("/api/video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        imageUrl: scene.image,
+        text: scene.text,
+        motionHint: scene.motionHint,
+        cameraDirection: scene.cameraDirection,
+        emotion: scene.emotion,
+        duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok || !data.taskId) {
+      throw new Error(data?.error || "Video oluşturma başlatılamadı.");
+    }
+
+    setScenes((prev) =>
+      prev.map((item) =>
+        item.id === scene.id
+          ? {
+              ...item,
+              videoJobId: data.taskId,
+              videoStatus: "processing",
+            }
+          : item
+      )
+    );
+
+    const videoUrl = await waitForRunwayVideoAndStore(scene, data.taskId);
+
+    setScenes((prev) =>
+      prev.map((item) =>
+        item.id === scene.id
+          ? {
+              ...item,
+              videoStatus: "done",
+              videoUrl,
+              videoJobId: data.taskId,
+            }
+          : item
+      )
+    );
+
+    return {
+      videoUrl,
+      videoJobId: data.taskId as string,
+    };
+  };
+
+  const stopBatchRender = () => {
+    batchRenderCancelRef.current = true;
+    setIsBatchRendering(false);
+    setSaveMessage(uiLanguage === "en" ? "Batch render stop requested." : "Batch render durdurma isteği alındı.");
+  };
+
+  const startBatchRender = async () => {
+    if (scenes.length === 0) {
+      setError("Önce sahneleri oluşturmalısın.");
+      return;
+    }
+
+    if (!selectedChildId) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setIsBatchRendering(true);
+    setBatchRenderStartedAt(new Date().toISOString());
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+    resetBatchRenderItems(scenes);
+
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    let hasFailure = false;
+
+    try {
+      for (let index = 0; index < workingScenes.length; index += 1) {
+        if (batchRenderCancelRef.current) {
+          break;
+        }
+
+        let scene = workingScenes[index];
+
+        updateBatchRenderItem(scene.id, {
+          status: "processing",
+          step: "image",
+          message: uiLanguage === "en" ? "Preparing image..." : "Görsel hazırlanıyor...",
+        });
+
+        try {
+          let nextImage = scene.image || "";
+
+          if (!nextImage) {
+            setRedrawLoadingId(scene.id);
+            nextImage = await generateSceneImage(scene);
+            scene = {
+              ...scene,
+              image: nextImage,
+              videoUrl: "",
+              videoStatus: "idle",
+              videoJobId: "",
+            };
+            workingScenes[index] = scene;
+
+            setScenes((prev) =>
+              prev.map((item) => (item.id === scene.id ? scene : item))
+            );
+          }
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "audio",
+            message: uiLanguage === "en" ? "Preparing audio..." : "Ses hazırlanıyor...",
+          });
+
+          let nextAudioUrl = scene.audioUrl || "";
+          let nextDialogueAudioUrl = scene.dialogueAudioUrl || "";
+
+          if (scene.narration?.trim()) {
+            setLoadingAudioSceneId(scene.id);
+            nextAudioUrl = await getSceneAudioUrl(scene);
+          }
+
+          if (scene.dialogue?.trim()) {
+            setLoadingDialogueSceneId(scene.id);
+            nextDialogueAudioUrl = await getSceneDialogueUrl(scene);
+          }
+
+          const nextTiming = await refreshSceneTiming(scene.id, {
+            audioUrl: nextAudioUrl,
+            dialogueAudioUrl: nextDialogueAudioUrl,
+          });
+
+          scene = {
+            ...scene,
+            image: nextImage,
+            audioUrl: nextAudioUrl || scene.audioUrl || "",
+            dialogueAudioUrl: nextDialogueAudioUrl || scene.dialogueAudioUrl || "",
+            timing: nextTiming || scene.timing,
+          };
+          workingScenes[index] = scene;
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "video",
+            message: uiLanguage === "en" ? "Generating video..." : "Video üretiliyor...",
+          });
+
+          const shouldGenerateVideo = !scene.videoUrl || scene.videoStatus !== "done";
+
+          if (shouldGenerateVideo) {
+            const videoResult = await generateSceneVideoAndWait(scene);
+            scene = {
+              ...scene,
+              videoUrl: videoResult.videoUrl,
+              videoStatus: "done",
+              videoJobId: videoResult.videoJobId,
+            };
+            workingScenes[index] = scene;
+          }
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "save",
+            message: uiLanguage === "en" ? "Saving project..." : "Proje kaydediliyor...",
+          });
+
+          setScenes([...workingScenes]);
+          await persistProjectSnapshot([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "complete",
+            message: uiLanguage === "en" ? "Scene ready." : "Sahne hazır.",
+          });
+        } catch (sceneError: any) {
+          hasFailure = true;
+          console.error("batch scene error:", scene.id, sceneError);
+
+          workingScenes[index] = {
+            ...workingScenes[index],
+            videoStatus: workingScenes[index].videoStatus === "processing" ? "error" : workingScenes[index].videoStatus,
+          };
+
+          setScenes([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "failed",
+            step: "error",
+            message: sceneError?.message || "Sahne üretimi başarısız oldu.",
+          });
+
+          try {
+            await persistProjectSnapshot([...workingScenes]);
+          } catch (persistError) {
+            console.error("batch persist after scene failure error:", persistError);
+          }
+        } finally {
+          setRedrawLoadingId(null);
+          setLoadingAudioSceneId(null);
+          setLoadingDialogueSceneId(null);
+        }
+      }
+
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(uiLanguage === "en" ? "Batch render stopped." : "Batch render durduruldu.");
+      } else if (hasFailure) {
+        setError(getBatchLabel("failed"));
+      } else {
+        setSaveMessage(getBatchLabel("completed"));
+      }
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setRedrawLoadingId(null);
+      setLoadingAudioSceneId(null);
+      setLoadingDialogueSceneId(null);
+    }
+  };
+
+  const retryFailedScenes = async (specificSceneId?: number) => {
+    const failedSceneIds = specificSceneId
+      ? [specificSceneId]
+      : batchRenderItems
+          .filter((item) => item.status === "failed")
+          .map((item) => item.sceneId);
+
+    const fallbackFailedSceneIds = scenes
+      .filter((scene) => scene.videoStatus === "error")
+      .map((scene) => scene.id);
+
+    const uniqueSceneIds = Array.from(
+      new Set(failedSceneIds.length > 0 ? failedSceneIds : fallbackFailedSceneIds)
+    );
+
+    if (uniqueSceneIds.length === 0) {
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "No failed scenes to retry."
+          : "Yeniden denenecek hatalı sahne bulunamadı."
+      );
+      return;
+    }
+
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setIsBatchRendering(true);
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+
+    if (batchRenderItems.length === 0) {
+      resetBatchRenderItems(scenes);
+    }
+
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    let hasFailure = false;
+
+    try {
+      for (const sceneId of uniqueSceneIds) {
+        if (batchRenderCancelRef.current) {
+          break;
+        }
+
+        const index = workingScenes.findIndex((item) => item.id === sceneId);
+
+        if (index < 0) {
+          continue;
+        }
+
+        let scene = workingScenes[index];
+        setRetryingSceneId(scene.id);
+
+        updateBatchRenderItem(scene.id, {
+          status: "processing",
+          step: "image",
+          message: uiLanguage === "en" ? "Retry: preparing image..." : "Retry: görsel hazırlanıyor...",
+        });
+
+        try {
+          let nextImage = scene.image || "";
+
+          if (!nextImage) {
+            setRedrawLoadingId(scene.id);
+            nextImage = await generateSceneImage(scene);
+            scene = {
+              ...scene,
+              image: nextImage,
+              videoUrl: "",
+              videoStatus: "idle",
+              videoJobId: "",
+            };
+            workingScenes[index] = scene;
+
+            setScenes((prev) =>
+              prev.map((item) => (item.id === scene.id ? scene : item))
+            );
+          }
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "audio",
+            message: uiLanguage === "en" ? "Retry: preparing audio..." : "Retry: ses hazırlanıyor...",
+          });
+
+          let nextAudioUrl = scene.audioUrl || "";
+          let nextDialogueAudioUrl = scene.dialogueAudioUrl || "";
+
+          if (scene.narration?.trim()) {
+            setLoadingAudioSceneId(scene.id);
+            nextAudioUrl = await getSceneAudioUrl(scene);
+          }
+
+          if (scene.dialogue?.trim()) {
+            setLoadingDialogueSceneId(scene.id);
+            nextDialogueAudioUrl = await getSceneDialogueUrl(scene);
+          }
+
+          const nextTiming = await refreshSceneTiming(scene.id, {
+            audioUrl: nextAudioUrl,
+            dialogueAudioUrl: nextDialogueAudioUrl,
+          });
+
+          scene = {
+            ...scene,
+            image: nextImage,
+            audioUrl: nextAudioUrl || scene.audioUrl || "",
+            dialogueAudioUrl: nextDialogueAudioUrl || scene.dialogueAudioUrl || "",
+            timing: nextTiming || scene.timing,
+            videoUrl: "",
+            videoStatus: "idle",
+            videoJobId: "",
+          };
+          workingScenes[index] = scene;
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "video",
+            message: uiLanguage === "en" ? "Retry: generating video..." : "Retry: video üretiliyor...",
+          });
+
+          const videoResult = await generateSceneVideoAndWait(scene);
+          scene = {
+            ...scene,
+            videoUrl: videoResult.videoUrl,
+            videoStatus: "done",
+            videoJobId: videoResult.videoJobId,
+          };
+          workingScenes[index] = scene;
+
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "save",
+            message: uiLanguage === "en" ? "Saving retry result..." : "Retry sonucu kaydediliyor...",
+          });
+
+          setScenes([...workingScenes]);
+          await persistProjectSnapshot([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "complete",
+            message: uiLanguage === "en" ? "Scene fixed." : "Sahne düzeltildi.",
+          });
+        } catch (sceneError: any) {
+          hasFailure = true;
+          console.error("retry scene error:", scene.id, sceneError);
+
+          workingScenes[index] = {
+            ...workingScenes[index],
+            videoStatus: workingScenes[index].videoStatus === "processing" ? "error" : workingScenes[index].videoStatus,
+          };
+
+          setScenes([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "failed",
+            step: "error",
+            message: sceneError?.message || "Sahne yeniden üretimi başarısız oldu.",
+          });
+
+          try {
+            await persistProjectSnapshot([...workingScenes]);
+          } catch (persistError) {
+            console.error("retry persist after scene failure error:", persistError);
+          }
+        } finally {
+          setRedrawLoadingId(null);
+          setLoadingAudioSceneId(null);
+          setLoadingDialogueSceneId(null);
+          setRetryingSceneId(null);
+        }
+      }
+
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(uiLanguage === "en" ? "Retry stopped." : "Retry durduruldu.");
+      } else if (hasFailure) {
+        setError(uiLanguage === "en" ? "Some scenes still failed after retry." : "Bazı sahneler retry sonrası hâlâ hata aldı.");
+      } else {
+        setSaveMessage(uiLanguage === "en" ? "Failed scenes fixed ✅" : "Hatalı sahneler düzeltildi ✅");
+      }
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setRetryingSceneId(null);
+      setRedrawLoadingId(null);
+      setLoadingAudioSceneId(null);
+      setLoadingDialogueSceneId(null);
+    }
+  };
+
 
   const handleExportMovie = async () => {
     const exportScenes = scenes.filter(
@@ -5304,8 +5942,106 @@ export default function CreatePage() {
                     ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
                     : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
               </button>
+
+              <button
+                onClick={isBatchRendering ? stopBatchRender : startBatchRender}
+                disabled={
+                  isPreparingAudio ||
+                  isExportingMovie ||
+                  playingDialogueSceneId !== null ||
+                  (loadingAudioSceneId !== null && !isBatchRendering)
+                }
+                className="rounded-xl bg-cyan-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+              >
+                {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
+              </button>
+
+              {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
+                <button
+                  onClick={() => retryFailedScenes()}
+                  disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null}
+                  className="rounded-xl bg-rose-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                >
+                  {getBatchLabel("retryFailed")}
+                </button>
+              )}
               </div>
             </div>
+
+            {(batchRenderItems.length > 0 || isBatchRendering) && (
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-950/20 p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">
+                      {getBatchLabel("statusTitle")}
+                    </h3>
+                    <p className="mt-1 text-sm text-cyan-100/80">
+                      {isBatchRendering
+                        ? getBatchLabel("rendering")
+                        : `${getBatchLabel("progress")}: ${getBatchProgress()}%`}
+                    </p>
+                    {batchRenderStartedAt && (
+                      <p className="mt-1 text-xs text-cyan-100/50">
+                        {new Date(batchRenderStartedAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="min-w-[120px] text-right text-2xl font-bold text-cyan-100">
+                    {getBatchProgress()}%
+                  </div>
+                </div>
+
+                <div className="h-3 overflow-hidden rounded-full bg-black/30">
+                  <div
+                    className="h-full rounded-full bg-cyan-400 transition-all"
+                    style={{ width: `${getBatchProgress()}%` }}
+                  />
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {batchRenderItems.map((item) => (
+                    <div
+                      key={item.sceneId}
+                      className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-white">
+                          {ui.scene} {item.sceneId}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            item.status === "done"
+                              ? "bg-green-500/20 text-green-200"
+                              : item.status === "failed"
+                                ? "bg-red-500/20 text-red-200"
+                                : item.status === "processing"
+                                  ? "bg-yellow-500/20 text-yellow-100"
+                                  : "bg-white/10 text-gray-200"
+                          }`}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-cyan-100/70">
+                        {item.step} {item.message ? `→ ${item.message}` : ""}
+                      </p>
+                      {item.status === "failed" && !isBatchRendering && (
+                        <button
+                          onClick={() => retryFailedScenes(item.sceneId)}
+                          disabled={retryingSceneId === item.sceneId}
+                          className="mt-3 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                        >
+                          {retryingSceneId === item.sceneId
+                            ? getBatchLabel("retrying")
+                            : getBatchLabel("retryScene")}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {exportedMovieUrl && (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
