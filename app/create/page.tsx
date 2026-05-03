@@ -177,6 +177,24 @@ type YoutubeThumbnailResult = {
   subHeadline: string;
 };
 
+type SceneOptimizationResult = {
+  sceneId: number;
+  exportMode: "video" | "image";
+  reason: string;
+  confidence: "low" | "medium" | "high";
+  estimatedCostUsd: number;
+};
+
+type SceneOptimizationSummary = {
+  totalScenes: number;
+  recommendedVideoScenes: number;
+  recommendedImageScenes: number;
+  estimatedRunwayCostUsd: number;
+  estimatedFullVideoCostUsd: number;
+  estimatedSavingsPercent: number;
+};
+
+
 type YoutubeResearchVideo = {
   id: string;
   title: string;
@@ -512,6 +530,17 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Video linki, başlık, açıklama, hashtag, ilk yorum, thumbnail ve sahne datasını ZIP paketi olarak indirir.",
     downloadCreatorPackage: "Creator Package İndir",
     downloadingCreatorPackage: "Paket hazırlanıyor...",
+    costOptimizationEngine: "Cost Optimization Engine",
+    costOptimizationDesc: "Sahneler için Video / Image önerisi üretir ve tahmini Runway maliyetini azaltır.",
+    optimizeScenes: "Sahneleri Optimize Et",
+    optimizingScenes: "Sahneler optimize ediliyor...",
+    costSummary: "Maliyet Özeti",
+    recommendedVideoScenes: "Önerilen Video Sahneleri",
+    recommendedImageScenes: "Önerilen Image Sahneleri",
+    estimatedCost: "Tahmini Maliyet",
+    estimatedSavings: "Tahmini Tasarruf",
+    applyOptimization: "Önerileri Uygula",
+    optimizationApplied: "Optimizasyon önerileri uygulandı ✅",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -776,6 +805,17 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Downloads video link, title, description, hashtags, first comment, thumbnail, and scene data as a ZIP package.",
     downloadCreatorPackage: "Download Creator Package",
     downloadingCreatorPackage: "Preparing package...",
+    costOptimizationEngine: "Cost Optimization Engine",
+    costOptimizationDesc: "Generates Video / Image recommendations per scene and reduces estimated Runway cost.",
+    optimizeScenes: "Optimize Scenes",
+    optimizingScenes: "Optimizing scenes...",
+    costSummary: "Cost Summary",
+    recommendedVideoScenes: "Recommended Video Scenes",
+    recommendedImageScenes: "Recommended Image Scenes",
+    estimatedCost: "Estimated Cost",
+    estimatedSavings: "Estimated Savings",
+    applyOptimization: "Apply Recommendations",
+    optimizationApplied: "Optimization recommendations applied ✅",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -947,6 +987,12 @@ export default function CreatePage() {
     useState<YoutubeThumbnailResult | null>(null);
   const [youtubeThumbnailLoading, setYoutubeThumbnailLoading] = useState(false);
   const [isDownloadingCreatorPackage, setIsDownloadingCreatorPackage] = useState(false);
+  const [sceneOptimizationResult, setSceneOptimizationResult] = useState<
+    SceneOptimizationResult[]
+  >([]);
+  const [sceneOptimizationSummary, setSceneOptimizationSummary] =
+    useState<SceneOptimizationSummary | null>(null);
+  const [sceneOptimizationLoading, setSceneOptimizationLoading] = useState(false);
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -1735,6 +1781,8 @@ export default function CreatePage() {
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
     setYoutubeThumbnailResult(null);
+    setSceneOptimizationResult([]);
+    setSceneOptimizationSummary(null);
     setRefinedCreatorScenes([]);
     setTitle("");
     setCharacters([]);
@@ -3823,6 +3871,82 @@ export default function CreatePage() {
     }
   };
 
+
+  const handleOptimizeScenes = async () => {
+    const sourceScenes =
+      creatorProductionPackage?.scenes?.length
+        ? creatorProductionPackage.scenes
+        : scenes;
+
+    if (!sourceScenes || sourceScenes.length === 0) {
+      setError(
+        uiLanguage === "en"
+          ? "Create scenes or a production package first."
+          : "Önce sahneleri veya üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    setSceneOptimizationLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/optimize-scenes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          scenes: sourceScenes,
+          mode: "balanced",
+          estimatedVideoCostUsd: 0.05,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Scene optimization failed.");
+      }
+
+      setSceneOptimizationResult(data.result || []);
+      setSceneOptimizationSummary(data.summary || null);
+    } catch (e: any) {
+      console.error("handleOptimizeScenes error:", e);
+      setError(e?.message || "Scene optimization failed.");
+    } finally {
+      setSceneOptimizationLoading(false);
+    }
+  };
+
+  const handleApplySceneOptimization = () => {
+    if (!sceneOptimizationResult.length) {
+      return;
+    }
+
+    setScenes((prev) =>
+      prev.map((scene) => {
+        const recommendation = sceneOptimizationResult.find(
+          (item) => Number(item.sceneId) === Number(scene.id)
+        );
+
+        if (!recommendation) {
+          return scene;
+        }
+
+        return {
+          ...scene,
+          renderMode: recommendation.exportMode,
+        };
+      })
+    );
+
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setSaveMessage(ui.optimizationApplied);
+  };
 
   const handleDownloadCreatorPackage = async () => {
     if (!creatorProductionPackage) {
@@ -5980,6 +6104,104 @@ export default function CreatePage() {
                   thumbnail.png + scenes.json
                 </div>
               </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-lime-300/20 bg-lime-500/10 p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {ui.costOptimizationEngine}
+                  </h3>
+                  <p className="mt-1 text-sm text-lime-100/75">
+                    {ui.costOptimizationDesc}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOptimizeScenes}
+                    disabled={sceneOptimizationLoading}
+                    className="rounded-xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sceneOptimizationLoading
+                      ? ui.optimizingScenes
+                      : ui.optimizeScenes}
+                  </button>
+
+                  {sceneOptimizationResult.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleApplySceneOptimization}
+                      className="rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20"
+                    >
+                      {ui.applyOptimization}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {sceneOptimizationSummary && (
+                <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                    <div className="text-lime-100/60">{ui.recommendedVideoScenes}</div>
+                    <div className="mt-1 text-xl font-semibold">
+                      {sceneOptimizationSummary.recommendedVideoScenes}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                    <div className="text-lime-100/60">{ui.recommendedImageScenes}</div>
+                    <div className="mt-1 text-xl font-semibold">
+                      {sceneOptimizationSummary.recommendedImageScenes}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                    <div className="text-lime-100/60">{ui.estimatedCost}</div>
+                    <div className="mt-1 text-xl font-semibold">
+                      ${sceneOptimizationSummary.estimatedRunwayCostUsd.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                    <div className="text-lime-100/60">{ui.estimatedSavings}</div>
+                    <div className="mt-1 text-xl font-semibold">
+                      {sceneOptimizationSummary.estimatedSavingsPercent}%
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {sceneOptimizationResult.length > 0 && (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {sceneOptimizationResult.map((item) => (
+                    <div
+                      key={item.sceneId}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="font-semibold text-white">
+                          Scene {item.sceneId}
+                        </h4>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            item.exportMode === "video"
+                              ? "bg-sky-400/15 text-sky-100"
+                              : "bg-amber-400/15 text-amber-100"
+                          }`}
+                        >
+                          {item.exportMode.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                        {item.reason}
+                      </p>
+                      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                        <span>Confidence: {item.confidence}</span>
+                        <span>${item.estimatedCostUsd.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-50">
