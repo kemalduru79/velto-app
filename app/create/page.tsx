@@ -548,6 +548,11 @@ const UI_TEXT = {
     generateFullYoutubePackage: "Full YouTube Package Üret",
     generatingFullYoutubePackage: "Full package hazırlanıyor...",
     fullYoutubePackageReady: "Full YouTube package hazır ✅",
+    productionBridgeTitle: "Üretime Devam Et",
+    productionBridgeDesc: "Creator Lab paketi hazır. Şimdi bu paketi gerçek sahnelere dönüştürebilir, ardından görsel/ses/video üretimine geçebilirsin.",
+    productionBridgeButton: "🎬 Sahne Üretimine Başla",
+    productionBridgeReady: "Creator Lab paketi hazır. Henüz üretim sahnesi oluşturulmadı.",
+    productionBridgeCostNote: "Not: Bu adım sahne görsellerini üretmeye başlayabilir; maliyet kontrolü sende kalır.",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -830,6 +835,11 @@ const UI_TEXT = {
     generateFullYoutubePackage: "Generate Full YouTube Package",
     generatingFullYoutubePackage: "Preparing full package...",
     fullYoutubePackageReady: "Full YouTube package is ready ✅",
+    productionBridgeTitle: "Continue to Production",
+    productionBridgeDesc: "The Creator Lab package is ready. Convert it into production scenes, then continue with image, audio, and video generation.",
+    productionBridgeButton: "🎬 Start Scene Production",
+    productionBridgeReady: "Creator Lab package is ready. No production scenes have been created yet.",
+    productionBridgeCostNote: "Note: This step may start generating scene visuals; rendering cost remains under your control.",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -6306,6 +6316,36 @@ export default function CreatePage() {
                 {creatorProductionPackage.storyPremise}
               </p>
             </div>
+
+            {scenes.length === 0 && (
+              <div className="mb-5 rounded-2xl border border-purple-300/25 bg-purple-500/10 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-purple-200">
+                      {ui.productionBridgeTitle}
+                    </p>
+                    <h3 className="mt-2 text-xl font-semibold text-white">
+                      {ui.productionBridgeReady}
+                    </h3>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-purple-100/80">
+                      {ui.productionBridgeDesc}
+                    </p>
+                    <p className="mt-3 text-xs leading-5 text-purple-100/60">
+                      {ui.productionBridgeCostNote}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={buildStory}
+                    disabled={buildingStory}
+                    className="rounded-2xl border border-purple-300/30 bg-purple-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {buildingStory ? ui.buildingStory : ui.productionBridgeButton}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
