@@ -2502,6 +2502,11 @@ export default function CreatePage() {
         characters,
         visualBible,
         scenes: snapshotScenes,
+        creatorProductionPackage,
+        youtubeMetadataResult,
+        youtubeThumbnailResult,
+        sceneOptimizationResult,
+        sceneOptimizationSummary,
         exportedMovieUrl: null,
         exportedMovieResult: null,
         exportSignature: null,
@@ -3132,11 +3137,17 @@ export default function CreatePage() {
             inputPrompt: input,
             flowKey: activeFlowKey,
             flowTitle: selectedFlow.title,
+            flowType: activeFlowKey || "storyverse",
             language,
             storyPremise: storySetup?.storyPremise || "",
             characters,
             visualBible,
             scenes,
+            creatorProductionPackage,
+            youtubeMetadataResult,
+            youtubeThumbnailResult,
+            sceneOptimizationResult,
+            sceneOptimizationSummary,
             exportedMovieUrl: nextExportResult.movieUrl,
             exportedMovieResult: nextExportResult,
             exportSignature: currentSignature,
@@ -3389,6 +3400,11 @@ export default function CreatePage() {
         characters,
         visualBible,
         scenes,
+        creatorProductionPackage,
+        youtubeMetadataResult,
+        youtubeThumbnailResult,
+        sceneOptimizationResult,
+        sceneOptimizationSummary,
         exportedMovieUrl: hasReusableExport() ? exportedMovieUrl : null,
         exportedMovieResult: hasReusableExport() ? exportMovieResult : null,
         exportSignature: hasReusableExport() ? exportSignature : null,
@@ -3515,6 +3531,20 @@ export default function CreatePage() {
       setExportedMovieUrl(project.exported_movie_url || "");
       setExportMovieResult(project.exported_movie_result || null);
       setExportSignature(project.export_signature || "");
+
+      setCreatorMentorResult(project.creator_mentor_result || null);
+      setCreatorProductionPackage(project.creator_production_package || null);
+      setYoutubeMetadataResult(project.youtube_metadata || null);
+      setYoutubeThumbnailResult(project.youtube_thumbnail || null);
+      setSceneOptimizationResult(
+        Array.isArray(project.scene_optimization) ? project.scene_optimization : []
+      );
+      setSceneOptimizationSummary(project.scene_optimization_summary || null);
+      setRefinedCreatorScenes(
+        Array.isArray(project.refined_creator_scenes)
+          ? project.refined_creator_scenes
+          : []
+      );
       setShareUrl(project.share_id ? `${window.location.origin}/episode/public/${project.share_id}` : "");
       setShareCopied(false);
       setStorySetup({

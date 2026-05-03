@@ -40,6 +40,13 @@ export async function POST(req: Request) {
       exportSignature,
       flowType,
       flowKey,
+      creatorMentorResult,
+      creatorProductionPackage,
+      youtubeMetadataResult,
+      youtubeThumbnailResult,
+      sceneOptimizationResult,
+      sceneOptimizationSummary,
+      refinedCreatorScenes,
     } = body;
 
     if (!title || !scenes) {
@@ -77,6 +84,13 @@ export async function POST(req: Request) {
           exported_movie_result: exportedMovieResult || null,
           export_signature: exportSignature || null,
           flow_type: normalizedFlowType,
+          creator_mentor_result: creatorMentorResult || null,
+          creator_production_package: creatorProductionPackage || null,
+          youtube_metadata: youtubeMetadataResult || null,
+          youtube_thumbnail: youtubeThumbnailResult || null,
+          scene_optimization: sceneOptimizationResult || null,
+          scene_optimization_summary: sceneOptimizationSummary || null,
+          refined_creator_scenes: refinedCreatorScenes || null,
         })
         .eq("id", projectId)
         .eq("owner_user_id", user.id)
@@ -106,6 +120,13 @@ export async function POST(req: Request) {
         exported_movie_result: exportedMovieResult || null,
         export_signature: exportSignature || null,
         flow_type: normalizedFlowType,
+        creator_mentor_result: creatorMentorResult || null,
+        creator_production_package: creatorProductionPackage || null,
+        youtube_metadata: youtubeMetadataResult || null,
+        youtube_thumbnail: youtubeThumbnailResult || null,
+        scene_optimization: sceneOptimizationResult || null,
+        scene_optimization_summary: sceneOptimizationSummary || null,
+        refined_creator_scenes: refinedCreatorScenes || null,
       }])
       .select()
       .single();
