@@ -541,6 +541,8 @@ const UI_TEXT = {
     estimatedSavings: "Tahmini Tasarruf",
     applyOptimization: "Önerileri Uygula",
     optimizationApplied: "Optimizasyon önerileri uygulandı ✅",
+    aiOptimizeScenes: "AI Optimize",
+    aiOptimizingScenes: "AI optimize ediyor...",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -816,6 +818,8 @@ const UI_TEXT = {
     estimatedSavings: "Estimated Savings",
     applyOptimization: "Apply Recommendations",
     optimizationApplied: "Optimization recommendations applied ✅",
+    aiOptimizeScenes: "AI Optimize",
+    aiOptimizingScenes: "AI optimizing...",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -993,6 +997,7 @@ export default function CreatePage() {
   const [sceneOptimizationSummary, setSceneOptimizationSummary] =
     useState<SceneOptimizationSummary | null>(null);
   const [sceneOptimizationLoading, setSceneOptimizationLoading] = useState(false);
+  const [sceneOptimizationAILoading, setSceneOptimizationAILoading] = useState(false);
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -3920,6 +3925,65 @@ export default function CreatePage() {
     }
   };
 
+  const handleOptimizeScenesAI = async () => {
+    const sourceScenes =
+      creatorProductionPackage?.scenes?.length
+        ? creatorProductionPackage.scenes
+        : scenes;
+
+    if (!sourceScenes || sourceScenes.length === 0) {
+      setError(
+        uiLanguage === "en"
+          ? "Create scenes or a production package first."
+          : "Önce sahneleri veya üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    setSceneOptimizationAILoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/optimize-scenes-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          scenes: sourceScenes,
+          mode: "balanced",
+          estimatedVideoCostUsd: 0.05,
+          language,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+          title: creatorProductionPackage?.title || title,
+          storyPremise: creatorProductionPackage?.storyPremise || storySetup?.storyPremise || "",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "AI scene optimization failed.");
+      }
+
+      setSceneOptimizationResult(data.result || []);
+      setSceneOptimizationSummary(data.summary || null);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "AI optimization completed ✅"
+          : "AI optimizasyon tamamlandı ✅"
+      );
+    } catch (e: any) {
+      console.error("handleOptimizeScenesAI error:", e);
+      setError(e?.message || "AI scene optimization failed.");
+    } finally {
+      setSceneOptimizationAILoading(false);
+    }
+  };
+
   const handleApplySceneOptimization = () => {
     if (!sceneOptimizationResult.length) {
       return;
@@ -6127,6 +6191,17 @@ export default function CreatePage() {
                     {sceneOptimizationLoading
                       ? ui.optimizingScenes
                       : ui.optimizeScenes}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOptimizeScenesAI}
+                    disabled={sceneOptimizationAILoading}
+                    className="rounded-xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sceneOptimizationAILoading
+                      ? ui.aiOptimizingScenes
+                      : ui.aiOptimizeScenes}
                   </button>
 
                   {sceneOptimizationResult.length > 0 && (
