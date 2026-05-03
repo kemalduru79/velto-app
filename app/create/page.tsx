@@ -159,6 +159,24 @@ type CreatorProductionPackage = {
   targetSceneDurationSec?: number;
 };
 
+type YoutubeMetadataResult = {
+  titleOptions: string[];
+  recommendedTitle: string;
+  description: string;
+  hashtags: string[];
+  firstComment: string;
+  thumbnailTextIdeas: string[];
+  seoKeywords: string[];
+  audiencePromise: string;
+};
+
+type YoutubeThumbnailResult = {
+  imageUrl: string;
+  prompt: string;
+  headline: string;
+  subHeadline: string;
+};
+
 type YoutubeResearchVideo = {
   id: string;
   title: string;
@@ -470,6 +488,30 @@ const UI_TEXT = {
     thumbnailIdea: "Thumbnail Fikri",
     youtubeTitle: "YouTube Başlığı",
     youtubeCaption: "YouTube Caption",
+    youtubeMetadataEngine: "YouTube Metadata Engine",
+    youtubeMetadataDesc: "Başlık, açıklama, hashtag ve first comment önerilerini üretir.",
+    generateYoutubeMetadata: "YouTube Metadata Üret",
+    generatingYoutubeMetadata: "Metadata üretiliyor...",
+    recommendedYoutubeTitle: "Önerilen Başlık",
+    titleOptions: "Başlık Alternatifleri",
+    youtubeDescription: "YouTube Açıklaması",
+    hashtags: "Hashtagler",
+    firstComment: "İlk Yorum",
+    thumbnailTextIdeas: "Thumbnail Metinleri",
+    seoKeywords: "SEO Anahtar Kelimeleri",
+    audiencePromise: "İzleyici Vaadi",
+    thumbnailGenerationEngine: "Thumbnail Generation Engine",
+    thumbnailGenerationDesc: "YouTube için tıklanabilir ama çocuk dostu thumbnail görseli üretir.",
+    generateThumbnail: "Thumbnail Üret",
+    generatingThumbnail: "Thumbnail üretiliyor...",
+    generatedThumbnail: "Üretilen Thumbnail",
+    thumbnailPrompt: "Thumbnail Prompt",
+    thumbnailHeadline: "Thumbnail Başlığı",
+    thumbnailSubHeadline: "Thumbnail Alt Metni",
+    exportCreatorPackage: "Creator Package Export",
+    exportCreatorPackageDesc: "Video linki, başlık, açıklama, hashtag, ilk yorum, thumbnail ve sahne datasını ZIP paketi olarak indirir.",
+    downloadCreatorPackage: "Creator Package İndir",
+    downloadingCreatorPackage: "Paket hazırlanıyor...",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -710,6 +752,30 @@ const UI_TEXT = {
     thumbnailIdea: "Thumbnail Idea",
     youtubeTitle: "YouTube Title",
     youtubeCaption: "YouTube Caption",
+    youtubeMetadataEngine: "YouTube Metadata Engine",
+    youtubeMetadataDesc: "Generates title options, description, hashtags, and first comment suggestions.",
+    generateYoutubeMetadata: "Generate YouTube Metadata",
+    generatingYoutubeMetadata: "Generating metadata...",
+    recommendedYoutubeTitle: "Recommended Title",
+    titleOptions: "Title Options",
+    youtubeDescription: "YouTube Description",
+    hashtags: "Hashtags",
+    firstComment: "First Comment",
+    thumbnailTextIdeas: "Thumbnail Text Ideas",
+    seoKeywords: "SEO Keywords",
+    audiencePromise: "Audience Promise",
+    thumbnailGenerationEngine: "Thumbnail Generation Engine",
+    thumbnailGenerationDesc: "Generates a clickable but child-safe YouTube thumbnail image.",
+    generateThumbnail: "Generate Thumbnail",
+    generatingThumbnail: "Generating thumbnail...",
+    generatedThumbnail: "Generated Thumbnail",
+    thumbnailPrompt: "Thumbnail Prompt",
+    thumbnailHeadline: "Thumbnail Headline",
+    thumbnailSubHeadline: "Thumbnail Sub-headline",
+    exportCreatorPackage: "Creator Package Export",
+    exportCreatorPackageDesc: "Downloads video link, title, description, hashtags, first comment, thumbnail, and scene data as a ZIP package.",
+    downloadCreatorPackage: "Download Creator Package",
+    downloadingCreatorPackage: "Preparing package...",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -874,6 +940,13 @@ export default function CreatePage() {
   const [youtubePatternSummary, setYoutubePatternSummary] =
     useState<YoutubePatternSummary | null>(null);
   const [youtubePatternLoading, setYoutubePatternLoading] = useState(false);
+  const [youtubeMetadataResult, setYoutubeMetadataResult] =
+    useState<YoutubeMetadataResult | null>(null);
+  const [youtubeMetadataLoading, setYoutubeMetadataLoading] = useState(false);
+  const [youtubeThumbnailResult, setYoutubeThumbnailResult] =
+    useState<YoutubeThumbnailResult | null>(null);
+  const [youtubeThumbnailLoading, setYoutubeThumbnailLoading] = useState(false);
+  const [isDownloadingCreatorPackage, setIsDownloadingCreatorPackage] = useState(false);
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -1660,6 +1733,8 @@ export default function CreatePage() {
     setCreatorProductionPackage(null);
     setYoutubeResearchVideos([]);
     setYoutubePatternSummary(null);
+    setYoutubeMetadataResult(null);
+    setYoutubeThumbnailResult(null);
     setRefinedCreatorScenes([]);
     setTitle("");
     setCharacters([]);
@@ -3004,7 +3079,6 @@ export default function CreatePage() {
             inputPrompt: input,
             flowKey: activeFlowKey,
             flowTitle: selectedFlow.title,
-            flowType: activeFlowKey || "storyverse",
             language,
             storyPremise: storySetup?.storyPremise || "",
             characters,
@@ -3749,6 +3823,185 @@ export default function CreatePage() {
     }
   };
 
+
+  const handleDownloadCreatorPackage = async () => {
+    if (!creatorProductionPackage) {
+      setError(
+        uiLanguage === "en"
+          ? "Create a production package first."
+          : "Önce üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    if (!exportedMovieUrl && !exportMovieResult?.movieUrl) {
+      setError(
+        uiLanguage === "en"
+          ? "Create the final movie first."
+          : "Önce final filmi oluşturmalısın."
+      );
+      return;
+    }
+
+    setIsDownloadingCreatorPackage(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/export-creator-package", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title,
+          videoUrl: exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl,
+          productionPackage: creatorProductionPackage,
+          metadata: youtubeMetadataResult,
+          thumbnail: youtubeThumbnailResult,
+          scenes,
+          language,
+          flowType: activeFlowKey,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Creator package indirilemedi.");
+      }
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeTitle = (title || creatorProductionPackage.title || "velto-creator-package")
+        .toLowerCase()
+        .replace(/[^a-z0-9-_]+/gi, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      link.href = blobUrl;
+      link.download = `${safeTitle || "velto-creator-package"}.zip`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Creator package downloaded ✅"
+          : "Creator package indirildi ✅"
+      );
+    } catch (e: any) {
+      console.error("handleDownloadCreatorPackage error:", e);
+      setError(e?.message || "Creator package indirilemedi.");
+    } finally {
+      setIsDownloadingCreatorPackage(false);
+    }
+  };
+
+  const handleGenerateYoutubeThumbnail = async () => {
+    if (!creatorProductionPackage) {
+      setError(
+        uiLanguage === "en"
+          ? "Create a production package first."
+          : "Önce üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    setYoutubeThumbnailLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/creator-thumbnail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          package: creatorProductionPackage,
+          metadata: youtubeMetadataResult,
+          language,
+          targetMarket: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.thumbnail?.imageUrl) {
+        throw new Error(data?.error || "Thumbnail üretilemedi.");
+      }
+
+      setYoutubeThumbnailResult(data.thumbnail as YoutubeThumbnailResult);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Thumbnail generated ✅"
+          : "Thumbnail üretildi ✅"
+      );
+    } catch (e: any) {
+      console.error("handleGenerateYoutubeThumbnail error:", e);
+      setError(e?.message || "Thumbnail üretilemedi.");
+    } finally {
+      setYoutubeThumbnailLoading(false);
+    }
+  };
+
+  const handleGenerateYoutubeMetadata = async () => {
+    if (!creatorProductionPackage) {
+      setError(
+        uiLanguage === "en"
+          ? "Create a production package first."
+          : "Önce üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    setYoutubeMetadataLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/creator-youtube-metadata", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          package: creatorProductionPackage,
+          language,
+          targetMarket: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+          patternSummary: youtubePatternSummary,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "YouTube metadata üretilemedi.");
+      }
+
+      setYoutubeMetadataResult(data.metadata as YoutubeMetadataResult);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "YouTube metadata generated ✅"
+          : "YouTube metadata üretildi ✅"
+      );
+    } catch (e: any) {
+      console.error("handleGenerateYoutubeMetadata error:", e);
+      setError(e?.message || "YouTube metadata üretilemedi.");
+    } finally {
+      setYoutubeMetadataLoading(false);
+    }
+  };
 
   const handleRefineCreatorScenes = async () => {
     if (!creatorProductionPackage?.scenes?.length) {
@@ -5524,6 +5777,208 @@ export default function CreatePage() {
                 <p className="mt-3 leading-6 text-slate-300">
                   {creatorProductionPackage.caption}
                 </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-sky-300/20 bg-sky-500/10 p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {ui.youtubeMetadataEngine}
+                  </h3>
+                  <p className="mt-1 text-sm text-sky-100/75">
+                    {ui.youtubeMetadataDesc}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateYoutubeMetadata}
+                  disabled={youtubeMetadataLoading}
+                  className="rounded-xl border border-sky-300/30 bg-sky-400/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {youtubeMetadataLoading
+                    ? ui.generatingYoutubeMetadata
+                    : ui.generateYoutubeMetadata}
+                </button>
+              </div>
+
+              {youtubeMetadataResult && (
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.recommendedYoutubeTitle}
+                    </h4>
+                    <p className="mt-3 leading-6 text-slate-200">
+                      {youtubeMetadataResult.recommendedTitle}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.titleOptions}
+                    </h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                      {youtubeMetadataResult.titleOptions.map((item, index) => (
+                        <li key={`${item}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:col-span-2">
+                    <h4 className="font-semibold text-white">
+                      {ui.youtubeDescription}
+                    </h4>
+                    <p className="mt-3 whitespace-pre-line leading-6 text-slate-300">
+                      {youtubeMetadataResult.description}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.hashtags}
+                    </h4>
+                    <p className="mt-3 leading-6 text-sky-100">
+                      {youtubeMetadataResult.hashtags.join(" ")}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.firstComment}
+                    </h4>
+                    <p className="mt-3 leading-6 text-slate-300">
+                      {youtubeMetadataResult.firstComment}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.thumbnailTextIdeas}
+                    </h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                      {youtubeMetadataResult.thumbnailTextIdeas.map((item, index) => (
+                        <li key={`${item}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.seoKeywords}
+                    </h4>
+                    <p className="mt-3 leading-6 text-slate-300">
+                      {youtubeMetadataResult.seoKeywords.join(", ")}
+                    </p>
+                    <p className="mt-4 rounded-xl border border-sky-300/20 bg-sky-400/10 p-3 text-sm text-sky-100">
+                      {youtubeMetadataResult.audiencePromise}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {ui.thumbnailGenerationEngine}
+                  </h3>
+                  <p className="mt-1 text-sm text-fuchsia-100/75">
+                    {ui.thumbnailGenerationDesc}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateYoutubeThumbnail}
+                  disabled={youtubeThumbnailLoading}
+                  className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {youtubeThumbnailLoading
+                    ? ui.generatingThumbnail
+                    : ui.generateThumbnail}
+                </button>
+              </div>
+
+              {youtubeThumbnailResult && (
+                <div className="mt-5 grid gap-4 lg:grid-cols-[360px_1fr]">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <h4 className="font-semibold text-white">
+                      {ui.generatedThumbnail}
+                    </h4>
+                    <img
+                      src={youtubeThumbnailResult.imageUrl}
+                      alt="Generated YouTube thumbnail"
+                      className="mt-3 aspect-video w-full rounded-xl object-cover"
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <h4 className="font-semibold text-white">
+                        {ui.thumbnailHeadline}
+                      </h4>
+                      <p className="mt-3 text-slate-200">
+                        {youtubeThumbnailResult.headline}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <h4 className="font-semibold text-white">
+                        {ui.thumbnailSubHeadline}
+                      </h4>
+                      <p className="mt-3 text-slate-300">
+                        {youtubeThumbnailResult.subHeadline}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <h4 className="font-semibold text-white">
+                        {ui.thumbnailPrompt}
+                      </h4>
+                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-300">
+                        {youtubeThumbnailResult.prompt}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-orange-300/20 bg-orange-500/10 p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {ui.exportCreatorPackage}
+                  </h3>
+                  <p className="mt-1 text-sm text-orange-100/75">
+                    {ui.exportCreatorPackageDesc}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadCreatorPackage}
+                  disabled={isDownloadingCreatorPackage || !creatorProductionPackage || !exportedMovieUrl}
+                  className="rounded-xl border border-orange-300/30 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-100 transition hover:bg-orange-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDownloadingCreatorPackage
+                    ? ui.downloadingCreatorPackage
+                    : ui.downloadCreatorPackage}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 text-sm text-orange-50/80 md:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  video_link.txt
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  title / description / hashtags
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  thumbnail.png + scenes.json
+                </div>
               </div>
             </div>
 
