@@ -984,6 +984,7 @@ export default function CreatePage() {
     useState<CreatorProductionPackage | null>(null);
   const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
   const [isGeneratingFullYoutubePackage, setIsGeneratingFullYoutubePackage] = useState(false);
+  const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
     CreatorProductionScene[]
   >([]);
@@ -1794,6 +1795,7 @@ export default function CreatePage() {
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
     setIsGeneratingFullYoutubePackage(false);
+    setIsAdvancedMode(false);
     setYoutubeResearchVideos([]);
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
@@ -6134,20 +6136,40 @@ export default function CreatePage() {
             placeholder={getFlowAwarePlaceholder()}
           />
 
+          {isCreatorLabFlow && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsAdvancedMode((prev) => !prev)}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              >
+                {isAdvancedMode ? "Hide Advanced Tools" : "Show Advanced Tools"}
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
-            <button
-              onClick={createSetup}
-              disabled={loadingSetup}
-              className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
-            >
-              {isCreatorLabFlow
-                ? creatorMentorLoading
+            {!isCreatorLabFlow && (
+              <button
+                onClick={createSetup}
+                disabled={loadingSetup}
+                className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+              >
+                {loadingSetup ? ui.preparingSetup : ui.createCharacters}
+              </button>
+            )}
+
+            {isCreatorLabFlow && isAdvancedMode && (
+              <button
+                onClick={createSetup}
+                disabled={loadingSetup}
+                className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+              >
+                {creatorMentorLoading
                   ? ui.analyzingContentOpportunity
-                  : ui.analyzeContentOpportunity
-                : loadingSetup
-                  ? ui.preparingSetup
-                  : ui.createCharacters}
-            </button>
+                  : ui.analyzeContentOpportunity}
+              </button>
+            )}
 
             {isCreatorLabFlow && (
               <button
@@ -6183,7 +6205,7 @@ export default function CreatePage() {
           </div>
         )}
 
-        {isCreatorLabFlow && creatorMentorResult && (
+        {isCreatorLabFlow && isAdvancedMode && creatorMentorResult && (
           <section className="rounded-[28px] border border-cyan-300/20 bg-cyan-500/[0.08] p-5 text-sm text-slate-200">
             <div className="mb-5">
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200">
@@ -6319,16 +6341,18 @@ export default function CreatePage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGenerateYoutubeMetadata}
-                  disabled={youtubeMetadataLoading}
-                  className="rounded-xl border border-sky-300/30 bg-sky-400/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {youtubeMetadataLoading
-                    ? ui.generatingYoutubeMetadata
-                    : ui.generateYoutubeMetadata}
-                </button>
+                {isAdvancedMode && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateYoutubeMetadata}
+                    disabled={youtubeMetadataLoading}
+                    className="rounded-xl border border-sky-300/30 bg-sky-400/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {youtubeMetadataLoading
+                      ? ui.generatingYoutubeMetadata
+                      : ui.generateYoutubeMetadata}
+                  </button>
+                )}
               </div>
 
               {youtubeMetadataResult && (
@@ -6417,16 +6441,18 @@ export default function CreatePage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGenerateYoutubeThumbnail}
-                  disabled={youtubeThumbnailLoading}
-                  className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {youtubeThumbnailLoading
-                    ? ui.generatingThumbnail
-                    : ui.generateThumbnail}
-                </button>
+                {isAdvancedMode && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateYoutubeThumbnail}
+                    disabled={youtubeThumbnailLoading}
+                    className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {youtubeThumbnailLoading
+                      ? ui.generatingThumbnail
+                      : ui.generateThumbnail}
+                  </button>
+                )}
               </div>
 
               {youtubeThumbnailResult && (
@@ -6522,27 +6548,31 @@ export default function CreatePage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleOptimizeScenes}
-                    disabled={sceneOptimizationLoading}
-                    className="rounded-xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {sceneOptimizationLoading
-                      ? ui.optimizingScenes
-                      : ui.optimizeScenes}
-                  </button>
+                  {isAdvancedMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleOptimizeScenes}
+                        disabled={sceneOptimizationLoading}
+                        className="rounded-xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sceneOptimizationLoading
+                          ? ui.optimizingScenes
+                          : ui.optimizeScenes}
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={handleOptimizeScenesAI}
-                    disabled={sceneOptimizationAILoading}
-                    className="rounded-xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {sceneOptimizationAILoading
-                      ? ui.aiOptimizingScenes
-                      : ui.aiOptimizeScenes}
-                  </button>
+                      <button
+                        type="button"
+                        onClick={handleOptimizeScenesAI}
+                        disabled={sceneOptimizationAILoading}
+                        className="rounded-xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {sceneOptimizationAILoading
+                          ? ui.aiOptimizingScenes
+                          : ui.aiOptimizeScenes}
+                      </button>
+                    </>
+                  )}
 
                   {sceneOptimizationResult.length > 0 && (
                     <button
