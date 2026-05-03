@@ -147,24 +147,24 @@ function getSceneAudioMixProfile(scene) {
   const hasDialogue = !!scene?.dialogueAudioUrl;
   const custom = scene?.audioMixProfile || {};
 
-  let pauseMs = 220;
+  let pauseMs = 80;
   let sceneFadeInSec = 0.08;
   let sceneFadeOutSec = 0.12;
 
   if (hasDialogue) {
-    pauseMs = 260;
+    pauseMs = 100;
     sceneFadeInSec = 0.08;
     sceneFadeOutSec = 0.15;
   }
 
   if (target >= 8) {
-    pauseMs = hasDialogue ? 320 : 220;
+    pauseMs = hasDialogue ? 120 : 60;
     sceneFadeInSec = 0.12;
     sceneFadeOutSec = 0.18;
   }
 
   if (target >= 10) {
-    pauseMs = hasDialogue ? 360 : 240;
+    pauseMs = hasDialogue ? 140 : 80;
     sceneFadeInSec = 0.14;
     sceneFadeOutSec = 0.2;
   }
@@ -185,22 +185,26 @@ function getSceneAudioMixProfile(scene) {
   };
 }
 
-function getSceneTargetDuration(scene, fallbackAudioDuration) {
+function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "image", sourceDuration = 0) {
   const requestedTarget = Number(scene?.timing?.targetSceneDuration || 0);
+  const safeAudioDuration = Number.isFinite(fallbackAudioDuration) ? fallbackAudioDuration : 0;
+  const safeSourceDuration = Number.isFinite(sourceDuration) ? sourceDuration : 0;
+
+  if (sourceType === "video" && safeSourceDuration > 0) {
+    if (safeAudioDuration > safeSourceDuration + 0.25) {
+      return Math.min(MAX_SCENE_DURATION, Math.max(safeSourceDuration, safeAudioDuration + 0.15));
+    }
+
+    return safeSourceDuration;
+  }
 
   const audioDrivenDuration =
-    fallbackAudioDuration > 0
-      ? fallbackAudioDuration + 0.4
-      : TARGET_SCENE_DURATION;
+    safeAudioDuration > 0 ? safeAudioDuration + 0.25 : TARGET_SCENE_DURATION;
 
-  const finalDuration = Math.max(
-    TARGET_SCENE_DURATION,
-    MIN_SCENE_DURATION,
-    requestedTarget,
-    audioDrivenDuration
+  return Math.min(
+    MAX_SCENE_DURATION,
+    Math.max(MIN_SCENE_DURATION, requestedTarget || TARGET_SCENE_DURATION, audioDrivenDuration)
   );
-
-  return finalDuration;
 }
 
 function getSpeechDurationLimit(scene, targetDuration) {
@@ -393,151 +397,6 @@ async function buildNarrationDialogueTrack({
 }
 
 
-function getBackgroundMusicVolume(body) {
-  const rawVolume = Number(body?.backgroundMusicVolume ?? body?.bgmVolume ?? 0.16);
-
-  if (!Number.isFinite(rawVolume)) {
-    return 0.16;
-  }
-
-  return Math.min(0.35, Math.max(0.03, rawVolume));
-}
-
-function getLocalBackgroundMusicPath() {
-  const candidates = [
-    path.join(process.cwd(), "assets", "bgm.mp3"),
-    path.join(process.cwd(), "src", "assets", "bgm.mp3"),
-  ];
-
-  return candidates.find((candidatePath) => fs.existsSync(candidatePath)) || "";
-}
-
-async function prepareBackgroundMusic({ body, tempDir }) {
-  const bgmUrl =
-    typeof body?.backgroundMusicUrl === "string" && body.backgroundMusicUrl.trim()
-      ? body.backgroundMusicUrl.trim()
-      : "";
-
-  if (bgmUrl) {
-    const downloadedBgmPath = path.join(tempDir, "background-music-source.mp3");
-    await downloadFile(bgmUrl, downloadedBgmPath);
-    return downloadedBgmPath;
-  }
-
-  const localBgmPath = getLocalBackgroundMusicPath();
-
-  if (localBgmPath) {
-    return localBgmPath;
-  }
-
-  return "";
-}
-
-async function mixVoiceWithBackgroundMusic({
-  voiceAudioPath,
-  bgmPath,
-  outputPath,
-  volume,
-}) {
-  const safeVolume = Math.min(0.35, Math.max(0.03, Number(volume) || 0.16));
-
-  await runFfmpeg([
-    "-y",
-    "-i",
-    voiceAudioPath,
-    "-stream_loop",
-    "-1",
-    "-i",
-    bgmPath,
-    "-filter_complex",
-    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a_voice];` +
-      `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,volume=${safeVolume.toFixed(3)}[a_bgm];` +
-      `[a_voice][a_bgm]amix=inputs=2:duration=first:dropout_transition=2,` +
-      `alimiter=limit=0.95[a_out]`,
-    "-map",
-    "[a_out]",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "192k",
-    "-ar",
-    "44100",
-    "-ac",
-    "2",
-    outputPath,
-  ]);
-}
-
-async function createBackgroundMusicOnlyTrack({
-  bgmPath,
-  outputPath,
-  durationSeconds,
-  volume,
-}) {
-  const safeDuration = Math.max(0.25, Number(durationSeconds) || TARGET_SCENE_DURATION);
-  const safeVolume = Math.min(0.35, Math.max(0.03, Number(volume) || 0.16));
-
-  await runFfmpeg([
-    "-y",
-    "-stream_loop",
-    "-1",
-    "-i",
-    bgmPath,
-    "-filter_complex",
-    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
-      `volume=${safeVolume.toFixed(3)},` +
-      `atrim=duration=${safeDuration.toFixed(3)},` +
-      `asetpts=PTS-STARTPTS,` +
-      `afade=t=in:st=0:d=0.150,` +
-      `afade=t=out:st=${Math.max(0, safeDuration - 0.250).toFixed(3)}:d=0.250,` +
-      `alimiter=limit=0.95[a_out]`,
-    "-map",
-    "[a_out]",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "192k",
-    "-ar",
-    "44100",
-    "-ac",
-    "2",
-    outputPath,
-  ]);
-}
-
-async function applyBackgroundMusicToSceneAudio({
-  baseAudioPath,
-  bgmPath,
-  outputPath,
-  targetDuration,
-  volume,
-}) {
-  if (!bgmPath) {
-    return baseAudioPath || undefined;
-  }
-
-  if (baseAudioPath) {
-    await mixVoiceWithBackgroundMusic({
-      voiceAudioPath: baseAudioPath,
-      bgmPath,
-      outputPath,
-      volume,
-    });
-
-    return outputPath;
-  }
-
-  await createBackgroundMusicOnlyTrack({
-    bgmPath,
-    outputPath,
-    durationSeconds: targetDuration,
-    volume,
-  });
-
-  return outputPath;
-}
-
-
 async function createImageClipWithAudio({
   imagePath,
   audioPath,
@@ -650,25 +509,25 @@ async function createSceneClipWithAudio({
   outputPath,
   targetDuration,
 }) {
-  const resolvedTargetDuration =
+  const requestedTargetDuration =
     typeof targetDuration === "number" &&
     Number.isFinite(targetDuration) &&
     targetDuration > 0
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const durationText = resolvedTargetDuration.toFixed(3);
   const videoDuration = await getMediaDuration(videoPath);
-  const freezeDuration = Math.max(0, resolvedTargetDuration - videoDuration + 0.05);
+  const effectiveDuration =
+    videoDuration > 0
+      ? Math.min(videoDuration, requestedTargetDuration)
+      : requestedTargetDuration;
+  const durationText = effectiveDuration.toFixed(3);
 
   const videoBaseFilter =
     "scale=1280:720:force_original_aspect_ratio=decrease," +
     "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
     "setsar=1," +
     "fps=25," +
-    (freezeDuration > 0
-      ? `tpad=stop_mode=clone:stop_duration=${freezeDuration.toFixed(3)},`
-      : "") +
     `trim=duration=${durationText},` +
     "setpts=PTS-STARTPTS," +
     "format=yuv420p";
@@ -779,6 +638,44 @@ async function concatSceneClips(listFilePath, outputFilePath) {
   ]);
 }
 
+async function mixFinalVideoWithBackgroundMusic({
+  inputVideoPath,
+  bgmPath,
+  outputVideoPath,
+  bgmVolume = 0.16,
+}) {
+  await runFfmpeg([
+    "-y",
+    "-i",
+    inputVideoPath,
+    "-stream_loop",
+    "-1",
+    "-i",
+    bgmPath,
+    "-filter_complex",
+    `[1:a]volume=${bgmVolume.toFixed(3)}[bgm];` +
+      `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+    "-map",
+    "0:v",
+    "-map",
+    "[a]",
+    "-c:v",
+    "copy",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    "-movflags",
+    "+faststart",
+    "-shortest",
+    outputVideoPath,
+  ]);
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "velto-export-service" });
 });
@@ -792,18 +689,6 @@ app.post("/export-movie", async (req, res) => {
     const body = req.body || {};
 
     const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
-    const backgroundMusicVolume = getBackgroundMusicVolume(body);
-    const backgroundMusicPath = await prepareBackgroundMusic({ body, tempDir });
-    const backgroundMusicEnabled = Boolean(backgroundMusicPath);
-
-    if (backgroundMusicEnabled) {
-      console.log(
-        `Background music enabled. volume=${backgroundMusicVolume.toFixed(3)}`
-      );
-    } else {
-      console.log("Background music not found. Export will continue without BGM.");
-    }
-
     const projectId =
       typeof body?.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -884,7 +769,7 @@ app.post("/export-movie", async (req, res) => {
         }
       }
 
-      const narrationDialogueAudioPath = await buildNarrationDialogueTrack({
+      const finalAudioPath = await buildNarrationDialogueTrack({
         scene,
         narrationPath: hasNarration ? narrationPath : undefined,
         dialoguePath: hasDialogue ? dialoguePath : undefined,
@@ -895,39 +780,28 @@ app.post("/export-movie", async (req, res) => {
 
       let fallbackAudioDuration = 0;
 
-      if (narrationDialogueAudioPath) {
+      if (finalAudioPath) {
         try {
-          fallbackAudioDuration = await getMediaDuration(narrationDialogueAudioPath);
+          fallbackAudioDuration = await getMediaDuration(finalAudioPath);
         } catch (error) {
           console.warn(`Scene ${scene.id} audio duration probe skipped:`, error);
         }
       }
 
+      let sourceDuration = 0;
+
+      try {
+        sourceDuration = await getMediaDuration(sourcePath);
+      } catch (durationError) {
+        console.warn(`Scene ${scene.id || i + 1} source duration probe skipped:`, durationError);
+      }
+
       const targetDuration = getSceneTargetDuration(
         scene,
-        fallbackAudioDuration
+        fallbackAudioDuration,
+        sourceType,
+        sourceDuration
       );
-
-      const mixedSceneAudioPath = path.join(
-        tempDir,
-        `scene-mixed-audio-${i + 1}.m4a`
-      );
-
-      const finalAudioPath = await applyBackgroundMusicToSceneAudio({
-        baseAudioPath: narrationDialogueAudioPath,
-        bgmPath: backgroundMusicPath,
-        outputPath: mixedSceneAudioPath,
-        targetDuration,
-        volume: backgroundMusicVolume,
-      });
-
-      if (!fallbackAudioDuration && finalAudioPath) {
-        try {
-          fallbackAudioDuration = await getMediaDuration(finalAudioPath);
-        } catch (error) {
-          console.warn(`Scene ${scene.id} mixed audio duration probe skipped:`, error);
-        }
-      }
 
       console.log(
         `Export scene ${i + 1}: source=${sourceType}, audio=${fallbackAudioDuration.toFixed(2)}s, target=${targetDuration.toFixed(2)}s`
@@ -971,7 +845,32 @@ app.post("/export-movie", async (req, res) => {
     const outputFilePath = path.join(tempDir, "output-with-audio.mp4");
     await concatSceneClips(listFilePath, outputFilePath);
 
-    const outputBuffer = await fs.promises.readFile(outputFilePath);
+    const bgmPath = path.join(process.cwd(), "assets", "bgm.mp3");
+    let finalOutputFilePath = outputFilePath;
+    let backgroundMusicEmbedded = false;
+
+    if (fs.existsSync(bgmPath)) {
+      const outputWithBgmPath = path.join(tempDir, "output-with-continuous-bgm.mp4");
+
+      try {
+        await mixFinalVideoWithBackgroundMusic({
+          inputVideoPath: outputFilePath,
+          bgmPath,
+          outputVideoPath: outputWithBgmPath,
+          bgmVolume: 0.16,
+        });
+
+        finalOutputFilePath = outputWithBgmPath;
+        backgroundMusicEmbedded = true;
+        console.log("Continuous background music embedded:", bgmPath);
+      } catch (bgmError) {
+        console.warn("Background music mix skipped:", bgmError);
+      }
+    } else {
+      console.log("No bgm.mp3 found under assets. Export continues without background music.");
+    }
+
+    const outputBuffer = await fs.promises.readFile(finalOutputFilePath);
 
     const supabase = getSupabaseAdmin();
 
@@ -994,8 +893,8 @@ app.post("/export-movie", async (req, res) => {
       .from("movies")
       .getPublicUrl(moviePath);
 
-    const stats = await fs.promises.stat(outputFilePath);
-    const duration = await getMediaDuration(outputFilePath);
+    const stats = await fs.promises.stat(finalOutputFilePath);
+    const duration = await getMediaDuration(finalOutputFilePath);
     const fileName = `velto-${safeTitle}.mp4`;
 
     return res.json({
@@ -1008,6 +907,8 @@ app.post("/export-movie", async (req, res) => {
       sceneCount: usableScenes.length,
       audioEmbedded: true,
       dialogueEmbedded: true,
+      backgroundMusicEmbedded,
+      continuousBackgroundMusicAware: true,
       timingAware: true,
       timelineAwareAudio: true,
       audioMixProfileAware: true,
@@ -1015,10 +916,6 @@ app.post("/export-movie", async (req, res) => {
       imageClipAware: true,
       deterministicSceneTimelineAware: true,
       sceneAudioPaddedAware: true,
-      backgroundMusicEnabled,
-      backgroundMusicVolume,
-      backgroundMusicAware: true,
-      audioMixingV1: true,
     });
   } catch (error) {
     console.error("export-movie error:", error);

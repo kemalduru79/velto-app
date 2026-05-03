@@ -17,6 +17,7 @@ type SceneTiming = {
 };
 
 type Scene = {
+  renderMode?: "auto" | "video" | "image";
   id: number;
   text: string;
   narration: string;
@@ -1334,22 +1335,48 @@ export default function CreatePage() {
     return `${mb.toFixed(2)} MB`;
   };
 
+  const getSceneExportSource = (scene: Scene): "video" | "image" | "none" => {
+    if (scene.renderMode === "image") {
+      return scene.image ? "image" : "none";
+    }
+
+    if (scene.renderMode === "video") {
+      return scene.videoUrl && scene.videoStatus === "done" ? "video" : "none";
+    }
+
+    if (scene.videoUrl && scene.videoStatus === "done") {
+      return "video";
+    }
+
+    if (scene.image) {
+      return "image";
+    }
+
+    return "none";
+  };
+
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
     const exportableScenes = nextScenes
-      .filter((scene) => (scene.videoUrl && scene.videoStatus === "done") || scene.image)
-      .map((scene) => ({
-        id: scene.id,
-        text: scene.text || "",
-        narration: scene.narration || "",
-        dialogue: scene.dialogue || "",
-        cameraDirection: scene.cameraDirection || "",
-        emotion: scene.emotion || "",
-        motionHint: scene.motionHint || "",
-        image: scene.image || "",
-        videoUrl: scene.videoUrl || "",
-        videoStatus: scene.videoStatus || "idle",
-        timing: scene.timing || null,
-      }));
+      .filter((scene) => getSceneExportSource(scene) !== "none")
+      .map((scene) => {
+        const exportSource = getSceneExportSource(scene);
+
+        return {
+          id: scene.id,
+          renderMode: scene.renderMode || "auto",
+          exportSource,
+          text: scene.text || "",
+          narration: scene.narration || "",
+          dialogue: scene.dialogue || "",
+          cameraDirection: scene.cameraDirection || "",
+          emotion: scene.emotion || "",
+          motionHint: scene.motionHint || "",
+          image: scene.image || "",
+          videoUrl: exportSource === "video" ? scene.videoUrl || "" : "",
+          videoStatus: scene.videoStatus || "idle",
+          timing: scene.timing || null,
+        };
+      });
 
     return JSON.stringify({
       title: nextTitle || "",
@@ -2862,23 +2889,19 @@ export default function CreatePage() {
   };
 
 
-  const handleExportMovie = async () => {
+  const handleResetExport = () => {
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setSaveMessage(uiLanguage === "en" ? "Export reset ✅" : "Export sıfırlandı ✅");
+  };
+
+  const handleExportMovie = async (forceRebuild = false) => {
     const exportScenes = scenes.filter(
-      (scene) =>
-        (scene.videoUrl && scene.videoStatus === "done") ||
-        scene.image
+      (scene) => getSceneExportSource(scene) !== "none"
     );
-
-    for (const scene of exportScenes) {
-      const timing = scene.timing || buildSceneTiming(0, 0);
-
-      if (isSceneSpeechTooLong(timing)) {
-        setError(
-          `Sahne ${scene.id}: Konuşma çok uzun. Lütfen sahneyi kısalt veya yeniden üret.`
-        );
-        return;
-      }
-    }
 
     if (exportScenes.length === 0) {
       setError("Film oluşturmak için en az bir görsel veya hazır video içeren sahne gerekli.");
@@ -2892,7 +2915,7 @@ export default function CreatePage() {
 
     const currentSignature = buildExportSignature(title, scenes);
 
-    if (exportedMovieUrl && exportSignature === currentSignature) {
+    if (!forceRebuild && exportedMovieUrl && exportSignature === currentSignature) {
       setError("");
       setSaveMessage(ui.movieCreated);
 
@@ -2932,8 +2955,8 @@ export default function CreatePage() {
 
             return {
               ...scene,
-              exportSource:
-                scene.videoUrl && scene.videoStatus === "done" ? "video" : "image",
+              exportSource: getSceneExportSource(scene),
+              videoUrl: getSceneExportSource(scene) === "video" ? scene.videoUrl : "",
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
@@ -2981,6 +3004,7 @@ export default function CreatePage() {
             inputPrompt: input,
             flowKey: activeFlowKey,
             flowTitle: selectedFlow.title,
+            flowType: activeFlowKey || "storyverse",
             language,
             storyPremise: storySetup?.storyPremise || "",
             characters,
@@ -4483,7 +4507,7 @@ export default function CreatePage() {
     (scene) => scene.videoUrl && scene.videoStatus === "done"
   ).length;
   const readyExportCount = scenes.filter(
-    (scene) => (scene.videoUrl && scene.videoStatus === "done") || scene.image
+    (scene) => getSceneExportSource(scene) !== "none"
   ).length;
   const audioReadyCount = scenes.filter((scene) => getSceneAudioStatus(scene)).length;
   const freezeNeededCount = scenes.filter((scene) => scene.timing?.needsFreezeFrame).length;
@@ -4585,13 +4609,35 @@ export default function CreatePage() {
 
   <div className="mt-6 flex flex-wrap gap-3">
     <button
-      onClick={handleExportMovie}
+      onClick={() => handleExportMovie(false)}
       disabled={isExportingMovie}
       className="rounded-xl bg-purple-500 px-4 py-2 text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
     >
       {exportedMovieUrl && hasReusableExport()
         ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
         : ui.createMovie}
+    </button>
+
+    <button
+      type="button"
+      onClick={() => handleExportMovie(true)}
+      disabled={isExportingMovie || readyExportCount === 0}
+      className="rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100 transition hover:bg-amber-300/10 disabled:opacity-50"
+    >
+      {isExportingMovie
+        ? ui.creatingMovie
+        : uiLanguage === "en"
+          ? "🔁 Re-create Movie"
+          : "🔁 Yeniden Oluştur"}
+    </button>
+
+    <button
+      type="button"
+      onClick={handleResetExport}
+      disabled={isExportingMovie || !exportedMovieUrl}
+      className="rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-2 text-sm text-red-100 transition hover:bg-red-300/10 disabled:opacity-50"
+    >
+      {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
     </button>
 
     <button
@@ -5932,7 +5978,7 @@ export default function CreatePage() {
               </button>
 
               <button
-                onClick={handleExportMovie}
+                onClick={() => handleExportMovie(false)}
                 disabled={isExportingMovie || readyExportCount === 0}
                 className="rounded-xl bg-orange-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
               >
@@ -5941,6 +5987,28 @@ export default function CreatePage() {
                   : exportedMovieUrl && hasReusableExport()
                     ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
                     : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleExportMovie(true)}
+                disabled={isExportingMovie || readyExportCount === 0}
+                className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-100 transition hover:scale-105 disabled:opacity-50"
+              >
+                {isExportingMovie
+                  ? ui.creatingMovie
+                  : uiLanguage === "en"
+                    ? "🔁 Re-create Movie"
+                    : "🔁 Yeniden Oluştur"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetExport}
+                disabled={isExportingMovie || !exportedMovieUrl}
+                className="rounded-xl border border-red-400/40 bg-red-500/10 px-6 py-3 font-semibold text-red-100 transition hover:scale-105 disabled:opacity-50"
+              >
+                {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
               </button>
 
               <button
@@ -6370,6 +6438,33 @@ export default function CreatePage() {
                           ? "Diyaloğu Durdur"
                           : "Karakter Diyaloğunu Dinle"}
                       </button>
+
+                      <label className="flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                        <span>Export</span>
+                        <select
+                          value={scene.renderMode || "auto"}
+                          onChange={(e) => {
+                            const mode = e.target.value as "auto" | "video" | "image";
+
+                            setScenes((prev) =>
+                              prev.map((item) =>
+                                item.id === scene.id
+                                  ? { ...item, renderMode: mode }
+                                  : item
+                              )
+                            );
+
+                            setExportedMovieUrl("");
+                            setExportMovieResult(null);
+                            setExportSignature("");
+                          }}
+                          className="rounded-md border border-white/10 bg-slate-950 px-2 py-1 text-xs text-white"
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="video">Video</option>
+                          <option value="image">Image</option>
+                        </select>
+                      </label>
 
                       <button
                         onClick={() => handleGenerateVideo(scene.id)}

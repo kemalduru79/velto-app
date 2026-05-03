@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       exportedMovieResult,
       exportSignature,
       flowType,
+      flowKey,
     } = body;
 
     if (!title || !scenes) {
@@ -49,7 +50,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
 
-    const normalizedFlowType = flowType || "storyverse";
+    const requestedFlowType =
+      typeof flowType === "string" && flowType.trim()
+        ? flowType.trim()
+        : typeof flowKey === "string" && flowKey.trim()
+          ? flowKey.trim()
+          : "storyverse";
+
+    const normalizedFlowType =
+      requestedFlowType === "creator_lab" ? "creator_lab" : "storyverse";
 
     if (projectId) {
       const { data, error } = await supabase
