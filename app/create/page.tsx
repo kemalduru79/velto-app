@@ -122,6 +122,16 @@ type CreatorVideoIdea = {
   concept: string;
 };
 
+type BulkIdeaResult = {
+  topic: string;
+  title: string;
+  hook: string;
+  score: number;
+  angle: string;
+  reason: string;
+};
+
+
 type CreatorMentorResult = {
   audienceInsight: string[];
   hookPatterns: string[];
@@ -553,6 +563,18 @@ const UI_TEXT = {
     productionBridgeButton: "🎬 Sahne Üretimine Başla",
     productionBridgeReady: "Creator Lab paketi hazır. Henüz üretim sahnesi oluşturulmadı.",
     productionBridgeCostNote: "Not: Bu adım sahne görsellerini üretmeye başlayabilir; maliyet kontrolü sende kalır.",
+    bulkGeneratorTitle: "Bulk Content Generator",
+    bulkGeneratorDesc: "Birden fazla video fikrini hızlıca analiz eder. Bu aşamada video veya thumbnail üretmez; sadece seçilebilir fikir kartları oluşturur.",
+    bulkTopicsLabel: "Her satıra bir video fikri yaz",
+    bulkTopicsPlaceholder: "Örn:\nWhy do ants work so hard?\nHow do rockets fly?\nWhy is the ocean blue?",
+    bulkGenerate: "Toplu Fikir Üret",
+    bulkGenerating: "Fikirler üretiliyor...",
+    bulkEmpty: "Henüz toplu fikir üretilmedi.",
+    bulkScore: "Skor",
+    bulkAngle: "Açı",
+    bulkReason: "Gerekçe",
+    useBulkTopic: "Bu fikri ana konu yap",
+    bulkTopicApplied: "Bulk fikri ana konuya aktarıldı ✅",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -840,6 +862,18 @@ const UI_TEXT = {
     productionBridgeButton: "🎬 Start Scene Production",
     productionBridgeReady: "Creator Lab package is ready. No production scenes have been created yet.",
     productionBridgeCostNote: "Note: This step may start generating scene visuals; rendering cost remains under your control.",
+    bulkGeneratorTitle: "Bulk Content Generator",
+    bulkGeneratorDesc: "Quickly analyzes multiple video ideas. This stage does not generate video or thumbnails; it creates selectable idea cards.",
+    bulkTopicsLabel: "Write one video idea per line",
+    bulkTopicsPlaceholder: "Example:\nWhy do ants work so hard?\nHow do rockets fly?\nWhy is the ocean blue?",
+    bulkGenerate: "Generate Bulk Ideas",
+    bulkGenerating: "Generating ideas...",
+    bulkEmpty: "No bulk ideas generated yet.",
+    bulkScore: "Score",
+    bulkAngle: "Angle",
+    bulkReason: "Reason",
+    useBulkTopic: "Use this as main topic",
+    bulkTopicApplied: "Bulk idea copied to main topic ✅",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -995,6 +1029,9 @@ export default function CreatePage() {
   const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
   const [isGeneratingFullYoutubePackage, setIsGeneratingFullYoutubePackage] = useState(false);
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+  const [bulkTopics, setBulkTopics] = useState("");
+  const [bulkResults, setBulkResults] = useState<BulkIdeaResult[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
     CreatorProductionScene[]
   >([]);
@@ -1806,6 +1843,7 @@ export default function CreatePage() {
     setCreatorProductionPackage(null);
     setIsGeneratingFullYoutubePackage(false);
     setIsAdvancedMode(false);
+    setBulkResults([]);
     setYoutubeResearchVideos([]);
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
@@ -3760,6 +3798,68 @@ export default function CreatePage() {
     } finally {
       setYoutubePatternLoading(false);
     }
+  };
+
+  const handleBulkGenerateIdeas = async () => {
+    const topics = bulkTopics
+      .split("\n")
+      .map((topic: string) => topic.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+
+    if (!topics.length) {
+      setError(
+        uiLanguage === "en"
+          ? "Please enter at least one topic."
+          : "Lütfen en az bir konu gir."
+      );
+      return;
+    }
+
+    setBulkLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/bulk-ideas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topics,
+          language,
+          targetMarket: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          format: creatorFormat,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !Array.isArray(data?.ideas)) {
+        throw new Error(data?.error || "Bulk idea generation failed.");
+      }
+
+      setBulkResults(data.ideas as BulkIdeaResult[]);
+    } catch (e: any) {
+      console.error("handleBulkGenerateIdeas error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Bulk ideas could not be generated."
+            : "Toplu fikirler üretilemedi.")
+      );
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleUseBulkTopic = (idea: BulkIdeaResult) => {
+    setInput(idea.topic || idea.title || "");
+    setSaveMessage(ui.bulkTopicApplied);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleGenerateFullYoutubePackage = async () => {
@@ -6135,7 +6235,106 @@ export default function CreatePage() {
             </div>
           )}
 
-<label className="block text-sm font-medium text-gray-300">
+{isCreatorLabFlow && (
+            <section
+              data-bulk-generator-panel="true"
+              className="rounded-[28px] border border-indigo-300/20 bg-indigo-500/[0.08] p-5"
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-indigo-200">
+                    Phase-3
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                    {ui.bulkGeneratorTitle}
+                  </h2>
+                  <p className="mt-2 max-w-4xl text-sm leading-6 text-indigo-100/80">
+                    {ui.bulkGeneratorDesc}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto]">
+                <div>
+                  <label className="block text-sm font-medium text-indigo-100">
+                    {ui.bulkTopicsLabel}
+                  </label>
+                  <textarea
+                    value={bulkTopics}
+                    onChange={(e) => setBulkTopics(e.target.value)}
+                    placeholder={ui.bulkTopicsPlaceholder}
+                    className="mt-2 min-h-32 w-full rounded-2xl border border-indigo-300/20 bg-white p-4 text-sm text-black placeholder:text-gray-500"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleBulkGenerateIdeas}
+                    disabled={bulkLoading || !bulkTopics.trim()}
+                    className="w-full rounded-2xl border border-indigo-300/40 bg-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
+                  >
+                    {bulkLoading ? ui.bulkGenerating : ui.bulkGenerate}
+                  </button>
+                </div>
+              </div>
+
+              {bulkResults.length === 0 && (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-indigo-100/70">
+                  {ui.bulkEmpty}
+                </div>
+              )}
+
+              {bulkResults.length > 0 && (
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {bulkResults.map((idea, index) => (
+                    <div
+                      key={`${idea.topic}-${index}`}
+                      className="rounded-2xl border border-white/10 bg-black/25 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-base font-semibold leading-6 text-white">
+                          {idea.title}
+                        </h3>
+                        <span className="rounded-full bg-indigo-400/15 px-3 py-1 text-xs font-semibold text-indigo-100">
+                          {ui.bulkScore}: {Math.round((idea.score || 0) * 100)}
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                        {idea.hook}
+                      </p>
+
+                      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-xs leading-5 text-slate-300">
+                        <div>
+                          <span className="font-semibold text-indigo-100">
+                            {ui.bulkAngle}:
+                          </span>{" "}
+                          {idea.angle}
+                        </div>
+                        <div className="mt-2">
+                          <span className="font-semibold text-indigo-100">
+                            {ui.bulkReason}:
+                          </span>{" "}
+                          {idea.reason}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleUseBulkTopic(idea)}
+                        className="mt-4 w-full rounded-xl border border-indigo-300/30 bg-indigo-400/10 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-400/20"
+                      >
+                        {ui.useBulkTopic}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          <label className="block text-sm font-medium text-gray-300">
   {getFlowAwareInputLabel()}
 </label>
 
