@@ -543,6 +543,11 @@ const UI_TEXT = {
     optimizationApplied: "Optimizasyon önerileri uygulandı ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimize ediyor...",
+    youtubeAutoMode: "YouTube Auto Mode",
+    youtubeAutoModeDesc: "Konu fikrinden production package, metadata, thumbnail, cost optimization ve kayıt adımlarını tek akışta hazırlar. Video üretmez; maliyetli render kararı sende kalır.",
+    generateFullYoutubePackage: "Full YouTube Package Üret",
+    generatingFullYoutubePackage: "Full package hazırlanıyor...",
+    fullYoutubePackageReady: "Full YouTube package hazır ✅",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -820,6 +825,11 @@ const UI_TEXT = {
     optimizationApplied: "Optimization recommendations applied ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimizing...",
+    youtubeAutoMode: "YouTube Auto Mode",
+    youtubeAutoModeDesc: "Builds production package, metadata, thumbnail, cost optimization, and save steps from one topic. It does not render video; expensive rendering remains under your control.",
+    generateFullYoutubePackage: "Generate Full YouTube Package",
+    generatingFullYoutubePackage: "Preparing full package...",
+    fullYoutubePackageReady: "Full YouTube package is ready ✅",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -973,6 +983,7 @@ export default function CreatePage() {
   const [creatorProductionPackage, setCreatorProductionPackage] =
     useState<CreatorProductionPackage | null>(null);
   const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
+  const [isGeneratingFullYoutubePackage, setIsGeneratingFullYoutubePackage] = useState(false);
   const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
     CreatorProductionScene[]
   >([]);
@@ -1782,6 +1793,7 @@ export default function CreatePage() {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setIsGeneratingFullYoutubePackage(false);
     setYoutubeResearchVideos([]);
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
@@ -3735,6 +3747,290 @@ export default function CreatePage() {
       );
     } finally {
       setYoutubePatternLoading(false);
+    }
+  };
+
+  const handleGenerateFullYoutubePackage = async () => {
+    const topic = input.trim();
+
+    if (!isCreatorLabFlow) {
+      return;
+    }
+
+    if (!topic) {
+      setError(
+        uiLanguage === "en"
+          ? "Please enter a topic or video idea first."
+          : "Lütfen önce bir konu veya video fikri yaz."
+      );
+      return;
+    }
+
+    if (!selectedChildId) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    setIsGeneratingFullYoutubePackage(true);
+    setCreatorMentorLoading(true);
+    setCreatorProductionLoading(true);
+    setYoutubeMetadataLoading(true);
+    setYoutubeThumbnailLoading(true);
+    setSceneOptimizationAILoading(true);
+    setLoadingSetup(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+
+      // 1) Mentor analysis
+      const mentorRes = await fetch("/api/creator-mentor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          language,
+          youtubeData: youtubeResearchVideos,
+        }),
+      });
+
+      const mentorData = await mentorRes.json().catch(() => null);
+
+      if (!mentorRes.ok || !mentorData?.success || !mentorData?.analysis) {
+        throw new Error(
+          mentorData?.error ||
+            (uiLanguage === "en"
+              ? "Creator mentor analysis could not be generated."
+              : "Creator mentor analizi oluşturulamadı.")
+        );
+      }
+
+      const nextMentorResult = mentorData.analysis as CreatorMentorResult;
+      setCreatorMentorResult(nextMentorResult);
+      setCreatorMentorLoading(false);
+
+      // 2) Production package
+      const productionRes = await fetch("/api/creator-production", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          durationSec: creatorVideoDurationSec,
+          sceneCount: getCreatorSceneCount(),
+          language,
+          mentorAnalysis: nextMentorResult,
+        }),
+      });
+
+      const productionData = await productionRes.json().catch(() => null);
+
+      if (
+        !productionRes.ok ||
+        !productionData?.success ||
+        !productionData?.productionPackage
+      ) {
+        throw new Error(
+          productionData?.error ||
+            (uiLanguage === "en"
+              ? "Production package could not be generated."
+              : "Üretim paketi oluşturulamadı.")
+        );
+      }
+
+      const nextPackage = productionData.productionPackage as CreatorProductionPackage;
+      const nextCharacters = Array.isArray(nextPackage.characters)
+        ? nextPackage.characters.map((character: Character) => ({
+            ...character,
+            voiceId: character.voiceId || "",
+          }))
+        : [];
+      const nextVisualBible = nextPackage.visualBible || emptyVisualBible;
+
+      setCreatorProductionPackage(nextPackage);
+      setRefinedCreatorScenes([]);
+      setStorySetup({
+        title: nextPackage.title || "",
+        storyPremise: nextPackage.storyPremise || "",
+        characters: nextCharacters,
+        visualBible: nextVisualBible,
+      });
+      setTitle(nextPackage.title || "");
+      setCharacters(nextCharacters);
+      setVisualBible(nextVisualBible);
+      setScenes([]);
+      setContinuePrompt("");
+      setEditingSceneId(null);
+      setSceneInstructions({});
+      setBranchingSceneId(null);
+      setBranchInstructions({});
+      setExportedMovieUrl("");
+      setExportMovieResult(null);
+      setExportSignature("");
+      setCreatorProductionLoading(false);
+
+      // 3) YouTube metadata
+      const metadataRes = await fetch("/api/creator-youtube-metadata", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          package: nextPackage,
+          language,
+          targetMarket: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+          patternSummary: youtubePatternSummary,
+        }),
+      });
+
+      const metadataData = await metadataRes.json().catch(() => null);
+
+      if (!metadataRes.ok || !metadataData?.metadata) {
+        throw new Error(metadataData?.error || "YouTube metadata üretilemedi.");
+      }
+
+      const nextMetadata = metadataData.metadata as YoutubeMetadataResult;
+      setYoutubeMetadataResult(nextMetadata);
+      setYoutubeMetadataLoading(false);
+
+      // 4) Thumbnail
+      const thumbnailRes = await fetch("/api/creator-thumbnail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          package: nextPackage,
+          metadata: nextMetadata,
+          language,
+          targetMarket: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+        }),
+      });
+
+      const thumbnailData = await thumbnailRes.json().catch(() => null);
+
+      if (!thumbnailRes.ok || !thumbnailData?.thumbnail?.imageUrl) {
+        throw new Error(thumbnailData?.error || "Thumbnail üretilemedi.");
+      }
+
+      const nextThumbnail = thumbnailData.thumbnail as YoutubeThumbnailResult;
+      setYoutubeThumbnailResult(nextThumbnail);
+      setYoutubeThumbnailLoading(false);
+
+      // 5) AI cost optimization
+      const optimizeRes = await fetch("/api/optimize-scenes-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          scenes: nextPackage.scenes || [],
+          mode: "balanced",
+          estimatedVideoCostUsd: 0.05,
+          language,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          videoDurationSec: creatorVideoDurationSec,
+          title: nextPackage.title || "",
+          storyPremise: nextPackage.storyPremise || "",
+        }),
+      });
+
+      const optimizeData = await optimizeRes.json().catch(() => null);
+
+      if (!optimizeRes.ok) {
+        throw new Error(optimizeData?.error || "AI scene optimization failed.");
+      }
+
+      const nextOptimizationResult = optimizeData?.result || [];
+      const nextOptimizationSummary = optimizeData?.summary || null;
+
+      setSceneOptimizationResult(nextOptimizationResult);
+      setSceneOptimizationSummary(nextOptimizationSummary);
+      setSceneOptimizationAILoading(false);
+
+      // 6) Persist without rendering video/image/audio.
+      const saveRes = await fetch("/api/save-project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: currentProjectId || undefined,
+          childId: selectedChildId,
+          title: nextPackage.title || topic,
+          inputPrompt: topic,
+          flowKey: activeFlowKey,
+          flowTitle: selectedFlow.title,
+          flowType: activeFlowKey || "storyverse",
+          language,
+          storyPremise: nextPackage.storyPremise || "",
+          characters: nextCharacters,
+          visualBible: nextVisualBible,
+          scenes: [],
+          creatorMentorResult: nextMentorResult,
+          creatorProductionPackage: nextPackage,
+          youtubeMetadataResult: nextMetadata,
+          youtubeThumbnailResult: nextThumbnail,
+          sceneOptimizationResult: nextOptimizationResult,
+          sceneOptimizationSummary: nextOptimizationSummary,
+          exportedMovieUrl: null,
+          exportedMovieResult: null,
+          exportSignature: null,
+        }),
+      });
+
+      const saveData = await saveRes.json().catch(() => null);
+
+      if (!saveRes.ok) {
+        throw new Error(saveData?.error || "Auto mode package kaydedilemedi.");
+      }
+
+      if (saveData?.project?.id) {
+        setCurrentProjectId(saveData.project.id);
+        setLoadProjectId(saveData.project.id);
+      }
+
+      await fetchProjects();
+
+      setSaveMessage(ui.fullYoutubePackageReady);
+    } catch (e: any) {
+      console.error("handleGenerateFullYoutubePackage error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "YouTube Auto Mode failed."
+            : "YouTube Auto Mode sırasında hata oluştu.")
+      );
+    } finally {
+      setIsGeneratingFullYoutubePackage(false);
+      setCreatorMentorLoading(false);
+      setCreatorProductionLoading(false);
+      setYoutubeMetadataLoading(false);
+      setYoutubeThumbnailLoading(false);
+      setSceneOptimizationAILoading(false);
+      setLoadingSetup(false);
     }
   };
 
@@ -5838,7 +6134,7 @@ export default function CreatePage() {
             placeholder={getFlowAwarePlaceholder()}
           />
 
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
             <button
               onClick={createSetup}
               disabled={loadingSetup}
@@ -5852,6 +6148,20 @@ export default function CreatePage() {
                   ? ui.preparingSetup
                   : ui.createCharacters}
             </button>
+
+            {isCreatorLabFlow && (
+              <button
+                type="button"
+                data-auto-mode-button="true"
+                onClick={handleGenerateFullYoutubePackage}
+                disabled={isGeneratingFullYoutubePackage || loadingSetup || !input.trim()}
+                className="rounded-xl border border-purple-300/40 bg-purple-400 px-6 py-3 font-semibold text-slate-950 transition hover:scale-105 hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isGeneratingFullYoutubePackage
+                  ? ui.generatingFullYoutubePackage
+                  : ui.generateFullYoutubePackage}
+              </button>
+            )}
           </div>
         </div>
 
