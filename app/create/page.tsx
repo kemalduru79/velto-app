@@ -577,6 +577,9 @@ const UI_TEXT = {
     generateFullPackageFromBulk: "🚀 Full Package Üret",
     bulkPackageStarted: "Bulk fikrinden full package üretimi başlatıldı ✅",
     bulkTopicApplied: "Bulk fikri ana konuya aktarıldı ✅",
+    generateSelectedBulk: "🚀 Seçilenleri Üret",
+    generatingSelectedBulk: "Seçilenler üretiliyor...",
+    selectedBulkCount: "Seçili fikir",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
@@ -878,6 +881,9 @@ const UI_TEXT = {
     generateFullPackageFromBulk: "🚀 Generate Full Package",
     bulkPackageStarted: "Full package generation started from bulk idea ✅",
     bulkTopicApplied: "Bulk idea copied to main topic ✅",
+    generateSelectedBulk: "🚀 Generate Selected",
+    generatingSelectedBulk: "Generating selected...",
+    selectedBulkCount: "Selected ideas",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
@@ -1036,6 +1042,8 @@ export default function CreatePage() {
   const [bulkTopics, setBulkTopics] = useState("");
   const [bulkResults, setBulkResults] = useState<BulkIdeaResult[]>([]);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<number[]>([]);
+  const [selectedBulkLoading, setSelectedBulkLoading] = useState(false);
   const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
     CreatorProductionScene[]
   >([]);
@@ -1848,6 +1856,7 @@ export default function CreatePage() {
     setIsGeneratingFullYoutubePackage(false);
     setIsAdvancedMode(false);
     setBulkResults([]);
+    setSelectedBulkIds([]);
     setYoutubeResearchVideos([]);
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
@@ -3847,6 +3856,7 @@ export default function CreatePage() {
       }
 
       setBulkResults(data.ideas as BulkIdeaResult[]);
+      setSelectedBulkIds([]);
     } catch (e: any) {
       console.error("handleBulkGenerateIdeas error:", e);
       setError(
@@ -3878,8 +3888,63 @@ export default function CreatePage() {
     await handleGenerateFullYoutubePackage(nextTopic);
   };
 
-  const handleGenerateFullYoutubePackage = async (topicOverride?: string) => {
+  const toggleBulkSelection = (index: number) => {
+    setSelectedBulkIds((prev) =>
+      prev.includes(index)
+        ? prev.filter((item) => item !== index)
+        : [...prev, index]
+    );
+  };
+
+  const handleGenerateSelectedBulk = async () => {
+    const selectedIdeas = selectedBulkIds
+      .map((index) => bulkResults[index])
+      .filter((idea): idea is BulkIdeaResult => Boolean(idea));
+
+    if (selectedIdeas.length === 0) {
+      return;
+    }
+
+    setSelectedBulkLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      for (const idea of selectedIdeas) {
+        const nextTopic = idea.topic || idea.title || "";
+
+        if (nextTopic.trim()) {
+          setInput(nextTopic);
+          await handleGenerateFullYoutubePackage(nextTopic, {
+            forceNewProject: true,
+          });
+        }
+      }
+
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Selected bulk ideas generated as separate projects ✅"
+          : "Seçilen bulk fikirleri ayrı projeler olarak üretildi ✅"
+      );
+    } catch (e: any) {
+      console.error("handleGenerateSelectedBulk error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Selected bulk ideas could not be generated."
+            : "Seçilen bulk fikirleri üretilemedi.")
+      );
+    } finally {
+      setSelectedBulkLoading(false);
+    }
+  };
+
+  const handleGenerateFullYoutubePackage = async (
+    topicOverride?: string,
+    options?: { forceNewProject?: boolean }
+  ) => {
     const topic = (topicOverride || input).trim();
+    const forceNewProject = Boolean(options?.forceNewProject);
 
     if (!isCreatorLabFlow) {
       return;
@@ -4105,7 +4170,7 @@ export default function CreatePage() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          projectId: currentProjectId || undefined,
+          projectId: forceNewProject ? undefined : currentProjectId || undefined,
           childId: selectedChildId,
           title: nextPackage.title || topic,
           inputPrompt: topic,
@@ -4135,7 +4200,7 @@ export default function CreatePage() {
         throw new Error(saveData?.error || "Auto mode package kaydedilemedi.");
       }
 
-      if (saveData?.project?.id) {
+      if (saveData?.project?.id && !forceNewProject) {
         setCurrentProjectId(saveData.project.id);
         setLoadProjectId(saveData.project.id);
       }
@@ -6302,12 +6367,58 @@ export default function CreatePage() {
               )}
 
               {bulkResults.length > 0 && (
+                <div
+                  data-bulk-selection-toolbar="true"
+                  className="mt-5 flex flex-col gap-3 rounded-2xl border border-indigo-300/20 bg-black/20 p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="text-sm text-indigo-100/80">
+                    {ui.selectedBulkCount}:{" "}
+                    <span className="font-semibold text-white">
+                      {selectedBulkIds.length}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateSelectedBulk}
+                    disabled={
+                      selectedBulkIds.length === 0 ||
+                      selectedBulkLoading ||
+                      isGeneratingFullYoutubePackage ||
+                      loadingSetup
+                    }
+                    className="rounded-xl border border-emerald-300/30 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {selectedBulkLoading
+                      ? ui.generatingSelectedBulk
+                      : ui.generateSelectedBulk}
+                  </button>
+                </div>
+              )}
+
+              {bulkResults.length > 0 && (
                 <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {bulkResults.map((idea, index) => (
                     <div
                       key={`${idea.topic}-${index}`}
-                      className="rounded-2xl border border-white/10 bg-black/25 p-4"
+                      className={`rounded-2xl border p-4 transition ${
+                        selectedBulkIds.includes(index)
+                          ? "border-emerald-300/50 bg-emerald-500/10"
+                          : "border-white/10 bg-black/25"
+                      }`}
                     >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={selectedBulkIds.includes(index)}
+                            onChange={() => toggleBulkSelection(index)}
+                            className="h-4 w-4 rounded border-white/20"
+                          />
+                          {uiLanguage === "en" ? "Select" : "Seç"}
+                        </label>
+                      </div>
+
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="text-base font-semibold leading-6 text-white">
                           {idea.title}
