@@ -574,6 +574,8 @@ const UI_TEXT = {
     bulkAngle: "Açı",
     bulkReason: "Gerekçe",
     useBulkTopic: "Bu fikri ana konu yap",
+    generateFullPackageFromBulk: "🚀 Full Package Üret",
+    bulkPackageStarted: "Bulk fikrinden full package üretimi başlatıldı ✅",
     bulkTopicApplied: "Bulk fikri ana konuya aktarıldı ✅",
     productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
     refineScenes: "Sahneleri AI ile Geliştir",
@@ -873,6 +875,8 @@ const UI_TEXT = {
     bulkAngle: "Angle",
     bulkReason: "Reason",
     useBulkTopic: "Use this as main topic",
+    generateFullPackageFromBulk: "🚀 Generate Full Package",
+    bulkPackageStarted: "Full package generation started from bulk idea ✅",
     bulkTopicApplied: "Bulk idea copied to main topic ✅",
     productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
     refineScenes: "Refine Scenes with AI",
@@ -3862,8 +3866,20 @@ export default function CreatePage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleGenerateFullYoutubePackage = async () => {
-    const topic = input.trim();
+  const handleGenerateFullPackageFromBulk = async (idea: BulkIdeaResult) => {
+    const nextTopic = idea.topic || idea.title || "";
+
+    if (!nextTopic.trim()) {
+      return;
+    }
+
+    setInput(nextTopic);
+    setSaveMessage(ui.bulkPackageStarted);
+    await handleGenerateFullYoutubePackage(nextTopic);
+  };
+
+  const handleGenerateFullYoutubePackage = async (topicOverride?: string) => {
+    const topic = (topicOverride || input).trim();
 
     if (!isCreatorLabFlow) {
       return;
@@ -6327,6 +6343,17 @@ export default function CreatePage() {
                       >
                         {ui.useBulkTopic}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateFullPackageFromBulk(idea)}
+                        disabled={isGeneratingFullYoutubePackage || loadingSetup}
+                        className="mt-3 w-full rounded-xl border border-purple-300/30 bg-purple-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isGeneratingFullYoutubePackage
+                          ? ui.generatingFullYoutubePackage
+                          : ui.generateFullPackageFromBulk}
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -6384,7 +6411,7 @@ export default function CreatePage() {
               <button
                 type="button"
                 data-auto-mode-button="true"
-                onClick={handleGenerateFullYoutubePackage}
+                onClick={() => handleGenerateFullYoutubePackage()}
                 disabled={isGeneratingFullYoutubePackage || loadingSetup || !input.trim()}
                 className="rounded-xl border border-purple-300/40 bg-purple-400 px-6 py-3 font-semibold text-slate-950 transition hover:scale-105 hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-50"
               >
