@@ -79,6 +79,16 @@ CRITICAL SOFT-LOCK CHARACTER RULES:
 - Keep Joe visually consistent: short slightly messy brown hair, large green eyes, yellow hoodie, blue jeans, same age and proportions.
 - Do not redesign Joe, rename Joe, remove Joe, or replace Joe with another child.
 - Dialogue may include Joe when useful, but keep lines short and TTS-ready.
+
+CRITICAL FIRST-SCENE HOOK RULES:
+- Scene 1 MUST open with an immediate hook in the first spoken line.
+- The hook should usually be spoken by Joe.
+- The hook must be short, direct, and curiosity-driven.
+- Keep the hook under 7 words when possible.
+- Prefer surprise or urgency: "Wait…", "Why…?!", "What if…?!", "This animal…?!"
+- Avoid weak passive openings such as "Did you know", "One day", "Once upon a time", or slow background explanations.
+- Scene 1 dialogue should make the child want to keep watching immediately.
+- Good examples: "Wait… octopuses have THREE hearts?!", "Why does an octopus need three hearts?!", "Gravity just disappeared?!"
 `
     : `
 KRİTİK SOFT-LOCK KARAKTER KURALLARI:
@@ -89,6 +99,16 @@ KRİTİK SOFT-LOCK KARAKTER KURALLARI:
 - Joe görsel olarak tutarlı kalmalı: kısa hafif dağınık kahverengi saç, büyük yeşil gözler, sarı hoodie, mavi jean, aynı yaş ve oranlar.
 - Joe'yu yeniden tasarlama, adını değiştirme, sahneden çıkarma veya başka bir çocukla değiştirme.
 - Diyalog gerektiğinde Joe içerebilir; satırlar kısa ve TTS'e hazır olmalı.
+
+KRİTİK İLK SAHNE HOOK KURALLARI:
+- Sahne 1 ilk konuşma satırında güçlü bir hook ile başlamalı.
+- Hook çoğunlukla Joe tarafından söylenmeli.
+- Hook kısa, direkt ve merak uyandırıcı olmalı.
+- Mümkünse 7 kelimenin altında kalmalı.
+- Şaşkınlık veya aciliyet kullan: "Dur…", "Neden…?!", "Ya…?!", "Bu hayvan…?!"
+- "Biliyor muydun", "Bir gün", "Bir varmış bir yokmuş" gibi yavaş ve pasif açılışlardan kaçın.
+- Sahne 1 diyaloğu çocuğun hemen izlemeye devam etmesini sağlamalı.
+- İyi örnekler: "Dur… ahtapotların ÜÇ kalbi mi var?!", "Ahtapot neden üç kalbe ihtiyaç duyar?!", "Yerçekimi birden kayboldu?!"
 `;
 }
 
@@ -231,7 +251,7 @@ VERY IMPORTANT RULES:
 - Each scene must have one main idea.
 
 STORY STRUCTURE:
-- Scene 1: intriguing opening / hook
+- Scene 1: immediate curiosity hook with Joe reacting in the first spoken line
 - Scene 2: situation becomes clearer
 - Scene 3: development / small change
 - Scene 4: mini crisis / tension
@@ -316,7 +336,7 @@ Görevin:
 - Her sahne tek ana fikre sahip olsun.
 
 HİKAYE YAPISI:
-- Sahne 1: merak uyandıran giriş / hook
+- Sahne 1: Joe’nun ilk konuşma satırında tepki verdiği güçlü merak hook’u
 - Sahne 2: durumun netleşmesi
 - Sahne 3: gelişme / küçük değişim
 - Sahne 4: mini kriz / gerilim

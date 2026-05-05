@@ -335,6 +335,119 @@ const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[
   return [defaultGuideCharacter, ...normalizedCharacters];
 };
 
+const emphasizeHook = (value: string) => {
+  return value
+    .replace(/\bthree\b/gi, "THREE")
+    .replace(/\b3\b/g, "THREE")
+    .replace(/\btwo\b/gi, "TWO")
+    .replace(/\b2\b/g, "TWO");
+};
+
+const cleanHookTopic = (value?: string) => {
+  return String(value || "")
+    .replace(/[\n\r]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+};
+
+const buildOptimizedOpeningHook = (topic?: string, fallbackHook?: string) => {
+  const source = cleanHookTopic(topic || fallbackHook);
+  const fallback = cleanHookTopic(fallbackHook);
+
+  if (!source && fallback) {
+    return emphasizeHook(fallback);
+  }
+
+  if (!source) {
+    return "Wait… what just happened?!";
+  }
+
+  const lower = source.toLowerCase();
+
+  const whyHaveMatch = lower.match(/^why\s+(do|does)\s+(.+?)\s+have\s+(.+)$/i);
+  if (whyHaveMatch) {
+    const subject = source.match(/^why\s+(?:do|does)\s+(.+?)\s+have\s+(.+)$/i);
+    if (subject?.[1] && subject?.[2]) {
+      return emphasizeHook(`Wait… ${subject[1]} have ${subject[2]}?!`);
+    }
+  }
+
+  const whatIfMatch = source.match(/^what\s+if\s+(.+)$/i);
+  if (whatIfMatch?.[1]) {
+    return emphasizeHook(`What if ${whatIfMatch[1]}?!`);
+  }
+
+  const whyMatch = source.match(/^why\s+(.+)$/i);
+  if (whyMatch?.[1]) {
+    return emphasizeHook(`Why ${whyMatch[1]}?!`);
+  }
+
+  const howMatch = source.match(/^how\s+(.+)$/i);
+  if (howMatch?.[1]) {
+    return emphasizeHook(`How ${howMatch[1]}?!`);
+  }
+
+  const didYouKnowMatch = source.match(/^did\s+you\s+know\s+(.+)$/i);
+  if (didYouKnowMatch?.[1]) {
+    return emphasizeHook(`Wait… ${didYouKnowMatch[1]}?!`);
+  }
+
+  return emphasizeHook(`Wait… ${source}?!`);
+};
+
+const optimizeCreatorPackageOpeningHook = (
+  productionPackage: CreatorProductionPackage,
+  topic?: string
+): CreatorProductionPackage => {
+  const scenes = Array.isArray(productionPackage.scenes)
+    ? [...productionPackage.scenes]
+    : [];
+
+  const currentHook =
+    productionPackage.hook ||
+    scenes[0]?.dialogue ||
+    scenes[0]?.narration ||
+    productionPackage.title ||
+    topic ||
+    "";
+
+  const optimizedHook = buildOptimizedOpeningHook(topic, currentHook);
+
+  if (!scenes.length) {
+    return {
+      ...productionPackage,
+      hook: optimizedHook,
+    };
+  }
+
+  const firstScene = scenes[0];
+  const firstDialogue = firstScene.dialogue?.trim()
+    ? firstScene.dialogue
+    : `Joe: ${optimizedHook}`;
+
+  scenes[0] = {
+    ...firstScene,
+    text: firstScene.text?.toLowerCase().includes("joe")
+      ? firstScene.text
+      : `Joe reacts with surprise as the episode reveals the main question: ${optimizedHook}`,
+    narration: firstScene.narration?.trim()
+      ? firstScene.narration
+      : "Joe spots something surprising right away.",
+    dialogue: firstDialogue.toLowerCase().includes("did you know")
+      ? `Joe: ${optimizedHook}`
+      : firstDialogue,
+    emotion: firstScene.emotion || "surprised curiosity",
+    motionHint: firstScene.motionHint || "Joe leans forward with wide-eyed surprise",
+  };
+
+  return {
+    ...productionPackage,
+    hook: optimizedHook,
+    scenes,
+  };
+};
+
 const DEFAULT_VIDEO_DURATION_SECONDS = 8;
 const TARGET_SCENE_DURATION_SECONDS = 8;
 const MAX_SCENE_DURATION_SECONDS = 10;
@@ -3446,20 +3559,35 @@ export default function CreatePage() {
           return;
         }
 
-        if (!scene.narration?.trim()) {
-          continue;
+        if (scene.narration?.trim()) {
+          setLoadingAudioSceneId(scene.id);
+
+          const narrationAudioUrl = await getSceneAudioUrl(scene);
+
+          if (playbackToken !== storyPlaybackTokenRef.current) {
+            return;
+          }
+
+          setLoadingAudioSceneId(null);
+          await waitForAudioToFinish(scene.id, narrationAudioUrl, playbackToken);
         }
-
-        setLoadingAudioSceneId(scene.id);
-
-        const audioUrl = await getSceneAudioUrl(scene);
 
         if (playbackToken !== storyPlaybackTokenRef.current) {
           return;
         }
 
-        setLoadingAudioSceneId(null);
-        await waitForAudioToFinish(scene.id, audioUrl, playbackToken);
+        if (scene.dialogue?.trim()) {
+          setLoadingDialogueSceneId(scene.id);
+
+          const dialogueAudioUrl = await getSceneDialogueUrl(scene);
+
+          if (playbackToken !== storyPlaybackTokenRef.current) {
+            return;
+          }
+
+          setLoadingDialogueSceneId(null);
+          await waitForAudioToFinish(scene.id, dialogueAudioUrl, playbackToken);
+        }
       }
     } catch (e: any) {
       console.error("playWholeStory error:", e);
@@ -3468,6 +3596,7 @@ export default function CreatePage() {
       if (playbackToken === storyPlaybackTokenRef.current) {
         setIsPlayingStory(false);
         setLoadingAudioSceneId(null);
+        setLoadingDialogueSceneId(null);
         stopCurrentAudio();
       }
     }
@@ -4067,7 +4196,10 @@ export default function CreatePage() {
         );
       }
 
-      const nextPackage = productionData.productionPackage as CreatorProductionPackage;
+      const nextPackage = optimizeCreatorPackageOpeningHook(
+        productionData.productionPackage as CreatorProductionPackage,
+        topic
+      );
       const nextCharacters = withDefaultGuideCharacter(
         Array.isArray(nextPackage.characters)
           ? nextPackage.characters.map((character: Character) => ({
@@ -4367,7 +4499,10 @@ export default function CreatePage() {
         );
       }
 
-      const nextPackage = data.productionPackage as CreatorProductionPackage;
+      const nextPackage = optimizeCreatorPackageOpeningHook(
+        data.productionPackage as CreatorProductionPackage,
+        input
+      );
 
       setCreatorProductionPackage(nextPackage);
       setRefinedCreatorScenes([]);
@@ -4375,23 +4510,27 @@ export default function CreatePage() {
       setStorySetup({
         title: nextPackage.title || "",
         storyPremise: nextPackage.storyPremise || "",
-        characters: Array.isArray(nextPackage.characters)
-          ? nextPackage.characters.map((character: Character) => ({
-              ...character,
-              voiceId: character.voiceId || "",
-            }))
-          : [],
+        characters: withDefaultGuideCharacter(
+          Array.isArray(nextPackage.characters)
+            ? nextPackage.characters.map((character: Character) => ({
+                ...character,
+                voiceId: character.voiceId || "",
+              }))
+            : []
+        ),
         visualBible: nextPackage.visualBible || emptyVisualBible,
       });
 
       setTitle(nextPackage.title || "");
       setCharacters(
-        Array.isArray(nextPackage.characters)
-          ? nextPackage.characters.map((character: Character) => ({
-              ...character,
-              voiceId: character.voiceId || "",
-            }))
-          : []
+        withDefaultGuideCharacter(
+          Array.isArray(nextPackage.characters)
+            ? nextPackage.characters.map((character: Character) => ({
+                ...character,
+                voiceId: character.voiceId || "",
+              }))
+            : []
+        )
       );
       setVisualBible(nextPackage.visualBible || emptyVisualBible);
       setScenes([]);
