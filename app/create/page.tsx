@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
 import { getFlowByKey, type FlowZone } from "../../lib/flows";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
+import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -304,6 +305,34 @@ const defaultNarratorSettings: NarratorSettings = {
   similarityBoost: 0.8,
   style: 0.35,
   speed: 0.93,
+};
+
+const isDefaultGuideCharacter = (character?: Partial<Character> | null) => {
+  return (character?.name || "").trim().toLowerCase() === "joe";
+};
+
+const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[] => {
+  const safeCharacters = Array.isArray(incomingCharacters) ? incomingCharacters : [];
+  const normalizedCharacters = safeCharacters.map((character) => ({
+    ...character,
+    voiceId: character.voiceId || "",
+  }));
+
+  if (normalizedCharacters.some(isDefaultGuideCharacter)) {
+    return normalizedCharacters;
+  }
+
+  const defaultGuideCharacter: Character = {
+    name: DEFAULT_CHARACTER.name,
+    age: DEFAULT_CHARACTER.age,
+    appearance: DEFAULT_CHARACTER.appearance,
+    outfit: DEFAULT_CHARACTER.outfit,
+    accessory: DEFAULT_CHARACTER.accessory,
+    personality: DEFAULT_CHARACTER.personality,
+    voiceId: "",
+  };
+
+  return [defaultGuideCharacter, ...normalizedCharacters];
 };
 
 const DEFAULT_VIDEO_DURATION_SECONDS = 8;
@@ -3574,14 +3603,7 @@ export default function CreatePage() {
       setInput(project.input_prompt || "");
       // SADECE content language güncellensin
       setLanguage(project.language === "en" ? "en" : "tr");
-      setCharacters(
-        Array.isArray(project.characters)
-          ? project.characters.map((character: Character) => ({
-              ...character,
-              voiceId: character.voiceId || "",
-            }))
-          : []
-      );
+      setCharacters(withDefaultGuideCharacter(project.characters));
       setVisualBible(project.visual_bible || emptyVisualBible);
       setScenes(
         Array.isArray(project.scenes)
@@ -4046,12 +4068,14 @@ export default function CreatePage() {
       }
 
       const nextPackage = productionData.productionPackage as CreatorProductionPackage;
-      const nextCharacters = Array.isArray(nextPackage.characters)
-        ? nextPackage.characters.map((character: Character) => ({
-            ...character,
-            voiceId: character.voiceId || "",
-          }))
-        : [];
+      const nextCharacters = withDefaultGuideCharacter(
+        Array.isArray(nextPackage.characters)
+          ? nextPackage.characters.map((character: Character) => ({
+              ...character,
+              voiceId: character.voiceId || "",
+            }))
+          : []
+      );
       const nextVisualBible = nextPackage.visualBible || emptyVisualBible;
 
       setCreatorProductionPackage(nextPackage);
@@ -4862,12 +4886,7 @@ export default function CreatePage() {
       const nextSetup: StorySetup = {
         title: data.title || "",
         storyPremise: data.storyPremise || "",
-        characters: Array.isArray(data.characters)
-          ? data.characters.map((character: Character) => ({
-              ...character,
-              voiceId: character.voiceId || "",
-            }))
-          : [],
+        characters: withDefaultGuideCharacter(data.characters),
         visualBible: data.visualBible || emptyVisualBible,
       };
 
