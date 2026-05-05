@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     const text = body?.text;
+    const requestedRole = body?.role === "character" ? "character" : "narrator";
 
     if (!text || typeof text !== "string" || !text.trim()) {
       return Response.json(
@@ -42,10 +43,20 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           text: text.trim(),
           model_id: "eleven_multilingual_v2",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-          },
+          voice_settings:
+            requestedRole === "character"
+              ? {
+                  stability: 0.35,
+                  similarity_boost: 0.8,
+                  style: 0.45,
+                  speed: 0.95,
+                }
+              : {
+                  stability: 0.55,
+                  similarity_boost: 0.8,
+                  style: 0.25,
+                  speed: 0.9,
+                },
         }),
       }
     );

@@ -20,6 +20,54 @@ type VisualBible = {
   consistencyRules: string;
 };
 
+const DEFAULT_GUIDE_CHARACTER: Character = {
+  name: "Joe",
+  age: "10",
+  appearance:
+    "short slightly messy brown hair, large green eyes, expressive friendly face",
+  outfit: "yellow hoodie and blue jeans",
+  accessory: "",
+  personality:
+    "curious, energetic, slightly playful, brave, problem solver, asks simple questions that help children understand the topic",
+  referenceImage: "",
+};
+
+function normalizeNameForCharacter(value: unknown) {
+  return String(value || "")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ensureDefaultGuideCharacter(characters?: Character[]) {
+  const safeCharacters = Array.isArray(characters) ? characters : [];
+  const hasJoe = safeCharacters.some(
+    (character) => normalizeNameForCharacter(character?.name) === "joe"
+  );
+
+  if (hasJoe) {
+    return safeCharacters.map((character) =>
+      normalizeNameForCharacter(character?.name) === "joe"
+        ? {
+            ...DEFAULT_GUIDE_CHARACTER,
+            ...character,
+            name: "Joe",
+            age: character.age || DEFAULT_GUIDE_CHARACTER.age,
+            appearance:
+              character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
+            outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
+            accessory:
+              character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+            personality:
+              character.personality || DEFAULT_GUIDE_CHARACTER.personality,
+          }
+        : character
+    );
+  }
+
+  return [DEFAULT_GUIDE_CHARACTER, ...safeCharacters];
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -33,11 +81,9 @@ function getOpenAIClient() {
 }
 
 function buildCharacterBlock(characters?: Character[]) {
-  if (!Array.isArray(characters) || characters.length === 0) {
-    return "No character bible provided.";
-  }
+  const effectiveCharacters = ensureDefaultGuideCharacter(characters);
 
-  return characters
+  return effectiveCharacters
     .map((character, index) => {
       const hasReference = Boolean(character.referenceImage);
 
@@ -61,6 +107,7 @@ REFERENCE IMAGE VALUE:
 ${character.referenceImage || "No reference image yet"}
 
 CRITICAL CHARACTER LOCK:
+- Joe is the primary recurring guide character and must remain visually identical whenever he appears.
 - This character MUST look IDENTICAL across all scenes.
 - If a reference image exists, it OVERRIDES all text description.
 - NEVER redesign this character.
@@ -164,6 +211,8 @@ Motion feeling:
 ${motionHint || "gentle cinematic movement"}
 
 High-priority continuity instructions:
+- Joe must stay visually consistent as the recurring guide character
+- Joe should not be redesigned, renamed, removed, aged up, aged down, or replaced
 - if a reference image exists, treat it as the ONLY valid design
 - do not generate alternative versions of the same character
 - do not create visual variations

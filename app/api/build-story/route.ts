@@ -21,6 +21,77 @@ type VisualBible = {
 
 type SupportedLanguage = "tr" | "en";
 
+const DEFAULT_GUIDE_CHARACTER: Character = {
+  name: "Joe",
+  age: "10",
+  appearance:
+    "short slightly messy brown hair, large green eyes, expressive friendly face",
+  outfit: "yellow hoodie and blue jeans",
+  accessory: "",
+  personality:
+    "curious, energetic, slightly playful, brave, problem solver, asks simple questions that help children understand the topic",
+};
+
+function normalizeNameForCharacter(value: unknown) {
+  return String(value || "")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ensureDefaultGuideCharacter(characters: Character[]) {
+  const safeCharacters = Array.isArray(characters) ? characters : [];
+  const hasJoe = safeCharacters.some(
+    (character) => normalizeNameForCharacter(character?.name) === "joe"
+  );
+
+  if (hasJoe) {
+    return safeCharacters.map((character) =>
+      normalizeNameForCharacter(character?.name) === "joe"
+        ? {
+            ...DEFAULT_GUIDE_CHARACTER,
+            ...character,
+            name: "Joe",
+            age: character.age || DEFAULT_GUIDE_CHARACTER.age,
+            appearance:
+              character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
+            outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
+            accessory:
+              character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+            personality:
+              character.personality || DEFAULT_GUIDE_CHARACTER.personality,
+          }
+        : character
+    );
+  }
+
+  return [DEFAULT_GUIDE_CHARACTER, ...safeCharacters];
+}
+
+function buildGuideSceneInstruction(language: SupportedLanguage) {
+  return language === "en"
+    ? `
+CRITICAL SOFT-LOCK CHARACTER RULES:
+- Joe is the recurring guide character of this universe.
+- Joe MUST appear naturally in every scene.
+- Joe reacts, explores, and asks short questions that help the audience understand the topic.
+- The episode is NOT about Joe's personal life; Joe is the guide, not the subject.
+- Keep Joe visually consistent: short slightly messy brown hair, large green eyes, yellow hoodie, blue jeans, same age and proportions.
+- Do not redesign Joe, rename Joe, remove Joe, or replace Joe with another child.
+- Dialogue may include Joe when useful, but keep lines short and TTS-ready.
+`
+    : `
+KRİTİK SOFT-LOCK KARAKTER KURALLARI:
+- Joe bu evrenin tekrar eden rehber karakteridir.
+- Joe her sahnede doğal şekilde yer almalı.
+- Joe izleyicinin konuyu anlamasına yardım eden kısa sorular sorar, keşfeder ve tepki verir.
+- Bölüm Joe'nun kişisel hayatı hakkında değildir; Joe konunun kendisi değil rehberidir.
+- Joe görsel olarak tutarlı kalmalı: kısa hafif dağınık kahverengi saç, büyük yeşil gözler, sarı hoodie, mavi jean, aynı yaş ve oranlar.
+- Joe'yu yeniden tasarlama, adını değiştirme, sahneden çıkarma veya başka bir çocukla değiştirme.
+- Diyalog gerektiğinde Joe içerebilir; satırlar kısa ve TTS'e hazır olmalı.
+`;
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -93,7 +164,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const characterText = characters
+    const effectiveCharacters = ensureDefaultGuideCharacter(characters);
+
+    const characterText = effectiveCharacters
       .map((character, index) => {
         return normalizedLanguage === "en"
           ? `
@@ -290,7 +363,9 @@ Tutarlılık kuralları: ${visualBible.consistencyRules}
 
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
-      input: prompt,
+      input: `${buildGuideSceneInstruction(normalizedLanguage)}
+
+${prompt}`,
     });
 
     const rawText = response.output_text || "";

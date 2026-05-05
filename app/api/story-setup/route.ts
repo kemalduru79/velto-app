@@ -5,6 +5,92 @@ export const runtime = "nodejs";
 
 type SupportedLanguage = "tr" | "en";
 
+type Character = {
+  name: string;
+  age: string;
+  appearance: string;
+  outfit: string;
+  accessory?: string;
+  personality: string;
+  referenceImage?: string;
+};
+
+const DEFAULT_GUIDE_CHARACTER: Character = {
+  name: "Joe",
+  age: "10",
+  appearance:
+    "short slightly messy brown hair, large green eyes, expressive friendly face",
+  outfit: "yellow hoodie and blue jeans",
+  accessory: "",
+  personality:
+    "curious, energetic, slightly playful, brave, problem solver, asks simple questions that help children understand the topic",
+  referenceImage: "",
+};
+
+function normalizeName(value: unknown) {
+  return String(value || "")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ensureDefaultGuideCharacter(characters: Character[]) {
+  const safeCharacters = Array.isArray(characters) ? characters : [];
+  const hasJoe = safeCharacters.some(
+    (character) => normalizeName(character?.name) === "joe"
+  );
+
+  if (hasJoe) {
+    return safeCharacters.map((character) =>
+      normalizeName(character?.name) === "joe"
+        ? {
+            ...DEFAULT_GUIDE_CHARACTER,
+            ...character,
+            name: "Joe",
+            age: character.age || DEFAULT_GUIDE_CHARACTER.age,
+            appearance:
+              character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
+            outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
+            accessory:
+              character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+            personality:
+              character.personality || DEFAULT_GUIDE_CHARACTER.personality,
+          }
+        : character
+    );
+  }
+
+  return [DEFAULT_GUIDE_CHARACTER, ...safeCharacters];
+}
+
+function buildGuideInstruction(language: SupportedLanguage) {
+  return language === "en"
+    ? `
+MANDATORY SOFT-LOCK GUIDE CHARACTER:
+- Always include Joe as a recurring guide character.
+- Joe is 10 years old.
+- Joe has short slightly messy brown hair, large green eyes, and an expressive friendly face.
+- Joe always wears a yellow hoodie and blue jeans.
+- Joe is curious, energetic, slightly playful, brave, and a problem solver.
+- Joe asks simple questions that help children understand the topic.
+- Joe is present as the audience's guide, but the episode is NOT about Joe's personal life.
+- Other characters may exist, but do not remove Joe.
+- Keep Joe visually reusable across future episodes.
+`
+    : `
+ZORUNLU SOFT-LOCK REHBER KARAKTER:
+- Joe her hikayede tekrar eden rehber karakter olarak bulunmalı.
+- Joe 10 yaşında.
+- Joe'nun kısa, hafif dağınık kahverengi saçları, büyük yeşil gözleri ve samimi/ifade gücü yüksek bir yüzü vardır.
+- Joe her zaman sarı hoodie ve mavi jean giyer.
+- Joe meraklı, enerjik, hafif oyunbaz, cesur ve problem çözen bir karakterdir.
+- Joe çocukların konuyu anlamasına yardım eden basit sorular sorar.
+- Joe izleyicinin rehberidir; bölüm Joe'nun kişisel hayatı hakkında olmamalıdır.
+- Diğer karakterler olabilir, ancak Joe kaldırılmamalıdır.
+- Joe ilerideki bölümlerde görsel olarak tekrar kullanılabilir kalmalıdır.
+`;
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -203,7 +289,9 @@ ${prompt.trim()}
 
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
-      input: setupPrompt,
+      input: `${buildGuideInstruction(language)}
+
+${setupPrompt}`,
     });
 
     const rawText = extractTextFromResponse(response);
@@ -248,15 +336,17 @@ ${prompt.trim()}
       );
     }
 
-    const normalizedCharacters = parsed.characters.map((character: any) => ({
-      name: character?.name || "",
-      age: character?.age || "",
-      appearance: character?.appearance || "",
-      outfit: character?.outfit || "",
-      accessory: character?.accessory || "",
-      personality: character?.personality || "",
-      referenceImage: character?.referenceImage || "",
-    }));
+    const normalizedCharacters = ensureDefaultGuideCharacter(
+      parsed.characters.map((character: any) => ({
+        name: character?.name || "",
+        age: character?.age || "",
+        appearance: character?.appearance || "",
+        outfit: character?.outfit || "",
+        accessory: character?.accessory || "",
+        personality: character?.personality || "",
+        referenceImage: character?.referenceImage || "",
+      }))
+    );
 
     const normalizedVisualBible = {
       style: parsed.visualBible?.style || "",
