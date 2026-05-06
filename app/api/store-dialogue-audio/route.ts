@@ -93,6 +93,43 @@ async function fetchWithTimeout(
   }
 }
 
+function getNumericSetting(
+  value: unknown,
+  fallback: number,
+  min = 0,
+  max = 1.2
+) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  return fallback;
+}
+
+function getCharacterVoiceSettings(language: "tr" | "en", body: any) {
+  const defaults =
+    language === "en"
+      ? {
+          stability: 0.34,
+          similarityBoost: 0.84,
+          style: 0.52,
+          speed: 0.97,
+        }
+      : {
+          stability: 0.38,
+          similarityBoost: 0.8,
+          style: 0.44,
+          speed: 0.95,
+        };
+
+  return {
+    stability: getNumericSetting(body?.stability, defaults.stability),
+    similarityBoost: getNumericSetting(body?.similarityBoost, defaults.similarityBoost),
+    style: getNumericSetting(body?.style, defaults.style),
+    speed: getNumericSetting(body?.speed, defaults.speed, 0.7, 1.2),
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -162,29 +199,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const stability =
-      typeof body?.stability === "number"
-        ? body.stability
-        : language === "en"
-        ? 0.5
-        : 0.48;
-
-    const similarityBoost =
-      typeof body?.similarityBoost === "number"
-        ? body.similarityBoost
-        : language === "en"
-        ? 0.82
-        : 0.78;
-
-    const style =
-      typeof body?.style === "number"
-        ? body.style
-        : language === "en"
-        ? 0.22
-        : 0.18;
-
-    const speed =
-      typeof body?.speed === "number" ? body.speed : 1.0;
+    const voiceSettings = getCharacterVoiceSettings(language, body);
 
     const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
@@ -198,10 +213,10 @@ export async function POST(req: NextRequest) {
           text: fullText,
           model_id: modelId,
           voice_settings: {
-            stability,
-            similarity_boost: similarityBoost,
-            style,
-            speed,
+            stability: voiceSettings.stability,
+            similarity_boost: voiceSettings.similarityBoost,
+            style: voiceSettings.style,
+            speed: voiceSettings.speed,
             use_speaker_boost: true,
           },
         }),
@@ -241,10 +256,10 @@ export async function POST(req: NextRequest) {
     const settingsKey = [
       finalVoiceId,
       modelId,
-      stability,
-      similarityBoost,
-      style,
-      speed,
+      voiceSettings.stability,
+      voiceSettings.similarityBoost,
+      voiceSettings.style,
+      voiceSettings.speed,
       language,
     ].join("-");
 
@@ -256,6 +271,7 @@ export async function POST(req: NextRequest) {
       cleanedText: fullText,
       language,
       voiceId: finalVoiceId,
+      voiceSettings,
       settingsKey,
     });
   } catch (error: any) {

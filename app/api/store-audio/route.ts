@@ -80,6 +80,46 @@ async function fetchWithTimeout(
   }
 }
 
+function getNumericSetting(
+  value: unknown,
+  fallback: number,
+  min = 0,
+  max = 1.2
+) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  return fallback;
+}
+
+function getNarratorVoiceSettings(language: "tr" | "en", narratorSettings: any) {
+  const defaults =
+    language === "en"
+      ? {
+          stability: 0.62,
+          similarityBoost: 0.86,
+          style: 0.18,
+          speed: 0.91,
+        }
+      : {
+          stability: 0.58,
+          similarityBoost: 0.82,
+          style: 0.15,
+          speed: 0.9,
+        };
+
+  return {
+    stability: getNumericSetting(narratorSettings?.stability, defaults.stability),
+    similarityBoost: getNumericSetting(
+      narratorSettings?.similarityBoost,
+      defaults.similarityBoost
+    ),
+    style: getNumericSetting(narratorSettings?.style, defaults.style),
+    speed: getNumericSetting(narratorSettings?.speed, defaults.speed, 0.7, 1.2),
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -134,10 +174,7 @@ export async function POST(req: NextRequest) {
         ? narratorSettings.modelId.trim()
         : "eleven_multilingual_v2";
 
-    const stability = language === "en" ? 0.65 : 0.6;
-    const similarityBoost = language === "en" ? 0.85 : 0.8;
-    const style = 0.1;
-    const speed = 1.0;
+    const voiceSettings = getNarratorVoiceSettings(language, narratorSettings);
 
     const finalText = text;
 
@@ -153,10 +190,10 @@ export async function POST(req: NextRequest) {
           text: finalText,
           model_id: modelId,
           voice_settings: {
-            stability,
-            similarity_boost: similarityBoost,
-            style,
-            speed,
+            stability: voiceSettings.stability,
+            similarity_boost: voiceSettings.similarityBoost,
+            style: voiceSettings.style,
+            speed: voiceSettings.speed,
             use_speaker_boost: true,
           },
         }),
@@ -202,6 +239,8 @@ export async function POST(req: NextRequest) {
       cleanedText: finalText,
       originalText: rawText,
       language,
+      voiceId,
+      voiceSettings,
     });
   } catch (error: any) {
     console.error("store-audio error:", error);
