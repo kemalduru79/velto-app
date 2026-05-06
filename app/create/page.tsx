@@ -230,7 +230,7 @@ type YoutubePatternSummary = {
 
 type CreatorVideoDurationSec = 60 | 90 | 180 | 300;
 
-const CREATOR_SCENE_CLIP_DURATION_SECONDS = 7;
+const CREATOR_SCENE_CLIP_DURATION_SECONDS = 10;
 const CREATOR_MAX_SCENE_COUNT = 36;
 
 const getCreatorSceneCountForTargetDuration = (durationSec: number) => {
@@ -448,10 +448,10 @@ const optimizeCreatorPackageOpeningHook = (
   };
 };
 
-const DEFAULT_VIDEO_DURATION_SECONDS = 8;
-const TARGET_SCENE_DURATION_SECONDS = 8;
-const MAX_SCENE_DURATION_SECONDS = 10;
-const MIN_SCENE_DURATION_SECONDS = 6.5;
+const DEFAULT_VIDEO_DURATION_SECONDS = 10;
+const TARGET_SCENE_DURATION_SECONDS = 10;
+const MAX_SCENE_DURATION_SECONDS = 12;
+const MIN_SCENE_DURATION_SECONDS = 8;
 const FREEZE_TOLERANCE_SECONDS = 0.35;
 const MAX_SPEECH_RATIO = 0.82;
 const CREATOR_LAB_MAX_SPEECH_RATIO = 0.95;
@@ -748,7 +748,7 @@ const UI_TEXT = {
     patternAngle: "Önerilen İçerik Açısı",
     patternReasoning: "Gerekçe",
     creatorDurationTitle: "Video Süresi",
-    creatorDurationDesc: "Seçilen hedef süre, 7 saniyelik güvenli video kliplerine bölünerek üretilecek sahne sayısını belirler. Örn: 60 sn hedef ≈ 9 sahne.",
+    creatorDurationDesc: "Seçilen hedef süre, 10 saniyelik varsayılan sahne ritmine göre hesaplanır. Sistem konuşma yoğunluğuna göre sahneleri 8-12 saniye aralığında dengeler. Örn: 60 sn hedef ≈ 6 sahne.",
     usePatternDuration: "Pattern önerisini kullan",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
@@ -1052,7 +1052,7 @@ const UI_TEXT = {
     patternAngle: "Recommended Content Angle",
     patternReasoning: "Reasoning",
     creatorDurationTitle: "Video Duration",
-    creatorDurationDesc: "The selected target duration is split into safe 7-second video clips to determine the scene count. Example: 60 sec target ≈ 9 scenes.",
+    creatorDurationDesc: "The selected target duration is calculated with a 10-second default scene rhythm. The system balances scenes within an 8-12 second adaptive range based on speech density. Example: 60 sec target ≈ 6 scenes.",
     usePatternDuration: "Use pattern recommendation",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
@@ -1105,14 +1105,16 @@ const buildSceneTiming = (
   const safeDialogue = Number.isFinite(dialogueDuration) ? dialogueDuration : 0;
   const totalAudioDuration = safeNarration + safeDialogue;
 
-  const maxSpeechFromTarget = TARGET_SCENE_DURATION_SECONDS * MAX_SPEECH_RATIO;
-  const boundedSpeechDuration = Math.min(totalAudioDuration, maxSpeechFromTarget);
+  const adaptiveDurationFromSpeech =
+    totalAudioDuration > 0
+      ? totalAudioDuration / MAX_SPEECH_RATIO
+      : TARGET_SCENE_DURATION_SECONDS;
 
   const targetSceneDuration = Math.min(
     MAX_SCENE_DURATION_SECONDS,
     Math.max(
       TARGET_SCENE_DURATION_SECONDS,
-      boundedSpeechDuration,
+      adaptiveDurationFromSpeech,
       MIN_SCENE_DURATION_SECONDS
     )
   );

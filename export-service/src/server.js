@@ -17,10 +17,12 @@ app.use(
 );
 
 app.use(express.json({ limit: "10mb" }));
-const TARGET_SCENE_DURATION = 8;
-const MAX_SCENE_DURATION = 10;
+const TARGET_SCENE_DURATION = 10;
+const MAX_SCENE_DURATION = 12;
 const MAX_SPEECH_RATIO = 0.82;
-const MIN_SCENE_DURATION = 6.5;
+const MIN_SCENE_DURATION = 8;
+const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
+const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -147,26 +149,26 @@ function getSceneAudioMixProfile(scene) {
   const hasDialogue = !!scene?.dialogueAudioUrl;
   const custom = scene?.audioMixProfile || {};
 
-  let pauseMs = 80;
-  let sceneFadeInSec = 0.08;
-  let sceneFadeOutSec = 0.12;
+  let pauseMs = 50;
+  let sceneFadeInSec = 0.06;
+  let sceneFadeOutSec = 0.1;
 
   if (hasDialogue) {
-    pauseMs = 100;
-    sceneFadeInSec = 0.08;
-    sceneFadeOutSec = 0.15;
+    pauseMs = 70;
+    sceneFadeInSec = 0.06;
+    sceneFadeOutSec = 0.12;
   }
 
   if (target >= 8) {
-    pauseMs = hasDialogue ? 120 : 60;
-    sceneFadeInSec = 0.12;
-    sceneFadeOutSec = 0.18;
+    pauseMs = hasDialogue ? 70 : 40;
+    sceneFadeInSec = 0.08;
+    sceneFadeOutSec = 0.12;
   }
 
   if (target >= 10) {
-    pauseMs = hasDialogue ? 140 : 80;
-    sceneFadeInSec = 0.14;
-    sceneFadeOutSec = 0.2;
+    pauseMs = hasDialogue ? 70 : 40;
+    sceneFadeInSec = 0.08;
+    sceneFadeOutSec = 0.14;
   }
 
   return {
@@ -205,6 +207,36 @@ function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "imag
     MAX_SCENE_DURATION,
     Math.max(MIN_SCENE_DURATION, requestedTarget || TARGET_SCENE_DURATION, audioDrivenDuration)
   );
+}
+
+function getTransitionAwareDuration({ targetDuration, audioDuration = 0, sourceDuration = 0 }) {
+  const safeTargetDuration =
+    Number.isFinite(targetDuration) && targetDuration > 0
+      ? targetDuration
+      : TARGET_SCENE_DURATION;
+  const safeAudioDuration =
+    Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : 0;
+  const safeSourceDuration =
+    Number.isFinite(sourceDuration) && sourceDuration > 0 ? sourceDuration : 0;
+
+  const trimmedDuration = Math.max(0.1, safeTargetDuration - SCENE_TRANSITION_TRIM_SECONDS);
+
+  if (safeAudioDuration > 0) {
+    const audioSafeDuration = safeAudioDuration + MIN_AUDIO_TAIL_BUFFER_SECONDS;
+    const duration = Math.max(trimmedDuration, audioSafeDuration);
+
+    if (safeSourceDuration > 0) {
+      return Math.min(safeSourceDuration, duration);
+    }
+
+    return duration;
+  }
+
+  if (safeSourceDuration > 0) {
+    return Math.min(safeSourceDuration, trimmedDuration);
+  }
+
+  return trimmedDuration;
 }
 
 function getSpeechDurationLimit(scene, targetDuration) {
@@ -410,7 +442,12 @@ async function createImageClipWithAudio({
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const durationText = resolvedTargetDuration.toFixed(3);
+  const audioDuration = audioPath ? await getMediaDuration(audioPath).catch(() => 0) : 0;
+  const effectiveDuration = getTransitionAwareDuration({
+    targetDuration: resolvedTargetDuration,
+    audioDuration,
+  });
+  const durationText = effectiveDuration.toFixed(3);
   const videoBaseFilter =
     "scale=1280:720:force_original_aspect_ratio=decrease," +
     "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
@@ -517,10 +554,12 @@ async function createSceneClipWithAudio({
       : TARGET_SCENE_DURATION;
 
   const videoDuration = await getMediaDuration(videoPath);
-  const effectiveDuration =
-    videoDuration > 0
-      ? Math.min(videoDuration, requestedTargetDuration)
-      : requestedTargetDuration;
+  const audioDuration = audioPath ? await getMediaDuration(audioPath).catch(() => 0) : 0;
+  const effectiveDuration = getTransitionAwareDuration({
+    targetDuration: requestedTargetDuration,
+    audioDuration,
+    sourceDuration: videoDuration,
+  });
   const durationText = effectiveDuration.toFixed(3);
 
   const videoBaseFilter =
@@ -915,6 +954,9 @@ app.post("/export-movie", async (req, res) => {
       mixedExportAware: true,
       imageClipAware: true,
       deterministicSceneTimelineAware: true,
+      transitionTrimAware: true,
+      sceneTransitionTrimSeconds: SCENE_TRANSITION_TRIM_SECONDS,
+      minAudioTailBufferSeconds: MIN_AUDIO_TAIL_BUFFER_SECONDS,
       sceneAudioPaddedAware: true,
     });
   } catch (error) {

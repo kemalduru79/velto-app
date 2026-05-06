@@ -230,7 +230,7 @@ STRICT STORYVERSE RULES:
 
 Your task:
 - Generate EXACTLY 5 scenes using the given character setup and visual style.
-- Each scene must be suitable for a short 8-10 second animation.
+- Each scene must be suitable for a 10-second default animation rhythm, with an adaptive 8-12 second range when the scene needs more room for dialogue or explanation.
 - The pacing should be fast, clear, child-friendly, and easy to visualize.
 - Keep characters, appearance, relationships, and tone consistent.
 - The story should flow, but scenes should not be overly long.
@@ -315,7 +315,7 @@ KATI STORYVERSE KURALLARI:
 
 Görevin:
 - Verilen karakter tasarımı ve görsel stile sadık kalarak TAM 5 sahne üret.
-- Her sahne, 8-10 saniyelik kısa animasyon sahnesi olacak şekilde yazılmalı.
+- Her sahne, 10 saniyelik varsayılan animasyon ritmine uygun yazılmalı; diyalog veya açıklama yoğun olduğunda 8-12 saniyelik adaptif aralık desteklenmelidir.
 - Sahne temposu hızlı, net, çocuk dostu ve görselleştirilebilir olmalı.
 - Karakterleri, görünüşlerini, ilişkilerini ve tonunu tutarlı koru.
 - Hikaye akışlı olsun ama sahneler gereksiz uzun olmasın.
