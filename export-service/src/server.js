@@ -23,6 +23,10 @@ const MAX_SPEECH_RATIO = 0.82;
 const MIN_SCENE_DURATION = 8;
 const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
 const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
+const AMBIENT_ENGINE_ENABLED = true;
+const AMBIENT_DEFAULT_VOLUME = 0.055;
+const AMBIENT_MAX_VOLUME = 0.085;
+
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -677,6 +681,307 @@ async function concatSceneClips(listFilePath, outputFilePath) {
   ]);
 }
 
+
+function getSceneAmbienceText(scene) {
+  return [
+    scene?.text,
+    scene?.narration,
+    scene?.dialogue,
+    scene?.cameraDirection,
+    scene?.emotion,
+    scene?.motionHint,
+    scene?.visualPrompt,
+    scene?.thumbnailIdea,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function detectAmbientProfile(scene) {
+  if (!AMBIENT_ENGINE_ENABLED) {
+    return undefined;
+  }
+
+  const text = getSceneAmbienceText(scene);
+
+  if (!text.trim()) {
+    return undefined;
+  }
+
+  const profiles = [
+    {
+      id: "underwater",
+      label: "Subtle underwater ambience",
+      volume: 0.065,
+      keywords: [
+        "underwater",
+        "ocean",
+        "sea",
+        "water",
+        "bubble",
+        "bubbles",
+        "octopus",
+        "fish",
+        "coral",
+        "deniz",
+        "okyanus",
+        "su altı",
+        "balık",
+        "ahtapot",
+      ],
+    },
+    {
+      id: "rocket",
+      label: "Low rocket rumble ambience",
+      volume: 0.075,
+      keywords: [
+        "rocket",
+        "launch",
+        "blast",
+        "engine",
+        "flame",
+        "smoke",
+        "spacecraft",
+        "roket",
+        "fırlatma",
+        "motor",
+        "alev",
+      ],
+    },
+    {
+      id: "space",
+      label: "Soft space hum ambience",
+      volume: 0.055,
+      keywords: [
+        "space",
+        "planet",
+        "moon",
+        "star",
+        "galaxy",
+        "gravity",
+        "orbit",
+        "astronaut",
+        "uzay",
+        "gezegen",
+        "ay",
+        "yıldız",
+        "galaksi",
+        "yerçekimi",
+      ],
+    },
+    {
+      id: "nature",
+      label: "Light nature air ambience",
+      volume: 0.052,
+      keywords: [
+        "forest",
+        "jungle",
+        "tree",
+        "trees",
+        "leaf",
+        "leaves",
+        "wind",
+        "bird",
+        "birds",
+        "orman",
+        "ağaç",
+        "rüzgar",
+        "kuş",
+      ],
+    },
+    {
+      id: "magic",
+      label: "Soft sparkle ambience",
+      volume: 0.05,
+      keywords: [
+        "magic",
+        "sparkle",
+        "glow",
+        "glowing",
+        "portal",
+        "mystery",
+        "magical",
+        "büyü",
+        "parıltı",
+        "ışık",
+        "gizem",
+      ],
+    },
+    {
+      id: "tech",
+      label: "Soft tech ambience",
+      volume: 0.045,
+      keywords: [
+        "robot",
+        "computer",
+        "lab",
+        "machine",
+        "screen",
+        "technology",
+        "future",
+        "AI",
+        "science lab",
+        "robot",
+        "bilgisayar",
+        "laboratuvar",
+        "makine",
+        "teknoloji",
+      ],
+    },
+  ];
+
+  return profiles.find((profile) =>
+    profile.keywords.some((keyword) => text.includes(keyword.toLowerCase()))
+  );
+}
+
+function getAmbientLavfiSource(profileId) {
+  switch (profileId) {
+    case "underwater":
+      return "anoisesrc=color=pink:amplitude=0.045:sample_rate=44100";
+    case "rocket":
+      return "anoisesrc=color=brown:amplitude=0.055:sample_rate=44100";
+    case "space":
+      return "sine=frequency=92:sample_rate=44100";
+    case "nature":
+      return "anoisesrc=color=pink:amplitude=0.035:sample_rate=44100";
+    case "magic":
+      return "sine=frequency=620:sample_rate=44100";
+    case "tech":
+      return "sine=frequency=180:sample_rate=44100";
+    default:
+      return "anoisesrc=color=pink:amplitude=0.03:sample_rate=44100";
+  }
+}
+
+function getAmbientFilter(profileId, volume, durationSeconds) {
+  const safeVolume = Math.min(
+    AMBIENT_MAX_VOLUME,
+    Math.max(0.01, Number.isFinite(volume) ? volume : AMBIENT_DEFAULT_VOLUME)
+  );
+  const safeDuration = Math.max(0.2, durationSeconds || TARGET_SCENE_DURATION);
+  const fadeOutStart = Math.max(0, safeDuration - 0.35);
+
+  const baseFilters = [
+    "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo",
+  ];
+
+  if (profileId === "underwater") {
+    baseFilters.push("lowpass=f=900");
+  } else if (profileId === "rocket") {
+    baseFilters.push("lowpass=f=420");
+  } else if (profileId === "space") {
+    baseFilters.push("lowpass=f=320");
+  } else if (profileId === "nature") {
+    baseFilters.push("highpass=f=180", "lowpass=f=2800");
+  } else if (profileId === "magic") {
+    baseFilters.push("aecho=0.35:0.35:90:0.18", "lowpass=f=2400");
+  } else if (profileId === "tech") {
+    baseFilters.push("aecho=0.25:0.25:70:0.12", "lowpass=f=1800");
+  }
+
+  baseFilters.push(
+    `volume=${safeVolume.toFixed(3)}`,
+    "afade=t=in:st=0:d=0.180",
+    `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=0.350`
+  );
+
+  return baseFilters.join(",");
+}
+
+async function createProceduralAmbientAudio({ outputPath, durationSeconds, profile }) {
+  if (!profile || !durationSeconds || durationSeconds <= 0) {
+    return undefined;
+  }
+
+  const source = getAmbientLavfiSource(profile.id);
+  const filter = getAmbientFilter(profile.id, profile.volume, durationSeconds);
+
+  await runFfmpeg([
+    "-y",
+    "-f",
+    "lavfi",
+    "-t",
+    durationSeconds.toFixed(3),
+    "-i",
+    source,
+    "-af",
+    filter,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
+async function mixSceneAudioWithAmbient({
+  speechAudioPath,
+  ambientAudioPath,
+  outputPath,
+  targetDuration,
+}) {
+  const durationText = Math.max(0.2, targetDuration || TARGET_SCENE_DURATION).toFixed(3);
+
+  if (!ambientAudioPath) {
+    return speechAudioPath;
+  }
+
+  if (!speechAudioPath) {
+    await runFfmpeg([
+      "-y",
+      "-i",
+      ambientAudioPath,
+      "-af",
+      `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS`,
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-ar",
+      "44100",
+      "-ac",
+      "2",
+      outputPath,
+    ]);
+
+    return outputPath;
+  }
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    speechAudioPath,
+    "-i",
+    ambientAudioPath,
+    "-filter_complex",
+    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[speech];` +
+      `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[amb];` +
+      `[speech][amb]amix=inputs=2:duration=first:dropout_transition=0,` +
+      `alimiter=limit=0.95[a]`,
+    "-map",
+    "[a]",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
 async function mixFinalVideoWithBackgroundMusic({
   inputVideoPath,
   bgmPath,
@@ -761,6 +1066,8 @@ app.post("/export-movie", async (req, res) => {
       const narrationPath = path.join(tempDir, `narration-${i + 1}.mp3`);
       const dialoguePath = path.join(tempDir, `dialogue-${i + 1}.mp3`);
       const sceneAudioPath = path.join(tempDir, `scene-audio-${i + 1}.m4a`);
+      const sceneAmbientPath = path.join(tempDir, `scene-ambient-${i + 1}.m4a`);
+      const sceneAudioWithAmbientPath = path.join(tempDir, `scene-audio-ambient-${i + 1}.m4a`);
       const clipOutputPath = path.join(tempDir, `clip-scene-${i + 1}.mp4`);
 
       const hasVideoSource =
@@ -855,17 +1162,44 @@ app.post("/export-movie", async (req, res) => {
         console.warn(`Scene ${i + 1} audio longer than target, auto-extending scene.`);
       }
 
+      const ambientProfile = detectAmbientProfile(scene);
+      let audioForClip = finalAudioPath;
+
+      if (ambientProfile) {
+        try {
+          await createProceduralAmbientAudio({
+            outputPath: sceneAmbientPath,
+            durationSeconds: targetDuration,
+            profile: ambientProfile,
+          });
+
+          audioForClip = await mixSceneAudioWithAmbient({
+            speechAudioPath: finalAudioPath,
+            ambientAudioPath: sceneAmbientPath,
+            outputPath: sceneAudioWithAmbientPath,
+            targetDuration,
+          });
+
+          console.log(
+            `Scene ${i + 1} ambient layer: ${ambientProfile.id} (${ambientProfile.label})`
+          );
+        } catch (ambientError) {
+          console.warn(`Scene ${i + 1} ambient layer skipped:`, ambientError);
+          audioForClip = finalAudioPath;
+        }
+      }
+
       if (sourceType === "video") {
         await createSceneClipWithAudio({
           videoPath: sourcePath,
-          audioPath: finalAudioPath,
+          audioPath: audioForClip,
           outputPath: clipOutputPath,
           targetDuration,
         });
       } else {
         await createImageClipWithAudio({
           imagePath: sourcePath,
-          audioPath: finalAudioPath,
+          audioPath: audioForClip,
           outputPath: clipOutputPath,
           targetDuration,
         });
@@ -958,6 +1292,10 @@ app.post("/export-movie", async (req, res) => {
       sceneTransitionTrimSeconds: SCENE_TRANSITION_TRIM_SECONDS,
       minAudioTailBufferSeconds: MIN_AUDIO_TAIL_BUFFER_SECONDS,
       sceneAudioPaddedAware: true,
+      dynamicAmbientEngineAware: true,
+      proceduralAmbientAware: true,
+      ambientDefaultVolume: AMBIENT_DEFAULT_VOLUME,
+      ambientMaxVolume: AMBIENT_MAX_VOLUME,
     });
   } catch (error) {
     console.error("export-movie error:", error);

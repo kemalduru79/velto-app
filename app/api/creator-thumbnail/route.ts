@@ -3,6 +3,14 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
+type SupportedLanguage = "tr" | "en";
+
+type ThumbnailPlan = {
+  headline: string;
+  subHeadline: string;
+  imagePrompt: string;
+};
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -17,14 +25,127 @@ function safeString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function parseJsonObject(text: string) {
+function clampText(value: string, maxLength: number) {
+  const text = safeString(value);
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return text.slice(0, maxLength).trim();
+}
+
+function extractJsonObject(text: string) {
   const cleaned = text
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
 
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+    }
+
+    throw new Error("Thumbnail planning JSON could not be parsed.");
+  }
+}
+
+function normalizeHeadline(value: string, language: SupportedLanguage) {
+  const cleaned = safeString(value)
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .replace(/[.]+$/g, "")
+    .trim();
+
+  if (!cleaned) {
+    return language === "tr" ? "BU NASIL?!" : "HOW?!";
+  }
+
+  const words = cleaned.split(" ").filter(Boolean);
+  const maxWords = 4;
+  const shortened = words.length > maxWords ? words.slice(0, maxWords).join(" ") : cleaned;
+  const withPunch = /[!?]$/.test(shortened) ? shortened : `${shortened}?!`;
+
+  return withPunch.toUpperCase();
+}
+
+function getFallbackHeadline({
+  productionPackage,
+  metadata,
+  language,
+}: {
+  productionPackage: any;
+  metadata: any;
+  language: SupportedLanguage;
+}) {
+  const hook = safeString(productionPackage?.hook);
+  const title = safeString(metadata?.recommendedTitle, safeString(productionPackage?.title));
+  const source = hook || title;
+
+  if (/octopus|octop/i.test(source)) {
+    return language === "tr" ? "3 KALP?!" : "THREE HEARTS?!";
+  }
+
+  if (/rocket|roket/i.test(source)) {
+    return language === "tr" ? "ROKET GÜCÜ?!" : "ROCKET POWER?!";
+  }
+
+  if (/gravity|yer çekimi|yerçekimi/i.test(source)) {
+    return language === "tr" ? "YER ÇEKİMİ YOK?!" : "NO GRAVITY?!";
+  }
+
+  if (/sun|güneş/i.test(source)) {
+    return language === "tr" ? "GÜNEŞ YOK?!" : "NO SUN?!";
+  }
+
+  return language === "tr" ? "BU NASIL?!" : "HOW?!";
+}
+
+function buildFallbackPlan({
+  productionPackage,
+  metadata,
+  language,
+}: {
+  productionPackage: any;
+  metadata: any;
+  language: SupportedLanguage;
+}): ThumbnailPlan {
+  const headline = getFallbackHeadline({ productionPackage, metadata, language });
+  const title = safeString(productionPackage?.title, safeString(metadata?.recommendedTitle, "kids science video"));
+  const hook = safeString(productionPackage?.hook, safeString(metadata?.audiencePromise));
+
+  return {
+    headline,
+    subHeadline: "",
+    imagePrompt: [
+      `Topic: ${title}`,
+      hook ? `Core surprise: ${hook}` : "",
+      "Joe, the recurring 10-year-old guide character, reacts with a huge shocked expression.",
+      "One massive focal object related to the topic dominates the other side of the frame.",
+      "Use strong contrast, cinematic lighting, clean background, bold color separation, and emotional visual storytelling.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+function normalizePlan(plan: any, fallback: ThumbnailPlan, language: SupportedLanguage): ThumbnailPlan {
+  const headline = normalizeHeadline(safeString(plan?.headline, fallback.headline), language);
+  const subHeadline = clampText(safeString(plan?.subHeadline, fallback.subHeadline), 48);
+  const imagePrompt = clampText(safeString(plan?.imagePrompt, fallback.imagePrompt), 1400);
+
+  return {
+    headline,
+    subHeadline,
+    imagePrompt,
+  };
 }
 
 export async function POST(req: Request) {
@@ -34,34 +155,51 @@ export async function POST(req: Request) {
 
     const productionPackage = body?.package || {};
     const metadata = body?.metadata || {};
-    const language = body?.language === "tr" ? "tr" : "en";
+    const language: SupportedLanguage = body?.language === "tr" ? "tr" : "en";
     const targetMarket = safeString(body?.targetMarket, "global");
     const ageGroup = safeString(body?.ageGroup, "8-12");
     const contentType = safeString(body?.contentType, "educational");
     const videoDurationSec = Number(body?.videoDurationSec || productionPackage?.durationSec || 60);
 
+    const fallbackPlan = buildFallbackPlan({ productionPackage, metadata, language });
+
     const planningPrompt = `
-You are a YouTube thumbnail creative director for child-safe educational/story videos.
+You are a senior YouTube thumbnail strategist for child-safe curiosity, science, and story videos.
 
 Return STRICT JSON only:
 {
-  "headline": "2-5 word thumbnail headline",
-  "subHeadline": "optional short supporting phrase",
+  "headline": "1-4 word thumbnail headline",
+  "subHeadline": "optional 0-4 word support phrase",
   "imagePrompt": "detailed thumbnail image prompt"
 }
 
-Rules:
-- Language for text ideas: ${language === "tr" ? "Turkish" : "English"}.
-- Audience age: ${ageGroup}.
-- Target market: ${targetMarket}.
-- Content type: ${contentType}.
-- Duration target: ${videoDurationSec} seconds.
-- Child-safe, positive, colorful, curiosity-driven.
-- Thumbnail should be 16:9 YouTube style.
-- Avoid scary, violent, medical, political, or adult themes.
-- Keep any visible text minimal and large.
-- The image prompt must describe a clean, high-contrast, animated/cartoon-style thumbnail with a clear focal character/object.
-- Do not use brand logos, YouTube UI, copyrighted characters, or celebrity likenesses.
+MISSION:
+Create a scroll-stopping thumbnail concept, NOT an educational poster.
+
+Audience:
+- Language for text ideas: ${language === "tr" ? "Turkish" : "English"}
+- Audience age: ${ageGroup}
+- Target market: ${targetMarket}
+- Content type: ${contentType}
+- Duration target: ${videoDurationSec} seconds
+
+Thumbnail psychology rules:
+- Headline must be extremely short: 1-4 words.
+- Avoid weak openings like "Did you know", "Discover", "Learn", "Explained", "Fun Facts".
+- Use surprise, mystery, or impossible curiosity.
+- Prefer question/exclamation energy.
+- The image must have ONE dominant focal object.
+- Joe must have a strong reaction: shocked, amazed, confused, or "no way" expression.
+- Composition should feel like a clickable YouTube thumbnail, not a school worksheet, poster, infographic, or title card.
+- Avoid clutter, tiny details, small text blocks, labels, diagrams, educational panels, or multi-line poster text.
+- No brand logos, YouTube UI, copyrighted characters, or celebrity likenesses.
+- Child-safe, positive, colorful, and friendly.
+
+Composition formula:
+- Left or right side: Joe close-up with a huge expressive face.
+- Opposite side: one oversized topic object with dramatic lighting.
+- Background: simple, high contrast, clean, colorful.
+- Text space: leave clean empty space for a short headline; do not design a full poster.
 
 Production package:
 Title: ${safeString(productionPackage?.title, "Untitled")}
@@ -70,48 +208,73 @@ Story premise: ${safeString(productionPackage?.storyPremise)}
 Thumbnail idea: ${safeString(productionPackage?.thumbnailIdea)}
 Recommended metadata title: ${safeString(metadata?.recommendedTitle)}
 Audience promise: ${safeString(metadata?.audiencePromise)}
+Thumbnail text ideas: ${Array.isArray(metadata?.thumbnailTextIdeas) ? metadata.thumbnailTextIdeas.join(" | ") : ""}
 `;
 
-    const planning = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0.7,
-      messages: [
-        {
-          role: "system",
-          content: "Return strict JSON only. No markdown.",
-        },
-        {
-          role: "user",
-          content: planningPrompt,
-        },
-      ],
-    });
+    let plan = fallbackPlan;
 
-    const parsed = parseJsonObject(planning.choices?.[0]?.message?.content || "{}");
+    try {
+      const planning = await client.chat.completions.create({
+        model: "gpt-4.1-mini",
+        temperature: 0.45,
+        messages: [
+          {
+            role: "system",
+            content: "Return strict JSON only. No markdown. No explanations.",
+          },
+          {
+            role: "user",
+            content: planningPrompt,
+          },
+        ],
+      });
 
-    const headline = safeString(parsed.headline, safeString(metadata?.recommendedTitle, safeString(productionPackage?.title, "Thumbnail")));
-    const subHeadline = safeString(parsed.subHeadline);
-    const imagePrompt = safeString(parsed.imagePrompt);
+      const parsed = extractJsonObject(planning.choices?.[0]?.message?.content || "{}");
+      plan = normalizePlan(parsed, fallbackPlan, language);
+    } catch (planningError) {
+      console.warn("creator-thumbnail planning fallback used:", planningError);
+      plan = normalizePlan(fallbackPlan, fallbackPlan, language);
+    }
 
     const finalImagePrompt = `
-Create a YouTube thumbnail image in wide landscape composition.
+Create a premium 16:9 YouTube thumbnail image for a child-safe curiosity video.
 
-Style: colorful animated children's educational video thumbnail, high contrast, clean composition, expressive character or object, bright background, cinematic lighting, safe and friendly, no logos, no copyrighted characters, no celebrity likeness.
+THUMBNAIL HEADLINE CONCEPT:
+${plan.headline}
 
-Main headline concept: ${headline}
-Supporting concept: ${subHeadline}
-Scene direction: ${imagePrompt}
+SUPPORTING CONCEPT:
+${plan.subHeadline || "none"}
 
-Important:
-- Do not render small unreadable text.
-- If text appears, keep it minimal, large, and clean.
-- Make it suitable for children ages ${ageGroup}.
+SCENE DIRECTION:
+${plan.imagePrompt}
+
+MANDATORY VISUAL RULES:
+- Make this look like a high-CTR YouTube thumbnail, not an educational poster.
+- Show Joe, the recurring 10-year-old guide character, close to camera with a huge expressive reaction.
+- Joe visual identity: short slightly messy brown hair, large green eyes, expressive friendly face, yellow hoodie, blue jeans.
+- Use one oversized focal object connected to the topic.
+- Use bold contrast, cinematic lighting, bright kid-friendly colors, and strong depth.
+- Keep the composition simple and readable on a phone screen.
+- Leave clean space for a short headline overlay.
+- Prefer no rendered text inside the image. If text appears, it must be only the exact short headline: "${plan.headline}".
+
+ANTI-POSTER RULES:
+- No multi-line subtitles.
+- No educational poster layout.
+- No infographic panels.
+- No labels or arrows unless absolutely necessary.
+- No tiny text.
+- No cluttered background.
+- No brand logos, YouTube UI, copyrighted characters, celebrity likenesses, scary violence, medical gore, politics, or adult themes.
+
+STYLE:
+premium animated kids science thumbnail, expressive cartoon movie style, high visual impact, clean composition, strong emotional storytelling, highly clickable, safe and friendly.
 `;
 
     const image = await client.images.generate({
       model: "gpt-image-1",
       size: "1536x1024",
-      quality: "medium",
+      quality: "high",
       n: 1,
       prompt: finalImagePrompt,
     });
@@ -129,8 +292,8 @@ Important:
       thumbnail: {
         imageUrl,
         prompt: finalImagePrompt.trim(),
-        headline,
-        subHeadline,
+        headline: plan.headline,
+        subHeadline: plan.subHeadline,
       },
     });
   } catch (error: any) {

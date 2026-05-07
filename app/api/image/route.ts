@@ -42,7 +42,7 @@ function normalizeNameForCharacter(value: unknown) {
 function ensureDefaultGuideCharacter(characters?: Character[]) {
   const safeCharacters = Array.isArray(characters) ? characters : [];
   const hasJoe = safeCharacters.some(
-    (character) => normalizeNameForCharacter(character?.name) === "joe"
+    (character) => normalizeNameForCharacter(character?.name) === "joe",
   );
 
   if (hasJoe) {
@@ -56,12 +56,11 @@ function ensureDefaultGuideCharacter(characters?: Character[]) {
             appearance:
               character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
             outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
-            accessory:
-              character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+            accessory: character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
             personality:
               character.personality || DEFAULT_GUIDE_CHARACTER.personality,
           }
-        : character
+        : character,
     );
   }
 
@@ -98,10 +97,10 @@ Personality: ${character.personality || "Not specified"}
 
 REFERENCE IMAGE STATUS:
 ${
-        hasReference
-          ? "A reference design image exists for this character. Treat that design as the canonical master look."
-          : "No reference image exists yet. Use the written character bible as the canonical look."
-      }
+  hasReference
+    ? "A reference design image exists for this character. Treat that design as the canonical master look."
+    : "No reference image exists yet. Use the written character bible as the canonical look."
+}
 
 REFERENCE IMAGE VALUE:
 ${character.referenceImage || "No reference image yet"}
@@ -164,6 +163,10 @@ export async function POST(req: Request) {
       motionHint,
       characters,
       visualBible,
+      isThumbnail,
+      isHookScene,
+      imageUseCase,
+      premiumVisualMode,
     }: {
       title?: string;
       sceneText?: string;
@@ -172,17 +175,49 @@ export async function POST(req: Request) {
       motionHint?: string;
       characters?: Character[];
       visualBible?: VisualBible | null;
+      isThumbnail?: boolean;
+      isHookScene?: boolean;
+      imageUseCase?: "scene" | "thumbnail" | "hook";
+      premiumVisualMode?: boolean;
     } = await req.json();
 
     if (!sceneText || !sceneText.trim()) {
       return NextResponse.json(
         { error: "sceneText zorunludur." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const characterBlock = buildCharacterBlock(characters);
     const visualBlock = buildVisualBlock(visualBible);
+    const normalizedImageUseCase =
+      imageUseCase ||
+      (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
+    const shouldUsePremiumVisuals = Boolean(
+      premiumVisualMode ||
+      isThumbnail ||
+      isHookScene ||
+      normalizedImageUseCase === "thumbnail" ||
+      normalizedImageUseCase === "hook",
+    );
+
+    const premiumVisualInstructions = shouldUsePremiumVisuals
+      ? `
+PREMIUM VISUAL LAYER:
+- This is a high-impact ${normalizedImageUseCase === "thumbnail" ? "YouTube thumbnail / hero marketing image" : "hook scene / opening hero frame"}.
+- Use premium animated movie quality, strong emotional readability, and high visual impact.
+- Make Joe's facial expression highly readable and engaging.
+- Prioritize a clean, bold composition with one dominant visual idea.
+- Use cinematic lighting, stronger contrast, and clear subject separation.
+- Avoid clutter, small unreadable details, and overly wide compositions.
+- Keep the image child-friendly but visually exciting and clickable.
+- For thumbnails, compose with a wide 16:9 crop in mind, with the main subject large and centered.
+`
+      : `
+STANDARD VISUAL LAYER:
+- Use consistent, polished scene quality while preserving cost-aware production.
+- Prioritize continuity, clarity, and readability over excessive detail.
+`;
 
     const imagePrompt = `
 Create a polished still frame from the SAME children's animated film universe.
@@ -194,7 +229,7 @@ This image must preserve character continuity with previously generated scenes f
 
 Visual bible:
 ${visualBlock}
-
+${premiumVisualInstructions}
 Canonical character bible:
 ${characterBlock}
 
@@ -256,21 +291,31 @@ Negative guidance:
 - no new lead character invention
 
 Output style:
-high-quality animated movie frame, consistent characters, polished lighting, cinematic composition, child-friendly, storybook warmth, same film continuity
+${
+  shouldUsePremiumVisuals
+    ? "premium high-impact animated movie frame, strong YouTube visual appeal, consistent characters, polished cinematic lighting, bold readable composition, child-friendly, same film continuity"
+    : "high-quality animated movie frame, consistent characters, polished lighting, cinematic composition, child-friendly, storybook warmth, same film continuity"
+}
 `;
 
-    const image = await client.images.generate({
+    const imageRequest: any = {
       model: "gpt-image-1",
       prompt: imagePrompt,
-      size: "1024x1024",
-    });
+      size:
+        shouldUsePremiumVisuals && normalizedImageUseCase === "thumbnail"
+          ? "1536x1024"
+          : "1024x1024",
+      quality: shouldUsePremiumVisuals ? "high" : "medium",
+    };
+
+    const image = await client.images.generate(imageRequest);
 
     const base64 = image.data?.[0]?.b64_json;
 
     if (!base64) {
       return NextResponse.json(
         { error: "Görsel üretilemedi." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -287,7 +332,7 @@ high-quality animated movie frame, consistent characters, polished lighting, cin
 
     return NextResponse.json(
       { error: message || "Görsel oluşturulurken hata oluştu." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

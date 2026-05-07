@@ -2091,9 +2091,22 @@ export default function CreatePage() {
   };
 
   const generateSceneImage = async (
-    scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">
+    scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">,
+    options?: {
+      isHookScene?: boolean;
+      isThumbnail?: boolean;
+      premiumVisualMode?: boolean;
+      imageUseCase?: "scene" | "thumbnail" | "hook";
+    }
   ) => {
     const safeScene = getSafeSceneForImagePrompt(scene);
+    const isHookScene = Boolean(options?.isHookScene || scene.id === 1);
+    const isThumbnail = Boolean(options?.isThumbnail);
+    const premiumVisualMode = Boolean(
+      options?.premiumVisualMode || isHookScene || isThumbnail
+    );
+    const imageUseCase =
+      options?.imageUseCase || (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
 
     const imageRes = await fetch("/api/image", {
       method: "POST",
@@ -2108,6 +2121,10 @@ export default function CreatePage() {
         motionHint: safeScene.motionHint,
         characters: getSafeCharactersForImagePrompt(),
         visualBible: getSafeVisualBibleForImagePrompt(),
+        isHookScene,
+        isThumbnail,
+        premiumVisualMode,
+        imageUseCase,
       }),
     });
 
@@ -4773,6 +4790,151 @@ export default function CreatePage() {
     }
   };
 
+  const getShortThumbnailHeadline = () => {
+    const textCandidates = [
+      youtubeMetadataResult?.thumbnailTextIdeas?.[0],
+      creatorProductionPackage?.hook,
+      youtubeMetadataResult?.recommendedTitle,
+      creatorProductionPackage?.title,
+      title,
+      input,
+    ];
+
+    const sourceText =
+      textCandidates.find((item) => typeof item === "string" && item.trim()) ||
+      "HOW?!";
+
+    const normalized = sourceText
+      .replace(/did you know/gi, "")
+      .replace(/discover/gi, "")
+      .replace(/learn/gi, "")
+      .replace(/explained/gi, "")
+      .replace(/fun facts?/gi, "")
+      .replace(/[?.!,]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (/octopus|octop/i.test(normalized)) {
+      return uiLanguage === "en" ? "THREE HEARTS?!" : "3 KALP?!";
+    }
+
+    if (/rocket|roket/i.test(normalized)) {
+      return uiLanguage === "en" ? "ROCKET POWER?!" : "ROKET GÜCÜ?!";
+    }
+
+    if (/gravity|yer çekimi|yerçekimi/i.test(normalized)) {
+      return uiLanguage === "en" ? "NO GRAVITY?!" : "YER ÇEKİMİ YOK?!";
+    }
+
+    if (/sun|güneş/i.test(normalized)) {
+      return uiLanguage === "en" ? "NO SUN?!" : "GÜNEŞ YOK?!";
+    }
+
+    const words = normalized
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" ");
+
+    return `${words || "HOW"}?!`.toUpperCase();
+  };
+
+  const buildPremiumThumbnailPrompt = () => {
+    const packageTitle = creatorProductionPackage?.title || title || input || "YouTube video";
+    const packageHook = creatorProductionPackage?.hook || youtubeMetadataResult?.audiencePromise || "";
+    const thumbnailIdea = creatorProductionPackage?.thumbnailIdea || "";
+    const recommendedTitle = youtubeMetadataResult?.recommendedTitle || "";
+    const thumbnailTextIdeas = Array.isArray(youtubeMetadataResult?.thumbnailTextIdeas)
+      ? youtubeMetadataResult?.thumbnailTextIdeas.join(" | ")
+      : "";
+    const shortHeadline = getShortThumbnailHeadline();
+
+    return [
+      `Create a premium 16:9 YouTube thumbnail for a kids curiosity video titled: ${packageTitle}`,
+      packageHook ? `Core hook: ${packageHook}` : "",
+      recommendedTitle ? `YouTube title: ${recommendedTitle}` : "",
+      thumbnailIdea ? `Thumbnail idea: ${thumbnailIdea}` : "",
+      thumbnailTextIdeas ? `Raw text ideas to simplify: ${thumbnailTextIdeas}` : "",
+      `Use this short thumbnail headline concept only: ${shortHeadline}`,
+      "Show Joe, the recurring 10-year-old guide character, very close to camera with a huge shocked / amazed / no-way expression.",
+      "Use one oversized focal object related to the topic on the opposite side of the frame.",
+      "Make the image feel like a scroll-stopping YouTube thumbnail, not an educational poster or infographic.",
+      "Use bold contrast, cinematic lighting, large readable shapes, bright kid-friendly colors, strong depth, and premium animated movie style.",
+      "Leave clean empty space for a short headline overlay. Prefer no rendered text inside the image; if text appears, use only the short headline.",
+      "Avoid multi-line text, subtitles, poster layout, labels, arrows, clutter, tiny details, scary imagery, or confusing composition.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const generatePremiumYoutubeThumbnailImage = async () => {
+    const thumbnailPrompt = buildPremiumThumbnailPrompt();
+
+    const imageRes = await fetch("/api/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: limitForImagePrompt(
+          youtubeMetadataResult?.recommendedTitle || creatorProductionPackage?.title || title,
+          180
+        ),
+        sceneText: limitForImagePrompt(thumbnailPrompt, 1200),
+        cameraDirection:
+          "wide 16:9 YouTube thumbnail composition, large subject focus, bold readable layout",
+        emotion: "surprise, curiosity, excitement",
+        motionHint:
+          "dynamic hero pose, cinematic energy, clear emotional reaction",
+        characters: getSafeCharactersForImagePrompt(),
+        visualBible: getSafeVisualBibleForImagePrompt(),
+        isThumbnail: true,
+        premiumVisualMode: true,
+        imageUseCase: "thumbnail",
+      }),
+    });
+
+    const imageData = await imageRes.json();
+
+    if (!imageRes.ok || !imageData?.image) {
+      throw new Error(imageData?.error || "Premium thumbnail görseli üretilemedi.");
+    }
+
+    const storeRes = await fetch("/api/store-image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        image: imageData.image,
+        sceneId: "thumbnail",
+        projectId: getProjectKey(),
+      }),
+    });
+
+    const storeData = await storeRes.json();
+
+    if (!storeRes.ok || !storeData?.ok || !storeData?.imageUrl) {
+      throw new Error(storeData?.error || "Thumbnail kalıcı olarak kaydedilemedi.");
+    }
+
+    return {
+      imageUrl: storeData.imageUrl as string,
+      prompt: thumbnailPrompt,
+      headline:
+        youtubeMetadataResult?.thumbnailTextIdeas?.[0] ||
+        youtubeMetadataResult?.recommendedTitle ||
+        creatorProductionPackage?.youtubeTitle ||
+        creatorProductionPackage?.title ||
+        "",
+      subHeadline:
+        youtubeMetadataResult?.thumbnailTextIdeas?.[1] ||
+        creatorProductionPackage?.hook ||
+        creatorProductionPackage?.thumbnailIdea ||
+        "",
+    };
+  };
+
   const handleGenerateYoutubeThumbnail = async () => {
     if (!creatorProductionPackage) {
       setError(
@@ -4788,29 +4950,8 @@ export default function CreatePage() {
     setSaveMessage("");
 
     try {
-      const res = await fetch("/api/creator-thumbnail", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          package: creatorProductionPackage,
-          metadata: youtubeMetadataResult,
-          language,
-          targetMarket: creatorCountry,
-          ageGroup: creatorAgeGroup,
-          contentType: creatorContentType,
-          videoDurationSec: creatorVideoDurationSec,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data?.thumbnail?.imageUrl) {
-        throw new Error(data?.error || "Thumbnail üretilemedi.");
-      }
-
-      setYoutubeThumbnailResult(data.thumbnail as YoutubeThumbnailResult);
+      const premiumThumbnail = await generatePremiumYoutubeThumbnailImage();
+      setYoutubeThumbnailResult(premiumThumbnail as YoutubeThumbnailResult);
       setSaveMessage(
         uiLanguage === "en"
           ? "Thumbnail generated ✅"
