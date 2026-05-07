@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
@@ -35,7 +36,6 @@ const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
 const AMBIENT_ENGINE_ENABLED = true;
 const AMBIENT_DEFAULT_VOLUME = 0.055;
 const AMBIENT_MAX_VOLUME = 0.085;
-
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -465,20 +465,12 @@ async function createImageClipWithAudio({
   });
 
   const durationText = effectiveDuration.toFixed(3);
-  const totalFrames = Math.max(1, Math.round(effectiveDuration * 25));
-  const zoomEnd = effectiveDuration >= 9 ? 1.075 : 1.055;
 
   const videoMotionFilter =
-    "scale=1400:788:force_original_aspect_ratio=increase," +
-    "crop=1400:788," +
+    "scale=1280:720:force_original_aspect_ratio=decrease," +
+    "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
     "setsar=1," +
-    `zoompan=` +
-    `z='min(zoom+0.0009,${zoomEnd})':` +
-    `x='iw/2-(iw/zoom/2)+sin(on/28)*10':` +
-    `y='ih/2-(ih/zoom/2)+cos(on/32)*6':` +
-    `d=${totalFrames}:` +
-    `s=1280x720:` +
-    `fps=25,` +
+    "fps=25," +
     `trim=duration=${durationText},` +
     "setpts=PTS-STARTPTS," +
     "format=yuv420p";
@@ -1005,6 +997,48 @@ async function mixSceneAudioWithAmbient({
   return outputPath;
 }
 
+
+async function createMicroSfxTrack({ outputPath, durationSeconds, profileId }) {
+  const safeDuration = Math.max(0.4, durationSeconds || 1.5);
+
+  let source = "sine=frequency=120:sample_rate=44100";
+  let filter = "volume=0.10";
+
+  if (profileId === "rocket") {
+    source = "anoisesrc=color=white:amplitude=0.25:sample_rate=44100";
+    filter =
+      "highpass=f=120,lowpass=f=1800,volume=0.12,afade=t=out:st=1.2:d=0.4";
+  } else if (profileId === "space") {
+    source = "sine=frequency=240:sample_rate=44100";
+    filter =
+      "aecho=0.6:0.5:40:0.3,volume=0.08,afade=t=out:st=1.0:d=0.4";
+  } else if (profileId === "underwater") {
+    source = "anoisesrc=color=pink:amplitude=0.15:sample_rate=44100";
+    filter =
+      "lowpass=f=1200,volume=0.08,afade=t=out:st=1.0:d=0.5";
+  }
+
+  await runFfmpeg([
+    "-y",
+    "-f",
+    "lavfi",
+    "-t",
+    Math.min(2.2, safeDuration).toFixed(3),
+    "-i",
+    source,
+    "-af",
+    filter,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
+
 async function mixFinalVideoWithBackgroundMusic({
   inputVideoPath,
   bgmPath,
@@ -1091,6 +1125,8 @@ app.post("/export-movie", async (req, res) => {
       const sceneAudioPath = path.join(tempDir, `scene-audio-${i + 1}.m4a`);
       const sceneAmbientPath = path.join(tempDir, `scene-ambient-${i + 1}.m4a`);
       const sceneAudioWithAmbientPath = path.join(tempDir, `scene-audio-ambient-${i + 1}.m4a`);
+      const sceneMicroSfxPath = path.join(tempDir, `scene-micro-sfx-${i + 1}.m4a`);
+      const sceneAudioWithSfxPath = path.join(tempDir, `scene-audio-sfx-${i + 1}.m4a`);
       const clipOutputPath = path.join(tempDir, `clip-scene-${i + 1}.mp4`);
 
       const hasVideoSource =
@@ -1203,14 +1239,29 @@ app.post("/export-movie", async (req, res) => {
             targetDuration,
           });
 
+          await createMicroSfxTrack({
+            outputPath: sceneMicroSfxPath,
+            durationSeconds: targetDuration,
+            profileId: ambientProfile.id,
+          });
+
+          audioForClip = await mixSceneAudioWithAmbient({
+            speechAudioPath: audioForClip,
+            ambientAudioPath: sceneMicroSfxPath,
+            outputPath: sceneAudioWithSfxPath,
+            targetDuration,
+          });
+
           console.log(
-            `Scene ${i + 1} ambient layer: ${ambientProfile.id} (${ambientProfile.label})`
+            `Scene ${i + 1} ambient+microSFX layer: ${ambientProfile.id}`
           );
         } catch (ambientError) {
           console.warn(`Scene ${i + 1} ambient layer skipped:`, ambientError);
           audioForClip = finalAudioPath;
         }
       }
+
+
 
       if (sourceType === "video") {
         await createSceneClipWithAudio({
