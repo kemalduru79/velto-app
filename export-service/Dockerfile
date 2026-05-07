@@ -11,6 +11,7 @@ COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY src ./src
+COPY assets ./assets
 
 ENV NODE_ENV=production
 

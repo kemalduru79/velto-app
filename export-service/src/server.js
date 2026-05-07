@@ -1175,6 +1175,51 @@ function getMicroSfxFilter(profileId, volume) {
   return filters.join(",");
 }
 
+function resolveMicroSfxAssetPath(profileId) {
+  const assetsDir = path.join(process.cwd(), "assets", "sfx");
+  const candidatePaths = [
+    path.join(assetsDir, `${profileId}.mp3`),
+    path.join(assetsDir, `${profileId}.m4a`),
+    path.join(assetsDir, `${profileId}.wav`),
+  ];
+
+  return candidatePaths.find((filePath) => fs.existsSync(filePath));
+}
+
+async function createAssetMicroSfxAudio({ outputPath, profile }) {
+  if (!profile) {
+    return undefined;
+  }
+
+  const assetPath = resolveMicroSfxAssetPath(profile.id);
+
+  if (!assetPath) {
+    return undefined;
+  }
+
+  const duration = Math.max(0.1, Number(profile.duration || 0.7));
+  const filter = getMicroSfxFilter(profile.id, profile.volume);
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    assetPath,
+    "-af",
+    `aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,atrim=duration=${duration.toFixed(3)},asetpts=PTS-STARTPTS,${filter}`,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
 async function createProceduralMicroSfxAudio({ outputPath, profile }) {
   if (!profile) {
     return undefined;
@@ -1206,6 +1251,20 @@ async function createProceduralMicroSfxAudio({ outputPath, profile }) {
   ]);
 
   return outputPath;
+}
+
+async function createMicroSfxAudio({ outputPath, profile }) {
+  const assetOutput = await createAssetMicroSfxAudio({ outputPath, profile });
+
+  if (assetOutput) {
+    return assetOutput;
+  }
+
+  console.warn(
+    `Micro SFX asset not found for ${profile?.id}. Falling back to procedural SFX.`
+  );
+
+  return createProceduralMicroSfxAudio({ outputPath, profile });
 }
 
 async function mixSceneAudioWithMicroSfx({
@@ -1488,7 +1547,7 @@ app.post("/export-movie", async (req, res) => {
 
       if (microSfxProfile) {
         try {
-          await createProceduralMicroSfxAudio({
+          await createMicroSfxAudio({
             outputPath: sceneSfxPath,
             profile: microSfxProfile,
           });
