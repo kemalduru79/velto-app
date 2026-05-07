@@ -455,17 +455,30 @@ async function createImageClipWithAudio({
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const audioDuration = audioPath ? await getMediaDuration(audioPath).catch(() => 0) : 0;
+  const audioDuration = audioPath
+    ? await getMediaDuration(audioPath).catch(() => 0)
+    : 0;
+
   const effectiveDuration = getTransitionAwareDuration({
     targetDuration: resolvedTargetDuration,
     audioDuration,
   });
+
   const durationText = effectiveDuration.toFixed(3);
-  const videoBaseFilter =
-    "scale=1280:720:force_original_aspect_ratio=decrease," +
-    "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
+  const totalFrames = Math.max(1, Math.round(effectiveDuration * 25));
+  const zoomEnd = effectiveDuration >= 9 ? 1.075 : 1.055;
+
+  const videoMotionFilter =
+    "scale=1400:788:force_original_aspect_ratio=increase," +
+    "crop=1400:788," +
     "setsar=1," +
-    "fps=25," +
+    `zoompan=` +
+    `z='min(zoom+0.0009,${zoomEnd})':` +
+    `x='iw/2-(iw/zoom/2)+sin(on/28)*10':` +
+    `y='ih/2-(ih/zoom/2)+cos(on/32)*6':` +
+    `d=${totalFrames}:` +
+    `s=1280x720:` +
+    `fps=25,` +
     `trim=duration=${durationText},` +
     "setpts=PTS-STARTPTS," +
     "format=yuv420p";
@@ -482,7 +495,7 @@ async function createImageClipWithAudio({
       "-i",
       audioPath,
       "-filter_complex",
-      `[0:v]${videoBaseFilter}[v];` +
+      `[0:v]${videoMotionFilter}[v];` +
         `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
         `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
       "-map",
@@ -494,7 +507,7 @@ async function createImageClipWithAudio({
       "-preset",
       "veryfast",
       "-crf",
-      "23",
+      "22",
       "-pix_fmt",
       "yuv420p",
       "-c:a",
@@ -525,7 +538,7 @@ async function createImageClipWithAudio({
     "-i",
     "anullsrc=r=44100:cl=stereo",
     "-filter_complex",
-    `[0:v]${videoBaseFilter}[v];` +
+    `[0:v]${videoMotionFilter}[v];` +
       `[1:a]atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
     "-map",
     "[v]",
@@ -536,7 +549,7 @@ async function createImageClipWithAudio({
     "-preset",
     "veryfast",
     "-crf",
-    "23",
+    "22",
     "-pix_fmt",
     "yuv420p",
     "-c:a",
@@ -552,6 +565,7 @@ async function createImageClipWithAudio({
     outputPath,
   ]);
 }
+
 
 async function createSceneClipWithAudio({
   videoPath,
@@ -1301,6 +1315,9 @@ app.post("/export-movie", async (req, res) => {
       sceneTransitionTrimSeconds: SCENE_TRANSITION_TRIM_SECONDS,
       minAudioTailBufferSeconds: MIN_AUDIO_TAIL_BUFFER_SECONDS,
       sceneAudioPaddedAware: true,
+      cinematicMotionEngineAware: true,
+      imageSceneMotionAware: true,
+      cinematicMotionType: "subtle-zoom-pan",
       dynamicAmbientEngineAware: true,
       proceduralAmbientAware: true,
       ambientDefaultVolume: AMBIENT_DEFAULT_VOLUME,
