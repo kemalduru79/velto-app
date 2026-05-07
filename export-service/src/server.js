@@ -23,9 +23,13 @@ const MAX_SPEECH_RATIO = 0.82;
 const MIN_SCENE_DURATION = 8;
 const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
 const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
-const AMBIENT_ENGINE_ENABLED = false;
-const AMBIENT_DEFAULT_VOLUME = 0.055;
-const AMBIENT_MAX_VOLUME = 0.085;
+const AMBIENT_ENGINE_ENABLED = process.env.ENABLE_AMBIENCE === "true";
+const AMBIENT_DEFAULT_VOLUME = 0.045;
+const AMBIENT_MAX_VOLUME = 0.07;
+const MICRO_SFX_ENABLED = process.env.ENABLE_MICRO_SFX !== "false";
+const MICRO_SFX_DEFAULT_VOLUME = 0.22;
+const MICRO_SFX_MAX_VOLUME = 0.32;
+const MICRO_SFX_MAX_SCENES = Number(process.env.MICRO_SFX_MAX_SCENES || 8);
 
 
 function getSupabaseAdmin() {
@@ -982,6 +986,291 @@ async function mixSceneAudioWithAmbient({
   return outputPath;
 }
 
+
+function detectMicroSfxProfile(scene) {
+  if (!MICRO_SFX_ENABLED) {
+    return undefined;
+  }
+
+  const text = getSceneAmbienceText(scene);
+
+  if (!text.trim()) {
+    return undefined;
+  }
+
+  const profiles = [
+    {
+      id: "rocket_launch",
+      label: "Rocket launch whoosh",
+      volume: 0.28,
+      duration: 1.15,
+      offset: 0.18,
+      priority: 100,
+      keywords: [
+        "rocket",
+        "launch",
+        "blast",
+        "engine",
+        "flame",
+        "smoke",
+        "liftoff",
+        "roket",
+        "fırlatma",
+        "alev",
+        "kalkış",
+      ],
+    },
+    {
+      id: "explosion_pop",
+      label: "Soft safe boom",
+      volume: 0.24,
+      duration: 0.7,
+      offset: 0.12,
+      priority: 95,
+      keywords: [
+        "boom",
+        "explosion",
+        "explode",
+        "burst",
+        "crash",
+        "patlama",
+        "güm",
+      ],
+    },
+    {
+      id: "bubbles",
+      label: "Bubble pop cluster",
+      volume: 0.2,
+      duration: 1.05,
+      offset: 0.25,
+      priority: 90,
+      keywords: [
+        "underwater",
+        "bubble",
+        "bubbles",
+        "ocean",
+        "sea",
+        "octopus",
+        "fish",
+        "su altı",
+        "balık",
+        "ahtapot",
+        "kabarcık",
+      ],
+    },
+    {
+      id: "sparkle",
+      label: "Magic sparkle",
+      volume: 0.19,
+      duration: 0.95,
+      offset: 0.18,
+      priority: 80,
+      keywords: [
+        "magic",
+        "sparkle",
+        "glow",
+        "glowing",
+        "portal",
+        "mystery",
+        "parıltı",
+        "büyü",
+        "ışık",
+        "gizem",
+      ],
+    },
+    {
+      id: "robot_servo",
+      label: "Robot servo movement",
+      volume: 0.18,
+      duration: 0.8,
+      offset: 0.2,
+      priority: 70,
+      keywords: [
+        "robot",
+        "machine",
+        "gear",
+        "computer",
+        "screen",
+        "technology",
+        "robot",
+        "makine",
+        "bilgisayar",
+        "teknoloji",
+      ],
+    },
+    {
+      id: "curiosity_pop",
+      label: "Curiosity pop accent",
+      volume: 0.16,
+      duration: 0.45,
+      offset: 0.08,
+      priority: 40,
+      keywords: [
+        "wait",
+        "why",
+        "how",
+        "what if",
+        "discover",
+        "surprise",
+        "wow",
+        "neden",
+        "nasıl",
+        "keşif",
+        "şaşkın",
+      ],
+    },
+  ];
+
+  return profiles
+    .filter((profile) =>
+      profile.keywords.some((keyword) => text.includes(keyword.toLowerCase()))
+    )
+    .sort((a, b) => b.priority - a.priority)[0];
+}
+
+function getMicroSfxLavfiSource(profileId) {
+  switch (profileId) {
+    case "rocket_launch":
+      return "anoisesrc=color=brown:amplitude=0.22:sample_rate=44100";
+    case "explosion_pop":
+      return "anoisesrc=color=brown:amplitude=0.32:sample_rate=44100";
+    case "bubbles":
+      return "anoisesrc=color=white:amplitude=0.13:sample_rate=44100";
+    case "sparkle":
+      return "sine=frequency=880:sample_rate=44100";
+    case "robot_servo":
+      return "sine=frequency=260:sample_rate=44100";
+    case "curiosity_pop":
+      return "sine=frequency=720:sample_rate=44100";
+    default:
+      return "anoisesrc=color=white:amplitude=0.1:sample_rate=44100";
+  }
+}
+
+function getMicroSfxFilter(profileId, volume) {
+  const safeVolume = Math.min(
+    MICRO_SFX_MAX_VOLUME,
+    Math.max(0.01, Number.isFinite(volume) ? volume : MICRO_SFX_DEFAULT_VOLUME)
+  );
+
+  const filters = [
+    "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo",
+  ];
+
+  if (profileId === "rocket_launch") {
+    filters.push("lowpass=f=900", "afade=t=in:st=0:d=0.080", "afade=t=out:st=0.820:d=0.280");
+  } else if (profileId === "explosion_pop") {
+    filters.push("lowpass=f=620", "afade=t=in:st=0:d=0.020", "afade=t=out:st=0.360:d=0.320");
+  } else if (profileId === "bubbles") {
+    filters.push("highpass=f=360", "lowpass=f=2600", "afade=t=in:st=0:d=0.050", "afade=t=out:st=0.760:d=0.250");
+  } else if (profileId === "sparkle") {
+    filters.push("aecho=0.45:0.35:80:0.25", "afade=t=in:st=0:d=0.040", "afade=t=out:st=0.620:d=0.300");
+  } else if (profileId === "robot_servo") {
+    filters.push("aecho=0.25:0.25:55:0.16", "lowpass=f=1600", "afade=t=in:st=0:d=0.030", "afade=t=out:st=0.520:d=0.250");
+  } else if (profileId === "curiosity_pop") {
+    filters.push("afade=t=in:st=0:d=0.015", "afade=t=out:st=0.200:d=0.220");
+  }
+
+  filters.push(`volume=${safeVolume.toFixed(3)}`);
+  return filters.join(",");
+}
+
+async function createProceduralMicroSfxAudio({ outputPath, profile }) {
+  if (!profile) {
+    return undefined;
+  }
+
+  const duration = Math.max(0.1, Number(profile.duration || 0.7));
+  const source = getMicroSfxLavfiSource(profile.id);
+  const filter = getMicroSfxFilter(profile.id, profile.volume);
+
+  await runFfmpeg([
+    "-y",
+    "-f",
+    "lavfi",
+    "-t",
+    duration.toFixed(3),
+    "-i",
+    source,
+    "-af",
+    filter,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
+async function mixSceneAudioWithMicroSfx({
+  sceneAudioPath,
+  sfxAudioPath,
+  outputPath,
+  targetDuration,
+  offsetSeconds = 0.15,
+}) {
+  if (!sfxAudioPath) {
+    return sceneAudioPath;
+  }
+
+  const durationText = Math.max(0.2, targetDuration || TARGET_SCENE_DURATION).toFixed(3);
+  const offsetMs = Math.max(0, Math.round((offsetSeconds || 0) * 1000));
+
+  if (!sceneAudioPath) {
+    await runFfmpeg([
+      "-y",
+      "-i",
+      sfxAudioPath,
+      "-filter_complex",
+      `[0:a]adelay=${offsetMs}|${offsetMs},apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS,alimiter=limit=0.95[a]`,
+      "-map",
+      "[a]",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-ar",
+      "44100",
+      "-ac",
+      "2",
+      outputPath,
+    ]);
+
+    return outputPath;
+  }
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    sceneAudioPath,
+    "-i",
+    sfxAudioPath,
+    "-filter_complex",
+    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[base];` +
+      `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,adelay=${offsetMs}|${offsetMs},apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[sfx];` +
+      `[base][sfx]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[a]`,
+    "-map",
+    "[a]",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
 async function mixFinalVideoWithBackgroundMusic({
   inputVideoPath,
   bgmPath,
@@ -1057,6 +1346,7 @@ app.post("/export-movie", async (req, res) => {
     }
 
     const sceneClipPaths = [];
+    let microSfxAppliedCount = 0;
 
     for (let i = 0; i < usableScenes.length; i += 1) {
       const scene = usableScenes[i];
@@ -1068,6 +1358,8 @@ app.post("/export-movie", async (req, res) => {
       const sceneAudioPath = path.join(tempDir, `scene-audio-${i + 1}.m4a`);
       const sceneAmbientPath = path.join(tempDir, `scene-ambient-${i + 1}.m4a`);
       const sceneAudioWithAmbientPath = path.join(tempDir, `scene-audio-ambient-${i + 1}.m4a`);
+      const sceneSfxPath = path.join(tempDir, `scene-sfx-${i + 1}.m4a`);
+      const sceneAudioWithSfxPath = path.join(tempDir, `scene-audio-sfx-${i + 1}.m4a`);
       const clipOutputPath = path.join(tempDir, `clip-scene-${i + 1}.mp4`);
 
       const hasVideoSource =
@@ -1189,6 +1481,36 @@ app.post("/export-movie", async (req, res) => {
         }
       }
 
+      const microSfxProfile =
+        microSfxAppliedCount < MICRO_SFX_MAX_SCENES
+          ? detectMicroSfxProfile(scene)
+          : undefined;
+
+      if (microSfxProfile) {
+        try {
+          await createProceduralMicroSfxAudio({
+            outputPath: sceneSfxPath,
+            profile: microSfxProfile,
+          });
+
+          audioForClip = await mixSceneAudioWithMicroSfx({
+            sceneAudioPath: audioForClip,
+            sfxAudioPath: sceneSfxPath,
+            outputPath: sceneAudioWithSfxPath,
+            targetDuration,
+            offsetSeconds: microSfxProfile.offset,
+          });
+
+          microSfxAppliedCount += 1;
+
+          console.log(
+            `Scene ${i + 1} micro SFX: ${microSfxProfile.id} (${microSfxProfile.label})`
+          );
+        } catch (sfxError) {
+          console.warn(`Scene ${i + 1} micro SFX skipped:`, sfxError);
+        }
+      }
+
       if (sourceType === "video") {
         await createSceneClipWithAudio({
           videoPath: sourcePath,
@@ -1294,8 +1616,13 @@ app.post("/export-movie", async (req, res) => {
       sceneAudioPaddedAware: true,
       dynamicAmbientEngineAware: true,
       proceduralAmbientAware: true,
+      ambientEngineEnabled: AMBIENT_ENGINE_ENABLED,
       ambientDefaultVolume: AMBIENT_DEFAULT_VOLUME,
       ambientMaxVolume: AMBIENT_MAX_VOLUME,
+      microSfxEngineAware: true,
+      microSfxEngineEnabled: MICRO_SFX_ENABLED,
+      microSfxAppliedCount,
+      microSfxMaxScenes: MICRO_SFX_MAX_SCENES,
     });
   } catch (error) {
     console.error("export-movie error:", error);
