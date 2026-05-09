@@ -17,6 +17,25 @@ type SceneTiming = {
   needsFreezeFrame: boolean;
 };
 
+type SceneIntelligence = {
+  scene_type?:
+    | "hook"
+    | "discovery"
+    | "dialogue"
+    | "action"
+    | "mystery"
+    | "emotional"
+    | "comedy"
+    | "climax"
+    | "resolution"
+    | string;
+  emotional_intensity?: number;
+  pacing_level?: "slow" | "medium" | "fast" | string;
+  curiosity_score?: number;
+  tension_score?: number;
+  climax_level?: number;
+};
+
 type Scene = {
   renderMode?: "auto" | "video" | "image";
   id: number;
@@ -39,6 +58,7 @@ type Scene = {
   videoStatus?: "idle" | "processing" | "done" | "error";
   videoJobId?: string;
   timing?: SceneTiming;
+  intelligence?: SceneIntelligence;
 };
 
 type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
@@ -153,6 +173,7 @@ type CreatorProductionScene = {
   emotion: string;
   motionHint: string;
   visualPrompt?: string;
+  intelligence?: SceneIntelligence;
 };
 
 type CreatorProductionPackage = {
@@ -448,6 +469,98 @@ const optimizeCreatorPackageOpeningHook = (
   };
 };
 
+
+const clampSceneScore = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.min(10, Math.round(parsed)));
+};
+
+const inferSceneType = (scene: Partial<Scene>, index: number, total: number): SceneIntelligence["scene_type"] => {
+  const source = `${scene.text || ""} ${scene.narration || ""} ${scene.dialogue || ""} ${scene.emotion || ""}`.toLowerCase();
+
+  if (index === 0) return "hook";
+  if (index >= total - 1) return "resolution";
+  if (source.includes("climax") || source.includes("final") || source.includes("son") || source.includes("zirve")) return "climax";
+  if (source.includes("mystery") || source.includes("secret") || source.includes("gizem") || source.includes("sır")) return "mystery";
+  if (source.includes("laugh") || source.includes("funny") || source.includes("komik") || source.includes("gül")) return "comedy";
+  if (source.includes("run") || source.includes("jump") || source.includes("race") || source.includes("koş") || source.includes("zıpla")) return "action";
+  if (source.includes("sad") || source.includes("happy") || source.includes("fear") || source.includes("duygu") || source.includes("mutlu") || source.includes("üzgün")) return "emotional";
+  if ((scene.dialogue || "").trim().length > 80) return "dialogue";
+
+  return "discovery";
+};
+
+const buildFallbackSceneIntelligence = (
+  scene: Partial<Scene>,
+  index: number,
+  total: number
+): SceneIntelligence => {
+  const source = `${scene.text || ""} ${scene.narration || ""} ${scene.dialogue || ""} ${scene.emotion || ""}`.toLowerCase();
+  const isFirst = index === 0;
+  const isLast = index >= total - 1;
+  const hasQuestion = source.includes("?") || source.includes("why") || source.includes("how") || source.includes("neden") || source.includes("nasıl");
+  const hasUrgency = source.includes("!") || source.includes("wait") || source.includes("dur") || source.includes("suddenly") || source.includes("birden");
+  const hasMystery = source.includes("mystery") || source.includes("secret") || source.includes("hidden") || source.includes("gizem") || source.includes("sır") || source.includes("saklı");
+  const hasAction = source.includes("run") || source.includes("jump") || source.includes("race") || source.includes("koş") || source.includes("zıpla") || source.includes("hızlı");
+
+  const curiosityBase = 5 + (hasQuestion ? 2 : 0) + (hasMystery ? 2 : 0) + (isFirst ? 1 : 0);
+  const tensionBase = 4 + (hasUrgency ? 2 : 0) + (hasMystery ? 1 : 0) + (hasAction ? 1 : 0);
+  const climaxBase = isLast ? 7 : isFirst ? 5 : Math.min(8, 3 + Math.round((index / Math.max(total - 1, 1)) * 5));
+  const emotionBase = 5 + (hasUrgency ? 1 : 0) + (hasMystery ? 1 : 0) + (hasAction ? 1 : 0);
+
+  const pacingLevel: SceneIntelligence["pacing_level"] =
+    hasAction || hasUrgency || isFirst ? "fast" : isLast ? "slow" : "medium";
+
+  return {
+    scene_type: inferSceneType(scene, index, total),
+    emotional_intensity: clampSceneScore(emotionBase, 5),
+    pacing_level: pacingLevel,
+    curiosity_score: clampSceneScore(curiosityBase, 6),
+    tension_score: clampSceneScore(tensionBase, 4),
+    climax_level: clampSceneScore(climaxBase, 4),
+  };
+};
+
+const normalizeSceneIntelligenceForUi = (
+  intelligence: SceneIntelligence | undefined,
+  scene: Partial<Scene>,
+  index: number,
+  total: number
+): SceneIntelligence => {
+  const fallback = buildFallbackSceneIntelligence(scene, index, total);
+  const validPacing =
+    intelligence?.pacing_level === "slow" ||
+    intelligence?.pacing_level === "medium" ||
+    intelligence?.pacing_level === "fast"
+      ? intelligence.pacing_level
+      : fallback.pacing_level;
+
+  return {
+    scene_type: intelligence?.scene_type || fallback.scene_type,
+    emotional_intensity: clampSceneScore(intelligence?.emotional_intensity, fallback.emotional_intensity || 5),
+    pacing_level: validPacing,
+    curiosity_score: clampSceneScore(intelligence?.curiosity_score, fallback.curiosity_score || 6),
+    tension_score: clampSceneScore(intelligence?.tension_score, fallback.tension_score || 4),
+    climax_level: clampSceneScore(intelligence?.climax_level, fallback.climax_level || 4),
+  };
+};
+
+const normalizeScenesWithIntelligence = <T extends Partial<Scene>>(
+  sourceScenes: T[]
+): T[] => {
+  const total = sourceScenes.length;
+
+  return sourceScenes.map((scene, index) => ({
+    ...scene,
+    intelligence: normalizeSceneIntelligenceForUi(scene.intelligence, scene, index, total),
+  }));
+};
+
 const DEFAULT_VIDEO_DURATION_SECONDS = 10;
 const TARGET_SCENE_DURATION_SECONDS = 10;
 const MAX_SCENE_DURATION_SECONDS = 12;
@@ -615,6 +728,27 @@ const UI_TEXT = {
     noSceneVideoPreview: "Bu sahne için henüz video önizleme yok. Video hazır olduğunda burada görünecek.",
     target: "Hedef",
     speech: "Konuşma",
+    intelligencePanel: "Dynamic Scene Intelligence",
+    sceneType: "Sahne Tipi",
+    emotionalIntensity: "Duygu",
+    pacingLevel: "Tempo",
+    curiosityScore: "Merak",
+    tensionScore: "Gerilim",
+    climaxLevel: "Zirve",
+    thumbnailScore: "Thumbnail",
+    bestThumbnailCandidate: "Best Thumbnail",
+    hookScore: "Hook",
+    bestHookCandidate: "Best Hook",
+    retentionRisk: "Retention",
+    lowRisk: "Low Risk",
+    mediumRisk: "Medium Risk",
+    highRisk: "High Risk",
+    youtubeReadiness: "YouTube Ready",
+    strongReady: "Strong",
+    moderateReady: "Moderate",
+    weakReady: "Weak",
+    recommendation: "Recommendation",
+    noSceneIntelligence: "Bu sahne için intelligence metadata henüz oluşmadı. Bu sahneyi yeniden üretirsen otomatik gelir.",
     speechTooLong: "⚠️ Konuşma bu sahne için fazla uzun. Düzenleyip kısalt.",
     speechTimingOk: "✅ Sahne ve konuşma süresi uyumlu.",
     sceneEditQuestion: "Bu sahnede neyi değiştirmek istiyorsun?",
@@ -919,6 +1053,27 @@ const UI_TEXT = {
     noSceneVideoPreview: "No video preview for this scene yet. It will appear here once ready.",
     target: "Target",
     speech: "Speech",
+    intelligencePanel: "Dynamic Scene Intelligence",
+    sceneType: "Scene Type",
+    emotionalIntensity: "Emotion",
+    pacingLevel: "Pacing",
+    curiosityScore: "Curiosity",
+    tensionScore: "Tension",
+    climaxLevel: "Climax",
+    thumbnailScore: "Thumbnail",
+    bestThumbnailCandidate: "Best Thumbnail",
+    hookScore: "Hook",
+    bestHookCandidate: "Best Hook",
+    retentionRisk: "Retention",
+    lowRisk: "Low Risk",
+    mediumRisk: "Medium Risk",
+    highRisk: "High Risk",
+    youtubeReadiness: "YouTube Ready",
+    strongReady: "Strong",
+    moderateReady: "Moderate",
+    weakReady: "Weak",
+    recommendation: "Recommendation",
+    noSceneIntelligence: "This scene does not have intelligence metadata yet. Regenerate this scene to add it automatically.",
     speechTooLong: "⚠️ Speech is too long for this scene. Edit and shorten it.",
     speechTimingOk: "✅ Scene and speech duration are aligned.",
     sceneEditQuestion: "What do you want to change in this scene?",
@@ -1140,6 +1295,252 @@ const buildSceneTiming = (
     needsFreezeFrame,
   };
 };
+
+const formatSceneIntelligenceValue = (value: unknown, fallback = "-") => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  return String(value);
+};
+
+const formatSceneScore = (value: unknown) => {
+  const parsed = Number(value);
+
+  if (Number.isNaN(parsed)) {
+    return "-";
+  }
+
+  return `${Math.max(1, Math.min(10, Math.round(parsed)))}/10`;
+};
+
+
+const calculateThumbnailScore = (intelligence?: SceneIntelligence) => {
+  if (!intelligence) {
+    return 0;
+  }
+
+  const curiosity = Number(intelligence.curiosity_score || 0);
+  const emotion = Number(intelligence.emotional_intensity || 0);
+  const climax = Number(intelligence.climax_level || 0);
+
+  let pacingBonus = 0;
+
+  if (intelligence.pacing_level === "fast") {
+    pacingBonus = 1;
+  } else if (intelligence.pacing_level === "medium") {
+    pacingBonus = 0.5;
+  }
+
+  const score =
+    curiosity * 0.45 +
+    emotion * 0.3 +
+    climax * 0.15 +
+    pacingBonus;
+
+  return Math.min(10, Number(score.toFixed(1)));
+};
+
+const isBestThumbnailCandidate = (
+  currentScene: { intelligence?: SceneIntelligence },
+  candidateScenes: Array<{ intelligence?: SceneIntelligence }>
+) => {
+  const scores = candidateScenes.map((candidateScene) =>
+    calculateThumbnailScore(candidateScene?.intelligence)
+  );
+
+  const bestScore = Math.max(...scores, 0);
+  const currentScore = calculateThumbnailScore(currentScene?.intelligence);
+
+  return currentScore > 0 && currentScore === bestScore;
+};
+
+
+const calculateHookScore = (intelligence?: SceneIntelligence) => {
+  if (!intelligence) {
+    return 0;
+  }
+
+  const curiosity = Number(intelligence.curiosity_score || 0);
+  const tension = Number(intelligence.tension_score || 0);
+  const emotion = Number(intelligence.emotional_intensity || 0);
+
+  let typeBonus = 0;
+
+  if (intelligence.scene_type === "hook") {
+    typeBonus = 1.2;
+  } else if (intelligence.scene_type === "mystery") {
+    typeBonus = 1;
+  } else if (intelligence.scene_type === "discovery") {
+    typeBonus = 0.6;
+  }
+
+  let pacingBonus = 0;
+
+  if (intelligence.pacing_level === "fast") {
+    pacingBonus = 0.8;
+  } else if (intelligence.pacing_level === "medium") {
+    pacingBonus = 0.4;
+  }
+
+  const score =
+    curiosity * 0.5 +
+    tension * 0.25 +
+    emotion * 0.15 +
+    typeBonus +
+    pacingBonus;
+
+  return Math.min(10, Number(score.toFixed(1)));
+};
+
+const isBestHookCandidate = (
+  currentScene: { intelligence?: SceneIntelligence },
+  candidateScenes: Array<{ intelligence?: SceneIntelligence }>
+) => {
+  const scores = candidateScenes.map((candidateScene) =>
+    calculateHookScore(candidateScene?.intelligence)
+  );
+
+  const bestScore = Math.max(...scores, 0);
+  const currentScore = calculateHookScore(currentScene?.intelligence);
+
+  return currentScore > 0 && currentScore === bestScore;
+};
+
+const calculateRetentionRisk = (intelligence?: SceneIntelligence) => {
+  if (!intelligence) {
+    return {
+      level: "medium",
+      score: 5,
+    };
+  }
+
+  let riskScore = 0;
+
+  const curiosity = Number(intelligence.curiosity_score || 0);
+  const tension = Number(intelligence.tension_score || 0);
+  const emotion = Number(intelligence.emotional_intensity || 0);
+
+  if (curiosity <= 4) {
+    riskScore += 3;
+  }
+
+  if (intelligence.pacing_level === "slow") {
+    riskScore += 2;
+  }
+
+  if (tension <= 3) {
+    riskScore += 2;
+  }
+
+  if (emotion <= 4) {
+    riskScore += 1;
+  }
+
+  if (riskScore <= 2) {
+    return {
+      level: "low",
+      score: riskScore,
+    };
+  }
+
+  if (riskScore <= 5) {
+    return {
+      level: "medium",
+      score: riskScore,
+    };
+  }
+
+  return {
+    level: "high",
+    score: riskScore,
+  };
+};
+
+
+
+const calculateYoutubeReadinessScore = (intelligence?: SceneIntelligence) => {
+  if (!intelligence) {
+    return 0;
+  }
+
+  const thumbnailScore = calculateThumbnailScore(intelligence);
+  const hookScore = calculateHookScore(intelligence);
+  const retentionRisk = calculateRetentionRisk(intelligence);
+
+  const retentionBoost =
+    retentionRisk.level === "low"
+      ? 2
+      : retentionRisk.level === "medium"
+      ? 1
+      : 0;
+
+  const score =
+    thumbnailScore * 0.35 +
+    hookScore * 0.35 +
+    retentionBoost * 1.5 +
+    Number(intelligence.climax_level || 0) * 0.15;
+
+  return Math.min(10, Number(score.toFixed(1)));
+};
+
+const getYoutubeReadinessLevel = (score: number) => {
+  if (score >= 7.5) {
+    return "strong";
+  }
+
+  if (score >= 5.5) {
+    return "moderate";
+  }
+
+  return "weak";
+};
+
+const generateSceneRecommendation = (
+  intelligence?: SceneIntelligence
+) => {
+  if (!intelligence) {
+    return "No recommendation available yet.";
+  }
+
+  const recommendations: string[] = [];
+
+  const curiosity = Number(intelligence.curiosity_score || 0);
+  const emotion = Number(intelligence.emotional_intensity || 0);
+  const climax = Number(intelligence.climax_level || 0);
+  const tension = Number(intelligence.tension_score || 0);
+
+  if (curiosity >= 8) {
+    recommendations.push("Strong hook.");
+  }
+
+  if (intelligence.pacing_level === "fast") {
+    recommendations.push("Shorts-ready pacing.");
+  }
+
+  if (emotion >= 7) {
+    recommendations.push("Strong emotion.");
+  }
+
+  if (climax <= 4) {
+    recommendations.push("Needs stronger climax.");
+  }
+
+  if (tension <= 3) {
+    recommendations.push("Increase tension.");
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push("Balanced scene.");
+  }
+
+  return recommendations.slice(0, 2).join(" ");
+};
+
+
+
+
+
 
 export default function CreatePage() {
   const router = useRouter();
@@ -4519,7 +4920,12 @@ export default function CreatePage() {
       }
 
       const nextPackage = optimizeCreatorPackageOpeningHook(
-        data.productionPackage as CreatorProductionPackage,
+        {
+          ...(data.productionPackage as CreatorProductionPackage),
+          scenes: normalizeScenesWithIntelligence(
+            ((data.productionPackage as CreatorProductionPackage).scenes || []) as CreatorProductionScene[]
+          ) as CreatorProductionScene[],
+        },
         input
       );
 
@@ -5297,7 +5703,7 @@ export default function CreatePage() {
             ? refinedCreatorScenes
             : creatorProductionPackage.scenes;
 
-        const packageScenes: Scene[] = creatorSourceScenes.map((scene) => ({
+        const packageScenes: Scene[] = creatorSourceScenes.map((scene, index) => ({
           id: scene.id,
           text: scene.text || "",
           narration: scene.narration || "",
@@ -5318,6 +5724,12 @@ export default function CreatePage() {
           videoStatus: "idle",
           videoJobId: "",
           timing: buildSceneTiming(0, 0),
+          intelligence: normalizeSceneIntelligenceForUi(
+            scene.intelligence,
+            scene,
+            index,
+            creatorSourceScenes.length
+          ),
         }));
 
         setScenes(packageScenes);
@@ -5395,7 +5807,8 @@ export default function CreatePage() {
         return;
       }
 
-      const scenesWithImages: Scene[] = (data.scenes || []).map((scene: Scene) => ({
+      const rawGeneratedScenes: Scene[] = data.scenes || [];
+      const scenesWithImages: Scene[] = rawGeneratedScenes.map((scene: Scene, index: number) => ({
         ...scene,
         image: "",
         audioUrl: "",
@@ -5410,6 +5823,12 @@ export default function CreatePage() {
         videoStatus: "idle",
         videoJobId: "",
         timing: buildSceneTiming(0, 0),
+        intelligence: normalizeSceneIntelligenceForUi(
+          scene.intelligence,
+          scene,
+          index,
+          rawGeneratedScenes.length
+        ),
       }));
 
       setScenes(scenesWithImages);
@@ -8316,6 +8735,126 @@ export default function CreatePage() {
                             {hasVideo ? ui.videoReady : ui.videoPending}
                           </span>
                         </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">{ui.intelligencePanel}</p>
+                          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[11px] text-cyan-100">v1</span>
+                        </div>
+
+                        {scene.intelligence ? (
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.sceneType}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneIntelligenceValue(scene.intelligence.scene_type)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.pacingLevel}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneIntelligenceValue(scene.intelligence.pacing_level)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.emotionalIntensity}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.emotional_intensity)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.curiosityScore}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.curiosity_score)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.tensionScore}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.tension_score)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.climaxLevel}</p>
+                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.climax_level)}</p>
+                            </div>
+
+                            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-emerald-300">
+                                {ui.thumbnailScore}
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-white">
+                                {calculateThumbnailScore(scene.intelligence)}/10
+                              </p>
+
+                              {isBestThumbnailCandidate(scene, scenes) ? (
+                                <div className="mt-2">
+                                  <span className="inline-flex max-w-full rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                                    ⭐ {ui.bestThumbnailCandidate}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3">
+                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-sky-300">
+                                {ui.hookScore}
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-white">
+                                {calculateHookScore(scene.intelligence)}/10
+                              </p>
+
+                              {isBestHookCandidate(scene, scenes) ? (
+                                <div className="mt-2">
+                                  <span className="inline-flex max-w-full rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-sky-200">
+                                    ⚡ {ui.bestHookCandidate}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-amber-300">
+                                {ui.retentionRisk}
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-white">
+                                {calculateRetentionRisk(scene.intelligence).level === "low"
+                                  ? ui.lowRisk
+                                  : calculateRetentionRisk(scene.intelligence).level === "medium"
+                                  ? ui.mediumRisk
+                                  : ui.highRisk}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-3">
+                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-fuchsia-300">
+                                {ui.youtubeReadiness}
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-white">
+                                {calculateYoutubeReadinessScore(scene.intelligence)}/10
+                              </p>
+
+                              <p className="mt-1 text-[10px] font-medium text-fuchsia-100/80">
+                                {getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "strong"
+                                  ? ui.strongReady
+                                  : getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "moderate"
+                                  ? ui.moderateReady
+                                  : ui.weakReady}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 md:col-span-2 lg:col-span-3">
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                <p className="shrink-0 text-[9px] uppercase tracking-[0.12em] opacity-80 text-violet-300">
+                                  {ui.recommendation}
+                                </p>
+
+                                <p className="text-left text-[10px] leading-snug text-violet-100/85 sm:text-right">
+                                  {generateSceneRecommendation(scene.intelligence)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                            {ui.noSceneIntelligence}
+                          </div>
+                        )}
                       </div>
 
                       {scene.image ? (

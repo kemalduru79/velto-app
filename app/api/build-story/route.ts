@@ -21,6 +21,26 @@ type VisualBible = {
 
 type SupportedLanguage = "tr" | "en";
 
+type SceneIntelligence = {
+  scene_type:
+    | "hook"
+    | "discovery"
+    | "dialogue"
+    | "action"
+    | "mystery"
+    | "emotional"
+    | "comedy"
+    | "climax"
+    | "resolution";
+  emotional_intensity: number;
+  pacing_level: "slow" | "medium" | "fast";
+  curiosity_score: number;
+  tension_score: number;
+  climax_level: number;
+};
+
+
+
 const DEFAULT_GUIDE_CHARACTER: Character = {
   name: "Joe",
   age: "10",
@@ -150,6 +170,58 @@ function parseJsonSafely(rawText: string) {
 function normalizeLanguage(value: unknown): SupportedLanguage {
   return value === "en" ? "en" : "tr";
 }
+
+
+function normalizeSceneIntelligence(
+  intelligence: Partial<SceneIntelligence> | undefined
+): SceneIntelligence {
+  const safeNumber = (value: unknown, fallback: number) => {
+    const parsed = Number(value);
+
+    if (Number.isNaN(parsed)) {
+      return fallback;
+    }
+
+    return Math.max(1, Math.min(10, Math.round(parsed)));
+  };
+
+  const safePacing =
+    intelligence?.pacing_level === "slow" ||
+    intelligence?.pacing_level === "fast"
+      ? intelligence.pacing_level
+      : "medium";
+
+  const validSceneTypes = [
+    "hook",
+    "discovery",
+    "dialogue",
+    "action",
+    "mystery",
+    "emotional",
+    "comedy",
+    "climax",
+    "resolution",
+  ] as const;
+
+  const safeSceneType = validSceneTypes.includes(
+    intelligence?.scene_type as any
+  )
+    ? (intelligence?.scene_type as SceneIntelligence["scene_type"])
+    : "discovery";
+
+  return {
+    scene_type: safeSceneType,
+    emotional_intensity: safeNumber(
+      intelligence?.emotional_intensity,
+      5
+    ),
+    pacing_level: safePacing,
+    curiosity_score: safeNumber(intelligence?.curiosity_score, 5),
+    tension_score: safeNumber(intelligence?.tension_score, 4),
+    climax_level: safeNumber(intelligence?.climax_level, 3),
+  };
+}
+
 
 export async function POST(req: Request) {
   try {

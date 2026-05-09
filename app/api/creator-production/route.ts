@@ -55,6 +55,24 @@ function getPacingBlueprint(sceneCount: number) {
   };
 }
 
+
+function extractJsonObject(raw: string) {
+  const cleaned = raw
+    .replace(/```json/g, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1) {
+    return cleaned;
+  }
+
+  return cleaned.slice(firstBrace, lastBrace + 1);
+}
+
+
 function normalizeCharacters(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
@@ -249,11 +267,12 @@ export async function POST(req: Request) {
     });
 
     const rawText = response.output_text || "";
+    const cleanedJson = extractJsonObject(rawText);
 
     let parsed: any;
 
     try {
-      parsed = JSON.parse(rawText);
+      parsed = JSON.parse(cleanedJson);
     } catch {
       console.error("creator-production JSON parse error:", rawText);
 
