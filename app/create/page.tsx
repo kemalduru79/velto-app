@@ -804,14 +804,17 @@ const UI_TEXT = {
     thumbnailTextIdeas: "Thumbnail Metinleri",
     seoKeywords: "SEO Anahtar Kelimeleri",
     audiencePromise: "İzleyici Vaadi",
-    thumbnailGenerationEngine: "Thumbnail Generation Engine",
-    thumbnailGenerationDesc: "YouTube için tıklanabilir ama çocuk dostu thumbnail görseli üretir.",
-    generateThumbnail: "Thumbnail Üret",
-    generatingThumbnail: "Thumbnail üretiliyor...",
-    generatedThumbnail: "Üretilen Thumbnail",
-    thumbnailPrompt: "Thumbnail Prompt",
+    thumbnailGenerationEngine: "Scene Thumbnail Selector",
+    thumbnailGenerationDesc: "Ek görsel üretmeden, mevcut sahne görselleri arasından thumbnail seçmeni sağlar.",
+    generateThumbnail: "En İyi Sahneyi Seç",
+    generatingThumbnail: "Thumbnail seçiliyor...",
+    generatedThumbnail: "Seçilen Thumbnail",
+    thumbnailPrompt: "Source Scene",
     thumbnailHeadline: "Thumbnail Başlığı",
     thumbnailSubHeadline: "Thumbnail Alt Metni",
+    sceneThumbnailCandidates: "Sahne Thumbnail Adayları",
+    useSceneAsThumbnail: "Thumbnail Olarak Kullan",
+    noSceneThumbnailsYet: "Thumbnail seçmek için önce sahne görsellerini oluştur.",
     exportCreatorPackage: "Creator Package Export",
     exportCreatorPackageDesc: "Video linki, başlık, açıklama, hashtag, ilk yorum, thumbnail ve sahne datasını ZIP paketi olarak indirir.",
     downloadCreatorPackage: "Creator Package İndir",
@@ -1129,14 +1132,17 @@ const UI_TEXT = {
     thumbnailTextIdeas: "Thumbnail Text Ideas",
     seoKeywords: "SEO Keywords",
     audiencePromise: "Audience Promise",
-    thumbnailGenerationEngine: "Thumbnail Generation Engine",
-    thumbnailGenerationDesc: "Generates a clickable but child-safe YouTube thumbnail image.",
-    generateThumbnail: "Generate Thumbnail",
-    generatingThumbnail: "Generating thumbnail...",
-    generatedThumbnail: "Generated Thumbnail",
-    thumbnailPrompt: "Thumbnail Prompt",
+    thumbnailGenerationEngine: "Scene Thumbnail Selector",
+    thumbnailGenerationDesc: "Selects a thumbnail from existing scene images without generating an extra image.",
+    generateThumbnail: "Select Best Scene",
+    generatingThumbnail: "Selecting thumbnail...",
+    generatedThumbnail: "Selected Thumbnail",
+    thumbnailPrompt: "Source Scene",
     thumbnailHeadline: "Thumbnail Headline",
     thumbnailSubHeadline: "Thumbnail Sub-headline",
+    sceneThumbnailCandidates: "Scene Thumbnail Candidates",
+    useSceneAsThumbnail: "Use as Thumbnail",
+    noSceneThumbnailsYet: "Generate scene images first to select a thumbnail.",
     exportCreatorPackage: "Creator Package Export",
     exportCreatorPackageDesc: "Downloads video link, title, description, hashtags, first comment, thumbnail, and scene data as a ZIP package.",
     downloadCreatorPackage: "Download Creator Package",
@@ -4680,30 +4686,10 @@ export default function CreatePage() {
       setYoutubeMetadataLoading(false);
 
       // 4) Thumbnail
-      const thumbnailRes = await fetch("/api/creator-thumbnail", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          package: nextPackage,
-          metadata: nextMetadata,
-          language,
-          targetMarket: creatorCountry,
-          ageGroup: creatorAgeGroup,
-          contentType: creatorContentType,
-          videoDurationSec: creatorVideoDurationSec,
-        }),
-      });
-
-      const thumbnailData = await thumbnailRes.json().catch(() => null);
-
-      if (!thumbnailRes.ok || !thumbnailData?.thumbnail?.imageUrl) {
-        throw new Error(thumbnailData?.error || "Thumbnail üretilemedi.");
-      }
-
-      const nextThumbnail = thumbnailData.thumbnail as YoutubeThumbnailResult;
-      setYoutubeThumbnailResult(nextThumbnail);
+      // Scene-based thumbnail selection is intentionally used to avoid extra AI image cost.
+      // A thumbnail will be selected manually or automatically from generated scene images.
+      const nextThumbnail: YoutubeThumbnailResult | null = null;
+      setYoutubeThumbnailResult(null);
       setYoutubeThumbnailLoading(false);
 
       // 5) AI cost optimization
@@ -5341,6 +5327,46 @@ export default function CreatePage() {
     };
   };
 
+  const buildSceneBasedThumbnailResult = (scene: Scene): YoutubeThumbnailResult => {
+    return {
+      imageUrl: scene.image || "",
+      prompt:
+        uiLanguage === "en"
+          ? `Selected from Scene ${scene.id}. No extra AI thumbnail image was generated.`
+          : `Sahne ${scene.id} içinden seçildi. Ek AI thumbnail görseli üretilmedi.`,
+      headline:
+        youtubeMetadataResult?.thumbnailTextIdeas?.[0] ||
+        youtubeMetadataResult?.recommendedTitle ||
+        creatorProductionPackage?.youtubeTitle ||
+        creatorProductionPackage?.title ||
+        title ||
+        "",
+      subHeadline:
+        youtubeMetadataResult?.thumbnailTextIdeas?.[1] ||
+        creatorProductionPackage?.hook ||
+        creatorProductionPackage?.thumbnailIdea ||
+        "",
+    };
+  };
+
+  const handleSelectSceneAsYoutubeThumbnail = (scene: Scene) => {
+    if (!scene.image) {
+      setError(
+        uiLanguage === "en"
+          ? "This scene does not have an image yet."
+          : "Bu sahnede henüz görsel yok."
+      );
+      return;
+    }
+
+    setYoutubeThumbnailResult(buildSceneBasedThumbnailResult(scene));
+    setSaveMessage(
+      uiLanguage === "en"
+        ? `Scene ${scene.id} selected as thumbnail ✅`
+        : `Sahne ${scene.id} thumbnail olarak seçildi ✅`
+    );
+  };
+
   const handleGenerateYoutubeThumbnail = async () => {
     if (!creatorProductionPackage) {
       setError(
@@ -5351,21 +5377,38 @@ export default function CreatePage() {
       return;
     }
 
+    const sceneCandidates = scenes.filter((scene) => scene.image);
+
+    if (!sceneCandidates.length) {
+      setError(
+        uiLanguage === "en"
+          ? "Generate scene images first. Thumbnail selection now uses existing scene images only."
+          : "Önce sahne görsellerini oluştur. Thumbnail seçimi artık sadece mevcut sahne görsellerini kullanıyor."
+      );
+      return;
+    }
+
     setYoutubeThumbnailLoading(true);
     setError("");
     setSaveMessage("");
 
     try {
-      const premiumThumbnail = await generatePremiumYoutubeThumbnailImage();
-      setYoutubeThumbnailResult(premiumThumbnail as YoutubeThumbnailResult);
+      const bestScene = sceneCandidates.reduce((bestSceneCandidate, currentScene) => {
+        const bestScore = calculateThumbnailScore(bestSceneCandidate.intelligence);
+        const currentScore = calculateThumbnailScore(currentScene.intelligence);
+
+        return currentScore > bestScore ? currentScene : bestSceneCandidate;
+      }, sceneCandidates[0]);
+
+      setYoutubeThumbnailResult(buildSceneBasedThumbnailResult(bestScene));
       setSaveMessage(
         uiLanguage === "en"
-          ? "Thumbnail generated ✅"
-          : "Thumbnail üretildi ✅"
+          ? `Best scene thumbnail selected from Scene ${bestScene.id} ✅`
+          : `En iyi sahne thumbnail olarak seçildi: Sahne ${bestScene.id} ✅`
       );
     } catch (e: any) {
       console.error("handleGenerateYoutubeThumbnail error:", e);
-      setError(e?.message || "Thumbnail üretilemedi.");
+      setError(e?.message || "Thumbnail seçilemedi.");
     } finally {
       setYoutubeThumbnailLoading(false);
     }
@@ -7552,6 +7595,52 @@ export default function CreatePage() {
                 )}
               </div>
 
+              {scenes.some((scene) => scene.image) ? (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <h4 className="font-semibold text-white">
+                    {ui.sceneThumbnailCandidates}
+                  </h4>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {scenes
+                      .filter((scene) => scene.image)
+                      .map((scene) => (
+                        <div
+                          key={`thumbnail-candidate-${scene.id}`}
+                          className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+                        >
+                          <img
+                            src={scene.image}
+                            alt={`Scene ${scene.id} thumbnail candidate`}
+                            className="aspect-video w-full rounded-lg object-cover"
+                          />
+
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-200">
+                              Scene {scene.id}
+                            </span>
+                            <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-100">
+                              {calculateThumbnailScore(scene.intelligence)}/10
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSelectSceneAsYoutubeThumbnail(scene)}
+                            className="mt-3 w-full rounded-lg border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20"
+                          >
+                            {ui.useSceneAsThumbnail}
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-fuchsia-100/75">
+                  {ui.noSceneThumbnailsYet}
+                </p>
+              )}
+
               {youtubeThumbnailResult && (
                 <div className="mt-5 grid gap-4 lg:grid-cols-[360px_1fr]">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -7560,7 +7649,7 @@ export default function CreatePage() {
                     </h4>
                     <img
                       src={youtubeThumbnailResult.imageUrl}
-                      alt="Generated YouTube thumbnail"
+                      alt="Selected YouTube thumbnail"
                       className="mt-3 aspect-video w-full rounded-xl object-cover"
                     />
                   </div>
