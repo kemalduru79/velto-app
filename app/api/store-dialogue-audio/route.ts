@@ -110,10 +110,10 @@ function getCharacterVoiceSettings(language: "tr" | "en", body: any) {
   const defaults =
     language === "en"
       ? {
-          stability: 0.34,
-          similarityBoost: 0.84,
-          style: 0.52,
-          speed: 0.97,
+          stability: 0.28,
+          similarityBoost: 0.86,
+          style: 0.62,
+          speed: 1.02,
         }
       : {
           stability: 0.38,
@@ -183,15 +183,22 @@ export async function POST(req: NextRequest) {
         ? process.env.ELEVENLABS_EN_CHARACTER_VOICE_ID
         : process.env.ELEVENLABS_TR_CHARACTER_VOICE_ID;
 
+    const narratorVoiceId =
+      language === "en"
+        ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
+        : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID;
+
     const legacyFallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
 
     const firstLineVoiceId =
       lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
 
     const finalVoiceId =
-      firstLineVoiceId ||
-      defaultCharacterVoiceId?.trim() ||
-      legacyFallbackVoiceId?.trim();
+      firstLineVoiceId?.trim() &&
+      firstLineVoiceId?.trim() !== narratorVoiceId?.trim()
+        ? firstLineVoiceId.trim()
+        : defaultCharacterVoiceId?.trim() ||
+          legacyFallbackVoiceId?.trim();
 
     if (!finalVoiceId) {
       throw new Error(

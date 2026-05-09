@@ -5941,6 +5941,13 @@ export default function CreatePage() {
       return;
     }
 
+    const existingScene = scenes.find((scene) => scene.id === sceneId);
+
+    if (!existingScene) {
+      setError("Güncellenecek sahne bulunamadı.");
+      return;
+    }
+
     setSceneLoadingId(sceneId);
     setError("");
 
@@ -5966,39 +5973,56 @@ export default function CreatePage() {
         return;
       }
 
+      const updatedScene = data.updatedScene || {};
+      const narrationChanged =
+        typeof updatedScene.narration === "string" &&
+        updatedScene.narration !== existingScene.narration;
+      const dialogueChanged =
+        typeof updatedScene.dialogue === "string" &&
+        updatedScene.dialogue !== existingScene.dialogue;
+
       clearSceneAudioData(sceneId);
       clearSceneDialogueAudioData(sceneId);
       clearVideoPollForScene(sceneId);
       setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+      setExportMovieResult(null);
+      setExportSignature("");
 
       setScenes((prevScenes) =>
         prevScenes.map((scene) =>
           scene.id === sceneId
             ? {
                 ...scene,
-                ...data.updatedScene,
-                image: "",
+                ...updatedScene,
+
+                // Non-destructive edit:
+                // Keep existing visual assets unless the user explicitly uses redraw/regenerate image.
+                image: scene.image || existingScene.image || "",
                 videoUrl: "",
                 videoStatus: "idle",
                 videoJobId: "",
-                timing: buildSceneTiming(0, 0),
+
+                // Audio/video must be refreshed after narration or dialogue edits.
+                audioUrl: narrationChanged ? "" : scene.audioUrl,
+                audioPath: narrationChanged ? "" : scene.audioPath,
+                audioSourceText: narrationChanged ? "" : scene.audioSourceText,
+                audioSettingsKey: narrationChanged ? "" : scene.audioSettingsKey,
+                dialogueAudioUrl: dialogueChanged ? "" : scene.dialogueAudioUrl,
+                dialogueAudioPath: dialogueChanged ? "" : scene.dialogueAudioPath,
+                dialogueAudioSourceText: dialogueChanged
+                  ? ""
+                  : scene.dialogueAudioSourceText,
+                dialogueAudioSettingsKey: dialogueChanged
+                  ? ""
+                  : scene.dialogueAudioSettingsKey,
+
+                timing: buildSceneTiming(
+                  narrationChanged ? 0 : scene.timing?.narrationDuration || 0,
+                  dialogueChanged ? 0 : scene.timing?.dialogueDuration || 0
+                ),
               }
             : scene
         )
-      );
-
-      const image = await generateSceneImage({
-        id: sceneId,
-        text: data.updatedScene.text,
-        cameraDirection: data.updatedScene.cameraDirection,
-        emotion: data.updatedScene.emotion,
-        motionHint: data.updatedScene.motionHint,
-      });
-
-      setScenes((prev) =>
-        prev.map((scene) => (scene.id === sceneId ? { ...scene, image } : scene))
       );
 
       setSceneInstructions((prev) => ({
@@ -6007,6 +6031,11 @@ export default function CreatePage() {
       }));
 
       setEditingSceneId(null);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Scene updated. Existing image was preserved ✅"
+          : "Sahne güncellendi. Mevcut görsel korundu ✅"
+      );
     } catch {
       setError("Sahne güncellenirken bir hata oluştu.");
     } finally {

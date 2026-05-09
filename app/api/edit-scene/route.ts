@@ -3,6 +3,18 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
+type SceneIntelligence = {
+  curiosity_score?: number;
+  emotional_intensity?: number;
+  climax_level?: number;
+  tension_score?: number;
+  thumbnail_strength?: number;
+  hook_strength?: number;
+  retention_strength?: number;
+  youtube_ready_score?: number;
+  notes?: string[];
+};
+
 type Scene = {
   id: number;
   text: string;
@@ -11,6 +23,7 @@ type Scene = {
   cameraDirection: string;
   emotion: string;
   motionHint: string;
+  intelligence?: SceneIntelligence;
   image?: string;
 };
 
@@ -149,9 +162,30 @@ Format:
     "dialogue": "string",
     "cameraDirection": "string",
     "emotion": "string",
-    "motionHint": "string"
+    "motionHint": "string",
+    "intelligence": {
+      "curiosity_score": 0-100,
+      "emotional_intensity": 0-100,
+      "climax_level": 0-100,
+      "tension_score": 0-100,
+      "thumbnail_strength": 0-100,
+      "hook_strength": 0-100,
+      "retention_strength": 0-100,
+      "youtube_ready_score": 0-100,
+      "notes": ["short insight"]
+    }
   }
 }
+
+
+ADDITIONAL DYNAMIC SCENE INTELLIGENCE RULES:
+- Recalculate scene intelligence completely after every edit.
+- Intelligence scores must reflect the UPDATED version only.
+- Higher curiosity and tension should increase hook_strength.
+- Emotional reveals should increase emotional_intensity and retention_strength.
+- Strong visual moments should increase thumbnail_strength.
+- Return realistic scoring values between 0 and 100.
+- Include 1-3 short notes explaining strengths or weaknesses.
 
 Story title:
 ${title}
@@ -213,11 +247,33 @@ Format:
     "dialogue": "string",
     "cameraDirection": "string",
     "emotion": "string",
-    "motionHint": "string"
+    "motionHint": "string",
+    "intelligence": {
+      "curiosity_score": 0-100,
+      "emotional_intensity": 0-100,
+      "climax_level": 0-100,
+      "tension_score": 0-100,
+      "thumbnail_strength": 0-100,
+      "hook_strength": 0-100,
+      "retention_strength": 0-100,
+      "youtube_ready_score": 0-100,
+      "notes": ["short insight"]
+    }
   }
 }
 
+
+EK DYNAMIC SCENE INTELLIGENCE KURALLARI:
+- Her düzenleme sonrası intelligence skorlarını yeniden hesapla.
+- Skorlar SADECE güncellenmiş sahneyi yansıtmalı.
+- Güçlü merak ve gerilim hook_strength skorunu artırmalı.
+- Duygusal anlar emotional_intensity ve retention_strength skorunu artırmalı.
+- Güçlü görsel anlar thumbnail_strength skorunu artırmalı.
+- Tüm skorlar 0-100 arasında gerçekçi olmalı.
+- 1-3 kısa analiz notu üret.
+
 Hikaye başlığı:
+
 ${title}
 
 Önceki sahneler:
@@ -262,8 +318,36 @@ ${userInstruction.trim()}
       );
     }
 
+    const normalizedScene = {
+      ...parsed.updatedScene,
+      intelligence: {
+        curiosity_score:
+          parsed.updatedScene?.intelligence?.curiosity_score ?? 72,
+        emotional_intensity:
+          parsed.updatedScene?.intelligence?.emotional_intensity ?? 68,
+        climax_level:
+          parsed.updatedScene?.intelligence?.climax_level ?? 65,
+        tension_score:
+          parsed.updatedScene?.intelligence?.tension_score ?? 70,
+        thumbnail_strength:
+          parsed.updatedScene?.intelligence?.thumbnail_strength ?? 74,
+        hook_strength:
+          parsed.updatedScene?.intelligence?.hook_strength ?? 76,
+        retention_strength:
+          parsed.updatedScene?.intelligence?.retention_strength ?? 71,
+        youtube_ready_score:
+          parsed.updatedScene?.intelligence?.youtube_ready_score ?? 73,
+        notes:
+          parsed.updatedScene?.intelligence?.notes || [
+            normalizedLanguage === "en"
+              ? "Scene intelligence refreshed after edit."
+              : "Scene intelligence edit sonrası güncellendi.",
+          ],
+      },
+    };
+
     return NextResponse.json({
-      updatedScene: parsed.updatedScene,
+      updatedScene: normalizedScene,
       language: normalizedLanguage,
     });
   } catch (error) {
