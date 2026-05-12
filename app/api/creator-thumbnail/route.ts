@@ -127,7 +127,7 @@ function buildFallbackPlan({
     imagePrompt: [
       `Topic: ${title}`,
       hook ? `Core surprise: ${hook}` : "",
-      "Joe, the recurring 10-year-old guide character, reacts with a huge shocked expression.",
+      "Joe, the recurring 10-year-old guide character with a red baseball cap and blue rocket-logo t-shirt, reacts with a huge shocked expression.",
       "One massive focal object related to the topic dominates the other side of the frame.",
       "Use strong contrast, cinematic lighting, clean background, bold color separation, and emotional visual storytelling.",
     ]
@@ -251,12 +251,14 @@ ${plan.imagePrompt}
 MANDATORY VISUAL RULES:
 - Make this look like a high-CTR YouTube thumbnail, not an educational poster.
 - Show Joe, the recurring 10-year-old guide character, close to camera with a huge expressive reaction.
-- Joe visual identity: short slightly messy brown hair, large green eyes, expressive friendly face, yellow hoodie, blue jeans.
+- Joe visual identity: short slightly messy brown hair, large green eyes, expressive friendly face, red baseball cap, blue t-shirt with a clear rocket logo, blue jeans, simple white sneakers.
 - Use one oversized focal object connected to the topic.
 - Use bold contrast, cinematic lighting, bright kid-friendly colors, and strong depth.
 - Keep the composition simple and readable on a phone screen.
 - Leave clean space for a short headline overlay.
-- Prefer no rendered text inside the image. If text appears, it must be only the exact short headline: "${plan.headline}".
+- Prefer no rendered text inside the image. The app can overlay the headline separately.
+- If text appears despite the rule, it must be only the exact short headline: "${plan.headline}".
+- Keep Joe and the focal object large enough to remain readable as a small YouTube mobile thumbnail.
 
 ANTI-POSTER RULES:
 - No multi-line subtitles.
@@ -268,7 +270,7 @@ ANTI-POSTER RULES:
 - No brand logos, YouTube UI, copyrighted characters, celebrity likenesses, scary violence, medical gore, politics, or adult themes.
 
 STYLE:
-premium animated kids science thumbnail, expressive cartoon movie style, high visual impact, clean composition, strong emotional storytelling, highly clickable, safe and friendly.
+premium 3D animated kids science thumbnail, expressive animated feature film style, high visual impact, clean composition, strong emotional storytelling, highly clickable, safe and friendly. Avoid flat 2D, cheap vector art, low-detail cartoon look, generic AI slideshow look, distorted anatomy, unreadable faces, and clutter.
 `;
 
     const image = await client.images.generate({

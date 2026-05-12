@@ -91,12 +91,12 @@ export default function DashboardPage() {
                 >
                   {t.hero.primaryCta}
                 </Link>
-                <a
-                  href="#flows"
+                <Link
+                  href="/create?flow=creator_lab"
                   className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
                 >
                   {t.hero.secondaryCta}
-                </a>
+                </Link>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -108,7 +108,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
                   <p className="text-xs text-emerald-200">
-                    {t.stats.activeProduct}
+                    {t.stats.activeProducts}
                   </p>
                   <p className="mt-2 text-2xl font-semibold">{activeCount}</p>
                 </div>
@@ -146,12 +146,20 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <Link
-                  href="/create?flow=storyverse"
-                  className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01]"
-                >
-                  {t.primaryProduct.cta}
-                </Link>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link
+                    href="/create?flow=storyverse"
+                    className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.01]"
+                  >
+                    {t.primaryProduct.cta}
+                  </Link>
+                  <Link
+                    href="/create?flow=creator_lab"
+                    className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                  >
+                    {t.hero.secondaryCta}
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

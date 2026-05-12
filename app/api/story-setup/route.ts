@@ -19,11 +19,11 @@ const DEFAULT_GUIDE_CHARACTER: Character = {
   name: "Joe",
   age: "10",
   appearance:
-    "short slightly messy brown hair, large green eyes, expressive friendly face",
-  outfit: "yellow hoodie and blue jeans",
-  accessory: "",
+    "10-year-old boy with short slightly messy brown hair, large green eyes, soft rounded face, expressive friendly face, childlike proportions, consistent face shape and eye shape",
+  outfit: "red baseball cap, blue t-shirt with a clear rocket logo, simple blue jeans, simple white sneakers; the cap, rocket t-shirt, jeans, and sneakers must stay the same across episodes unless explicitly changed",
+  accessory: "red baseball cap and rocket logo t-shirt",
   personality:
-    "curious, energetic, slightly playful, brave, problem solver, asks simple questions that help children understand the topic",
+    "curious, energetic, slightly playful, emotionally expressive, kind, brave, problem solver, asks simple questions that help children understand the topic",
   referenceImage: "",
 };
 
@@ -70,7 +70,7 @@ MANDATORY SOFT-LOCK GUIDE CHARACTER:
 - Always include Joe as a recurring guide character.
 - Joe is 10 years old.
 - Joe has short slightly messy brown hair, large green eyes, and an expressive friendly face.
-- Joe always wears a yellow hoodie and blue jeans.
+- Joe always wears a red baseball cap, a blue t-shirt with a clear rocket logo, blue jeans, and simple white sneakers.
 - Joe is curious, energetic, slightly playful, brave, and a problem solver.
 - Joe asks simple questions that help children understand the topic.
 - Joe is present as the audience's guide, but the episode is NOT about Joe's personal life.
@@ -82,7 +82,7 @@ ZORUNLU SOFT-LOCK REHBER KARAKTER:
 - Joe her hikayede tekrar eden rehber karakter olarak bulunmalı.
 - Joe 10 yaşında.
 - Joe'nun kısa, hafif dağınık kahverengi saçları, büyük yeşil gözleri ve samimi/ifade gücü yüksek bir yüzü vardır.
-- Joe her zaman sarı hoodie ve mavi jean giyer.
+- Joe her zaman kırmızı beyzbol şapkası, roket logolu mavi tişört, mavi jean ve sade beyaz spor ayakkabı giyer.
 - Joe meraklı, enerjik, hafif oyunbaz, cesur ve problem çözen bir karakterdir.
 - Joe çocukların konuyu anlamasına yardım eden basit sorular sorar.
 - Joe izleyicinin rehberidir; bölüm Joe'nun kişisel hayatı hakkında olmamalıdır.

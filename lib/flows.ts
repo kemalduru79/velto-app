@@ -33,6 +33,21 @@ export const experienceFlows: ExperienceFlow[] = [
     accent: "cyan",
   },
   {
+    key: "creator_lab",
+    title: "Content Creator Lab",
+    shortTitle: "Creator Lab",
+    subtitle: "YouTube / Shorts odaklı içerik üretimi",
+    description:
+      "Kısa video konsepti, senaryo, görsel paket, voice-over ve publish-ready çıktı üretimi için ürünleşmiş akış.",
+    ageBand: "10-16",
+    durationMin: 45,
+    zones: ["AI"],
+    outputs: ["Short video", "Thumbnail", "Caption", "Script"],
+    status: "active",
+    ctaLabel: "Creator Lab ile başla",
+    accent: "sky",
+  },
+  {
     key: "career_lab",
     title: "AI Career Simulation",
     shortTitle: "Career Lab",
@@ -91,21 +106,6 @@ export const experienceFlows: ExperienceFlow[] = [
     status: "coming_soon",
     ctaLabel: "Yakında",
     accent: "amber",
-  },
-  {
-    key: "creator_lab",
-    title: "Content Creator Lab",
-    shortTitle: "Creator Lab",
-    subtitle: "YouTube / Shorts odaklı içerik üretimi",
-    description:
-      "Kısa video konsepti, senaryo, görsel paket, voice-over ve publish-ready çıktı üretimi için ürünleşmiş akış.",
-    ageBand: "10-16",
-    durationMin: 45,
-    zones: ["AI"],
-    outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-    status: "active",
-    ctaLabel: "Creator Lab ile başla",
-    accent: "sky",
   },
   {
     key: "maker_hybrid",

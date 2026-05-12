@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     }
 
     const prompt = `
-Create a character reference sheet style portrait for a children's animated film.
+Create a premium character reference sheet style portrait for a children's 3D animated feature film.
 
 Story title:
 ${title || "Untitled Story"}
@@ -92,19 +92,24 @@ Instructions:
 - show only this character as the clear main subject
 - create a clean reference-style image
 - keep the face, hair, outfit, and proportions very readable
-- child-friendly animated movie design
+- premium 3D animated movie design, not flat 2D
+- cinematic but clean studio lighting
+- expressive face with strong emotional readability
+- detailed but simple child-friendly design
 - no crowded background
 - no extra main characters
 - polished lighting
 - strong character clarity
 - stable front-facing or three-quarter character presentation
 - clean, reusable master character identity
+- avoid cheap vector art, low-detail cartoon style, generic AI slideshow style, plastic toy look, distorted anatomy, unreadable face, and style drift
 `;
 
     const image = await client.images.generate({
       model: "gpt-image-1",
       prompt,
       size: "1024x1024",
+      quality: "high",
     });
 
     const base64 = image.data?.[0]?.b64_json;

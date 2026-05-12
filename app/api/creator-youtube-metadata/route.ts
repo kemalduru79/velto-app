@@ -75,7 +75,10 @@ Return STRICT JSON only with this schema:
   "firstComment": "Pinned first comment suggestion",
   "thumbnailTextIdeas": ["2-4 word thumbnail text", "another option", "another option"],
   "seoKeywords": ["keyword 1", "keyword 2"],
-  "audiencePromise": "One-sentence promise for the target audience"
+  "audiencePromise": "One-sentence promise for the target audience",
+  "shortCaption": "1-2 sentence short-form caption for YouTube Shorts / social reuse",
+  "uploadChecklist": ["upload checklist item 1", "upload checklist item 2"],
+  "publishingNotes": ["practical publishing note 1", "practical publishing note 2"]
 }
 
 Rules:
@@ -86,9 +89,16 @@ Rules:
 - Video duration target: ${videoDurationSec} seconds.
 - Child-safe, positive, curiosity-driven.
 - Avoid clickbait that overpromises.
-- Titles should be YouTube-friendly, curiosity-led, and under 70 characters when possible.
+- Titles should be YouTube-friendly, curiosity-led, and under 65 characters when possible.
+- Generate one recommended title that is the safest publish-ready option, not merely the most dramatic option.
+- Description must include: a short hook, a clear child-safe value promise, and a soft call-to-action for parents/families.
 - Hashtags should be relevant, not spammy, max 8.
 - First comment should invite safe engagement, e.g. a question or prompt.
+- Thumbnail text ideas must be 1-4 words each and readable on a phone.
+- Avoid manipulative child-directed engagement language such as "kids, subscribe now" or pressure-based calls-to-action.
+- Avoid medical, political, adult, violent, frightening, or unsafe claims.
+- Upload checklist must be practical and short: title, description, thumbnail, hashtags, audience/safety, final video check.
+- Publishing notes must help the creator decide how to post the video without overpromising performance.
 
 Production package:
 Title: ${safeString(productionPackage?.title, "Untitled")}
@@ -136,6 +146,9 @@ ${JSON.stringify(patternSummary, null, 2)}
       thumbnailTextIdeas: normalizeStringArray(parsed.thumbnailTextIdeas).slice(0, 5),
       seoKeywords: normalizeStringArray(parsed.seoKeywords).slice(0, 12),
       audiencePromise: safeString(parsed.audiencePromise),
+      shortCaption: safeString(parsed.shortCaption),
+      uploadChecklist: normalizeStringArray(parsed.uploadChecklist).slice(0, 8),
+      publishingNotes: normalizeStringArray(parsed.publishingNotes).slice(0, 8),
     };
 
     return NextResponse.json({ ok: true, metadata });

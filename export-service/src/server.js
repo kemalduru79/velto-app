@@ -33,6 +33,7 @@ const MAX_SPEECH_RATIO = 0.82;
 const MIN_SCENE_DURATION = 8;
 const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
 const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
+const SPEECH_FREEZE_TAIL_BUFFER_SECONDS = 0.75;
 const AMBIENT_ENGINE_ENABLED = true;
 const AMBIENT_DEFAULT_VOLUME = 0.055;
 const AMBIENT_MAX_VOLUME = 0.085;
@@ -204,21 +205,23 @@ function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "imag
   const requestedTarget = Number(scene?.timing?.targetSceneDuration || 0);
   const safeAudioDuration = Number.isFinite(fallbackAudioDuration) ? fallbackAudioDuration : 0;
   const safeSourceDuration = Number.isFinite(sourceDuration) ? sourceDuration : 0;
+  const audioDrivenDuration =
+    safeAudioDuration > 0
+      ? safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS
+      : 0;
 
   if (sourceType === "video" && safeSourceDuration > 0) {
-    if (safeAudioDuration > safeSourceDuration + 0.25) {
-      return Math.min(MAX_SCENE_DURATION, Math.max(safeSourceDuration, safeAudioDuration + 0.15));
+    if (audioDrivenDuration > 0) {
+      return Math.max(safeSourceDuration, requestedTarget || 0, audioDrivenDuration);
     }
 
     return safeSourceDuration;
   }
 
-  const audioDrivenDuration =
-    safeAudioDuration > 0 ? safeAudioDuration + 0.25 : TARGET_SCENE_DURATION;
-
-  return Math.min(
-    MAX_SCENE_DURATION,
-    Math.max(MIN_SCENE_DURATION, requestedTarget || TARGET_SCENE_DURATION, audioDrivenDuration)
+  return Math.max(
+    MIN_SCENE_DURATION,
+    requestedTarget || TARGET_SCENE_DURATION,
+    audioDrivenDuration || TARGET_SCENE_DURATION
   );
 }
 
@@ -235,14 +238,8 @@ function getTransitionAwareDuration({ targetDuration, audioDuration = 0, sourceD
   const trimmedDuration = Math.max(0.1, safeTargetDuration - SCENE_TRANSITION_TRIM_SECONDS);
 
   if (safeAudioDuration > 0) {
-    const audioSafeDuration = safeAudioDuration + MIN_AUDIO_TAIL_BUFFER_SECONDS;
-    const duration = Math.max(trimmedDuration, audioSafeDuration);
-
-    if (safeSourceDuration > 0) {
-      return Math.min(safeSourceDuration, duration);
-    }
-
-    return duration;
+    const audioSafeDuration = safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS;
+    return Math.max(trimmedDuration, audioSafeDuration, safeSourceDuration);
   }
 
   if (safeSourceDuration > 0) {
@@ -581,13 +578,21 @@ async function createSceneClipWithAudio({
   });
   const durationText = effectiveDuration.toFixed(3);
 
+  const freezeExtensionSeconds = Math.max(0, effectiveDuration - videoDuration);
+  const baseTrimDuration = Math.min(videoDuration, effectiveDuration).toFixed(3);
+  const freezeExtensionFilter =
+    freezeExtensionSeconds > 0.05
+      ? `tpad=stop_mode=clone:stop_duration=${freezeExtensionSeconds.toFixed(3)},trim=duration=${durationText},`
+      : "";
+
   const videoBaseFilter =
     "scale=1280:720:force_original_aspect_ratio=decrease," +
     "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
     "setsar=1," +
     "fps=25," +
-    `trim=duration=${durationText},` +
+    `trim=duration=${baseTrimDuration},` +
     "setpts=PTS-STARTPTS," +
+    freezeExtensionFilter +
     "format=yuv420p";
 
   if (audioPath) {
@@ -1365,7 +1370,9 @@ app.post("/export-movie", async (req, res) => {
       transitionTrimAware: true,
       sceneTransitionTrimSeconds: SCENE_TRANSITION_TRIM_SECONDS,
       minAudioTailBufferSeconds: MIN_AUDIO_TAIL_BUFFER_SECONDS,
+      speechFreezeTailBufferSeconds: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
       sceneAudioPaddedAware: true,
+      simpleSpeechFreezeAware: true,
       cinematicMotionEngineAware: true,
       imageSceneMotionAware: true,
       cinematicMotionType: "subtle-zoom-pan",

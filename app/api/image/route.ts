@@ -24,11 +24,11 @@ const DEFAULT_GUIDE_CHARACTER: Character = {
   name: "Joe",
   age: "10",
   appearance:
-    "short slightly messy brown hair, large green eyes, expressive friendly face",
-  outfit: "yellow hoodie and blue jeans",
-  accessory: "",
+    "10-year-old boy with short slightly messy brown hair, large green eyes, soft rounded face, expressive friendly face, childlike proportions, consistent face shape and eye shape",
+  outfit: "red baseball cap, blue t-shirt with a clear rocket logo, simple blue jeans, simple white sneakers; the cap, rocket t-shirt, jeans, and sneakers must stay the same across episodes unless explicitly changed",
+  accessory: "red baseball cap and rocket logo t-shirt",
   personality:
-    "curious, energetic, slightly playful, brave, problem solver, asks simple questions that help children understand the topic",
+    "curious, energetic, slightly playful, emotionally expressive, kind, brave, problem solver, asks simple questions that help children understand the topic",
   referenceImage: "",
 };
 
@@ -134,20 +134,20 @@ STRICT VISUAL LOCK:
 }
 
 function buildVisualBlock(visualBible?: VisualBible | null) {
-  if (!visualBible) {
-    return `
-Style: warm child-friendly animated film
-Palette: soft vibrant colors
-Camera: cinematic family animation framing
-Consistency rules: same character face, same hair, same outfit, same age appearance, same proportions across scenes
-`;
-  }
+  const defaultStyle =
+    "premium 3D animated feature film look, cinematic but child-friendly, expressive characters, detailed environments, polished lighting, not flat 2D";
+  const defaultPalette =
+    "rich vibrant colors, warm highlights, clean contrast, soft cinematic shadows, premium family animation color grading";
+  const defaultCamera =
+    "cinematic family animation framing, clear subject separation, readable facial expression, strong depth, professional composition";
+  const defaultConsistencyRules =
+    "same character face, same hair, same red baseball cap, same blue rocket-logo t-shirt, same outfit, same age appearance, same proportions across scenes";
 
   return `
-Style: ${visualBible.style}
-Palette: ${visualBible.palette}
-Camera: ${visualBible.camera}
-Consistency rules: ${visualBible.consistencyRules}
+Style: ${visualBible?.style || defaultStyle}
+Palette: ${visualBible?.palette || defaultPalette}
+Camera: ${visualBible?.camera || defaultCamera}
+Consistency rules: ${visualBible?.consistencyRules || defaultConsistencyRules}
 `;
 }
 
@@ -193,30 +193,25 @@ export async function POST(req: Request) {
     const normalizedImageUseCase =
       imageUseCase ||
       (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
-    const shouldUsePremiumVisuals = Boolean(
-      premiumVisualMode ||
-      isThumbnail ||
-      isHookScene ||
-      normalizedImageUseCase === "thumbnail" ||
-      normalizedImageUseCase === "hook",
-    );
+    const shouldUsePremiumVisuals = true;
 
     const premiumVisualInstructions = shouldUsePremiumVisuals
       ? `
 PREMIUM VISUAL LAYER:
-- This is a high-impact ${normalizedImageUseCase === "thumbnail" ? "YouTube thumbnail / hero marketing image" : "hook scene / opening hero frame"}.
-- Use premium animated movie quality, strong emotional readability, and high visual impact.
+- This is a high-impact ${normalizedImageUseCase === "thumbnail" ? "YouTube thumbnail / hero marketing image" : normalizedImageUseCase === "hook" ? "hook scene / opening hero frame" : "premium story scene frame"}.
+- Use premium 3D animated feature film quality with strong emotional readability and high visual impact.
 - Make Joe's facial expression highly readable and engaging.
 - Prioritize a clean, bold composition with one dominant visual idea.
-- Use cinematic lighting, stronger contrast, and clear subject separation.
-- Avoid clutter, small unreadable details, and overly wide compositions.
-- Keep the image child-friendly but visually exciting and clickable.
+- Use cinematic lighting, professional color grading, stronger contrast, and clear subject separation.
+- Use detailed but controlled environments: rich enough to feel premium, never cluttered.
+- Keep the image child-friendly but visually exciting, polished, and production-ready.
 - For thumbnails, compose with a wide 16:9 crop in mind, with the main subject large and centered.
+- Avoid the look of a generic AI slideshow; every frame must feel like a still from the same premium animated film universe.
 `
       : `
 STANDARD VISUAL LAYER:
-- Use consistent, polished scene quality while preserving cost-aware production.
-- Prioritize continuity, clarity, and readability over excessive detail.
+- Use premium scene quality as the default baseline.
+- Prioritize continuity, clarity, and readability while keeping the frame cinematic and detailed.
 `;
 
     const imagePrompt = `
@@ -288,6 +283,15 @@ Negative guidance:
 - no style drift
 - no realism shift
 - no anime shift unless explicitly requested in the visual bible
+- no flat 2D look
+- no cheap vector art
+- no low-detail cartoon look
+- no generic AI slideshow look
+- no plastic toy look
+- no muddy lighting
+- no blurry character face
+- no distorted hands, distorted eyes, or broken anatomy
+- no unreadable rocket logo on Joe's t-shirt when visible
 - no new lead character invention
 
 Output style:
@@ -302,10 +306,8 @@ ${
       model: "gpt-image-1",
       prompt: imagePrompt,
       size:
-        shouldUsePremiumVisuals && normalizedImageUseCase === "thumbnail"
-          ? "1536x1024"
-          : "1024x1024",
-      quality: shouldUsePremiumVisuals ? "high" : "medium",
+        normalizedImageUseCase === "thumbnail" ? "1536x1024" : "1024x1024",
+      quality: "high",
     };
 
     const image = await client.images.generate(imageRequest);

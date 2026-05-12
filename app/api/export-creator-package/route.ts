@@ -186,6 +186,9 @@ export async function POST(req: Request) {
     const titleOptions = safeArray(metadata?.titleOptions);
     const thumbnailTextIdeas = safeArray(metadata?.thumbnailTextIdeas);
     const seoKeywords = safeArray(metadata?.seoKeywords);
+    const uploadChecklist = safeArray(metadata?.uploadChecklist);
+    const publishingNotes = safeArray(metadata?.publishingNotes);
+    const shortCaption = safeString(metadata?.shortCaption);
 
     const entries: ZipEntry[] = [
       {
@@ -203,6 +206,10 @@ export async function POST(req: Request) {
       {
         name: "description.txt",
         data: Buffer.from(description || "No description available.", "utf8"),
+      },
+      {
+        name: "short_caption.txt",
+        data: Buffer.from(shortCaption || description || "", "utf8"),
       },
       {
         name: "hashtags.txt",

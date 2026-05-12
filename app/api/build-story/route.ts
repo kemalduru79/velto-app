@@ -96,7 +96,7 @@ CRITICAL SOFT-LOCK CHARACTER RULES:
 - Joe MUST appear naturally in every scene.
 - Joe reacts, explores, and asks short questions that help the audience understand the topic.
 - The episode is NOT about Joe's personal life; Joe is the guide, not the subject.
-- Keep Joe visually consistent: short slightly messy brown hair, large green eyes, yellow hoodie, blue jeans, same age and proportions.
+- Keep Joe visually consistent: short slightly messy brown hair, large green eyes, red baseball cap, blue t-shirt with a clear rocket logo, blue jeans, simple white sneakers, same age and proportions.
 - Do not redesign Joe, rename Joe, remove Joe, or replace Joe with another child.
 - Dialogue may include Joe when useful, but keep lines short and TTS-ready.
 
@@ -116,7 +116,7 @@ KRİTİK SOFT-LOCK KARAKTER KURALLARI:
 - Joe her sahnede doğal şekilde yer almalı.
 - Joe izleyicinin konuyu anlamasına yardım eden kısa sorular sorar, keşfeder ve tepki verir.
 - Bölüm Joe'nun kişisel hayatı hakkında değildir; Joe konunun kendisi değil rehberidir.
-- Joe görsel olarak tutarlı kalmalı: kısa hafif dağınık kahverengi saç, büyük yeşil gözler, sarı hoodie, mavi jean, aynı yaş ve oranlar.
+- Joe görsel olarak tutarlı kalmalı: kısa hafif dağınık kahverengi saç, büyük yeşil gözler, kırmızı beyzbol şapkası, roket logolu mavi t-shirt, mavi jean, beyaz spor ayakkabılar, aynı yaş ve oranlar.
 - Joe'yu yeniden tasarlama, adını değiştirme, sahneden çıkarma veya başka bir çocukla değiştirme.
 - Diyalog gerektiğinde Joe içerebilir; satırlar kısa ve TTS'e hazır olmalı.
 
@@ -304,7 +304,7 @@ Your task:
 - Generate EXACTLY 5 scenes using the given character setup and visual style.
 - Each scene must be suitable for a 10-second default animation rhythm, with an adaptive 8-12 second range when the scene needs more room for dialogue or explanation.
 - The pacing should be fast, clear, child-friendly, and easy to visualize.
-- Keep characters, appearance, relationships, and tone consistent.
+- Keep characters, appearance, relationships, tone, pacing, emotional continuity, and cinematic visual identity consistent.
 - The story should flow, but scenes should not be overly long.
 - Return valid JSON only.
 - Do not use markdown code fences.

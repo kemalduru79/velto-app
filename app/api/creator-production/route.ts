@@ -30,7 +30,12 @@ function asString(value: unknown, fallback = "") {
   return result || fallback;
 }
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number) {
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   const numericValue = Number(value);
 
   if (!Number.isFinite(numericValue)) {
@@ -55,6 +60,165 @@ function getPacingBlueprint(sceneCount: number) {
   };
 }
 
+const CREATOR_LAB_CONSISTENCY_GUARD = {
+  recurringCharacter:
+    "Joe is a consistent 10-year-old boy with short slightly messy brown hair, large green eyes, a red baseball cap, a blue t-shirt with a clear rocket logo, simple blue jeans, and simple white sneakers.",
+  personality:
+    "Joe is curious, energetic, kind, brave, slightly playful, emotionally expressive, and asks short questions that help children understand the topic.",
+  narrationStyle:
+    "Narration must stay clean, short, warm, direct, and speakable. Do not include emotion tags, SFX tags, voice labels, or acting directions inside narration or dialogue.",
+  visualContinuity:
+    "All scenes must feel like one premium 3D animated film episode, not separate AI-generated slides. Keep character design, color energy, lighting quality, and cinematic framing consistent.",
+  creatorLabVisualEnergy:
+    "Creator Lab visuals should be high-clarity, thumbnail-friendly, high-contrast, premium 3D animated, mobile-readable, and child-safe.",
+};
+
+function getCreatorLabConsistencyRules(language: "tr" | "en") {
+  if (language === "tr") {
+    return [
+      "Joe her sahnede aynı karakter olarak korunmalı: 10 yaşında erkek çocuk, kısa hafif dağınık kahverengi saç, büyük yeşil gözler, kırmızı beyzbol şapkası, roket logolu mavi t-shirt, mavi jean ve beyaz spor ayakkabılar.",
+      "Joe'nun kişiliği tutarlı kalmalı: meraklı, enerjik, nazik, cesur, hafif oyunbaz, duygusal olarak ifade gücü yüksek ve konuyu anlamaya yardım eden kısa sorular soran bir rehber.",
+      "Anlatım kısa, sıcak, doğrudan ve seslendirilebilir olmalı. Anlatım veya diyalog içine emotion, SFX, voice label veya oyunculuk yönlendirmesi yazma.",
+      "Tüm sahneler tek bir premium 3D animasyon bölümüne ait gibi hissettirmeli; ayrı ayrı üretilmiş AI slaytları gibi görünmemeli.",
+      "Sahneler arasında tempo, duygu, karakter davranışı, ışık kalitesi, renk enerjisi ve sinematik çerçeveleme tutarlı kalmalı.",
+      "Creator Lab görselleri YouTube için mobile-readable, thumbnail-friendly, yüksek kontrastlı, premium 3D animated ve child-safe olmalı.",
+    ];
+  }
+
+  return [
+    CREATOR_LAB_CONSISTENCY_GUARD.recurringCharacter,
+    CREATOR_LAB_CONSISTENCY_GUARD.personality,
+    CREATOR_LAB_CONSISTENCY_GUARD.narrationStyle,
+    CREATOR_LAB_CONSISTENCY_GUARD.visualContinuity,
+    "Maintain consistent pacing, emotion, character behavior, lighting quality, color energy, and cinematic framing across scenes.",
+    CREATOR_LAB_CONSISTENCY_GUARD.creatorLabVisualEnergy,
+  ];
+}
+
+function getDurationBudget(durationSec: number, sceneCount: number) {
+  const lowerTotalSpeechSec = Math.max(10, Math.round(durationSec * 0.9));
+  const upperTotalSpeechSec = Math.max(
+    lowerTotalSpeechSec + 3,
+    Math.round(durationSec * 1.1),
+  );
+  const targetTotalSpeechSec = Math.round(
+    (lowerTotalSpeechSec + upperTotalSpeechSec) / 2,
+  );
+  const targetWordsTotal = Math.max(
+    24,
+    Math.round(targetTotalSpeechSec * 2.35),
+  );
+  const maxWordsTotal = Math.max(
+    targetWordsTotal + sceneCount,
+    Math.round(upperTotalSpeechSec * 2.55),
+  );
+  const targetWordsPerScene = Math.max(
+    6,
+    Math.floor(targetWordsTotal / Math.max(1, sceneCount)),
+  );
+  const maxWordsPerScene = Math.max(
+    targetWordsPerScene + 2,
+    Math.ceil(maxWordsTotal / Math.max(1, sceneCount)),
+  );
+
+  return {
+    lowerTotalSpeechSec,
+    targetTotalSpeechSec,
+    upperTotalSpeechSec,
+    targetWordsTotal,
+    maxWordsTotal,
+    targetWordsPerScene,
+    maxWordsPerScene,
+  };
+}
+
+
+function getCreatorLabTestReadinessProfile(
+  durationSec: number,
+  sceneCount: number,
+  estimatedTotalSpeechSeconds: number,
+  upperTotalSpeechSec: number,
+) {
+  const speechWithinBudget = estimatedTotalSpeechSeconds <= upperTotalSpeechSec;
+  const recommendedTestMode = sceneCount <= 6 ? "minimum-cost-6-scene-test" : "standard-flow-test";
+
+  return {
+    recommendedTestMode,
+    minimumSceneRule: "Creator Lab test flow should keep at least 6 scenes. Do not reduce to a single-scene test because the current product flow is designed around a minimum multi-scene structure.",
+    testAfterSprintBundle: true,
+    costControl: [
+      "Use exactly 6 scenes for the first validation run.",
+      "Use a short, simple topic with compact narration.",
+      "Avoid batch generation during validation.",
+      "Do not test Shorts-native export in this phase.",
+      "Validate one complete Creator Lab package before Vercel/Railway push."
+    ],
+    manualChecks: [
+      "Characters and Joe identity remain visually consistent.",
+      "Images look premium 3D/cinematic rather than flat 2D.",
+      "Speech does not continue into the next scene after the visual changes.",
+      "Speech is not cut before a sentence finishes.",
+      "Thumbnail and YouTube metadata are publish-ready.",
+      "Export package includes usable caption, title, description, hashtags, and checklist files."
+    ],
+    passCriteria: [
+      "All 6 scenes are generated.",
+      "Estimated total speech duration stays within target budget.",
+      "No scene changes while speech is still continuing from the previous scene.",
+      "No audio is abruptly cut at scene boundaries.",
+      "Final output is standard YouTube-friendly 16:9 rather than forced Shorts-native output."
+    ],
+    speechWithinBudget,
+  };
+}
+
+function countWords(value: string) {
+  const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+
+  return words.length;
+}
+
+function trimToWordLimit(value: string, maxWords: number) {
+  const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+
+  if (words.length <= maxWords) {
+    return value.trim();
+  }
+
+  return `${words
+    .slice(0, maxWords)
+    .join(" ")
+    .replace(/[,.!?:;]+$/, "")}…`;
+}
+
+function estimateSpeechSeconds(value: string) {
+  return Math.round((countWords(value) / 2.35) * 10) / 10;
+}
+
+function normalizeScenesWithBudget(
+  value: unknown,
+  sceneCount: number,
+  maxWordsPerScene: number,
+) {
+  const scenes = normalizeScenes(value, sceneCount);
+
+  return scenes.map((scene) => {
+    const narration = trimToWordLimit(scene.narration, maxWordsPerScene);
+    const dialogue = trimToWordLimit(
+      scene.dialogue,
+      Math.max(0, Math.floor(maxWordsPerScene * 0.45)),
+    );
+    const combinedSpeech = [narration, dialogue].filter(Boolean).join(" ");
+
+    return {
+      ...scene,
+      narration,
+      dialogue,
+      estimatedSpeechSeconds: estimateSpeechSeconds(combinedSpeech),
+      speechWordCount: countWords(combinedSpeech),
+    };
+  });
+}
 
 function extractJsonObject(raw: string) {
   const cleaned = raw
@@ -71,7 +235,6 @@ function extractJsonObject(raw: string) {
 
   return cleaned.slice(firstBrace, lastBrace + 1);
 }
-
 
 function normalizeCharacters(value: unknown) {
   if (!Array.isArray(value)) {
@@ -109,12 +272,12 @@ function normalizeScenes(value: unknown, sceneCount: number) {
       dialogue: asString(scene.dialogue),
       cameraDirection: asString(
         scene.cameraDirection,
-        "Clean animated framing with clear focus."
+        "Clean animated framing with clear focus.",
       ),
       emotion: asString(scene.emotion, "curious and energetic"),
       motionHint: asString(
         scene.motionHint,
-        asString(scene.visualPrompt, "Simple animated movement.")
+        asString(scene.visualPrompt, "Simple animated movement."),
       ),
       visualPrompt: asString(scene.visualPrompt),
     };
@@ -143,7 +306,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
     }
 
-    const body = (await req.json().catch(() => null)) as CreatorProductionRequest | null;
+    const body = (await req
+      .json()
+      .catch(() => null)) as CreatorProductionRequest | null;
 
     const topic = asString(body?.topic);
     const country = asString(body?.country, "Global / International");
@@ -151,8 +316,12 @@ export async function POST(req: Request) {
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
     const durationSec = clampNumber(body?.durationSec, 60, 45, 360);
-    const sceneCount = clampNumber(body?.sceneCount, 7, 5, 36);
-    const targetSceneDurationSec = Math.max(5, Math.round(durationSec / sceneCount));
+    const sceneCount = clampNumber(body?.sceneCount, 6, 6, 36);
+    const targetSceneDurationSec = Math.max(
+      5,
+      Math.round(durationSec / sceneCount),
+    );
+    const durationBudget = getDurationBudget(durationSec, sceneCount);
     const language = body?.language === "tr" ? "tr" : "en";
     const mentorAnalysis = body?.mentorAnalysis || {};
     const pacingBlueprint = getPacingBlueprint(sceneCount);
@@ -160,14 +329,14 @@ export async function POST(req: Request) {
     if (!topic && !mentorAnalysis?.recommendedIdea?.title) {
       return NextResponse.json(
         { error: "topic veya recommendedIdea zorunlu." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY tanımlı değil." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -193,9 +362,11 @@ export async function POST(req: Request) {
         durationSec,
         sceneCount,
         targetSceneDurationSec,
+        speechDurationBudget: durationBudget,
         outputLanguage: language === "en" ? "English" : "Turkish",
       },
       pacingBlueprint,
+      consistencyGuard: getCreatorLabConsistencyRules(language),
       topic,
       mentorAnalysis,
       requiredJsonShape: {
@@ -209,14 +380,14 @@ export async function POST(req: Request) {
             appearance: "string",
             outfit: "string",
             accessory: "string",
-            personality: "string"
-          }
+            personality: "string",
+          },
         ],
         visualBible: {
           style: "string",
           palette: "string",
           camera: "string",
-          consistencyRules: "string"
+          consistencyRules: "string",
         },
         scenes: [
           {
@@ -227,28 +398,36 @@ export async function POST(req: Request) {
             cameraDirection: "string",
             emotion: "string",
             motionHint: "string",
-            visualPrompt: "string"
-          }
+            visualPrompt: "string",
+          },
         ],
         thumbnailIdea: "string",
         youtubeTitle: "string",
-        caption: "string"
+        caption: "string",
       },
       rules: [
         `Create exactly ${sceneCount} scenes.`,
+        "The product flow has a minimum of 6 scenes. Never collapse this into a single-scene test structure.",
         `Design the video for approximately ${durationSec} seconds total.`,
-        `Each scene should fit roughly ${targetSceneDurationSec} seconds.`,
+        `Total spoken narration + dialogue must stay between ${durationBudget.lowerTotalSpeechSec} and ${durationBudget.upperTotalSpeechSec} seconds, targeting ${durationBudget.targetTotalSpeechSec} seconds.`,
+        `Total spoken words must stay under ${durationBudget.maxWordsTotal} words across all scenes.`,
+        `Each scene should fit roughly ${targetSceneDurationSec} seconds and should use about ${durationBudget.targetWordsPerScene} spoken words, never more than ${durationBudget.maxWordsPerScene} spoken words including narration and dialogue.`,
         "Scene 1 must open with a strong 3-second curiosity hook.",
         "Follow the provided pacingBlueprint so the video has a clear beginning, development, climax, and resolution.",
         "Do not create a 7-scene short if sceneCount is larger; match the requested scene count.",
         "Keep narration clean. Do not include emotion tags, voice labels, or sound-effect labels inside narration.",
-        "Keep each narration line concise enough for the target scene duration.",
-        "Dialogue may be empty if the format is narrator-led.",
+        "Keep each narration line short, direct, and speakable. Prefer one compact sentence per scene.",
+        "Dialogue may be empty if the format is narrator-led. If dialogue is used, keep it very short.",
+        "Do not compensate with long dialogue. The total speech budget includes narration and dialogue together.",
         "Scenes must be visual and easy for AI image/video generation.",
         "Keep content age-appropriate, educational, and safe.",
         "Create simple reusable characters if the video benefits from character continuity.",
-        "Avoid repetitive scene openings; each scene should advance the story or explanation."
-      ]
+        "Joe must stay visually and behaviorally consistent if he appears in the video.",
+        "All scenes must preserve one coherent visual universe, not separate unrelated image styles.",
+        "Maintain consistent narration tone, emotional rhythm, and cinematic energy from scene to scene.",
+        "Creator Lab visual prompts should stay high-clarity, premium 3D animated, mobile-readable, and thumbnail-friendly.",
+        "Avoid repetitive scene openings; each scene should advance the story or explanation.",
+      ],
     };
 
     const response = await client.responses.create({
@@ -278,33 +457,53 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Creator production çıktısı JSON olarak parse edilemedi." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const characters = normalizeCharacters(parsed.characters);
-    const scenes = normalizeScenes(parsed.scenes, sceneCount);
+    const scenes = normalizeScenesWithBudget(
+      parsed.scenes,
+      sceneCount,
+      durationBudget.maxWordsPerScene,
+    );
 
     if (!characters.length || !scenes.length) {
       return NextResponse.json(
         { error: "Production package eksik karakter veya sahne içeriyor." },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    if (scenes.length < Math.max(5, Math.floor(sceneCount * 0.75))) {
+    if (scenes.length < sceneCount) {
       return NextResponse.json(
         {
-          error: `Production package beklenen sahne sayısına ulaşamadı. Beklenen: ${sceneCount}, gelen: ${scenes.length}.`,
+          error: `Production package beklenen minimum sahne sayısına ulaşamadı. Beklenen: ${sceneCount}, gelen: ${scenes.length}.`,
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
+
+    const estimatedTotalSpeechSeconds =
+      Math.round(
+        scenes.reduce((sum, scene) => sum + scene.estimatedSpeechSeconds, 0) *
+          10,
+      ) / 10;
+    const estimatedTotalSpeechWords = scenes.reduce(
+      (sum, scene) => sum + scene.speechWordCount,
+      0,
+    );
+    const creatorLabTestReadiness = getCreatorLabTestReadinessProfile(
+      durationSec,
+      sceneCount,
+      estimatedTotalSpeechSeconds,
+      durationBudget.upperTotalSpeechSec,
+    );
 
     const productionPackage = {
       title: asString(
         parsed.title,
-        asString(mentorAnalysis?.recommendedIdea?.title, "Creator Lab Video")
+        asString(mentorAnalysis?.recommendedIdea?.title, "Creator Lab Video"),
       ),
       hook: asString(parsed.hook),
       storyPremise: asString(parsed.storyPremise),
@@ -312,19 +511,19 @@ export async function POST(req: Request) {
       visualBible: {
         style: asString(
           parsed?.visualBible?.style,
-          "Bright, clean 2D animated style suitable for children."
+          "Premium cinematic 3D animated film style suitable for children, with consistent character identity and high production value.",
         ),
         palette: asString(
           parsed?.visualBible?.palette,
-          "Vivid but balanced colors with strong subject/background contrast."
+          "Vivid but balanced colors with strong subject/background contrast.",
         ),
         camera: asString(
           parsed?.visualBible?.camera,
-          "Simple clear shots, gentle pans, and occasional close-ups."
+          "Simple clear shots, gentle pans, and occasional close-ups.",
         ),
         consistencyRules: asString(
           parsed?.visualBible?.consistencyRules,
-          "Keep characters, colors, and accessories consistent across scenes."
+          "Keep Joe, character outfits, colors, lighting quality, emotional tone, and accessories consistent across scenes. Avoid generic AI slideshow variation.",
         ),
       },
       scenes,
@@ -334,6 +533,10 @@ export async function POST(req: Request) {
       durationSec,
       sceneCount,
       targetSceneDurationSec,
+      durationBudget,
+      estimatedTotalSpeechSeconds,
+      estimatedTotalSpeechWords,
+      creatorLabTestReadiness,
       pacingBlueprint,
     };
 
@@ -345,8 +548,11 @@ export async function POST(req: Request) {
     console.error("creator-production error:", e);
 
     return NextResponse.json(
-      { error: e?.message || "Creator production paketi oluşturulurken hata oluştu." },
-      { status: 500 }
+      {
+        error:
+          e?.message || "Creator production paketi oluşturulurken hata oluştu.",
+      },
+      { status: 500 },
     );
   }
 }
