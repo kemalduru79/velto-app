@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 
 export const runtime = "nodejs";
 
@@ -116,6 +117,7 @@ function buildSummary(result: SceneOptimizationItem[], estimatedVideoCostUsd: nu
     estimatedRunwayCostUsd,
     estimatedFullVideoCostUsd,
     estimatedSavingsPercent,
+    pricingBasis: CREATOR_COST_BASIS_LABEL,
   };
 }
 
@@ -129,7 +131,7 @@ export async function POST(req: Request) {
     const estimatedVideoCostUsd =
       typeof body?.estimatedVideoCostUsd === "number" && body.estimatedVideoCostUsd >= 0
         ? body.estimatedVideoCostUsd
-        : 0.05;
+        : CREATOR_DEFAULT_VIDEO_SCENE_COST_USD;
 
     if (scenes.length === 0) {
       return NextResponse.json({
@@ -247,7 +249,7 @@ ${JSON.stringify(compactScenes, null, 2)}
     const estimatedVideoCostUsd =
       typeof body?.estimatedVideoCostUsd === "number" && body.estimatedVideoCostUsd >= 0
         ? body.estimatedVideoCostUsd
-        : 0.05;
+        : CREATOR_DEFAULT_VIDEO_SCENE_COST_USD;
     const result = fallbackOptimizeScenes(scenes, estimatedVideoCostUsd);
 
     return NextResponse.json({

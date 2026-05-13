@@ -6,6 +6,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { getFlowByKey, type FlowZone } from "../../lib/flows";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
+import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -224,6 +225,7 @@ type SceneOptimizationSummary = {
   estimatedRunwayCostUsd: number;
   estimatedFullVideoCostUsd: number;
   estimatedSavingsPercent: number;
+  pricingBasis?: string;
 };
 
 
@@ -821,6 +823,7 @@ const UI_TEXT = {
     downloadingCreatorPackage: "Paket hazırlanıyor...",
     costOptimizationEngine: "Cost Optimization Engine",
     costOptimizationDesc: "Sahneler için Video / Image önerisi üretir ve tahmini Runway maliyetini azaltır.",
+    costPricingNote: `Fiyat bazı: ${CREATOR_COST_BASIS_LABEL}`,
     optimizeScenes: "Sahneleri Optimize Et",
     optimizingScenes: "Sahneler optimize ediliyor...",
     costSummary: "Maliyet Özeti",
@@ -1149,6 +1152,7 @@ const UI_TEXT = {
     downloadingCreatorPackage: "Preparing package...",
     costOptimizationEngine: "Cost Optimization Engine",
     costOptimizationDesc: "Generates Video / Image recommendations per scene and reduces estimated Runway cost.",
+    costPricingNote: `Pricing basis: ${CREATOR_COST_BASIS_LABEL}`,
     optimizeScenes: "Optimize Scenes",
     optimizingScenes: "Optimizing scenes...",
     costSummary: "Cost Summary",
@@ -4701,7 +4705,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           scenes: nextPackage.scenes || [],
           mode: "balanced",
-          estimatedVideoCostUsd: 0.05,
+          estimatedVideoCostUsd: CREATOR_DEFAULT_VIDEO_SCENE_COST_USD,
           language,
           ageGroup: creatorAgeGroup,
           contentType: creatorContentType,
@@ -4998,7 +5002,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           scenes: sourceScenes,
           mode: "balanced",
-          estimatedVideoCostUsd: 0.05,
+          estimatedVideoCostUsd: CREATOR_DEFAULT_VIDEO_SCENE_COST_USD,
         }),
       });
 
@@ -5046,7 +5050,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           scenes: sourceScenes,
           mode: "balanced",
-          estimatedVideoCostUsd: 0.05,
+          estimatedVideoCostUsd: CREATOR_DEFAULT_VIDEO_SCENE_COST_USD,
           language,
           ageGroup: creatorAgeGroup,
           contentType: creatorContentType,
@@ -7802,6 +7806,7 @@ export default function CreatePage() {
               </div>
 
               {sceneOptimizationSummary && (
+                <>
                 <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.recommendedVideoScenes}</div>
@@ -7828,6 +7833,10 @@ export default function CreatePage() {
                     </div>
                   </div>
                 </div>
+                <p className="mt-3 text-xs leading-5 text-lime-100/60">
+                  {sceneOptimizationSummary.pricingBasis || ui.costPricingNote}
+                </p>
+                </>
               )}
 
               {sceneOptimizationResult.length > 0 && (
