@@ -7,7 +7,7 @@ import { getFlowByKey, type FlowZone } from "../../lib/flows";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
-import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiNarrativeQaChecklist, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPilotReadinessNotes, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
+import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiNarrativeQaChecklist, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPersistenceQaChecklist, getCareerPilotReadinessNotes, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -1651,6 +1651,14 @@ const [careerAiNarrativeMeta, setCareerAiNarrativeMeta] = useState<{
   generatedAt?: string;
 } | null>(null);
 const [careerAiNarrativeGenerationCount, setCareerAiNarrativeGenerationCount] = useState(0);
+const [careerSessionSaveLoading, setCareerSessionSaveLoading] = useState(false);
+const [careerSessionSaveError, setCareerSessionSaveError] = useState("");
+const [careerSessionSaveSuccess, setCareerSessionSaveSuccess] = useState("");
+const [savedCareerSessionId, setSavedCareerSessionId] = useState("");
+const [careerSavedSessions, setCareerSavedSessions] = useState<any[]>([]);
+const [careerSessionsLoading, setCareerSessionsLoading] = useState(false);
+const [careerSessionsError, setCareerSessionsError] = useState("");
+const [careerSessionLoadLoading, setCareerSessionLoadLoading] = useState(false);
 
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -1972,6 +1980,7 @@ const [careerAiNarrativeGenerationCount, setCareerAiNarrativeGenerationCount] = 
   const careerPilotReadinessNotes = getCareerPilotReadinessNotes(uiLanguage === "en" ? "en" : "tr");
   const careerSimulationOutputPackage = getCareerSimulationOutputPackage(uiLanguage === "en" ? "en" : "tr");
   const careerPilotQaChecklist = getCareerPilotQaChecklist(uiLanguage === "en" ? "en" : "tr");
+  const careerPersistenceQaChecklist = getCareerPersistenceQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const careerAiPayloadReadinessNotes = getCareerAiPayloadReadinessNotes(uiLanguage === "en" ? "en" : "tr");
   const careerAiNarrativeQaChecklist = getCareerAiNarrativeQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const handleCareerDecision = (decisionId: string, option: CareerDecisionOption) => {
@@ -2097,12 +2106,257 @@ const handleDownloadCareerAiNarrativeReport = () => {
   URL.revokeObjectURL(url);
 };
 
+const handleListCareerSessions = async () => {
+  try {
+    setCareerSessionsLoading(true);
+    setCareerSessionsError("");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData?.session?.access_token) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Please sign in before loading Career Lab sessions."
+          : "Career Lab oturumlarını yüklemeden önce lütfen giriş yap."
+      );
+    }
+
+    const response = await fetch("/api/career-sessions?limit=20", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "Career Lab sessions could not be listed."
+            : "Career Lab oturumları listelenemedi.")
+      );
+    }
+
+    setCareerSavedSessions(Array.isArray(data?.sessions) ? data.sessions : []);
+  } catch (err: any) {
+    setCareerSessionsError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "Career Lab sessions could not be listed."
+          : "Career Lab oturumları listelenemedi.")
+    );
+  } finally {
+    setCareerSessionsLoading(false);
+  }
+};
+
+const handleDeleteCareerSession = async (sessionId: string) => {
+  const confirmed = window.confirm(
+    uiLanguage === "en"
+      ? "Delete this Career Lab session? This cannot be undone."
+      : "Bu Career Lab oturumu silinsin mi? Bu işlem geri alınamaz."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    setCareerSessionLoadLoading(true);
+    setCareerSessionsError("");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData?.session?.access_token) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Please sign in before deleting a Career Lab session."
+          : "Career Lab oturumu silmeden önce lütfen giriş yap."
+      );
+    }
+
+    const response = await fetch(`/api/career-sessions?id=${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "Career Lab session could not be deleted."
+            : "Career Lab oturumu silinemedi.")
+      );
+    }
+
+    setCareerSavedSessions((current) => current.filter((session) => session.id !== sessionId));
+
+    if (savedCareerSessionId === sessionId) {
+      setSavedCareerSessionId("");
+      setCareerSessionSaveSuccess("");
+    }
+  } catch (err: any) {
+    setCareerSessionsError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "Career Lab session could not be deleted."
+          : "Career Lab oturumu silinemedi.")
+    );
+  } finally {
+    setCareerSessionLoadLoading(false);
+  }
+};
+
+const handleLoadCareerSession = async (sessionId: string) => {
+  try {
+    setCareerSessionLoadLoading(true);
+    setCareerSessionsError("");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData?.session?.access_token) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Please sign in before loading a Career Lab session."
+          : "Career Lab oturumu yüklemeden önce lütfen giriş yap."
+      );
+    }
+
+    const response = await fetch(`/api/career-sessions?id=${encodeURIComponent(sessionId)}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok || !data?.session) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "Career Lab session could not be loaded."
+            : "Career Lab oturumu yüklenemedi.")
+      );
+    }
+
+    const loaded = data.session;
+    const professionKey = loaded.profession_key as CareerProfessionKey;
+
+    setSelectedCareerProfession(professionKey);
+    setCareerDecisionAnswers(
+      loaded.decision_answers && typeof loaded.decision_answers === "object"
+        ? loaded.decision_answers
+        : {}
+    );
+    setSavedCareerSessionId(loaded.id || "");
+    setCareerAiNarrativeReport(loaded.ai_narrative_report || "");
+    setCareerAiNarrativeError("");
+    setCareerSessionSaveSuccess(
+      uiLanguage === "en"
+        ? "Career Lab session loaded."
+        : "Career Lab oturumu yüklendi."
+    );
+  } catch (err: any) {
+    setCareerSessionsError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "Career Lab session could not be loaded."
+          : "Career Lab oturumu yüklenemedi.")
+    );
+  } finally {
+    setCareerSessionLoadLoading(false);
+  }
+};
+
+const handleSaveCareerSession = async () => {
+  try {
+    setCareerSessionSaveLoading(true);
+    setCareerSessionSaveError("");
+    setCareerSessionSaveSuccess("");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData?.session?.access_token) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Please sign in before saving a Career Lab session."
+          : "Career Lab oturumunu kaydetmeden önce lütfen giriş yap."
+      );
+    }
+
+    const sessionSnapshot = JSON.parse(careerSessionSnapshotJson);
+    const cinematicBlueprint = JSON.parse(JSON.stringify(careerCinematicRecapBlueprint));
+
+    const response = await fetch("/api/career-sessions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+      },
+      body: JSON.stringify({
+        id: savedCareerSessionId || undefined,
+        child_id: selectedChild?.id || null,
+        profession_key: selectedCareerProfession,
+        profession_title:
+          selectedCareerProfessionConfig.title[uiLanguage] ??
+          selectedCareerProfessionConfig.title.tr,
+        mission_title:
+          selectedCareerMission.title[uiLanguage] ??
+          selectedCareerMission.title.tr,
+        language: uiLanguage === "en" ? "en" : "tr",
+        status: isCareerMissionComplete ? "completed" : "draft",
+        decision_answers: careerDecisionAnswers,
+        trait_profile: careerTraitProfile,
+        session_snapshot: sessionSnapshot,
+        final_report_markdown: careerFinalReportMarkdown,
+        ai_narrative_report: careerAiNarrativeReport || null,
+        cinematic_recap_blueprint: cinematicBlueprint,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "Career Lab session could not be saved."
+            : "Career Lab oturumu kaydedilemedi.")
+      );
+    }
+
+    setSavedCareerSessionId(data?.session?.id || "");
+    setCareerSessionSaveSuccess(
+      uiLanguage === "en"
+        ? "Career Lab session saved."
+        : "Career Lab oturumu kaydedildi."
+    );
+  } catch (err: any) {
+    setCareerSessionSaveError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "Career Lab session could not be saved."
+          : "Career Lab oturumu kaydedilemedi.")
+    );
+  } finally {
+    setCareerSessionSaveLoading(false);
+  }
+};
+
 const handleResetCareerMission = () => {
     setCareerDecisionAnswers({});
     setCareerAiNarrativeReport("");
     setCareerAiNarrativeError("");
     setCareerAiNarrativeMeta(null);
     setCareerAiNarrativeGenerationCount(0);
+    setCareerSessionSaveError("");
+    setCareerSessionSaveSuccess("");
+    setSavedCareerSessionId("");
     setError("");
   };
   const handleCopyCareerSnapshot = async () => {
@@ -6972,6 +7226,153 @@ const handleResetCareerMission = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-5 text-sm text-emerald-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">
+                {uiLanguage === "en" ? "Career Lab persistence" : "Career Lab kayıt"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {uiLanguage === "en" ? "Save Career Session" : "Career oturumunu kaydet"}
+              </h4>
+              <p className="mt-2 max-w-3xl leading-6 text-emerald-100/85">
+                {uiLanguage === "en"
+                  ? "Save the completed simulation, decision profile, local report, AI narrative report, and cinematic blueprint to Supabase."
+                  : "Tamamlanan simülasyonu, karar profilini, yerel raporu, AI anlatı raporunu ve sinematik planı Supabase'e kaydet."}
+              </p>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={careerSessionSaveLoading}
+                  onClick={handleSaveCareerSession}
+                  className="rounded-xl border border-emerald-300/30 bg-emerald-400/15 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {careerSessionSaveLoading
+                    ? (uiLanguage === "en" ? "Saving..." : "Kaydediliyor...")
+                    : savedCareerSessionId
+                      ? (uiLanguage === "en" ? "Update Career Session" : "Career oturumunu güncelle")
+                      : (uiLanguage === "en" ? "Save Career Session" : "Career oturumunu kaydet")}
+                </button>
+
+                {savedCareerSessionId ? (
+                  <span className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-emerald-100/80">
+                    ID: {savedCareerSessionId}
+                  </span>
+                ) : null}
+              </div>
+
+              {careerSessionSaveError ? (
+                <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+                  {careerSessionSaveError}
+                </div>
+              ) : null}
+
+              {careerSessionSaveSuccess ? (
+                <div className="mt-4 rounded-xl border border-emerald-300/20 bg-black/20 p-3 text-xs text-emerald-100">
+                  {careerSessionSaveSuccess}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-5 text-sm text-blue-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-blue-200">
+                {uiLanguage === "en" ? "Career Lab saved sessions" : "Kayıtlı Career oturumları"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {uiLanguage === "en" ? "Load Saved Career Sessions" : "Kayıtlı Career oturumlarını yükle"}
+              </h4>
+              <p className="mt-2 max-w-3xl leading-6 text-blue-100/85">
+                {uiLanguage === "en"
+                  ? "List and load your saved Career Lab simulations from Supabase."
+                  : "Supabase'e kaydedilmiş Career Lab simülasyonlarını listele ve yükle."}
+              </p>
+
+              <button
+                type="button"
+                disabled={careerSessionsLoading}
+                onClick={handleListCareerSessions}
+                className="mt-4 rounded-xl border border-blue-300/30 bg-blue-400/15 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {careerSessionsLoading
+                  ? (uiLanguage === "en" ? "Loading..." : "Yükleniyor...")
+                  : (uiLanguage === "en" ? "Refresh saved sessions" : "Kayıtlı oturumları yenile")}
+              </button>
+
+              {careerSessionsError ? (
+                <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+                  {careerSessionsError}
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid gap-3">
+                {careerSavedSessions.length > 0 ? (
+                  careerSavedSessions.map((session) => (
+                    <div key={session.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <h5 className="font-semibold text-white">
+                            {session.profession_title || session.profession_key}
+                          </h5>
+                          <p className="mt-1 text-xs text-blue-100/75">
+                            {session.mission_title} · {session.status} · {session.language?.toUpperCase?.()}
+                          </p>
+                          <p className="mt-1 text-xs text-blue-100/60">
+                            {session.updated_at ? new Date(session.updated_at).toLocaleString() : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={careerSessionLoadLoading}
+                          onClick={() => handleLoadCareerSession(session.id)}
+                          className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {uiLanguage === "en" ? "Load session" : "Oturumu yükle"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={careerSessionLoadLoading}
+                          onClick={() => handleDeleteCareerSession(session.id)}
+                          className="rounded-xl border border-red-300/20 bg-red-400/10 px-4 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {uiLanguage === "en" ? "Delete session" : "Oturumu sil"}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-blue-100/75">
+                    {uiLanguage === "en"
+                      ? "No saved Career Lab sessions listed yet."
+                      : "Henüz listelenmiş kayıtlı Career Lab oturumu yok."}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-violet-300/20 bg-violet-400/10 p-5 text-sm text-violet-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">
+                {uiLanguage === "en" ? "Persistence pilot QA" : "Persistence pilot QA"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {careerPersistenceQaChecklist.title}
+              </h4>
+              <p className="mt-2 max-w-3xl leading-6 text-violet-100/85">
+                {careerPersistenceQaChecklist.description}
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {careerPersistenceQaChecklist.items.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <h5 className="font-semibold text-white">
+                      {item.label}
+                    </h5>
+                    <p className="mt-2 text-xs leading-5 text-violet-100/80">
+                      {item.detail}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
 

@@ -1802,3 +1802,77 @@ export function getCareerAiNarrativeQaChecklist(language: "tr" | "en"): {
         ],
       };
 }
+
+
+export function getCareerPersistenceQaChecklist(language: "tr" | "en"): {
+  title: string;
+  description: string;
+  items: Array<{
+    label: string;
+    detail: string;
+  }>;
+} {
+  return language === "en"
+    ? {
+        title: "Career Lab Persistence QA",
+        description:
+          "Use this checklist before considering Save / Load / Delete ready for pilot usage.",
+        items: [
+          {
+            label: "Save",
+            detail: "Complete a mission, save the session, and confirm a session ID appears.",
+          },
+          {
+            label: "Update",
+            detail: "Change a decision or regenerate AI report, then save again and confirm the same session updates.",
+          },
+          {
+            label: "List",
+            detail: "Refresh saved sessions and confirm the latest session appears at the top.",
+          },
+          {
+            label: "Load",
+            detail: "Load a saved session and confirm profession, decisions, and AI narrative report return.",
+          },
+          {
+            label: "Delete",
+            detail: "Delete a saved session and confirm it disappears from the list.",
+          },
+          {
+            label: "Security",
+            detail: "Confirm a signed-out user cannot save or list sessions.",
+          },
+        ],
+      }
+    : {
+        title: "Career Lab Persistence QA",
+        description:
+          "Save / Load / Delete katmanını pilot kullanıma hazır kabul etmeden önce bu listeyi kullan.",
+        items: [
+          {
+            label: "Save",
+            detail: "Görevi tamamla, oturumu kaydet ve session ID göründüğünü doğrula.",
+          },
+          {
+            label: "Update",
+            detail: "Bir kararı değiştir veya AI raporu yeniden üret, tekrar kaydet ve aynı session’ın güncellendiğini doğrula.",
+          },
+          {
+            label: "List",
+            detail: "Kayıtlı oturumları yenile ve son oturumun en üstte göründüğünü doğrula.",
+          },
+          {
+            label: "Load",
+            detail: "Kayıtlı oturumu yükle; meslek, kararlar ve AI anlatı raporunun geri geldiğini doğrula.",
+          },
+          {
+            label: "Delete",
+            detail: "Kayıtlı oturumu sil ve listeden kaybolduğunu doğrula.",
+          },
+          {
+            label: "Security",
+            detail: "Giriş yapılmadan kayıt veya listeleme yapılamadığını doğrula.",
+          },
+        ],
+      };
+}
