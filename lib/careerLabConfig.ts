@@ -1764,3 +1764,41 @@ export function getCareerAiPayloadReadinessNotes(language: "tr" | "en"): {
         ],
       };
 }
+
+
+export function getCareerAiNarrativeQaChecklist(language: "tr" | "en"): {
+  title: string;
+  description: string;
+  items: Array<{
+    label: string;
+    detail: string;
+  }>;
+} {
+  return language === "en"
+    ? {
+        title: "AI Narrative QA Checklist",
+        description:
+          "Use this checklist before considering the AI narrative layer ready for pilot demo.",
+        items: [
+          { label: "AI response", detail: "Generate AI Narrative Report returns a readable Markdown report." },
+          { label: "Safety language", detail: "The report does not position the output as a career test or psychological assessment." },
+          { label: "Language consistency", detail: "Turkish UI produces Turkish report; English UI produces English report." },
+          { label: "Copy / download", detail: "Copy AI report and Download AI report work after generation." },
+          { label: "Regeneration guard", detail: "Regenerate asks for confirmation because it may create additional OpenAI cost." },
+          { label: "Isolation", detail: "Storyverse, Creator Lab, Supabase, Railway, and export-service remain untouched." },
+        ],
+      }
+    : {
+        title: "AI Narrative QA Kontrol Listesi",
+        description:
+          "AI anlatı katmanını pilot demo için hazır kabul etmeden önce bu listeyi kullan.",
+        items: [
+          { label: "AI response", detail: "AI Anlatı Raporu Üret aksiyonu okunabilir Markdown rapor döndürür." },
+          { label: "Güvenlik dili", detail: "Rapor, çıktıyı kariyer testi veya psikolojik değerlendirme gibi konumlandırmaz." },
+          { label: "Dil tutarlılığı", detail: "Türkçe UI Türkçe rapor; İngilizce UI İngilizce rapor üretir." },
+          { label: "Kopyalama / indirme", detail: "AI raporu kopyala ve AI raporu indir aksiyonları üretim sonrası çalışır." },
+          { label: "Yeniden üretim koruması", detail: "Yeniden üretim ek OpenAI maliyeti oluşturabileceği için onay ister." },
+          { label: "İzolasyon", detail: "Storyverse, Creator Lab, Supabase, Railway ve export-service etkilenmez." },
+        ],
+      };
+}

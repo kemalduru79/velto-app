@@ -7,7 +7,7 @@ import { getFlowByKey, type FlowZone } from "../../lib/flows";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
-import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPilotReadinessNotes, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
+import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiNarrativeQaChecklist, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPilotReadinessNotes, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -1644,6 +1644,13 @@ export default function CreatePage() {
 const [careerAiNarrativeReport, setCareerAiNarrativeReport] = useState("");
 const [careerAiNarrativeLoading, setCareerAiNarrativeLoading] = useState(false);
 const [careerAiNarrativeError, setCareerAiNarrativeError] = useState("");
+const [careerAiNarrativeMeta, setCareerAiNarrativeMeta] = useState<{
+  model?: string;
+  safetyNote?: string;
+  usage?: any;
+  generatedAt?: string;
+} | null>(null);
+const [careerAiNarrativeGenerationCount, setCareerAiNarrativeGenerationCount] = useState(0);
 
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -1966,6 +1973,7 @@ const [careerAiNarrativeError, setCareerAiNarrativeError] = useState("");
   const careerSimulationOutputPackage = getCareerSimulationOutputPackage(uiLanguage === "en" ? "en" : "tr");
   const careerPilotQaChecklist = getCareerPilotQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const careerAiPayloadReadinessNotes = getCareerAiPayloadReadinessNotes(uiLanguage === "en" ? "en" : "tr");
+  const careerAiNarrativeQaChecklist = getCareerAiNarrativeQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const handleCareerDecision = (decisionId: string, option: CareerDecisionOption) => {
     setCareerDecisionAnswers((current: Record<string, string>) => ({
       ...current,
@@ -1999,10 +2007,21 @@ const [careerAiNarrativeError, setCareerAiNarrativeError] = useState("");
   };
   
 const handleGenerateCareerAiNarrativeReport = async () => {
+  if (careerAiNarrativeGenerationCount > 0) {
+    const confirmed = window.confirm(
+      uiLanguage === "en"
+        ? "This will generate a new AI report and may create additional OpenAI cost. Continue?"
+        : "Bu işlem yeni bir AI raporu üretecek ve ek OpenAI maliyeti oluşturabilir. Devam edilsin mi?"
+    );
+
+    if (!confirmed) return;
+  }
+
   try {
     setCareerAiNarrativeLoading(true);
     setCareerAiNarrativeError("");
     setCareerAiNarrativeReport("");
+    setCareerAiNarrativeMeta(null);
 
     const response = await fetch("/api/career-narrative-report", {
       method: "POST",
@@ -2029,6 +2048,13 @@ const handleGenerateCareerAiNarrativeReport = async () => {
     }
 
     setCareerAiNarrativeReport(String(data?.narrativeReport || "").trim());
+    setCareerAiNarrativeMeta({
+      model: data?.model,
+      safetyNote: data?.safetyNote,
+      usage: data?.usage,
+      generatedAt: new Date().toISOString(),
+    });
+    setCareerAiNarrativeGenerationCount((current) => current + 1);
   } catch (err: any) {
     setCareerAiNarrativeError(
       err?.message ||
@@ -2041,8 +2067,42 @@ const handleGenerateCareerAiNarrativeReport = async () => {
   }
 };
 
+const handleCopyCareerAiNarrativeReport = async () => {
+  if (!careerAiNarrativeReport) return;
+
+  try {
+    await navigator.clipboard.writeText(careerAiNarrativeReport);
+    setError("");
+  } catch (e) {
+    setCareerAiNarrativeError(
+      uiLanguage === "en"
+        ? "Could not copy the AI narrative report."
+        : "AI anlatı raporu kopyalanamadı."
+    );
+  }
+};
+
+const handleDownloadCareerAiNarrativeReport = () => {
+  if (!careerAiNarrativeReport) return;
+
+  const blob = new Blob([careerAiNarrativeReport], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeProfession = selectedCareerProfession.replace(/[^a-z0-9_-]/gi, "-");
+  anchor.href = url;
+  anchor.download = `velto-career-lab-${safeProfession}-ai-narrative-report.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
 const handleResetCareerMission = () => {
     setCareerDecisionAnswers({});
+    setCareerAiNarrativeReport("");
+    setCareerAiNarrativeError("");
+    setCareerAiNarrativeMeta(null);
+    setCareerAiNarrativeGenerationCount(0);
     setError("");
   };
   const handleCopyCareerSnapshot = async () => {
@@ -7269,10 +7329,25 @@ const handleResetCareerMission = () => {
     >
       {careerAiNarrativeLoading
         ? (uiLanguage === "en" ? "Generating..." : "Üretiliyor...")
-        : (uiLanguage === "en"
-            ? "Generate AI Narrative Report"
-            : "AI Anlatı Raporu Üret")}
+        : careerAiNarrativeReport
+          ? (uiLanguage === "en"
+              ? "Regenerate AI Narrative Report"
+              : "AI Anlatı Raporunu Yeniden Üret")
+          : (uiLanguage === "en"
+              ? "Generate AI Narrative Report"
+              : "AI Anlatı Raporu Üret")}
     </button>
+
+    <div className="mt-3 rounded-xl border border-cyan-300/20 bg-black/20 px-3 py-2 text-xs leading-5 text-cyan-100/75">
+      {uiLanguage === "en"
+        ? "This action calls OpenAI and may create token cost. Use regeneration only when the first output is not suitable."
+        : "Bu aksiyon OpenAI çağrısı yapar ve token maliyeti oluşturabilir. Yeniden üretimi yalnızca ilk çıktı uygun değilse kullan."}
+      {careerAiNarrativeGenerationCount > 0 ? (
+        <span className="ml-2 font-semibold text-white">
+          {uiLanguage === "en" ? "AI generation count" : "Üretim sayısı"}: {careerAiNarrativeGenerationCount}
+        </span>
+      ) : null}
+    </div>
 
     {careerAiNarrativeError ? (
       <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
@@ -7282,6 +7357,48 @@ const handleResetCareerMission = () => {
 
     {careerAiNarrativeReport ? (
       <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+        <div className="mb-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleCopyCareerAiNarrativeReport}
+            className="rounded-xl border border-cyan-300/30 bg-cyan-400/15 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25"
+          >
+            {uiLanguage === "en" ? "Copy AI report" : "AI raporu kopyala"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadCareerAiNarrativeReport}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+          >
+            {uiLanguage === "en" ? "Download AI report" : "AI raporu indir"}
+          </button>
+        </div>
+        {careerAiNarrativeMeta ? (
+          <div className="mb-3 grid gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-cyan-100/80 md:grid-cols-3">
+            <div>
+              <span className="font-semibold text-white">{uiLanguage === "en" ? "Model" : "Model"}: </span>
+              {careerAiNarrativeMeta.model || "-"}
+            </div>
+            <div>
+              <span className="font-semibold text-white">{uiLanguage === "en" ? "Generated" : "Üretim"}: </span>
+              {careerAiNarrativeMeta.generatedAt
+                ? new Date(careerAiNarrativeMeta.generatedAt).toLocaleString()
+                : "-"}
+            </div>
+            <div>
+              <span className="font-semibold text-white">{uiLanguage === "en" ? "Tokens" : "Token"}: </span>
+              {careerAiNarrativeMeta.usage?.total_tokens ??
+                careerAiNarrativeMeta.usage?.totalTokens ??
+                "-"}
+            </div>
+            {careerAiNarrativeMeta.safetyNote ? (
+              <div className="md:col-span-3 rounded-lg border border-cyan-300/20 bg-black/20 px-3 py-2">
+                {careerAiNarrativeMeta.safetyNote}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <pre className="overflow-auto whitespace-pre-wrap text-xs leading-6 text-cyan-100/85">
           {careerAiNarrativeReport}
         </pre>
@@ -7340,6 +7457,31 @@ const handleResetCareerMission = () => {
                     ))}
                   </ul>
                 </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-200">
+                {uiLanguage === "en" ? "AI narrative pilot QA" : "AI anlatı pilot QA"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {careerAiNarrativeQaChecklist.title}
+              </h4>
+              <p className="mt-2 max-w-3xl leading-6 text-sky-100/85">
+                {careerAiNarrativeQaChecklist.description}
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {careerAiNarrativeQaChecklist.items.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <h5 className="font-semibold text-white">
+                      {item.label}
+                    </h5>
+                    <p className="mt-2 text-xs leading-5 text-sky-100/80">
+                      {item.detail}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
 

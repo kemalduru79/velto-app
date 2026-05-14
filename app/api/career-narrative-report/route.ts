@@ -40,6 +40,65 @@ function safeJsonStringify(value: unknown) {
   }
 }
 
+function trimTextForModel(value: string, maxChars = 12000) {
+  if (!value || value.length <= maxChars) return value;
+
+  return `${value.slice(0, maxChars)}
+
+[TRIMMED_FOR_COST_AND_TIMEOUT_SAFETY]`;
+}
+
+function normalizeMarkdownReport(value: string, language: SupportedLanguage) {
+  const text = value.trim();
+
+  if (!text) return "";
+
+  const requiredMarkers =
+    language === "en"
+      ? ["Mission", "Simulation", "Strength", "Parent"]
+      : ["Görev", "Simülasyon", "Güçlü", "Ebeveyn"];
+
+  const hasAnyMarker = requiredMarkers.some((marker) =>
+    text.toLowerCase().includes(marker.toLowerCase())
+  );
+
+  if (hasAnyMarker) {
+    return text;
+  }
+
+  return language === "en"
+    ? [
+        "## AI Career Lab Narrative Report",
+        "",
+        text,
+        "",
+        "_Note: This is not a career test or psychological assessment. It only reflects choices made inside a simulation._",
+      ].join("\n")
+    : [
+        "## AI Career Lab Anlatı Raporu",
+        "",
+        text,
+        "",
+        "_Not: Bu bir kariyer testi veya psikolojik değerlendirme değildir. Yalnızca simülasyon içinde yapılan seçimleri yansıtır._",
+      ].join("\n");
+}
+
+function getMaxOutputTokens() {
+  const raw = Number(process.env.OPENAI_CAREER_NARRATIVE_MAX_OUTPUT_TOKENS || 900);
+
+  if (!Number.isFinite(raw)) return 900;
+
+  return Math.min(Math.max(Math.floor(raw), 500), 1400);
+}
+
+function getPromptMaxChars() {
+  const raw = Number(process.env.OPENAI_CAREER_NARRATIVE_MAX_PROMPT_CHARS || 12000);
+
+  if (!Number.isFinite(raw)) return 12000;
+
+  return Math.min(Math.max(Math.floor(raw), 5000), 20000);
+}
+
 function extractOutputText(response: any) {
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim();
@@ -145,7 +204,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as NarrativeReportRequest;
     const language = normalizeLanguage(body.language);
-    const userPrompt = buildFallbackPrompt(body, language);
+    const userPrompt = trimTextForModel(buildFallbackPrompt(body, language), getPromptMaxChars());
     const model =
       process.env.OPENAI_CAREER_NARRATIVE_MODEL ||
       process.env.OPENAI_TEXT_MODEL ||
@@ -178,10 +237,10 @@ export async function POST(req: Request) {
           content: `${userPrompt}\n\n${buildResponseInstruction(language)}`,
         },
       ],
-      max_output_tokens: 1200,
+      max_output_tokens: getMaxOutputTokens(),
     });
 
-    const narrativeReport = extractOutputText(response);
+    const narrativeReport = normalizeMarkdownReport(extractOutputText(response), language);
 
     if (!narrativeReport) {
       return NextResponse.json(
@@ -202,6 +261,11 @@ export async function POST(req: Request) {
       language,
       narrativeReport,
       usage: response.usage ?? null,
+      stabilization: {
+        promptMaxChars: getPromptMaxChars(),
+        maxOutputTokens: getMaxOutputTokens(),
+        normalizedMarkdown: true,
+      },
       safetyNote:
         language === "en"
           ? "This is not a career test or psychological assessment. It only reflects choices made inside a simulation."
