@@ -1659,6 +1659,9 @@ const [careerSavedSessions, setCareerSavedSessions] = useState<any[]>([]);
 const [careerSessionsLoading, setCareerSessionsLoading] = useState(false);
 const [careerSessionsError, setCareerSessionsError] = useState("");
 const [careerSessionLoadLoading, setCareerSessionLoadLoading] = useState(false);
+const [careerMentorReflections, setCareerMentorReflections] = useState<Record<string, string>>({});
+const [careerMentorReflectionLoadingId, setCareerMentorReflectionLoadingId] = useState("");
+const [careerMentorReflectionError, setCareerMentorReflectionError] = useState("");
 
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -2106,6 +2109,59 @@ const handleDownloadCareerAiNarrativeReport = () => {
   URL.revokeObjectURL(url);
 };
 
+const handleGenerateCareerMentorReflection = async (decision: any, selectedOption: any) => {
+  try {
+    setCareerMentorReflectionLoadingId(decision.id);
+    setCareerMentorReflectionError("");
+
+    const response = await fetch("/api/career-mentor-reflection", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        language: uiLanguage === "en" ? "en" : "tr",
+        professionTitle:
+          selectedCareerProfessionConfig.title[uiLanguage] ??
+          selectedCareerProfessionConfig.title.tr,
+        missionTitle:
+          selectedCareerMission.title[uiLanguage] ??
+          selectedCareerMission.title.tr,
+        decisionTitle: decision.title[uiLanguage] ?? decision.title.tr,
+        decisionScenario: decision.scenario[uiLanguage] ?? decision.scenario.tr,
+        selectedOption: selectedOption.label[uiLanguage] ?? selectedOption.label.tr,
+        selectedEffect: selectedOption.effect[uiLanguage] ?? selectedOption.effect.tr,
+        traitProfile: careerTraitProfile,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "AI mentor reflection could not be generated."
+            : "AI mentor reflection üretilemedi.")
+      );
+    }
+
+    setCareerMentorReflections((current) => ({
+      ...current,
+      [decision.id]: String(data?.reflection || "").trim(),
+    }));
+  } catch (err: any) {
+    setCareerMentorReflectionError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "AI mentor reflection could not be generated."
+          : "AI mentor reflection üretilemedi.")
+    );
+  } finally {
+    setCareerMentorReflectionLoadingId("");
+  }
+};
+
 const handleListCareerSessions = async () => {
   try {
     setCareerSessionsLoading(true);
@@ -2357,6 +2413,8 @@ const handleResetCareerMission = () => {
     setCareerSessionSaveError("");
     setCareerSessionSaveSuccess("");
     setSavedCareerSessionId("");
+    setCareerMentorReflections({});
+    setCareerMentorReflectionError("");
     setError("");
   };
   const handleCopyCareerSnapshot = async () => {
@@ -7133,25 +7191,55 @@ const handleResetCareerMission = () => {
                             const isSelected = selectedOptionId === option.id;
 
                             return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => handleCareerDecision(decision.id, option)}
-                                className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
-                                  isSelected
-                                    ? "border-emerald-300/60 bg-emerald-400/15 text-white"
-                                    : "border-white/10 bg-black/20 text-slate-200 hover:border-violet-300/40 hover:bg-violet-400/10"
-                                }`}
-                              >
-                                <span className="font-semibold">
-                                  {option.label[uiLanguage] ?? option.label.tr}
-                                </span>
-                                {isSelected && (
-                                  <span className="mt-2 block text-xs leading-5 text-emerald-100/90">
-                                    {option.effect[uiLanguage] ?? option.effect.tr}
+                              <div key={option.id} className="grid gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCareerDecision(decision.id, option)}
+                                  className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                                    isSelected
+                                      ? "border-emerald-300/60 bg-emerald-400/15 text-white"
+                                      : "border-white/10 bg-black/20 text-slate-200 hover:border-violet-300/40 hover:bg-violet-400/10"
+                                  }`}
+                                >
+                                  <span className="font-semibold">
+                                    {option.label[uiLanguage] ?? option.label.tr}
                                   </span>
+                                  {isSelected && (
+                                    <span className="mt-2 block text-xs leading-5 text-emerald-100/90">
+                                      {option.effect[uiLanguage] ?? option.effect.tr}
+                                    </span>
+                                  )}
+                                </button>
+
+                                {isSelected && (
+                                  <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/10 p-3">
+                                    <button
+                                      type="button"
+                                      disabled={careerMentorReflectionLoadingId === decision.id}
+                                      onClick={() => handleGenerateCareerMentorReflection(decision, option)}
+                                      className="rounded-lg border border-cyan-300/30 bg-cyan-400/15 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {careerMentorReflectionLoadingId === decision.id
+                                        ? (uiLanguage === "en" ? "Thinking..." : "Düşünüyor...")
+                                        : careerMentorReflections[decision.id]
+                                          ? (uiLanguage === "en" ? "Regenerate AI Mentor Reflection" : "AI Mentor Reflection Yenile")
+                                          : (uiLanguage === "en" ? "Ask AI Mentor" : "AI Mentora Sor")}
+                                    </button>
+
+                                    {careerMentorReflections[decision.id] ? (
+                                      <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-cyan-100/85">
+                                        {careerMentorReflections[decision.id]}
+                                      </pre>
+                                    ) : (
+                                      <p className="mt-2 text-xs leading-5 text-cyan-100/70">
+                                        {uiLanguage === "en"
+                                          ? "Use this to go beyond multiple choice and reflect on why the decision matters."
+                                          : "Bu alan, çoktan seçmeli yapının ötesine geçip kararın neden önemli olduğunu düşündürmek için kullanılır."}
+                                      </p>
+                                    )}
+                                  </div>
                                 )}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
