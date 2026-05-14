@@ -7,6 +7,7 @@ import { getFlowByKey, type FlowZone } from "../../lib/flows";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
+import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPilotReadinessNotes, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -1560,6 +1561,7 @@ export default function CreatePage() {
     (selectedFlow as any)?.key || (selectedFlow as any)?.id || selectedFlowKey || "storyverse";
   const isStoryverseFlow = activeFlowKey === "storyverse";
   const isCreatorLabFlow = activeFlowKey === "creator_lab";
+  const isCareerLabFlow = activeFlowKey === "career_lab";
   const [authLoading, setAuthLoading] = useState(true);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChildId, setSelectedChildId] = useState("");
@@ -1572,6 +1574,8 @@ export default function CreatePage() {
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
   const { language: uiLanguage } = useLanguage();
+  const careerLabCopy = CAREER_LAB_COPY[uiLanguage === "en" ? "en" : "tr"];
+  const [careerDecisionAnswers, setCareerDecisionAnswers] = useState<Record<string, string>>({});
   const [language, setLanguage] = useState<ContentLanguage>(
     uiLanguage === "en" ? "en" : "tr"
   );
@@ -1624,6 +1628,8 @@ export default function CreatePage() {
     useState<SceneOptimizationSummary | null>(null);
   const [sceneOptimizationLoading, setSceneOptimizationLoading] = useState(false);
   const [sceneOptimizationAILoading, setSceneOptimizationAILoading] = useState(false);
+  const [selectedCareerProfession, setSelectedCareerProfession] =
+    useState<CareerProfessionKey>("astronaut");
 
   const [storySetup, setStorySetup] = useState<StorySetup | null>(null);
 
@@ -1635,6 +1641,10 @@ export default function CreatePage() {
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
   const [error, setError] = useState("");
+const [careerAiNarrativeReport, setCareerAiNarrativeReport] = useState("");
+const [careerAiNarrativeLoading, setCareerAiNarrativeLoading] = useState(false);
+const [careerAiNarrativeError, setCareerAiNarrativeError] = useState("");
+
   const [saveMessage, setSaveMessage] = useState("");
 
   const [continuePrompt, setContinuePrompt] = useState("");
@@ -1913,6 +1923,173 @@ export default function CreatePage() {
   };
 
   const selectedChild = children.find((child) => child.id === selectedChildId) || null;
+  const selectedCareerProfessionConfig = getCareerProfession(selectedCareerProfession);
+  const selectedCareerMission = getCareerMission(selectedCareerProfession);
+  const careerTraitProfile = calculateCareerTraitProfile(selectedCareerMission, careerDecisionAnswers);
+  const careerTraitSummary = getCareerTraitSummary(careerTraitProfile, uiLanguage === "en" ? "en" : "tr");
+  const answeredCareerDecisionCount = Object.keys(careerDecisionAnswers).length;
+  const isCareerMissionComplete = answeredCareerDecisionCount >= selectedCareerMission.decisionPoints.length;
+  const careerAdaptiveFeedback = getCareerAdaptiveFeedback(careerTraitProfile, answeredCareerDecisionCount, selectedCareerMission.decisionPoints.length, uiLanguage === "en" ? "en" : "tr");
+  const careerExperienceReportPreview = getCareerExperienceReportPreview(selectedCareerProfessionConfig, selectedCareerMission, careerTraitProfile, careerDecisionAnswers, uiLanguage === "en" ? "en" : "tr");
+  const careerFinalReport = getCareerFinalReport(selectedCareerProfessionConfig, selectedCareerMission, careerTraitProfile, careerDecisionAnswers, uiLanguage === "en" ? "en" : "tr");
+  const careerFinalReportMarkdown = formatCareerFinalReportMarkdown(careerFinalReport, uiLanguage === "en" ? "en" : "tr");
+  const careerSessionSnapshotJson = formatCareerSessionSnapshotJson({
+    professionKey: selectedCareerProfession,
+    profession: selectedCareerProfessionConfig,
+    mission: selectedCareerMission,
+    profile: careerTraitProfile,
+    answers: careerDecisionAnswers,
+    language: uiLanguage === "en" ? "en" : "tr",
+  });
+  const careerCinematicRecapBlueprint = getCareerCinematicRecapBlueprint(selectedCareerProfessionConfig, selectedCareerMission, careerTraitProfile, careerDecisionAnswers, uiLanguage === "en" ? "en" : "tr");
+  const careerNarrativeReportPrompt = formatCareerNarrativeReportPrompt({
+    profession: selectedCareerProfessionConfig,
+    mission: selectedCareerMission,
+    report: careerFinalReport,
+    recapBlueprint: careerCinematicRecapBlueprint,
+    snapshotJson: careerSessionSnapshotJson,
+    language: uiLanguage === "en" ? "en" : "tr",
+  });
+  const careerNarrativeReportPayload = formatCareerNarrativeReportPayload({
+    professionKey: selectedCareerProfession,
+    profession: selectedCareerProfessionConfig,
+    mission: selectedCareerMission,
+    profile: careerTraitProfile,
+    answers: careerDecisionAnswers,
+    report: careerFinalReport,
+    recapBlueprint: careerCinematicRecapBlueprint,
+    snapshotJson: careerSessionSnapshotJson,
+    prompt: careerNarrativeReportPrompt,
+    language: uiLanguage === "en" ? "en" : "tr",
+  });
+  const careerPilotReadinessNotes = getCareerPilotReadinessNotes(uiLanguage === "en" ? "en" : "tr");
+  const careerSimulationOutputPackage = getCareerSimulationOutputPackage(uiLanguage === "en" ? "en" : "tr");
+  const careerPilotQaChecklist = getCareerPilotQaChecklist(uiLanguage === "en" ? "en" : "tr");
+  const careerAiPayloadReadinessNotes = getCareerAiPayloadReadinessNotes(uiLanguage === "en" ? "en" : "tr");
+  const handleCareerDecision = (decisionId: string, option: CareerDecisionOption) => {
+    setCareerDecisionAnswers((current: Record<string, string>) => ({
+      ...current,
+      [decisionId]: option.id,
+    }));
+  };
+  const handleCopyCareerReport = async () => {
+    if (!careerFinalReportMarkdown) return;
+
+    try {
+      await navigator.clipboard.writeText(careerFinalReportMarkdown);
+      setError("");
+    } catch (e) {
+      setError(uiLanguage === "en" ? "Could not copy the report." : "Rapor kopyalanamadı.");
+    }
+  };
+
+  const handleDownloadCareerReport = () => {
+    if (!careerFinalReportMarkdown) return;
+
+    const blob = new Blob([careerFinalReportMarkdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeProfession = selectedCareerProfession.replace(/[^a-z0-9_-]/gi, "-");
+    anchor.href = url;
+    anchor.download = `velto-career-lab-${safeProfession}-report.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+  
+const handleGenerateCareerAiNarrativeReport = async () => {
+  try {
+    setCareerAiNarrativeLoading(true);
+    setCareerAiNarrativeError("");
+    setCareerAiNarrativeReport("");
+
+    const response = await fetch("/api/career-narrative-report", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        language: uiLanguage === "en" ? "en" : "tr",
+        prompt: careerNarrativeReportPrompt,
+        payload: JSON.parse(careerNarrativeReportPayload),
+        sessionSnapshot: JSON.parse(careerSessionSnapshotJson),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "AI narrative generation failed."
+            : "AI anlatı üretimi başarısız oldu.")
+      );
+    }
+
+    setCareerAiNarrativeReport(String(data?.narrativeReport || "").trim());
+  } catch (err: any) {
+    setCareerAiNarrativeError(
+      err?.message ||
+        (uiLanguage === "en"
+          ? "AI narrative generation failed."
+          : "AI anlatı üretimi başarısız oldu.")
+    );
+  } finally {
+    setCareerAiNarrativeLoading(false);
+  }
+};
+
+const handleResetCareerMission = () => {
+    setCareerDecisionAnswers({});
+    setError("");
+  };
+  const handleCopyCareerSnapshot = async () => {
+    if (!careerSessionSnapshotJson) return;
+
+    try {
+      await navigator.clipboard.writeText(careerSessionSnapshotJson);
+      setError("");
+    } catch (e) {
+      setError(uiLanguage === "en" ? "Could not copy the session snapshot." : "Oturum çıktısı kopyalanamadı.");
+    }
+  };
+
+  const handleDownloadCareerSnapshot = () => {
+    if (!careerSessionSnapshotJson) return;
+
+    const blob = new Blob([careerSessionSnapshotJson], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const safeProfession = selectedCareerProfession.replace(/[^a-z0-9_-]/gi, "-");
+    anchor.href = url;
+    anchor.download = `velto-career-lab-${safeProfession}-session.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+  const handleCopyCareerNarrativePrompt = async () => {
+    if (!careerNarrativeReportPrompt) return;
+
+    try {
+      await navigator.clipboard.writeText(careerNarrativeReportPrompt);
+      setError("");
+    } catch (e) {
+      setError(uiLanguage === "en" ? "Could not copy the AI narrative prompt." : "AI anlatı prompt'u kopyalanamadı.");
+    }
+  };
+  const handleCopyCareerNarrativePayload = async () => {
+    if (!careerNarrativeReportPayload) return;
+
+    try {
+      await navigator.clipboard.writeText(careerNarrativeReportPayload);
+      setError("");
+    } catch (e) {
+      setError(uiLanguage === "en" ? "Could not copy the AI payload." : "AI payload kopyalanamadı.");
+    }
+  };
   const activeFlowType = activeFlowKey;
   const filteredProjects = projects.filter(
     (project) => (project.flow_type || "storyverse") === activeFlowType
@@ -1946,9 +2123,17 @@ export default function CreatePage() {
   };
 
   const getProjectFlowLabel = (project: any) => {
-    return (project?.flow_type || "storyverse") === "creator_lab"
-      ? "Creator Lab"
-      : "Storyverse";
+    const projectFlowType = project?.flow_type || "storyverse";
+
+    if (projectFlowType === "creator_lab") {
+      return "Creator Lab";
+    }
+
+    if (projectFlowType === "career_lab") {
+      return "Career Lab";
+    }
+
+    return "Storyverse";
   };
 
   const formatYoutubeNumber = (value?: number) => {
@@ -6510,6 +6695,684 @@ export default function CreatePage() {
             </p>
           )}
         </div>
+
+        {isCareerLabFlow && (
+          <section className="rounded-[32px] border border-violet-300/20 bg-violet-500/10 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:p-7">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-xs uppercase tracking-[0.24em] text-violet-200">
+                  {careerLabCopy.badge}
+                </p>
+                <h2 className="mt-3 text-2xl font-semibold text-white md:text-3xl">
+                  {careerLabCopy.title}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-violet-100/90 md:text-base">
+                  {careerLabCopy.description}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-violet-100 lg:w-80">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+                  {careerLabCopy.decisionModelTitle}
+                </p>
+                <p className="mt-2 leading-6 text-violet-100/80">
+                  {careerLabCopy.decisionModelDescription}
+                </p>
+                <div className="mt-4 grid gap-2 text-xs">
+                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.microDecisionLabel}</span>
+                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.majorDecisionLabel}</span>
+                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.adaptiveReactionLabel}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-7">
+              <h3 className="text-lg font-semibold text-white">{careerLabCopy.selectionTitle}</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {CAREER_LAB_PROFESSIONS.map((profession) => {
+                  const isSelected = profession.key === selectedCareerProfession;
+
+                  return (
+                    <button
+                      key={profession.key}
+                      type="button"
+                      onClick={() => { setSelectedCareerProfession(profession.key); setCareerDecisionAnswers({}); }}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        isSelected
+                          ? "border-violet-300/60 bg-violet-400/20 shadow-[0_0_0_1px_rgba(196,181,253,0.25)]"
+                          : "border-white/10 bg-black/20 hover:border-violet-300/30 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <div className="text-2xl">{profession.icon}</div>
+                      <p className="mt-3 text-sm font-semibold text-white">
+                        {profession.title[uiLanguage] ?? profession.title.tr}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-300">
+                        {profession.subtitle[uiLanguage] ?? profession.subtitle.tr}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-7 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+                  {careerLabCopy.selectedProfession}
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  {selectedCareerProfessionConfig.icon} {selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-violet-100/80">
+                  {selectedCareerProfessionConfig.mission[uiLanguage] ?? selectedCareerProfessionConfig.mission.tr}
+                </p>
+                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-violet-100">
+                  <span className="font-semibold">{careerLabCopy.mentorTone}: </span>
+                  {selectedCareerProfessionConfig.mentorTone[uiLanguage] ?? selectedCareerProfessionConfig.mentorTone.tr}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">
+                    {uiLanguage === "en" ? "Mission briefing" : "Görev brifingi"}
+                  </p>
+                  <h4 className="mt-2 font-semibold text-white">
+                    {selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
+                  </h4>
+                  <p className="mt-2 leading-6">
+                    {selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-100/80">
+                    <span className="font-semibold">{uiLanguage === "en" ? "Objective" : "Hedef"}: </span>
+                    {selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+                  {uiLanguage === "en" ? "Guided mission decisions" : "Yönlendirmeli görev kararları"}
+                </p>
+                <div className="mt-4 space-y-4">
+                  {selectedCareerMission.decisionPoints.map((decision, decisionIndex) => {
+                    const selectedOptionId = careerDecisionAnswers[decision.id];
+
+                    return (
+                      <div key={decision.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-100">
+                            {decision.type === "major" ? careerLabCopy.majorDecisionLabel : careerLabCopy.microDecisionLabel}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {uiLanguage === "en" ? "Decision" : "Karar"} {decisionIndex + 1}
+                          </span>
+                        </div>
+                        <h4 className="mt-3 text-base font-semibold text-white">
+                          {decision.title[uiLanguage] ?? decision.title.tr}
+                        </h4>
+                        <p className="mt-2 text-sm leading-6 text-slate-300">
+                          {decision.scenario[uiLanguage] ?? decision.scenario.tr}
+                        </p>
+
+                        <div className="mt-3 grid gap-2">
+                          {decision.options.map((option) => {
+                            const isSelected = selectedOptionId === option.id;
+
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => handleCareerDecision(decision.id, option)}
+                                className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                                  isSelected
+                                    ? "border-emerald-300/60 bg-emerald-400/15 text-white"
+                                    : "border-white/10 bg-black/20 text-slate-200 hover:border-violet-300/40 hover:bg-violet-400/10"
+                                }`}
+                              >
+                                <span className="font-semibold">
+                                  {option.label[uiLanguage] ?? option.label.tr}
+                                </span>
+                                {isSelected && (
+                                  <span className="mt-2 block text-xs leading-5 text-emerald-100/90">
+                                    {option.effect[uiLanguage] ?? option.effect.tr}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="xl:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-amber-200">
+                      {uiLanguage === "en" ? "Decision profile preview" : "Karar profili önizlemesi"}
+                    </p>
+                    <h4 className="mt-2 text-lg font-semibold text-white">
+                      {careerTraitSummary.title}
+                    </h4>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-100/85">
+                      {careerTraitSummary.description}
+                    </p>
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-amber-100">
+                      <p className="text-xs uppercase tracking-[0.2em] text-amber-200">
+                        {uiLanguage === "en" ? "AI mentor feedback" : "AI mentor geri bildirimi"}
+                      </p>
+                      <h5 className="mt-2 font-semibold text-white">
+                        {careerAdaptiveFeedback.title}
+                      </h5>
+                      <p className="mt-2 leading-6 text-amber-100/85">
+                        {careerAdaptiveFeedback.message}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-amber-100/70">
+                        {careerAdaptiveFeedback.nextTip}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-amber-100">
+                    <span className="font-semibold">{answeredCareerDecisionCount}</span>
+                    <span className="text-amber-100/75"> / {selectedCareerMission.decisionPoints.length} </span>
+                    <span>{uiLanguage === "en" ? "decisions answered" : "karar tamamlandı"}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {(Object.entries(careerTraitProfile) as Array<[keyof typeof careerTraitProfile, number]>).map(([trait, value]) => {
+                    const displayValue = Math.min(value, 5);
+                    const percentage = Math.min(displayValue * 20, 100);
+
+                    return (
+                      <div key={trait} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className="flex items-center justify-between text-xs text-amber-100">
+                          <span>{CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}</span>
+                          <span>{value}</span>
+                        </div>
+                        <div className="mt-2 h-2 rounded-full bg-white/10">
+                          <div
+                            className="h-2 rounded-full bg-amber-300"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {careerTraitSummary.strongestTraits.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-amber-100">
+                    {(careerTraitSummary.strongestTraits as Array<keyof typeof careerTraitProfile>).map((trait) => (
+                      <span key={trait} className="rounded-full border border-amber-300/30 bg-black/20 px-3 py-1">
+                        {CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-200">
+                {uiLanguage === "en" ? "Experience report preview" : "Deneyim raporu önizlemesi"}
+              </p>
+              <div className="mt-3 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                <div>
+                  <h4 className="text-lg font-semibold text-white">
+                    {careerExperienceReportPreview.title}
+                  </h4>
+                  <p className="mt-1 text-sky-100/80">
+                    {careerExperienceReportPreview.subtitle}
+                  </p>
+                  <p className="mt-3 leading-6 text-sky-100/85">
+                    {careerExperienceReportPreview.summary}
+                  </p>
+                  <p className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-sky-100/75">
+                    {careerExperienceReportPreview.disclaimer}
+                  </p>
+                </div>
+
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
+                      {uiLanguage === "en" ? "Decision highlights" : "Karar özetleri"}
+                    </p>
+                    <ul className="mt-2 space-y-2 text-xs leading-5 text-sky-100/85">
+                      {careerExperienceReportPreview.decisionHighlights.length > 0 ? (
+                        careerExperienceReportPreview.decisionHighlights.map((item) => (
+                          <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                            {item}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                          {uiLanguage === "en" ? "No decision selected yet." : "Henüz karar seçilmedi."}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
+                        {uiLanguage === "en" ? "Strength signals" : "Güçlü sinyaller"}
+                      </p>
+                      <ul className="mt-2 space-y-2 text-xs leading-5 text-sky-100/85">
+                        {careerExperienceReportPreview.strengths.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
+                        {uiLanguage === "en" ? "Next steps" : "Sonraki adımlar"}
+                      </p>
+                      <ul className="mt-2 space-y-2 text-xs leading-5 text-sky-100/85">
+                        {careerExperienceReportPreview.nextSteps.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className={`mt-6 rounded-2xl border p-5 text-sm ${
+              isCareerMissionComplete
+                ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                : "border-slate-300/20 bg-slate-400/10 text-slate-100"
+            }`}>
+              <p className={`text-xs uppercase tracking-[0.22em] ${
+                isCareerMissionComplete ? "text-emerald-200" : "text-slate-300"
+              }`}>
+                {uiLanguage === "en" ? "Mission completion status" : "Görev tamamlama durumu"}
+              </p>
+              <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h4 className="text-lg font-semibold text-white">
+                    {isCareerMissionComplete
+                      ? (uiLanguage === "en" ? "Mission completed" : "Görev tamamlandı")
+                      : (uiLanguage === "en" ? "Mission in progress" : "Görev devam ediyor")}
+                  </h4>
+                  <p className="mt-2 max-w-3xl leading-6 opacity-90">
+                    {isCareerMissionComplete
+                      ? (uiLanguage === "en"
+                          ? "All guided decisions are complete. The experience report preview is ready to be turned into a final report in the next sprint."
+                          : "Tüm yönlendirmeli kararlar tamamlandı. Deneyim raporu önizlemesi bir sonraki sprintte final rapora dönüştürülmeye hazır.")
+                      : (uiLanguage === "en"
+                          ? "Complete all guided decisions to lock the mission state and prepare the final report."
+                          : "Görev durumunu kilitlemek ve final rapora hazırlamak için tüm yönlendirmeli kararları tamamla.")}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                  <p className="text-xs opacity-75">
+                    {uiLanguage === "en" ? "Progress" : "İlerleme"}
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-white">
+                    {answeredCareerDecisionCount}/{selectedCareerMission.decisionPoints.length}
+                  </p>
+                </div>
+              </div>
+
+              {isCareerMissionComplete && (
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] opacity-75">
+                      {uiLanguage === "en" ? "Ready output" : "Hazır çıktı"}
+                    </p>
+                    <p className="mt-2 text-white">
+                      {uiLanguage === "en" ? "Experience Report" : "Deneyim Raporu"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] opacity-75">
+                      {uiLanguage === "en" ? "Next build" : "Sonraki geliştirme"}
+                    </p>
+                    <p className="mt-2 text-white">
+                      {uiLanguage === "en" ? "Final report generation" : "Final rapor üretimi"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] opacity-75">
+                      {uiLanguage === "en" ? "Later stage" : "Sonraki aşama"}
+                    </p>
+                    <p className="mt-2 text-white">
+                      {uiLanguage === "en" ? "Cinematic recap" : "Sinematik özet"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {isCareerMissionComplete && (
+              <div className="mt-6 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 p-5 text-sm text-fuchsia-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">
+                  {uiLanguage === "en" ? "Final experience report" : "Final deneyim raporu"}
+                </p>
+                <h4 className="mt-3 text-lg font-semibold text-white">
+                  {careerFinalReport.title}
+                </h4>
+                <div className="mt-4 grid gap-3">
+                  {careerFinalReport.sections.map((section) => (
+                    <div key={section.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                      <h5 className="font-semibold text-white">
+                        {section.title}
+                      </h5>
+                      <p className="mt-2 leading-6 text-fuchsia-100/85">
+                        {section.body}
+                      </p>
+                      {section.items && (
+                        <ul className="mt-3 space-y-2 text-xs leading-5 text-fuchsia-100/85">
+                          {section.items.map((item) => (
+                            <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCopyCareerReport}
+                    className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/15 px-4 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/25"
+                  >
+                    {uiLanguage === "en" ? "Copy report" : "Raporu kopyala"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadCareerReport}
+                    className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                  >
+                    {uiLanguage === "en" ? "Download report" : "Raporu indir"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetCareerMission}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                  >
+                    {uiLanguage === "en" ? "Restart mission" : "Görevi sıfırla"}
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-fuchsia-100/75">
+                  {uiLanguage === "en"
+                    ? "This local report is now ready for the next sprint: downloadable report package or AI-enhanced narrative report."
+                    : "Bu yerel rapor artık bir sonraki sprint için hazır: indirilebilir rapor paketi veya AI destekli anlatı raporu."}
+                </div>
+              </div>
+            )}
+
+            {isCareerMissionComplete && (
+              <div className="mt-6 rounded-2xl border border-indigo-300/20 bg-indigo-400/10 p-5 text-sm text-indigo-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-indigo-200">
+                  {uiLanguage === "en" ? "Cinematic recap blueprint" : "Sinematik özet planı"}
+                </p>
+                <h4 className="mt-3 text-lg font-semibold text-white">
+                  {careerCinematicRecapBlueprint.title}
+                </h4>
+                <p className="mt-2 max-w-3xl leading-6 text-indigo-100/85">
+                  {careerCinematicRecapBlueprint.description}
+                </p>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {careerCinematicRecapBlueprint.scenes.map((scene, index) => (
+                    <div key={scene.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-indigo-200">
+                        {uiLanguage === "en" ? "Recap scene" : "Özet sahnesi"} {index + 1}
+                      </p>
+                      <h5 className="mt-2 font-semibold text-white">
+                        {scene.title}
+                      </h5>
+                      <p className="mt-2 text-xs leading-5 text-indigo-100/80">
+                        <span className="font-semibold">{uiLanguage === "en" ? "Visual" : "Görsel"}: </span>
+                        {scene.visualDirection}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-indigo-100/80">
+                        <span className="font-semibold">{uiLanguage === "en" ? "Narration" : "Anlatım"}: </span>
+                        {scene.narration}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-indigo-100/75">
+                  {careerCinematicRecapBlueprint.productionNote}
+                </div>
+              </div>
+            )}
+
+            {isCareerMissionComplete && (
+              <div className="mt-6 rounded-2xl border border-teal-300/20 bg-teal-400/10 p-5 text-sm text-teal-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-teal-200">
+                  {uiLanguage === "en" ? "Pilot output package" : "Pilot çıktı paketi"}
+                </p>
+                <h4 className="mt-3 text-lg font-semibold text-white">
+                  {careerSimulationOutputPackage.title}
+                </h4>
+                <p className="mt-2 max-w-3xl leading-6 text-teal-100/85">
+                  {careerSimulationOutputPackage.description}
+                </p>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {careerSimulationOutputPackage.items.map((item) => (
+                    <div key={item.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <h5 className="font-semibold text-white">
+                          {item.title}
+                        </h5>
+                        <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${
+                          item.status === "ready"
+                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                            : "border-slate-300/20 bg-slate-400/10 text-slate-200"
+                        }`}>
+                          {item.status === "ready"
+                            ? (uiLanguage === "en" ? "Ready" : "Hazır")
+                            : (uiLanguage === "en" ? "Planned" : "Planlı")}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-teal-100/80">
+                        {item.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isCareerMissionComplete && (
+              <div className="mt-6 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-rose-200">
+                  {uiLanguage === "en" ? "AI narrative report prompt" : "AI anlatı raporu prompt"}
+                </p>
+                <h4 className="mt-3 text-lg font-semibold text-white">
+                  {uiLanguage === "en" ? "Future OpenAI report input" : "Gelecek OpenAI rapor girdisi"}
+                </h4>
+                <p className="mt-2 max-w-3xl leading-6 text-rose-100/85">
+                  {uiLanguage === "en"
+                    ? "This prompt blueprint can later power an AI-enhanced narrative report endpoint. It is shown locally now and does not call OpenAI."
+                    : "Bu prompt taslağı ileride AI destekli anlatı raporu endpoint'ini besleyebilir. Şu anda yalnızca lokal gösterilir ve OpenAI çağrısı yapmaz."}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyCareerNarrativePrompt}
+                  className="mt-4 rounded-xl border border-rose-300/30 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/25"
+                >
+                  {uiLanguage === "en" ? "Copy AI prompt" : "AI prompt'u kopyala"}
+                </button>
+                <pre className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-[11px] leading-5 text-rose-100/80">
+                  {careerNarrativeReportPrompt}
+                </pre>
+              </div>
+            )}
+
+            {isCareerMissionComplete && (
+              <div className="mt-6 rounded-2xl border border-pink-300/20 bg-pink-400/10 p-5 text-sm text-pink-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-pink-200">
+                  {uiLanguage === "en" ? "AI request payload blueprint" : "AI request payload taslağı"}
+                </p>
+                <h4 className="mt-3 text-lg font-semibold text-white">
+                  {careerAiPayloadReadinessNotes.title}
+                </h4>
+                <ul className="mt-3 grid gap-2 text-xs leading-5 text-pink-100/85 md:grid-cols-2">
+                  {careerAiPayloadReadinessNotes.items.map((item) => (
+                    <li key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={handleCopyCareerNarrativePayload}
+                  className="mt-4 rounded-xl border border-pink-300/30 bg-pink-400/15 px-4 py-2 text-xs font-semibold text-pink-100 transition hover:bg-pink-400/25"
+                >
+                  {uiLanguage === "en" ? "Copy AI payload" : "AI payload'u kopyala"}
+                </button>
+                <pre className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-[11px] leading-5 text-pink-100/80">
+                  {careerNarrativeReportPayload}
+                </pre>
+              </div>
+            )}
+
+          
+{isCareerMissionComplete && (
+  <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-5 text-sm text-cyan-100">
+    <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+      {uiLanguage === "en" ? "AI narrative generation" : "AI anlatı üretimi"}
+    </p>
+
+    <h4 className="mt-3 text-lg font-semibold text-white">
+      {uiLanguage === "en"
+        ? "Career Lab AI Narrative Report"
+        : "Career Lab AI Anlatı Raporu"}
+    </h4>
+
+    <p className="mt-2 max-w-3xl leading-6 text-cyan-100/85">
+      {uiLanguage === "en"
+        ? "This uses the isolated OpenAI narrative endpoint and does not touch Storyverse, export-service, or Supabase."
+        : "Bu yapı izole OpenAI narrative endpoint'ini kullanır ve Storyverse, export-service veya Supabase'e dokunmaz."}
+    </p>
+
+    <button
+      type="button"
+      disabled={careerAiNarrativeLoading}
+      onClick={handleGenerateCareerAiNarrativeReport}
+      className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/15 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {careerAiNarrativeLoading
+        ? (uiLanguage === "en" ? "Generating..." : "Üretiliyor...")
+        : (uiLanguage === "en"
+            ? "Generate AI Narrative Report"
+            : "AI Anlatı Raporu Üret")}
+    </button>
+
+    {careerAiNarrativeError ? (
+      <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+        {careerAiNarrativeError}
+      </div>
+    ) : null}
+
+    {careerAiNarrativeReport ? (
+      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+        <pre className="overflow-auto whitespace-pre-wrap text-xs leading-6 text-cyan-100/85">
+          {careerAiNarrativeReport}
+        </pre>
+      </div>
+    ) : null}
+  </div>
+)}
+
+  <div className="mt-6 rounded-2xl border border-orange-300/20 bg-orange-400/10 p-5 text-sm text-orange-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-orange-200">
+                {uiLanguage === "en" ? "Pilot QA readiness" : "Pilot QA hazırlığı"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {careerPilotQaChecklist.title}
+              </h4>
+              <p className="mt-2 max-w-3xl leading-6 text-orange-100/85">
+                {careerPilotQaChecklist.description}
+              </p>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                    {uiLanguage === "en" ? "Ready now" : "Şu an hazır"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
+                    {careerPilotQaChecklist.readyItems.map((item) => (
+                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                    {uiLanguage === "en" ? "Backlog" : "Backlog"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
+                    {careerPilotQaChecklist.backlogItems.map((item) => (
+                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                    {uiLanguage === "en" ? "Acceptance criteria" : "Kabul kriterleri"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
+                    {careerPilotQaChecklist.acceptanceCriteria.map((item) => (
+                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-lime-300/20 bg-lime-400/10 p-5 text-sm text-lime-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-lime-200">
+                {uiLanguage === "en" ? "Career Lab pilot readiness" : "Career Lab pilot hazırlığı"}
+              </p>
+              <h4 className="mt-3 text-lg font-semibold text-white">
+                {careerPilotReadinessNotes.title}
+              </h4>
+              <ul className="mt-3 grid gap-2 text-xs leading-5 text-lime-100/85 md:grid-cols-2">
+                {careerPilotReadinessNotes.items.map((item) => (
+                  <li key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-sm text-cyan-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+                {careerLabCopy.comingNextTitle}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {careerLabCopy.comingNextItems.map((item) => (
+                  <span key={item} className="rounded-full border border-cyan-300/20 bg-black/20 px-3 py-1">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
         <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
             <div className="space-y-4">
@@ -6672,8 +7535,10 @@ export default function CreatePage() {
               <h2 className="text-xl font-semibold">{selectedFlowProjectTitle}</h2>
               <p className="mt-1 text-xs text-slate-400">
                 {activeFlowKey === "creator_lab"
-                  ? "Yalnızca Creator Lab projeleri gösteriliyor."
-                  : "Yalnızca Storyverse projeleri gösteriliyor."}
+                  ? (uiLanguage === "en" ? "Only Creator Lab projects are shown." : "Yalnızca Creator Lab projeleri gösteriliyor.")
+                  : activeFlowKey === "career_lab"
+                    ? (uiLanguage === "en" ? "Only Career Lab projects are shown." : "Yalnızca Career Lab projeleri gösteriliyor.")
+                    : (uiLanguage === "en" ? "Only Storyverse projects are shown." : "Yalnızca Storyverse projeleri gösteriliyor.")}
               </p>
             </div>
             <button

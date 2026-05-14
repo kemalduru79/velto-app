@@ -49,17 +49,17 @@ export const experienceFlows: ExperienceFlow[] = [
   },
   {
     key: "career_lab",
-    title: "AI Career Simulation",
+    title: "AI Career Lab",
     shortTitle: "Career Lab",
-    subtitle: "Meslek deneyimi ve görev simülasyonu",
+    subtitle: "Interactive profession simulation",
     description:
-      "Çocuk bir meslek seçer, güvenli bir görev akışında kararlar verir ve AI destekli deneyim raporu oluşturur.",
+      "Çocuk Astronot, Doktor, Pilot, AI Engineer veya Cyber Detective rolünü seçer; güvenli ve kontrollü görev simülasyonunda kararlar verir.",
     ageBand: "9-15",
     durationMin: 35,
-    zones: ["AI", "VR"],
-    outputs: ["Deneyim raporu", "Kariyer kartı", "Görev senaryosu"],
+    zones: ["AI"],
+    outputs: ["Deneyim raporu", "Kariyer kartı", "Karar haritası"],
     status: "pilot",
-    ctaLabel: "Pilot akışı aç",
+    ctaLabel: "Career Lab’i aç",
     accent: "violet",
   },
   {

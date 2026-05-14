@@ -45,13 +45,13 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         ctaLabel: "Storyverse ile başla",
       },
       career_lab: {
-        title: "AI Career Simulation",
+        title: "AI Career Lab",
         shortTitle: "Career Lab",
-        subtitle: "Meslek deneyimi ve görev simülasyonu",
+        subtitle: "Interactive profession simulation",
         description:
-          "Çocuk bir meslek seçer, güvenli bir görev akışında kararlar verir ve AI destekli deneyim raporu oluşturur.",
-        outputs: ["Deneyim raporu", "Kariyer kartı", "Görev senaryosu"],
-        ctaLabel: "Pilot akışı aç",
+          "Çocuk Astronot, Doktor, Pilot, AI Engineer veya Cyber Detective rolünü seçer; güvenli ve kontrollü görev simülasyonunda kararlar verir.",
+        outputs: ["Deneyim raporu", "Kariyer kartı", "Karar haritası"],
+        ctaLabel: "Career Lab’i aç",
       },
       interactive_quest: {
         title: "Interactive Quest",
@@ -133,13 +133,13 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         ctaLabel: "Start with Storyverse",
       },
       career_lab: {
-        title: "AI Career Simulation",
+        title: "AI Career Lab",
         shortTitle: "Career Lab",
-        subtitle: "Career experience and task simulation",
+        subtitle: "Interactive profession simulation",
         description:
-          "The child chooses a profession, makes decisions in a safe task flow, and receives an AI-supported experience report.",
-        outputs: ["Experience report", "Career card", "Task scenario"],
-        ctaLabel: "Open pilot flow",
+          "The child chooses Astronaut, Doctor, Pilot, AI Engineer, or Cyber Detective and makes decisions inside a safe guided mission simulation.",
+        outputs: ["Experience report", "Career card", "Decision map"],
+        ctaLabel: "Open Career Lab",
       },
       interactive_quest: {
         title: "Interactive Quest",
