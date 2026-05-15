@@ -1613,7 +1613,7 @@ export function formatCareerNarrativeReportPrompt(params: {
       "You are VELTO AI Career Lab's child-safe narrative report assistant.",
       "",
       "Goal:",
-      "Turn the local simulation signals below into a warm, encouraging, child-friendly experience report.",
+      "Turn the local simulation signals below into a warm, encouraging, child-friendly experience report. Use decision reasons, mentor reflections, follow-up answers, mission outcome, and next challenge data when available.",
       "",
       "Strict rules:",
       "- Do not present this as a career test.",
@@ -1648,7 +1648,7 @@ export function formatCareerNarrativeReportPrompt(params: {
     "Sen VELTO AI Career Lab'in çocuk güvenli anlatı raporu asistanısın.",
     "",
     "Amaç:",
-    "Aşağıdaki yerel simülasyon sinyallerini sıcak, teşvik edici ve çocuk dostu bir deneyim raporuna dönüştür.",
+    "Aşağıdaki yerel simülasyon sinyallerini sıcak, teşvik edici ve çocuk dostu bir deneyim raporuna dönüştür. Varsa karar gerekçelerini, mentor reflection çıktılarını, takip sorusu cevaplarını, görev sonucunu ve sonraki görev verilerini kullan.",
     "",
     "Kesin kurallar:",
     "- Bunu kariyer testi gibi sunma.",
@@ -1875,4 +1875,686 @@ export function getCareerPersistenceQaChecklist(language: "tr" | "en"): {
           },
         ],
       };
+}
+
+
+export function getCareerLocalDecisionConsequence(params: {
+  decisionType: CareerDecisionType;
+  selectedEffect: string;
+  childReason?: string;
+  language: "tr" | "en";
+}): {
+  title: string;
+  summary: string;
+  outcomeShift: string;
+} {
+  const { decisionType, selectedEffect, childReason, language } = params;
+  const hasReason = Boolean(childReason?.trim());
+
+  if (language === "en") {
+    return {
+      title: decisionType === "major" ? "Major outcome signal" : "Micro outcome signal",
+      summary: hasReason
+        ? "Your reason adds context to the decision, so the simulation can treat it as more than a simple button choice."
+        : "Add your own reason to make the consequence more personal and developmental.",
+      outcomeShift:
+        decisionType === "major"
+          ? `This choice can shift the mission direction. Local effect: ${selectedEffect}`
+          : `This choice can adjust the mission tone and team response. Local effect: ${selectedEffect}`,
+    };
+  }
+
+  return {
+    title: decisionType === "major" ? "Majör sonuç sinyali" : "Mikro sonuç sinyali",
+    summary: hasReason
+      ? "Yazdığın gerekçe, kararı sadece bir buton seçimi olmaktan çıkarıp simülasyona bağlam kazandırır."
+      : "Sonucu daha kişisel ve geliştirici hale getirmek için kendi gerekçeni ekle.",
+    outcomeShift:
+      decisionType === "major"
+        ? `Bu seçim görevin yönünü değiştirebilir. Yerel etki: ${selectedEffect}`
+        : `Bu seçim görev tonunu ve ekip tepkisini ayarlayabilir. Yerel etki: ${selectedEffect}`,
+  };
+}
+
+
+export function getCareerAdaptiveNextChallenge(params: {
+  profession: ReturnType<typeof getCareerProfession>;
+  mission: CareerMissionTemplate;
+  profile: CareerTraitProfile;
+  answers: Record<string, string>;
+  reasons: Record<string, string>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  description: string;
+  challengeName: string;
+  challengeBrief: string;
+  focusQuestion: string;
+  suggestedMode: string;
+} {
+  const { profession, mission, profile, answers, reasons, language } = params;
+  const entries = Object.entries(profile) as Array<[keyof CareerTraitProfile, number]>;
+  const strongestTrait =
+    entries.filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "focus";
+  const weakestTrait =
+    entries.filter(([, value]) => value >= 0).sort((a, b) => a[1] - b[1])[0]?.[0] ?? "teamwork";
+  const strongestLabel = CAREER_TRAIT_LABELS[strongestTrait][language];
+  const weakestLabel = CAREER_TRAIT_LABELS[weakestTrait][language];
+  const answeredCount = Object.keys(answers).length;
+  const reasonCount = Object.values(reasons).filter((value) => value?.trim()).length;
+  const professionTitle = profession.title[language] ?? profession.title.tr;
+  const missionTitle = mission.title[language] ?? mission.title.tr;
+
+  if (language === "en") {
+    return {
+      title: "Adaptive Next Challenge",
+      description:
+        "This local recommendation uses the completed mission, decision profile, and written reasons to suggest the next developmental step.",
+      challengeName: `${professionTitle}: Second Mission`,
+      challengeBrief:
+        answeredCount >= mission.decisionPoints.length
+          ? `After ${missionTitle}, the next challenge should keep using ${strongestLabel} while deliberately practicing ${weakestLabel}.`
+          : `Complete the current mission first. The next challenge will become clearer after all decisions are answered.`,
+      focusQuestion:
+        reasonCount > 0
+          ? `You explained your reasoning ${reasonCount} time(s). Next, try comparing your choice with one alternative before deciding.`
+          : "Next time, write a short reason for each choice so the mentor can help you think beyond the button selection.",
+      suggestedMode:
+        strongestTrait === weakestTrait
+          ? "Balanced reflection mode"
+          : `${strongestLabel} + ${weakestLabel} development mode`,
+    };
+  }
+
+  return {
+    title: "Adaptif Sonraki Görev",
+    description:
+      "Bu lokal öneri, tamamlanan görevi, karar profilini ve yazılı gerekçeleri kullanarak bir sonraki gelişim adımını önerir.",
+    challengeName: `${professionTitle}: İkinci Görev`,
+    challengeBrief:
+      answeredCount >= mission.decisionPoints.length
+        ? `${missionTitle} sonrasında yeni görev, ${strongestLabel} gücünü kullanmaya devam ederken ${weakestLabel} alanını bilinçli olarak çalıştırmalı.`
+        : "Önce mevcut görevi tamamla. Tüm kararlar cevaplandığında sonraki görev daha netleşir.",
+    focusQuestion:
+      reasonCount > 0
+        ? `${reasonCount} karar için gerekçe yazdın. Sonraki adımda karar vermeden önce bir alternatifi de karşılaştırmayı dene.`
+        : "Bir sonraki denemede her seçim için kısa bir gerekçe yaz; böylece mentor sadece buton seçimini değil düşünme tarzını da yorumlayabilir.",
+    suggestedMode:
+      strongestTrait === weakestTrait
+        ? "Dengeli reflection modu"
+        : `${strongestLabel} + ${weakestLabel} gelişim modu`,
+  };
+}
+
+
+export function getCareerMissionOutcomeMap(params: {
+  mission: CareerMissionTemplate;
+  profile: CareerTraitProfile;
+  answers: Record<string, string>;
+  reasons: Record<string, string>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  status: string;
+  summary: string;
+  outcomeCards: Array<{
+    label: string;
+    value: string;
+    explanation: string;
+  }>;
+} {
+  const { mission, profile, answers, reasons, language } = params;
+  const answeredCount = Object.keys(answers).length;
+  const totalCount = mission.decisionPoints.length;
+  const reasonCount = Object.values(reasons).filter((value) => value?.trim()).length;
+  const entries = Object.entries(profile) as Array<[keyof CareerTraitProfile, number]>;
+  const strongestTrait =
+    entries.filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "focus";
+  const strongestLabel = CAREER_TRAIT_LABELS[strongestTrait][language];
+
+  const majorAnswers = mission.decisionPoints.filter(
+    (decision) => decision.type === "major" && answers[decision.id]
+  ).length;
+  const microAnswers = mission.decisionPoints.filter(
+    (decision) => decision.type === "micro" && answers[decision.id]
+  ).length;
+
+  const completionRatio = totalCount > 0 ? answeredCount / totalCount : 0;
+  const reflectionRatio = totalCount > 0 ? reasonCount / totalCount : 0;
+
+  if (language === "en") {
+    return {
+      title: "Mission Outcome Map",
+      status:
+        completionRatio >= 1
+          ? "Mission state locked"
+          : "Mission state still forming",
+      summary:
+        completionRatio >= 1
+          ? `The mission is complete. The outcome is shaped most strongly by ${strongestLabel}, with ${reasonCount} written reflection(s) adding depth.`
+          : "The mission outcome will become clearer after all decisions are completed.",
+      outcomeCards: [
+        {
+          label: "Mission completion",
+          value: `${answeredCount}/${totalCount}`,
+          explanation:
+            completionRatio >= 1
+              ? "All decision points are answered."
+              : "Some decision points are still waiting.",
+        },
+        {
+          label: "Strategic decisions",
+          value: `${majorAnswers}`,
+          explanation:
+            "Major decisions influence the overall direction of the mission outcome.",
+        },
+        {
+          label: "Tactical decisions",
+          value: `${microAnswers}`,
+          explanation:
+            "Micro decisions influence tone, team response, and short-term consequences.",
+        },
+        {
+          label: "Reflection depth",
+          value: `${Math.round(reflectionRatio * 100)}%`,
+          explanation:
+            reasonCount > 0
+              ? "Written reasons make the simulation more developmental and personalized."
+              : "Adding written reasons will make the outcome richer.",
+        },
+        {
+          label: "Strongest signal",
+          value: strongestLabel,
+          explanation:
+            "This is the most visible local trait signal in the completed mission.",
+        },
+      ],
+    };
+  }
+
+  return {
+    title: "Görev Sonuç Haritası",
+    status:
+      completionRatio >= 1
+        ? "Görev durumu kilitlendi"
+        : "Görev durumu hâlâ şekilleniyor",
+    summary:
+      completionRatio >= 1
+        ? `Görev tamamlandı. Sonuç en güçlü şekilde ${strongestLabel} sinyaliyle şekillendi; ${reasonCount} yazılı reflection derinlik kattı.`
+        : "Görev sonucu, tüm kararlar tamamlandığında daha netleşecek.",
+    outcomeCards: [
+      {
+        label: "Görev tamamlama",
+        value: `${answeredCount}/${totalCount}`,
+        explanation:
+          completionRatio >= 1
+            ? "Tüm karar noktaları cevaplandı."
+            : "Bazı karar noktaları hâlâ bekliyor.",
+      },
+      {
+        label: "Stratejik kararlar",
+        value: `${majorAnswers}`,
+        explanation:
+          "Majör kararlar görev sonucunun genel yönünü etkiler.",
+      },
+      {
+        label: "Taktik kararlar",
+        value: `${microAnswers}`,
+        explanation:
+          "Mikro kararlar tonu, ekip tepkisini ve kısa vadeli sonuçları etkiler.",
+      },
+      {
+        label: "Reflection derinliği",
+        value: `${Math.round(reflectionRatio * 100)}%`,
+        explanation:
+          reasonCount > 0
+            ? "Yazılı gerekçeler simülasyonu daha geliştirici ve kişisel hale getirir."
+            : "Yazılı gerekçe eklemek sonucu daha zengin hale getirir.",
+      },
+      {
+        label: "En güçlü sinyal",
+        value: strongestLabel,
+        explanation:
+          "Bu, tamamlanan görevdeki en görünür lokal trait sinyalidir.",
+      },
+    ],
+  };
+}
+
+
+export function getCareerDevelopmentalOutputSummary(params: {
+  outcomeMap: ReturnType<typeof getCareerMissionOutcomeMap>;
+  nextChallenge: ReturnType<typeof getCareerAdaptiveNextChallenge>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  summary: string;
+  items: Array<{
+    label: string;
+    value: string;
+    detail: string;
+  }>;
+} {
+  const { outcomeMap, nextChallenge, language } = params;
+
+  if (language === "en") {
+    return {
+      title: "Developmental Output Summary",
+      summary:
+        "This summary connects the mission outcome, reflection depth, and next challenge into a more developmental learning output.",
+      items: [
+        {
+          label: "Outcome state",
+          value: outcomeMap.status,
+          detail: outcomeMap.summary,
+        },
+        {
+          label: "Next challenge",
+          value: nextChallenge.challengeName,
+          detail: nextChallenge.challengeBrief,
+        },
+        {
+          label: "Reflection focus",
+          value: nextChallenge.suggestedMode,
+          detail: nextChallenge.focusQuestion,
+        },
+      ],
+    };
+  }
+
+  return {
+    title: "Gelişimsel Çıktı Özeti",
+    summary:
+      "Bu özet, görev sonucunu, reflection derinliğini ve sonraki görevi daha gelişim odaklı bir öğrenme çıktısına bağlar.",
+    items: [
+      {
+        label: "Sonuç durumu",
+        value: outcomeMap.status,
+        detail: outcomeMap.summary,
+      },
+      {
+        label: "Sonraki görev",
+        value: nextChallenge.challengeName,
+        detail: nextChallenge.challengeBrief,
+      },
+      {
+        label: "Reflection odağı",
+        value: nextChallenge.suggestedMode,
+        detail: nextChallenge.focusQuestion,
+      },
+    ],
+  };
+}
+
+
+export function getCareerLocalFollowUpPrompt(params: {
+  decisionType: CareerDecisionType;
+  selectedEffect: string;
+  childReason?: string;
+  language: "tr" | "en";
+}): {
+  title: string;
+  question: string;
+  whyItMatters: string;
+} {
+  const { decisionType, selectedEffect, childReason, language } = params;
+  const hasReason = Boolean(childReason?.trim());
+
+  if (language === "en") {
+    return {
+      title: "Local follow-up question",
+      question:
+        decisionType === "major"
+          ? "If the mission conditions changed suddenly, would you keep the same decision or adjust your strategy?"
+          : "If you had one more piece of information, what would you want to know before making this choice again?",
+      whyItMatters: hasReason
+        ? `Your written reason gives the mentor more context. Local effect: ${selectedEffect}`
+        : "Writing your reason helps the mentor turn the choice into a deeper thinking exercise.",
+    };
+  }
+
+  return {
+    title: "Lokal takip sorusu",
+    question:
+      decisionType === "major"
+        ? "Görev koşulları aniden değişseydi aynı kararı korur muydun, yoksa stratejini değiştirir miydin?"
+        : "Bu seçimi yeniden yapmadan önce bir bilgi daha alabilseydin neyi bilmek isterdin?",
+    whyItMatters: hasReason
+      ? `Yazılı gerekçen mentora daha fazla bağlam sağlar. Yerel etki: ${selectedEffect}`
+      : "Gerekçeni yazmak, mentorun seçimi daha derin bir düşünme egzersizine dönüştürmesine yardımcı olur.",
+  };
+}
+
+
+export function getCareerThinkingJourneyMap(params: {
+  mission: CareerMissionTemplate;
+  answers: Record<string, string>;
+  reasons: Record<string, string>;
+  followUpAnswers: Record<string, string>;
+  mentorReflections: Record<string, string>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  description: string;
+  steps: Array<{
+    decisionTitle: string;
+    selectedOption: string;
+    reasonStatus: string;
+    followUpStatus: string;
+    mentorStatus: string;
+  }>;
+  summary: string;
+} {
+  const { mission, answers, reasons, followUpAnswers, mentorReflections, language } = params;
+
+  const steps = mission.decisionPoints.map((decision) => {
+    const selectedOptionId = answers[decision.id];
+    const selectedOption = decision.options.find((option) => option.id === selectedOptionId);
+    const hasReason = Boolean(reasons[decision.id]?.trim());
+    const hasFollowUp = Boolean(followUpAnswers[decision.id]?.trim());
+    const hasMentor = Boolean(mentorReflections[decision.id]?.trim());
+
+    return {
+      decisionTitle: decision.title[language] ?? decision.title.tr,
+      selectedOption: selectedOption
+        ? selectedOption.label[language] ?? selectedOption.label.tr
+        : language === "en"
+          ? "Not answered yet"
+          : "Henüz cevaplanmadı",
+      reasonStatus: hasReason
+        ? language === "en"
+          ? "Reason added"
+          : "Gerekçe eklendi"
+        : language === "en"
+          ? "Reason missing"
+          : "Gerekçe eksik",
+      followUpStatus: hasFollowUp
+        ? language === "en"
+          ? "Follow-up answered"
+          : "Takip sorusu cevaplandı"
+        : language === "en"
+          ? "Follow-up open"
+          : "Takip sorusu açık",
+      mentorStatus: hasMentor
+        ? language === "en"
+          ? "Mentor reflection generated"
+          : "Mentor reflection üretildi"
+        : language === "en"
+          ? "Mentor reflection pending"
+          : "Mentor reflection bekliyor",
+    };
+  });
+
+  const reasonCount = Object.values(reasons).filter((value) => value?.trim()).length;
+  const followUpCount = Object.values(followUpAnswers).filter((value) => value?.trim()).length;
+  const mentorCount = Object.values(mentorReflections).filter((value) => value?.trim()).length;
+
+  if (language === "en") {
+    return {
+      title: "Thinking Journey Map",
+      description:
+        "This map shows how the simulation moved from choices into reasoning, follow-up thinking, and mentor reflection.",
+      steps,
+      summary: `${reasonCount} reason(s), ${followUpCount} follow-up answer(s), and ${mentorCount} mentor reflection(s) were captured in this mission.`,
+    };
+  }
+
+  return {
+    title: "Düşünme Yolculuğu Haritası",
+    description:
+      "Bu harita, simülasyonun seçimlerden gerekçeye, takip düşüncesine ve mentor reflection çıktısına nasıl ilerlediğini gösterir.",
+    steps,
+    summary: `Bu görevde ${reasonCount} gerekçe, ${followUpCount} takip cevabı ve ${mentorCount} mentor reflection kaydedildi.`,
+  };
+}
+
+
+export function getCareerCognitivePatternSignals(params: {
+  mission: CareerMissionTemplate;
+  answers: Record<string, string>;
+  reasons: Record<string, string>;
+  followUpAnswers: Record<string, string>;
+  mentorReflections: Record<string, string>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  description: string;
+  signals: Array<{
+    label: string;
+    explanation: string;
+    confidence: "low" | "medium" | "high";
+  }>;
+  summary: string;
+} {
+  const { mission, answers, reasons, followUpAnswers, mentorReflections, language } = params;
+
+  const totalDecisions = mission.decisionPoints.length;
+  const answeredCount = Object.keys(answers).length;
+  const reasonCount = Object.values(reasons).filter((value) => value?.trim()).length;
+  const followUpCount = Object.values(followUpAnswers).filter((value) => value?.trim()).length;
+  const mentorCount = Object.values(mentorReflections).filter((value) => value?.trim()).length;
+
+  const majorCount = mission.decisionPoints.filter(
+    (decision) => decision.type === "major" && answers[decision.id]
+  ).length;
+
+  const reasonRatio = totalDecisions > 0 ? reasonCount / totalDecisions : 0;
+  const followUpRatio = totalDecisions > 0 ? followUpCount / totalDecisions : 0;
+  const mentorRatio = totalDecisions > 0 ? mentorCount / totalDecisions : 0;
+  const completionRatio = totalDecisions > 0 ? answeredCount / totalDecisions : 0;
+
+  const signals: Array<{
+    label: string;
+    explanation: string;
+    confidence: "low" | "medium" | "high";
+  }> = [];
+
+  const pushSignal = (
+    labelEn: string,
+    labelTr: string,
+    explanationEn: string,
+    explanationTr: string,
+    confidence: "low" | "medium" | "high"
+  ) => {
+    signals.push({
+      label: language === "en" ? labelEn : labelTr,
+      explanation: language === "en" ? explanationEn : explanationTr,
+      confidence,
+    });
+  };
+
+  if (reasonRatio >= 0.6) {
+    pushSignal(
+      "Reflective Planner",
+      "Düşünerek Planlayan",
+      "This mission included detailed written reasoning before or after decisions.",
+      "Bu görevde karar öncesi veya sonrası detaylı düşünsel gerekçeler görüldü.",
+      reasonRatio >= 0.9 ? "high" : "medium"
+    );
+  }
+
+  if (followUpRatio >= 0.5) {
+    pushSignal(
+      "Curiosity-Driven Thinker",
+      "Merak Odaklı Düşünen",
+      "The child continued engaging with follow-up scenarios instead of stopping at the first decision.",
+      "Çocuk ilk kararda durmak yerine takip senaryolarıyla düşünmeye devam etti.",
+      followUpRatio >= 0.9 ? "high" : "medium"
+    );
+  }
+
+  if (mentorRatio >= 0.5) {
+    pushSignal(
+      "Guided Learner",
+      "Mentor Destekli Öğrenen",
+      "The child actively used mentor reflections to deepen the experience.",
+      "Çocuk deneyimi derinleştirmek için mentor reflection çıktılarını aktif kullandı.",
+      mentorRatio >= 0.9 ? "high" : "medium"
+    );
+  }
+
+  if (majorCount >= Math.max(1, totalDecisions / 3)) {
+    pushSignal(
+      "Systems Thinker",
+      "Sistem Düşünürü",
+      "The mission included engagement with strategic decisions affecting broader outcomes.",
+      "Görevde geniş sonuçları etkileyen stratejik kararlarla etkileşim görüldü.",
+      majorCount >= Math.max(2, totalDecisions / 2) ? "high" : "medium"
+    );
+  }
+
+  if (completionRatio >= 1 && signals.length === 0) {
+    pushSignal(
+      "Fast Decision Maker",
+      "Hızlı Karar Veren",
+      "The mission was completed with minimal reflective interaction.",
+      "Görev minimum reflection etkileşimiyle tamamlandı.",
+      "low"
+    );
+  }
+
+  if (signals.length === 0) {
+    pushSignal(
+      "Exploring Thinking Style",
+      "Düşünme Stilini Keşfediyor",
+      "More reflection and follow-up interaction will help the system understand thinking patterns better.",
+      "Daha fazla reflection ve takip etkileşimi düşünme pattern’lerini daha iyi anlamaya yardımcı olur.",
+      "low"
+    );
+  }
+
+  const summary =
+    language === "en"
+      ? `${signals.length} local cognitive signal(s) detected during this mission.`
+      : `Bu görev sırasında ${signals.length} lokal cognitive signal tespit edildi.`;
+
+  return {
+    title: language === "en" ? "Cognitive Pattern Signals" : "Cognitive Pattern Sinyalleri",
+    description:
+      language === "en"
+        ? "These are mission-based thinking signals, not personality labels."
+        : "Bunlar kişilik etiketi değil, görev bazlı düşünme sinyalleridir.",
+    signals,
+    summary,
+  };
+}
+
+
+export function getCareerPremiumDevelopmentalReport(params: {
+  finalReport: ReturnType<typeof getCareerFinalReport>;
+  outcomeMap: ReturnType<typeof getCareerMissionOutcomeMap>;
+  thinkingJourneyMap: ReturnType<typeof getCareerThinkingJourneyMap>;
+  cognitivePatternSignals: ReturnType<typeof getCareerCognitivePatternSignals>;
+  nextChallenge: ReturnType<typeof getCareerAdaptiveNextChallenge>;
+  language: "tr" | "en";
+}): {
+  title: string;
+  subtitle: string;
+  executiveSummary: string;
+  sections: Array<{
+    title: string;
+    description: string;
+    items: string[];
+  }>;
+  closingNote: string;
+} {
+  const {
+    finalReport,
+    outcomeMap,
+    thinkingJourneyMap,
+    cognitivePatternSignals,
+    nextChallenge,
+    language,
+  } = params;
+
+  const signalLabels = cognitivePatternSignals.signals.map((signal) => signal.label);
+  const topSignals = signalLabels.length > 0 ? signalLabels.slice(0, 3) : [];
+
+  if (language === "en") {
+    return {
+      title: "Premium Developmental Report",
+      subtitle: finalReport.title,
+      executiveSummary:
+        "This report combines mission outcome, thinking journey, cognitive pattern signals, and next challenge guidance into one developmental summary. It is not a career test; it reflects choices made inside this simulation.",
+      sections: [
+        {
+          title: "Mission Outcome",
+          description: outcomeMap.summary,
+          items: outcomeMap.outcomeCards.map(
+            (card) => `${card.label}: ${card.value} — ${card.explanation}`
+          ),
+        },
+        {
+          title: "Thinking Journey",
+          description: thinkingJourneyMap.summary,
+          items: thinkingJourneyMap.steps.map(
+            (step) =>
+              `${step.decisionTitle}: ${step.selectedOption} / ${step.reasonStatus} / ${step.followUpStatus} / ${step.mentorStatus}`
+          ),
+        },
+        {
+          title: "Cognitive Pattern Signals",
+          description: cognitivePatternSignals.description,
+          items: cognitivePatternSignals.signals.map(
+            (signal) => `${signal.label} (${signal.confidence}): ${signal.explanation}`
+          ),
+        },
+        {
+          title: "Next Challenge",
+          description: nextChallenge.challengeBrief,
+          items: [
+            `Suggested mode: ${nextChallenge.suggestedMode}`,
+            `Reflection focus: ${nextChallenge.focusQuestion}`,
+          ],
+        },
+      ],
+      closingNote:
+        topSignals.length > 0
+          ? `Most visible mission signals: ${topSignals.join(", ")}.`
+          : "More reasoning and follow-up answers will make future reports richer.",
+    };
+  }
+
+  return {
+    title: "Premium Gelişim Raporu",
+    subtitle: finalReport.title,
+    executiveSummary:
+      "Bu rapor; görev sonucu, düşünme yolculuğu, cognitive pattern sinyalleri ve sonraki görev yönlendirmesini tek gelişimsel özet altında birleştirir. Bu bir kariyer testi değildir; yalnızca bu simülasyon içindeki seçimleri yansıtır.",
+    sections: [
+      {
+        title: "Görev Sonucu",
+        description: outcomeMap.summary,
+        items: outcomeMap.outcomeCards.map(
+          (card) => `${card.label}: ${card.value} — ${card.explanation}`
+        ),
+      },
+      {
+        title: "Düşünme Yolculuğu",
+        description: thinkingJourneyMap.summary,
+        items: thinkingJourneyMap.steps.map(
+          (step) =>
+            `${step.decisionTitle}: ${step.selectedOption} / ${step.reasonStatus} / ${step.followUpStatus} / ${step.mentorStatus}`
+        ),
+      },
+      {
+        title: "Cognitive Pattern Sinyalleri",
+        description: cognitivePatternSignals.description,
+        items: cognitivePatternSignals.signals.map(
+          (signal) => `${signal.label} (${signal.confidence}): ${signal.explanation}`
+        ),
+      },
+      {
+        title: "Sonraki Görev",
+        description: nextChallenge.challengeBrief,
+        items: [
+          `Önerilen mod: ${nextChallenge.suggestedMode}`,
+          `Reflection odağı: ${nextChallenge.focusQuestion}`,
+        ],
+      },
+    ],
+    closingNote:
+      topSignals.length > 0
+        ? `Görevde en görünür sinyaller: ${topSignals.join(", ")}.`
+        : "Daha fazla gerekçe ve takip cevabı, sonraki raporları daha zengin hale getirir.",
+  };
 }

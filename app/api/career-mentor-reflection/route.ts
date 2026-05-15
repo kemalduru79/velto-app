@@ -13,6 +13,7 @@ type ReflectionRequest = {
   decisionScenario?: string;
   selectedOption?: string;
   selectedEffect?: string;
+  childReason?: string;
   traitProfile?: Record<string, unknown>;
 };
 
@@ -83,6 +84,7 @@ function buildUserPrompt(body: ReflectionRequest, language: SupportedLanguage) {
   const decisionScenario = asText(body.decisionScenario, "-");
   const selectedOption = asText(body.selectedOption, "-");
   const selectedEffect = asText(body.selectedEffect, "-");
+  const childReason = asText(body.childReason, "-");
 
   if (language === "en") {
     return [
@@ -92,15 +94,20 @@ function buildUserPrompt(body: ReflectionRequest, language: SupportedLanguage) {
       `Scenario: ${decisionScenario}`,
       `Selected option: ${selectedOption}`,
       `Local effect: ${selectedEffect}`,
+      `Child's own reason: ${childReason}`,
       `Current trait profile: ${JSON.stringify(body.traitProfile || {}, null, 2)}`,
       "",
       "Create a mentor reflection in Markdown with exactly these sections:",
       "## What this decision shows",
       "## Trade-off to think about",
       "## A deeper question",
+      "## Mission consequence",
+      "## Dynamic follow-up question",
       "## Try this next",
       "",
-      "Keep it under 180 words.",
+      "In Mission consequence, explain one realistic result this decision could create inside the simulation.",
+      "In Dynamic follow-up question, ask one thoughtful what-if question that makes the child reconsider the decision under a slightly changed condition.",
+      "Keep it under 240 words.",
     ].join("\n");
   }
 
@@ -111,15 +118,20 @@ function buildUserPrompt(body: ReflectionRequest, language: SupportedLanguage) {
     `Senaryo: ${decisionScenario}`,
     `Seçilen seçenek: ${selectedOption}`,
     `Yerel etki: ${selectedEffect}`,
+    `Çocuğun kendi gerekçesi: ${childReason}`,
     `Mevcut trait profili: ${JSON.stringify(body.traitProfile || {}, null, 2)}`,
     "",
     "Markdown formatında, tam olarak şu bölümlerle mentor reflection oluştur:",
     "## Bu karar ne gösteriyor",
     "## Üzerinde düşünülmesi gereken denge",
     "## Daha derin bir soru",
+    "## Görev sonucu",
+    "## Dinamik takip sorusu",
     "## Bir sonraki denemede şunu dene",
     "",
-    "180 kelimeyi geçme.",
+    "Görev sonucu bölümünde, bu kararın simülasyon içinde yaratabileceği gerçekçi bir sonucu açıkla.",
+    "Dinamik takip sorusu bölümünde, çocuğun değişen bir koşul altında kararını yeniden düşünmesini sağlayacak tek bir what-if sorusu sor.",
+    "240 kelimeyi geçme.",
   ].join("\n");
 }
 
