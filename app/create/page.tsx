@@ -3,7 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
-import { getFlowByKey, type FlowZone } from "../../lib/flows";
+import { experienceFlows, getFlowByKey, type FlowZone } from "../../lib/flows";
+import WorldGateway from "@/components/create/WorldGateway";
+import StoryverseCinematicIntro from "@/components/create/StoryverseCinematicIntro";
+import CreatorStudioIntro from "@/components/create/CreatorStudioIntro";
+import CareerMentorIntro from "@/components/create/CareerMentorIntro";
+import WorldFocusRouter from "@/components/create/WorldFocusRouter";
+import { WorldProvider } from "@/components/create/WorldContext";
+import StoryverseShell from "@/components/experience/StoryverseShell";
+import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -6986,8 +6994,31 @@ const handleResetCareerMission = () => {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.14),_transparent_30%),linear-gradient(180deg,_#050816_0%,_#020617_45%,_#000000_100%)] px-4 py-8 text-white md:px-6 md:py-10">
+    <WorldProvider>
+      <StoryverseShell>
+        <WorldFocusRouter />
+        <main className="min-h-screen px-4 py-8 text-white md:px-6 md:py-10">
       <div className="mx-auto w-full max-w-7xl space-y-8">
+        {/* X.1.B.2: Creator Lab shell foundation is available for creator-specific render activation. */}
+        {activeFlowKey === "storyverse" ? (
+          <StoryverseCinematicIntro />
+        ) : null}
+
+        {activeFlowKey === "creator" ? (
+          <CreatorStudioIntro />
+        ) : null}
+
+        {activeFlowKey === "career" ? (
+          <CareerMentorIntro />
+        ) : null}
+
+        <WorldGateway
+          flows={experienceFlows}
+          activeFlowKey={activeFlowKey}
+          language={uiLanguage}
+          onSelectFlow={setSelectedFlowKey}
+        />
+
 {/* 🚀 EPISODE PACKAGE PANEL */}
 <div className="rounded-3xl border border-purple-400/20 bg-purple-500/10 p-6 mb-6">
   <div className="flex items-center justify-between">
@@ -11398,6 +11429,8 @@ const handleResetCareerMission = () => {
       </div>
         </div>
       </div>
-    </main>
+        </main>
+      </StoryverseShell>
+    </WorldProvider>
   );
 }
