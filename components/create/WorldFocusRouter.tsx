@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useWorldState } from "@/components/create/WorldContext";
 
@@ -12,8 +12,15 @@ const worldIds = {
 
 export default function WorldFocusRouter() {
   const { activeWorld } = useWorldState();
+  const previousWorldRef = useRef(activeWorld);
 
   useEffect(() => {
+    if (previousWorldRef.current === activeWorld) {
+      return;
+    }
+
+    previousWorldRef.current = activeWorld;
+
     const targetId = worldIds[activeWorld];
     const target = document.getElementById(targetId);
 

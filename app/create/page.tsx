@@ -9,6 +9,7 @@ import StoryverseCinematicIntro from "@/components/create/StoryverseCinematicInt
 import CreatorStudioIntro from "@/components/create/CreatorStudioIntro";
 import CareerMentorIntro from "@/components/create/CareerMentorIntro";
 import WorldFocusRouter from "@/components/create/WorldFocusRouter";
+import FocusedWorldWorkspace from "@/components/create/FocusedWorldWorkspace";
 import { WorldProvider } from "@/components/create/WorldContext";
 import StoryverseShell from "@/components/experience/StoryverseShell";
 import CreatorLabShell from "@/components/experience/CreatorLabShell";
@@ -7012,6 +7013,8 @@ const handleResetCareerMission = () => {
           <CareerMentorIntro />
         ) : null}
 
+        <FocusedWorldWorkspace />
+
         <WorldGateway
           flows={experienceFlows}
           activeFlowKey={activeFlowKey}
@@ -8867,21 +8870,7 @@ const handleResetCareerMission = () => {
                 ))}
               </div>
             </div>
-
-            <div className="rounded-[28px] border border-violet-400/20 bg-violet-500/10 p-5 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
-              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">{ui.nextSurface}</p>
-              <h3 className="mt-3 text-lg font-semibold text-white">{ui.quickContentMode}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                {ui.quickContentModeDesc}
-              </p>
-
-              <div className="mt-4 space-y-2 text-xs text-slate-200">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem1}</div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem2}</div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">{ui.quickItem3}</div>
-              </div>
-            </div>
-          </aside>
+</aside>
 
           <div className="space-y-8">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">

@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import ExperienceWindow from "@/components/create/ExperienceWindow";
 import type { ActiveWorld } from "@/components/create/WorldContext";
 import { useWorldState } from "@/components/create/WorldContext";
 
@@ -25,22 +28,28 @@ const worldTargetIds: Record<ActiveWorld, string> = {
 
 const toneStyles = {
   storyverse: {
-    active: "border-indigo-300/25 bg-indigo-500/[0.08]",
-    passive: "border-indigo-400/10 bg-white/[0.035]",
+    active: "border-sky-200/12 bg-sky-50/[0.024]",
+    passive: "border-white/8 bg-white/[0.012]",
     button:
-      "border-indigo-300/25 bg-indigo-500/15 text-indigo-50 hover:bg-indigo-500/20",
+      "border-sky-200/18 bg-sky-100/[0.06] text-sky-50 hover:bg-sky-100/[0.1]",
+    label: "text-sky-100",
+    align: "items-start text-left",
   },
   creator: {
-    active: "border-pink-300/25 bg-pink-500/[0.08]",
-    passive: "border-pink-400/10 bg-white/[0.035]",
+    active: "border-rose-200/12 bg-rose-50/[0.024]",
+    passive: "border-white/8 bg-white/[0.012]",
     button:
-      "border-pink-300/25 bg-pink-500/15 text-pink-50 hover:bg-pink-500/20",
+      "border-rose-200/18 bg-rose-100/[0.06] text-rose-50 hover:bg-rose-100/[0.1]",
+    label: "text-rose-100",
+    align: "items-center text-center",
   },
   career: {
-    active: "border-cyan-300/25 bg-cyan-500/[0.08]",
-    passive: "border-cyan-400/10 bg-white/[0.035]",
+    active: "border-teal-200/12 bg-teal-50/[0.024]",
+    passive: "border-white/8 bg-white/[0.012]",
     button:
-      "border-cyan-300/25 bg-cyan-500/15 text-cyan-50 hover:bg-cyan-500/20",
+      "border-teal-200/18 bg-teal-100/[0.06] text-teal-50 hover:bg-teal-100/[0.1]",
+    label: "text-teal-100",
+    align: "items-end text-right",
   },
 } as const;
 
@@ -57,90 +66,119 @@ export default function ExperienceIntroCard({
   secondaryCta,
   primaryWorld,
 }: ExperienceIntroCardProps) {
-  const { activeWorld, setActiveWorld } =
-    useWorldState();
+  const { activeWorld, setActiveWorld } = useWorldState();
+  const [isWindowOpen, setIsWindowOpen] = useState(false);
 
   const isActive = activeWorld === primaryWorld;
   const styles = toneStyles[tone];
 
-  function handlePrimaryAction() {
+  function focusWorld() {
     setActiveWorld(primaryWorld);
 
-    const target = document.getElementById(
-      worldTargetIds[primaryWorld],
-    );
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(worldTargetIds[primaryWorld]);
 
-    if (target) {
-      target.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
+      if (target) {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    });
   }
 
   return (
-    <section
-      className={`relative overflow-hidden rounded-[36px] border p-8 transition-all duration-500 ${
-        isActive
-          ? `scale-[1.01] opacity-100 ${styles.active}`
-          : `opacity-75 hover:opacity-95 ${styles.passive}`
-      }`}
-    >
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-full border border-white/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-white/70">
-            {eyebrow}
+    <>
+      <section
+        className={`relative rounded-[18px] border p-4 transition-all duration-500 md:p-5 ${
+          isActive
+            ? `opacity-100 ${styles.active}`
+            : `opacity-52 hover:opacity-82 ${styles.passive}`
+        }`}
+      >
+        <div className={`flex flex-col gap-4 ${styles.align}`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              className={`rounded-full border border-white/8 bg-white/[0.012] px-4 py-2 text-xs uppercase tracking-[0.08em] ${styles.label}`}
+            >
+              {eyebrow}
+            </div>
+
+            <div className="rounded-full border border-white/8 bg-white/[0.01] px-4 py-2 text-xs uppercase tracking-[0.06em] text-white/28">
+              {isActive ? "Selected" : stage}
+            </div>
           </div>
 
-          <div className="rounded-full border border-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white/40">
-            {stage}
-          </div>
-        </div>
+          <div className="space-y-3">
+            <h2
+              className={`font-semibold tracking-tight text-white transition-all duration-500 ${
+                isActive
+                  ? "text-2xl md:text-4xl"
+                  : "text-xl md:text-2xl"
+              }`}
+            >
+              {title}
+            </h2>
 
-        <div className="space-y-5">
-          <h2 className="text-4xl font-black tracking-tight text-white md:text-5xl">
-            {title}
-          </h2>
-
-          <p className="max-w-2xl text-lg leading-8 text-white/65">
-            {description}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-3 text-sm text-white/45">
-          <div>Age {ageRange}</div>
-          <div>•</div>
-          <div>{duration}</div>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
-          <div className="text-xs uppercase tracking-[0.2em] text-white/35">
-            Next Experience Step
+            <p
+              className={`max-w-2xl leading-7 text-white/46 ${
+                isActive ? "text-base" : "line-clamp-2 text-sm"
+              }`}
+            >
+              {description}
+            </p>
           </div>
 
-          <div className="mt-3 text-sm leading-7 text-white/70">
-            {nextAction}
+          {isActive ? (
+            <div className="w-full rounded-[16px] border border-white/8 bg-black/[0.06] p-4">
+              <div className="text-xs uppercase tracking-[0.06em] text-white/24">
+                Next
+              </div>
+
+              <div className="mt-3 text-sm leading-7 text-white/50">
+                {nextAction}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-3 text-sm text-white/26">
+            <div>Age {ageRange}</div>
+            <div>•</div>
+            <div>{duration}</div>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setIsWindowOpen(true)}
+              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition-all duration-500 hover:-translate-y-0.5 ${styles.button}`}
+            >
+              {primaryCta}
+            </button>
+
+            {isActive ? (
+              <button
+                type="button"
+                onClick={focusWorld}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/8 bg-transparent px-5 py-3 text-sm font-medium text-white/48 transition-all duration-500 hover:border-white/14 hover:text-white"
+              >
+                {secondaryCta}
+              </button>
+            ) : null}
           </div>
         </div>
+      </section>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={handlePrimaryAction}
-            className={`inline-flex min-h-12 items-center justify-center rounded-full border px-6 py-3 text-sm font-semibold transition-all duration-300 hover:-translate-y-1 ${styles.button}`}
-          >
-            {primaryCta}
-          </button>
-
-          <button
-            type="button"
-            onClick={handlePrimaryAction}
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-transparent px-6 py-3 text-sm font-medium text-white/70 transition-all duration-300 hover:border-white/20 hover:text-white"
-          >
-            {secondaryCta}
-          </button>
-        </div>
-      </div>
-    </section>
+      {isWindowOpen ? (
+        <ExperienceWindow
+          world={primaryWorld}
+          title={title}
+          description={description}
+          primaryAction={primaryCta}
+          secondaryAction={secondaryCta}
+          onClose={() => setIsWindowOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

@@ -1,5 +1,11 @@
 "use client";
 
+// X.5.4 Clean WorldGateway Rebuild: controlled simplification without mutating object keys.
+
+// X.5.1 Gateway Simplification Pass: calmer visual density and reduced dashboard intensity.
+// X.5.2 Minimal Gateway Entry: copy density reduced and entry hierarchy simplified.
+// X.5.3 True Entry Layer Pass: gateway language and hierarchy moved closer to a simple choose-your-world entry.
+
 import type { ExperienceFlow } from "@/lib/flows";
 
 type Language = "tr" | "en" | string;
@@ -13,7 +19,7 @@ type Props = {
 
 const copy = {
   tr: {
-    eyebrow: "VELTO AI EXPERIENCE PLATFORM",
+    eyebrow: "VELTO",
     title: "Çocuklar için AI destekli deneyim dünyaları",
     description:
       "Storyverse, Creator Lab ve pilot deneyimler tek bir üretim motorunu paylaşır; fakat her biri ayrı bir dünya gibi hissettirilir.",
@@ -65,41 +71,41 @@ const copy = {
     defaultReward: "Çocuğa özel çıktı ve paylaşılabilir sonuç",
   },
   en: {
-    eyebrow: "VELTO AI EXPERIENCE PLATFORM",
-    title: "AI-powered experience worlds for children",
+    eyebrow: "VELTO",
+    title: "Choose a world",
     description:
-      "Storyverse, Creator Lab and pilot experiences share the same production engine, but each world must feel emotionally distinct.",
-    activeProducts: "Active Products",
-    pilotExperiences: "Pilot Experiences",
-    roadmap: "Roadmap Experiences",
+      "Start with one calm experience. You can switch worlds anytime.",
+    activeProducts: "Start",
+    pilotExperiences: "Explore",
+    roadmap: "Later",
     activeBadge: "Active",
     pilotBadge: "Pilot",
     comingSoonBadge: "Coming Soon",
-    selected: "Selected",
+    selected: "Your choice",
     age: "Age",
     duration: "Duration",
     minutes: "min",
     outputs: "Outputs",
     zones: "Zones",
-    currentWorld: "Selected World",
-    productFeel: "Product Feel",
-    experienceRole: "Experience Role",
-    nextAction: "Next Action",
+    currentWorld: "Your choice",
+    productFeel: "Mood",
+    experienceRole: "Role",
+    nextAction: "Next",
     primaryNote:
-      "Storyverse remains the primary action; other worlds are presented more calmly according to their productization stage.",
+      "Pick a world and begin.",
     experienceSignal: "Experience Signal",
-    stageMap: "Productization Map",
+    stageMap: "Worlds",
     activeSignal: "Live product",
     pilotSignal: "Pilot validation",
     roadmapSignal: "Future vision",
-    outputsPreview: "Expected output",
-    zonesPreview: "Experience area",
+    outputsPreview: "Output",
+    zonesPreview: "Area",
     startHere: "Starting focus",
     journeyPreview: "Experience Journey",
-    identityCompass: "Experience Identity",
-    emotionLayer: "Emotion Layer",
-    interactionLayer: "Interaction Layer",
-    rewardLayer: "Reward Layer",
+    identityCompass: "Identity",
+    emotionLayer: "Emotion",
+    interactionLayer: "Action",
+    rewardLayer: "Reward",
     entryMoment: "Entry Moment",
     creationMoment: "Creation Moment",
     rewardMoment: "Reward Moment",
@@ -129,7 +135,7 @@ const statusStyles = {
   },
   coming_soon: {
     section: "border-white/10 bg-white/[0.03]",
-    badge: "border-white/10 bg-white/[0.06] text-white/60",
+    badge: "border-white/10 bg-white/[0.035] text-white/60",
   },
 } as const;
 
@@ -221,11 +227,11 @@ const identityCopy = {
 } as const;
 
 function getCopy(language: Language) {
-  return language === "en" ? copy.en : copy.tr;
+  return String(language).toLowerCase() === "tr" ? copy.tr : copy.en;
 }
 
 function getIdentity(flowKey: string, language: Language) {
-  const dictionary = language === "en" ? identityCopy.en : identityCopy.tr;
+  const dictionary = String(language).toLowerCase() === "tr" ? identityCopy.tr : identityCopy.en;
   return dictionary[flowKey as keyof typeof dictionary] || dictionary.storyverse;
 }
 
@@ -293,7 +299,7 @@ function GatewayCard({
       type="button"
       disabled={disabled}
       onClick={() => onSelectFlow(flow.key)}
-      className={`group relative overflow-hidden rounded-[30px] border p-5 text-left transition duration-300 md:p-6 ${styles.section} ${
+      className={`group relative overflow-hidden rounded-[24px] border p-5 text-left transition duration-300 md:p-6 ${styles.section} ${
         active
           ? "scale-[1.01] border-white/30 shadow-[0_0_80px_rgba(56,189,248,0.16)]"
           : "hover:scale-[1.01] hover:border-white/20"
@@ -321,7 +327,7 @@ function GatewayCard({
             ) : null}
           </div>
 
-          <h3 className={`${isPrimaryStoryverse ? "mt-6 text-3xl md:text-4xl" : "mt-5 text-2xl"} font-black tracking-tight text-white`}>
+          <h3 className={`${isPrimaryStoryverse ? "mt-6 text-3xl md:text-4xl" : "mt-5 text-2xl"} font-semibold tracking-tight text-white`}>
             {flow.title}
           </h3>
           <p className="mt-2 text-sm font-medium text-white/70">
@@ -353,7 +359,7 @@ function GatewayCard({
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {flow.outputs.slice(0, 4).map((output) => (
-                <span key={output} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs text-white/70">
+                <span key={output} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/70">
                   {output}
                 </span>
               ))}
@@ -382,7 +388,7 @@ function ExperienceSignalStrip({
   return (
     <div className="grid gap-3 md:grid-cols-4">
       <div className="rounded-[24px] border border-cyan-300/15 bg-cyan-400/[0.07] p-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-cyan-100/55">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/55">
           {t.startHere}
         </p>
         <p className="mt-2 text-sm font-semibold text-white">
@@ -391,7 +397,7 @@ function ExperienceSignalStrip({
       </div>
 
       <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/45">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
           {t.stageMap}
         </p>
         <p className="mt-2 text-sm text-white/75">
@@ -400,7 +406,7 @@ function ExperienceSignalStrip({
       </div>
 
       <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/45">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
           {t.outputsPreview}
         </p>
         <p className="mt-2 text-sm text-white/75">
@@ -409,7 +415,7 @@ function ExperienceSignalStrip({
       </div>
 
       <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/45">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
           {t.zonesPreview}
         </p>
         <p className="mt-2 text-sm text-white/75">
@@ -432,7 +438,7 @@ function ActiveWorldPanel({
   const styles = statusStyles[activeFlow.status];
 
   return (
-    <aside className="relative overflow-hidden rounded-[32px] border border-white/10 bg-black/25 p-5 backdrop-blur-2xl md:p-6">
+    <aside className="relative overflow-hidden rounded-[24px] border border-white/10 bg-black/25 p-5 backdrop-blur-sm md:p-6">
       <div
         className={`absolute inset-0 bg-gradient-to-br ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
@@ -442,18 +448,18 @@ function ActiveWorldPanel({
 
       <div className="relative z-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/45">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
             {t.currentWorld}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${styles.badge}`}>
               {getStatusLabel(activeFlow.status, language)}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">
+            <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">
               {activeFlow.shortTitle}
             </span>
           </div>
-          <h2 className="mt-5 text-3xl font-black tracking-tight text-white md:text-4xl">
+          <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white md:text-4xl">
             {activeFlow.title}
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-7 text-white/68 md:text-base">
@@ -463,7 +469,7 @@ function ActiveWorldPanel({
 
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
           <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/45">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
               {t.productFeel}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/78">
@@ -472,7 +478,7 @@ function ActiveWorldPanel({
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/45">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
               {t.experienceRole}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/78">
@@ -481,7 +487,7 @@ function ActiveWorldPanel({
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/45">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
               {t.nextAction}
             </p>
             <p className="mt-3 text-sm leading-6 text-white/78">
@@ -521,7 +527,7 @@ function IdentityCompass({
   ];
 
   return (
-    <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-black/20 p-5 backdrop-blur-2xl md:p-6">
+    <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-black/20 p-5 backdrop-blur-sm md:p-6">
       <div
         className={`absolute inset-0 bg-gradient-to-br ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
@@ -530,14 +536,14 @@ function IdentityCompass({
       <div className="relative z-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/45">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
               {t.identityCompass}
             </p>
-            <h3 className="mt-2 text-xl font-black tracking-tight text-white md:text-2xl">
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-2xl">
               {activeFlow.shortTitle}
             </h3>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-semibold text-white/65">
+          <span className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-xs font-semibold text-white/65">
             {getStatusLabel(activeFlow.status, language)}
           </span>
         </div>
@@ -548,7 +554,7 @@ function IdentityCompass({
               key={pillar.label}
               className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4"
             >
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/42">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/42">
                 {pillar.label}
               </p>
               <p className="mt-3 text-sm leading-6 text-white/74">
@@ -574,7 +580,7 @@ function JourneyPreview({
   const steps = getJourneySteps(activeFlow.key, language);
 
   return (
-    <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-2xl md:p-6">
+    <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm md:p-6">
       <div
         className={`absolute inset-0 bg-gradient-to-r ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
@@ -583,10 +589,10 @@ function JourneyPreview({
       <div className="relative z-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/45">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
               {t.journeyPreview}
             </p>
-            <h3 className="mt-2 text-xl font-black tracking-tight text-white md:text-2xl">
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-2xl">
               {activeFlow.shortTitle}
             </h3>
           </div>
@@ -601,10 +607,10 @@ function JourneyPreview({
               key={step.label}
               className="relative rounded-[24px] border border-white/10 bg-black/20 p-4"
             >
-              <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-sm font-black text-white">
+              <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-sm font-semibold text-white">
                 {index + 1}
               </div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/45">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
                 {step.label}
               </p>
               <p className="mt-3 text-sm leading-6 text-white/72">
@@ -636,7 +642,7 @@ function GatewaySection({
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-bold uppercase tracking-[0.22em] text-white/55">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/55">
           {title}
         </h2>
         <div className="h-px flex-1 bg-gradient-to-r from-white/15 to-transparent" />
@@ -670,19 +676,19 @@ export default function WorldGateway({
   const activeFlow = flows.find((flow) => flow.key === activeFlowKey) || activeProducts[0] || flows[0];
 
   return (
-    <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.35)] backdrop-blur-2xl md:p-8">
+    <section className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.35)] backdrop-blur-sm md:p-6">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_36%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_34%)]" />
-      <div className="relative z-10 space-y-8">
+      <div className="relative z-10 space-y-5">
         <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-cyan-200/75">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-teal-100/75">
               {t.eyebrow}
             </p>
-            <h1 className="mt-4 max-w-3xl text-4xl font-black tracking-tight text-white md:text-6xl">
+            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-4xl">
               {t.title}
             </h1>
           </div>
-          <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
+          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
             <p className="text-sm leading-7 text-white/70 md:text-base">
               {t.description}
             </p>
