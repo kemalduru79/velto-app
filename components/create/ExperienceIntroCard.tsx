@@ -28,28 +28,43 @@ const worldTargetIds: Record<ActiveWorld, string> = {
 
 const toneStyles = {
   storyverse: {
-    active: "border-sky-200/12 bg-sky-50/[0.024]",
-    passive: "border-white/8 bg-white/[0.012]",
+    active:
+      "border-sky-200/70 bg-gradient-to-br from-sky-50 via-white to-orange-50/60 shadow-[0_22px_70px_rgba(14,165,233,0.12)]",
+    passive:
+      "border-sky-100/70 bg-white/72 shadow-[0_12px_38px_rgba(14,165,233,0.07)]",
     button:
-      "border-sky-200/18 bg-sky-100/[0.06] text-sky-50 hover:bg-sky-100/[0.1]",
-    label: "text-sky-100",
-    align: "items-start text-left",
+      "border-sky-500 bg-sky-600 text-white hover:bg-sky-700",
+    softButton:
+      "border-sky-200 bg-white text-sky-800 hover:border-sky-300 hover:bg-sky-50",
+    label: "text-sky-800 bg-sky-50 border-sky-200",
+    badge: "text-slate-700 bg-white border-slate-200",
+    accent: "bg-sky-500",
   },
   creator: {
-    active: "border-rose-200/12 bg-rose-50/[0.024]",
-    passive: "border-white/8 bg-white/[0.012]",
+    active:
+      "border-rose-200/70 bg-gradient-to-br from-rose-50 via-white to-orange-50/60 shadow-[0_22px_70px_rgba(244,63,94,0.10)]",
+    passive:
+      "border-rose-100/70 bg-white/72 shadow-[0_12px_38px_rgba(244,63,94,0.06)]",
     button:
-      "border-rose-200/18 bg-rose-100/[0.06] text-rose-50 hover:bg-rose-100/[0.1]",
-    label: "text-rose-100",
-    align: "items-center text-center",
+      "border-rose-500 bg-rose-600 text-white hover:bg-rose-700",
+    softButton:
+      "border-rose-200 bg-white text-rose-800 hover:border-rose-300 hover:bg-rose-50",
+    label: "text-rose-800 bg-rose-50 border-rose-200",
+    badge: "text-slate-700 bg-white border-slate-200",
+    accent: "bg-rose-500",
   },
   career: {
-    active: "border-teal-200/12 bg-teal-50/[0.024]",
-    passive: "border-white/8 bg-white/[0.012]",
+    active:
+      "border-teal-200/70 bg-gradient-to-br from-teal-50 via-white to-orange-50/60 shadow-[0_22px_70px_rgba(20,184,166,0.10)]",
+    passive:
+      "border-teal-100/70 bg-white/72 shadow-[0_12px_38px_rgba(20,184,166,0.06)]",
     button:
-      "border-teal-200/18 bg-teal-100/[0.06] text-teal-50 hover:bg-teal-100/[0.1]",
-    label: "text-teal-100",
-    align: "items-end text-right",
+      "border-teal-500 bg-teal-600 text-white hover:bg-teal-700",
+    softButton:
+      "border-teal-200 bg-white text-teal-800 hover:border-teal-300 hover:bg-teal-50",
+    label: "text-teal-800 bg-teal-50 border-teal-200",
+    badge: "text-slate-700 bg-white border-slate-200",
+    accent: "bg-teal-500",
   },
 } as const;
 
@@ -87,42 +102,47 @@ export default function ExperienceIntroCard({
     });
   }
 
+  function openFocusedWindow() {
+    focusWorld();
+    setIsWindowOpen(true);
+  }
+
   return (
     <>
       <section
-        className={`relative rounded-[18px] border p-4 transition-all duration-500 md:p-5 ${
-          isActive
-            ? `opacity-100 ${styles.active}`
-            : `opacity-52 hover:opacity-82 ${styles.passive}`
+        className={`relative overflow-hidden rounded-[34px] border p-5 transition-all duration-500 md:p-6 ${
+          isActive ? styles.active : `opacity-80 hover:opacity-100 ${styles.passive}`
         }`}
       >
-        <div className={`flex flex-col gap-4 ${styles.align}`}>
+        <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/70 blur-3xl" />
+
+        <div className="relative z-10 space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <div
-              className={`rounded-full border border-white/8 bg-white/[0.012] px-4 py-2 text-xs uppercase tracking-[0.08em] ${styles.label}`}
+              className={`rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] ${styles.label}`}
             >
               {eyebrow}
             </div>
 
-            <div className="rounded-full border border-white/8 bg-white/[0.01] px-4 py-2 text-xs uppercase tracking-[0.06em] text-white/28">
+            <div
+              className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.06em] ${styles.badge}`}
+            >
               {isActive ? "Selected" : stage}
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <h2
-              className={`font-semibold tracking-tight text-white transition-all duration-500 ${
-                isActive
-                  ? "text-2xl md:text-4xl"
-                  : "text-xl md:text-2xl"
+              className={`font-black tracking-tight text-slate-950 transition-all duration-500 ${
+                isActive ? "text-3xl md:text-5xl" : "text-2xl md:text-3xl"
               }`}
             >
               {title}
             </h2>
 
             <p
-              className={`max-w-2xl leading-7 text-white/46 ${
-                isActive ? "text-base" : "line-clamp-2 text-sm"
+              className={`max-w-2xl leading-8 text-slate-700 ${
+                isActive ? "text-base md:text-lg" : "line-clamp-2 text-sm md:text-base"
               }`}
             >
               {description}
@@ -130,28 +150,29 @@ export default function ExperienceIntroCard({
           </div>
 
           {isActive ? (
-            <div className="w-full rounded-[16px] border border-white/8 bg-black/[0.06] p-4">
-              <div className="text-xs uppercase tracking-[0.06em] text-white/24">
-                Next
+            <div className="rounded-[24px] border border-orange-200/70 bg-white/82 p-5 shadow-[0_12px_35px_rgba(251,146,60,0.08)]">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-500">
+                <span className={`h-2.5 w-2.5 rounded-full ${styles.accent}`} />
+                <span>Next</span>
               </div>
 
-              <div className="mt-3 text-sm leading-7 text-white/50">
+              <div className="mt-3 text-base font-semibold leading-7 text-slate-800">
                 {nextAction}
               </div>
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-3 text-sm text-white/26">
+          <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600">
             <div>Age {ageRange}</div>
-            <div>•</div>
+            <div className="text-slate-300">•</div>
             <div>{duration}</div>
           </div>
 
-          <div className="flex w-full flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => setIsWindowOpen(true)}
-              className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition-all duration-500 hover:-translate-y-0.5 ${styles.button}`}
+              onClick={openFocusedWindow}
+              className={`inline-flex min-h-12 items-center justify-center rounded-full border px-6 py-3 text-sm font-black shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${styles.button}`}
             >
               {primaryCta}
             </button>
@@ -160,7 +181,7 @@ export default function ExperienceIntroCard({
               <button
                 type="button"
                 onClick={focusWorld}
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/8 bg-transparent px-5 py-3 text-sm font-medium text-white/48 transition-all duration-500 hover:border-white/14 hover:text-white"
+                className={`inline-flex min-h-12 items-center justify-center rounded-full border px-6 py-3 text-sm font-bold transition-all duration-300 hover:-translate-y-1 ${styles.softButton}`}
               >
                 {secondaryCta}
               </button>

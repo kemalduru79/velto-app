@@ -1,237 +1,266 @@
 "use client";
 
+import WorldShell from "@/components/create/WorldShell";
 import { useWorldState } from "@/components/create/WorldContext";
 
 const workspaceContent = {
   storyverse: {
-    id: "storyverse-workspace",
-    eyebrow: "Storyverse",
-    title: "Story Room",
+    title: "Build Your Own Story World",
     description:
-      "Create a story one step at a time.",
-    tone: "bg-sky-50/[0.028]",
-    accent: "text-sky-100",
-    ring: "border-sky-200/15",
-    status: "Ready to create",
-    primaryAction: "Start Story",
-    secondaryAction: "See Outputs",
-    guidance:
-      "Start with one world, one main character and one clear goal.",
-    phases: [
+      "Create characters, scenes and cinematic adventures inside a playful AI storytelling experience.",
+    world: "storyverse" as const,
+    primaryCta: "Start Storyverse",
+    secondaryCta: "View journey",
+    heroBadge: "✨ Flagship experience",
+    heroMessage:
+      "Start with one idea. Build a complete story world.",
+    heroSubline:
+      "VELTO guides children from imagination to characters, scenes and a movie-style output.",
+    promise: [
+      "Write the idea",
+      "Create characters",
+      "Build scenes",
+      "Generate package",
+    ],
+    sections: [
       {
-        title: "World",
-        detail:
-          "Choose where the story happens.",
+        title: "Story",
+        detail: "Turn a simple idea into a clear adventure.",
+        emoji: "📚",
+        action: "Start here",
+        outcome: "Story idea",
       },
       {
-        title: "Character",
-        detail:
-          "Choose who the story is about.",
+        title: "Characters",
+        detail: "Create heroes, friends and personalities.",
+        emoji: "🧒",
+        action: "Design next",
+        outcome: "Character card",
       },
       {
         title: "Scenes",
-        detail:
-          "Build the story step by step.",
+        detail: "Build what happens first, next and last.",
+        emoji: "🎨",
+        action: "Build scenes",
+        outcome: "Scene plan",
       },
       {
-        title: "Output",
-        detail:
-          "Move into video and story production.",
+        title: "Movie",
+        detail: "Move toward visuals, voice and cinematic output.",
+        emoji: "🎬",
+        action: "Create output",
+        outcome: "Movie package",
       },
-    ],
-    outputs: [
-      "Story",
-      "Characters",
-      "Scenes",
-      "Video package",
     ],
   },
   creatorlab: {
-    id: "creatorlab-workspace",
-    eyebrow: "Creator Lab",
-    title: "Creator Room",
+    title: "Create Like a Real Creator",
     description:
-      "Build a short idea one step at a time.",
-    tone: "bg-rose-50/[0.028]",
-    accent: "text-rose-100",
-    ring: "border-rose-200/15",
-    status: "Ready to build",
-    primaryAction: "Start Creator Flow",
-    secondaryAction: "See Assets",
-    guidance:
-      "Start with one topic and keep the idea short and clear.",
-    phases: [
+      "Generate creator-style ideas, hooks and social-ready creative packages.",
+    world: "creatorlab" as const,
+    primaryCta: "Start Creator Lab",
+    secondaryCta: "View journey",
+    heroBadge: "⚡ Creator mode",
+    heroMessage:
+      "Turn one idea into a creator-ready package.",
+    heroSubline:
+      "VELTO helps shape topics, hooks, scripts and simple publish-ready assets.",
+    promise: [
+      "Pick topic",
+      "Build hook",
+      "Package idea",
+      "Prepare assets",
+    ],
+    sections: [
       {
-        title: "Topic",
-        detail:
-          "Choose one video idea.",
+        title: "Idea",
+        detail: "Pick one topic for a short video.",
+        emoji: "💡",
+        action: "Start here",
+        outcome: "Video idea",
       },
       {
         title: "Hook",
-        detail:
-          "Make the first seconds clear.",
+        detail: "Make the first seconds clear and exciting.",
+        emoji: "⚡",
+        action: "Build hook",
+        outcome: "Opening hook",
       },
       {
         title: "Package",
-        detail:
-          "Prepare script and thumbnail direction.",
+        detail: "Shape script, thumbnail and caption direction.",
+        emoji: "📦",
+        action: "Build package",
+        outcome: "Creator pack",
       },
       {
-        title: "Assets",
-        detail:
-          "Move into creator production.",
+        title: "Export",
+        detail: "Prepare creator-ready assets for the next step.",
+        emoji: "🚀",
+        action: "Prepare assets",
+        outcome: "Asset pack",
       },
-    ],
-    outputs: [
-      "Idea",
-      "Script",
-      "Thumbnail",
-      "Caption",
     ],
   },
   careerlab: {
-    id: "careerlab-workspace",
-    eyebrow: "Career Lab",
-    title: "Mentor Room",
+    title: "Explore Future Careers",
     description:
-      "Explore a career mission one step at a time.",
-    tone: "bg-teal-50/[0.028]",
-    accent: "text-teal-100",
-    ring: "border-teal-200/15",
-    status: "Ready to explore",
-    primaryAction: "Start Mission",
-    secondaryAction: "See Notes",
-    guidance:
-      "Choose one profession and follow the mission step by step.",
-    phases: [
+      "Discover future professions through guided AI-powered missions and role journeys.",
+    world: "careerlab" as const,
+    primaryCta: "Start Career Lab",
+    secondaryCta: "View journey",
+    heroBadge: "🚀 Mission mode",
+    heroMessage:
+      "Choose a role and explore it through a mission.",
+    heroSubline:
+      "VELTO helps children understand future jobs through choices and reflection.",
+    promise: [
+      "Choose role",
+      "Start mission",
+      "Make choices",
+      "Review notes",
+    ],
+    sections: [
       {
         title: "Role",
-        detail:
-          "Choose one profession.",
+        detail: "Pick one profession to explore.",
+        emoji: "🧭",
+        action: "Start here",
+        outcome: "Role choice",
       },
       {
         title: "Mission",
-        detail:
-          "Understand the challenge.",
+        detail: "Understand the challenge and goal.",
+        emoji: "🛰️",
+        action: "Start mission",
+        outcome: "Mission brief",
       },
       {
-        title: "Choice",
-        detail:
-          "Decide what to do.",
+        title: "Choices",
+        detail: "Decide what to do and see the path change.",
+        emoji: "🧠",
+        action: "Make choices",
+        outcome: "Decision map",
       },
       {
         title: "Reflect",
-        detail:
-          "Review what you learned.",
+        detail: "Review what you learned with mentor guidance.",
+        emoji: "🏁",
+        action: "Review notes",
+        outcome: "Mentor notes",
       },
     ],
-    outputs: [
-      "Career card",
-      "Decision map",
-      "Mentor notes",
-      "Summary",
-    ],
   },
-} as const;
+};
 
 export default function FocusedWorldWorkspace() {
   const { activeWorld } = useWorldState();
   const content = workspaceContent[activeWorld];
 
   return (
-    <section
-      id={content.id}
-      className={`scroll-mt-8 rounded-[22px] border p-4 backdrop-blur-sm md:p-5 lg:p-6 ${content.tone} ${content.ring}`}
-    >
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr] xl:items-stretch">
-        <div className="flex flex-col justify-between gap-5">
-          <div className="space-y-4">
-            <div className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/[0.02] px-4 py-2 text-xs uppercase tracking-[0.12em] text-white/38">
-              {content.eyebrow}
-            </div>
+    <div className="space-y-7">
+      <WorldShell
+        world={content.world}
+        title={content.title}
+        description={content.description}
+      >
+        <div className="space-y-8">
+          <section className="relative overflow-hidden rounded-[36px] border border-slate-200/70 bg-gradient-to-br from-white via-slate-50 to-sky-50 p-7 shadow-sm">
+            <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-sky-100/50 blur-3xl" />
 
-            <div className="space-y-3">
-              <h2 className="text-2xl font-semibold tracking-tight text-white md:text-4xl">
-                {content.title}
-              </h2>
-
-              <p className="max-w-2xl text-base leading-8 text-white/56">
-                {content.description}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-[20px] border border-white/10 bg-black/10 p-4">
-            <div className="text-xs uppercase tracking-[0.12em] text-white/35">
-              Now
-            </div>
-
-            <div className={`mt-3 text-base font-semibold ${content.accent}`}>
-              {content.status}
-            </div>
-
-            <p className="mt-4 text-sm leading-7 text-white/50">
-              {content.guidance}
-            </p>
-
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/15"
-              >
-                {content.primaryAction}
-              </button>
-
-              <button
-                type="button"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-transparent px-5 py-3 text-sm font-medium text-white/60 transition-all duration-300 hover:border-white/20 hover:text-white"
-              >
-                {content.secondaryAction}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            {content.phases.map((phase, index) => (
-              <div
-                key={phase.title}
-                className="rounded-[20px] border border-white/10 bg-black/10 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.028]"
-              >
-                <div className="text-xs uppercase tracking-[0.12em] text-white/35">
-                  Step {index + 1}
+            <div className="relative z-10 grid gap-7 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="rounded-full bg-slate-900 px-4 py-2 text-xs font-black uppercase tracking-[0.08em] text-white">
+                    {content.heroBadge}
+                  </div>
                 </div>
 
-                <div className="mt-3 text-base font-semibold text-white/78">
-                  {phase.title}
+                <div className="space-y-4">
+                  <h2 className="max-w-3xl text-3xl font-black tracking-tight text-slate-900 md:text-5xl">
+                    {content.heroMessage}
+                  </h2>
+
+                  <p className="max-w-3xl text-base leading-8 text-slate-600">
+                    {content.heroSubline}
+                  </p>
                 </div>
 
-                <p className="mt-3 text-sm leading-7 text-white/48">
-                  {phase.detail}
-                </p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {content.promise.map((item, index) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm"
+                    >
+                      {index + 1}. {item}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  className="rounded-full bg-slate-900 px-7 py-4 text-sm font-black text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl"
+                >
+                  {content.primaryCta}
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white px-7 py-4 text-sm font-bold text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:text-slate-900"
+                >
+                  {content.secondaryCta}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {content.sections.map((section, index) => (
+              <button
+                key={section.title}
+                type="button"
+                className="group flex min-h-[250px] flex-col rounded-[32px] border border-slate-200/70 bg-white p-6 text-left shadow-sm transition-all duration-300 hover:-translate-y-3 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-slate-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+                    Step {index + 1}
+                  </div>
+
+                  <div className="text-3xl transition-transform duration-300 group-hover:scale-125">
+                    {section.emoji}
+                  </div>
+                </div>
+
+                <div className="mt-7 text-xl font-black text-slate-800">
+                  {section.title}
+                </div>
+
+                <div className="mt-3 text-sm leading-7 text-slate-500">
+                  {section.detail}
+                </div>
+
+                <div className="mt-auto pt-6">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">
+                    Output · {section.outcome}
+                  </div>
+
+                  <div className="mt-4 text-sm font-black text-slate-500 transition-colors duration-300 group-hover:text-slate-900">
+                    {section.action} →
+                  </div>
+                </div>
+              </button>
             ))}
           </div>
-
-          <div className="rounded-[20px] border border-white/10 bg-white/[0.018] p-4">
-            <div className="text-xs uppercase tracking-[0.12em] text-white/35">
-              You will create
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {content.outputs.map((output) => (
-                <div
-                  key={output}
-                  className="rounded-2xl border border-white/10 bg-black/10 px-4 py-4 text-sm text-white/58"
-                >
-                  {output}
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
-      </div>
-    </section>
+      </WorldShell>
+
+      <section className="rounded-[30px] border border-slate-200/70 bg-white/80 p-5 text-center shadow-sm">
+        <div className="text-sm font-semibold text-slate-500">
+          Other experiences remain softly available in the background
+        </div>
+      </section>
+    </div>
   );
 }

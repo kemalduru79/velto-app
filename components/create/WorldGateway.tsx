@@ -1,5 +1,15 @@
 "use client";
 
+// X.7.12 Full Landing Visual Alignment: pastel landing alignment without object-key mutation.
+// X.7.12.1 Landing Contrast Hotfix: readable text on light pastel surfaces.
+// X.7.12.3 Primary Note Black Render Fix: target primary note render contrast fixed.
+// X.7.12.4 Primary Note Contrast Final: removed conflicting cyan text class.
+// X.7.13 Landing Readability Alignment: light surface readability polish.
+// X.7.14 Dashboard Feeling Removal: immersive playful landing alignment.
+// X.7.15 Layout-Level Gateway Transformation: stronger product-home hierarchy and dashboard-stack reduction.
+// X.7.16 Gateway Supporting Layer Reduction: secondary landing layers softened and primary adventure selection emphasized.
+// X.7.17 Global Color Harmony Pass: warmer playful page atmosphere and softer lower-section backgrounds.
+
 // X.5.4 Clean WorldGateway Rebuild: controlled simplification without mutating object keys.
 
 // X.5.1 Gateway Simplification Pass: calmer visual density and reduced dashboard intensity.
@@ -42,10 +52,10 @@ const copy = {
     primaryNote:
       "Ana aksiyon Storyverse üzerinde konumlanır; diğer dünyalar ürünleşme seviyesine göre daha sakin gösterilir.",
     experienceSignal: "Deneyim Sinyali",
-    stageMap: "Ürünleşme Haritası",
-    activeSignal: "Canlı ürün",
-    pilotSignal: "Pilot doğrulama",
-    roadmapSignal: "Gelecek vizyonu",
+    stageMap: "Deneyim Haritası",
+    activeSignal: "Başlamaya hazır",
+    pilotSignal: "Sonraki keşif",
+    roadmapSignal: "Daha sonra",
     outputsPreview: "Beklenen çıktı",
     zonesPreview: "Deneyim alanı",
     startHere: "Başlangıç odağı",
@@ -72,7 +82,7 @@ const copy = {
   },
   en: {
     eyebrow: "VELTO",
-    title: "Choose a world",
+    title: "Choose your creative world",
     description:
       "Start with one calm experience. You can switch worlds anytime.",
     activeProducts: "Start",
@@ -92,12 +102,12 @@ const copy = {
     experienceRole: "Role",
     nextAction: "Next",
     primaryNote:
-      "Pick a world and begin.",
-    experienceSignal: "Experience Signal",
+      "Pick a world and start creating.",
+    experienceSignal: "Adventure Signal",
     stageMap: "Worlds",
-    activeSignal: "Live product",
-    pilotSignal: "Pilot validation",
-    roadmapSignal: "Future vision",
+    activeSignal: "Ready to start",
+    pilotSignal: "Explore next",
+    roadmapSignal: "Coming later",
     outputsPreview: "Output",
     zonesPreview: "Area",
     startHere: "Starting focus",
@@ -126,16 +136,16 @@ const copy = {
 
 const statusStyles = {
   active: {
-    section: "border-cyan-300/20 bg-cyan-400/[0.06]",
-    badge: "border-cyan-300/30 bg-cyan-400/15 text-cyan-100",
+    section: "border-orange-100 bg-cyan-400/[0.06]",
+    badge: "border-cyan-300/30 bg-cyan-400/15 text-slate-800",
   },
   pilot: {
     section: "border-violet-300/20 bg-violet-400/[0.05]",
     badge: "border-violet-300/30 bg-violet-400/15 text-violet-100",
   },
   coming_soon: {
-    section: "border-white/10 bg-white/[0.03]",
-    badge: "border-white/10 bg-white/[0.035] text-white/60",
+    section: "border-orange-100/70 bg-[#fffaf4]/86",
+    badge: "border-orange-100/70 bg-[#fffaf4]/86 text-slate-700",
   },
 } as const;
 
@@ -299,7 +309,7 @@ function GatewayCard({
       type="button"
       disabled={disabled}
       onClick={() => onSelectFlow(flow.key)}
-      className={`group relative overflow-hidden rounded-[24px] border p-5 text-left transition duration-300 md:p-6 ${styles.section} ${
+      className={`group relative overflow-hidden rounded-[44px] border p-9 text-left transition duration-300 md:p-12 ${styles.section} ${
         active
           ? "scale-[1.01] border-white/30 shadow-[0_0_80px_rgba(56,189,248,0.16)]"
           : "hover:scale-[1.01] hover:border-white/20"
@@ -312,54 +322,54 @@ function GatewayCard({
           accentGlow[flow.accent] || accentGlow.cyan
         } opacity-80 transition duration-300 group-hover:opacity-100`}
       />
-      <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-[#fffaf4]/86/10 blur-3xl" />
 
-      <div className="relative z-10 flex min-h-full flex-col justify-between gap-6">
+      <div className="relative z-10 flex min-h-full flex-col justify-between gap-10">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${styles.badge}`}>
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${styles.badge}`}>
               {getStatusLabel(flow.status, language)}
             </span>
             {active ? (
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+              <span className="rounded-full border border-white/15 bg-[#fffaf4]/86/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-800">
                 {t.selected}
               </span>
             ) : null}
           </div>
 
-          <h3 className={`${isPrimaryStoryverse ? "mt-6 text-3xl md:text-4xl" : "mt-5 text-2xl"} font-semibold tracking-tight text-white`}>
+          <h3 className={`${isPrimaryStoryverse ? "mt-6 text-4xl md:text-4xl" : "mt-5 text-2xl"} font-bold tracking-tight text-slate-900`}>
             {flow.title}
           </h3>
-          <p className="mt-2 text-sm font-medium text-white/70">
+          <p className="mt-2 text-sm font-normal text-slate-700">
             {flow.subtitle}
           </p>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-white/64 md:text-base">
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-900/64 md:text-base">
             {flow.description}
           </p>
         </div>
 
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2 text-xs text-white/70">
-            <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+        <div className="space-y-12">
+          <div className="flex flex-wrap gap-2 text-xs text-slate-700">
+            <span className="rounded-full border border-orange-100/70 bg-[#fffaf4]/86 px-3 py-1">
               {t.age}: {flow.ageBand}
             </span>
-            <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+            <span className="rounded-full border border-orange-100/70 bg-[#fffaf4]/86 px-3 py-1">
               {t.duration}: {flow.durationMin} {t.minutes}
             </span>
             {flow.zones.map((zone) => (
-              <span key={zone} className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+              <span key={zone} className="rounded-full border border-orange-100/70 bg-[#fffaf4]/86 px-3 py-1">
                 {zone}
               </span>
             ))}
           </div>
 
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900/45">
               {t.outputs}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {flow.outputs.slice(0, 4).map((output) => (
-                <span key={output} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/70">
+                <span key={output} className="rounded-xl border border-orange-100/70 bg-[#fffaf4]/86 px-3 py-2 text-xs text-slate-700">
                   {output}
                 </span>
               ))}
@@ -387,38 +397,38 @@ function ExperienceSignalStrip({
 
   return (
     <div className="grid gap-3 md:grid-cols-4">
-      <div className="rounded-[24px] border border-cyan-300/15 bg-cyan-400/[0.07] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/55">
+      <div className="rounded-[44px] border border-cyan-300/15 bg-cyan-400/[0.07] p-9">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-800/55">
           {t.startHere}
         </p>
-        <p className="mt-2 text-sm font-semibold text-white">
+        <p className="mt-2 text-sm font-normal text-slate-900">
           {activeFlow.shortTitle}
         </p>
       </div>
 
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+      <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-900/45">
           {t.stageMap}
         </p>
-        <p className="mt-2 text-sm text-white/75">
+        <p className="mt-2 text-sm text-slate-900/75">
           {activeCount} {t.activeSignal} · {pilotCount} {t.pilotSignal} · {roadmapCount} {t.roadmapSignal}
         </p>
       </div>
 
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+      <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-900/45">
           {t.outputsPreview}
         </p>
-        <p className="mt-2 text-sm text-white/75">
+        <p className="mt-2 text-sm text-slate-900/75">
           {activeFlow.outputs.slice(0, 2).join(" · ")}
         </p>
       </div>
 
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+      <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-900/45">
           {t.zonesPreview}
         </p>
-        <p className="mt-2 text-sm text-white/75">
+        <p className="mt-2 text-sm text-slate-900/75">
           {activeFlow.zones.join(" · ")}
         </p>
       </div>
@@ -438,59 +448,59 @@ function ActiveWorldPanel({
   const styles = statusStyles[activeFlow.status];
 
   return (
-    <aside className="relative overflow-hidden rounded-[24px] border border-white/10 bg-black/25 p-5 backdrop-blur-sm md:p-6">
+    <aside className="relative overflow-hidden rounded-[44px] border border-orange-100/70 bg-black/25 p-9 backdrop-blur-md md:p-12">
       <div
         className={`absolute inset-0 bg-gradient-to-br ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
         } opacity-50`}
       />
-      <div className="absolute -bottom-20 -right-16 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute -bottom-20 -right-16 h-48 w-48 rounded-full bg-[#fffaf4]/86/10 blur-3xl" />
 
-      <div className="relative z-10 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+      <div className="relative z-10 grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900/45">
             {t.currentWorld}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${styles.badge}`}>
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${styles.badge}`}>
               {getStatusLabel(activeFlow.status, language)}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">
+            <span className="rounded-full border border-orange-100/70 bg-[#fffaf4]/86 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">
               {activeFlow.shortTitle}
             </span>
           </div>
-          <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+          <h2 className="mt-5 text-4xl font-bold tracking-tight text-slate-900 md:text-4xl">
             {activeFlow.title}
           </h2>
-          <p className="mt-3 max-w-xl text-sm leading-7 text-white/68 md:text-base">
+          <p className="mt-3 max-w-xl text-sm leading-7 text-slate-900/68 md:text-base">
             {activeFlow.description}
           </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
               {t.productFeel}
             </p>
-            <p className="mt-3 text-sm leading-6 text-white/78">
+            <p className="mt-3 text-sm leading-6 text-slate-900/78">
               {identity.feel}
             </p>
           </div>
 
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
               {t.experienceRole}
             </p>
-            <p className="mt-3 text-sm leading-6 text-white/78">
+            <p className="mt-3 text-sm leading-6 text-slate-900/78">
               {identity.role}
             </p>
           </div>
 
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
               {t.nextAction}
             </p>
-            <p className="mt-3 text-sm leading-6 text-white/78">
+            <p className="mt-3 text-sm leading-6 text-slate-900/78">
               {identity.action}
             </p>
           </div>
@@ -527,7 +537,7 @@ function IdentityCompass({
   ];
 
   return (
-    <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-black/20 p-5 backdrop-blur-sm md:p-6">
+    <div className="relative overflow-hidden rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9 backdrop-blur-md md:p-12">
       <div
         className={`absolute inset-0 bg-gradient-to-br ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
@@ -536,14 +546,14 @@ function IdentityCompass({
       <div className="relative z-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900/45">
               {t.identityCompass}
             </p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-2xl">
+            <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
               {activeFlow.shortTitle}
             </h3>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-xs font-semibold text-white/65">
+          <span className="rounded-full border border-orange-100/70 bg-[#fffaf4]/86 px-4 py-2 text-xs font-semibold text-slate-900/65">
             {getStatusLabel(activeFlow.status, language)}
           </span>
         </div>
@@ -552,12 +562,12 @@ function IdentityCompass({
           {pillars.map((pillar) => (
             <div
               key={pillar.label}
-              className="rounded-[24px] border border-white/10 bg-white/[0.045] p-4"
+              className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/42">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/42">
                 {pillar.label}
               </p>
-              <p className="mt-3 text-sm leading-6 text-white/74">
+              <p className="mt-3 text-sm leading-6 text-slate-900/74">
                 {pillar.value}
               </p>
             </div>
@@ -580,7 +590,7 @@ function JourneyPreview({
   const steps = getJourneySteps(activeFlow.key, language);
 
   return (
-    <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm md:p-6">
+    <div className="relative overflow-hidden rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9 backdrop-blur-md md:p-12">
       <div
         className={`absolute inset-0 bg-gradient-to-r ${
           accentGlow[activeFlow.accent] || accentGlow.cyan
@@ -589,14 +599,14 @@ function JourneyPreview({
       <div className="relative z-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-900/45">
               {t.journeyPreview}
             </p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-2xl">
+            <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 md:text-2xl">
               {activeFlow.shortTitle}
             </h3>
           </div>
-          <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-white/65">
+          <div className="rounded-full border border-orange-100/70 bg-black/25 px-4 py-2 text-xs font-semibold text-slate-900/65">
             {activeFlow.durationMin} {t.minutes}
           </div>
         </div>
@@ -605,15 +615,15 @@ function JourneyPreview({
           {steps.map((step, index) => (
             <div
               key={step.label}
-              className="relative rounded-[24px] border border-white/10 bg-black/20 p-4"
+              className="relative rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9"
             >
-              <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-sm font-semibold text-white">
+              <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-orange-100/70 bg-[#fffaf4]/86/[0.07] text-sm font-normal text-slate-900">
                 {index + 1}
               </div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
                 {step.label}
               </p>
-              <p className="mt-3 text-sm leading-6 text-white/72">
+              <p className="mt-3 text-sm leading-6 text-slate-900/72">
                 {step.text}
               </p>
             </div>
@@ -640,15 +650,15 @@ function GatewaySection({
   if (flows.length === 0) return null;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-12">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/55">
+        <h2 className="text-sm font-normal uppercase tracking-[0.12em] text-slate-900/55">
           {title}
         </h2>
         <div className="h-px flex-1 bg-gradient-to-r from-white/15 to-transparent" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-10 md:grid-cols-2 xl:grid-cols-3">
         {flows.map((flow) => (
           <GatewayCard
             key={flow.key}
@@ -676,23 +686,23 @@ export default function WorldGateway({
   const activeFlow = flows.find((flow) => flow.key === activeFlowKey) || activeProducts[0] || flows[0];
 
   return (
-    <section className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.35)] backdrop-blur-sm md:p-6">
+    <section className="relative overflow-hidden rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9 shadow-[0_30px_100px_rgba(0,0,0,0.35)] backdrop-blur-md md:p-12">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_36%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_34%)]" />
-      <div className="relative z-10 space-y-5">
-        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
+      <div className="relative z-10 space-y-12">
+        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-teal-100/75">
               {t.eyebrow}
             </p>
-            <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-4xl">
+            <h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight text-slate-900 md:text-4xl">
               {t.title}
             </h1>
           </div>
-          <div className="rounded-[24px] border border-white/10 bg-black/20 p-5">
-            <p className="text-sm leading-7 text-white/70 md:text-base">
+          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86 p-9">
+            <p className="text-sm leading-7 text-slate-700 md:text-base">
               {t.description}
             </p>
-            <p className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm leading-6 text-cyan-100/85">
+            <p className="mt-5 rounded-[30px] border border-orange-200 bg-orange-50 px-6 py-5 text-base font-bold leading-7 text-slate-950 shadow-[0_18px_55px_rgba(251,146,60,0.13)]">
               {t.primaryNote}
             </p>
           </div>

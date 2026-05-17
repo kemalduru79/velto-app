@@ -1,4 +1,11 @@
 "use client";
+
+// X.7.18 Page Layout Authority Pass: global create-page atmosphere aligned with playful product UI.
+// X.7.19 Create Page Color System Harmonization: unified warm pastel page surfaces and lower-section color harmony.
+// X.7.20 Full Visual Audit & Design System Pass: unified cold/neon remnants into warm readable creative-kids palette.
+// X.7.21 Global Background Ownership Fix: create page owns visible pastel background layer inside main.
+// X.7.22 Section Blend & Depth Pass: section surfaces blended into the owned pastel background.
+// X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -6998,8 +7005,12 @@ const handleResetCareerMission = () => {
     <WorldProvider>
       <StoryverseShell>
         <WorldFocusRouter />
-        <main className="min-h-screen px-4 py-8 text-white md:px-6 md:py-10">
-      <div className="mx-auto w-full max-w-7xl space-y-8">
+        <main className="relative min-h-screen overflow-hidden px-4 py-8 text-slate-900 md:px-6 md:py-10">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_12%_8%,#ffe0f2_0%,transparent_30%),radial-gradient(circle_at_88%_12%,#d9f5ff_0%,transparent_32%),radial-gradient(circle_at_48%_92%,#fff0bd_0%,transparent_36%),linear-gradient(180deg,#fffaf4_0%,#f8fbff_46%,#f4fff8_100%)]" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-white/70 to-transparent" />
+      <div className="pointer-events-none fixed left-1/2 top-36 -z-10 h-[34rem] w-[34rem] -translate-x-1/2 rounded-full bg-white/28 blur-3xl" />
+      <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-64 w-full bg-gradient-to-t from-white/45 to-transparent" />
+      <div className="relative z-10 mx-auto w-full max-w-7xl space-y-10">
         {/* X.1.B.2: Creator Lab shell foundation is available for creator-specific render activation. */}
         {activeFlowKey === "storyverse" ? (
           <StoryverseCinematicIntro />
@@ -7023,21 +7034,21 @@ const handleResetCareerMission = () => {
         />
 
 {/* 🚀 EPISODE PACKAGE PANEL */}
-<div className="rounded-3xl border border-purple-400/20 bg-purple-500/10 p-6 mb-6">
+<div className="rounded-[36px] border border-purple-400/20 bg-violet-50/80 p-6 mb-6">
   <div className="flex items-center justify-between">
     <div>
       <p className="text-xs uppercase tracking-[0.25em] text-purple-300">
         {ui.episodePackage}
       </p>
-      <h3 className="mt-1 text-xl font-semibold text-white">
+      <h3 className="mt-1 text-xl font-semibold text-slate-900">
         {title || ui.notCreatedYet}
       </h3>
-      <p className="text-sm text-purple-200/80 mt-1">
+      <p className="text-sm text-violet-700/80 mt-1">
         {ui.episodePackageProductDesc}
       </p>
     </div>
 
-    <div className="text-right text-sm text-purple-200">
+    <div className="text-right text-sm text-violet-700">
       <div>{ui.flow}: {localizedSelectedFlow.shortTitle}</div>
       <div>{ui.language}: {language.toUpperCase()}</div>
     </div>
@@ -7046,19 +7057,19 @@ const handleResetCareerMission = () => {
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 text-center">
     <div>
       <p className="text-2xl font-bold">{characters.length}</p>
-      <p className="text-xs text-purple-200/70">{ui.character}</p>
+      <p className="text-xs text-violet-700/70">{ui.character}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{scenes.length}</p>
-      <p className="text-xs text-purple-200/70">{ui.scene}</p>
+      <p className="text-xs text-violet-700/70">{ui.scene}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{audioReadyCount}</p>
-      <p className="text-xs text-purple-200/70">{ui.audioReady}</p>
+      <p className="text-xs text-violet-700/70">{ui.audioReady}</p>
     </div>
     <div>
       <p className="text-2xl font-bold">{readyVideoCount}</p>
-      <p className="text-xs text-purple-200/70">{ui.videoReady}</p>
+      <p className="text-xs text-violet-700/70">{ui.videoReady}</p>
     </div>
   </div>
 
@@ -7066,7 +7077,7 @@ const handleResetCareerMission = () => {
     <button
       onClick={() => handleExportMovie(false)}
       disabled={isExportingMovie}
-      className="rounded-xl bg-purple-500 px-4 py-2 text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
+      className="rounded-2xl bg-purple-500 px-4 py-2 text-sm font-medium hover:bg-purple-600 disabled:opacity-50"
     >
       {exportedMovieUrl && hasReusableExport()
         ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
@@ -7077,7 +7088,7 @@ const handleResetCareerMission = () => {
       type="button"
       onClick={() => handleExportMovie(true)}
       disabled={isExportingMovie || readyExportCount === 0}
-      className="rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100 transition hover:bg-amber-300/10 disabled:opacity-50"
+      className="rounded-2xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 transition hover:bg-amber-300/10 disabled:opacity-50"
     >
       {isExportingMovie
         ? ui.creatingMovie
@@ -7090,7 +7101,7 @@ const handleResetCareerMission = () => {
       type="button"
       onClick={handleResetExport}
       disabled={isExportingMovie || !exportedMovieUrl}
-      className="rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-2 text-sm text-red-100 transition hover:bg-red-300/10 disabled:opacity-50"
+      className="rounded-2xl border border-red-300/40 bg-rose-50/80 px-4 py-2 text-sm text-rose-700 transition hover:bg-red-300/10 disabled:opacity-50"
     >
       {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
     </button>
@@ -7098,7 +7109,7 @@ const handleResetCareerMission = () => {
     <button
       onClick={handleCreateShareLink}
       disabled={shareLoading || !currentProjectId}
-      className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
+      className="rounded-2xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-300 disabled:opacity-50"
       title={!currentProjectId ? ui.saveProjectFirstTitle : ui.publicShareTitle}
     >
       {shareLoading ? ui.shareLinkCreating : ui.shareLinkCreate}
@@ -7107,7 +7118,7 @@ const handleResetCareerMission = () => {
     {shareUrl && (
       <button
         onClick={handleCopyShareLink}
-        className="rounded-xl border border-cyan-300/40 px-4 py-2 text-sm text-cyan-100"
+        className="rounded-2xl border border-sky-200 px-4 py-2 text-sm text-sky-800"
       >
         {shareCopied ? ui.copied : ui.copyLink}
       </button>
@@ -7117,7 +7128,7 @@ const handleResetCareerMission = () => {
       <button
         type="button"
         onClick={handleDownloadVideo}
-        className="rounded-xl border border-purple-300/40 px-4 py-2 text-sm transition hover:bg-purple-300/10"
+        className="rounded-2xl border border-purple-300/40 px-4 py-2 text-sm transition hover:bg-purple-300/10"
       >
         {ui.download}
       </button>
@@ -7125,12 +7136,12 @@ const handleResetCareerMission = () => {
   </div>
 
   {shareUrl && (
-    <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-3 text-sm text-cyan-100">
-      <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">{ui.shareLink}</p>
+    <div className="mt-4 rounded-[28px] border border-sky-200 bg-sky-50/80 p-3 text-sm text-sky-800">
+      <p className="text-xs uppercase tracking-[0.18em] text-sky-700">{ui.shareLink}</p>
       <a
         href={shareUrl}
         target="_blank"
-        className="mt-1 block break-all text-cyan-50 underline decoration-cyan-300/50 underline-offset-4"
+        className="mt-1 block break-all text-sky-800 underline decoration-cyan-300/50 underline-offset-4"
       >
         {shareUrl}
       </a>
@@ -7140,25 +7151,25 @@ const handleResetCareerMission = () => {
 
 
   {shareUrl && (
-    <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-purple-300/20 bg-purple-500/10 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-purple-200">
+    <div className="mt-6 flex flex-col items-center gap-3 rounded-[28px] border border-purple-300/20 bg-violet-50/80 p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
         {ui.openQr}
       </p>
 
       <img
         src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}`}
         alt="QR Code"
-        className="rounded-xl bg-white p-2"
+        className="rounded-2xl bg-white/82 p-2"
       />
 
-      <p className="max-w-xs text-center text-xs text-purple-200/70">
+      <p className="max-w-xs text-center text-xs text-violet-700/70">
         {ui.qrHint}
       </p>
     </div>
   )}
 
   {exportMovieResult && (
-    <div className="mt-4 text-sm text-purple-200/80">
+    <div className="mt-4 text-sm text-violet-700/80">
       <div>{ui.duration}: {formatDurationLabel(exportMovieResult.durationSeconds)}</div>
       <div>{ui.size}: {formatFileSizeLabel(exportMovieResult.sizeBytes)}</div>
       <div>{ui.scene}: {exportMovieResult.sceneCount}</div>
@@ -7167,81 +7178,81 @@ const handleResetCareerMission = () => {
 </div>
 
         {userRole === "admin" && (
-          <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-yellow-200">
+          <div className="rounded-[28px] border border-yellow-400/30 bg-yellow-500/10 p-4 text-amber-700">
             {ui.adminMode}
           </div>
         )}
 
         {userRole === "parent" && (
-          <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 p-4 text-cyan-200">
+          <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sky-700">
             {ui.parentMode}
           </div>
         )}
 
-        <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-cyan-50">
+        <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sky-800">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">{ui.selectedFlow}</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">{localizedSelectedFlow.title}</h2>
-              <p className="mt-1 text-sm leading-6 text-cyan-100/90">{localizedSelectedFlow.description}</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-700">{ui.selectedFlow}</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">{localizedSelectedFlow.title}</h2>
+              <p className="mt-1 text-sm leading-6 text-sky-800/90">{localizedSelectedFlow.description}</p>
               {isStoryverseFlow && (
-                <p className="mt-2 text-xs leading-5 text-cyan-100/80">
+                <p className="mt-2 text-xs leading-5 text-sky-800/80">
                   {ui.activeProductBehavior}
                 </p>
               )}
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.ageBand}</span>
-              <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">{selectedFlow.durationMin} {ui.minuteShort}</span>
+              <span className="rounded-full border border-orange-200/30 bg-white/72 px-3 py-1 text-slate-900">{selectedFlow.ageBand}</span>
+              <span className="rounded-full border border-orange-200/30 bg-white/72 px-3 py-1 text-slate-900">{selectedFlow.durationMin} {ui.minuteShort}</span>
               {(activeFlowKey === "creator_lab"
                 ? selectedFlow.zones.filter((zone: FlowZone) => zone !== "VR")
                 : selectedFlow.zones
               ).map((zone: FlowZone) => (
-                <span key={zone} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-white">
+                <span key={zone} className="rounded-full border border-orange-200/30 bg-white/72 px-3 py-1 text-slate-900">
                   {zone}
                 </span>
               ))}
             </div>
           </div>
           {activeFlowKey !== "storyverse" && activeFlowKey !== "creator_lab" && (
-            <p className="mt-3 rounded-xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
+            <p className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
               {ui.nonStoryversePilot}
             </p>
           )}
         </div>
 
         {isCareerLabFlow && (
-          <section className="rounded-[32px] border border-violet-300/20 bg-violet-500/10 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:p-7">
+          <section className="rounded-[32px] border border-violet-300/20 bg-violet-50/800/10 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:p-7">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
-                <p className="text-xs uppercase tracking-[0.24em] text-violet-200">
+                <p className="text-xs uppercase tracking-[0.24em] text-violet-700">
                   {careerLabCopy.badge}
                 </p>
-                <h2 className="mt-3 text-2xl font-semibold text-white md:text-3xl">
+                <h2 className="mt-3 text-2xl font-semibold text-slate-900 md:text-3xl">
                   {careerLabCopy.title}
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-violet-100/90 md:text-base">
+                <p className="mt-3 text-sm leading-6 text-violet-700/90 md:text-base">
                   {careerLabCopy.description}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-violet-100 lg:w-80">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4 text-sm text-violet-700 lg:w-80">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
                   {careerLabCopy.decisionModelTitle}
                 </p>
-                <p className="mt-2 leading-6 text-violet-100/80">
+                <p className="mt-2 leading-6 text-violet-700/80">
                   {careerLabCopy.decisionModelDescription}
                 </p>
                 <div className="mt-4 grid gap-2 text-xs">
-                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.microDecisionLabel}</span>
-                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.majorDecisionLabel}</span>
-                  <span className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">{careerLabCopy.adaptiveReactionLabel}</span>
+                  <span className="rounded-2xl border border-orange-200/30 bg-white/58 px-3 py-2">{careerLabCopy.microDecisionLabel}</span>
+                  <span className="rounded-2xl border border-orange-200/30 bg-white/58 px-3 py-2">{careerLabCopy.majorDecisionLabel}</span>
+                  <span className="rounded-2xl border border-orange-200/30 bg-white/58 px-3 py-2">{careerLabCopy.adaptiveReactionLabel}</span>
                 </div>
               </div>
             </div>
 
             <div className="mt-7">
-              <h3 className="text-lg font-semibold text-white">{careerLabCopy.selectionTitle}</h3>
+              <h3 className="text-lg font-semibold text-slate-900">{careerLabCopy.selectionTitle}</h3>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 {CAREER_LAB_PROFESSIONS.map((profession) => {
                   const isSelected = profession.key === selectedCareerProfession;
@@ -7251,17 +7262,17 @@ const handleResetCareerMission = () => {
                       key={profession.key}
                       type="button"
                       onClick={() => { setSelectedCareerProfession(profession.key); setCareerDecisionAnswers({}); }}
-                      className={`rounded-2xl border p-4 text-left transition ${
+                      className={`rounded-[28px] border p-4 text-left transition ${
                         isSelected
                           ? "border-violet-300/60 bg-violet-400/20 shadow-[0_0_0_1px_rgba(196,181,253,0.25)]"
-                          : "border-white/10 bg-black/20 hover:border-violet-300/30 hover:bg-white/[0.06]"
+                          : "border-orange-200/30 bg-white/72 hover:border-violet-300/30 hover:bg-white/78"
                       }`}
                     >
                       <div className="text-2xl">{profession.icon}</div>
-                      <p className="mt-3 text-sm font-semibold text-white">
+                      <p className="mt-3 text-sm font-semibold text-slate-900">
                         {profession.title[uiLanguage] ?? profession.title.tr}
                       </p>
-                      <p className="mt-1 text-xs leading-5 text-slate-300">
+                      <p className="mt-1 text-xs leading-5 text-slate-600">
                         {profession.subtitle[uiLanguage] ?? profession.subtitle.tr}
                       </p>
                     </button>
@@ -7271,40 +7282,40 @@ const handleResetCareerMission = () => {
             </div>
 
             <div className="mt-7 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
                   {careerLabCopy.selectedProfession}
                 </p>
-                <h3 className="mt-2 text-xl font-semibold text-white">
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">
                   {selectedCareerProfessionConfig.icon} {selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-violet-100/80">
+                <p className="mt-2 text-sm leading-6 text-violet-700/80">
                   {selectedCareerProfessionConfig.mission[uiLanguage] ?? selectedCareerProfessionConfig.mission.tr}
                 </p>
-                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-violet-100">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/58 p-3 text-sm text-violet-700">
                   <span className="font-semibold">{careerLabCopy.mentorTone}: </span>
                   {selectedCareerProfessionConfig.mentorTone[uiLanguage] ?? selectedCareerProfessionConfig.mentorTone.tr}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">
-                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">
+                <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/80 p-3 text-sm text-teal-800">
+                  <p className="text-xs uppercase tracking-[0.2em] text-teal-700">
                     {uiLanguage === "en" ? "Mission briefing" : "Görev brifingi"}
                   </p>
-                  <h4 className="mt-2 font-semibold text-white">
+                  <h4 className="mt-2 font-semibold text-slate-900">
                     {selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
                   </h4>
                   <p className="mt-2 leading-6">
                     {selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
                   </p>
-                  <p className="mt-2 text-xs text-emerald-100/80">
+                  <p className="mt-2 text-xs text-teal-800/80">
                     <span className="font-semibold">{uiLanguage === "en" ? "Objective" : "Hedef"}: </span>
                     {selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
                   </p>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-200">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
                   {uiLanguage === "en" ? "Guided mission decisions" : "Yönlendirmeli görev kararları"}
                 </p>
                 <div className="mt-4 space-y-4">
@@ -7312,19 +7323,19 @@ const handleResetCareerMission = () => {
                     const selectedOptionId = careerDecisionAnswers[decision.id];
 
                     return (
-                      <div key={decision.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div key={decision.id} className="rounded-[28px] border border-orange-200/30 bg-white/58 p-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-100">
+                          <span className="rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-700">
                             {decision.type === "major" ? careerLabCopy.majorDecisionLabel : careerLabCopy.microDecisionLabel}
                           </span>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-500">
                             {uiLanguage === "en" ? "Decision" : "Karar"} {decisionIndex + 1}
                           </span>
                         </div>
-                        <h4 className="mt-3 text-base font-semibold text-white">
+                        <h4 className="mt-3 text-base font-semibold text-slate-900">
                           {decision.title[uiLanguage] ?? decision.title.tr}
                         </h4>
-                        <p className="mt-2 text-sm leading-6 text-slate-300">
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
                           {decision.scenario[uiLanguage] ?? decision.scenario.tr}
                         </p>
 
@@ -7337,25 +7348,25 @@ const handleResetCareerMission = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleCareerDecision(decision.id, option)}
-                                  className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                                  className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
                                     isSelected
-                                      ? "border-emerald-300/60 bg-emerald-400/15 text-white"
-                                      : "border-white/10 bg-black/20 text-slate-200 hover:border-violet-300/40 hover:bg-violet-400/10"
+                                      ? "border-emerald-300/60 bg-emerald-400/15 text-slate-900"
+                                      : "border-orange-200/30 bg-white/72 text-slate-700 hover:border-violet-300/40 hover:bg-violet-400/10"
                                   }`}
                                 >
                                   <span className="font-semibold">
                                     {option.label[uiLanguage] ?? option.label.tr}
                                   </span>
                                   {isSelected && (
-                                    <span className="mt-2 block text-xs leading-5 text-emerald-100/90">
+                                    <span className="mt-2 block text-xs leading-5 text-teal-800/90">
                                       {option.effect[uiLanguage] ?? option.effect.tr}
                                     </span>
                                   )}
                                 </button>
 
                                 {isSelected && (
-                                  <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/10 p-3">
-                                    <label className="block text-xs font-semibold text-cyan-100">
+                                  <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
+                                    <label className="block text-xs font-semibold text-sky-800">
                                       {uiLanguage === "en" ? "Why did you choose this?" : "Neden bu kararı seçtin?"}
                                     </label>
                                     <textarea
@@ -7371,9 +7382,9 @@ const handleResetCareerMission = () => {
                                           ? "Write a short reason. Example: I wanted to keep the team safe before moving forward."
                                           : "Kısa bir gerekçe yaz. Örn: Devam etmeden önce ekibi güvende tutmak istedim."
                                       }
-                                      className="mt-2 min-h-20 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs leading-5 text-cyan-50 outline-none placeholder:text-cyan-100/40 focus:border-cyan-300/40"
+                                      className="mt-2 min-h-20 w-full rounded-xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs leading-5 text-sky-800 outline-none placeholder:text-sky-800/40 focus:border-sky-200"
                                     />
-                                    <p className="mt-2 text-[11px] leading-4 text-cyan-100/60">
+                                    <p className="mt-2 text-[11px] leading-4 text-sky-800/60">
                                       {uiLanguage === "en"
                                         ? "The AI mentor will use this reason to make the reflection more personal and developmental."
                                         : "AI mentor bu gerekçeyi kullanarak reflection çıktısını daha kişisel ve geliştirici hale getirir."}
@@ -7388,14 +7399,14 @@ const handleResetCareerMission = () => {
                                       });
 
                                       return (
-                                        <div className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100/85">
-                                          <p className="font-semibold text-white">
+                                        <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-700/85">
+                                          <p className="font-semibold text-slate-900">
                                             {localConsequence.title}
                                           </p>
                                           <p className="mt-1">
                                             {localConsequence.summary}
                                           </p>
-                                          <p className="mt-1 text-amber-100/70">
+                                          <p className="mt-1 text-amber-700/70">
                                             {localConsequence.outcomeShift}
                                           </p>
                                         </div>
@@ -7411,18 +7422,18 @@ const handleResetCareerMission = () => {
                                       });
 
                                       return (
-                                        <div className="mt-3 rounded-lg border border-violet-300/20 bg-violet-400/10 p-3 text-xs leading-5 text-violet-100/85">
-                                          <p className="font-semibold text-white">
+                                        <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-400/10 p-3 text-xs leading-5 text-violet-700/85">
+                                          <p className="font-semibold text-slate-900">
                                             {localFollowUp.title}
                                           </p>
                                           <p className="mt-1">
                                             {localFollowUp.question}
                                           </p>
-                                          <p className="mt-1 text-violet-100/70">
+                                          <p className="mt-1 text-violet-700/70">
                                             {localFollowUp.whyItMatters}
                                           </p>
 
-                                          <label className="mt-3 block text-xs font-semibold text-violet-100">
+                                          <label className="mt-3 block text-xs font-semibold text-violet-700">
                                             {uiLanguage === "en" ? "Your answer to the follow-up question" : "Takip sorusuna cevabın"}
                                           </label>
                                           <textarea
@@ -7438,7 +7449,7 @@ const handleResetCareerMission = () => {
                                                 ? "Write what you would do if the condition changed."
                                                 : "Koşul değişseydi ne yapacağını yaz."
                                             }
-                                            className="mt-2 min-h-20 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs leading-5 text-violet-50 outline-none placeholder:text-violet-100/40 focus:border-violet-300/40"
+                                            className="mt-2 min-h-20 w-full rounded-xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs leading-5 text-violet-50 outline-none placeholder:text-violet-700/40 focus:border-violet-300/40"
                                           />
                                         </div>
                                       );
@@ -7448,7 +7459,7 @@ const handleResetCareerMission = () => {
                                       type="button"
                                       disabled={careerMentorReflectionLoadingId === decision.id}
                                       onClick={() => handleGenerateCareerMentorReflection(decision, option)}
-                                      className="rounded-lg border border-cyan-300/30 bg-cyan-400/15 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                                      className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50/80 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                       {careerMentorReflectionLoadingId === decision.id
                                         ? (uiLanguage === "en" ? "Thinking..." : "Düşünüyor...")
@@ -7458,17 +7469,17 @@ const handleResetCareerMission = () => {
                                     </button>
 
                                     {(careerMentorReflectionCounts[decision.id] || 0) > 0 ? (
-                                      <p className="mt-2 text-[11px] leading-4 text-cyan-100/60">
+                                      <p className="mt-2 text-[11px] leading-4 text-sky-800/60">
                                         {uiLanguage === "en" ? "Mentor reflection count" : "Mentor reflection sayısı"}: {careerMentorReflectionCounts[decision.id] || 0}
                                       </p>
                                     ) : null}
 
                                     {careerMentorReflections[decision.id] ? (
-                                      <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-cyan-100/85">
+                                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-sky-800/85">
                                         {careerMentorReflections[decision.id]}
                                       </pre>
                                     ) : (
-                                      <p className="mt-2 text-xs leading-5 text-cyan-100/70">
+                                      <p className="mt-2 text-xs leading-5 text-sky-800/70">
                                         {uiLanguage === "en"
                                           ? "Use this to go beyond multiple choice and reflect on why the decision matters."
                                           : "Bu alan, çoktan seçmeli yapının ötesine geçip kararın neden önemli olduğunu düşündürmek için kullanılır."}
@@ -7486,36 +7497,36 @@ const handleResetCareerMission = () => {
                 </div>
               </div>
 
-              <div className="xl:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-5">
+              <div className="xl:col-span-2 rounded-[28px] border border-amber-300/20 bg-amber-400/10 p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-amber-200">
                       {uiLanguage === "en" ? "Decision profile preview" : "Karar profili önizlemesi"}
                     </p>
-                    <h4 className="mt-2 text-lg font-semibold text-white">
+                    <h4 className="mt-2 text-lg font-semibold text-slate-900">
                       {careerTraitSummary.title}
                     </h4>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-100/85">
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-700/85">
                       {careerTraitSummary.description}
                     </p>
-                    <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-amber-100">
+                    <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-sm text-amber-700">
                       <p className="text-xs uppercase tracking-[0.2em] text-amber-200">
                         {uiLanguage === "en" ? "AI mentor feedback" : "AI mentor geri bildirimi"}
                       </p>
-                      <h5 className="mt-2 font-semibold text-white">
+                      <h5 className="mt-2 font-semibold text-slate-900">
                         {careerAdaptiveFeedback.title}
                       </h5>
-                      <p className="mt-2 leading-6 text-amber-100/85">
+                      <p className="mt-2 leading-6 text-amber-700/85">
                         {careerAdaptiveFeedback.message}
                       </p>
-                      <p className="mt-2 text-xs leading-5 text-amber-100/70">
+                      <p className="mt-2 text-xs leading-5 text-amber-700/70">
                         {careerAdaptiveFeedback.nextTip}
                       </p>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-amber-100">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 px-4 py-3 text-sm text-amber-700">
                     <span className="font-semibold">{answeredCareerDecisionCount}</span>
-                    <span className="text-amber-100/75"> / {selectedCareerMission.decisionPoints.length} </span>
+                    <span className="text-amber-700/75"> / {selectedCareerMission.decisionPoints.length} </span>
                     <span>{uiLanguage === "en" ? "decisions answered" : "karar tamamlandı"}</span>
                   </div>
                 </div>
@@ -7526,12 +7537,12 @@ const handleResetCareerMission = () => {
                     const percentage = Math.min(displayValue * 20, 100);
 
                     return (
-                      <div key={trait} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                        <div className="flex items-center justify-between text-xs text-amber-100">
+                      <div key={trait} className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                        <div className="flex items-center justify-between text-xs text-amber-700">
                           <span>{CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}</span>
                           <span>{value}</span>
                         </div>
-                        <div className="mt-2 h-2 rounded-full bg-white/10">
+                        <div className="mt-2 h-2 rounded-full bg-white/66">
                           <div
                             className="h-2 rounded-full bg-amber-300"
                             style={{ width: `${percentage}%` }}
@@ -7543,9 +7554,9 @@ const handleResetCareerMission = () => {
                 </div>
 
                 {careerTraitSummary.strongestTraits.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-amber-100">
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-amber-700">
                     {(careerTraitSummary.strongestTraits as Array<keyof typeof careerTraitProfile>).map((trait) => (
-                      <span key={trait} className="rounded-full border border-amber-300/30 bg-black/20 px-3 py-1">
+                      <span key={trait} className="rounded-full border border-amber-300/30 bg-white/72 px-3 py-1">
                         {CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}
                       </span>
                     ))}
@@ -7554,14 +7565,14 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-5 text-sm text-emerald-100">
-              <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">
+            <div className="mt-6 rounded-[28px] border border-teal-200 bg-teal-50/80 p-5 text-sm text-teal-800">
+              <p className="text-xs uppercase tracking-[0.22em] text-teal-700">
                 {uiLanguage === "en" ? "Career Lab persistence" : "Career Lab kayıt"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {uiLanguage === "en" ? "Save Career Session" : "Career oturumunu kaydet"}
               </h4>
-              <p className="mt-2 max-w-3xl leading-6 text-emerald-100/85">
+              <p className="mt-2 max-w-3xl leading-6 text-teal-800/85">
                 {uiLanguage === "en"
                   ? "Save the completed simulation, decision profile, local report, AI narrative report, cinematic blueprint, written reasons, and mentor reflections to Supabase."
                   : "Tamamlanan simülasyonu, karar profilini, yerel raporu, AI anlatı raporunu, sinematik planı, yazılı gerekçeleri ve mentor reflection çıktılarını Supabase'e kaydet."}
@@ -7572,7 +7583,7 @@ const handleResetCareerMission = () => {
                   type="button"
                   disabled={careerSessionSaveLoading}
                   onClick={handleSaveCareerSession}
-                  className="rounded-xl border border-emerald-300/30 bg-emerald-400/15 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl border border-teal-200 bg-emerald-400/15 px-4 py-2 text-xs font-semibold text-teal-800 transition hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {careerSessionSaveLoading
                     ? (uiLanguage === "en" ? "Saving..." : "Kaydediliyor...")
@@ -7582,30 +7593,30 @@ const handleResetCareerMission = () => {
                 </button>
 
                 {savedCareerSessionId ? (
-                  <span className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-emerald-100/80">
+                  <span className="rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs text-teal-800/80">
                     ID: {savedCareerSessionId}
                   </span>
                 ) : null}
               </div>
 
               {careerSessionSaveError ? (
-                <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-red-400/10 p-3 text-xs text-rose-700">
                   {careerSessionSaveError}
                 </div>
               ) : null}
 
               {careerSessionSaveSuccess ? (
-                <div className="mt-4 rounded-xl border border-emerald-300/20 bg-black/20 p-3 text-xs text-emerald-100">
+                <div className="mt-4 rounded-2xl border border-teal-200 bg-white/72 p-3 text-xs text-teal-800">
                   {careerSessionSaveSuccess}
                 </div>
               ) : null}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-5 text-sm text-blue-100">
+            <div className="mt-6 rounded-[28px] border border-blue-300/20 bg-blue-400/10 p-5 text-sm text-blue-100">
               <p className="text-xs uppercase tracking-[0.22em] text-blue-200">
                 {uiLanguage === "en" ? "Career Lab saved sessions" : "Kayıtlı Career oturumları"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {uiLanguage === "en" ? "Load Saved Career Sessions" : "Kayıtlı Career oturumlarını yükle"}
               </h4>
               <p className="mt-2 max-w-3xl leading-6 text-blue-100/85">
@@ -7618,7 +7629,7 @@ const handleResetCareerMission = () => {
                 type="button"
                 disabled={careerSessionsLoading}
                 onClick={handleListCareerSessions}
-                className="mt-4 rounded-xl border border-blue-300/30 bg-blue-400/15 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-4 rounded-2xl border border-blue-300/30 bg-blue-400/15 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-400/25 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {careerSessionsLoading
                   ? (uiLanguage === "en" ? "Loading..." : "Yükleniyor...")
@@ -7626,7 +7637,7 @@ const handleResetCareerMission = () => {
               </button>
 
               {careerSessionsError ? (
-                <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-red-400/10 p-3 text-xs text-rose-700">
                   {careerSessionsError}
                 </div>
               ) : null}
@@ -7634,10 +7645,10 @@ const handleResetCareerMission = () => {
               <div className="mt-4 grid gap-3">
                 {careerSavedSessions.length > 0 ? (
                   careerSavedSessions.map((session) => (
-                    <div key={session.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div key={session.id} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div>
-                          <h5 className="font-semibold text-white">
+                          <h5 className="font-semibold text-slate-900">
                             {session.profession_title || session.profession_key}
                           </h5>
                           <p className="mt-1 text-xs text-blue-100/75">
@@ -7651,7 +7662,7 @@ const handleResetCareerMission = () => {
                           type="button"
                           disabled={careerSessionLoadLoading}
                           onClick={() => handleLoadCareerSession(session.id)}
-                          className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl border border-orange-200/30 bg-white/58 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white/66 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {uiLanguage === "en" ? "Load session" : "Oturumu yükle"}
                         </button>
@@ -7659,7 +7670,7 @@ const handleResetCareerMission = () => {
                           type="button"
                           disabled={careerSessionLoadLoading}
                           onClick={() => handleDeleteCareerSession(session.id)}
-                          className="rounded-xl border border-red-300/20 bg-red-400/10 px-4 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl border border-rose-200 bg-red-400/10 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {uiLanguage === "en" ? "Delete session" : "Oturumu sil"}
                         </button>
@@ -7667,7 +7678,7 @@ const handleResetCareerMission = () => {
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-blue-100/75">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-xs text-blue-100/75">
                     {uiLanguage === "en"
                       ? "No saved Career Lab sessions listed yet."
                       : "Henüz listelenmiş kayıtlı Career Lab oturumu yok."}
@@ -7676,24 +7687,24 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-violet-300/20 bg-violet-400/10 p-5 text-sm text-violet-100">
-              <p className="text-xs uppercase tracking-[0.22em] text-violet-200">
+            <div className="mt-6 rounded-[28px] border border-violet-300/20 bg-violet-400/10 p-5 text-sm text-violet-700">
+              <p className="text-xs uppercase tracking-[0.22em] text-violet-700">
                 {uiLanguage === "en" ? "Persistence pilot QA" : "Persistence pilot QA"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {careerPersistenceQaChecklist.title}
               </h4>
-              <p className="mt-2 max-w-3xl leading-6 text-violet-100/85">
+              <p className="mt-2 max-w-3xl leading-6 text-violet-700/85">
                 {careerPersistenceQaChecklist.description}
               </p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {careerPersistenceQaChecklist.items.map((item) => (
-                  <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <h5 className="font-semibold text-white">
+                  <div key={item.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <h5 className="font-semibold text-slate-900">
                       {item.label}
                     </h5>
-                    <p className="mt-2 text-xs leading-5 text-violet-100/80">
+                    <p className="mt-2 text-xs leading-5 text-violet-700/80">
                       {item.detail}
                     </p>
                   </div>
@@ -7702,11 +7713,11 @@ const handleResetCareerMission = () => {
             </div>
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-green-300/20 bg-green-400/10 p-5 text-sm text-green-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-green-200">
+              <div className="mt-6 rounded-[28px] border border-green-300/20 bg-green-400/10 p-5 text-sm text-green-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-green-700">
                   {uiLanguage === "en" ? "Mission outcome" : "Görev sonucu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerMissionOutcomeMap.title}
                 </h4>
                 <p className="mt-2 text-sm font-semibold text-green-100">
@@ -7718,11 +7729,11 @@ const handleResetCareerMission = () => {
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {careerMissionOutcomeMap.outcomeCards.map((card) => (
-                    <div key={card.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-green-200">
+                    <div key={card.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-green-700">
                         {card.label}
                       </p>
-                      <p className="mt-2 text-xl font-semibold text-white">
+                      <p className="mt-2 text-xl font-semibold text-slate-900">
                         {card.value}
                       </p>
                       <p className="mt-2 text-xs leading-5 text-green-100/75">
@@ -7735,11 +7746,11 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-lime-300/20 bg-lime-400/10 p-5 text-sm text-lime-100">
+              <div className="mt-6 rounded-[28px] border border-lime-300/20 bg-lime-400/10 p-5 text-sm text-lime-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-lime-200">
                   {uiLanguage === "en" ? "C phase completion" : "C fazı tamamlanma durumu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {uiLanguage === "en" ? "Thinking Engine Readiness" : "Thinking Engine Hazırlığı"}
                 </h4>
                 <p className="mt-2 max-w-4xl leading-6 text-lime-100/85">
@@ -7783,18 +7794,18 @@ const handleResetCareerMission = () => {
                       status: uiLanguage === "en" ? "Ready for Phase D" : "Phase D’ye hazır",
                     },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div key={item.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-lime-200">
                         {item.label}
                       </p>
-                      <p className="mt-2 font-semibold text-white">
+                      <p className="mt-2 font-semibold text-slate-900">
                         {item.status}
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-lime-100/75">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-lime-100/75">
                   {uiLanguage === "en"
                     ? "Recommended next action: run full pilot validation, push this checkpoint, then start Phase D with Career Lab → Storyverse Scene Conversion."
                     : "Önerilen sonraki aksiyon: full pilot validation çalıştır, bu checkpoint’i push et, ardından Phase D’ye Career Lab → Storyverse Scene Conversion ile başla."}
@@ -7803,14 +7814,14 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-indigo-300/20 bg-indigo-400/10 p-5 text-sm text-indigo-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-indigo-200">
+              <div className="mt-6 rounded-[28px] border border-indigo-200 bg-indigo-400/10 p-5 text-sm text-indigo-700">
+                <p className="text-xs uppercase tracking-[0.22em] text-indigo-700">
                   {uiLanguage === "en" ? "Phase D readiness" : "Phase D hazırlığı"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {uiLanguage === "en" ? "Cinematic Readiness Handoff" : "Sinematik Hazırlık Aktarımı"}
                 </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-indigo-100/85">
+                <p className="mt-2 max-w-4xl leading-6 text-indigo-700/85">
                   {uiLanguage === "en"
                     ? "The thinking engine output is now structured enough to become a cinematic recap. Phase D will convert these learning outputs into storyboard, narration, visuals, voice, video, and final export."
                     : "Thinking engine çıktısı artık sinematik özete dönüşebilecek kadar yapılandırıldı. Phase D bu öğrenme çıktılarını storyboard, anlatım, görsel, ses, video ve final export akışına dönüştürecek."}
@@ -7855,18 +7866,18 @@ const handleResetCareerMission = () => {
                         : "Storyverse/export-service reuse için sahne paketi",
                     },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-indigo-200">
+                    <div key={item.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-indigo-700">
                         {item.label}
                       </p>
-                      <p className="mt-2 text-xs leading-5 text-indigo-100/80">
+                      <p className="mt-2 text-xs leading-5 text-indigo-700/80">
                         {item.value}
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-indigo-100/75">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-indigo-700/75">
                   {uiLanguage === "en"
                     ? "No Runway, ElevenLabs, image generation, or export-service call is triggered here. This is only the handoff map for the next phase."
                     : "Burada Runway, ElevenLabs, image generation veya export-service çağrısı yapılmaz. Bu yalnızca sonraki faz için aktarım haritasıdır."}
@@ -7875,11 +7886,11 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-5 text-sm text-blue-100">
+              <div className="mt-6 rounded-[28px] border border-blue-300/20 bg-blue-400/10 p-5 text-sm text-blue-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-blue-200">
                   {uiLanguage === "en" ? "Pilot validation checklist" : "Pilot doğrulama checklist"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {uiLanguage === "en" ? "Before moving to cinematic generation" : "Sinematik üretime geçmeden önce"}
                 </h4>
                 <p className="mt-2 max-w-4xl leading-6 text-blue-100/85">
@@ -7909,7 +7920,7 @@ const handleResetCareerMission = () => {
                       ? "Save, reload, and delete one Career Lab session"
                       : "Bir Career Lab oturumunu kaydet, yükle ve sil",
                   ].map((item) => (
-                    <div key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs leading-5 text-blue-100/80">
+                    <div key={item} className="rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-3 text-xs leading-5 text-blue-100/80">
                       {item}
                     </div>
                   ))}
@@ -7918,55 +7929,55 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-5 text-sm text-emerald-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">
+              <div className="mt-6 rounded-[28px] border border-teal-200 bg-teal-50/80 p-5 text-sm text-teal-800">
+                <p className="text-xs uppercase tracking-[0.22em] text-teal-700">
                   {uiLanguage === "en" ? "Mission completed" : "Görev tamamlandı"}
                 </p>
-                <h4 className="mt-3 text-xl font-semibold text-white">
+                <h4 className="mt-3 text-xl font-semibold text-slate-900">
                   {uiLanguage === "en"
                     ? "You did more than choose answers — you built a thinking journey."
                     : "Sadece cevap seçmedin — bir düşünme yolculuğu oluşturdun."}
                 </h4>
-                <p className="mt-3 max-w-4xl leading-6 text-emerald-100/85">
+                <p className="mt-3 max-w-4xl leading-6 text-teal-800/85">
                   {uiLanguage === "en"
                     ? "Your decisions, written reasons, follow-up answers, and mentor reflections now form a developmental output. This is not a career test; it is a simulation-based learning snapshot."
                     : "Kararların, yazılı gerekçelerin, takip cevapların ve mentor reflection çıktıların artık gelişimsel bir çıktıya dönüştü. Bu bir kariyer testi değil; simülasyon bazlı bir öğrenme anlık görüntüsüdür."}
                 </p>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-emerald-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-teal-700">
                       {uiLanguage === "en" ? "Decisions" : "Kararlar"}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
                       {Object.keys(careerDecisionAnswers).length}/{selectedCareerMission.decisionPoints.length}
                     </p>
-                    <p className="mt-1 text-xs text-emerald-100/70">
+                    <p className="mt-1 text-xs text-teal-800/70">
                       {uiLanguage === "en" ? "Mission choices completed" : "Görev seçimleri tamamlandı"}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-emerald-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-teal-700">
                       {uiLanguage === "en" ? "Reflection depth" : "Reflection derinliği"}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
                       {Object.values(careerDecisionReasons).filter((value) => value?.trim()).length +
                         Object.values(careerFollowUpAnswers).filter((value) => value?.trim()).length}
                     </p>
-                    <p className="mt-1 text-xs text-emerald-100/70">
+                    <p className="mt-1 text-xs text-teal-800/70">
                       {uiLanguage === "en" ? "Written thinking inputs" : "Yazılı düşünme girdisi"}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-emerald-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-teal-700">
                       {uiLanguage === "en" ? "AI mentor" : "AI mentor"}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-white">
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
                       {Object.values(careerMentorReflections).filter((value) => value?.trim()).length}
                     </p>
-                    <p className="mt-1 text-xs text-emerald-100/70">
+                    <p className="mt-1 text-xs text-teal-800/70">
                       {uiLanguage === "en" ? "Reflection outputs generated" : "Reflection çıktısı üretildi"}
                     </p>
                   </div>
@@ -7975,14 +7986,14 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-slate-300/20 bg-slate-400/10 p-5 text-sm text-slate-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-200">
+              <div className="mt-6 rounded-[28px] border border-slate-300/20 bg-slate-400/10 p-5 text-sm text-slate-800">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-700">
                   {uiLanguage === "en" ? "Career Lab insight view mode" : "Career Lab içgörü görünümü"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {uiLanguage === "en" ? "Progressive Insight Guide" : "Aşamalı İçgörü Rehberi"}
                 </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-slate-100/85">
+                <p className="mt-2 max-w-4xl leading-6 text-slate-800/85">
                   {uiLanguage === "en"
                     ? "Start with the mission outcome first, then review the thinking journey, cognitive signals, and premium report. Full view keeps all panels visible for pilot review."
                     : "Önce görev sonucuyla başla; sonra düşünme yolculuğu, cognitive sinyaller ve premium raporu incele. Full view pilot inceleme için tüm panelleri görünür tutar."}
@@ -7992,10 +8003,10 @@ const handleResetCareerMission = () => {
                   <button
                     type="button"
                     onClick={() => setCareerInsightViewMode("guided")}
-                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                    className={`rounded-2xl border px-4 py-2 text-xs font-semibold transition ${
                       careerInsightViewMode === "guided"
-                        ? "border-slate-200/40 bg-slate-200/20 text-white"
-                        : "border-white/10 bg-black/20 text-slate-100 hover:bg-white/10"
+                        ? "border-orange-200/28 bg-orange-100/50/20 text-slate-900"
+                        : "border-orange-200/30 bg-white/72 text-slate-800 hover:bg-white/66"
                     }`}
                   >
                     {uiLanguage === "en" ? "Guided view" : "Guided view"}
@@ -8003,10 +8014,10 @@ const handleResetCareerMission = () => {
                   <button
                     type="button"
                     onClick={() => setCareerInsightViewMode("full")}
-                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                    className={`rounded-2xl border px-4 py-2 text-xs font-semibold transition ${
                       careerInsightViewMode === "full"
-                        ? "border-slate-200/40 bg-slate-200/20 text-white"
-                        : "border-white/10 bg-black/20 text-slate-100 hover:bg-white/10"
+                        ? "border-orange-200/28 bg-orange-100/50/20 text-slate-900"
+                        : "border-orange-200/30 bg-white/72 text-slate-800 hover:bg-white/66"
                     }`}
                   >
                     {uiLanguage === "en" ? "Full review" : "Full review"}
@@ -8021,13 +8032,13 @@ const handleResetCareerMission = () => {
                       uiLanguage === "en" ? "3. Cognitive Signals" : "3. Cognitive Sinyaller",
                       uiLanguage === "en" ? "4. Premium Report" : "4. Premium Rapor",
                     ].map((item) => (
-                      <div key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-slate-100/80">
+                      <div key={item} className="rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-3 text-xs text-slate-800/80">
                         {item}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-100/80">
+                  <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-slate-800/80">
                     {uiLanguage === "en"
                       ? "Full review mode is active. All insight panels remain visible for QA and pilot validation."
                       : "Full review modu aktif. Tüm içgörü panelleri QA ve pilot doğrulama için görünür kalır."}
@@ -8037,14 +8048,14 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 p-5 text-sm text-fuchsia-100">
+              <div className="mt-6 rounded-[28px] border border-fuchsia-300/20 bg-fuchsia-400/10 p-5 text-sm text-fuchsia-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">
                   {uiLanguage === "en" ? "Premium developmental report" : "Premium gelişim raporu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerPremiumDevelopmentalReport.title}
                 </h4>
-                <p className="mt-1 text-sm text-fuchsia-100/75">
+                <p className="mt-1 text-sm text-pink-700">
                   {careerPremiumDevelopmentalReport.subtitle}
                 </p>
                 <p className="mt-3 max-w-4xl leading-6 text-fuchsia-100/85">
@@ -8053,16 +8064,16 @@ const handleResetCareerMission = () => {
 
                 <div className="mt-4 grid gap-4">
                   {careerPremiumDevelopmentalReport.sections.map((section) => (
-                    <div key={section.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <h5 className="font-semibold text-white">
+                    <div key={section.title} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                      <h5 className="font-semibold text-slate-900">
                         {section.title}
                       </h5>
                       <p className="mt-2 text-xs leading-5 text-fuchsia-100/80">
                         {section.description}
                       </p>
-                      <ul className="mt-3 space-y-2 text-xs leading-5 text-fuchsia-100/75">
+                      <ul className="mt-3 space-y-2 text-xs leading-5 text-pink-700">
                         {section.items.slice(0, 5).map((item) => (
-                          <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                          <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                             {item}
                           </li>
                         ))}
@@ -8071,24 +8082,24 @@ const handleResetCareerMission = () => {
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-fuchsia-100/75">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-pink-700">
                   {careerPremiumDevelopmentalReport.closingNote}
                 </div>
               </div>
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-orange-300/20 bg-orange-400/10 p-5 text-sm text-orange-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-orange-200">
+              <div className="mt-6 rounded-[28px] border border-orange-300/20 bg-orange-400/10 p-5 text-sm text-orange-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-orange-700">
                   {uiLanguage === "en" ? "Cognitive signals" : "Cognitive sinyaller"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerCognitivePatternSignals.title}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-orange-100/85">
                   {careerCognitivePatternSignals.description}
                 </p>
-                <p className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-orange-100/80">
+                <p className="mt-2 rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs text-orange-100/80">
                   {careerCognitivePatternSignals.summary}
                 </p>
 
@@ -8096,11 +8107,11 @@ const handleResetCareerMission = () => {
                   {careerCognitivePatternSignals.signals.map((signal, index) => (
                     <div
                       key={`${signal.label}-${index}`}
-                      className="rounded-xl border border-white/10 bg-black/20 p-4"
+                      className="rounded-2xl border border-orange-200/30 bg-white/72 p-4"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h5 className="font-semibold text-white">
+                          <h5 className="font-semibold text-slate-900">
                             {signal.label}
                           </h5>
                           <p className="mt-2 text-xs leading-5 text-orange-100/75">
@@ -8108,7 +8119,7 @@ const handleResetCareerMission = () => {
                           </p>
                         </div>
 
-                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.12em]">
+                        <span className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1 text-[11px] uppercase tracking-[0.12em]">
                           {signal.confidence}
                         </span>
                       </div>
@@ -8119,29 +8130,29 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-purple-300/20 bg-purple-400/10 p-5 text-sm text-purple-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-purple-200">
+              <div className="mt-6 rounded-[28px] border border-purple-300/20 bg-purple-400/10 p-5 text-sm text-purple-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-violet-700">
                   {uiLanguage === "en" ? "Thinking journey" : "Düşünme yolculuğu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerThinkingJourneyMap.title}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-purple-100/85">
                   {careerThinkingJourneyMap.description}
                 </p>
-                <p className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-purple-100/80">
+                <p className="mt-2 rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs text-purple-100/80">
                   {careerThinkingJourneyMap.summary}
                 </p>
 
                 <div className="mt-4 grid gap-3">
                   {careerThinkingJourneyMap.steps.map((step, index) => (
-                    <div key={`${step.decisionTitle}-${index}`} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div key={`${step.decisionTitle}-${index}`} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.16em] text-purple-200">
+                          <p className="text-xs uppercase tracking-[0.16em] text-violet-700">
                             {uiLanguage === "en" ? "Step" : "Adım"} {index + 1}
                           </p>
-                          <h5 className="mt-1 font-semibold text-white">
+                          <h5 className="mt-1 font-semibold text-slate-900">
                             {step.decisionTitle}
                           </h5>
                           <p className="mt-1 text-xs text-purple-100/75">
@@ -8149,13 +8160,13 @@ const handleResetCareerMission = () => {
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2 text-[11px]">
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                          <span className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1">
                             {step.reasonStatus}
                           </span>
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                          <span className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1">
                             {step.followUpStatus}
                           </span>
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                          <span className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1">
                             {step.mentorStatus}
                           </span>
                         </div>
@@ -8167,11 +8178,11 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-teal-300/20 bg-teal-400/10 p-5 text-sm text-teal-100">
+              <div className="mt-6 rounded-[28px] border border-teal-300/20 bg-teal-400/10 p-5 text-sm text-teal-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-teal-200">
                   {uiLanguage === "en" ? "Developmental output" : "Gelişimsel çıktı"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerDevelopmentalOutputSummary.title}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-teal-100/85">
@@ -8180,11 +8191,11 @@ const handleResetCareerMission = () => {
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                   {careerDevelopmentalOutputSummary.items.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div key={item.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-teal-200">
                         {item.label}
                       </p>
-                      <p className="mt-2 font-semibold text-white">
+                      <p className="mt-2 font-semibold text-slate-900">
                         {item.value}
                       </p>
                       <p className="mt-2 text-xs leading-5 text-teal-100/75">
@@ -8197,11 +8208,11 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-5 text-sm text-yellow-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-yellow-200">
+              <div className="mt-6 rounded-[28px] border border-yellow-300/20 bg-yellow-400/10 p-5 text-sm text-yellow-100">
+                <p className="text-xs uppercase tracking-[0.22em] text-amber-700">
                   {uiLanguage === "en" ? "Adaptive learning path" : "Adaptif öğrenme yolu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerAdaptiveNextChallenge.title}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-yellow-100/85">
@@ -8209,11 +8220,11 @@ const handleResetCareerMission = () => {
                 </p>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-yellow-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
                       {uiLanguage === "en" ? "Next challenge" : "Sonraki görev"}
                     </p>
-                    <h5 className="mt-2 font-semibold text-white">
+                    <h5 className="mt-2 font-semibold text-slate-900">
                       {careerAdaptiveNextChallenge.challengeName}
                     </h5>
                     <p className="mt-2 text-xs leading-5 text-yellow-100/80">
@@ -8221,8 +8232,8 @@ const handleResetCareerMission = () => {
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-yellow-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
                       {uiLanguage === "en" ? "Reflection focus" : "Reflection odağı"}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-yellow-100/80">
@@ -8230,8 +8241,8 @@ const handleResetCareerMission = () => {
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-yellow-200">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-amber-700">
                       {uiLanguage === "en" ? "Suggested mode" : "Önerilen mod"}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-yellow-100/80">
@@ -8242,13 +8253,13 @@ const handleResetCareerMission = () => {
               </div>
             )}
 
-            <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
+            <div className="mt-6 rounded-[28px] border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
               <p className="text-xs uppercase tracking-[0.22em] text-sky-200">
                 {uiLanguage === "en" ? "Experience report preview" : "Deneyim raporu önizlemesi"}
               </p>
               <div className="mt-3 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
                 <div>
-                  <h4 className="text-lg font-semibold text-white">
+                  <h4 className="text-lg font-semibold text-slate-900">
                     {careerExperienceReportPreview.title}
                   </h4>
                   <p className="mt-1 text-sky-100/80">
@@ -8257,25 +8268,25 @@ const handleResetCareerMission = () => {
                   <p className="mt-3 leading-6 text-sky-100/85">
                     {careerExperienceReportPreview.summary}
                   </p>
-                  <p className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-sky-100/75">
+                  <p className="mt-3 rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2 text-xs text-sky-100/75">
                     {careerExperienceReportPreview.disclaimer}
                   </p>
                 </div>
 
                 <div className="grid gap-3">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
                       {uiLanguage === "en" ? "Decision highlights" : "Karar özetleri"}
                     </p>
                     <ul className="mt-2 space-y-2 text-xs leading-5 text-sky-100/85">
                       {careerExperienceReportPreview.decisionHighlights.length > 0 ? (
                         careerExperienceReportPreview.decisionHighlights.map((item) => (
-                          <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                          <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                             {item}
                           </li>
                         ))
                       ) : (
-                        <li className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <li className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                           {uiLanguage === "en" ? "No decision selected yet." : "Henüz karar seçilmedi."}
                         </li>
                       )}
@@ -8283,7 +8294,7 @@ const handleResetCareerMission = () => {
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                       <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
                         {uiLanguage === "en" ? "Strength signals" : "Güçlü sinyaller"}
                       </p>
@@ -8294,7 +8305,7 @@ const handleResetCareerMission = () => {
                       </ul>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                       <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
                         {uiLanguage === "en" ? "Next steps" : "Sonraki adımlar"}
                       </p>
@@ -8309,19 +8320,19 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className={`mt-6 rounded-2xl border p-5 text-sm ${
+            <div className={`mt-6 rounded-[28px] border p-5 text-sm ${
               isCareerMissionComplete
-                ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                : "border-slate-300/20 bg-slate-400/10 text-slate-100"
+                ? "border-teal-200 bg-teal-50/80 text-teal-800"
+                : "border-slate-300/20 bg-slate-400/10 text-slate-800"
             }`}>
               <p className={`text-xs uppercase tracking-[0.22em] ${
-                isCareerMissionComplete ? "text-emerald-200" : "text-slate-300"
+                isCareerMissionComplete ? "text-teal-700" : "text-slate-600"
               }`}>
                 {uiLanguage === "en" ? "Mission completion status" : "Görev tamamlama durumu"}
               </p>
               <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <h4 className="text-lg font-semibold text-white">
+                  <h4 className="text-lg font-semibold text-slate-900">
                     {isCareerMissionComplete
                       ? (uiLanguage === "en" ? "Mission completed" : "Görev tamamlandı")
                       : (uiLanguage === "en" ? "Mission in progress" : "Görev devam ediyor")}
@@ -8336,11 +8347,11 @@ const handleResetCareerMission = () => {
                           : "Görev durumunu kilitlemek ve final rapora hazırlamak için tüm yönlendirmeli kararları tamamla.")}
                   </p>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 px-4 py-3">
                   <p className="text-xs opacity-75">
                     {uiLanguage === "en" ? "Progress" : "İlerleme"}
                   </p>
-                  <p className="mt-1 text-lg font-semibold text-white">
+                  <p className="mt-1 text-lg font-semibold text-slate-900">
                     {answeredCareerDecisionCount}/{selectedCareerMission.decisionPoints.length}
                   </p>
                 </div>
@@ -8348,27 +8359,27 @@ const handleResetCareerMission = () => {
 
               {isCareerMissionComplete && (
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] opacity-75">
                       {uiLanguage === "en" ? "Ready output" : "Hazır çıktı"}
                     </p>
-                    <p className="mt-2 text-white">
+                    <p className="mt-2 text-slate-900">
                       {uiLanguage === "en" ? "Experience Report" : "Deneyim Raporu"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] opacity-75">
                       {uiLanguage === "en" ? "Next build" : "Sonraki geliştirme"}
                     </p>
-                    <p className="mt-2 text-white">
+                    <p className="mt-2 text-slate-900">
                       {uiLanguage === "en" ? "Final report generation" : "Final rapor üretimi"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] opacity-75">
                       {uiLanguage === "en" ? "Later stage" : "Sonraki aşama"}
                     </p>
-                    <p className="mt-2 text-white">
+                    <p className="mt-2 text-slate-900">
                       {uiLanguage === "en" ? "Cinematic recap" : "Sinematik özet"}
                     </p>
                   </div>
@@ -8377,17 +8388,17 @@ const handleResetCareerMission = () => {
             </div>
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/10 p-5 text-sm text-fuchsia-100">
+              <div className="mt-6 rounded-[28px] border border-fuchsia-300/20 bg-fuchsia-400/10 p-5 text-sm text-fuchsia-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">
                   {uiLanguage === "en" ? "Final experience report" : "Final deneyim raporu"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerFinalReport.title}
                 </h4>
                 <div className="mt-4 grid gap-3">
                   {careerFinalReport.sections.map((section) => (
-                    <div key={section.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <h5 className="font-semibold text-white">
+                    <div key={section.title} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                      <h5 className="font-semibold text-slate-900">
                         {section.title}
                       </h5>
                       <p className="mt-2 leading-6 text-fuchsia-100/85">
@@ -8396,7 +8407,7 @@ const handleResetCareerMission = () => {
                       {section.items && (
                         <ul className="mt-3 space-y-2 text-xs leading-5 text-fuchsia-100/85">
                           {section.items.map((item) => (
-                            <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                            <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                               {item}
                             </li>
                           ))}
@@ -8410,27 +8421,27 @@ const handleResetCareerMission = () => {
                   <button
                     type="button"
                     onClick={handleCopyCareerReport}
-                    className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/15 px-4 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/25"
+                    className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-400/15 px-4 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/25"
                   >
                     {uiLanguage === "en" ? "Copy report" : "Raporu kopyala"}
                   </button>
                   <button
                     type="button"
                     onClick={handleDownloadCareerReport}
-                    className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                    className="rounded-2xl border border-orange-200/30 bg-white/72 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white/66"
                   >
                     {uiLanguage === "en" ? "Download report" : "Raporu indir"}
                   </button>
                   <button
                     type="button"
                     onClick={handleResetCareerMission}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                    className="rounded-2xl border border-orange-200/30 bg-white/58 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white/66"
                   >
                     {uiLanguage === "en" ? "Restart mission" : "Görevi sıfırla"}
                   </button>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-fuchsia-100/75">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-pink-700">
                   {uiLanguage === "en"
                     ? "This local report is now ready for the next sprint: downloadable report package or AI-enhanced narrative report."
                     : "Bu yerel rapor artık bir sonraki sprint için hazır: indirilebilir rapor paketi veya AI destekli anlatı raporu."}
@@ -8439,31 +8450,31 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-indigo-300/20 bg-indigo-400/10 p-5 text-sm text-indigo-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-indigo-200">
+              <div className="mt-6 rounded-[28px] border border-indigo-200 bg-indigo-400/10 p-5 text-sm text-indigo-700">
+                <p className="text-xs uppercase tracking-[0.22em] text-indigo-700">
                   {uiLanguage === "en" ? "Cinematic recap blueprint" : "Sinematik özet planı"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerCinematicRecapBlueprint.title}
                 </h4>
-                <p className="mt-2 max-w-3xl leading-6 text-indigo-100/85">
+                <p className="mt-2 max-w-3xl leading-6 text-indigo-700/85">
                   {careerCinematicRecapBlueprint.description}
                 </p>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {careerCinematicRecapBlueprint.scenes.map((scene, index) => (
-                    <div key={scene.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-indigo-200">
+                    <div key={scene.title} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-indigo-700">
                         {uiLanguage === "en" ? "Recap scene" : "Özet sahnesi"} {index + 1}
                       </p>
-                      <h5 className="mt-2 font-semibold text-white">
+                      <h5 className="mt-2 font-semibold text-slate-900">
                         {scene.title}
                       </h5>
-                      <p className="mt-2 text-xs leading-5 text-indigo-100/80">
+                      <p className="mt-2 text-xs leading-5 text-indigo-700/80">
                         <span className="font-semibold">{uiLanguage === "en" ? "Visual" : "Görsel"}: </span>
                         {scene.visualDirection}
                       </p>
-                      <p className="mt-2 text-xs leading-5 text-indigo-100/80">
+                      <p className="mt-2 text-xs leading-5 text-indigo-700/80">
                         <span className="font-semibold">{uiLanguage === "en" ? "Narration" : "Anlatım"}: </span>
                         {scene.narration}
                       </p>
@@ -8471,18 +8482,18 @@ const handleResetCareerMission = () => {
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-indigo-100/75">
+                <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs leading-5 text-indigo-700/75">
                   {careerCinematicRecapBlueprint.productionNote}
                 </div>
               </div>
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-teal-300/20 bg-teal-400/10 p-5 text-sm text-teal-100">
+              <div className="mt-6 rounded-[28px] border border-teal-300/20 bg-teal-400/10 p-5 text-sm text-teal-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-teal-200">
                   {uiLanguage === "en" ? "Pilot output package" : "Pilot çıktı paketi"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerSimulationOutputPackage.title}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-teal-100/85">
@@ -8491,15 +8502,15 @@ const handleResetCareerMission = () => {
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {careerSimulationOutputPackage.items.map((item) => (
-                    <div key={item.title} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div key={item.title} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <h5 className="font-semibold text-white">
+                        <h5 className="font-semibold text-slate-900">
                           {item.title}
                         </h5>
-                        <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${
+                        <span className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.16em] ${
                           item.status === "ready"
-                            ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
-                            : "border-slate-300/20 bg-slate-400/10 text-slate-200"
+                            ? "border-teal-200 bg-teal-50/80 text-teal-800"
+                            : "border-slate-300/20 bg-slate-400/10 text-slate-700"
                         }`}>
                           {item.status === "ready"
                             ? (uiLanguage === "en" ? "Ready" : "Hazır")
@@ -8516,11 +8527,11 @@ const handleResetCareerMission = () => {
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">
+              <div className="mt-6 rounded-[28px] border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-rose-200">
                   {uiLanguage === "en" ? "AI narrative report prompt" : "AI anlatı raporu prompt"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {uiLanguage === "en" ? "Future OpenAI report input" : "Gelecek OpenAI rapor girdisi"}
                 </h4>
                 <p className="mt-2 max-w-3xl leading-6 text-rose-100/85">
@@ -8531,27 +8542,27 @@ const handleResetCareerMission = () => {
                 <button
                   type="button"
                   onClick={handleCopyCareerNarrativePrompt}
-                  className="mt-4 rounded-xl border border-rose-300/30 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/25"
+                  className="mt-4 rounded-2xl border border-rose-300/30 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/25"
                 >
                   {uiLanguage === "en" ? "Copy AI prompt" : "AI prompt'u kopyala"}
                 </button>
-                <pre className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-[11px] leading-5 text-rose-100/80">
+                <pre className="mt-4 max-h-72 overflow-auto rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-[11px] leading-5 text-rose-100/80">
                   {careerNarrativeReportPrompt}
                 </pre>
               </div>
             )}
 
             {isCareerMissionComplete && (
-              <div className="mt-6 rounded-2xl border border-pink-300/20 bg-pink-400/10 p-5 text-sm text-pink-100">
+              <div className="mt-6 rounded-[28px] border border-pink-300/20 bg-pink-400/10 p-5 text-sm text-pink-100">
                 <p className="text-xs uppercase tracking-[0.22em] text-pink-200">
                   {uiLanguage === "en" ? "AI request payload blueprint" : "AI request payload taslağı"}
                 </p>
-                <h4 className="mt-3 text-lg font-semibold text-white">
+                <h4 className="mt-3 text-lg font-semibold text-slate-900">
                   {careerAiPayloadReadinessNotes.title}
                 </h4>
                 <ul className="mt-3 grid gap-2 text-xs leading-5 text-pink-100/85 md:grid-cols-2">
                   {careerAiPayloadReadinessNotes.items.map((item) => (
-                    <li key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                    <li key={item} className="rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2">
                       {item}
                     </li>
                   ))}
@@ -8559,11 +8570,11 @@ const handleResetCareerMission = () => {
                 <button
                   type="button"
                   onClick={handleCopyCareerNarrativePayload}
-                  className="mt-4 rounded-xl border border-pink-300/30 bg-pink-400/15 px-4 py-2 text-xs font-semibold text-pink-100 transition hover:bg-pink-400/25"
+                  className="mt-4 rounded-2xl border border-pink-300/30 bg-pink-400/15 px-4 py-2 text-xs font-semibold text-pink-100 transition hover:bg-pink-400/25"
                 >
                   {uiLanguage === "en" ? "Copy AI payload" : "AI payload'u kopyala"}
                 </button>
-                <pre className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/30 p-4 text-[11px] leading-5 text-pink-100/80">
+                <pre className="mt-4 max-h-72 overflow-auto rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-[11px] leading-5 text-pink-100/80">
                   {careerNarrativeReportPayload}
                 </pre>
               </div>
@@ -8571,18 +8582,18 @@ const handleResetCareerMission = () => {
 
           
 {isCareerMissionComplete && (
-  <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-5 text-sm text-cyan-100">
-    <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+  <div className="mt-6 rounded-[28px] border border-sky-200 bg-sky-50/80 p-5 text-sm text-sky-800">
+    <p className="text-xs uppercase tracking-[0.22em] text-sky-700">
       {uiLanguage === "en" ? "AI narrative generation" : "AI anlatı üretimi"}
     </p>
 
-    <h4 className="mt-3 text-lg font-semibold text-white">
+    <h4 className="mt-3 text-lg font-semibold text-slate-900">
       {uiLanguage === "en"
         ? "Career Lab AI Narrative Report"
         : "Career Lab AI Anlatı Raporu"}
     </h4>
 
-    <p className="mt-2 max-w-3xl leading-6 text-cyan-100/85">
+    <p className="mt-2 max-w-3xl leading-6 text-sky-800/85">
       {uiLanguage === "en"
         ? "This uses the isolated OpenAI narrative endpoint and does not touch Storyverse, export-service, or Supabase."
         : "Bu yapı izole OpenAI narrative endpoint'ini kullanır ve Storyverse, export-service veya Supabase'e dokunmaz."}
@@ -8592,7 +8603,7 @@ const handleResetCareerMission = () => {
       type="button"
       disabled={careerAiNarrativeLoading}
       onClick={handleGenerateCareerAiNarrativeReport}
-      className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/15 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+      className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50/80 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {careerAiNarrativeLoading
         ? (uiLanguage === "en" ? "Generating..." : "Üretiliyor...")
@@ -8605,68 +8616,68 @@ const handleResetCareerMission = () => {
               : "AI Anlatı Raporu Üret")}
     </button>
 
-    <div className="mt-3 rounded-xl border border-cyan-300/20 bg-black/20 px-3 py-2 text-xs leading-5 text-cyan-100/75">
+    <div className="mt-3 rounded-2xl border border-sky-200 bg-white/72 px-3 py-2 text-xs leading-5 text-sky-800/75">
       {uiLanguage === "en"
         ? "This action calls OpenAI and may create token cost. Use regeneration only when the first output is not suitable."
         : "Bu aksiyon OpenAI çağrısı yapar ve token maliyeti oluşturabilir. Yeniden üretimi yalnızca ilk çıktı uygun değilse kullan."}
       {careerAiNarrativeGenerationCount > 0 ? (
-        <span className="ml-2 font-semibold text-white">
+        <span className="ml-2 font-semibold text-slate-900">
           {uiLanguage === "en" ? "AI generation count" : "Üretim sayısı"}: {careerAiNarrativeGenerationCount}
         </span>
       ) : null}
     </div>
 
     {careerAiNarrativeError ? (
-      <div className="mt-4 rounded-xl border border-red-300/20 bg-red-400/10 p-3 text-xs text-red-100">
+      <div className="mt-4 rounded-2xl border border-rose-200 bg-red-400/10 p-3 text-xs text-rose-700">
         {careerAiNarrativeError}
       </div>
     ) : null}
 
     {careerAiNarrativeReport ? (
-      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+      <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-4">
         <div className="mb-3 flex flex-wrap gap-3">
           <button
             type="button"
             onClick={handleCopyCareerAiNarrativeReport}
-            className="rounded-xl border border-cyan-300/30 bg-cyan-400/15 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/25"
+            className="rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50/80"
           >
             {uiLanguage === "en" ? "Copy AI report" : "AI raporu kopyala"}
           </button>
           <button
             type="button"
             onClick={handleDownloadCareerAiNarrativeReport}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+            className="rounded-2xl border border-orange-200/30 bg-white/58 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white/66"
           >
             {uiLanguage === "en" ? "Download AI report" : "AI raporu indir"}
           </button>
         </div>
         {careerAiNarrativeMeta ? (
-          <div className="mb-3 grid gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-cyan-100/80 md:grid-cols-3">
+          <div className="mb-3 grid gap-2 rounded-2xl border border-orange-200/30 bg-white/58 p-3 text-xs text-sky-800/80 md:grid-cols-3">
             <div>
-              <span className="font-semibold text-white">{uiLanguage === "en" ? "Model" : "Model"}: </span>
+              <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Model" : "Model"}: </span>
               {careerAiNarrativeMeta.model || "-"}
             </div>
             <div>
-              <span className="font-semibold text-white">{uiLanguage === "en" ? "Generated" : "Üretim"}: </span>
+              <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Generated" : "Üretim"}: </span>
               {careerAiNarrativeMeta.generatedAt
                 ? new Date(careerAiNarrativeMeta.generatedAt).toLocaleString()
                 : "-"}
             </div>
             <div>
-              <span className="font-semibold text-white">{uiLanguage === "en" ? "Tokens" : "Token"}: </span>
+              <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Tokens" : "Token"}: </span>
               {careerAiNarrativeMeta.usage?.total_tokens ??
                 careerAiNarrativeMeta.usage?.totalTokens ??
                 "-"}
             </div>
             {careerAiNarrativeMeta.safetyNote ? (
-              <div className="md:col-span-3 rounded-lg border border-cyan-300/20 bg-black/20 px-3 py-2">
+              <div className="md:col-span-3 rounded-xl border border-sky-200 bg-white/72 px-3 py-2">
                 {careerAiNarrativeMeta.safetyNote}
               </div>
             ) : null}
           </div>
         ) : null}
 
-        <pre className="overflow-auto whitespace-pre-wrap text-xs leading-6 text-cyan-100/85">
+        <pre className="overflow-auto whitespace-pre-wrap text-xs leading-6 text-sky-800/85">
           {careerAiNarrativeReport}
         </pre>
       </div>
@@ -8674,11 +8685,11 @@ const handleResetCareerMission = () => {
   </div>
 )}
 
-  <div className="mt-6 rounded-2xl border border-orange-300/20 bg-orange-400/10 p-5 text-sm text-orange-100">
-              <p className="text-xs uppercase tracking-[0.22em] text-orange-200">
+  <div className="mt-6 rounded-[28px] border border-orange-300/20 bg-orange-400/10 p-5 text-sm text-orange-100">
+              <p className="text-xs uppercase tracking-[0.22em] text-orange-700">
                 {uiLanguage === "en" ? "Pilot QA readiness" : "Pilot QA hazırlığı"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {careerPilotQaChecklist.title}
               </h4>
               <p className="mt-2 max-w-3xl leading-6 text-orange-100/85">
@@ -8686,39 +8697,39 @@ const handleResetCareerMission = () => {
               </p>
 
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
                     {uiLanguage === "en" ? "Ready now" : "Şu an hazır"}
                   </p>
                   <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
                     {careerPilotQaChecklist.readyItems.map((item) => (
-                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                         {item}
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
                     {uiLanguage === "en" ? "Backlog" : "Backlog"}
                   </p>
                   <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
                     {careerPilotQaChecklist.backlogItems.map((item) => (
-                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                         {item}
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-200">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
                     {uiLanguage === "en" ? "Acceptance criteria" : "Kabul kriterleri"}
                   </p>
                   <ul className="mt-3 space-y-2 text-xs leading-5 text-orange-100/85">
                     {careerPilotQaChecklist.acceptanceCriteria.map((item) => (
-                      <li key={item} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <li key={item} className="rounded-xl border border-orange-200/30 bg-white/58 px-3 py-2">
                         {item}
                       </li>
                     ))}
@@ -8727,11 +8738,11 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
+            <div className="mt-6 rounded-[28px] border border-sky-300/20 bg-sky-400/10 p-5 text-sm text-sky-100">
               <p className="text-xs uppercase tracking-[0.22em] text-sky-200">
                 {uiLanguage === "en" ? "AI narrative pilot QA" : "AI anlatı pilot QA"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {careerAiNarrativeQaChecklist.title}
               </h4>
               <p className="mt-2 max-w-3xl leading-6 text-sky-100/85">
@@ -8740,8 +8751,8 @@ const handleResetCareerMission = () => {
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {careerAiNarrativeQaChecklist.items.map((item) => (
-                  <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <h5 className="font-semibold text-white">
+                  <div key={item.label} className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <h5 className="font-semibold text-slate-900">
                       {item.label}
                     </h5>
                     <p className="mt-2 text-xs leading-5 text-sky-100/80">
@@ -8752,29 +8763,29 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-lime-300/20 bg-lime-400/10 p-5 text-sm text-lime-100">
+            <div className="mt-6 rounded-[28px] border border-lime-300/20 bg-lime-400/10 p-5 text-sm text-lime-100">
               <p className="text-xs uppercase tracking-[0.22em] text-lime-200">
                 {uiLanguage === "en" ? "Career Lab pilot readiness" : "Career Lab pilot hazırlığı"}
               </p>
-              <h4 className="mt-3 text-lg font-semibold text-white">
+              <h4 className="mt-3 text-lg font-semibold text-slate-900">
                 {careerPilotReadinessNotes.title}
               </h4>
               <ul className="mt-3 grid gap-2 text-xs leading-5 text-lime-100/85 md:grid-cols-2">
                 {careerPilotReadinessNotes.items.map((item) => (
-                  <li key={item} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <li key={item} className="rounded-2xl border border-orange-200/30 bg-white/72 px-3 py-2">
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-sm text-cyan-100">
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+            <div className="mt-6 rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-800">
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-700">
                 {careerLabCopy.comingNextTitle}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {careerLabCopy.comingNextItems.map((item) => (
-                  <span key={item} className="rounded-full border border-cyan-300/20 bg-black/20 px-3 py-1">
+                  <span key={item} className="rounded-full border border-sky-200 bg-white/72 px-3 py-1">
                     {item}
                   </span>
                 ))}
@@ -8782,58 +8793,58 @@ const handleResetCareerMission = () => {
             </div>
           </section>
         )}
-        <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
+        <div className="overflow-hidden rounded-[32px] border border-orange-200/30 bg-white/74 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8 md:py-8">
             <div className="space-y-4">
-              <div className="inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-cyan-200">
+              <div className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-sky-700">
                 {ui.studioBadge}
               </div>
               <div className="space-y-3">
                 <h1 className="text-3xl font-bold tracking-tight md:text-5xl">VELTO</h1>
-                <p className="max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
+                <p className="max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
                   {ui.studioDescription}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3 text-xs text-slate-300 md:text-sm">
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.storySetupChip}</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.sceneTimingChip}</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.voiceDialogueChip}</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.runwayVideoChip}</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{ui.finalExportChip}</div>
+              <div className="flex flex-wrap gap-3 text-xs text-slate-600 md:text-sm">
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1.5">{ui.storySetupChip}</div>
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1.5">{ui.sceneTimingChip}</div>
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1.5">{ui.voiceDialogueChip}</div>
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1.5">{ui.runwayVideoChip}</div>
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-3 py-1.5">{ui.finalExportChip}</div>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.sceneStatus}</p>
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.sceneStatus}</p>
                 <p className="mt-3 text-3xl font-semibold">{scenes.length}</p>
-                <p className="mt-2 text-sm text-slate-300">{ui.totalScene}</p>
+                <p className="mt-2 text-sm text-slate-600">{ui.totalScene}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.exportReady}</p>
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.exportReady}</p>
                 <p className="mt-3 text-3xl font-semibold">{readyExportCount}</p>
-                <p className="mt-2 text-sm text-slate-300">{ui.exportReadyDesc}</p>
+                <p className="mt-2 text-sm text-slate-600">{ui.exportReadyDesc}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.readyAudio}</p>
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.readyAudio}</p>
                 <p className="mt-3 text-3xl font-semibold">{audioReadyCount}</p>
-                <p className="mt-2 text-sm text-slate-300">{ui.readyAudioDesc}</p>
+                <p className="mt-2 text-sm text-slate-600">{ui.readyAudioDesc}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.estimatedDuration}</p>
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.estimatedDuration}</p>
                 <p className="mt-3 text-3xl font-semibold">{totalTargetDuration.toFixed(1)} {ui.secondShort}</p>
-                <p className="mt-2 text-sm text-slate-300">{ui.estimatedDurationDesc}</p>
+                <p className="mt-2 text-sm text-slate-600">{ui.estimatedDurationDesc}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-8 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-10 xl:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.05] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">{ui.workflow}</p>
-              <h2 className="mt-3 text-xl font-semibold text-white">{ui.studioRouteMap}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
+            <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-5 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-700">{ui.workflow}</p>
+              <h2 className="mt-3 text-xl font-semibold text-slate-900">{ui.studioRouteMap}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
                 {ui.studioRouteMapDesc}
               </p>
 
@@ -8841,29 +8852,29 @@ const handleResetCareerMission = () => {
                 {workflowSteps.map((step) => (
                   <div
                     key={step.id}
-                    className={`rounded-2xl border p-4 transition ${
+                    className={`rounded-[28px] border p-4 transition ${
                       step.active
-                        ? "border-cyan-400/30 bg-cyan-400/10"
+                        ? "border-sky-200 bg-sky-50/80"
                         : step.complete
-                        ? "border-emerald-400/20 bg-emerald-400/10"
-                        : "border-white/10 bg-black/20"
+                        ? "border-emerald-400/20 bg-teal-50/80"
+                        : "border-orange-200/30 bg-white/72"
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <div
                         className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
                           step.complete
-                            ? "bg-emerald-400/20 text-emerald-200"
+                            ? "bg-emerald-400/20 text-teal-700"
                             : step.active
-                            ? "bg-cyan-400/20 text-cyan-100"
-                            : "bg-white/10 text-slate-300"
+                            ? "bg-sky-50/80 text-sky-800"
+                            : "bg-white/66 text-slate-600"
                         }`}
                       >
                         {step.complete ? "✓" : step.id}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-white">{step.title}</p>
-                        <p className="mt-1 text-xs text-slate-300">{step.description}</p>
+                        <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                        <p className="mt-1 text-xs text-slate-600">{step.description}</p>
                       </div>
                     </div>
                   </div>
@@ -8872,16 +8883,16 @@ const handleResetCareerMission = () => {
             </div>
 </aside>
 
-          <div className="space-y-8">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+          <div className="space-y-10">
+        <div className="rounded-[28px] border border-orange-200/30 bg-white/58 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold">{ui.childProfile}</h2>
             {selectedChild ? (
-              <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+              <span className="rounded-full border border-emerald-400/30 bg-teal-50/80 px-3 py-1 text-xs text-teal-700">
                 {ui.activeChild}: {selectedChild.nickname}
               </span>
             ) : (
-              <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200">
+              <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-3 py-1 text-xs text-amber-700">
                 {ui.noChildSelected}
               </span>
             )}
@@ -8889,7 +8900,7 @@ const handleResetCareerMission = () => {
 
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
             <select
-              className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+              className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
               value={selectedChildId}
               onChange={(e) => setSelectedChildId(e.target.value)}
               disabled={childrenLoading}
@@ -8904,7 +8915,7 @@ const handleResetCareerMission = () => {
 
             <div className="flex gap-2">
               <input
-                className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 placeholder={ui.newChildName}
                 value={newChildName}
                 onChange={(e) => setNewChildName(e.target.value)}
@@ -8912,23 +8923,23 @@ const handleResetCareerMission = () => {
               <button
                 onClick={handleAddChild}
                 disabled={addingChild}
-                className="rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-violet-600 px-4 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {addingChild ? ui.adding : ui.add}
               </button>
             </div>
           </div>
 
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-slate-600">
             {ui.childProfileHint}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+        <div className="rounded-[28px] border border-orange-200/30 bg-white/58 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold">{selectedFlowProjectTitle}</h2>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-500">
                 {activeFlowKey === "creator_lab"
                   ? (uiLanguage === "en" ? "Only Creator Lab projects are shown." : "Yalnızca Creator Lab projeleri gösteriliyor.")
                   : activeFlowKey === "career_lab"
@@ -8939,18 +8950,18 @@ const handleResetCareerMission = () => {
             <button
               onClick={fetchProjects}
               disabled={loadingProjects}
-              className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50"
+              className="rounded-2xl border border-orange-200/30 bg-white/66 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white/82/15 disabled:opacity-50"
             >
               {loadingProjects ? ui.refreshing : ui.refresh}
             </button>
           </div>
 
           {loadingProjects ? (
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-sm text-slate-600">
               {ui.projectsLoading}
             </div>
           ) : filteredProjects.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-sm text-slate-600">
               {ui.noProjects}
             </div>
           ) : (
@@ -8963,9 +8974,9 @@ const handleResetCareerMission = () => {
                 return (
                   <article
                     key={project.id}
-                    className="overflow-hidden rounded-2xl border border-white/10 bg-black/20 transition hover:border-cyan-300/30 hover:bg-white/[0.06]"
+                    className="overflow-hidden rounded-[28px] border border-orange-200/30 bg-white/72 transition hover:border-sky-200 hover:bg-white/78"
                   >
-                    <div className="h-36 w-full overflow-hidden bg-black/40">
+                    <div className="h-36 w-full overflow-hidden bg-white/74">
                       {previewImage ? (
                         <img
                           src={previewImage}
@@ -8981,16 +8992,16 @@ const handleResetCareerMission = () => {
 
                     <div className="space-y-3 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h3 className="text-sm font-semibold leading-5 text-white">
+                        <h3 className="text-sm font-semibold leading-5 text-slate-900">
                           {project.title || ui.untitledProject}
                         </h3>
 
-                        <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                        <span className="rounded-full border border-sky-200 bg-sky-50/80 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-800">
                           {flowLabel}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                         <span>{projectStatus}</span>
                         <span>
                           {project.updated_at
@@ -9004,7 +9015,7 @@ const handleResetCareerMission = () => {
                           type="button"
                           onClick={() => loadProjectById(project.id)}
                           disabled={isLoadingProject}
-                          className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl border border-orange-200/30 bg-white/66 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-white/72 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {ui.open}
                         </button>
@@ -9014,7 +9025,7 @@ const handleResetCareerMission = () => {
                             href={project.exported_movie_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-xl bg-cyan-400 px-3 py-2 text-center text-xs font-semibold text-slate-950 transition hover:bg-cyan-300"
+                            className="rounded-2xl bg-cyan-400 px-3 py-2 text-center text-xs font-semibold text-slate-950 transition hover:bg-cyan-300"
                           >
                             {uiLanguage === "en" ? "Movie" : "Film"}
                           </a>
@@ -9022,7 +9033,7 @@ const handleResetCareerMission = () => {
                           <button
                             type="button"
                             disabled
-                            className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-500"
+                            className="rounded-2xl border border-orange-200/30 bg-white/74 px-3 py-2 text-xs font-semibold text-slate-500"
                           >
                             {uiLanguage === "en" ? "No Movie" : "Film Yok"}
                           </button>
@@ -9036,12 +9047,12 @@ const handleResetCareerMission = () => {
           )}
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="space-y-4 rounded-[28px] border border-orange-200/30 bg-white/58 p-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">{ui.contentLanguage}</label>
+              <label className="mb-2 block text-sm font-medium text-slate-600">{ui.contentLanguage}</label>
               <select
-                className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
               >
@@ -9050,32 +9061,32 @@ const handleResetCareerMission = () => {
               </select>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4 text-sm text-slate-600">
               {ui.contentLanguageHint}
             </div>
           </div>
 
           {isCreatorLabFlow && (
-            <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-5 space-y-4">
+            <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-5 space-y-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+                <p className="text-xs uppercase tracking-[0.22em] text-sky-700">
                   {ui.creatorMentor}
                 </p>
-                <h3 className="mt-2 text-lg font-semibold text-white">
+                <h3 className="mt-2 text-lg font-semibold text-slate-900">
                   {ui.creatorStrategySetup}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-cyan-50/80">
+                <p className="mt-2 text-sm leading-6 text-sky-800/80">
                   {ui.creatorMentorDesc}
                 </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.targetMarket}
                   </label>
                   <select
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     value={creatorCountry}
                     onChange={(e) => setCreatorCountry(e.target.value)}
                   >
@@ -9088,11 +9099,11 @@ const handleResetCareerMission = () => {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.ageGroup}
                   </label>
                   <select
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     value={creatorAgeGroup}
                     onChange={(e) => setCreatorAgeGroup(e.target.value as CreatorAgeGroup)}
                   >
@@ -9105,11 +9116,11 @@ const handleResetCareerMission = () => {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.contentType}
                   </label>
                   <select
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     value={creatorContentType}
                     onChange={(e) =>
                       setCreatorContentType(e.target.value as CreatorContentType)
@@ -9124,11 +9135,11 @@ const handleResetCareerMission = () => {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.videoFormat}
                   </label>
                   <select
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     value={creatorFormat}
                     onChange={(e) => setCreatorFormat(e.target.value as CreatorFormat)}
                   >
@@ -9141,11 +9152,11 @@ const handleResetCareerMission = () => {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-cyan-100">
+                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.creatorDurationTitle}
                   </label>
                   <select
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     value={creatorVideoDurationSec}
                     onChange={(e) =>
                       setCreatorVideoDurationSec(
@@ -9165,13 +9176,13 @@ const handleResetCareerMission = () => {
           )}
 
           {isCreatorLabFlow && (
-            <div className="rounded-2xl border border-red-300/20 bg-red-500/10 p-5 space-y-4">
+            <div className="rounded-[28px] border border-rose-200 bg-rose-50/80 p-5 space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-red-200">
                     Phase-2A
                   </p>
-                  <h3 className="mt-2 text-lg font-semibold text-white">
+                  <h3 className="mt-2 text-lg font-semibold text-slate-900">
                     {ui.youtubeResearchTitle}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-red-50/80">
@@ -9183,7 +9194,7 @@ const handleResetCareerMission = () => {
                   type="button"
                   onClick={handleYoutubeResearch}
                   disabled={youtubeResearchLoading}
-                  className="rounded-2xl bg-red-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-[28px] bg-red-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {youtubeResearchLoading
                     ? ui.youtubeResearchLoading
@@ -9196,9 +9207,9 @@ const handleResetCareerMission = () => {
                   {youtubeResearchVideos.map((video) => (
                     <article
                       key={video.id}
-                      className="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                      className="overflow-hidden rounded-[28px] border border-orange-200/30 bg-white/72"
                     >
-                      <div className="h-32 w-full overflow-hidden bg-black/40">
+                      <div className="h-32 w-full overflow-hidden bg-white/74">
                         {video.thumbnail ? (
                           <img
                             src={video.thumbnail}
@@ -9213,12 +9224,12 @@ const handleResetCareerMission = () => {
                       </div>
 
                       <div className="space-y-2 p-3">
-                        <h4 className="line-clamp-2 text-sm font-semibold leading-5 text-white">
+                        <h4 className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
                           {video.title}
                         </h4>
-                        <p className="text-xs text-slate-400">{video.channel}</p>
+                        <p className="text-xs text-slate-500">{video.channel}</p>
 
-                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
                           <span>
                             {formatYoutubeNumber(video.views)} {ui.youtubeResearchViews}
                           </span>
@@ -9236,7 +9247,7 @@ const handleResetCareerMission = () => {
                           href={video.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-white/10"
+                          className="inline-flex rounded-2xl border border-orange-200/30 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-white/66"
                         >
                           YouTube
                         </a>
@@ -9255,13 +9266,13 @@ const handleResetCareerMission = () => {
           )}
 
           {isCreatorLabFlow && (
-            <div className="rounded-2xl border border-purple-300/20 bg-purple-500/10 p-5 space-y-4">
+            <div className="rounded-[28px] border border-purple-300/20 bg-violet-50/80 p-5 space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-purple-200">
+                  <p className="text-xs uppercase tracking-[0.22em] text-violet-700">
                     Phase-2C
                   </p>
-                  <h3 className="mt-2 text-lg font-semibold text-white">
+                  <h3 className="mt-2 text-lg font-semibold text-slate-900">
                     {ui.patternEngineTitle}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-purple-50/80">
@@ -9273,7 +9284,7 @@ const handleResetCareerMission = () => {
                   type="button"
                   onClick={handleYoutubePatternEngine}
                   disabled={youtubePatternLoading || youtubeResearchVideos.length === 0}
-                  className="rounded-2xl bg-purple-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-[28px] bg-purple-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {youtubePatternLoading
                     ? ui.patternEngineLoading
@@ -9289,62 +9300,62 @@ const handleResetCareerMission = () => {
 
               {youtubePatternSummary && (
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">{ui.patternTopTitles}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">{ui.patternTopTitles}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
                       {youtubePatternSummary.topTitlePatterns.map((item, index) => (
                         <li key={`title-pattern-${index}`}>{item}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">{ui.patternHooks}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">{ui.patternHooks}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
                       {youtubePatternSummary.hookPatterns.map((item, index) => (
                         <li key={`hook-pattern-${index}`}>{item}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">{ui.patternAngle}</h4>
-                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">{ui.patternAngle}</h4>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
                       {youtubePatternSummary.recommendedContentAngle}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
                     <div className="grid grid-cols-3 gap-3 text-center">
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
                           {ui.patternDuration}
                         </p>
-                        <p className="mt-2 text-lg font-semibold text-white">
+                        <p className="mt-2 text-lg font-semibold text-slate-900">
                           {youtubePatternSummary.recommendedDurationSec}s
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
                           {ui.patternOpportunity}
                         </p>
-                        <p className="mt-2 text-lg font-semibold text-white">
+                        <p className="mt-2 text-lg font-semibold text-slate-900">
                           {youtubePatternSummary.opportunityScore}/100
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
                           {ui.patternCompetition}
                         </p>
-                        <p className="mt-2 text-lg font-semibold text-white capitalize">
+                        <p className="mt-2 text-lg font-semibold text-slate-900 capitalize">
                           {youtubePatternSummary.competitionLevel}
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-4 rounded-xl border border-purple-300/20 bg-purple-400/10 p-3 text-sm text-purple-50">
+                    <div className="mt-4 rounded-2xl border border-purple-300/20 bg-purple-400/10 p-3 text-sm text-purple-50">
                       <p>
                         {ui.creatorDurationTitle}: {getCreatorDurationLabel()} /{" "}
                         {getCreatorSceneCount()} {ui.sceneCountLabel}
@@ -9352,16 +9363,16 @@ const handleResetCareerMission = () => {
                       <button
                         type="button"
                         onClick={applyPatternRecommendedDuration}
-                        className="mt-3 rounded-xl border border-purple-200/30 px-3 py-2 text-xs font-semibold text-purple-50 transition hover:bg-purple-200/10"
+                        className="mt-3 rounded-2xl border border-purple-200/30 px-3 py-2 text-xs font-semibold text-purple-50 transition hover:bg-purple-200/10"
                       >
                         {ui.usePatternDuration}
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:col-span-2">
-                    <h4 className="font-semibold text-white">{ui.patternReasoning}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4 lg:col-span-2">
+                    <h4 className="font-semibold text-slate-900">{ui.patternReasoning}</h4>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
                       {youtubePatternSummary.reasoning.map((item, index) => (
                         <li key={`pattern-reasoning-${index}`}>{item}</li>
                       ))}
@@ -9375,17 +9386,17 @@ const handleResetCareerMission = () => {
 {isCreatorLabFlow && (
             <section
               data-bulk-generator-panel="true"
-              className="rounded-[28px] border border-indigo-300/20 bg-indigo-500/[0.08] p-5"
+              className="rounded-[28px] border border-indigo-200 bg-indigo-50/800/[0.08] p-5"
             >
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-indigo-200">
+                  <p className="text-xs uppercase tracking-[0.24em] text-indigo-700">
                     Phase-3
                   </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-900">
                     {ui.bulkGeneratorTitle}
                   </h2>
-                  <p className="mt-2 max-w-4xl text-sm leading-6 text-indigo-100/80">
+                  <p className="mt-2 max-w-4xl text-sm leading-6 text-indigo-700/80">
                     {ui.bulkGeneratorDesc}
                   </p>
                 </div>
@@ -9393,14 +9404,14 @@ const handleResetCareerMission = () => {
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto]">
                 <div>
-                  <label className="block text-sm font-medium text-indigo-100">
+                  <label className="block text-sm font-medium text-indigo-700">
                     {ui.bulkTopicsLabel}
                   </label>
                   <textarea
                     value={bulkTopics}
                     onChange={(e) => setBulkTopics(e.target.value)}
                     placeholder={ui.bulkTopicsPlaceholder}
-                    className="mt-2 min-h-32 w-full rounded-2xl border border-indigo-300/20 bg-white p-4 text-sm text-black placeholder:text-gray-500"
+                    className="mt-2 min-h-32 w-full rounded-[28px] border border-indigo-200 bg-white/82 p-4 text-sm text-black placeholder:text-slate-500"
                   />
                 </div>
 
@@ -9409,7 +9420,7 @@ const handleResetCareerMission = () => {
                     type="button"
                     onClick={handleBulkGenerateIdeas}
                     disabled={bulkLoading || !bulkTopics.trim()}
-                    className="w-full rounded-2xl border border-indigo-300/40 bg-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
+                    className="w-full rounded-[28px] border border-indigo-300/40 bg-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
                   >
                     {bulkLoading ? ui.bulkGenerating : ui.bulkGenerate}
                   </button>
@@ -9417,7 +9428,7 @@ const handleResetCareerMission = () => {
               </div>
 
               {bulkResults.length === 0 && (
-                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-indigo-100/70">
+                <div className="mt-5 rounded-[28px] border border-orange-200/30 bg-white/72 p-4 text-sm text-indigo-700/70">
                   {ui.bulkEmpty}
                 </div>
               )}
@@ -9425,11 +9436,11 @@ const handleResetCareerMission = () => {
               {bulkResults.length > 0 && (
                 <div
                   data-bulk-selection-toolbar="true"
-                  className="mt-5 flex flex-col gap-3 rounded-2xl border border-indigo-300/20 bg-black/20 p-4 md:flex-row md:items-center md:justify-between"
+                  className="mt-5 flex flex-col gap-3 rounded-[28px] border border-indigo-200 bg-white/72 p-4 md:flex-row md:items-center md:justify-between"
                 >
-                  <div className="text-sm text-indigo-100/80">
+                  <div className="text-sm text-indigo-700/80">
                     {ui.selectedBulkCount}:{" "}
-                    <span className="font-semibold text-white">
+                    <span className="font-semibold text-slate-900">
                       {selectedBulkIds.length}
                     </span>
                   </div>
@@ -9443,7 +9454,7 @@ const handleResetCareerMission = () => {
                       isGeneratingFullYoutubePackage ||
                       loadingSetup
                     }
-                    className="rounded-xl border border-emerald-300/30 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-2xl border border-teal-200 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {selectedBulkLoading
                       ? ui.generatingSelectedBulk
@@ -9457,46 +9468,46 @@ const handleResetCareerMission = () => {
                   {bulkResults.map((idea, index) => (
                     <div
                       key={`${idea.topic}-${index}`}
-                      className={`rounded-2xl border p-4 transition ${
+                      className={`rounded-[28px] border p-4 transition ${
                         selectedBulkIds.includes(index)
-                          ? "border-emerald-300/50 bg-emerald-500/10"
-                          : "border-white/10 bg-black/25"
+                          ? "border-emerald-300/50 bg-teal-50/80"
+                          : "border-orange-200/30 bg-white/66"
                       }`}
                     >
                       <div className="mb-3 flex items-center justify-between gap-3">
-                        <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-300">
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
                           <input
                             type="checkbox"
                             checked={selectedBulkIds.includes(index)}
                             onChange={() => toggleBulkSelection(index)}
-                            className="h-4 w-4 rounded border-white/20"
+                            className="h-4 w-4 rounded border-orange-200/32"
                           />
                           {uiLanguage === "en" ? "Select" : "Seç"}
                         </label>
                       </div>
 
                       <div className="flex items-start justify-between gap-3">
-                        <h3 className="text-base font-semibold leading-6 text-white">
+                        <h3 className="text-base font-semibold leading-6 text-slate-900">
                           {idea.title}
                         </h3>
-                        <span className="rounded-full bg-indigo-400/15 px-3 py-1 text-xs font-semibold text-indigo-100">
+                        <span className="rounded-full bg-indigo-400/15 px-3 py-1 text-xs font-semibold text-indigo-700">
                           {ui.bulkScore}: {Math.round((idea.score || 0) * 100)}
                         </span>
                       </div>
 
-                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
                         {idea.hook}
                       </p>
 
-                      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-xs leading-5 text-slate-300">
+                      <div className="mt-4 rounded-2xl border border-orange-200/30 bg-white/58 p-3 text-xs leading-5 text-slate-600">
                         <div>
-                          <span className="font-semibold text-indigo-100">
+                          <span className="font-semibold text-indigo-700">
                             {ui.bulkAngle}:
                           </span>{" "}
                           {idea.angle}
                         </div>
                         <div className="mt-2">
-                          <span className="font-semibold text-indigo-100">
+                          <span className="font-semibold text-indigo-700">
                             {ui.bulkReason}:
                           </span>{" "}
                           {idea.reason}
@@ -9506,7 +9517,7 @@ const handleResetCareerMission = () => {
                       <button
                         type="button"
                         onClick={() => handleUseBulkTopic(idea)}
-                        className="mt-4 w-full rounded-xl border border-indigo-300/30 bg-indigo-400/10 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-400/20"
+                        className="mt-4 w-full rounded-2xl border border-indigo-300/30 bg-indigo-400/10 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-400/20"
                       >
                         {ui.useBulkTopic}
                       </button>
@@ -9515,7 +9526,7 @@ const handleResetCareerMission = () => {
                         type="button"
                         onClick={() => handleGenerateFullPackageFromBulk(idea)}
                         disabled={isGeneratingFullYoutubePackage || loadingSetup}
-                        className="mt-3 w-full rounded-xl border border-purple-300/30 bg-purple-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="mt-3 w-full rounded-2xl border border-purple-300/30 bg-purple-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isGeneratingFullYoutubePackage
                           ? ui.generatingFullYoutubePackage
@@ -9528,12 +9539,12 @@ const handleResetCareerMission = () => {
             </section>
           )}
 
-          <label className="block text-sm font-medium text-gray-300">
+          <label className="block text-sm font-medium text-slate-600">
   {getFlowAwareInputLabel()}
 </label>
 
           <textarea
-            className="min-h-36 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
+            className="min-h-36 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-4 text-black placeholder:text-slate-500"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={getFlowAwarePlaceholder()}
@@ -9544,7 +9555,7 @@ const handleResetCareerMission = () => {
               <button
                 type="button"
                 onClick={() => setIsAdvancedMode((prev) => !prev)}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+                className="rounded-full border border-orange-200/30 bg-white/58 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-orange-200/32 hover:bg-white/66 hover:text-slate-900"
               >
                 {isAdvancedMode ? "Hide Advanced Tools" : "Show Advanced Tools"}
               </button>
@@ -9556,7 +9567,7 @@ const handleResetCareerMission = () => {
               <button
                 onClick={createSetup}
                 disabled={loadingSetup}
-                className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
               >
                 {loadingSetup ? ui.preparingSetup : ui.createCharacters}
               </button>
@@ -9566,7 +9577,7 @@ const handleResetCareerMission = () => {
               <button
                 onClick={createSetup}
                 disabled={loadingSetup}
-                className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
               >
                 {creatorMentorLoading
                   ? ui.analyzingContentOpportunity
@@ -9580,7 +9591,7 @@ const handleResetCareerMission = () => {
                 data-auto-mode-button="true"
                 onClick={() => handleGenerateFullYoutubePackage()}
                 disabled={isGeneratingFullYoutubePackage || loadingSetup || !input.trim()}
-                className="rounded-xl border border-purple-300/40 bg-purple-400 px-6 py-3 font-semibold text-slate-950 transition hover:scale-105 hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-2xl border border-purple-300/40 bg-purple-400 px-6 py-3 font-semibold text-slate-950 transition hover:scale-105 hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGeneratingFullYoutubePackage
                   ? ui.generatingFullYoutubePackage
@@ -9591,47 +9602,47 @@ const handleResetCareerMission = () => {
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+          <div className="rounded-2xl border border-red-500/30 bg-rose-50/80 p-4 text-red-200">
             {error}
           </div>
         )}
 
         {saveMessage && (
-          <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-200">
+          <div className="rounded-2xl border border-green-200 bg-green-50/80 p-4 text-green-700">
             {saveMessage}
           </div>
         )}
 
         {currentProjectId && (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+          <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-4 text-sm text-slate-600">
             {ui.projectId}: <span className="font-mono">{currentProjectId}</span>
           </div>
         )}
 
         {isCreatorLabFlow && isAdvancedMode && creatorMentorResult && (
-          <section className="rounded-[28px] border border-cyan-300/20 bg-cyan-500/[0.08] p-5 text-sm text-slate-200">
+          <section className="rounded-[28px] border border-sky-200 bg-cyan-500/[0.08] p-5 text-sm text-slate-700">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200">
+              <p className="text-xs uppercase tracking-[0.25em] text-sky-700">
                 {ui.creatorMentor}
               </p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">
                 {ui.mentorAnalysisTitle}
               </h2>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.audienceInsight}</h3>
-                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.audienceInsight}</h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600">
                   {creatorMentorResult.audienceInsight.map((item, index) => (
                     <li key={`audience-${index}`}>{item}</li>
                   ))}
                 </ul>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.hookPatterns}</h3>
-                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.hookPatterns}</h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600">
                   {creatorMentorResult.hookPatterns.map((item, index) => (
                     <li key={`hook-${index}`}>{item}</li>
                   ))}
@@ -9639,29 +9650,29 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <h3 className="font-semibold text-white">{ui.videoIdeas}</h3>
+            <div className="mt-4 rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+              <h3 className="font-semibold text-slate-900">{ui.videoIdeas}</h3>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {creatorMentorResult.videoIdeas.map((idea, index) => (
                   <article
                     key={`${idea.title}-${index}`}
-                    className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+                    className="rounded-2xl border border-orange-200/30 bg-white/74 p-3"
                   >
-                    <p className="font-semibold text-cyan-100">
+                    <p className="font-semibold text-sky-800">
                       {index + 1}. {idea.title}
                     </p>
-                    <p className="mt-2 leading-6 text-slate-300">{idea.concept}</p>
+                    <p className="mt-2 leading-6 text-slate-600">{idea.concept}</p>
                   </article>
                 ))}
               </div>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-500/10 p-4">
-                <h3 className="font-semibold text-emerald-100">
+              <div className="rounded-[28px] border border-teal-200 bg-teal-50/80 p-4">
+                <h3 className="font-semibold text-teal-800">
                   {ui.recommendedIdea}
                 </h3>
-                <p className="mt-3 font-semibold text-white">
+                <p className="mt-3 font-semibold text-slate-900">
                   {creatorMentorResult.recommendedIdea.title}
                 </p>
                 <p className="mt-2 leading-6 text-emerald-50/85">
@@ -9669,9 +9680,9 @@ const handleResetCareerMission = () => {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.productionPlan}</h3>
-                <ol className="mt-3 list-decimal space-y-2 pl-5 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.productionPlan}</h3>
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-slate-600">
                   {creatorMentorResult.productionPlan.map((item, index) => (
                     <li key={`plan-${index}`}>{item}</li>
                   ))}
@@ -9679,7 +9690,7 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-4 text-cyan-50">
+            <div className="mt-5 rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sky-800">
               {ui.creatorProductionDesc}
             </div>
 
@@ -9687,7 +9698,7 @@ const handleResetCareerMission = () => {
               type="button"
               onClick={handleCreatorProductionPackage}
               disabled={creatorProductionLoading}
-              className="mt-5 w-full rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-5 w-full rounded-[28px] bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {creatorProductionLoading
                 ? ui.convertingProductionPackage
@@ -9697,12 +9708,12 @@ const handleResetCareerMission = () => {
         )}
 
         {isCreatorLabFlow && creatorProductionPackage && (
-          <section className="rounded-[28px] border border-emerald-300/20 bg-emerald-500/[0.08] p-5 text-sm text-slate-200">
+          <section className="rounded-[28px] border border-teal-200 bg-emerald-500/[0.08] p-5 text-sm text-slate-700">
             <div className="mb-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-200">
+              <p className="text-xs uppercase tracking-[0.25em] text-teal-700">
                 {ui.creatorProductionTitle}
               </p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">
                 {creatorProductionPackage.title}
               </h2>
               <p className="mt-3 max-w-4xl leading-6 text-emerald-50/85">
@@ -9711,13 +9722,13 @@ const handleResetCareerMission = () => {
             </div>
 
             {scenes.length === 0 && (
-              <div className="mb-5 rounded-2xl border border-purple-300/25 bg-purple-500/10 p-5">
+              <div className="mb-5 rounded-[28px] border border-purple-300/25 bg-violet-50/80 p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-purple-200">
+                    <p className="text-xs uppercase tracking-[0.24em] text-violet-700">
                       {ui.productionBridgeTitle}
                     </p>
-                    <h3 className="mt-2 text-xl font-semibold text-white">
+                    <h3 className="mt-2 text-xl font-semibold text-slate-900">
                       {ui.productionBridgeReady}
                     </h3>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-purple-100/80">
@@ -9732,7 +9743,7 @@ const handleResetCareerMission = () => {
                     type="button"
                     onClick={buildStory}
                     disabled={buildingStory}
-                    className="rounded-2xl border border-purple-300/30 bg-purple-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-[28px] border border-purple-300/30 bg-purple-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {buildingStory ? ui.buildingStory : ui.productionBridgeButton}
                   </button>
@@ -9741,32 +9752,32 @@ const handleResetCareerMission = () => {
             )}
 
             <div className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.thumbnailIdea}</h3>
-                <p className="mt-3 leading-6 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.thumbnailIdea}</h3>
+                <p className="mt-3 leading-6 text-slate-600">
                   {creatorProductionPackage.thumbnailIdea}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.youtubeTitle}</h3>
-                <p className="mt-3 leading-6 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.youtubeTitle}</h3>
+                <p className="mt-3 leading-6 text-slate-600">
                   {creatorProductionPackage.youtubeTitle}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <h3 className="font-semibold text-white">{ui.youtubeCaption}</h3>
-                <p className="mt-3 leading-6 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                <h3 className="font-semibold text-slate-900">{ui.youtubeCaption}</h3>
+                <p className="mt-3 leading-6 text-slate-600">
                   {creatorProductionPackage.caption}
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-sky-300/20 bg-sky-500/10 p-5">
+            <div className="mt-5 rounded-[28px] border border-sky-300/20 bg-sky-50/800/10 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     {ui.youtubeMetadataEngine}
                   </h3>
                   <p className="mt-1 text-sm text-sky-100/75">
@@ -9779,7 +9790,7 @@ const handleResetCareerMission = () => {
                     type="button"
                     onClick={handleGenerateYoutubeMetadata}
                     disabled={youtubeMetadataLoading}
-                    className="rounded-xl border border-sky-300/30 bg-sky-400/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-2xl border border-sky-300/30 bg-sky-400/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {youtubeMetadataLoading
                       ? ui.generatingYoutubeMetadata
@@ -9790,37 +9801,37 @@ const handleResetCareerMission = () => {
 
               {youtubeMetadataResult && (
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.recommendedYoutubeTitle}
                     </h4>
-                    <p className="mt-3 leading-6 text-slate-200">
+                    <p className="mt-3 leading-6 text-slate-700">
                       {youtubeMetadataResult.recommendedTitle}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.titleOptions}
                     </h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600">
                       {youtubeMetadataResult.titleOptions.map((item, index) => (
                         <li key={`${item}-${index}`}>{item}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:col-span-2">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4 lg:col-span-2">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.youtubeDescription}
                     </h4>
-                    <p className="mt-3 whitespace-pre-line leading-6 text-slate-300">
+                    <p className="mt-3 whitespace-pre-line leading-6 text-slate-600">
                       {youtubeMetadataResult.description}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.hashtags}
                     </h4>
                     <p className="mt-3 leading-6 text-sky-100">
@@ -9828,34 +9839,34 @@ const handleResetCareerMission = () => {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.firstComment}
                     </h4>
-                    <p className="mt-3 leading-6 text-slate-300">
+                    <p className="mt-3 leading-6 text-slate-600">
                       {youtubeMetadataResult.firstComment}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.thumbnailTextIdeas}
                     </h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-300">
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600">
                       {youtubeMetadataResult.thumbnailTextIdeas.map((item, index) => (
                         <li key={`${item}-${index}`}>{item}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.seoKeywords}
                     </h4>
-                    <p className="mt-3 leading-6 text-slate-300">
+                    <p className="mt-3 leading-6 text-slate-600">
                       {youtubeMetadataResult.seoKeywords.join(", ")}
                     </p>
-                    <p className="mt-4 rounded-xl border border-sky-300/20 bg-sky-400/10 p-3 text-sm text-sky-100">
+                    <p className="mt-4 rounded-2xl border border-sky-300/20 bg-sky-400/10 p-3 text-sm text-sky-100">
                       {youtubeMetadataResult.audiencePromise}
                     </p>
                   </div>
@@ -9863,13 +9874,13 @@ const handleResetCareerMission = () => {
               )}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-5">
+            <div className="mt-5 rounded-[28px] border border-fuchsia-300/20 bg-fuchsia-500/10 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     {ui.thumbnailGenerationEngine}
                   </h3>
-                  <p className="mt-1 text-sm text-fuchsia-100/75">
+                  <p className="mt-1 text-sm text-pink-700">
                     {ui.thumbnailGenerationDesc}
                   </p>
                 </div>
@@ -9879,7 +9890,7 @@ const handleResetCareerMission = () => {
                     type="button"
                     onClick={handleGenerateYoutubeThumbnail}
                     disabled={youtubeThumbnailLoading}
-                    className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {youtubeThumbnailLoading
                       ? ui.generatingThumbnail
@@ -9889,8 +9900,8 @@ const handleResetCareerMission = () => {
               </div>
 
               {scenes.some((scene) => scene.image) ? (
-                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <h4 className="font-semibold text-white">
+                <div className="mt-5 rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                  <h4 className="font-semibold text-slate-900">
                     {ui.sceneThumbnailCandidates}
                   </h4>
 
@@ -9900,19 +9911,19 @@ const handleResetCareerMission = () => {
                       .map((scene) => (
                         <div
                           key={`thumbnail-candidate-${scene.id}`}
-                          className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+                          className="rounded-2xl border border-orange-200/30 bg-white/74 p-3"
                         >
                           <img
                             src={scene.image}
                             alt={`Scene ${scene.id} thumbnail candidate`}
-                            className="aspect-video w-full rounded-lg object-cover"
+                            className="aspect-video w-full rounded-xl object-cover"
                           />
 
                           <div className="mt-3 flex items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-slate-200">
+                            <span className="text-xs font-semibold text-slate-700">
                               Scene {scene.id}
                             </span>
-                            <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-100">
+                            <span className="rounded-full bg-teal-50/80 px-2 py-1 text-[11px] font-semibold text-teal-800">
                               {calculateThumbnailScore(scene.intelligence)}/10
                             </span>
                           </div>
@@ -9920,7 +9931,7 @@ const handleResetCareerMission = () => {
                           <button
                             type="button"
                             onClick={() => handleSelectSceneAsYoutubeThumbnail(scene)}
-                            className="mt-3 w-full rounded-lg border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20"
+                            className="mt-3 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20"
                           >
                             {ui.useSceneAsThumbnail}
                           </button>
@@ -9929,48 +9940,48 @@ const handleResetCareerMission = () => {
                   </div>
                 </div>
               ) : (
-                <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-fuchsia-100/75">
+                <p className="mt-4 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-sm text-pink-700">
                   {ui.noSceneThumbnailsYet}
                 </p>
               )}
 
               {youtubeThumbnailResult && (
                 <div className="mt-5 grid gap-4 lg:grid-cols-[360px_1fr]">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <h4 className="font-semibold text-white">
+                  <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                    <h4 className="font-semibold text-slate-900">
                       {ui.generatedThumbnail}
                     </h4>
                     <img
                       src={youtubeThumbnailResult.imageUrl}
                       alt="Selected YouTube thumbnail"
-                      className="mt-3 aspect-video w-full rounded-xl object-cover"
+                      className="mt-3 aspect-video w-full rounded-2xl object-cover"
                     />
                   </div>
 
                   <div className="space-y-4">
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <h4 className="font-semibold text-white">
+                    <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                      <h4 className="font-semibold text-slate-900">
                         {ui.thumbnailHeadline}
                       </h4>
-                      <p className="mt-3 text-slate-200">
+                      <p className="mt-3 text-slate-700">
                         {youtubeThumbnailResult.headline}
                       </p>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <h4 className="font-semibold text-white">
+                    <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                      <h4 className="font-semibold text-slate-900">
                         {ui.thumbnailSubHeadline}
                       </h4>
-                      <p className="mt-3 text-slate-300">
+                      <p className="mt-3 text-slate-600">
                         {youtubeThumbnailResult.subHeadline}
                       </p>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <h4 className="font-semibold text-white">
+                    <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                      <h4 className="font-semibold text-slate-900">
                         {ui.thumbnailPrompt}
                       </h4>
-                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-300">
+                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
                         {youtubeThumbnailResult.prompt}
                       </p>
                     </div>
@@ -9979,10 +9990,10 @@ const handleResetCareerMission = () => {
               )}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-orange-300/20 bg-orange-500/10 p-5">
+            <div className="mt-5 rounded-[28px] border border-orange-300/20 bg-orange-500/10 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     {ui.exportCreatorPackage}
                   </h3>
                   <p className="mt-1 text-sm text-orange-100/75">
@@ -9994,7 +10005,7 @@ const handleResetCareerMission = () => {
                   type="button"
                   onClick={handleDownloadCreatorPackage}
                   disabled={isDownloadingCreatorPackage || !creatorProductionPackage || !exportedMovieUrl}
-                  className="rounded-xl border border-orange-300/30 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-100 transition hover:bg-orange-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl border border-orange-300/30 bg-orange-400/10 px-5 py-3 text-sm font-semibold text-orange-100 transition hover:bg-orange-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isDownloadingCreatorPackage
                     ? ui.downloadingCreatorPackage
@@ -10003,22 +10014,22 @@ const handleResetCareerMission = () => {
               </div>
 
               <div className="mt-4 grid gap-3 text-sm text-orange-50/80 md:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                   video_link.txt
                 </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                   title / description / hashtags
                 </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
                   thumbnail.png + scenes.json
                 </div>
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-lime-300/20 bg-lime-500/10 p-5">
+            <div className="mt-5 rounded-[28px] border border-lime-300/20 bg-lime-500/10 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     {ui.costOptimizationEngine}
                   </h3>
                   <p className="mt-1 text-sm text-lime-100/75">
@@ -10033,7 +10044,7 @@ const handleResetCareerMission = () => {
                         type="button"
                         onClick={handleOptimizeScenes}
                         disabled={sceneOptimizationLoading}
-                        className="rounded-xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-2xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {sceneOptimizationLoading
                           ? ui.optimizingScenes
@@ -10044,7 +10055,7 @@ const handleResetCareerMission = () => {
                         type="button"
                         onClick={handleOptimizeScenesAI}
                         disabled={sceneOptimizationAILoading}
-                        className="rounded-xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-2xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {sceneOptimizationAILoading
                           ? ui.aiOptimizingScenes
@@ -10057,7 +10068,7 @@ const handleResetCareerMission = () => {
                     <button
                       type="button"
                       onClick={handleApplySceneOptimization}
-                      className="rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20"
+                      className="rounded-2xl border border-teal-200 bg-teal-50/80 px-5 py-3 text-sm font-semibold text-teal-800 transition hover:bg-emerald-400/20"
                     >
                       {ui.applyOptimization}
                     </button>
@@ -10068,25 +10079,25 @@ const handleResetCareerMission = () => {
               {sceneOptimizationSummary && (
                 <>
                 <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.recommendedVideoScenes}</div>
                     <div className="mt-1 text-xl font-semibold">
                       {sceneOptimizationSummary.recommendedVideoScenes}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.recommendedImageScenes}</div>
                     <div className="mt-1 text-xl font-semibold">
                       {sceneOptimizationSummary.recommendedImageScenes}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.estimatedCost}</div>
                     <div className="mt-1 text-xl font-semibold">
                       ${sceneOptimizationSummary.estimatedRunwayCostUsd.toFixed(2)}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-lime-50">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.estimatedSavings}</div>
                     <div className="mt-1 text-xl font-semibold">
                       {sceneOptimizationSummary.estimatedSavingsPercent}%
@@ -10104,26 +10115,26 @@ const handleResetCareerMission = () => {
                   {sceneOptimizationResult.map((item) => (
                     <div
                       key={item.sceneId}
-                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <h4 className="font-semibold text-white">
+                        <h4 className="font-semibold text-slate-900">
                           Scene {item.sceneId}
                         </h4>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
                             item.exportMode === "video"
                               ? "bg-sky-400/15 text-sky-100"
-                              : "bg-amber-400/15 text-amber-100"
+                              : "bg-amber-400/15 text-amber-700"
                           }`}
                         >
                           {item.exportMode.toUpperCase()}
                         </span>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-slate-300">
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
                         {item.reason}
                       </p>
-                      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                         <span>Confidence: {item.confidence}</span>
                         <span>${item.estimatedCostUsd.toFixed(2)}</span>
                       </div>
@@ -10133,12 +10144,12 @@ const handleResetCareerMission = () => {
               )}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-50">
+            <div className="mt-5 rounded-[28px] border border-teal-200 bg-teal-50/80 p-4 text-emerald-50">
               {ui.productionPackageNote}
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-slate-300">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4 text-slate-600">
                 {refinedCreatorScenes.length > 0
                   ? ui.refinedScenesNote
                   : ui.creatorProductionDesc}
@@ -10148,7 +10159,7 @@ const handleResetCareerMission = () => {
                 type="button"
                 onClick={handleRefineCreatorScenes}
                 disabled={refineScenesLoading}
-                className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-[28px] border border-teal-200 bg-teal-50/80 px-5 py-3 text-sm font-semibold text-teal-800 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {refineScenesLoading ? ui.refiningScenes : ui.refineScenes}
               </button>
@@ -10157,50 +10168,50 @@ const handleResetCareerMission = () => {
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.studioSnapshot}</p>
-            <p className="mt-3 text-lg font-semibold text-white">{setupReady ? ui.setupReady : ui.setupWaiting}</p>
-            <p className="mt-2 text-sm text-slate-300">{ui.studioSnapshotDesc}</p>
+          <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.studioSnapshot}</p>
+            <p className="mt-3 text-lg font-semibold text-slate-900">{setupReady ? ui.setupReady : ui.setupWaiting}</p>
+            <p className="mt-2 text-sm text-slate-600">{ui.studioSnapshotDesc}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.dialogueLayer}</p>
-            <p className="mt-3 text-lg font-semibold text-white">{dialogueReadyCount} {ui.sceneCountLabel}</p>
-            <p className="mt-2 text-sm text-slate-300">{ui.dialogueLayerDesc}</p>
+          <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.dialogueLayer}</p>
+            <p className="mt-3 text-lg font-semibold text-slate-900">{dialogueReadyCount} {ui.sceneCountLabel}</p>
+            <p className="mt-2 text-sm text-slate-600">{ui.dialogueLayerDesc}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.freezeRisk}</p>
-            <p className="mt-3 text-lg font-semibold text-white">{freezeNeededCount} {ui.sceneCountLabel}</p>
-            <p className="mt-2 text-sm text-slate-300">{ui.freezeRiskDesc}</p>
+          <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.freezeRisk}</p>
+            <p className="mt-3 text-lg font-semibold text-slate-900">{freezeNeededCount} {ui.sceneCountLabel}</p>
+            <p className="mt-2 text-sm text-slate-600">{ui.freezeRiskDesc}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{ui.quickModePrep}</p>
-            <p className="mt-3 text-lg font-semibold text-white">{ui.activePlan}</p>
-            <p className="mt-2 text-sm text-slate-300">{ui.quickModePrepDesc}</p>
+          <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.quickModePrep}</p>
+            <p className="mt-3 text-lg font-semibold text-slate-900">{ui.activePlan}</p>
+            <p className="mt-2 text-sm text-slate-600">{ui.quickModePrepDesc}</p>
           </div>
         </div>
 
         {setupReady && (
-          <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
+          <div className="space-y-6 rounded-[28px] border border-orange-200/30 bg-white/74 p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
             <div className="space-y-2">
               <h2 className="text-2xl font-bold">{ui.initialDesign}</h2>
-              <p className="text-sm text-gray-300">
+              <p className="text-sm text-slate-600">
                 {ui.initialDesignHint}
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm text-gray-300">{ui.storyTitle}</label>
+              <label className="block text-sm text-slate-600">{ui.storyTitle}</label>
               <input
-                className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm text-gray-300">{ui.storyPremiseLabel}</label>
+              <label className="block text-sm text-slate-600">{ui.storyPremiseLabel}</label>
               <textarea
-                className="min-h-24 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="min-h-24 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 value={storySetup?.storyPremise || ""}
                 onChange={(e) =>
                   setStorySetup((prev) =>
@@ -10215,14 +10226,14 @@ const handleResetCareerMission = () => {
               />
             </div>
 
-            <div className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="space-y-4 rounded-2xl border border-orange-200/30 bg-white/72 p-4">
   <h3 className="text-xl font-semibold">{ui.narratorSettings}</h3>
 
   <div className="grid gap-4 md:grid-cols-2">
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">Narrator Voice ID</label>
+      <label className="block text-sm text-slate-600">Narrator Voice ID</label>
       <input
-        className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+        className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
         placeholder="ElevenLabs narrator voiceId"
         value={narratorSettings.voiceId || ""}
         onChange={(e) => {
@@ -10237,15 +10248,15 @@ const handleResetCareerMission = () => {
           clearAllSceneTimingData();
         }}
       />
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-slate-500">
         {ui.narratorVoiceHint}
       </p>
     </div>
 
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">Model</label>
+      <label className="block text-sm text-slate-600">Model</label>
       <select
-        className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+        className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
         value={narratorSettings.modelId}
         onChange={(e) => {
           stopDialoguePlayback();
@@ -10265,7 +10276,7 @@ const handleResetCareerMission = () => {
     </div>
 
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">
+      <label className="block text-sm text-slate-600">
         Stability: {narratorSettings.stability.toFixed(2)}
       </label>
       <input
@@ -10290,7 +10301,7 @@ const handleResetCareerMission = () => {
     </div>
 
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">
+      <label className="block text-sm text-slate-600">
         Similarity Boost: {narratorSettings.similarityBoost.toFixed(2)}
       </label>
       <input
@@ -10315,7 +10326,7 @@ const handleResetCareerMission = () => {
     </div>
 
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">
+      <label className="block text-sm text-slate-600">
         Style: {(narratorSettings.style ?? 0).toFixed(2)}
       </label>
       <input
@@ -10340,7 +10351,7 @@ const handleResetCareerMission = () => {
     </div>
 
     <div className="space-y-2">
-      <label className="block text-sm text-gray-300">
+      <label className="block text-sm text-slate-600">
         Speed: {(narratorSettings.speed ?? 0.93).toFixed(2)}
       </label>
       <input
@@ -10365,7 +10376,7 @@ const handleResetCareerMission = () => {
     </div>
   </div>
 
-  <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-gray-400 space-y-1">
+  <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-3 text-xs text-slate-500 space-y-1">
     <p>
       {ui.narratorRecommended}
       <span className="ml-1 text-gray-200">
@@ -10383,7 +10394,7 @@ const handleResetCareerMission = () => {
                 <h3 className="text-xl font-semibold">{ui.charactersTitle}</h3>
                 <button
                   onClick={addCharacter}
-                  className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+                  className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm"
                 >
                   {ui.addCharacter}
                 </button>
@@ -10392,14 +10403,14 @@ const handleResetCareerMission = () => {
               {characters.map((character, index) => (
                 <div
                   key={index}
-                  className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-4"
+                  className="space-y-4 rounded-2xl border border-orange-200/30 bg-white/72 p-4"
                 >
                   <div className="flex items-center justify-between">
                     <h4 className="font-semibold">{ui.characterLabel} {index + 1}</h4>
                     {characters.length > 1 && (
                       <button
                         onClick={() => removeCharacter(index)}
-                        className="rounded-lg border border-red-400/30 px-3 py-1 text-xs text-red-200"
+                        className="rounded-xl border border-red-400/30 px-3 py-1 text-xs text-red-200"
                       >
                         {ui.delete}
                       </button>
@@ -10408,13 +10419,13 @@ const handleResetCareerMission = () => {
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
-                      className="rounded-xl border border-gray-700 bg-white p-3 text-black"
+                      className="rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                       placeholder={ui.namePlaceholder}
                       value={character.name}
                       onChange={(e) => updateCharacter(index, "name", e.target.value)}
                     />
                     <input
-                      className="rounded-xl border border-gray-700 bg-white p-3 text-black"
+                      className="rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                       placeholder={ui.agePlaceholder}
                       value={character.age}
                       onChange={(e) => updateCharacter(index, "age", e.target.value)}
@@ -10422,41 +10433,41 @@ const handleResetCareerMission = () => {
                   </div>
 
                   <textarea
-                    className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     placeholder={ui.appearancePlaceholder}
                     value={character.appearance}
                     onChange={(e) => updateCharacter(index, "appearance", e.target.value)}
                   />
 
                   <textarea
-                    className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     placeholder={ui.outfitPlaceholder}
                     value={character.outfit}
                     onChange={(e) => updateCharacter(index, "outfit", e.target.value)}
                   />
 
                   <input
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     placeholder={ui.accessoryPlaceholder}
                     value={character.accessory || ""}
                     onChange={(e) => updateCharacter(index, "accessory", e.target.value)}
                   />
 
                   <textarea
-                    className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     placeholder={ui.personalityPlaceholder}
                     value={character.personality}
                     onChange={(e) => updateCharacter(index, "personality", e.target.value)}
                   />
 
                   <input
-                    className="w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                    className="w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                     placeholder={ui.characterVoicePlaceholder}
                     value={character.voiceId || ""}
                     onChange={(e) => updateCharacter(index, "voiceId", e.target.value)}
                   />
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-gray-400">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-3 text-xs text-slate-500">
                     {ui.characterVoiceHint}
                   </div>
 
@@ -10464,7 +10475,7 @@ const handleResetCareerMission = () => {
                     <button
                       onClick={() => generateCharacterReference(index)}
                       disabled={characterLoadingIndex === index}
-                      className="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+                      className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm disabled:opacity-50"
                     >
                       {characterLoadingIndex === index
                         ? ui.preparingReferenceImage
@@ -10475,10 +10486,10 @@ const handleResetCareerMission = () => {
                       <img
                         src={character.referenceImage}
                         alt={`${character.name || `${ui.characterLabel} ${index + 1}`} ${ui.referenceImageAlt}`}
-                        className="w-full max-w-md rounded-xl"
+                        className="w-full max-w-md rounded-2xl"
                       />
                     ) : (
-                      <div className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-gray-400">
+                      <div className="rounded-2xl border border-dashed border-orange-200/30 p-4 text-sm text-slate-500">
                         {ui.noCharacterReference}
                       </div>
                     )}
@@ -10491,7 +10502,7 @@ const handleResetCareerMission = () => {
               <h3 className="text-xl font-semibold">{ui.visualStyle}</h3>
 
               <textarea
-                className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 placeholder={ui.stylePlaceholder}
                 value={visualBible?.style || ""}
                 onChange={(e) =>
@@ -10503,7 +10514,7 @@ const handleResetCareerMission = () => {
               />
 
               <textarea
-                className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 placeholder={ui.palettePlaceholder}
                 value={visualBible?.palette || ""}
                 onChange={(e) =>
@@ -10515,7 +10526,7 @@ const handleResetCareerMission = () => {
               />
 
               <textarea
-                className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 placeholder={ui.cameraPlaceholder}
                 value={visualBible?.camera || ""}
                 onChange={(e) =>
@@ -10527,7 +10538,7 @@ const handleResetCareerMission = () => {
               />
 
               <textarea
-                className="min-h-20 w-full rounded-xl border border-gray-700 bg-white p-3 text-black"
+                className="min-h-20 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black"
                 placeholder={ui.consistencyRulesPlaceholder}
                 value={visualBible?.consistencyRules || ""}
                 onChange={(e) =>
@@ -10543,7 +10554,7 @@ const handleResetCareerMission = () => {
               <button
                 onClick={buildStory}
                 disabled={buildingStory}
-                className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
               >
                 {buildingStory ? ui.buildingStory : ui.buildStoryAndScenes}
               </button>
@@ -10553,12 +10564,12 @@ const handleResetCareerMission = () => {
 
         {scenes.length > 0 && (
           <>
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+            <div className="rounded-[28px] border border-orange-200/30 bg-white/74 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
               <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={saveProject}
                 disabled={isSavingProject}
-                className="rounded-xl bg-green-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-green-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {isSavingProject ? ui.savingProject : ui.saveProject}
               </button>
@@ -10566,7 +10577,7 @@ const handleResetCareerMission = () => {
               <button
                 onClick={prepareAllAudio}
                 disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null}
-                className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {isPreparingAudio ? ui.preparingAudio : ui.prepareAudio}
               </button>
@@ -10578,7 +10589,7 @@ const handleResetCareerMission = () => {
                   isPreparingAudio ||
                   playingDialogueSceneId !== null
                 }
-                className="rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-purple-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {isPlayingStory ? ui.stopStory : ui.listenStory}
               </button>
@@ -10586,7 +10597,7 @@ const handleResetCareerMission = () => {
               <button
                 onClick={() => handleExportMovie(false)}
                 disabled={isExportingMovie || readyExportCount === 0}
-                className="rounded-xl bg-orange-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {isExportingMovie
                   ? ui.creatingMovie
@@ -10599,7 +10610,7 @@ const handleResetCareerMission = () => {
                 type="button"
                 onClick={() => handleExportMovie(true)}
                 disabled={isExportingMovie || readyExportCount === 0}
-                className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-100 transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
               >
                 {isExportingMovie
                   ? ui.creatingMovie
@@ -10612,7 +10623,7 @@ const handleResetCareerMission = () => {
                 type="button"
                 onClick={handleResetExport}
                 disabled={isExportingMovie || !exportedMovieUrl}
-                className="rounded-xl border border-red-400/40 bg-red-500/10 px-6 py-3 font-semibold text-red-100 transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl border border-red-400/40 bg-rose-50/80 px-6 py-3 font-semibold text-rose-700 transition hover:scale-105 disabled:opacity-50"
               >
                 {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
               </button>
@@ -10625,7 +10636,7 @@ const handleResetCareerMission = () => {
                   playingDialogueSceneId !== null ||
                   (loadingAudioSceneId !== null && !isBatchRendering)
                 }
-                className="rounded-xl bg-cyan-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
               >
                 {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
               </button>
@@ -10634,7 +10645,7 @@ const handleResetCareerMission = () => {
                 <button
                   onClick={() => retryFailedScenes()}
                   disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null}
-                  className="rounded-xl bg-rose-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                  className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                 >
                   {getBatchLabel("retryFailed")}
                 </button>
@@ -10643,30 +10654,30 @@ const handleResetCareerMission = () => {
             </div>
 
             {(batchRenderItems.length > 0 || isBatchRendering) && (
-              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-950/20 p-5 space-y-4">
+              <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">
+                    <h3 className="text-lg font-semibold text-slate-900">
                       {getBatchLabel("statusTitle")}
                     </h3>
-                    <p className="mt-1 text-sm text-cyan-100/80">
+                    <p className="mt-1 text-sm text-sky-800/80">
                       {isBatchRendering
                         ? getBatchLabel("rendering")
                         : `${getBatchLabel("progress")}: ${getBatchProgress()}%`}
                     </p>
                     {batchRenderStartedAt && (
-                      <p className="mt-1 text-xs text-cyan-100/50">
+                      <p className="mt-1 text-xs text-sky-800/50">
                         {new Date(batchRenderStartedAt).toLocaleString()}
                       </p>
                     )}
                   </div>
 
-                  <div className="min-w-[120px] text-right text-2xl font-bold text-cyan-100">
+                  <div className="min-w-[120px] text-right text-2xl font-bold text-sky-800">
                     {getBatchProgress()}%
                   </div>
                 </div>
 
-                <div className="h-3 overflow-hidden rounded-full bg-black/30">
+                <div className="h-3 overflow-hidden rounded-full bg-white/72">
                   <div
                     className="h-full rounded-full bg-cyan-400 transition-all"
                     style={{ width: `${getBatchProgress()}%` }}
@@ -10677,34 +10688,34 @@ const handleResetCareerMission = () => {
                   {batchRenderItems.map((item) => (
                     <div
                       key={item.sceneId}
-                      className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm"
+                      className="rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-sm"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-slate-900">
                           {ui.scene} {item.sceneId}
                         </span>
                         <span
                           className={`rounded-full px-2 py-1 text-xs font-semibold ${
                             item.status === "done"
-                              ? "bg-green-500/20 text-green-200"
+                              ? "bg-green-50/800/20 text-green-700"
                               : item.status === "failed"
                                 ? "bg-red-500/20 text-red-200"
                                 : item.status === "processing"
                                   ? "bg-yellow-500/20 text-yellow-100"
-                                  : "bg-white/10 text-gray-200"
+                                  : "bg-white/66 text-gray-200"
                           }`}
                         >
                           {item.status}
                         </span>
                       </div>
-                      <p className="mt-2 text-xs text-cyan-100/70">
+                      <p className="mt-2 text-xs text-sky-800/70">
                         {item.step} {item.message ? `→ ${item.message}` : ""}
                       </p>
                       {item.status === "failed" && !isBatchRendering && (
                         <button
                           onClick={() => retryFailedScenes(item.sceneId)}
                           disabled={retryingSceneId === item.sceneId}
-                          className="mt-3 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                          className="mt-3 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                         >
                           {retryingSceneId === item.sceneId
                             ? getBatchLabel("retrying")
@@ -10718,42 +10729,42 @@ const handleResetCareerMission = () => {
             )}
 
             {exportedMovieUrl && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+              <div className="rounded-[28px] border border-orange-200/30 bg-white/58 p-6 space-y-4">
                 <div>
                   <h3 className="text-xl font-semibold">{ui.finalMovie}</h3>
-                  <p className="mt-1 text-sm text-gray-300">
+                  <p className="mt-1 text-sm text-slate-600">
                     {ui.finalMovieDesc}
                   </p>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Dosya</p>
-                    <p className="mt-2 text-sm font-medium text-white break-all">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Dosya</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900 break-all">
                       {exportMovieResult?.fileName || "-"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Süre</p>
-                    <p className="mt-2 text-sm font-medium text-white">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Süre</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900">
                       {formatDurationLabel(exportMovieResult?.durationSeconds)}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Boyut</p>
-                    <p className="mt-2 text-sm font-medium text-white">
+                  <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Boyut</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900">
                       {formatFileSizeLabel(exportMovieResult?.sizeBytes)}
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-sm text-gray-300">Final Video URL</p>
+                <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                  <p className="text-sm text-slate-600">Final Video URL</p>
                   <a
                     href={exportMovieResult?.downloadUrl || exportedMovieUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 block break-all text-sm text-cyan-300 underline"
+                    className="mt-2 block break-all text-sm text-sky-700 underline"
                   >
                     {exportMovieResult?.downloadUrl || exportedMovieUrl}
                   </a>
@@ -10762,14 +10773,14 @@ const handleResetCareerMission = () => {
                 <video
                   src={exportedMovieUrl}
                   controls
-                  className="w-full rounded-xl border border-white/10 bg-black"
+                  className="w-full rounded-2xl border border-orange-200/30 bg-black"
                 />
 
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={handleDownloadVideo}
-                    className="inline-flex items-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105"
+                    className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:scale-105"
                   >
                     {ui.download}
                   </button>
@@ -10781,7 +10792,7 @@ const handleResetCareerMission = () => {
                       isExportingMovie ||
                       scenes.filter((scene) => scene.videoUrl && scene.videoStatus === "done").length < 2
                     }
-                    className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:scale-105 disabled:opacity-50"
+                    className="inline-flex items-center rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                   >
                     {isExportingMovie
                       ? ui.creatingMovie
@@ -10799,7 +10810,7 @@ const handleResetCareerMission = () => {
                         setError("Link kopyalanamadı.");
                       }
                     }}
-                    className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
+                    className="inline-flex items-center rounded-xl border border-orange-200/32 px-4 py-2 text-sm text-slate-900 transition hover:scale-105"
                   >
                     Linki Kopyala
                   </button>
@@ -10808,7 +10819,7 @@ const handleResetCareerMission = () => {
                     href={exportMovieResult?.downloadUrl || exportedMovieUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center rounded-lg border border-white/20 px-4 py-2 text-sm text-white transition hover:scale-105"
+                    className="inline-flex items-center rounded-xl border border-orange-200/32 px-4 py-2 text-sm text-slate-900 transition hover:scale-105"
                   >
                     Yeni sekmede aç
                   </a>
@@ -10820,9 +10831,9 @@ const handleResetCareerMission = () => {
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-bold">{ui.sceneListTitle}</h2>
-                  <p className="mt-1 text-sm text-slate-300">{ui.sceneProductionPanelDesc}</p>
+                  <p className="mt-1 text-sm text-slate-600">{ui.sceneProductionPanelDesc}</p>
                 </div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">
+                <div className="rounded-full border border-orange-200/30 bg-white/58 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-600">
                   Studio Timeline View
                 </div>
               </div>
@@ -10843,20 +10854,20 @@ const handleResetCareerMission = () => {
                 return (
                   <div
                     key={scene.id}
-                    className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]"
+                    className="overflow-hidden rounded-[30px] border border-orange-200/30 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-3">
-                          <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
+                          <div className="rounded-full border border-sky-200 bg-sky-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-800">
                             Scene {scene.id}
                           </div>
 
                           <div
                             className={`rounded-full px-3 py-1 text-xs ${
                               isAudioReady
-                                ? "border border-green-500/30 bg-green-500/10 text-green-200"
-                                : "border border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
+                                ? "border border-green-200 bg-green-50/80 text-green-700"
+                                : "border border-yellow-500/30 bg-yellow-500/10 text-amber-700"
                             }`}
                           >
                             {isAudioReady ? "Narration ready" : "Narration pending"}
@@ -10866,7 +10877,7 @@ const handleResetCareerMission = () => {
                             className={`rounded-full px-3 py-1 text-xs ${
                               dialogueReady
                                 ? "border border-pink-500/30 bg-pink-500/10 text-pink-200"
-                                : "border border-orange-500/30 bg-orange-500/10 text-orange-200"
+                                : "border border-orange-500/30 bg-orange-500/10 text-orange-700"
                             }`}
                           >
                             {dialogueReady ? "Dialogue ready" : "Dialogue pending"}
@@ -10875,12 +10886,12 @@ const handleResetCareerMission = () => {
                           <div
                             className={`rounded-full px-3 py-1 text-xs ${
                               scene.videoStatus === "done"
-                                ? "border border-green-500/30 bg-green-500/10 text-green-200"
+                                ? "border border-green-200 bg-green-50/80 text-green-700"
                                 : scene.videoStatus === "processing"
                                 ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
                                 : scene.videoStatus === "error"
-                                ? "border border-red-500/30 bg-red-500/10 text-red-200"
-                                : "border border-gray-500/30 bg-gray-500/10 text-gray-200"
+                                ? "border border-red-500/30 bg-rose-50/80 text-red-200"
+                                : "border border-orange-200/65/30 bg-gray-500/10 text-gray-200"
                             }`}
                           >
                             {scene.videoStatus === "done"
@@ -10893,71 +10904,71 @@ const handleResetCareerMission = () => {
                           </div>
 
                           {isLastScene && (
-                            <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">
+                            <span className="rounded-full border border-orange-200/28 px-3 py-1 text-xs text-slate-600">
                               {ui.lastScene}
                             </span>
                           )}
                         </div>
 
                         <div>
-                          <h3 className="text-xl font-semibold text-white">Production Scene Card</h3>
-                          <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                          <h3 className="text-xl font-semibold text-slate-900">Production Scene Card</h3>
+                          <p className="mt-1 max-w-2xl text-sm text-slate-600">
                             {ui.sceneCardPurpose}
                           </p>
                         </div>
                       </div>
 
                       <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 lg:w-[360px]">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Production score</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">{productionScore}/4</p>
-                          <p className="mt-1 text-xs text-slate-400">Image, narration, dialogue ve video durumu.</p>
+                        <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Production score</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-900">{productionScore}/4</p>
+                          <p className="mt-1 text-xs text-slate-500">Image, narration, dialogue ve video durumu.</p>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Target duration</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">{totalDuration.toFixed(1)}s</p>
-                          <p className="mt-1 text-xs text-slate-400">Audio + video ritmi için hesaplanan hedef.</p>
+                        <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Target duration</p>
+                          <p className="mt-2 text-2xl font-semibold text-slate-900">{totalDuration.toFixed(1)}s</p>
+                          <p className="mt-1 text-xs text-slate-500">Audio + video ritmi için hesaplanan hedef.</p>
                         </div>
                       </div>
                     </div>
 
                     <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
                       <div className="space-y-4">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
                           <p className="text-base leading-7 text-gray-100">{scene.text}</p>
                         </div>
 
-                        <div className="grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-gray-200 md:grid-cols-2">
+                        <div className="grid gap-3 rounded-[28px] border border-orange-200/30 bg-white/72 p-4 text-sm text-gray-200 md:grid-cols-2">
                           <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Narration</p>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Narration</p>
                             <p>{scene.narration}</p>
                           </div>
                           <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Dialogue</p>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Dialogue</p>
                             <p>{scene.dialogue || "Yok"}</p>
                           </div>
                           <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Camera</p>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Camera</p>
                             <p>{scene.cameraDirection}</p>
                           </div>
                           <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Emotion</p>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Emotion</p>
                             <p>{scene.emotion}</p>
                           </div>
                           <div className="md:col-span-2">
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-400">Motion hint</p>
+                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Motion hint</p>
                             <p>{scene.motionHint}</p>
                           </div>
                         </div>
 
-                        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-50">
+                        <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-800">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <p className="font-semibold">Timing & export kararları</p>
                             <span
                               className={`rounded-full px-3 py-1 text-[11px] font-medium ${
                                 scene.timing?.needsFreezeFrame
-                                  ? "border border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
-                                  : "border border-green-500/30 bg-green-500/10 text-green-200"
+                                  ? "border border-yellow-500/30 bg-yellow-500/10 text-amber-700"
+                                  : "border border-green-200 bg-green-50/80 text-green-700"
                               }`}
                             >
                               {scene.timing?.needsFreezeFrame ? "Freeze required" : "Video sufficient"}
@@ -10965,25 +10976,25 @@ const handleResetCareerMission = () => {
                           </div>
 
                           <div className="grid gap-3 md:grid-cols-3">
-                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Audio total</p>
-                              <p className="mt-2 text-lg font-semibold text-white">{totalAudio.toFixed(2)}s</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Audio total</p>
+                              <p className="mt-2 text-lg font-semibold text-slate-900">{totalAudio.toFixed(2)}s</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Target scene</p>
-                              <p className="mt-2 text-lg font-semibold text-white">{totalDuration.toFixed(2)}s</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Target scene</p>
+                              <p className="mt-2 text-lg font-semibold text-slate-900">{totalDuration.toFixed(2)}s</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Freeze need</p>
-                              <p className="mt-2 text-lg font-semibold text-white">{(scene.timing?.freezeDuration || 0).toFixed(2)}s</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/58 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Freeze need</p>
+                              <p className="mt-2 text-lg font-semibold text-slate-900">{(scene.timing?.freezeDuration || 0).toFixed(2)}s</p>
                             </div>
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Scene pipeline</p>
+                        <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Scene pipeline</p>
                           <div className="mt-3 grid gap-2">
                             {[
                               { label: "Image", ready: hasImage, pending: redrawLoadingId === scene.id },
@@ -10991,15 +11002,15 @@ const handleResetCareerMission = () => {
                               { label: "Dialogue", ready: dialogueReady, pending: loadingDialogueSceneId === scene.id && hasDialogue },
                               { label: "Video", ready: hasVideo, pending: scene.videoStatus === "processing" },
                             ].map((item) => (
-                              <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <span className="text-sm text-slate-200">{item.label}</span>
+                              <div key={item.label} className="flex items-center justify-between rounded-2xl border border-orange-200/30 bg-white/58 px-3 py-2">
+                                <span className="text-sm text-slate-700">{item.label}</span>
                                 <span
                                   className={`rounded-full px-2.5 py-1 text-[11px] ${
                                     item.pending
                                       ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
                                       : item.ready
-                                      ? "border border-green-500/30 bg-green-500/10 text-green-200"
-                                      : "border border-white/15 bg-white/5 text-slate-400"
+                                      ? "border border-green-200 bg-green-50/80 text-green-700"
+                                      : "border border-orange-200/28 bg-white/58 text-slate-500"
                                   }`}
                                 >
                                   {item.pending ? "Processing" : item.ready ? "Ready" : "Pending"}
@@ -11009,8 +11020,8 @@ const handleResetCareerMission = () => {
                           </div>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Quick actions</p>
+                        <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Quick actions</p>
                           <div className="mt-3 flex flex-wrap gap-3">
                       <button
                         onClick={() => playNarration(scene.id, scene.narration)}
@@ -11020,7 +11031,7 @@ const handleResetCareerMission = () => {
                           (isPlayingStory && playingSceneId !== scene.id) ||
                           playingDialogueSceneId !== null
                         }
-                        className="rounded-lg border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 disabled:opacity-50"
+                        className="rounded-xl border border-purple-400/40 bg-violet-50/80 px-4 py-2 text-sm text-purple-100 disabled:opacity-50"
                       >
                         {loadingAudioSceneId === scene.id
                           ? "Ses hazırlanıyor..."
@@ -11036,7 +11047,7 @@ const handleResetCareerMission = () => {
                           isPlayingStory ||
                           isPreparingAudio
                         }
-                        className="rounded-lg border border-pink-400/40 bg-pink-500/10 px-4 py-2 text-sm text-pink-100 disabled:opacity-50"
+                        className="rounded-xl border border-pink-400/40 bg-pink-500/10 px-4 py-2 text-sm text-pink-100 disabled:opacity-50"
                       >
                         {loadingDialogueSceneId === scene.id
                           ? "Diyalog hazırlanıyor..."
@@ -11045,7 +11056,7 @@ const handleResetCareerMission = () => {
                           : "Karakter Diyaloğunu Dinle"}
                       </button>
 
-                      <label className="flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                      <label className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-teal-50/80 px-3 py-2 text-xs text-teal-800">
                         <span>Export</span>
                         <select
                           value={scene.renderMode || "auto"}
@@ -11064,7 +11075,7 @@ const handleResetCareerMission = () => {
                             setExportMovieResult(null);
                             setExportSignature("");
                           }}
-                          className="rounded-md border border-white/10 bg-slate-950 px-2 py-1 text-xs text-white"
+                          className="rounded-md border border-orange-200/30 bg-[radial-gradient(circle_at_10%_6%,#ffe0f2_0%,transparent_30%),radial-gradient(circle_at_90%_10%,#d9f5ff_0%,transparent_32%),radial-gradient(circle_at_48%_92%,#fff0bd_0%,transparent_36%),linear-gradient(180deg,#fffaf4_0%,#f8fbff_46%,#f4fff8_100%)] px-2 py-1 text-xs text-slate-900"
                         >
                           <option value="auto">Auto</option>
                           <option value="video">Video</option>
@@ -11075,7 +11086,7 @@ const handleResetCareerMission = () => {
                       <button
                         onClick={() => handleGenerateVideo(scene.id)}
                         disabled={scene.videoStatus === "processing" || !scene.image}
-                        className="rounded-lg border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
+                        className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
                       >
                         {scene.videoStatus === "processing"
                           ? ui.videoCreating
@@ -11087,7 +11098,7 @@ const handleResetCareerMission = () => {
                           setEditingSceneId(scene.id);
                           setBranchingSceneId(null);
                         }}
-                        className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+                        className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm"
                       >
                         {ui.editScene}
                       </button>
@@ -11097,7 +11108,7 @@ const handleResetCareerMission = () => {
                           setBranchingSceneId(scene.id);
                           setEditingSceneId(null);
                         }}
-                        className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+                        className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm"
                       >
                         {ui.branchAfterScene}
                       </button>
@@ -11105,100 +11116,100 @@ const handleResetCareerMission = () => {
                       <button
                         onClick={() => redrawSceneImage(scene)}
                         disabled={redrawLoadingId === scene.id}
-                        className="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+                        className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm disabled:opacity-50"
                       >
                         {redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}
                       </button>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+                    <div className="rounded-[28px] border border-orange-200/30 bg-white/72 p-4 space-y-4">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">{ui.scenePreviews}</p>
+                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{ui.scenePreviews}</p>
                         <div className="flex flex-wrap gap-2 text-[11px]">
-                          <span className={`rounded-full px-2.5 py-1 ${hasImage ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
+                          <span className={`rounded-full px-2.5 py-1 ${hasImage ? "border border-green-200 bg-green-50/80 text-green-700" : "border border-orange-200/28 bg-white/58 text-slate-500"}`}>
                             {hasImage ? ui.imageReady : ui.imagePending}
                           </span>
-                          <span className={`rounded-full px-2.5 py-1 ${hasVideo ? "border border-green-500/30 bg-green-500/10 text-green-200" : "border border-white/15 bg-white/5 text-slate-400"}`}>
+                          <span className={`rounded-full px-2.5 py-1 ${hasVideo ? "border border-green-200 bg-green-50/80 text-green-700" : "border border-orange-200/28 bg-white/58 text-slate-500"}`}>
                             {hasVideo ? ui.videoReady : ui.videoPending}
                           </span>
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+                      <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4">
                         <div className="mb-3 flex items-center justify-between gap-3">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">{ui.intelligencePanel}</p>
-                          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[11px] text-cyan-100">v1</span>
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-sky-700">{ui.intelligencePanel}</p>
+                          <span className="rounded-full border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-[11px] text-sky-800">v1</span>
                         </div>
 
                         {scene.intelligence ? (
                           <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.sceneType}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneIntelligenceValue(scene.intelligence.scene_type)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.sceneType}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneIntelligenceValue(scene.intelligence.scene_type)}</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.pacingLevel}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneIntelligenceValue(scene.intelligence.pacing_level)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.pacingLevel}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneIntelligenceValue(scene.intelligence.pacing_level)}</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.emotionalIntensity}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.emotional_intensity)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.emotionalIntensity}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.emotional_intensity)}</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.curiosityScore}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.curiosity_score)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.curiosityScore}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.curiosity_score)}</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.tensionScore}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.tension_score)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.tensionScore}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.tension_score)}</p>
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{ui.climaxLevel}</p>
-                              <p className="mt-1 text-sm font-semibold text-white">{formatSceneScore(scene.intelligence.climax_level)}</p>
+                            <div className="rounded-2xl border border-orange-200/30 bg-white/72 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.climaxLevel}</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.climax_level)}</p>
                             </div>
 
-                            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                            <div className="rounded-2xl border border-emerald-500/30 bg-teal-50/80 p-3">
                               <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-emerald-300">
                                 {ui.thumbnailScore}
                               </p>
 
-                              <p className="mt-1 text-sm font-semibold text-white">
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
                                 {calculateThumbnailScore(scene.intelligence)}/10
                               </p>
 
                               {isBestThumbnailCandidate(scene, scenes) ? (
                                 <div className="mt-2">
-                                  <span className="inline-flex max-w-full rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                                  <span className="inline-flex max-w-full rounded-full border border-emerald-400/30 bg-teal-50/80 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-teal-700">
                                     ⭐ {ui.bestThumbnailCandidate}
                                   </span>
                                 </div>
                               ) : null}
                             </div>
 
-                            <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3">
+                            <div className="rounded-2xl border border-sky-500/30 bg-sky-50/800/10 p-3">
                               <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-sky-300">
                                 {ui.hookScore}
                               </p>
 
-                              <p className="mt-1 text-sm font-semibold text-white">
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
                                 {calculateHookScore(scene.intelligence)}/10
                               </p>
 
                               {isBestHookCandidate(scene, scenes) ? (
                                 <div className="mt-2">
-                                  <span className="inline-flex max-w-full rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-sky-200">
+                                  <span className="inline-flex max-w-full rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-sky-200">
                                     ⚡ {ui.bestHookCandidate}
                                   </span>
                                 </div>
                               ) : null}
                             </div>
 
-                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
                               <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-amber-300">
                                 {ui.retentionRisk}
                               </p>
 
-                              <p className="mt-1 text-sm font-semibold text-white">
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
                                 {calculateRetentionRisk(scene.intelligence).level === "low"
                                   ? ui.lowRisk
                                   : calculateRetentionRisk(scene.intelligence).level === "medium"
@@ -11207,16 +11218,16 @@ const handleResetCareerMission = () => {
                               </p>
                             </div>
 
-                            <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-3">
+                            <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-3">
                               <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-fuchsia-300">
                                 {ui.youtubeReadiness}
                               </p>
 
-                              <p className="mt-1 text-sm font-semibold text-white">
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
                                 {calculateYoutubeReadinessScore(scene.intelligence)}/10
                               </p>
 
-                              <p className="mt-1 text-[10px] font-medium text-fuchsia-100/80">
+                              <p className="mt-1 text-[11px] font-medium text-fuchsia-100/80">
                                 {getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "strong"
                                   ? ui.strongReady
                                   : getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "moderate"
@@ -11225,20 +11236,20 @@ const handleResetCareerMission = () => {
                               </p>
                             </div>
 
-                            <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 md:col-span-2 lg:col-span-3">
+                            <div className="rounded-2xl border border-violet-500/30 bg-violet-50/800/10 p-3 md:col-span-2 lg:col-span-3">
                               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                                 <p className="shrink-0 text-[9px] uppercase tracking-[0.12em] opacity-80 text-violet-300">
                                   {ui.recommendation}
                                 </p>
 
-                                <p className="text-left text-[10px] leading-snug text-violet-100/85 sm:text-right">
+                                <p className="text-left text-[11px] leading-snug text-violet-700/85 sm:text-right">
                                   {generateSceneRecommendation(scene.intelligence)}
                                 </p>
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                          <div className="rounded-2xl border border-dashed border-orange-200/30 bg-white/58 p-4 text-sm text-slate-500">
                             {ui.noSceneIntelligence}
                           </div>
                         )}
@@ -11246,31 +11257,31 @@ const handleResetCareerMission = () => {
 
                       {scene.image ? (
                         <div className="space-y-2">
-                          <p className="text-xs text-slate-400">{ui.readySceneImage}</p>
+                          <p className="text-xs text-slate-500">{ui.readySceneImage}</p>
                           <img
                             src={scene.image}
                             alt={`${ui.scene} ${scene.id}`}
-                            className="w-full rounded-2xl border border-white/10 bg-black/30 object-cover"
+                            className="w-full rounded-[28px] border border-orange-200/30 bg-white/72 object-cover"
                           />
                         </div>
                       ) : (
-                        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                        <div className="rounded-2xl border border-dashed border-orange-200/30 bg-white/58 p-4 text-sm text-slate-500">
                           {ui.noSceneImagePreview}
                         </div>
                       )}
 
                       {scene.videoUrl && scene.videoStatus === "done" ? (
                         <div className="space-y-2">
-                          <p className="text-xs text-slate-400">{ui.readySceneVideo}</p>
+                          <p className="text-xs text-slate-500">{ui.readySceneVideo}</p>
                           <video
                             src={scene.videoUrl}
                             controls
                             playsInline
-                            className="w-full rounded-2xl border border-white/10 bg-black/30"
+                            className="w-full rounded-[28px] border border-orange-200/30 bg-white/72"
                           />
                         </div>
                       ) : (
-                        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                        <div className="rounded-2xl border border-dashed border-orange-200/30 bg-white/58 p-4 text-sm text-slate-500">
                           {ui.noSceneVideoPreview}
                         </div>
                       )}
@@ -11278,7 +11289,7 @@ const handleResetCareerMission = () => {
                   </div>
 
                     
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                <div className="mt-3 rounded-2xl border border-orange-200/30 bg-white/72 p-3 text-xs text-slate-600">
                   <div className="flex flex-wrap gap-3">
                     <span>🎯 {ui.target}: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} {ui.secondShort}</span>
                     <span>🎤 {ui.speech}: {(scene.timing?.totalAudioDuration || 0).toFixed(1)} {ui.secondShort}</span>
@@ -11293,13 +11304,13 @@ const handleResetCareerMission = () => {
                 </div>
 
 {editingSceneId === scene.id && (
-                      <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
-                        <label className="block text-sm text-gray-300">
+                      <div className="mt-4 space-y-3 rounded-2xl border border-orange-200/30 bg-white/72 p-4">
+                        <label className="block text-sm text-slate-600">
                           {ui.sceneEditQuestion}
                         </label>
 
                         <textarea
-                          className="min-h-24 w-full rounded-xl border border-gray-700 bg-white p-3 text-black placeholder:text-gray-500"
+                          className="min-h-24 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black placeholder:text-slate-500"
                           value={sceneInstructions[scene.id] || ""}
                           onChange={(e) =>
                             setSceneInstructions((prev) => ({
@@ -11314,7 +11325,7 @@ const handleResetCareerMission = () => {
                           <button
                             onClick={() => updateScene(scene.id)}
                             disabled={sceneLoadingId === scene.id}
-                            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            className="rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
                           >
                             {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
                           </button>
@@ -11327,7 +11338,7 @@ const handleResetCareerMission = () => {
                                 [scene.id]: "",
                               }));
                             }}
-                            className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+                            className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm"
                           >
                             {ui.cancel}
                           </button>
@@ -11336,13 +11347,13 @@ const handleResetCareerMission = () => {
                     )}
 
                     {branchingSceneId === scene.id && (
-                      <div className="mt-4 space-y-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
+                      <div className="mt-4 space-y-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-4">
                         <label className="block text-sm text-yellow-100">
                           {ui.branchQuestion}
                         </label>
 
                         <textarea
-                          className="min-h-24 w-full rounded-xl border border-gray-700 bg-white p-3 text-black placeholder:text-gray-500"
+                          className="min-h-24 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-3 text-black placeholder:text-slate-500"
                           value={branchInstructions[scene.id] || ""}
                           onChange={(e) =>
                             setBranchInstructions((prev) => ({
@@ -11353,7 +11364,7 @@ const handleResetCareerMission = () => {
                           placeholder={ui.branchPlaceholder}
                         />
 
-                        <p className="text-xs text-gray-300">
+                        <p className="text-xs text-slate-600">
                           {ui.branchWarning}
                         </p>
 
@@ -11361,7 +11372,7 @@ const handleResetCareerMission = () => {
                           <button
                             onClick={() => handleBranchFromScene(scene.id)}
                             disabled={branchLoadingId === scene.id}
-                            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                            className="rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
                           >
                             {branchLoadingId === scene.id ? ui.writingNewFlow : ui.continueFromHere}
                           </button>
@@ -11374,7 +11385,7 @@ const handleResetCareerMission = () => {
                                 [scene.id]: "",
                               }));
                             }}
-                            className="rounded-lg border border-white/20 px-4 py-2 text-sm"
+                            className="rounded-xl border border-orange-200/32 px-4 py-2 text-sm"
                           >
                             {ui.cancel}
                           </button>
@@ -11388,16 +11399,16 @@ const handleResetCareerMission = () => {
               })}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+            <div className="rounded-[28px] border border-orange-200/30 bg-white/58 p-6 space-y-4">
               <div>
                 <h3 className="text-xl font-semibold">{ui.continueFromLastScene}</h3>
-                <p className="mt-1 text-sm text-gray-300">
+                <p className="mt-1 text-sm text-slate-600">
                   {ui.continueFromLastSceneDesc}
                 </p>
               </div>
 
               <textarea
-                className="min-h-28 w-full rounded-xl border border-gray-700 bg-white p-4 text-black placeholder:text-gray-500"
+                className="min-h-28 w-full rounded-2xl border border-orange-200/32 bg-white/82 p-4 text-black placeholder:text-slate-500"
                 value={continuePrompt}
                 onChange={(e) => setContinuePrompt(e.target.value)}
                 placeholder={ui.continuePromptPlaceholder}
@@ -11407,7 +11418,7 @@ const handleResetCareerMission = () => {
                 <button
                   onClick={handleContinueStory}
                   disabled={isContinuing}
-                  className="rounded-xl bg-white px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
+                  className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
                 >
                   {isContinuing ? ui.writingContinue : ui.writeContinue}
                 </button>
