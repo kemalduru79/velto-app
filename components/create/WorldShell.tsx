@@ -1,5 +1,7 @@
 "use client";
 
+// X.7.27 Cinematic Immersion Pass: premium cinematic shell depth for creative worlds.
+
 import type { ActiveWorld } from "@/components/create/WorldContext";
 
 type WorldShellProps = {
@@ -16,6 +18,7 @@ const worldThemes = {
     accent: "text-sky-700",
     border: "border-sky-200/80",
     glow: "bg-sky-100/60",
+    button: "bg-sky-500 text-white hover:bg-sky-600",
     emoji: "🎬",
     label: "Storyverse",
     ribbon: "Flagship creative world",
@@ -26,6 +29,7 @@ const worldThemes = {
     accent: "text-rose-700",
     border: "border-rose-200/80",
     glow: "bg-rose-100/50",
+    button: "bg-rose-500 text-white hover:bg-rose-600",
     emoji: "✨",
     label: "Creator Lab",
     ribbon: "Creator playground",
@@ -36,6 +40,7 @@ const worldThemes = {
     accent: "text-teal-700",
     border: "border-teal-200/80",
     glow: "bg-teal-100/50",
+    button: "bg-teal-500 text-white hover:bg-teal-600",
     emoji: "🚀",
     label: "Career Lab",
     ribbon: "Mission discovery",
@@ -52,10 +57,10 @@ export default function WorldShell({
 
   return (
     <section
-      className={`relative overflow-hidden rounded-[44px] border bg-gradient-to-b p-6 shadow-[0_24px_95px_rgba(15,23,42,0.08)] md:p-10 ${theme.background} ${theme.border}`}
+      className={`relative overflow-hidden rounded-[48px] border bg-gradient-to-b p-6 shadow-[0_28px_110px_rgba(14,165,233,0.12)] md:p-10 ${theme.background} ${theme.border}`}
     >
       <div
-        className={`absolute -right-12 top-0 h-64 w-64 rounded-full blur-3xl ${theme.glow}`}
+        className={`absolute -right-12 top-0 h-72 w-72 rounded-full blur-3xl ${theme.glow}`}
       />
       <div className="absolute left-8 top-8 hidden h-4 w-4 rounded-full bg-white/80 shadow-sm md:block" />
       <div className="absolute bottom-12 right-20 hidden h-3 w-3 rounded-full bg-white/70 shadow-sm md:block" />
@@ -65,7 +70,7 @@ export default function WorldShell({
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-3">
             <div
-              className={`inline-flex items-center gap-2 rounded-full bg-white/85 px-5 py-2 text-xs font-black uppercase tracking-[0.08em] shadow-sm transition-transform duration-300 hover:scale-105 ${theme.accent}`}
+              className={`inline-flex items-center gap-2 rounded-full bg-white/86 px-5 py-2 text-xs font-black uppercase tracking-[0.08em] shadow-sm transition-transform duration-300 hover:scale-105 ${theme.accent}`}
             >
               <span className="text-sm">{theme.emoji}</span>
               <span>{theme.label}</span>
@@ -87,7 +92,7 @@ export default function WorldShell({
           </div>
         </div>
 
-        <div className="rounded-[38px] border border-white/80 bg-white/90 p-6 shadow-sm backdrop-blur-sm md:p-8">
+        <div className="rounded-[42px] border border-white/80 bg-white/86 p-6 shadow-sm backdrop-blur-sm md:p-8">
           {children}
         </div>
       </div>

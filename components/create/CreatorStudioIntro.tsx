@@ -5,14 +5,14 @@ import ExperienceIntroCard from "@/components/create/ExperienceIntroCard";
 export default function CreatorStudioIntro() {
   return (
     <ExperienceIntroCard
-      eyebrow="Creator Lab Studio Mode"
+      eyebrow="Creator Lab"
       title="Build Ideas Like a Young Creator"
-      description="Create short-form ideas, scripts and publish-ready creative packages."
+      description="Shape short-form ideas, hooks, thumbnails and ready-to-share creative packages."
       tone="creator"
       stage="Active Product"
       duration="~45 min"
       ageRange="10–16"
-      nextAction="Choose a creator format and shape the content."
+      nextAction="Pick a topic, explore popular ideas, create idea cards and prepare your creator package."
       primaryCta="Open Creator Lab"
       secondaryCta="Browse Formats"
       primaryWorld="creatorlab"

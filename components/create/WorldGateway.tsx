@@ -1,5 +1,16 @@
 "use client";
 
+// X11.9 WorldGateway Stabilization Polish: safe copy-value cleanup without object key mutation.
+
+// X11.8A WorldGateway Key Repair Hotfix: restores object keys after copy-only replacement.
+
+// X11.8 WorldGateway Child UX Polish: simplifies remaining world-selection labels for children.
+
+// X.8.4.1 WorldGateway Syntax Recovery Hotfix: clean baseline, safe X8 simplification, no config-object corruption.
+// X.8.4.2 Identifier-Safe WorldGateway Hotfix: repaired Preview emoji accidentally inserted into identifiers.
+// X.8.5 Flow World Sync Pass: synchronize selected flow with WorldContext activeWorld.
+// X.8.5.1 Handle Scope Hotfix: GatewaySection mapping uses local onSelectFlow prop; top-level calls use handleSelectFlow.
+
 // X.7.12 Full Landing Visual Alignment: pastel landing alignment without object-key mutation.
 // X.7.12.1 Landing Contrast Hotfix: readable text on light pastel surfaces.
 // X.7.12.3 Primary Note Black Render Fix: target primary note render contrast fixed.
@@ -17,6 +28,7 @@
 // X.5.3 True Entry Layer Pass: gateway language and hierarchy moved closer to a simple choose-your-world entry.
 
 import type { ExperienceFlow } from "@/lib/flows";
+import { useWorldState, type ActiveWorld } from "@/components/create/WorldContext";
 
 type Language = "tr" | "en" | string;
 
@@ -27,10 +39,26 @@ type Props = {
   onSelectFlow: (flowKey: string) => void;
 };
 
+const flowKeyToWorld = (flowKey: string): ActiveWorld | null => {
+  if (flowKey === "storyverse") {
+    return "storyverse";
+  }
+
+  if (flowKey === "creator_lab" || flowKey === "creatorlab") {
+    return "creatorlab";
+  }
+
+  if (flowKey === "career_lab" || flowKey === "careerlab" || flowKey === "career") {
+    return "careerlab";
+  }
+
+  return null;
+};
+
 const copy = {
   tr: {
     eyebrow: "VELTO",
-    title: "Çocuklar için AI destekli deneyim dünyaları",
+    title: "Çocuklar için AI dünyaları",
     description:
       "Storyverse, Creator Lab ve pilot deneyimler tek bir üretim motorunu paylaşır; fakat her biri ayrı bir dünya gibi hissettirilir.",
     activeProducts: "Aktif Ürünler",
@@ -47,8 +75,8 @@ const copy = {
     zones: "Alanlar",
     currentWorld: "Seçili Dünya",
     productFeel: "Ürün Hissi",
-    experienceRole: "Deneyim Rolü",
-    nextAction: "Sonraki Aksiyon",
+    experienceRole: "Ne yaparsın",
+    nextActivity: "Sonraki adım",
     primaryNote:
       "Ana aksiyon Storyverse üzerinde konumlanır; diğer dünyalar ürünleşme seviyesine göre daha sakin gösterilir.",
     experienceSignal: "Deneyim Sinyali",
@@ -58,15 +86,15 @@ const copy = {
     roadmapSignal: "Daha sonra",
     outputsPreview: "Beklenen çıktı",
     zonesPreview: "Deneyim alanı",
-    startHere: "Başlangıç odağı",
-    journeyPreview: "Deneyim Yolculuğu",
-    identityCompass: "Deneyim Kimliği",
-    emotionLayer: "Duygu Katmanı",
-    interactionLayer: "Etkileşim Katmanı",
-    rewardLayer: "Ödül Katmanı",
-    entryMoment: "Giriş Anı",
-    creationMoment: "Üretim Anı",
-    rewardMoment: "Ödül Anı",
+    startHere: "Buradan başla",
+    journeyPreview: "Dünya Yolculuğu",
+    identityCompass: "Dünya",
+    emotionLayer: "Hissettirir",
+    interactionLayer: "Etkinlik",
+    rewardLayer: "Oluşturacağın şey",
+    entryMoment: "Başlangıç",
+    creationMoment: "Oluşturma",
+    rewardMoment: "Sonuç",
     storyverseEntry: "Karakter ve dünya seçimiyle sinematik hikâyeye giriş",
     storyverseCreation: "Sahne, görsel ve anlatı üretimi",
     storyverseReward: "Çizgi film çıktısı ve paylaşılabilir deneyim",
@@ -82,9 +110,9 @@ const copy = {
   },
   en: {
     eyebrow: "VELTO",
-    title: "Choose your creative world",
+    title: "Choose your AI world",
     description:
-      "Start with one calm experience. You can switch worlds anytime.",
+      "Pick one world and start creating.",
     activeProducts: "Start",
     pilotExperiences: "Explore",
     roadmap: "Later",
@@ -100,9 +128,9 @@ const copy = {
     currentWorld: "Your choice",
     productFeel: "Mood",
     experienceRole: "Role",
-    nextAction: "Next",
+    nextActivity: "Next",
     primaryNote:
-      "Pick a world and start creating.",
+      "Choose one world and begin.",
     experienceSignal: "Adventure Signal",
     stageMap: "Worlds",
     activeSignal: "Ready to start",
@@ -110,18 +138,18 @@ const copy = {
     roadmapSignal: "Coming later",
     outputsPreview: "Output",
     zonesPreview: "Area",
-    startHere: "Starting focus",
-    journeyPreview: "Experience Journey",
-    identityCompass: "Identity",
-    emotionLayer: "Emotion",
-    interactionLayer: "Action",
-    rewardLayer: "Reward",
-    entryMoment: "Entry Moment",
-    creationMoment: "Creation Moment",
-    rewardMoment: "Reward Moment",
-    storyverseEntry: "Enter cinematic storytelling through character and world selection",
-    storyverseCreation: "Generate scenes, visuals and narrative structure",
-    storyverseReward: "Cartoon output and shareable experience",
+    startHere: "Start here",
+    journeyPreview: "What happens next",
+    identityCompass: "World",
+    emotionLayer: "Feeling",
+    interactionLayer: "Activity",
+    rewardLayer: "You create",
+    entryMoment: "Start",
+    creationMoment: "Create",
+    rewardMoment: "Make",
+    storyverseEntry: "Choose your character and world.",
+    storyverseCreation: "Build scenes and story moments.",
+    storyverseReward: "Create a story video.",
     creatorEntry: "Choose a popular idea and short video format",
     creatorCreation: "Generate script, thumbnail and short video package",
     creatorReward: "Publish-ready creator package",
@@ -200,7 +228,7 @@ const identityCopy = {
   en: {
     storyverse: {
       feel: "Magical, cinematic, story-first",
-      role: "The child enters cartoon production through their own character and world.",
+      role: "Create a character, a world and a story.",
       action: "Start the Storyverse production flow and move into scene generation.",
     },
     creator_lab: {
@@ -240,7 +268,7 @@ function getCopy(language: Language) {
   return String(language).toLowerCase() === "tr" ? copy.tr : copy.en;
 }
 
-function getIdentity(flowKey: string, language: Language) {
+function getWorld(flowKey: string, language: Language) {
   const dictionary = String(language).toLowerCase() === "tr" ? identityCopy.tr : identityCopy.en;
   return dictionary[flowKey as keyof typeof dictionary] || dictionary.storyverse;
 }
@@ -444,7 +472,7 @@ function ActiveWorldPanel({
   language: Language;
 }) {
   const t = getCopy(language);
-  const identity = getIdentity(activeFlow.key, language);
+  const identity = getWorld(activeFlow.key, language);
   const styles = statusStyles[activeFlow.status];
 
   return (
@@ -477,32 +505,20 @@ function ActiveWorldPanel({
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
-              {t.productFeel}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-slate-900/78">
-              {identity.feel}
-            </p>
-          </div>
+        <div className="rounded-[40px] border border-orange-200/50 bg-white/86 p-7 shadow-[0_18px_54px_rgba(251,146,60,0.12)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(251,146,60,0.16)]">
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+            {language === "tr" ? "Oluşturacağın şey" : "What you will make"}
+          </p>
+          <p className="mt-4 text-xl font-extrabold leading-8 text-slate-900">
+            {activeFlow.outputs.slice(0, 3).join(" · ")}
+          </p>
+          <p className="mt-4 text-sm leading-7 text-slate-600">
+            {identity.action}
+          </p>
 
-          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
-              {t.experienceRole}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-slate-900/78">
-              {identity.role}
-            </p>
-          </div>
-
-          <div className="rounded-[44px] border border-orange-100/70 bg-[#fffaf4]/86/[0.055] p-9">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-900/45">
-              {t.nextAction}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-slate-900/78">
-              {identity.action}
-            </p>
+          <div className="mt-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-orange-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-orange-400" />
+            <span>{language === "tr" ? "Canlı deneyim" : "Live experience"}</span>
           </div>
         </div>
       </div>
@@ -511,7 +527,7 @@ function ActiveWorldPanel({
 }
 
 
-function IdentityCompass({
+function WorldCompass({
   activeFlow,
   language,
 }: {
@@ -519,7 +535,7 @@ function IdentityCompass({
   language: Language;
 }) {
   const t = getCopy(language);
-  const identity = getIdentity(activeFlow.key, language);
+  const identity = getWorld(activeFlow.key, language);
 
   const pillars = [
     {
@@ -680,6 +696,18 @@ export default function WorldGateway({
   onSelectFlow,
 }: Props) {
   const t = getCopy(language);
+  const { setActiveWorld } = useWorldState();
+
+  const handleSelectFlow = (flowKey: string) => {
+    const targetWorld = flowKeyToWorld(flowKey);
+
+    if (targetWorld) {
+      setActiveWorld(targetWorld);
+    }
+
+    onSelectFlow(flowKey);
+  };
+
   const activeProducts = flows.filter((flow) => flow.status === "active");
   const pilotExperiences = flows.filter((flow) => flow.status === "pilot");
   const roadmapExperiences = flows.filter((flow) => flow.status === "coming_soon");
@@ -716,8 +744,6 @@ export default function WorldGateway({
               language={language}
             />
             <ActiveWorldPanel activeFlow={activeFlow} language={language} />
-            <IdentityCompass activeFlow={activeFlow} language={language} />
-            <JourneyPreview activeFlow={activeFlow} language={language} />
           </>
         ) : null}
 
@@ -726,7 +752,7 @@ export default function WorldGateway({
           flows={activeProducts}
           activeFlowKey={activeFlowKey}
           language={language}
-          onSelectFlow={onSelectFlow}
+          onSelectFlow={handleSelectFlow}
         />
 
         <GatewaySection
@@ -734,7 +760,7 @@ export default function WorldGateway({
           flows={pilotExperiences}
           activeFlowKey={activeFlowKey}
           language={language}
-          onSelectFlow={onSelectFlow}
+          onSelectFlow={handleSelectFlow}
         />
 
         <GatewaySection
@@ -742,7 +768,7 @@ export default function WorldGateway({
           flows={roadmapExperiences}
           activeFlowKey={activeFlowKey}
           language={language}
-          onSelectFlow={onSelectFlow}
+          onSelectFlow={handleSelectFlow}
         />
       </div>
     </section>

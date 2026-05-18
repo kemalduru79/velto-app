@@ -2,8 +2,8 @@
 
 // X11.9 Dashboard Stabilization Polish: final dashboard microcopy stabilization before Career Lab expansion.
 
-// X11.3 Dashboard Macro Route Refresh
-// Route-level dashboard refresh: visible world launcher, dynamic 7-flow rendering, language switch.
+// X11.3 Dashboard Macro Component Refresh
+// Component-level dashboard refresh matching the route-level dashboard.
 
 import Link from "next/link";
 import { experienceFlows } from "@/lib/flows";
@@ -133,7 +133,7 @@ function WorldCard({
   );
 }
 
-export default function DashboardPage() {
+export default function VeltoDashboard() {
   const { language, setLanguage } = useLanguage();
   const isEnglish = language === "en";
 

@@ -1,5 +1,11 @@
 "use client";
 
+// X11.9 ExperienceWindow Stabilization Polish: small safe shared modal wording polish.
+
+// X11.8 ExperienceWindow Child UX Polish: localized child-friendly modal labels.
+
+import { useLanguage } from "@/lib/useLanguage";
+
 import type { ActiveWorld } from "@/components/create/WorldContext";
 
 type ExperienceWindowProps = {
@@ -47,6 +53,9 @@ export default function ExperienceWindow({
   onClose,
 }: ExperienceWindowProps) {
   const theme = worldThemes[world];
+
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 px-4 py-6 backdrop-blur-sm">
