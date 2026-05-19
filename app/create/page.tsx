@@ -1,5 +1,8 @@
 "use client";
 
+// X12.2C Career Lab Experience Cleanup: removes development/readiness panels from the child-facing mission surface.
+// X12.2B Career Lab Cinematic Mission Intro: adds low-risk immersive mission intro layer.
+
 // X12.1 Career Lab Mission Experience Enrichment: strengthens mission/report language without changing logic.
 
 // X11.6A Career Lab Dev Language Cleanup: remaining Career Lab internal/dev copy converted to child-friendly mission language.
@@ -45,6 +48,8 @@ import WorldGateway from "@/components/create/WorldGateway";
 import StoryverseCinematicIntro from "@/components/create/StoryverseCinematicIntro";
 import CreatorStudioIntro from "@/components/create/CreatorStudioIntro";
 import CareerMentorIntro from "@/components/create/CareerMentorIntro";
+import CareerMissionIntro from "@/components/create/CareerMissionIntro";
+import CareerMissionChat from "@/components/create/CareerMissionChat";
 import WorldFocusRouter from "@/components/create/WorldFocusRouter";
 import FocusedWorldWorkspace from "@/components/create/FocusedWorldWorkspace";
 import { WorldProvider } from "@/components/create/WorldContext";
@@ -53,7 +58,7 @@ import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
-import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerAdaptiveNextChallenge, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerAiNarrativeQaChecklist, getCareerAiPayloadReadinessNotes, getCareerPilotQaChecklist, getCareerPersistenceQaChecklist, getCareerPilotReadinessNotes, getCareerLocalDecisionConsequence, getCareerLocalFollowUpPrompt, getCareerMissionOutcomeMap, getCareerThinkingJourneyMap, getCareerCognitivePatternSignals, getCareerPremiumDevelopmentalReport, getCareerDevelopmentalOutputSummary, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
+import { CAREER_LAB_COPY, CAREER_LAB_PROFESSIONS, CAREER_TRAIT_LABELS, calculateCareerTraitProfile, getCareerAdaptiveFeedback, getCareerAdaptiveNextChallenge, getCareerExperienceReportPreview, formatCareerFinalReportMarkdown, formatCareerNarrativeReportPayload, formatCareerNarrativeReportPrompt, formatCareerSessionSnapshotJson, getCareerCinematicRecapBlueprint, getCareerFinalReport, getCareerMission, getCareerLocalDecisionConsequence, getCareerLocalFollowUpPrompt, getCareerMissionOutcomeMap, getCareerThinkingJourneyMap, getCareerCognitivePatternSignals, getCareerPremiumDevelopmentalReport, getCareerDevelopmentalOutputSummary, getCareerSimulationOutputPackage, getCareerProfession, getCareerTraitSummary, type CareerDecisionOption, type CareerProfessionKey } from "@/lib/careerLabConfig";
 
 type SceneTiming = {
   narrationDuration: number;
@@ -1711,7 +1716,6 @@ const [careerMentorReflectionError, setCareerMentorReflectionError] = useState("
 const [careerDecisionReasons, setCareerDecisionReasons] = useState<Record<string, string>>({});
 const [careerMentorReflectionCounts, setCareerMentorReflectionCounts] = useState<Record<string, number>>({});
 const [careerFollowUpAnswers, setCareerFollowUpAnswers] = useState<Record<string, string>>({});
-const [careerInsightViewMode, setCareerInsightViewMode] = useState<"guided" | "full">("guided");
 
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -2010,10 +2014,7 @@ const [careerInsightViewMode, setCareerInsightViewMode] = useState<"guided" | "f
     language: uiLanguage === "en" ? "en" : "tr",
   });
   const careerCinematicRecapBlueprint = getCareerCinematicRecapBlueprint(selectedCareerProfessionConfig, selectedCareerMission, careerTraitProfile, careerDecisionAnswers, uiLanguage === "en" ? "en" : "tr");
-  const careerPilotReadinessNotes = getCareerPilotReadinessNotes(uiLanguage === "en" ? "en" : "tr");
   const careerSimulationOutputPackage = getCareerSimulationOutputPackage(uiLanguage === "en" ? "en" : "tr");
-  const careerPilotQaChecklist = getCareerPilotQaChecklist(uiLanguage === "en" ? "en" : "tr");
-  const careerPersistenceQaChecklist = getCareerPersistenceQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const careerAdaptiveNextChallenge = getCareerAdaptiveNextChallenge({
     profession: selectedCareerProfessionConfig,
     mission: selectedCareerMission,
@@ -2095,8 +2096,6 @@ const [careerInsightViewMode, setCareerInsightViewMode] = useState<"guided" | "f
     prompt: careerNarrativeReportPrompt,
     language: uiLanguage === "en" ? "en" : "tr",
   });
-  const careerAiPayloadReadinessNotes = getCareerAiPayloadReadinessNotes(uiLanguage === "en" ? "en" : "tr");
-  const careerAiNarrativeQaChecklist = getCareerAiNarrativeQaChecklist(uiLanguage === "en" ? "en" : "tr");
   const handleCareerDecision = (decisionId: string, option: CareerDecisionOption) => {
     setCareerDecisionAnswers((current: Record<string, string>) => ({
       ...current,
@@ -2568,7 +2567,6 @@ const handleResetCareerMission = () => {
     setCareerDecisionReasons({});
     setCareerMentorReflectionCounts({});
     setCareerFollowUpAnswers({});
-    setCareerInsightViewMode("guided");
     setError("");
   };
   const handleCopyCareerSnapshot = async () => {
@@ -2595,26 +2593,6 @@ const handleResetCareerMission = () => {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-  };
-  const handleCopyCareerNarrativePrompt = async () => {
-    if (!careerNarrativeReportPrompt) return;
-
-    try {
-      await navigator.clipboard.writeText(careerNarrativeReportPrompt);
-      setError("");
-    } catch (e) {
-      setError(uiLanguage === "en" ? "Could not copy the AI narrative prompt." : "AI anlatı prompt'u kopyalanamadı.");
-    }
-  };
-  const handleCopyCareerNarrativePayload = async () => {
-    if (!careerNarrativeReportPayload) return;
-
-    try {
-      await navigator.clipboard.writeText(careerNarrativeReportPayload);
-      setError("");
-    } catch (e) {
-      setError(uiLanguage === "en" ? "Could not copy the AI payload." : "AI payload kopyalanamadı.");
-    }
   };
   const activeFlowType = activeFlowKey;
   const filteredProjects = projects.filter(
@@ -7258,33 +7236,23 @@ const handleResetCareerMission = () => {
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <p className="text-xs uppercase tracking-[0.24em] text-violet-700">
-                  {careerLabCopy.badge}
+                  {uiLanguage === "en" ? "Future Mission Experience" : "Gelecek Görevi Deneyimi"}
                 </p>
                 <h2 className="mt-3 text-2xl font-semibold text-slate-900 md:text-3xl">
-                  {careerLabCopy.title}
+                  {uiLanguage === "en" ? "Step into a living career mission" : "Yaşayan bir kariyer görevine adım at"}
                 </h2>
                 <p className="mt-3 text-sm leading-6 text-violet-700/90 md:text-base">
-                  {careerLabCopy.description}
+                  {uiLanguage === "en"
+                    ? "Choose a future role first, then enter a cinematic mission where every decision shapes your mentor reflection."
+                    : "Önce gelecekteki rolünü seç, ardından her kararın mentor yansımanı şekillendirdiği sinematik bir göreve gir."}
                 </p>
-              </div>
-
-              <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 text-sm text-violet-700 lg:w-80">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
-                  {careerLabCopy.decisionModelTitle}
-                </p>
-                <p className="mt-2 leading-6 text-violet-700/80">
-                  {careerLabCopy.decisionModelDescription}
-                </p>
-                <div className="mt-4 grid gap-2 text-xs">
-                  <span className="rounded-2xl border border-orange-200/24 bg-white/62 px-3 py-2">{careerLabCopy.microDecisionLabel}</span>
-                  <span className="rounded-2xl border border-orange-200/24 bg-white/62 px-3 py-2">{careerLabCopy.majorDecisionLabel}</span>
-                  <span className="rounded-2xl border border-orange-200/24 bg-white/62 px-3 py-2">{careerLabCopy.adaptiveReactionLabel}</span>
-                </div>
               </div>
             </div>
 
             <div className="mt-7">
-              <h3 className="text-lg font-semibold text-slate-900">{careerLabCopy.selectionTitle}</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {uiLanguage === "en" ? "Choose your future role" : "Gelecekteki rolünü seç"}
+              </h3>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 {CAREER_LAB_PROFESSIONS.map((profession) => {
                   const isSelected = profession.key === selectedCareerProfession;
@@ -7313,301 +7281,54 @@ const handleResetCareerMission = () => {
               </div>
             </div>
 
-            <div className="mt-7 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
-                  {careerLabCopy.selectedProfession}
-                </p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">
-                  {selectedCareerProfessionConfig.icon} {selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-violet-700/80">
-                  {selectedCareerProfessionConfig.mission[uiLanguage] ?? selectedCareerProfessionConfig.mission.tr}
-                </p>
-                <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/62 p-3 text-sm text-violet-700">
-                  <span className="font-semibold">{careerLabCopy.mentorTone}: </span>
-                  {selectedCareerProfessionConfig.mentorTone[uiLanguage] ?? selectedCareerProfessionConfig.mentorTone.tr}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/80 p-3 text-sm text-teal-800">
-                  <p className="text-xs uppercase tracking-[0.2em] text-teal-700">
-                    {uiLanguage === "en" ? "Mission briefing" : "Görev brifingi"}
-                  </p>
-                  <h4 className="mt-2 font-semibold text-slate-900">
-                    {selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
-                  </h4>
-                  <p className="mt-2 leading-6">
-                    {selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
-                  </p>
-                  <p className="mt-2 text-xs text-teal-800/80">
-                    <span className="font-semibold">{uiLanguage === "en" ? "Objective" : "Hedef"}: </span>
-                    {selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-violet-700">
-                  {uiLanguage === "en" ? "Guided mission decisions" : "Yönlendirmeli görev kararları"}
-                </p>
-                <div className="mt-4 space-y-4">
-                  {selectedCareerMission.decisionPoints.map((decision, decisionIndex) => {
-                    const selectedOptionId = careerDecisionAnswers[decision.id];
-
-                    return (
-                      <div key={decision.id} className="rounded-[28px] border border-orange-200/24 bg-white/62 p-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-700">
-                            {decision.type === "major" ? careerLabCopy.majorDecisionLabel : careerLabCopy.microDecisionLabel}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {uiLanguage === "en" ? "Decision" : "Karar"} {decisionIndex + 1}
-                          </span>
-                        </div>
-                        <h4 className="mt-3 text-base font-semibold text-slate-900">
-                          {decision.title[uiLanguage] ?? decision.title.tr}
-                        </h4>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          {decision.scenario[uiLanguage] ?? decision.scenario.tr}
-                        </p>
-
-                        <div className="mt-3 grid gap-2">
-                          {decision.options.map((option) => {
-                            const isSelected = selectedOptionId === option.id;
-
-                            return (
-                              <div key={option.id} className="grid gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCareerDecision(decision.id, option)}
-                                  className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                                    isSelected
-                                      ? "border-emerald-300/60 bg-emerald-400/15 text-slate-900"
-                                      : "border-orange-200/24 bg-white/74 text-slate-700 hover:border-violet-300/40 hover:bg-violet-400/10"
-                                  }`}
-                                >
-                                  <span className="font-semibold">
-                                    {option.label[uiLanguage] ?? option.label.tr}
-                                  </span>
-                                  {isSelected && (
-                                    <span className="mt-2 block text-xs leading-5 text-teal-800/90">
-                                      {option.effect[uiLanguage] ?? option.effect.tr}
-                                    </span>
-                                  )}
-                                </button>
-
-                                {isSelected && (
-                                  <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
-                                    <label className="block text-xs font-semibold text-sky-800">
-                                      {uiLanguage === "en" ? "Why did you choose this?" : "Neden bu kararı seçtin?"}
-                                    </label>
-                                    <textarea
-                                      value={careerDecisionReasons[decision.id] || ""}
-                                      onChange={(event) =>
-                                        setCareerDecisionReasons((current) => ({
-                                          ...current,
-                                          [decision.id]: event.target.value,
-                                        }))
-                                      }
-                                      placeholder={
-                                        uiLanguage === "en"
-                                          ? "Write a short reason. Example: I wanted to keep the team safe before moving forward."
-                                          : "Kısa bir gerekçe yaz. Örn: Devam etmeden önce ekibi güvende tutmak istedim."
-                                      }
-                                      className="mt-2 min-h-20 w-full rounded-xl border border-orange-200/24 bg-white/74 px-3 py-2 text-xs leading-5 text-sky-800 outline-none placeholder:text-sky-800/40 focus:border-sky-200"
-                                    />
-                                    <p className="mt-2 text-[11px] leading-4 text-sky-800/60">
-                                      {uiLanguage === "en"
-                                        ? "The AI mentor will use this reason to make the reflection more personal and developmental."
-                                        : "AI mentor bu gerekçeyi kullanarak reflection çıktısını daha kişisel ve geliştirici hale getirir."}
-                                    </p>
-
-                                    {(() => {
-                                      const localConsequence = getCareerLocalDecisionConsequence({
-                                        decisionType: decision.type,
-                                        selectedEffect: option.effect[uiLanguage] ?? option.effect.tr,
-                                        childReason: careerDecisionReasons[decision.id] || "",
-                                        language: uiLanguage === "en" ? "en" : "tr",
-                                      });
-
-                                      return (
-                                        <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-700/85">
-                                          <p className="font-semibold text-slate-900">
-                                            {localConsequence.title}
-                                          </p>
-                                          <p className="mt-1">
-                                            {localConsequence.summary}
-                                          </p>
-                                          <p className="mt-1 text-amber-700/70">
-                                            {localConsequence.outcomeShift}
-                                          </p>
-                                        </div>
-                                      );
-                                    })()}
-
-                                    {(() => {
-                                      const localFollowUp = getCareerLocalFollowUpPrompt({
-                                        decisionType: decision.type,
-                                        selectedEffect: option.effect[uiLanguage] ?? option.effect.tr,
-                                        childReason: careerDecisionReasons[decision.id] || "",
-                                        language: uiLanguage === "en" ? "en" : "tr",
-                                      });
-
-                                      return (
-                                        <div className="mt-3 rounded-xl border border-violet-300/20 bg-violet-400/10 p-3 text-xs leading-5 text-violet-700/85">
-                                          <p className="font-semibold text-slate-900">
-                                            {localFollowUp.title}
-                                          </p>
-                                          <p className="mt-1">
-                                            {localFollowUp.question}
-                                          </p>
-                                          <p className="mt-1 text-violet-700/70">
-                                            {localFollowUp.whyItMatters}
-                                          </p>
-
-                                          <label className="mt-3 block text-xs font-semibold text-violet-700">
-                                            {uiLanguage === "en" ? "Your answer to the follow-up question" : "Takip sorusuna cevabın"}
-                                          </label>
-                                          <textarea
-                                            value={careerFollowUpAnswers[decision.id] || ""}
-                                            onChange={(event) =>
-                                              setCareerFollowUpAnswers((current) => ({
-                                                ...current,
-                                                [decision.id]: event.target.value,
-                                              }))
-                                            }
-                                            placeholder={
-                                              uiLanguage === "en"
-                                                ? "Write what you would do if the condition changed."
-                                                : "Koşul değişseydi ne yapacağını yaz."
-                                            }
-                                            className="mt-2 min-h-20 w-full rounded-xl border border-orange-200/24 bg-white/74 px-3 py-2 text-xs leading-5 text-violet-50 outline-none placeholder:text-violet-700/40 focus:border-violet-300/40"
-                                          />
-                                        </div>
-                                      );
-                                    })()}
-
-                                    <button
-                                      type="button"
-                                      disabled={careerMentorReflectionLoadingId === decision.id}
-                                      onClick={() => handleGenerateCareerMentorReflection(decision, option)}
-                                      className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-50/80 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      {careerMentorReflectionLoadingId === decision.id
-                                        ? (uiLanguage === "en" ? "Thinking..." : "Düşünüyor...")
-                                        : careerMentorReflections[decision.id]
-                                          ? (uiLanguage === "en" ? "Regenerate AI Mentor Reflection" : "AI Mentor Reflection Yenile")
-                                          : (uiLanguage === "en" ? "Ask AI Mentor" : "AI Mentora Sor")}
-                                    </button>
-
-                                    {(careerMentorReflectionCounts[decision.id] || 0) > 0 ? (
-                                      <p className="mt-2 text-[11px] leading-4 text-sky-800/60">
-                                        {uiLanguage === "en" ? "Mentor reflection count" : "Mentor reflection sayısı"}: {careerMentorReflectionCounts[decision.id] || 0}
-                                      </p>
-                                    ) : null}
-
-                                    {careerMentorReflections[decision.id] ? (
-                                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-orange-200/24 bg-white/74 p-3 text-xs leading-5 text-sky-800/85">
-                                        {careerMentorReflections[decision.id]}
-                                      </pre>
-                                    ) : (
-                                      <p className="mt-2 text-xs leading-5 text-sky-800/70">
-                                        {uiLanguage === "en"
-                                          ? "Use this to go beyond multiple choice and reflect on why the decision matters."
-                                          : "Bu alan, çoktan seçmeli yapının ötesine geçip kararın neden önemli olduğunu düşündürmek için kullanılır."}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="xl:col-span-2 rounded-[28px] border border-amber-300/20 bg-amber-400/10 p-5">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-amber-200">
-                      {uiLanguage === "en" ? "Decision profile preview" : "Karar profili önizlemesi"}
-                    </p>
-                    <h4 className="mt-2 text-lg font-semibold text-slate-900">
-                      {careerTraitSummary.title}
-                    </h4>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-700/85">
-                      {careerTraitSummary.description}
-                    </p>
-                    <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-sm text-amber-700">
-                      <p className="text-xs uppercase tracking-[0.2em] text-amber-200">
-                        {uiLanguage === "en" ? "Mentor feedback" : "AI mentor geri bildirimi"}
-                      </p>
-                      <h5 className="mt-2 font-semibold text-slate-900">
-                        {careerAdaptiveFeedback.title}
-                      </h5>
-                      <p className="mt-2 leading-6 text-amber-700/85">
-                        {careerAdaptiveFeedback.message}
-                      </p>
-                      <p className="mt-2 text-xs leading-5 text-amber-700/70">
-                        {careerAdaptiveFeedback.nextTip}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200/24 bg-white/74 px-4 py-3 text-sm text-amber-700">
-                    <span className="font-semibold">{answeredCareerDecisionCount}</span>
-                    <span className="text-amber-700/75"> / {selectedCareerMission.decisionPoints.length} </span>
-                    <span>{uiLanguage === "en" ? "decisions answered" : "karar tamamlandı"}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {(Object.entries(careerTraitProfile) as Array<[keyof typeof careerTraitProfile, number]>).map(([trait, value]) => {
-                    const displayValue = Math.min(value, 5);
-                    const percentage = Math.min(displayValue * 20, 100);
-
-                    return (
-                      <div key={trait} className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                        <div className="flex items-center justify-between text-xs text-amber-700">
-                          <span>{CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}</span>
-                          <span>{value}</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full bg-white/68">
-                          <div
-                            className="h-2 rounded-full bg-amber-300"
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {careerTraitSummary.strongestTraits.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-amber-700">
-                    {(careerTraitSummary.strongestTraits as Array<keyof typeof careerTraitProfile>).map((trait) => (
-                      <span key={trait} className="rounded-full border border-amber-300/30 bg-white/74 px-3 py-1">
-                        {CAREER_TRAIT_LABELS[trait][uiLanguage] ?? CAREER_TRAIT_LABELS[trait].tr}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div className="mt-7">
+              <CareerMissionIntro
+                professionKey={selectedCareerProfession}
+                professionTitle={selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
+                missionTitle={selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
+                missionBriefing={selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
+                missionObjective={selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
+                language={uiLanguage === "en" ? "en" : "tr"}
+                answeredCount={answeredCareerDecisionCount}
+                totalCount={selectedCareerMission.decisionPoints.length}
+                isComplete={isCareerMissionComplete}
+              />
             </div>
 
-            <div className="mt-6 rounded-[28px] border border-teal-200 bg-teal-50/80 p-5 text-sm text-teal-800">
-              <p className="text-xs uppercase tracking-[0.22em] text-teal-700">
-                {uiLanguage === "en" ? "Mission Progress" : "Career Lab kayıt"}
+            <div className="mt-7">
+              <CareerMissionChat
+                language={uiLanguage === "en" ? "en" : "tr"}
+                professionKey={selectedCareerProfession}
+                professionTitle={selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
+                missionTitle={selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
+                missionBriefing={selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
+                missionObjective={selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
+                mentorName={
+                  selectedCareerProfession === "astronaut"
+                    ? "Commander Orion"
+                    : selectedCareerProfession === "doctor"
+                      ? "Dr. Lyra"
+                      : selectedCareerProfession === "cyber_detective"
+                        ? "Detective Nyx"
+                        : selectedCareerProfession === "pilot"
+                          ? "Captain Nova"
+                          : "Mentor Ada"
+                }
+              />
+            </div>
+
+            {answeredCareerDecisionCount > 0 && (
+              <div className="mt-6 rounded-[28px] border border-teal-200 bg-teal-50/80 p-5 text-sm text-teal-800">
+                <p className="text-xs uppercase tracking-[0.22em] text-teal-700">
+                {uiLanguage === "en" ? "Mission Memory" : "Görev hafızası"}
               </p>
               <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {uiLanguage === "en" ? "Save Mission" : "Career oturumunu kaydet"}
+                {uiLanguage === "en" ? "Save this mission" : "Bu görevi kaydet"}
               </h4>
               <p className="mt-2 max-w-3xl leading-6 text-teal-800/85">
                 {uiLanguage === "en"
-                  ? "Save this mission, your decisions, mentor notes, and report so you can continue later."
-                  : "Tamamlanan simülasyonu, karar profilini, yerel raporu, AI anlatı raporunu, sinematik planı, yazılı gerekçeleri ve mentor reflection çıktılarını saved progress'e kaydet."}
+                  ? "Save your mission choices, mentor notes and progress so you can continue the experience later."
+                  : "Görev seçimlerini, mentor notlarını ve ilerlemeni kaydet; daha sonra aynı deneyime kaldığın yerden devam et."}
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -7620,8 +7341,8 @@ const handleResetCareerMission = () => {
                   {careerSessionSaveLoading
                     ? (uiLanguage === "en" ? "Saving..." : "Kaydediliyor...")
                     : savedCareerSessionId
-                      ? (uiLanguage === "en" ? "Update Career Session" : "Career oturumunu güncelle")
-                      : (uiLanguage === "en" ? "Save Mission" : "Career oturumunu kaydet")}
+                      ? (uiLanguage === "en" ? "Update saved mission" : "Kayıtlı görevi güncelle")
+                      : (uiLanguage === "en" ? "Save mission" : "Görevi kaydet")}
                 </button>
 
                 {savedCareerSessionId ? (
@@ -7642,19 +7363,20 @@ const handleResetCareerMission = () => {
                   {careerSessionSaveSuccess}
                 </div>
               ) : null}
-            </div>
+              </div>
+            )}
 
             <div className="mt-6 rounded-[28px] border border-blue-200 bg-white p-5 text-sm text-slate-800 shadow-sm">
               <p className="text-xs uppercase tracking-[0.22em] text-blue-800">
-                {uiLanguage === "en" ? "Saved Career Missions" : "Kayıtlı Career oturumları"}
+                {uiLanguage === "en" ? "Continue later" : "Daha sonra devam et"}
               </p>
               <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {uiLanguage === "en" ? "Continue Saved Missions" : "Kayıtlı Career oturumlarını yükle"}
+                {uiLanguage === "en" ? "Continue a mission" : "Bir göreve devam et"}
               </h4>
               <p className="mt-2 max-w-3xl leading-6 text-slate-700">
                 {uiLanguage === "en"
-                  ? "Find your saved missions and continue where you left off."
-                  : "saved progress'e kaydedilmiş Career Lab simülasyonlarını listele ve yükle."}
+                  ? "Open saved missions only when you want to return to a previous experience."
+                  : "Önceki bir deneyime dönmek istediğinde kayıtlı görevlerini aç."}
               </p>
 
               <button
@@ -7709,40 +7431,10 @@ const handleResetCareerMission = () => {
                       </div>
                     </div>
                   ))
-                ) : (
-                  <div className="rounded-2xl border border-orange-200 bg-white p-4 text-xs text-slate-700">
-                    {uiLanguage === "en"
-                      ? "No saved Career Lab sessions listed yet."
-                      : "Henüz listelenmiş kayıtlı Career Lab oturumu yok."}
-                  </div>
-                )}
+                ) : null}
               </div>
             </div>
 
-            <div className="mt-6 rounded-[28px] border border-violet-300/20 bg-violet-400/10 p-5 text-sm text-violet-700">
-              <p className="text-xs uppercase tracking-[0.22em] text-violet-700">
-                {uiLanguage === "en" ? "Mission Progress" : "Mission Progress"}
-              </p>
-              <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {careerPersistenceQaChecklist.title}
-              </h4>
-              <p className="mt-2 max-w-3xl leading-6 text-violet-700/85">
-                {careerPersistenceQaChecklist.description}
-              </p>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {careerPersistenceQaChecklist.items.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-orange-200 bg-white p-4">
-                    <h5 className="font-semibold text-slate-900">
-                      {item.label}
-                    </h5>
-                    <p className="mt-2 text-xs leading-5 text-violet-700/80">
-                      {item.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
 
             {isCareerMissionComplete && (
               <div className="mt-6 rounded-[28px] border border-green-300/20 bg-green-400/10 p-5 text-sm text-green-100">
@@ -7777,188 +7469,6 @@ const handleResetCareerMission = () => {
               </div>
             )}
 
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-lime-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-lime-800">
-                  {uiLanguage === "en" ? "C phase completion" : "C fazı tamamlanma durumu"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Thinking Engine Readiness" : "Thinking Engine Hazırlığı"}
-                </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-slate-700">
-                  {uiLanguage === "en"
-                    ? "Career Lab now has the core Thinking Engine required before cinematic generation. The next phase should focus on converting these structured outputs into scenes, narration, visuals, voice, and video."
-                    : "Career Lab artık sinematik üretime geçmeden önce gerekli olan temel Thinking Engine yapısına sahip. Sonraki faz, bu yapılandırılmış çıktıları sahne, anlatım, görsel, ses ve videoya dönüştürmeye odaklanmalı."}
-                </p>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    {
-                      label: uiLanguage === "en" ? "Decision Engine" : "Karar Motoru",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Reflection Loop" : "Reflection Döngüsü",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "AI Mentor" : "AI Mentor",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Persistence" : "Kayıt / Yükleme",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Outcome Map" : "Sonuç Haritası",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Cognitive Signals" : "Cognitive Sinyaller",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Premium Report" : "Premium Rapor",
-                      status: uiLanguage === "en" ? "Ready" : "Hazır",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Cinematic Handoff" : "Sinematik Aktarım",
-                      status: uiLanguage === "en" ? "Ready for Phase D" : "Phase D’ye hazır",
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-orange-200 bg-white p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-lime-200">
-                        {item.label}
-                      </p>
-                      <p className="mt-2 font-semibold text-slate-900">
-                        {item.status}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-xs leading-5 text-lime-100/75">
-                  {uiLanguage === "en"
-                    ? "Recommended next action: run full pilot validation, push this checkpoint, then start Phase D with Career Lab → Storyverse Scene Conversion."
-                    : "Önerilen sonraki aksiyon: full pilot validation çalıştır, bu checkpoint’i push et, ardından Phase D’ye Career Lab → Storyverse Scene Conversion ile başla."}
-                </div>
-              </div>
-            )}
-
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-indigo-200 bg-indigo-400/10 p-5 text-sm text-indigo-700">
-                <p className="text-xs uppercase tracking-[0.22em] text-indigo-700">
-                  {uiLanguage === "en" ? "Phase D readiness" : "Phase D hazırlığı"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Cinematic Readiness Handoff" : "Sinematik Hazırlık Aktarımı"}
-                </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-indigo-700/85">
-                  {uiLanguage === "en"
-                    ? "The thinking engine output is now structured enough to become a cinematic recap. Phase D will convert these learning outputs into storyboard, narration, visuals, voice, video, and final export."
-                    : "Thinking engine çıktısı artık sinematik özete dönüşebilecek kadar yapılandırıldı. Phase D bu öğrenme çıktılarını storyboard, anlatım, görsel, ses, video ve final export akışına dönüştürecek."}
-                </p>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {[
-                    {
-                      label: uiLanguage === "en" ? "Story input" : "Hikâye girdisi",
-                      value: uiLanguage === "en"
-                        ? "Mission outcome + premium developmental report"
-                        : "Görev sonucu + premium gelişim raporu",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Narration input" : "Anlatım girdisi",
-                      value: uiLanguage === "en"
-                        ? "AI narrative report + thinking journey"
-                        : "AI narrative report + düşünme yolculuğu",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Scene input" : "Sahne girdisi",
-                      value: uiLanguage === "en"
-                        ? "Cinematic recap blueprint + adaptive next challenge"
-                        : "Sinematik özet planı + adaptif sonraki görev",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Visual input" : "Görsel girdisi",
-                      value: uiLanguage === "en"
-                        ? "Profession, mission, outcome, cognitive signals"
-                        : "Meslek, görev, sonuç, cognitive sinyaller",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Voice input" : "Ses girdisi",
-                      value: uiLanguage === "en"
-                        ? "Child-safe mentor narration script"
-                        : "Çocuk güvenli mentor anlatım metni",
-                    },
-                    {
-                      label: uiLanguage === "en" ? "Export input" : "Export girdisi",
-                      value: uiLanguage === "en"
-                        ? "Scene package for Storyverse/export-service reuse"
-                        : "Storyverse/export-service reuse için sahne paketi",
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-orange-200 bg-white p-4">
-                      <p className="text-xs uppercase tracking-[0.16em] text-indigo-700">
-                        {item.label}
-                      </p>
-                      <p className="mt-2 text-xs leading-5 text-indigo-700/80">
-                        {item.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-xs leading-5 text-indigo-700/75">
-                  {uiLanguage === "en"
-                    ? "No Runway, ElevenLabs, image generation, or export-service call is triggered here. This is only the handoff map for the next phase."
-                    : "Burada Runway, ElevenLabs, image generation veya export-service çağrısı yapılmaz. Bu yalnızca sonraki faz için aktarım haritasıdır."}
-                </div>
-              </div>
-            )}
-
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-blue-200 bg-white p-5 text-sm text-slate-800 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.22em] text-blue-800">
-                  {uiLanguage === "en" ? "Pilot validation checklist" : "Pilot doğrulama checklist"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Before moving to cinematic generation" : "Sinematik üretime geçmeden önce"}
-                </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-blue-100/85">
-                  {uiLanguage === "en"
-                    ? "Use this checklist to validate that the Career Lab thinking engine is stable before connecting ElevenLabs, Runway, image generation, or export-service."
-                    : "ElevenLabs, Runway, image generation veya export-service bağlamadan önce Career Lab thinking engine’in stabil olduğunu doğrulamak için bu checklist’i kullan."}
-                </p>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {[
-                    uiLanguage === "en"
-                      ? "Complete all decisions without UI errors"
-                      : "Tüm kararları UI hatası olmadan tamamla",
-                    uiLanguage === "en"
-                      ? "Add at least two written decision reasons"
-                      : "En az iki yazılı karar gerekçesi ekle",
-                    uiLanguage === "en"
-                      ? "Answer at least one dynamic follow-up question"
-                      : "En az bir dinamik takip sorusunu cevapla",
-                    uiLanguage === "en"
-                      ? "Generate at least one AI Mentor Reflection"
-                      : "En az bir AI Mentor Reflection üret",
-                    uiLanguage === "en"
-                      ? "Generate AI Narrative Report and review safety language"
-                      : "AI Narrative Report üret ve güvenlik dilini kontrol et",
-                    uiLanguage === "en"
-                      ? "Save, reload, and delete one Career Lab session"
-                      : "Bir Career Lab oturumunu kaydet, yükle ve sil",
-                  ].map((item) => (
-                    <div key={item} className="rounded-2xl border border-orange-200/24 bg-white/74 px-3 py-3 text-xs leading-5 text-blue-100/80">
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {isCareerMissionComplete && (
               <div className="mt-6 rounded-[28px] border border-teal-200 bg-teal-50/80 p-5 text-sm text-teal-800">
@@ -8017,67 +7527,6 @@ const handleResetCareerMission = () => {
               </div>
             )}
 
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-slate-300/20 bg-slate-400/10 p-5 text-sm text-slate-800">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-700">
-                  {uiLanguage === "en" ? "Career Lab insight view mode" : "Career Lab içgörü görünümü"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Progressive Insight Guide" : "Aşamalı İçgörü Rehberi"}
-                </h4>
-                <p className="mt-2 max-w-4xl leading-6 text-slate-800/85">
-                  {uiLanguage === "en"
-                    ? "Start with the mission outcome first, then review the thinking journey, cognitive signals, and premium report. Full view keeps all panels visible for pilot review."
-                    : "Önce görev sonucuyla başla; sonra düşünme yolculuğu, cognitive sinyaller ve premium raporu incele. Full view pilot inceleme için tüm panelleri görünür tutar."}
-                </p>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCareerInsightViewMode("guided")}
-                    className={`rounded-2xl border px-4 py-2 text-xs font-semibold transition ${
-                      careerInsightViewMode === "guided"
-                        ? "border-orange-200/22 bg-orange-100/50/20 text-slate-900"
-                        : "border-orange-200/24 bg-white/74 text-slate-800 hover:bg-white/68"
-                    }`}
-                  >
-                    {uiLanguage === "en" ? "Guided view" : "Guided view"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCareerInsightViewMode("full")}
-                    className={`rounded-2xl border px-4 py-2 text-xs font-semibold transition ${
-                      careerInsightViewMode === "full"
-                        ? "border-orange-200/22 bg-orange-100/50/20 text-slate-900"
-                        : "border-orange-200/24 bg-white/74 text-slate-800 hover:bg-white/68"
-                    }`}
-                  >
-                    {uiLanguage === "en" ? "Full review" : "Full review"}
-                  </button>
-                </div>
-
-                {careerInsightViewMode === "guided" ? (
-                  <div className="mt-4 grid gap-3 md:grid-cols-4">
-                    {[
-                      uiLanguage === "en" ? "1. Mission Outcome" : "1. Görev Sonucu",
-                      uiLanguage === "en" ? "2. Thinking Journey" : "2. Düşünme Yolculuğu",
-                      uiLanguage === "en" ? "3. Cognitive Signals" : "3. Cognitive Sinyaller",
-                      uiLanguage === "en" ? "4. Premium Report" : "4. Premium Rapor",
-                    ].map((item) => (
-                      <div key={item} className="rounded-2xl border border-orange-200/24 bg-white/74 px-3 py-3 text-xs text-slate-800/80">
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-xs leading-5 text-slate-800/80">
-                    {uiLanguage === "en"
-                      ? "Full review mode is active. All insight panels remain visible for QA and pilot validation."
-                      : "Full review modu aktif. Tüm içgörü panelleri QA ve pilot doğrulama için görünür kalır."}
-                  </div>
-                )}
-              </div>
-            )}
 
             {isCareerMissionComplete && (
               <div className="mt-6 rounded-[28px] border border-fuchsia-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
@@ -8285,9 +7734,10 @@ const handleResetCareerMission = () => {
               </div>
             )}
 
-            <div className="mt-6 rounded-[28px] border border-sky-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-sky-800">
-                {uiLanguage === "en" ? "Mission report preview" : "Görev raporu önizlemesi"}
+            {answeredCareerDecisionCount > 0 && (
+              <div className="mt-6 rounded-[28px] border border-sky-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
+                <p className="text-xs uppercase tracking-[0.22em] text-sky-800">
+                {uiLanguage === "en" ? "Mission reflection" : "Görev yansıması"}
               </p>
               <div className="mt-3 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
                 <div>
@@ -8325,34 +7775,23 @@ const handleResetCareerMission = () => {
                     </ul>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
-                        {uiLanguage === "en" ? "Mentor signals" : "Mentor sinyalleri"}
-                      </p>
-                      <ul className="mt-2 space-y-2 text-xs leading-5 text-slate-700">
-                        {careerExperienceReportPreview.strengths.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
-                        {uiLanguage === "en" ? "Next mission steps" : "Sonraki görev adımları"}
-                      </p>
-                      <ul className="mt-2 space-y-2 text-xs leading-5 text-slate-700">
-                        {careerExperienceReportPreview.nextSteps.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
+                  <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-sky-200">
+                      {uiLanguage === "en" ? "Mentor signals" : "Mentor sinyalleri"}
+                    </p>
+                    <ul className="mt-2 space-y-2 text-xs leading-5 text-slate-700">
+                      {careerExperienceReportPreview.strengths.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
+            )}
 
-            <div className={`mt-6 rounded-[28px] border p-5 text-sm ${
+            {answeredCareerDecisionCount > 0 && (
+              <div className={`mt-6 rounded-[28px] border p-5 text-sm ${
               isCareerMissionComplete
                 ? "border-teal-200 bg-teal-50/80 text-teal-800"
                 : "border-slate-300/20 bg-slate-400/10 text-slate-800"
@@ -8360,7 +7799,7 @@ const handleResetCareerMission = () => {
               <p className={`text-xs uppercase tracking-[0.22em] ${
                 isCareerMissionComplete ? "text-teal-700" : "text-slate-600"
               }`}>
-                {uiLanguage === "en" ? "Mission completion status" : "Görev tamamlama durumu"}
+                {uiLanguage === "en" ? "Mission status" : "Görev durumu"}
               </p>
               <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -8372,11 +7811,11 @@ const handleResetCareerMission = () => {
                   <p className="mt-2 max-w-3xl leading-6 opacity-90">
                     {isCareerMissionComplete
                       ? (uiLanguage === "en"
-                          ? "All mission choices are complete. The mission report is ready to become a final mentor report."
-                          : "Tüm yönlendirmeli kararlar tamamlandı. Görev raporu önizlemesi bir sonraki sprintte final rapora dönüştürülmeye hazır.")
+                          ? "All mission choices are complete. Your mentor can now prepare the final reflection."
+                          : "Tüm görev kararları tamamlandı. Mentorun artık final yansımasını hazırlayabilir.")
                       : (uiLanguage === "en"
-                          ? "Complete all mission choices to prepare the final mentor report."
-                          : "Görev durumunu kilitlemek ve final rapora hazırlamak için tüm yönlendirmeli kararları tamamla.")}
+                          ? "Complete each mission decision to unlock the final mentor reflection."
+                          : "Final mentor yansımasını açmak için tüm görev kararlarını tamamla.")}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-orange-200/24 bg-white/74 px-4 py-3">
@@ -8401,15 +7840,15 @@ const handleResetCareerMission = () => {
                   </div>
                   <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] opacity-75">
-                      {uiLanguage === "en" ? "Next build" : "Sonraki geliştirme"}
+                      {uiLanguage === "en" ? "Mentor reflection" : "Mentor yansıması"}
                     </p>
                     <p className="mt-2 text-slate-900">
-                      {uiLanguage === "en" ? "Final report generation" : "Final rapor üretimi"}
+                      {uiLanguage === "en" ? "Ready after completion" : "Tamamlanınca hazır"}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
                     <p className="text-xs uppercase tracking-[0.18em] opacity-75">
-                      {uiLanguage === "en" ? "Later stage" : "Sonraki aşama"}
+                      {uiLanguage === "en" ? "Memory moment" : "Hafıza anı"}
                     </p>
                     <p className="mt-2 text-slate-900">
                       {uiLanguage === "en" ? "Cinematic recap" : "Sinematik özet"}
@@ -8417,7 +7856,8 @@ const handleResetCareerMission = () => {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
             {isCareerMissionComplete && (
               <div className="mt-6 rounded-[28px] border border-fuchsia-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
@@ -8558,59 +7998,6 @@ const handleResetCareerMission = () => {
               </div>
             )}
 
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-rose-300/20 bg-rose-400/10 p-5 text-sm text-rose-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-rose-200">
-                  {uiLanguage === "en" ? "AI narrative report prompt" : "AI anlatı raporu prompt"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Future OpenAI report input" : "Gelecek OpenAI rapor girdisi"}
-                </h4>
-                <p className="mt-2 max-w-3xl leading-6 text-rose-100/85">
-                  {uiLanguage === "en"
-                    ? "This prompt blueprint can later power an AI-enhanced narrative report endpoint. It is shown locally now and does not call OpenAI."
-                    : "Bu prompt taslağı ileride AI destekli anlatı raporu endpoint'ini besleyebilir. Şu anda yalnızca lokal gösterilir ve OpenAI çağrısı yapmaz."}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCopyCareerNarrativePrompt}
-                  className="mt-4 rounded-2xl border border-rose-300/30 bg-rose-400/15 px-4 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/25"
-                >
-                  {uiLanguage === "en" ? "Copy AI prompt" : "AI prompt'u kopyala"}
-                </button>
-                <pre className="mt-4 max-h-72 overflow-auto rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-[11px] leading-5 text-rose-100/80">
-                  {careerNarrativeReportPrompt}
-                </pre>
-              </div>
-            )}
-
-            {isCareerMissionComplete && (
-              <div className="mt-6 rounded-[28px] border border-pink-300/20 bg-pink-400/10 p-5 text-sm text-pink-100">
-                <p className="text-xs uppercase tracking-[0.22em] text-pink-200">
-                  {uiLanguage === "en" ? "AI request payload blueprint" : "AI request payload taslağı"}
-                </p>
-                <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                  {careerAiPayloadReadinessNotes.title}
-                </h4>
-                <ul className="mt-3 grid gap-2 text-xs leading-5 text-pink-100/85 md:grid-cols-2">
-                  {careerAiPayloadReadinessNotes.items.map((item) => (
-                    <li key={item} className="rounded-2xl border border-orange-200/24 bg-white/74 px-3 py-2">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={handleCopyCareerNarrativePayload}
-                  className="mt-4 rounded-2xl border border-pink-300/30 bg-pink-400/15 px-4 py-2 text-xs font-semibold text-pink-100 transition hover:bg-pink-400/25"
-                >
-                  {uiLanguage === "en" ? "Copy AI payload" : "AI payload'u kopyala"}
-                </button>
-                <pre className="mt-4 max-h-72 overflow-auto rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-[11px] leading-5 text-pink-100/80">
-                  {careerNarrativeReportPayload}
-                </pre>
-              </div>
-            )}
 
           
 {isCareerMissionComplete && (
@@ -8627,8 +8014,8 @@ const handleResetCareerMission = () => {
 
     <p className="mt-2 max-w-3xl leading-6 text-sky-800/85">
       {uiLanguage === "en"
-        ? "This uses the isolated OpenAI narrative endpoint and does not touch Storyverse, export-service, or saved progress."
-        : "Bu yapı izole OpenAI narrative endpoint'ini kullanır ve Storyverse, export-service veya saved progress'e dokunmaz."}
+        ? "Turn the completed mission into a mentor-style reflection that feels personal, encouraging, and safe."
+        : "Tamamlanan görevi kişisel, cesaretlendirici ve güvenli bir mentor anlatısına dönüştür."}
     </p>
 
     <button
@@ -8650,8 +8037,8 @@ const handleResetCareerMission = () => {
 
     <div className="mt-3 rounded-2xl border border-sky-200 bg-white/74 px-3 py-2 text-xs leading-5 text-sky-800/75">
       {uiLanguage === "en"
-        ? "This action calls OpenAI and may create token cost. Use regeneration only when the first output is not suitable."
-        : "Bu aksiyon OpenAI çağrısı yapar ve token maliyeti oluşturabilir. Yeniden üretimi yalnızca ilk çıktı uygun değilse kullan."}
+        ? "Generate the final mentor reflection when the mission choices feel ready."
+        : "Görev seçimleri hazır olduğunda final mentor yansımasını üret."}
       {careerAiNarrativeGenerationCount > 0 ? (
         <span className="ml-2 font-semibold text-slate-900">
           {uiLanguage === "en" ? "AI generation count" : "Üretim sayısı"}: {careerAiNarrativeGenerationCount}
@@ -8716,113 +8103,6 @@ const handleResetCareerMission = () => {
     ) : null}
   </div>
 )}
-
-  <div className="mt-6 rounded-[28px] border border-orange-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-orange-700">
-                {uiLanguage === "en" ? "Mission Readiness" : "Görev hazırlığı"}
-              </p>
-              <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {careerPilotQaChecklist.title}
-              </h4>
-              <p className="mt-2 max-w-3xl leading-6 text-slate-700">
-                {careerPilotQaChecklist.description}
-              </p>
-
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
-                    {uiLanguage === "en" ? "Ready" : "Şu an hazır"}
-                  </p>
-                  <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-700">
-                    {careerPilotQaChecklist.readyItems.map((item) => (
-                      <li key={item} className="rounded-xl border border-orange-200/24 bg-white/62 px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
-                    {uiLanguage === "en" ? "Coming Next" : "Coming Next"}
-                  </p>
-                  <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-700">
-                    {careerPilotQaChecklist.backlogItems.map((item) => (
-                      <li key={item} className="rounded-xl border border-orange-200/24 bg-white/62 px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-orange-700">
-                    {uiLanguage === "en" ? "Mission Targets" : "Görev hedefleri"}
-                  </p>
-                  <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-700">
-                    {careerPilotQaChecklist.acceptanceCriteria.map((item) => (
-                      <li key={item} className="rounded-xl border border-orange-200/24 bg-white/62 px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[28px] border border-sky-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-sky-800">
-                {uiLanguage === "en" ? "Mentor Notes Check" : "Mentor notları"}
-              </p>
-              <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {careerAiNarrativeQaChecklist.title}
-              </h4>
-              <p className="mt-2 max-w-3xl leading-6 text-slate-700">
-                {careerAiNarrativeQaChecklist.description}
-              </p>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {careerAiNarrativeQaChecklist.items.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-orange-200 bg-white p-4">
-                    <h5 className="font-semibold text-slate-900">
-                      {item.label}
-                    </h5>
-                    <p className="mt-2 text-xs leading-5 text-slate-700">
-                      {item.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[28px] border border-lime-200 bg-white/88 p-5 text-sm text-slate-800 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-lime-800">
-                {uiLanguage === "en" ? "Career Lab Mission Readiness" : "Career Lab görev hazırlığı"}
-              </p>
-              <h4 className="mt-3 text-lg font-semibold text-slate-900">
-                {careerPilotReadinessNotes.title}
-              </h4>
-              <ul className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
-                {careerPilotReadinessNotes.items.map((item) => (
-                  <li key={item} className="rounded-2xl border border-orange-200/24 bg-white/74 px-3 py-2">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-6 rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-800">
-              <p className="text-xs uppercase tracking-[0.22em] text-sky-700">
-                {careerLabCopy.comingNextTitle}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {careerLabCopy.comingNextItems.map((item) => (
-                  <span key={item} className="rounded-full border border-sky-200 bg-white/74 px-3 py-1">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
           </section>
         )}
         <div className={`${isCareerLabFlow ? "hidden" : ""} overflow-hidden rounded-[32px] border border-orange-200/24 bg-white/74 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_20px_60px_rgba(0,0,0,0.35)]`}>
