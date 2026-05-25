@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "usage": "Use these prompts with OpenAI HQ image generation. Save outputs with the exact filenames under /public/careerlab/pov/.",
+  "global_negative_prompt": "No readable text, no UI labels, no logos, no brand names, no real company marks, no gore, no scary horror elements, no weapons, no adult themes, no photorealistic identifiable children, no cluttered center area, no excessive brightness behind text.",
+  "global_style": "Premium cinematic children-safe AI experience platform, immersive POV viewport, high-quality soft futuristic realism, readable center area, rich edge detail, subtle depth, polished product-grade visual design.",
+  "assets": [
+    {
+      "professionKey": "astronaut",
+      "filename": "astronaut-helmet-hq.webp",
+      "title": "Astronaut Helmet POV / Lunar Mission Control",
+      "prompt": "A premium cinematic first-person POV from inside an astronaut helmet looking into a spacecraft cockpit near a lunar research station. Curved helmet visor edges visible, soft reflections on glass, subtle oxygen HUD arcs near the edges, cold blue sci-fi lighting, distant moon surface visible through a small cockpit window, calm but tense mission-control atmosphere. Center area intentionally darker and clean for overlay text readability. No readable text, no logos. Children-safe wonder, not horror. High-quality product background for an AI mission experience. 16:9."
+    },
+    {
+      "professionKey": "doctor",
+      "filename": "doctor-er-hq.webp",
+      "title": "Doctor ER Response Bay POV",
+      "prompt": "A premium cinematic first-person POV inside a modern emergency room response bay, looking toward softly glowing patient monitoring equipment and medical team silhouettes in the distance. Sterile but warm lighting, teal and soft white tones, glass reflections, subtle vital-sign glow at the edges without readable text. Center area intentionally calm and readable for overlay text. No gore, no blood, no distressing imagery, no logos. Children-safe tense-but-reassuring medical mission atmosphere. 16:9."
+    },
+    {
+      "professionKey": "pilot",
+      "filename": "pilot-flightdeck-hq.webp",
+      "title": "Pilot Flight Deck POV",
+      "prompt": "A premium cinematic first-person POV from a pilot flight deck, looking through a cockpit canopy into clouds and soft horizon light. Subtle radar glow, instrument silhouettes, canopy frame edges, calm but focused flight mission atmosphere. Center area slightly darker and clean for overlay text readability, visual detail around edges. No readable text, no airline logos, no real brands. Children-safe aviation adventure. 16:9."
+    },
+    {
+      "professionKey": "ai-engineer",
+      "filename": "ai-model-lab-hq.webp",
+      "title": "AI Engineer Model Lab POV",
+      "prompt": "A premium cinematic first-person POV inside a futuristic AI model operations lab. Transparent glass panels, abstract neural network light trails, dataset signal flows and server glow around the edges, clean central workspace kept darker for overlay text readability. Deep indigo, violet and cyan lighting, calm creative technology atmosphere, not cyberpunk-chaotic. No readable text, no logos, no code snippets. Children-safe AI creation lab. 16:9."
+    },
+    {
+      "professionKey": "cyber-detective",
+      "filename": "cyber-investigation-desk-hq.webp",
+      "title": "Cyber Detective Secure Investigation Desk POV",
+      "prompt": "A premium cinematic first-person POV at a secure digital investigation desk. Dark blue-green ambient lighting, abstract network map glow, evidence board silhouettes, secure terminal reflections around the edges, subtle magnifying-glass and signal-trace motifs. Center area clean and readable for overlay text. No readable text, no logos, no scary hacker imagery, no illegal activity depiction. Children-safe mystery investigation atmosphere. 16:9."
+    }
+  ]
+}

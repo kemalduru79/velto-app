@@ -1,0 +1,53 @@
+{
+  "version": "2.0",
+  "usage": "Generate layered WebP assets with OpenAI HQ Image and save them under /public/careerlab/pov/{profession}/ using the exact filenames below.",
+  "global_negative_prompt": "No readable text, no UI labels, no logos, no brand names, no real company marks, no gore, no horror, no weapons, no adult themes, no photorealistic identifiable children, no cluttered center area, no excessive brightness behind text.",
+  "global_style": "Premium cinematic children-safe AI experience platform, immersive first-person POV viewport, high-quality soft futuristic realism, readable center area, rich edge detail, subtle depth, polished product-grade visual design.",
+  "assets": [
+    {
+      "professionKey": "astronaut",
+      "folder": "astronaut",
+      "files": {
+        "base.webp": "First-person astronaut helmet POV inside a spacecraft cockpit near a lunar research station. Curved cockpit geometry, cold blue mission light, distant lunar surface through a window, center area darker and clean for mission text, edge-rich details, no readable text.",
+        "visor-overlay.webp": "Transparent astronaut visor/HUD overlay layer only: curved glass edges, subtle oxygen arcs, faint cyan instrument reflections around the edges, transparent-feeling center, no readable text.",
+        "oxygen-reflection.webp": "Soft foreground reflection layer for astronaut helmet glass: breath haze, oxygen glow, small lens reflections and edge distortion, no readable text, center mostly transparent/dark."
+      }
+    },
+    {
+      "professionKey": "doctor",
+      "folder": "doctor",
+      "files": {
+        "base.webp": "First-person POV inside a modern emergency response bay, warm sterile lighting, medical team silhouettes in distance, patient monitor glow near edges, calm readable center, children-safe, no gore, no readable text.",
+        "monitor-overlay.webp": "Transparent medical monitor overlay layer: soft vital-sign glow, teal monitor lines, glass reflections, no readable text or numbers, edge-focused visual detail.",
+        "er-glass.webp": "Foreground ER glass/reflection layer: soft hospital glass, subtle overhead light reflections, calm urgency, transparent center, no readable text."
+      }
+    },
+    {
+      "professionKey": "pilot",
+      "folder": "pilot",
+      "files": {
+        "base.webp": "First-person pilot cockpit POV through canopy toward clouds and horizon light. Instrument silhouettes near lower edge, focused aviation atmosphere, center readable and calm, no logos, no readable text.",
+        "radar-overlay.webp": "Transparent radar/HUD overlay for pilot cockpit: soft radar sweep, route arcs, subtle sky-blue instrument glow at the edges, no readable text.",
+        "canopy-glass.webp": "Foreground cockpit canopy glass layer: reflections, mild weather distortion, soft lens glints, transparent center, no readable text."
+      }
+    },
+    {
+      "professionKey": "ai-engineer",
+      "folder": "ai-engineer",
+      "files": {
+        "base.webp": "First-person POV inside a futuristic AI model operations lab, glass panels, server glow, abstract neural network light trails at edges, calm dark center, no code, no readable text.",
+        "data-grid.webp": "Transparent AI data grid overlay: flowing node links, subtle cyan/violet dataset pulses around edges, no readable text or code.",
+        "lab-glow.webp": "Foreground lab glow layer: soft glass reflections, violet/cyan light bloom, model lab atmosphere, center readable, no text."
+      }
+    },
+    {
+      "professionKey": "cyber-detective",
+      "folder": "cyber-detective",
+      "files": {
+        "base.webp": "First-person POV at a secure digital investigation desk, abstract network map glow, evidence board silhouettes, safe mystery atmosphere, dark readable center, no hacker clichés, no readable text.",
+        "secure-network.webp": "Transparent secure network overlay: abstract trace lines, signal nodes, investigation routes around edges, no readable text.",
+        "digital-noise.webp": "Foreground digital glass/noise layer: subtle scanline distortion, blue-green reflections, mystery atmosphere, transparent center, no readable text."
+      }
+    }
+  ]
+}
