@@ -1,6 +1,6 @@
 "use client";
 
-import CareerMissionChatRecovery from "./career-chat/CareerMissionChatRecovery";
+import CareerMissionExperience from "./career-chat/CareerMissionExperience";
 
 type CareerMissionChatProps = {
   language: string;
@@ -15,5 +15,5 @@ type CareerMissionChatProps = {
 export default function CareerMissionChat(
   props: CareerMissionChatProps
 ) {
-  return <CareerMissionChatRecovery {...props} />;
+  return <CareerMissionExperience {...props} />;
 }

@@ -13,6 +13,37 @@ type CareerMissionIntroProps = {
   isComplete: boolean;
 };
 
+function getWorldSignals(professionKey: string, language: "en" | "tr") {
+  const signals: Record<string, { tr: string[]; en: string[] }> = {
+    astronaut: {
+      tr: ["İstasyon rölesi açık", "Ekip sakin bir ilk komut bekliyor", "Uyarı sesi arka planda devam ediyor"],
+      en: ["Station relay open", "The crew is waiting for a calm first command", "The warning tone continues in the background"],
+    },
+    doctor: {
+      tr: ["Acil kanal açık", "Ekip öncelik sinyali bekliyor", "Hasta akışı hızlanıyor"],
+      en: ["Emergency channel open", "The team is waiting for a priority signal", "Patient flow is accelerating"],
+    },
+    pilot: {
+      tr: ["Kule hattı açık", "Kokpit ilk yönlendirmeyi bekliyor", "Hava koşulları değişiyor"],
+      en: ["Tower line open", "The cockpit is waiting for first direction", "Weather conditions are shifting"],
+    },
+    "ai-engineer": {
+      tr: ["Model izleme hattı açık", "Ekip güvenli karar penceresi bekliyor", "Beklenmeyen çıktılar izleniyor"],
+      en: ["Model monitoring line open", "The team is waiting for a safe decision window", "Unexpected outputs are being tracked"],
+    },
+    cyber_detective: {
+      tr: ["Olay müdahale hattı açık", "Kanıt akışı izleniyor", "İlk doğrulama sinyali bekleniyor"],
+      en: ["Incident response line open", "Evidence flow is being monitored", "First verification signal is expected"],
+    },
+    "cyber-detective": {
+      tr: ["Olay müdahale hattı açık", "Kanıt akışı izleniyor", "İlk doğrulama sinyali bekleniyor"],
+      en: ["Incident response line open", "Evidence flow is being monitored", "First verification signal is expected"],
+    },
+  };
+
+  return signals[professionKey]?.[language] ?? signals.astronaut[language];
+}
+
 export default function CareerMissionIntro({
   professionKey,
   professionTitle,
@@ -27,6 +58,7 @@ export default function CareerMissionIntro({
   const atmosphere = getCareerWorldAtmosphere(professionKey);
   const mentor = getCareerMentorForWorld(professionKey);
   const progressPercent = totalCount > 0 ? Math.min((answeredCount / totalCount) * 100, 100) : 0;
+  const worldSignals = getWorldSignals(professionKey, language);
 
   return (
     <div
@@ -45,9 +77,9 @@ export default function CareerMissionIntro({
       <div className="relative grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
         <div className="rounded-[28px] border border-white/12 bg-white/10 p-5 backdrop-blur">
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
-            <span>{language === "en" ? "Cinematic Mission Intro" : "Sinematik Görev Girişi"}</span>
+            <span>{language === "en" ? "Incoming mission relay" : "Canlı görev aktarımı"}</span>
             <span className="h-1 w-1 rounded-full bg-white/40" />
-            <span>{atmosphere.briefingFrame}</span>
+            <span>{language === "en" ? "Command channel open" : "Komut kanalı açık"}</span>
           </div>
 
           <h3 className="mt-4 text-2xl font-semibold leading-tight text-white md:text-3xl">
@@ -60,32 +92,20 @@ export default function CareerMissionIntro({
 
           <div className="mt-5 rounded-2xl border border-white/12 bg-black/18 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-              {language === "en" ? "Mission World" : "Görev Dünyası"}
+              {language === "en" ? "You are now connected as" : "Canlı kanaldaki rolün"}
             </p>
-            <div className="mt-3 grid gap-3 text-sm text-white/78 md:grid-cols-2">
-              <div>
-                <p className="text-white/45">{language === "en" ? "Role" : "Rol"}</p>
-                <p className="mt-1 font-semibold text-white">{professionTitle}</p>
-              </div>
-              <div>
-                <p className="text-white/45">{language === "en" ? "Cinematic style" : "Sinematik stil"}</p>
-                <p className="mt-1 font-semibold text-white">{atmosphere.cinematicStyle}</p>
-              </div>
-              <div>
-                <p className="text-white/45">{language === "en" ? "Tension profile" : "Gerilim profili"}</p>
-                <p className="mt-1 font-semibold text-white">{atmosphere.tensionProfile}</p>
-              </div>
-              <div>
-                <p className="text-white/45">{language === "en" ? "Mentor mode" : "Mentor modu"}</p>
-                <p className="mt-1 font-semibold text-white">{atmosphere.mentorStyle}</p>
-              </div>
-            </div>
+            <p className="mt-2 text-lg font-semibold text-white">{professionTitle}</p>
+            <p className="mt-3 text-sm leading-6 text-white/68">
+              {language === "en"
+                ? "The world is already moving. Your first signal should calm the room before it tries to solve everything."
+                : "Dünya zaten hareket halinde. İlk sinyalin her şeyi çözmeye çalışmadan önce ortamı sakinleştirmeli."}
+            </p>
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-xs text-white/58">
-              <span>{language === "en" ? "Mission intensity" : "Görev yoğunluğu"}</span>
-              <span>{answeredCount}/{totalCount}</span>
+          <div className="mt-4 rounded-2xl border border-cyan-200/15 bg-cyan-300/10 p-4">
+            <div className="flex items-center justify-between gap-3 text-xs text-cyan-50/70">
+              <span>{language === "en" ? "Mission presence" : "Görev varlığı"}</span>
+              <span>{answeredCount > 0 ? `${Math.min(progressPercent, 100).toFixed(0)}%` : language === "en" ? "standby" : "beklemede"}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/12">
               <div
@@ -93,14 +113,14 @@ export default function CareerMissionIntro({
                 style={{ width: `${progressPercent}%`, backgroundColor: atmosphere.uiTheme.primary }}
               />
             </div>
-            <p className="mt-2 text-xs leading-5 text-white/54">
+            <p className="mt-2 text-xs leading-5 text-cyan-50/62">
               {isComplete
                 ? language === "en"
-                  ? "Mission complete. The recap layer can now turn this journey into a cinematic memory."
-                  : "Görev tamamlandı. Recap katmanı bu yolculuğu sinematik bir anıya dönüştürebilir."
+                  ? "Mission relay complete. The archive can now preserve this experience as a cinematic memory."
+                  : "Görev aktarımı tamamlandı. Arşiv bu deneyimi sinematik bir anı olarak koruyabilir."
                 : language === "en"
-                  ? "Every answer changes the emotional profile of the mission."
-                  : "Her cevap görevin duygusal profilini değiştirir."}
+                  ? "The archive stays in the background. Stay inside the mission."
+                  : "Arşiv arka planda kalır. Görevin içinde kal."}
             </p>
           </div>
         </div>
@@ -108,7 +128,7 @@ export default function CareerMissionIntro({
         <div className="flex flex-col gap-4 rounded-[28px] border border-white/12 bg-white/10 p-5 backdrop-blur">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-white/55">
-              {language === "en" ? "AI Mentor Channel" : "AI Mentor Kanalı"}
+              {language === "en" ? "Mentor channel" : "Mentor kanalı"}
             </p>
             <h4 className="mt-2 text-xl font-semibold text-white">{mentor.displayName}</h4>
             <p className="mt-2 text-sm leading-6 text-white/70">{mentor.signatureLine[language]}</p>
@@ -116,24 +136,25 @@ export default function CareerMissionIntro({
 
           <div className="rounded-2xl border border-white/12 bg-black/18 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-              {language === "en" ? "Briefing" : "Brifing"}
+              {language === "en" ? "Live briefing" : "Canlı brifing"}
             </p>
             <p className="mt-2 text-sm leading-6 text-white/76">{missionBriefing}</p>
             <p className="mt-3 text-xs leading-5 text-white/62">
-              <span className="font-semibold text-white/80">{language === "en" ? "Objective" : "Hedef"}: </span>
+              <span className="font-semibold text-white/80">{language === "en" ? "Mission pull" : "Görev çekimi"}: </span>
               {missionObjective}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-white/12 bg-black/18 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-              {language === "en" ? "Atmosphere" : "Atmosfer"}
+          <div className="rounded-2xl border border-emerald-200/15 bg-emerald-300/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-emerald-100/70">
+              {language === "en" ? "Signals already active" : "Aktif sinyaller"}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {atmosphere.ambience.map((item) => (
-                <span key={item} className="rounded-full border border-white/12 bg-white/10 px-3 py-1 text-xs text-white/70">
-                  {item}
-                </span>
+            <div className="mt-3 space-y-2">
+              {worldSignals.map((item) => (
+                <div key={item} className="flex items-start gap-2 text-xs leading-5 text-emerald-50/78">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300" />
+                  <span>{item}</span>
+                </div>
               ))}
             </div>
           </div>
