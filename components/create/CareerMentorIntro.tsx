@@ -1,105 +1,102 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useWorldState } from "@/components/create/WorldContext";
 import { useLanguage } from "@/lib/useLanguage";
 
-type CareerMentorProfileCard = {
-  role: string;
-  icon: string;
-  mentor: string;
-  focus: string;
-  identity: string;
+type ExperienceBeat = {
+  key: string;
+  label: {
+    en: string;
+    tr: string;
+  };
+  title: {
+    en: string;
+    tr: string;
+  };
+  description: {
+    en: string;
+    tr: string;
+  };
 };
 
-const mentorProfiles = {
-  en: [
-    {
-      role: "Astronaut",
-      icon: "🚀",
-      mentor: "Commander Orion",
-      focus: "Calm pressure reading, crew safety, risk sequencing",
-      identity: "You are responsible for the crew before the mission objective.",
+const cinematicBeats: ExperienceBeat[] = [
+  {
+    key: "signal",
+    label: {
+      en: "01 · Signal",
+      tr: "01 · Sinyal",
     },
-    {
-      role: "Doctor",
-      icon: "🩺",
-      mentor: "Dr. Lyra",
-      focus: "Empathy, prioritization, safe medical reasoning",
-      identity: "You protect the patient by staying calm, precise, and humane.",
+    title: {
+      en: "A distant signal wakes up the world.",
+      tr: "Uzak bir sinyal dünyayı uyandırır.",
     },
-    {
-      role: "Pilot",
-      icon: "✈️",
-      mentor: "Captain Nova",
-      focus: "Situational awareness, sequence discipline, calm command",
-      identity: "You keep people safe by controlling speed, altitude, and communication.",
+    description: {
+      en: "The child does not start from a role card. The experience begins with a living event, a transmission, and a reason to care.",
+      tr: "Çocuk bir meslek kartından başlamaz. Deneyim yaşayan bir olay, bir iletim ve merak uyandıran bir sebep ile açılır.",
     },
-    {
-      role: "AI Engineer",
-      icon: "🤖",
-      mentor: "Mentor Ada",
-      focus: "Ethical reasoning, data caution, creative problem solving",
-      identity: "You build safe intelligence by asking what the system should never do.",
+  },
+  {
+    key: "guide",
+    label: {
+      en: "02 · Guide",
+      tr: "02 · Rehber",
     },
-    {
-      role: "Cyber Detective",
-      icon: "🕵️‍♂️",
-      mentor: "Detective Nyx",
-      focus: "Pattern recognition, cautious investigation, digital safety",
-      identity: "You follow evidence without frightening the people you are protecting.",
+    title: {
+      en: "The AI guide arrives inside the story.",
+      tr: "AI rehber hikâyenin içinden gelir.",
     },
-  ],
-  tr: [
-    {
-      role: "Astronot",
-      icon: "🚀",
-      mentor: "Commander Orion",
-      focus: "Sakin baskı yönetimi, ekip güvenliği, risk sıralaması",
-      identity: "Görev hedefinden önce ekibin güvenliğinden sorumlusun.",
+    description: {
+      en: "The guide is not a chatbot panel. It feels like a companion connected to the world, its atmosphere, and the child’s decisions.",
+      tr: "Rehber bir chatbot paneli değildir. Dünyaya, atmosfere ve çocuğun kararlarına bağlı bir yol arkadaşı gibi hissedilir.",
     },
-    {
-      role: "Doktor",
-      icon: "🩺",
-      mentor: "Dr. Lyra",
-      focus: "Empati, önceliklendirme, güvenli tıbbi akıl yürütme",
-      identity: "Hastayı sakin, dikkatli ve insani kalarak korursun.",
+  },
+  {
+    key: "choice",
+    label: {
+      en: "03 · Decision",
+      tr: "03 · Karar",
     },
-    {
-      role: "Pilot",
-      icon: "✈️",
-      mentor: "Captain Nova",
-      focus: "Durumsal farkındalık, sıra disiplini, sakin komuta",
-      identity: "Hızı, irtifayı ve iletişimi yöneterek insanları güvende tutarsın.",
+    title: {
+      en: "One focused choice changes the next beat.",
+      tr: "Tek ve net bir karar bir sonraki anı değiştirir.",
     },
-    {
-      role: "AI Mühendisi",
-      icon: "🤖",
-      mentor: "Mentor Ada",
-      focus: "Etik akıl yürütme, veri dikkati, yaratıcı problem çözme",
-      identity: "Güvenli zekâyı, sistemin asla ne yapmaması gerektiğini sorarak kurarsın.",
+    description: {
+      en: "The interaction stays simple and meaningful. No quiz feeling, no dashboard overload, no profession checklist.",
+      tr: "Etkileşim sade ve anlamlı kalır. Quiz hissi, dashboard kalabalığı ve meslek checklist’i yoktur.",
     },
-    {
-      role: "Siber Dedektif",
-      icon: "🕵️‍♂️",
-      mentor: "Detective Nyx",
-      focus: "Örüntü tanıma, dikkatli araştırma, dijital güvenlik",
-      identity: "Koruduğun insanları korkutmadan kanıtın izini sürersin.",
+  },
+  {
+    key: "memory",
+    label: {
+      en: "04 · Memory",
+      tr: "04 · Hafıza",
     },
-  ],
-} satisfies Record<"en" | "tr", CareerMentorProfileCard[]>;
+    title: {
+      en: "The ending becomes a memory artifact.",
+      tr: "Bitiş bir deneyim hatırasına dönüşür.",
+    },
+    description: {
+      en: "The child leaves with a signal archive, scene card, discovery log or cinematic memory that can continue later.",
+      tr: "Çocuk daha sonra devam edebileceği bir sinyal arşivi, sahne kartı, keşif günlüğü veya sinematik hatıra ile ayrılır.",
+    },
+  },
+];
 
 export default function CareerMentorIntro() {
   const { activeWorld, setActiveWorld } = useWorldState();
   const { language } = useLanguage();
   const isEnglish = language === "en";
-  const [showMentors, setShowMentors] = useState(false);
-
   const isActive = activeWorld === "careerlab";
-  const mentors = mentorProfiles[isEnglish ? "en" : "tr"];
+  const [activeBeatKey, setActiveBeatKey] = useState("signal");
 
-  function scrollToCareerLab() {
+  const activeBeat = useMemo(
+    () => cinematicBeats.find((beat) => beat.key === activeBeatKey) || cinematicBeats[0],
+    [activeBeatKey]
+  );
+
+  function enterExperience() {
     setActiveWorld("careerlab");
 
     window.requestAnimationFrame(() => {
@@ -114,140 +111,151 @@ export default function CareerMentorIntro() {
     });
   }
 
-  function handleMeetMentor() {
-    setShowMentors((current) => !current);
-  }
-
   return (
-    <section
-      className={`relative overflow-hidden rounded-[34px] border p-5 transition-all duration-500 md:p-6 ${
-        isActive
-          ? "border-teal-300 bg-gradient-to-br from-emerald-50 via-cyan-50 to-lime-50 shadow-[0_28px_86px_rgba(20,184,166,0.14)]"
-          : "border-teal-100/70 bg-white/72 opacity-80 shadow-[0_12px_38px_rgba(20,184,166,0.06)] hover:opacity-100"
-      }`}
-    >
-      <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/70 blur-3xl" />
+    <section className="relative overflow-hidden rounded-[40px] border border-cyan-300/18 bg-[#020617] text-white shadow-[0_40px_120px_rgba(8,47,73,0.32)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_14%,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_82%_22%,rgba(168,85,247,0.18),transparent_34%),linear-gradient(135deg,rgba(2,6,23,1),rgba(15,23,42,0.96)_42%,rgba(8,47,73,0.88))]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.12]">
+        <div className="absolute left-0 top-[18%] h-px w-full bg-cyan-200" />
+        <div className="absolute left-0 top-[48%] h-px w-full bg-cyan-200/70" />
+        <div className="absolute left-0 top-[76%] h-px w-full bg-violet-200/70" />
+        <div className="absolute left-[18%] top-0 h-full w-px bg-cyan-200/70" />
+        <div className="absolute right-[22%] top-0 h-full w-px bg-violet-200/60" />
+      </div>
 
-      <div className="relative z-10 space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-teal-800">
-            {isEnglish ? "AI Future Missions" : "AI Gelecek Görevleri"}
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.04em] text-slate-700">
-            {isActive ? (isEnglish ? "Selected" : "Seçili") : isEnglish ? "Explore" : "Keşfet"}
-          </div>
-        </div>
+      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-28 left-10 h-80 w-80 rounded-full bg-violet-400/18 blur-3xl" />
 
-        <div className="space-y-3">
-          <h2
-            className={`font-extrabold tracking-tight text-slate-950 transition-all duration-500 ${
-              isActive ? "text-2xl sm:text-3xl md:text-5xl" : "text-xl sm:text-2xl md:text-3xl"
-            }`}
-          >
-            {isEnglish ? "Step Into a Future Role" : "Gelecekteki Rolüne Gir"}
-          </h2>
-
-          <p
-            className={`max-w-2xl leading-8 text-slate-700 ${
-              isActive ? "text-base md:text-lg" : "line-clamp-3 text-sm md:line-clamp-2 md:text-base"
-            }`}
-          >
-            {isEnglish
-              ? "Enter a cinematic mission, transmit decisions through a live command channel, and discover how you think under pressure with your AI mentor."
-              : "Sinematik bir göreve gir, kararlarını canlı komut kanalından ilet ve AI mentorunla baskı altında nasıl düşündüğünü keşfet."}
-          </p>
-        </div>
-
-        {isActive ? (
-          <div className="rounded-[22px] border border-orange-200/55 bg-white/78 p-4 shadow-[0_12px_35px_rgba(251,146,60,0.08)] sm:p-5">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-500">
-              <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-              <span>{isEnglish ? "Mission Path" : "Görev Yolu"}</span>
+      <div className="relative z-10 grid gap-8 p-6 md:p-8 lg:grid-cols-[1.08fr_0.92fr] lg:p-10">
+        <div className="flex min-h-[520px] flex-col justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-300/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100">
+              <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
+              {isEnglish ? "Immersive AI Experience World" : "Immersive AI Deneyim Dünyası"}
             </div>
 
-            <div className="mt-3 text-base leading-7 text-slate-700">
+            <h1 className="mt-6 max-w-3xl text-4xl font-black tracking-[-0.04em] text-white md:text-6xl">
+              {isEnglish ? "Lost Space Signal" : "Kayıp Uzay Sinyali"}
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-base leading-8 text-cyan-50/78 md:text-lg">
               {isEnglish
-                ? "Choose your future role below. Start Mission now takes you directly to the live Career Lab workspace."
-                : "Aşağıdan gelecekteki rolünü seç. Start Mission seni doğrudan canlı Career Lab çalışma alanına götürür."}
+                ? "This is no longer a career card flow. The child enters a cinematic AI-guided world where a broken signal, a living guide, and one meaningful decision shape the experience."
+                : "Bu artık bir meslek kartı akışı değil. Çocuk; kırık bir sinyalin, yaşayan bir rehberin ve anlamlı tek bir kararın deneyimi şekillendirdiği sinematik bir AI dünyasına girer."}
+            </p>
+
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 backdrop-blur-md">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/60">
+                  {isEnglish ? "Runtime" : "Runtime"}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {isEnglish ? "Cinematic guided flow" : "Sinematik rehberli akış"}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 backdrop-blur-md">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/60">
+                  {isEnglish ? "UI Load" : "UI Yükü"}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {isEnglish ? "Minimal, atmospheric" : "Minimal, atmosferik"}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white/[0.055] p-4 backdrop-blur-md">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/60">
+                  {isEnglish ? "Emotion" : "Duygu"}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {isEnglish ? "Wonder + safe tension" : "Merak + güvenli gerilim"}
+                </p>
+              </div>
             </div>
           </div>
-        ) : null}
 
-        <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600">
-          <div>~35 min</div>
-          <div className="text-slate-500">•</div>
-          <div>{isEnglish ? "Age 9–15" : "Yaş 9–15"}</div>
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={enterExperience}
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-cyan-200 px-7 py-3 text-sm font-black text-slate-950 shadow-[0_18px_46px_rgba(34,211,238,0.22)] transition hover:-translate-y-0.5 hover:bg-white"
+            >
+              {isEnglish ? "Enter Experience" : "Deneyime Gir"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBeatKey(activeBeatKey === "signal" ? "guide" : "signal")}
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/14 bg-white/[0.055] px-7 py-3 text-sm font-semibold text-cyan-50 transition hover:-translate-y-0.5 hover:bg-white/[0.09]"
+            >
+              {isEnglish ? "Preview opening beat" : "Açılış anını göster"}
+            </button>
+
+            <div className="inline-flex min-h-12 items-center justify-center rounded-full border border-cyan-200/14 bg-cyan-300/[0.07] px-5 py-3 text-xs font-bold uppercase tracking-[0.14em] text-cyan-100/70">
+              {isActive ? (isEnglish ? "World active" : "Dünya aktif") : isEnglish ? "Ready" : "Hazır"}
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={scrollToCareerLab}
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-teal-500 bg-gradient-to-r from-teal-600 to-emerald-600 px-5 py-3 text-sm font-black text-white shadow-[0_14px_36px_rgba(15,23,42,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:from-teal-700 hover:to-emerald-700 hover:shadow-[0_20px_46px_rgba(15,23,42,0.18)] sm:px-7 sm:py-3.5"
-          >
-            {isEnglish ? "Start Mission" : "Görevi Başlat"}
-          </button>
+        <div className="relative overflow-hidden rounded-[34px] border border-white/10 bg-slate-950/54 p-5 backdrop-blur-md">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_8%,rgba(34,211,238,0.12),transparent_36%)]" />
 
-          <button
-            type="button"
-            onClick={handleMeetMentor}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-teal-200 bg-white px-5 py-3 text-sm font-medium text-teal-800 opacity-90 transition-all duration-300 hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50"
-          >
-            {showMentors
-              ? isEnglish
-                ? "Hide Mentor Roster"
-                : "Mentorları Gizle"
-              : isEnglish
-                ? "Meet Your Mentor"
-                : "Mentorunu Tanı"}
-          </button>
-        </div>
+          <div className="relative z-10">
+            <div className="rounded-[28px] border border-cyan-200/14 bg-black/28 p-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-100/60">
+                {isEnglish ? "Experience sequence" : "Deneyim sekansı"}
+              </p>
 
-        {showMentors ? (
-          <div className="rounded-[28px] border border-teal-200/70 bg-white/82 p-4 shadow-[0_18px_55px_rgba(20,184,166,0.10)]">
-            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">
-                  {isEnglish ? "Career Mentor Roster" : "Career Mentor Ekibi"}
-                </p>
-                <h3 className="mt-2 text-xl font-extrabold text-slate-950">
-                  {isEnglish ? "Each role has its own mentor signal" : "Her rolün kendi mentor sinyali var"}
-                </h3>
+              <div className="mt-5 grid gap-3">
+                {cinematicBeats.map((beat) => {
+                  const selected = beat.key === activeBeatKey;
+
+                  return (
+                    <button
+                      key={beat.key}
+                      type="button"
+                      onClick={() => setActiveBeatKey(beat.key)}
+                      className={`rounded-3xl border p-4 text-left transition ${
+                        selected
+                          ? "border-cyan-200/42 bg-cyan-300/12 shadow-[0_0_28px_rgba(34,211,238,0.12)]"
+                          : "border-white/10 bg-white/[0.035] hover:border-cyan-200/24 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/54">
+                        {beat.label[isEnglish ? "en" : "tr"]}
+                      </p>
+                      <p className="mt-2 text-sm font-bold text-white">
+                        {beat.title[isEnglish ? "en" : "tr"]}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
-              <p className="max-w-xl text-sm leading-6 text-slate-600">
-                {isEnglish
-                  ? "When the child selects a profession, the live mission channel uses that role’s mentor identity, focus and pressure language."
-                  : "Çocuk bir meslek seçtiğinde canlı görev kanalı o role ait mentor kimliği, odak alanı ve baskı diliyle açılır."}
+            </div>
+
+            <div className="mt-5 rounded-[28px] border border-white/10 bg-white/[0.045] p-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-violet-100/62">
+                {activeBeat.label[isEnglish ? "en" : "tr"]}
+              </p>
+              <h3 className="mt-3 text-2xl font-black tracking-tight text-white">
+                {activeBeat.title[isEnglish ? "en" : "tr"]}
+              </h3>
+              <p className="mt-4 text-sm leading-7 text-cyan-50/76">
+                {activeBeat.description[isEnglish ? "en" : "tr"]}
               </p>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {mentors.map((mentor) => (
-                <div
-                  key={mentor.role}
-                  className="rounded-3xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/60 p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-100 text-xl">
-                      {mentor.icon}
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-slate-950">{mentor.role}</p>
-                      <p className="mt-1 text-sm font-semibold text-teal-700">{mentor.mentor}</p>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    {isEnglish ? "Mentor focus" : "Mentor odağı"}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-700">{mentor.focus}</p>
-                  <p className="mt-3 rounded-2xl border border-teal-100 bg-white/70 p-3 text-sm leading-6 text-slate-700">
-                    {mentor.identity}
-                  </p>
-                </div>
-              ))}
+            <div className="mt-5 rounded-[28px] border border-cyan-200/12 bg-cyan-300/[0.055] p-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100/62">
+                {isEnglish ? "Design change" : "Tasarım değişimi"}
+              </p>
+              <p className="mt-3 text-sm leading-7 text-cyan-50/78">
+                {isEnglish
+                  ? "The old CareerLab logic remains below as a safety fallback, but the entry experience now speaks the new Immersive Worlds language."
+                  : "Eski CareerLab mantığı güvenli geçiş için aşağıda korunur; ancak giriş deneyimi artık yeni Immersive Worlds dilini taşır."}
+              </p>
             </div>
           </div>
-        ) : null}
+        </div>
       </div>
     </section>
   );

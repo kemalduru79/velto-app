@@ -1,5 +1,6 @@
 "use client";
 
+// Sprint 0.1 Experience Worlds Reset: product terminology moved from profession-first Career Lab to immersive world packs.
 // X11.9 WorldGateway Stabilization Polish: safe copy-value cleanup without object key mutation.
 
 // X11.8A WorldGateway Key Repair Hotfix: restores object keys after copy-only replacement.
@@ -48,7 +49,12 @@ const flowKeyToWorld = (flowKey: string): ActiveWorld | null => {
     return "creatorlab";
   }
 
-  if (flowKey === "career_lab" || flowKey === "careerlab" || flowKey === "career") {
+  if (
+    flowKey === "career_lab" ||
+    flowKey === "careerlab" ||
+    flowKey === "career" ||
+    flowKey === "interactive_quest"
+  ) {
     return "careerlab";
   }
 
@@ -58,12 +64,12 @@ const flowKeyToWorld = (flowKey: string): ActiveWorld | null => {
 const copy = {
   tr: {
     eyebrow: "VELTO",
-    title: "Çocuklar için AI dünyaları",
+    title: "Immersive AI Experience Worlds",
     description:
-      "Storyverse, Creator Lab ve pilot deneyimler tek bir üretim motorunu paylaşır; fakat her biri ayrı bir dünya gibi hissettirilir.",
-    activeProducts: "Aktif Ürünler",
-    pilotExperiences: "Pilot Deneyimler",
-    roadmap: "Roadmap Deneyimleri",
+      "Storyverse ve Creator Lab korunur; yeni deneyimler aynı sinematik motor üzerinde world pack mantığıyla hızla üretilebilir hale gelir.",
+    activeProducts: "Aktif Deneyim Motorları",
+    pilotExperiences: "Reference World Packs",
+    roadmap: "Sonraki World Packs",
     activeBadge: "Active",
     pilotBadge: "Pilot",
     comingSoonBadge: "Yakında",
@@ -78,7 +84,7 @@ const copy = {
     experienceRole: "Ne yaparsın",
     nextActivity: "Sonraki adım",
     primaryNote:
-      "Ana aksiyon Storyverse üzerinde konumlanır; diğer dünyalar ürünleşme seviyesine göre daha sakin gösterilir.",
+      "Yeni yön: çok sayıda ayrı flow değil, aynı engine üzerinde yüksek kaliteli immersive worlds.",
     experienceSignal: "Deneyim Sinyali",
     stageMap: "Deneyim Haritası",
     activeSignal: "Başlamaya hazır",
@@ -101,21 +107,21 @@ const copy = {
     creatorEntry: "Popüler fikir ve kısa video formatı seçimi",
     creatorCreation: "Script, thumbnail ve kısa video paketi üretimi",
     creatorReward: "Yayınlamaya hazır creator paketi",
-    careerEntry: "Meslek rolü ve ilk görev senaryosu",
-    careerCreation: "Karar verme, mentor soruları ve adaptif görevler",
-    careerReward: "Gelişim raporu ve career card",
+    careerEntry: "Dünya sinyali, guide arrival ve atmosfer aktivasyonu",
+    careerCreation: "Sahne bazlı keşif, karar anları ve sinematik pacing",
+    careerReward: "Experience memory, world log ve collectible artifact",
     defaultEntry: "Dünya kimliği ve deneyim vaadi",
     defaultCreation: "AI destekli kişisel üretim akışı",
     defaultReward: "Çocuğa özel çıktı ve paylaşılabilir sonuç",
   },
   en: {
     eyebrow: "VELTO",
-    title: "Choose your AI world",
+    title: "Immersive AI Experience Worlds",
     description:
-      "Pick one world and start creating.",
-    activeProducts: "Start",
-    pilotExperiences: "Explore",
-    roadmap: "Later",
+      "Storyverse and Creator Lab stay protected; new experiences are created as cinematic world packs on top of the same engine.",
+    activeProducts: "Active Engines",
+    pilotExperiences: "Reference World Packs",
+    roadmap: "Next World Packs",
     activeBadge: "Active",
     pilotBadge: "Pilot",
     comingSoonBadge: "Coming Soon",
@@ -130,7 +136,7 @@ const copy = {
     experienceRole: "Role",
     nextActivity: "Next",
     primaryNote:
-      "Choose one world and begin.",
+      "New direction: fewer separate flows, higher-quality immersive worlds powered by one reusable experience engine.",
     experienceSignal: "Adventure Signal",
     stageMap: "Worlds",
     activeSignal: "Ready to start",
@@ -153,9 +159,9 @@ const copy = {
     creatorEntry: "Choose a popular idea and short video format",
     creatorCreation: "Generate script, thumbnail and short video package",
     creatorReward: "Publish-ready creator package",
-    careerEntry: "Select a profession role and first mission scenario",
-    careerCreation: "Make decisions, answer mentor questions and receive adaptive challenges",
-    careerReward: "Development report and career card",
+    careerEntry: "World signal, guide arrival and atmosphere activation",
+    careerCreation: "Scene-based discovery, decision moments and cinematic pacing",
+    careerReward: "Experience memory, world log and collectible artifact",
     defaultEntry: "World identity and experience promise",
     defaultCreation: "AI-supported personal creation flow",
     defaultReward: "Child-specific output and shareable result",
@@ -200,29 +206,29 @@ const identityCopy = {
       action: "İçerik fikri seç, script ve thumbnail üretimine ilerle.",
     },
     career_lab: {
-      feel: "Fütüristik, mentor destekli, simülasyon hissi",
-      role: "Çocuk meslek rolü seçer, görev kararları verir ve gelişim raporu alır.",
-      action: "Meslek simülasyonunu başlat ve mentor yönlendirmelerine ilerle.",
+      feel: "Sinematik, atmosferik, world-pack odaklı",
+      role: "Çocuk bir meslek ekranına değil, yaşayan bir AI deneyim dünyasına girer.",
+      action: "Experience Worlds engine açılır; ilk referans dünya Lost Space Signal yönünde konumlanır.",
     },
     interactive_quest: {
-      feel: "Macera, seçimli hikâye, görev haritası",
-      role: "Çocuk seçimleriyle ilerleyen kişisel bir görev akışı deneyimler.",
-      action: "Pilot akış olarak sakin görünür; ürünleşme sonrası açılır.",
+      feel: "Gizemli, sinyal tabanlı, keşif odaklı",
+      role: "Çocuk terk edilmiş bir istasyondan gelen sinyali takip eder ve hikâyeyi kararlarıyla açığa çıkarır.",
+      action: "Reference world pack olarak tutulur; engine doğrulaması için ilk örnek deneyimdir.",
     },
     ai_character: {
-      feel: "Kişisel, karakter odaklı, companion hissi",
-      role: "Çocuk kendi AI karakterini tasarlar ve güvenli ilk etkileşime hazırlanır.",
-      action: "Roadmap alanında görünür kalır; henüz ana akışa alınmaz.",
+      feel: "Sakin, merak uyandıran, su altı keşfi",
+      role: "Çocuk sonar ipuçlarını takip eder, bilinmeyen yaşamı gözlemler ve güvenli keşif kararları verir.",
+      action: "İkinci world pack olarak aynı engine’in farklı duygu tonunu kanıtlamak için bekletilir.",
     },
     thinking_lab: {
-      feel: "Zihinsel keşif, problem çözme, rehberli düşünme",
-      role: "Çocuk problem çözme sürecini görünür hale getiren çıktı alır.",
-      action: "Roadmap alanında konumlanır; ileride cognitive growth ürünü olarak açılır.",
+      feel: "Hayal gücü, duygu keşfi, sembolik dünya",
+      role: "Çocuk rüya benzeri alanlarda görsel hafızalar ve anlamlı seçimler oluşturur.",
+      action: "Roadmap alanında konumlanır; emotional learning world olarak sonra değerlendirilir.",
     },
     maker_hybrid: {
-      feel: "Fiziksel + dijital hibrit, deneysel, maker odaklı",
-      role: "AI fikri fiziksel üretime ve deneyim alanına bağlanır.",
-      action: "Roadmap alanında tutulur; fiziksel deneyim altyapısı ile birlikte ele alınır.",
+      feel: "Fiziksel + dijital hibrit, maker odaklı",
+      role: "AI deneyiminden çıkan artifact fiziksel üretim ve sergileme alanına bağlanır.",
+      action: "Physical Experience Lab entegrasyonu için roadmap alanında tutulur.",
     },
   },
   en: {
@@ -237,29 +243,29 @@ const identityCopy = {
       action: "Select a content idea and move into script and thumbnail generation.",
     },
     career_lab: {
-      feel: "Futuristic, mentor-led, simulation-oriented",
-      role: "The child chooses a profession, makes mission decisions and receives a development report.",
-      action: "Start the profession simulation and follow the mentor-guided journey.",
+      feel: "Cinematic, atmospheric, world-pack driven",
+      role: "The child enters a living AI experience world instead of a profession screen.",
+      action: "Open the Experience Worlds engine; Lost Space Signal becomes the first reference direction.",
     },
     interactive_quest: {
-      feel: "Adventure, branching story, quest map",
-      role: "The child experiences a personal mission shaped by their choices.",
-      action: "Keep it calm as a pilot flow until productization is complete.",
+      feel: "Mysterious, signal-led, discovery-first",
+      role: "The child follows a signal from an abandoned station and reveals the story through focused decisions.",
+      action: "Keep it as the first reference world pack for engine validation.",
     },
     ai_character: {
-      feel: "Personal, character-led, companion-like",
-      role: "The child designs an AI character and prepares for safe first interaction.",
-      action: "Keep it visible in roadmap; do not promote it into the main flow yet.",
+      feel: "Calm, mysterious, underwater discovery",
+      role: "The child follows sonar clues, observes unknown life and makes safe discovery decisions.",
+      action: "Keep it as the second world pack to prove a different emotional tone with the same engine.",
     },
     thinking_lab: {
-      feel: "Cognitive exploration, problem solving, guided thinking",
-      role: "The child receives an output that makes their problem-solving process visible.",
-      action: "Keep it in roadmap as a future cognitive growth product.",
+      feel: "Imagination, emotional discovery, symbolic world",
+      role: "The child explores dream-like spaces and creates visual memories through meaningful choices.",
+      action: "Keep it in roadmap as a future emotional learning world.",
     },
     maker_hybrid: {
-      feel: "Physical + digital hybrid, experimental, maker-led",
-      role: "The AI-generated idea connects to physical making and experience zones.",
-      action: "Keep it in roadmap until the physical experience layer is defined.",
+      feel: "Physical + digital hybrid, maker-led",
+      role: "The AI experience artifact connects to physical making and exhibition.",
+      action: "Keep it for the later Physical Experience Lab integration layer.",
     },
   },
 } as const;

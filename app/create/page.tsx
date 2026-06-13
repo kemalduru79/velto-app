@@ -47,14 +47,12 @@ import { experienceFlows, getFlowByKey, type FlowZone } from "../../lib/flows";
 import WorldGateway from "@/components/create/WorldGateway";
 import StoryverseCinematicIntro from "@/components/create/StoryverseCinematicIntro";
 import CreatorStudioIntro from "@/components/create/CreatorStudioIntro";
-import CareerMentorIntro from "@/components/create/CareerMentorIntro";
-import CareerMissionIntro from "@/components/create/CareerMissionIntro";
-import CareerMissionChat from "@/components/create/CareerMissionChat";
 import WorldFocusRouter from "@/components/create/WorldFocusRouter";
 import FocusedWorldWorkspace from "@/components/create/FocusedWorldWorkspace";
 import { WorldProvider } from "@/components/create/WorldContext";
 import StoryverseShell from "@/components/experience/StoryverseShell";
 import CreatorLabShell from "@/components/experience/CreatorLabShell";
+import CareerLabShell from "@/components/experience/CareerLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -7028,9 +7026,7 @@ const handleResetCareerMission = () => {
           <CreatorStudioIntro />
         ) : null}
 
-        {isCareerLabFlow ? (
-          <CareerMentorIntro />
-        ) : null}
+        {isCareerLabFlow ? <CareerLabShell /> : null}
 
         {isStoryverseFlow ? <FocusedWorldWorkspace /> : null}
 
@@ -7231,7 +7227,7 @@ const handleResetCareerMission = () => {
           )}
         </div>
 
-        {isCareerLabFlow && (
+        {isCareerLabFlow && false && (
           <section className="rounded-[32px] border border-violet-300/20 bg-violet-50/800/10 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:p-7">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
@@ -7282,39 +7278,9 @@ const handleResetCareerMission = () => {
             </div>
 
             <div className="mt-7">
-              <CareerMissionIntro
-                professionKey={selectedCareerProfession}
-                professionTitle={selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
-                missionTitle={selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
-                missionBriefing={selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
-                missionObjective={selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
-                language={uiLanguage === "en" ? "en" : "tr"}
-                answeredCount={answeredCareerDecisionCount}
-                totalCount={selectedCareerMission.decisionPoints.length}
-                isComplete={isCareerMissionComplete}
-              />
             </div>
 
             <div className="mt-7">
-              <CareerMissionChat
-                language={uiLanguage === "en" ? "en" : "tr"}
-                professionKey={selectedCareerProfession}
-                professionTitle={selectedCareerProfessionConfig.title[uiLanguage] ?? selectedCareerProfessionConfig.title.tr}
-                missionTitle={selectedCareerMission.title[uiLanguage] ?? selectedCareerMission.title.tr}
-                missionBriefing={selectedCareerMission.briefing[uiLanguage] ?? selectedCareerMission.briefing.tr}
-                missionObjective={selectedCareerMission.objective[uiLanguage] ?? selectedCareerMission.objective.tr}
-                mentorName={
-                  selectedCareerProfession === "astronaut"
-                    ? "Commander Orion"
-                    : selectedCareerProfession === "doctor"
-                      ? "Dr. Lyra"
-                      : selectedCareerProfession === "cyber_detective"
-                        ? "Detective Nyx"
-                        : selectedCareerProfession === "pilot"
-                          ? "Captain Nova"
-                          : "Mentor Ada"
-                }
-              />
             </div>
 
             {answeredCareerDecisionCount > 0 && (
@@ -8074,23 +8040,23 @@ const handleResetCareerMission = () => {
           <div className="mb-3 grid gap-2 rounded-2xl border border-orange-200/24 bg-white/62 p-3 text-xs text-sky-800/80 md:grid-cols-3">
             <div>
               <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Model" : "Model"}: </span>
-              {careerAiNarrativeMeta.model || "-"}
+              {careerAiNarrativeMeta?.model || "-"}
             </div>
             <div>
               <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Generated" : "Üretim"}: </span>
-              {careerAiNarrativeMeta.generatedAt
-                ? new Date(careerAiNarrativeMeta.generatedAt).toLocaleString()
+              {careerAiNarrativeMeta?.generatedAt
+                ? new Date(careerAiNarrativeMeta?.generatedAt as string).toLocaleString()
                 : "-"}
             </div>
             <div>
               <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Tokens" : "Token"}: </span>
-              {careerAiNarrativeMeta.usage?.total_tokens ??
-                careerAiNarrativeMeta.usage?.totalTokens ??
+              {careerAiNarrativeMeta?.usage?.total_tokens ??
+                careerAiNarrativeMeta?.usage?.totalTokens ??
                 "-"}
             </div>
-            {careerAiNarrativeMeta.safetyNote ? (
+            {careerAiNarrativeMeta?.safetyNote ? (
               <div className="md:col-span-3 rounded-xl border border-sky-200 bg-white/74 px-3 py-2">
-                {careerAiNarrativeMeta.safetyNote}
+                {careerAiNarrativeMeta?.safetyNote}
               </div>
             ) : null}
           </div>

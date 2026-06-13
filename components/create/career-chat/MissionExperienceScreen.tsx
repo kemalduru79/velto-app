@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import MissionHelmetOverlay from "./MissionHelmetOverlay";
 import MissionCrewRelay from "./MissionCrewRelay";
 import MissionCommandInput from "./MissionCommandInput";
 import MissionTransmissionSurface from "./MissionTransmissionSurface";
@@ -544,7 +543,7 @@ function ProfessionPOVOverlay({ professionKey, isTurkish, isImmersive = false }:
       <div className="absolute left-[12%] top-[22%] h-px w-[18%] bg-gradient-to-r from-cyan-200/40 to-transparent" />
       <div className="absolute right-[12%] top-[22%] h-px w-[18%] bg-gradient-to-l from-cyan-200/40 to-transparent" />
       <div className="absolute bottom-0 left-1/2 h-36 w-[78%] -translate-x-1/2 rounded-t-[3.2rem] border-x border-t border-cyan-100/20 bg-gradient-to-t from-cyan-950/90 via-cyan-950/50 to-transparent backdrop-blur-sm">
-        <div className="mx-auto mt-5 flex w-[72%] items-center justify-between text-[9px] font-semibold uppercase tracking-[0.30em] text-cyan-100/58">
+        <div className="mx-auto mt-5 flex w-[72%] items-center justify-between text-[9px] font-semibold uppercase tracking-[0.30em] text-cyan-100/80">
           <span>{isTurkish ? "OKSİJEN" : "OXYGEN"}</span>
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-100/70 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
           <span>{isTurkish ? "KASK RÖLESİ" : "HELMET RELAY"}</span>
@@ -879,6 +878,381 @@ function getProfessionMissionSkin(
 
 
 
+
+function MissionLiveAtmosphereEngine({
+  isTurkish,
+  childTurnCount,
+  compact = false,
+}: {
+  isTurkish: boolean;
+  childTurnCount: number;
+  compact?: boolean;
+}) {
+  const telemetryRows = isTurkish
+    ? [
+        { label: "O₂", value: `${96 - (childTurnCount % 3)}%`, tone: "bg-emerald-300" },
+        { label: "COM", value: "NET", tone: "bg-cyan-200" },
+        { label: "NAV", value: "LOCK", tone: "bg-sky-300" },
+      ]
+    : [
+        { label: "O₂", value: `${96 - (childTurnCount % 3)}%`, tone: "bg-emerald-300" },
+        { label: "COM", value: "NET", tone: "bg-cyan-200" },
+        { label: "NAV", value: "LOCK", tone: "bg-sky-300" },
+      ];
+
+  const sweepClass = compact ? "opacity-20" : "opacity-30";
+  const railClass = compact ? "hidden xl:block" : "hidden lg:block";
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[12] overflow-hidden rounded-[inherit]" data-velto-layer="live-runtime-atmosphere-engine-x8-phase4">
+      <div className={`absolute -left-[14%] top-[18%] h-[62%] w-[42%] rounded-full border border-cyan-200/12 ${sweepClass} shadow-[0_0_80px_rgba(34,211,238,0.16)]`} />
+      <div className={`absolute -right-[16%] bottom-[12%] h-[58%] w-[42%] rounded-full border border-cyan-200/10 ${sweepClass} shadow-[0_0_90px_rgba(14,165,233,0.16)]`} />
+      <div className="absolute left-1/2 top-1/2 h-[120%] w-px -translate-x-1/2 -translate-y-1/2 rotate-[64deg] bg-gradient-to-b from-transparent via-cyan-100/16 to-transparent motion-safe:animate-pulse" />
+      <div className="absolute left-1/2 top-1/2 h-[115%] w-px -translate-x-1/2 -translate-y-1/2 -rotate-[58deg] bg-gradient-to-b from-transparent via-cyan-100/10 to-transparent" />
+
+      <div className={`${railClass} absolute left-[4.5%] bottom-[18%] w-52 rounded-3xl border border-cyan-100/14 bg-slate-950/48 p-3 shadow-[0_0_42px_rgba(34,211,238,0.12)] backdrop-blur-md`}>
+        <div className="mb-3 flex items-center justify-between text-[0.56rem] font-semibold uppercase tracking-[0.24em] text-cyan-100/76">
+          <span>{isTurkish ? "Canlı telemetri" : "Live telemetry"}</span>
+          <span className="h-1.5 w-1.5 animate-ping rounded-full bg-cyan-200" />
+        </div>
+        <div className="space-y-2">
+          {telemetryRows.map((row, index) => (
+            <div key={row.label} className="grid grid-cols-[2rem_1fr_2.8rem] items-center gap-2">
+              <span className="text-[0.6rem] font-bold text-cyan-100/60">{row.label}</span>
+              <span className="h-1.5 overflow-hidden rounded-full bg-cyan-950/90">
+                <span
+                  className={`block h-full rounded-full ${row.tone} shadow-[0_0_16px_rgba(103,232,249,0.55)]`}
+                  style={{ width: `${86 - index * 9 + (childTurnCount % 2) * 4}%` }}
+                />
+              </span>
+              <span className="text-right text-[0.58rem] font-semibold text-slate-100/88">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`${railClass} absolute right-[4.5%] bottom-[18%] w-56 rounded-3xl border border-cyan-100/14 bg-slate-950/48 p-3 shadow-[0_0_42px_rgba(34,211,238,0.12)] backdrop-blur-md`}>
+        <div className="text-[0.56rem] font-semibold uppercase tracking-[0.24em] text-cyan-100/76">
+          {isTurkish ? "Sinyal dalga formu" : "Signal waveform"}
+        </div>
+        <div className="mt-4 flex h-12 items-end gap-1 overflow-hidden">
+          {Array.from({ length: 30 }).map((_, index) => (
+            <span
+              key={`atmos-wave-${index}`}
+              className="w-1 rounded-full bg-cyan-200/55 shadow-[0_0_12px_rgba(103,232,249,0.42)] motion-safe:animate-pulse"
+              style={{ height: `${10 + ((index * 11 + childTurnCount * 5) % 34)}px` }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="absolute left-1/2 top-[15%] hidden -translate-x-1/2 items-center gap-3 rounded-full border border-cyan-100/12 bg-slate-950/45 px-5 py-2 text-[0.56rem] font-semibold uppercase tracking-[0.24em] text-cyan-100/55 shadow-[0_0_32px_rgba(34,211,238,0.12)] backdrop-blur-md lg:flex">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+        <span>{isTurkish ? "Atmosfer motoru aktif" : "Atmosphere engine active"}</span>
+        <span className="h-3 w-px bg-cyan-100/14" />
+        <span>{isTurkish ? "HUD stabilize" : "HUD stabilized"}</span>
+      </div>
+    </div>
+  );
+}
+
+function MissionRuntimeActivityLayer({ isTurkish, childTurnCount }: { isTurkish: boolean; childTurnCount: number }) {
+  const tacticalEvents = isTurkish
+    ? [
+        "O₂ sensörleri senkronize ediliyor",
+        "Yedek okuma kanalı açık",
+        "Komut merkezi sakin sinyal bekliyor",
+        "Mürettebat kalp ritmi stabil",
+      ]
+    : [
+        "O₂ sensors synchronizing",
+        "Backup reading channel open",
+        "Mission Control awaiting calm signal",
+        "Crew heart-rate stable",
+      ];
+
+  const activeEvent = tacticalEvents[childTurnCount % tacticalEvents.length];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden" data-velto-layer="runtime-activity-engine-x8">
+      <div className="absolute left-[5%] top-[13%] hidden w-44 rounded-2xl border border-cyan-100/14 bg-slate-950/58 p-3 shadow-[0_0_30px_rgba(34,211,238,0.13)] backdrop-blur-md xl:block">
+        <div className="mb-2 flex items-center justify-between text-[0.56rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/80">
+          <span>{isTurkish ? "Taktik akış" : "Tactical feed"}</span>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+        </div>
+        <p className="text-[0.66rem] leading-4 text-slate-100/88">{activeEvent}</p>
+        <div className="mt-3 grid grid-cols-8 gap-1">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <span
+              key={`activity-left-${index}`}
+              className={`h-1 rounded-full ${index <= (childTurnCount % 6) + 1 ? "bg-cyan-200/80" : "bg-cyan-200/18"}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="absolute right-[5%] top-[14%] hidden w-48 rounded-2xl border border-cyan-100/14 bg-slate-950/58 p-3 shadow-[0_0_30px_rgba(34,211,238,0.13)] backdrop-blur-md xl:block">
+        <div className="text-[0.56rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/80">
+          {isTurkish ? "Yaşam desteği" : "Life support"}
+        </div>
+        <div className="mt-3 space-y-2">
+          {["O₂", "CAB", "COM"].map((label, index) => (
+            <div key={label} className="flex items-center gap-2">
+              <span className="w-8 text-[0.58rem] font-semibold text-cyan-100/80">{label}</span>
+              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-cyan-950/90">
+                <span
+                  className="block h-full rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.7)]"
+                  style={{ width: `${82 - index * 8 + (childTurnCount % 3) * 3}%` }}
+                />
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="absolute left-1/2 top-[10.5%] hidden -translate-x-1/2 items-center gap-3 rounded-full border border-cyan-100/12 bg-slate-950/46 px-5 py-2 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-cyan-100/60 shadow-[0_0_28px_rgba(34,211,238,0.12)] backdrop-blur-md lg:flex">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200" />
+        <span>{isTurkish ? "Canlı görev runtime" : "Live mission runtime"}</span>
+        <span className="h-3 w-px bg-cyan-100/14" />
+        <span>{isTurkish ? "Sinyal kilitli" : "Signal locked"}</span>
+      </div>
+
+      <div className="absolute bottom-[9.5%] left-1/2 hidden -translate-x-1/2 items-end gap-1 opacity-85 lg:flex">
+        {Array.from({ length: 38 }).map((_, index) => (
+          <span
+            key={`runtime-wave-${index}`}
+            className="w-0.5 rounded-full bg-cyan-200/60 shadow-[0_0_10px_rgba(103,232,249,0.45)] motion-safe:animate-pulse"
+            style={{ height: `${8 + ((index * 9 + childTurnCount * 4) % 26)}px` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MissionCockpitDensityFrame() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[11] overflow-hidden rounded-[inherit]" data-velto-layer="cockpit-density-frame-x8">
+      <div className="absolute left-[10%] right-[10%] top-[11%] h-px bg-gradient-to-r from-transparent via-cyan-200/30 to-transparent" />
+      <div className="absolute left-[10%] right-[10%] bottom-[11%] h-px bg-gradient-to-r from-transparent via-cyan-200/22 to-transparent" />
+      <div className="absolute left-[8%] top-[17%] h-[64%] w-px bg-gradient-to-b from-transparent via-cyan-200/20 to-transparent" />
+      <div className="absolute right-[8%] top-[17%] h-[64%] w-px bg-gradient-to-b from-transparent via-cyan-200/20 to-transparent" />
+      <div className="absolute left-1/2 top-[7%] h-8 w-[36%] -translate-x-1/2 rounded-b-[2rem] border-x border-b border-cyan-100/18 bg-cyan-200/5 shadow-[0_0_28px_rgba(34,211,238,0.12)]" />
+      <div className="absolute bottom-[6%] left-1/2 h-9 w-[42%] -translate-x-1/2 rounded-t-[2rem] border-x border-t border-cyan-100/14 bg-cyan-200/5 shadow-[0_0_28px_rgba(34,211,238,0.10)]" />
+      <div className="absolute left-[18%] top-[24%] h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.8)]" />
+      <div className="absolute right-[20%] bottom-[22%] h-1.5 w-1.5 animate-ping rounded-full bg-emerald-200/70 shadow-[0_0_18px_rgba(110,231,183,0.75)]" />
+    </div>
+  );
+}
+
+
+
+
+function MissionCrewPresenceLayer({
+  isTurkish,
+  mentorName,
+  activeMissionCharacter,
+}: {
+  isTurkish: boolean;
+  mentorName: string;
+  activeMissionCharacter: MissionCharacterView;
+}) {
+  const crewMembers = [
+    {
+      id: "mentor",
+      name: mentorName,
+      role: isTurkish ? "AI Görev Mentörü" : "AI Mission Mentor",
+      status: isTurkish ? "Canlı analiz" : "Live analysis",
+      initials: mentorName
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "AI",
+      tone: "from-cyan-200/34 via-sky-300/18 to-slate-950",
+      ring: "border-cyan-100/34 shadow-[0_0_34px_rgba(34,211,238,0.24)]",
+      portraitSrc: "/careerlab/crew/commander-orion.png",
+    },
+    {
+      id: "mission-character",
+      name: activeMissionCharacter.name,
+      role: activeMissionCharacter.role,
+      status: isTurkish ? "Saha kanalı" : "Field channel",
+      initials: activeMissionCharacter.name
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "CR",
+      tone: "from-emerald-200/30 via-cyan-300/14 to-slate-950",
+      ring: "border-emerald-100/30 shadow-[0_0_34px_rgba(110,231,183,0.18)]",
+      portraitSrc: "/careerlab/crew/maya-chen.png",
+    },
+    {
+      id: "systems",
+      name: isTurkish ? "Sistem Operatörü" : "Systems Operator",
+      role: isTurkish ? "Telemetri ve güvenlik" : "Telemetry and safety",
+      status: isTurkish ? "Sinyal temiz" : "Signal clear",
+      initials: "SO",
+      tone: "from-blue-200/25 via-cyan-300/12 to-slate-950",
+      ring: "border-blue-100/26 shadow-[0_0_30px_rgba(96,165,250,0.16)]",
+      portraitSrc: "/careerlab/crew/system-operator.png",
+    },
+  ];
+
+  return (
+    <div className="rounded-[1.65rem] border border-cyan-100/16 bg-slate-950/48 p-3 shadow-[inset_0_0_42px_rgba(8,145,178,0.14)] backdrop-blur-xl" data-velto-layer="crew-presence-layer-x8-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-100/82">
+          {isTurkish ? "Görev ekibi" : "Mission crew"}
+        </p>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200/18 bg-cyan-300/10 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.18em] text-cyan-100/78">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200" />
+          {isTurkish ? "Çevrimiçi" : "Online"}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {crewMembers.map((member, index) => (
+          <div
+            key={member.id}
+            className="group relative overflow-hidden rounded-2xl border border-cyan-100/12 bg-slate-950/72 p-2.5 transition hover:border-cyan-100/24 hover:bg-cyan-200/[0.07]"
+          >
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-cyan-200/50 shadow-[0_0_18px_rgba(103,232,249,0.45)]" />
+            <div className="flex items-center gap-3">
+              <div className={`relative h-[64px] w-[64px] shrink-0 overflow-hidden rounded-2xl border bg-slate-950 ${member.ring}`}>
+                <img
+                  src={member.portraitSrc}
+                  alt={member.name}
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.10),transparent_42%,rgba(34,211,238,0.10))]" />
+                <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border border-slate-950 bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.85)]" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-bold text-white/92">{member.name}</p>
+                <p className="mt-0.5 truncate text-[10px] text-slate-200/82">{member.role}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+                  <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-100/78">{member.status}</span>
+                </div>
+              </div>
+
+              <div className="hidden grid-cols-3 gap-0.5 opacity-70 xl:grid">
+                {Array.from({ length: 9 }).map((_, dotIndex) => (
+                  <span
+                    key={`${member.id}-dot-${dotIndex}`}
+                    className={`h-1 w-1 rounded-full ${dotIndex <= ((index + dotIndex) % 6) ? "bg-cyan-200/70" : "bg-cyan-200/16"}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MissionMentorPortraitBadge({ mentorName, isTurkish }: { mentorName: string; isTurkish: boolean }) {
+  const initials = mentorName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "AI";
+
+  return (
+    <div className="pointer-events-none absolute right-6 top-6 z-20 hidden w-40 rounded-[1.65rem] border border-cyan-100/18 bg-slate-950/58 p-3 shadow-[0_0_42px_rgba(34,211,238,0.18)] backdrop-blur-xl xl:block" data-velto-layer="mentor-portrait-badge-x8-3">
+      <div className="mx-auto h-[64px] w-[64px] overflow-hidden rounded-[1.4rem] border border-cyan-100/30 bg-slate-950 shadow-[0_0_26px_rgba(34,211,238,0.16)]">
+        <div className="relative h-full w-full">
+          <img
+            src="/careerlab/crew/commander-orion.png"
+            alt={mentorName}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        </div>
+      </div>
+      <p className="mt-3 truncate text-center text-[11px] font-bold text-white/90">{mentorName}</p>
+      <p className="mt-1 text-center text-[8px] font-semibold uppercase tracking-[0.20em] text-cyan-100/76">
+        {isTurkish ? "Mentör kanalı" : "Mentor channel"}
+      </p>
+    </div>
+  );
+}
+
+function MissionTacticalEventDeck({
+  isTurkish,
+  childTurnCount,
+  activeScenarioLabel,
+}: {
+  isTurkish: boolean;
+  childTurnCount: number;
+  activeScenarioLabel: string;
+}) {
+  const tacticalEvents = [
+    {
+      code: "O2",
+      label: isTurkish ? "Oksijen dalgalanması izleniyor" : "Oxygen fluctuation monitored",
+      value: childTurnCount > 0 ? "91%" : "92%",
+    },
+    {
+      code: "COMMS",
+      label: isTurkish ? "Komut kanalı kilitli" : "Command channel locked",
+      value: isTurkish ? "TEMİZ" : "CLEAR",
+    },
+    {
+      code: "CREW",
+      label: activeScenarioLabel,
+      value: isTurkish ? "AKTİF" : "ACTIVE",
+    },
+  ];
+
+  return (
+    <div className="rounded-[1.65rem] border border-cyan-100/16 bg-slate-950/46 p-3 shadow-[inset_0_0_38px_rgba(8,145,178,0.12)] backdrop-blur-xl" data-velto-layer="tactical-event-deck-x8-2">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.28em] text-cyan-100/82">
+          {isTurkish ? "Taktik olay akışı" : "Tactical event stream"}
+        </p>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/20 bg-emerald-300/10 px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
+          {isTurkish ? "Canlı" : "Live"}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {tacticalEvents.map((event, index) => (
+          <div
+            key={event.code}
+            className="relative overflow-hidden rounded-2xl border border-cyan-100/12 bg-slate-950/72 px-3 py-2"
+          >
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-cyan-200/60 shadow-[0_0_18px_rgba(103,232,249,0.55)]" />
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[8px] font-bold uppercase tracking-[0.24em] text-cyan-100/50">{event.code}</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-100/90">{event.label}</p>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-100/90">{event.value}</span>
+            </div>
+            <div
+              className="mt-2 h-1 rounded-full bg-cyan-950/80"
+              aria-hidden="true"
+            >
+              <div
+                className="h-full rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.55)]"
+                style={{ width: `${82 - index * 9}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MissionExperienceScreen({
   language,
   professionKey,
@@ -993,6 +1367,25 @@ export default function MissionExperienceScreen({
   const liveMentorText = streamingMentorText.trim();
   const mentorLines = splitLines(liveMentorText || latestMentorMessage?.text);
   const isLiveMentorStreaming = isSending && liveMentorText.length > 0;
+
+  const activeTransmissionIsCrew =
+    Boolean(latestCharacterMessage?.text) && childTurnCount > 0;
+
+  const activeTransmissionName = activeTransmissionIsCrew
+    ? activeMissionCharacter.name
+    : mentorName;
+
+  const activeTransmissionRole = activeTransmissionIsCrew
+    ? activeMissionCharacter.channel
+    : (isTurkish ? "Mentör kanalı" : "Mentor channel");
+
+  const activeTransmissionImageSrc = activeTransmissionIsCrew
+    ? "/careerlab/crew/maya-chen.png"
+    : "/careerlab/crew/commander-orion.png";
+
+  const activeTransmissionLines = activeTransmissionIsCrew
+    ? splitLines(latestCharacterMessage?.text)
+    : mentorLines;
   const missionSkin = useMemo(
     () => getProfessionMissionSkin(professionKey, isTurkish),
     [professionKey, isTurkish]
@@ -1059,6 +1452,7 @@ export default function MissionExperienceScreen({
       </div>
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <ProfessionPOVOverlay professionKey={professionKey} isTurkish={isTurkish} />
+      <MissionLiveAtmosphereEngine isTurkish={isTurkish} childTurnCount={childTurnCount} compact />
 
       {isImmersionMode ? (
         <div className={`fixed inset-0 z-[90] overflow-hidden text-white ${missionSkin.shellClass}`}>
@@ -1068,13 +1462,15 @@ export default function MissionExperienceScreen({
           <div className={`pointer-events-none absolute inset-0 ${viewportDecor.vignetteClass}`} />
           <div className="pointer-events-none absolute inset-0 opacity-[0.18] [background-image:linear-gradient(rgba(255,255,255,.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:38px_38px]" />
           <ProfessionPOVOverlay professionKey={professionKey} isTurkish={isTurkish} isImmersive />
-          <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_32%,rgba(15,23,42,0.10)_54%,rgba(0,0,0,0.84)_100%)]" />
-          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-[92vh] w-[88vw] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border-[18px] border-white/[0.055] shadow-[inset_0_0_120px_rgba(0,0,0,0.76),0_0_90px_rgba(34,211,238,0.12)] lg:border-[26px]" />
-          <div className="pointer-events-none absolute left-1/2 top-[7%] z-10 h-24 w-[58vw] -translate-x-1/2 rounded-[50%] bg-gradient-to-b from-white/15 via-cyan-100/6 to-transparent blur-md motion-safe:animate-pulse" />
-          <div className="pointer-events-none absolute inset-x-[10%] bottom-[6%] z-10 h-28 rounded-t-[50%] bg-gradient-to-t from-black/58 via-cyan-950/14 to-transparent blur-sm" />
-          <div className="pointer-events-none absolute inset-0 z-10 opacity-[0.12] [background-image:linear-gradient(rgba(125,211,252,.30)_1px,transparent_1px)] [background-size:100%_26px]" />
-          <div className="pointer-events-none absolute left-[8%] top-[18%] z-10 hidden h-2 w-28 rounded-full bg-cyan-100/22 shadow-[0_0_24px_rgba(103,232,249,0.45)] lg:block" />
-          <div className="pointer-events-none absolute right-[8%] top-[24%] z-10 hidden h-2 w-20 rounded-full bg-cyan-100/18 shadow-[0_0_18px_rgba(103,232,249,0.35)] lg:block" />
+          <MissionRuntimeActivityLayer isTurkish={isTurkish} childTurnCount={childTurnCount} />
+          <MissionLiveAtmosphereEngine isTurkish={isTurkish} childTurnCount={childTurnCount} />
+          
+          
+          
+          
+          
+          
+          
 
           <div className="relative z-30 flex min-h-screen flex-col p-3 lg:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -1093,20 +1489,20 @@ export default function MissionExperienceScreen({
               </button>
             </div>
 
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col justify-center">
-              <div className={`relative flex h-[clamp(660px,calc(100vh-6rem),940px)] w-full overflow-hidden border border-cyan-100/18 bg-slate-950/72 shadow-[0_0_110px_rgba(8,145,178,0.34)] backdrop-blur-2xl ${immersionViewportFrameClass}`}>
-                <div className="pointer-events-none absolute inset-0 rounded-[inherit] border-[clamp(18px,2.9vw,38px)] border-slate-950/68 shadow-[inset_0_0_170px_rgba(0,0,0,0.9)]" />
-                <div className="pointer-events-none absolute inset-[4.5%] rounded-[inherit] border border-cyan-100/16 shadow-[inset_0_0_86px_rgba(103,232,249,0.14)] motion-safe:animate-pulse" />
+            <div className="mx-auto flex w-full max-w-[1740px] flex-1 flex-col justify-center">
+              <div className={`relative flex h-[clamp(720px,calc(100vh-5.1rem),1000px)] w-full overflow-visible rounded-[2.2rem] border border-cyan-100/16 bg-slate-950/94 shadow-[0_0_64px_rgba(8,145,178,0.18)] backdrop-blur-2xl ${immersionViewportFrameClass}`}>
+                
+                
                 <div className="pointer-events-none absolute left-1/2 top-[8%] h-px w-[72%] -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-100/48 to-transparent" />
                 <div className="pointer-events-none absolute left-1/2 bottom-[9%] h-px w-[66%] -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-100/24 to-transparent" />
                 <div className="pointer-events-none absolute left-[7%] top-[18%] h-[62%] w-px bg-gradient-to-b from-transparent via-cyan-100/20 to-transparent" />
                 <div className="pointer-events-none absolute right-[7%] top-[18%] h-[62%] w-px bg-gradient-to-b from-transparent via-cyan-100/20 to-transparent" />
 
-                <div className="relative z-30 grid min-h-0 flex-1 gap-4 px-[clamp(78px,10vw,168px)] py-[clamp(42px,6vh,72px)] lg:grid-cols-[190px_minmax(0,1fr)_220px] xl:grid-cols-[210px_minmax(0,1fr)_246px]">
-                  <aside className="hidden min-h-0 flex-col justify-between overflow-hidden rounded-[2rem] border border-cyan-100/16 bg-cyan-950/22 p-3 shadow-[inset_0_0_42px_rgba(8,145,178,0.12)] backdrop-blur-xl lg:flex">
+                <div className="relative z-40 grid min-h-0 flex-1 gap-5 px-[clamp(28px,3.2vw,56px)] py-[clamp(26px,3.8vh,44px)] lg:grid-cols-[270px_minmax(0,1fr)_330px] xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+                  <aside className="hidden min-h-0 flex-col justify-between overflow-hidden rounded-[2rem] border border-cyan-100/16 bg-slate-950/92 p-4 shadow-[inset_0_0_42px_rgba(8,145,178,0.12)] backdrop-blur-xl lg:flex">
                     <div>
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/62">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/82">
                           {isTurkish ? "Görev aktarımı" : "Mission relay"}
                         </p>
                         <span className="rounded-full border border-cyan-200/22 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.22em] text-cyan-100/75">
@@ -1114,23 +1510,22 @@ export default function MissionExperienceScreen({
                         </span>
                       </div>
                       <h3 className="mt-3 text-sm font-semibold leading-6 text-white/92">{activeMissionTitle}</h3>
-                      <p className="mt-2 max-h-24 overflow-hidden text-xs leading-5 text-slate-300/70">{activeMissionBriefing}</p>
+                      <p className="mt-2 max-h-24 overflow-hidden text-xs leading-5 text-slate-100/88">{activeMissionBriefing}</p>
                     </div>
 
-                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/62">
+                    <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/86 p-4">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/82">
                         {isTurkish ? "Aktif operasyon" : "Active operation"}
                       </p>
                       <p className="mt-2 text-xs font-semibold leading-5 text-white/90">{activeStage.title}</p>
-                      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">
+                      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-100/80">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200" />
                         {isTurkish ? "Kanal açık" : "Channel open"}
                       </div>
                     </div>
                   </aside>
 
-                  <main className="relative flex min-h-0 flex-col overflow-hidden rounded-[3.1rem] border border-cyan-100/68 bg-[linear-gradient(145deg,rgba(1,8,18,0.98),rgba(8,47,73,0.92)_30%,rgba(14,116,144,0.62)_58%,rgba(2,6,23,0.98))] shadow-[inset_0_0_260px_rgba(8,145,178,0.62),0_0_230px_rgba(14,165,233,0.52)] backdrop-blur-2xl">
-                    <MissionHelmetOverlay viewportShape={professionSurface.viewportShape} />
+                  <main className="relative flex min-h-0 flex-col overflow-hidden rounded-[3.1rem] border border-cyan-100/68 bg-[linear-gradient(145deg,rgba(1,8,18,0.99),rgba(5,24,38,0.96)_34%,rgba(8,64,82,0.42)_58%,rgba(2,6,23,0.99))] shadow-[inset_0_0_110px_rgba(8,145,178,0.18),0_0_70px_rgba(14,165,233,0.16)] backdrop-blur-2xl">
                     <div className="pointer-events-none absolute inset-7 z-10 rounded-[2.65rem] opacity-90" data-velto-layer="cinematic-density-v1">
                     <div className="pointer-events-none absolute inset-0 z-[9] overflow-hidden rounded-[3rem]" data-velto-layer="cockpit-architecture-v2">
                       <div className="absolute left-[7%] top-[18%] h-[62%] w-px bg-gradient-to-b from-transparent via-cyan-200/22 to-transparent" />
@@ -1149,10 +1544,10 @@ export default function MissionExperienceScreen({
                     </div>
                     <div className="relative z-10 flex items-center justify-between gap-3 border-b border-cyan-100/14 px-5 py-3">
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/68">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/86">
                           {isTurkish ? "Komut merkezi bağlantısı" : "Command center link"}
                         </p>
-                        <p className="mt-1 text-xs text-slate-300/72">
+                        <p className="mt-1 text-xs text-slate-100/88">
                           {isLiveMentorStreaming
                             ? (isTurkish ? "Aktarım canlı akıyor" : "Transmission is streaming")
                             : (isTurkish ? "Sinyal temiz. Komut bekleniyor." : "Signal clear. Awaiting command.")}
@@ -1172,8 +1567,8 @@ export default function MissionExperienceScreen({
                       <div className="rounded-full border border-cyan-100/14 bg-cyan-300/6 px-3 py-1.5 text-right">{isTurkish ? "Sinyal kilitli" : "Signal lock"}</div>
                     </div>
 
-                    <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-center px-5 py-5 lg:px-6">
-                      <div className="relative overflow-hidden min-h-[250px] rounded-[2.35rem] border border-cyan-100/72 bg-[radial-gradient(circle_at_76%_56%,rgba(125,211,252,0.26),transparent_18%),radial-gradient(circle_at_66%_62%,rgba(59,130,246,0.20),transparent_24%),linear-gradient(135deg,rgba(4,18,33,0.96),rgba(8,47,73,0.82)_42%,rgba(2,6,23,0.96))] p-6 shadow-[inset_0_0_210px_rgba(103,232,249,0.34),0_0_175px_rgba(34,211,238,0.44)]">
+                    <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start px-5 py-4 lg:px-6">
+                      <div className="relative overflow-hidden min-h-[330px] rounded-[2.65rem] border border-cyan-100/72 bg-[radial-gradient(circle_at_76%_56%,rgba(125,211,252,0.26),transparent_18%),radial-gradient(circle_at_66%_62%,rgba(59,130,246,0.20),transparent_24%),linear-gradient(135deg,rgba(4,18,33,0.96),rgba(8,47,73,0.82)_42%,rgba(2,6,23,0.96))] p-6 shadow-[inset_0_0_210px_rgba(103,232,249,0.34),0_0_175px_rgba(34,211,238,0.44)]">
                         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_70%_38%,rgba(125,211,252,0.18),transparent_26%),linear-gradient(115deg,transparent_0%,rgba(103,232,249,0.08)_48%,transparent_56%)]" />
                         
                         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[2.35rem]" data-velto-layer="mission-image-surface-v1">
@@ -1221,36 +1616,60 @@ export default function MissionExperienceScreen({
                             ))}
                           </div>
                         </div>
-                        <p className="relative z-10 text-[10px] font-semibold uppercase tracking-[0.34em] text-cyan-100/68">
-                          {mentorName}
-                        </p>
-                        <div className="relative z-10 mt-5 min-h-[132px] space-y-2 pr-2 max-w-[62%] text-[1.02rem] font-semibold leading-7 tracking-[-0.01em] text-slate-50 lg:text-[1.18rem] lg:leading-8 xl:text-[1.32rem] xl:leading-[2.05rem]">
-                          {mentorLines.length > 0 ? mentorLines.slice(-3).map((line, index) => (
-                            <p key={`immersive-focus-${line}-${index}`}>
-                              {line}
-                              {isLiveMentorStreaming && index === Math.min(mentorLines.length, 3) - 1 ? (
-                                <span className="ml-1 inline-block h-6 w-2 translate-y-1 animate-pulse rounded-sm bg-cyan-200/90 shadow-[0_0_18px_rgba(103,232,249,0.75)]" />
-                              ) : null}
+                        <div className="relative z-10 mt-3 grid min-h-[148px] grid-cols-[104px_minmax(0,1fr)] gap-4 rounded-[1.7rem] border border-cyan-100/16 bg-slate-950/52 p-4 shadow-[inset_0_0_34px_rgba(8,145,178,0.10)]">
+                          <div className="flex flex-col items-center">
+                            <div className="relative h-[88px] w-[88px] overflow-hidden rounded-2xl border border-cyan-100/26 bg-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
+                              <img
+                                src={activeTransmissionImageSrc}
+                                alt={activeTransmissionName}
+                                className="h-full w-full object-cover"
+                                draggable={false}
+                              />
+                              <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border border-slate-950 bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.85)]" />
+                            </div>
+                            <p className="mt-2 max-w-[96px] truncate text-center text-[11px] font-bold text-white/90">
+                              {activeTransmissionName}
                             </p>
-                          )) : (
-                            <p>{isTurkish ? "Kanal açık. İlk sakin sinyalini bekliyorum." : "Channel open. I am waiting for your first calm signal."}</p>
-                          )}
+                            <p className="mt-1 text-center text-[8px] font-semibold uppercase tracking-[0.16em] text-cyan-100/62">
+                              {activeTransmissionRole}
+                            </p>
+                          </div>
+
+                          <div className="min-w-0 rounded-[1.35rem] border border-cyan-100/12 bg-slate-950/62 px-4 py-3">
+                            <p className="text-[8px] font-semibold uppercase tracking-[0.2em] text-cyan-100/62">
+                              {activeTransmissionIsCrew
+                                ? (isTurkish ? "Yaşam destek kanalı" : "Life-support channel")
+                                : (isTurkish ? "Komut kanalı" : "Command channel")}
+                            </p>
+                            <div className="mt-3 max-h-[118px] space-y-1.5 overflow-hidden text-[15px] font-medium leading-6 text-white/92 lg:text-[16px]">
+                              {activeTransmissionLines.length > 0 ? activeTransmissionLines.slice(-3).map((line, index) => (
+                                <p key={`immersive-focus-${line}-${index}`}>
+                                  {line}
+                                  {isLiveMentorStreaming && !activeTransmissionIsCrew && index === Math.min(activeTransmissionLines.length, 3) - 1 ? (
+                                    <span className="ml-1 inline-block h-5 w-1.5 translate-y-1 animate-pulse rounded-sm bg-cyan-200/90 shadow-[0_0_14px_rgba(103,232,249,0.65)]" />
+                                  ) : null}
+                                </p>
+                              )) : (
+                                <p>{isTurkish ? "Kanal açık. İlk sakin sinyalini bekliyorum." : "Channel open. I am waiting for your first calm signal."}</p>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-[1.9rem] border border-cyan-100/26 bg-cyan-950/34 p-4 shadow-[inset_0_0_58px_rgba(8,145,178,0.18),0_0_36px_rgba(14,165,233,0.10)]">
+                      <div className="mt-3 rounded-[1.65rem] border border-cyan-100/26 bg-slate-950/86 p-4 shadow-[inset_0_0_58px_rgba(8,145,178,0.18),0_0_36px_rgba(14,165,233,0.10)]">
                         <div className="mb-3 flex items-center gap-2">
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(103,232,249,0.75)]" />
                           <span className="h-px flex-1 bg-gradient-to-r from-cyan-100/35 to-transparent" />
                         </div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/64">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100/84">
                           {isTurkish ? "Şu anki karar penceresi" : "Current decision window"}
                         </p>
                         <p className="mt-2 text-sm font-semibold leading-6 text-white/94 lg:text-base lg:leading-7 xl:text-lg">{activeStage.thinkingQuestion}</p>
                       </div>
                     </div>
 
-                    <div className="relative z-10 border-t border-cyan-100/18 bg-[linear-gradient(180deg,rgba(2,6,23,0.82),rgba(8,47,73,0.36))] p-4">
+                    <div className="relative z-30 border-t border-cyan-100/18 bg-slate-950/92 p-4">
                       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/45 to-transparent" />
                       <div className="relative rounded-[2rem] border border-cyan-100/72 bg-slate-950/98 p-2 shadow-[inset_0_0_82px_rgba(8,145,178,0.36),0_0_92px_rgba(14,165,233,0.38)]">
                         <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/55 to-transparent" />
@@ -1264,7 +1683,7 @@ export default function MissionExperienceScreen({
                         }}
                         rows={1}
                         placeholder={immersionCommandPlaceholder}
-                        className={`min-h-[58px] w-full resize-none rounded-[1.5rem] border border-cyan-100/18 bg-transparent px-4 py-3 pr-36 text-sm leading-6 text-white outline-none transition placeholder:text-slate-400 focus:ring-4 ${missionSkin.inputFocusClass}`}
+                        className={`min-h-[58px] w-full resize-none rounded-[1.5rem] border border-cyan-100/18 bg-transparent px-4 py-3 pr-36 text-sm leading-6 text-white outline-none transition placeholder:text-slate-300 focus:ring-4 ${missionSkin.inputFocusClass}`}
                         />
                         <button
                           type="button"
@@ -1280,7 +1699,7 @@ export default function MissionExperienceScreen({
                         </button>
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-3">
-                        <p className="hidden text-xs text-slate-400 sm:block">
+                        <p className="hidden text-xs text-slate-300 sm:block">
                           {isTurkish ? "Sinyalin doğrudan canlı görev kanalına gider." : "Your signal goes directly to the live mission channel."}
                         </p>
 
@@ -1288,13 +1707,25 @@ export default function MissionExperienceScreen({
                     </div>
                   </main>
 
-                  <MissionCrewRelay
-                    isTurkish={isTurkish}
-                    characterChannel={activeMissionCharacter.channel}
-                    characterName={activeMissionCharacter.name}
-                    characterMessage={latestCharacterMessage?.text ?? activeMissionCharacter.openingLine}
-                    latestChildMessage={latestChildMessage?.text}
-                  />
+                  <aside className="hidden min-h-0 flex-col gap-3 overflow-hidden lg:flex">
+                    <MissionCrewPresenceLayer
+                      isTurkish={isTurkish}
+                      mentorName={mentorName}
+                      activeMissionCharacter={activeMissionCharacter}
+                    />
+                    <MissionCrewRelay
+                      isTurkish={isTurkish}
+                      characterChannel={activeMissionCharacter.channel}
+                      characterName={activeMissionCharacter.name}
+                      characterMessage={latestCharacterMessage?.text ?? activeMissionCharacter.openingLine}
+                      latestChildMessage={latestChildMessage?.text}
+                    />
+                    <MissionTacticalEventDeck
+                      isTurkish={isTurkish}
+                      childTurnCount={childTurnCount}
+                      activeScenarioLabel={activeScenario.signalLabel}
+                    />
+                  </aside>
                 </div>
               </div>
             </div>
@@ -1313,7 +1744,7 @@ export default function MissionExperienceScreen({
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white lg:text-3xl">
                   {activeMissionTitle}
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-50/65">
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-100/86">
                   {isTurkish
                     ? "Görev sen gelmeden başlamıştı. Komut merkezi şimdi seni canlı kanala aldı."
                     : "The mission started before you arrived. Command Center has now pulled you into the live channel."}
@@ -1474,7 +1905,7 @@ export default function MissionExperienceScreen({
 
           {showMissionIntel ? (
             <div className="rounded-[1.5rem] border border-white/10 bg-slate-900/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-300">
                 {isTurkish ? "Alan Raporu" : "Field Report"}
               </p>
               <h3 className="mt-2 font-semibold text-white">{activeKnowledgeCard?.title}</h3>
@@ -1489,12 +1920,12 @@ export default function MissionExperienceScreen({
         </aside>
       
                   <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-5 rounded-full border border-cyan-100/12 bg-slate-950/64 px-7 py-2.5 shadow-[0_0_36px_rgba(14,165,233,0.16)] backdrop-blur-md" data-velto-layer="bottom-mission-indicators-v1">
-                    <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-cyan-100/62">
+                    <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-cyan-100/82">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-200" />
                       POV Active
                     </div>
                     <div className="h-4 w-px bg-cyan-100/12" />
-                    <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-cyan-100/62">
+                    <div className="flex items-center gap-2 text-[0.62rem] uppercase tracking-[0.22em] text-cyan-100/82">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
                       Live Relay
                     </div>
