@@ -7,7 +7,6 @@ import { useWorldState } from "@/components/create/WorldContext";
 const worldIds = {
   storyverse: "storyverse-workspace",
   creatorlab: "creatorlab-workspace",
-  careerlab: "careerlab-workspace",
 } as const;
 
 export default function WorldFocusRouter() {
@@ -15,15 +14,11 @@ export default function WorldFocusRouter() {
   const previousWorldRef = useRef(activeWorld);
 
   useEffect(() => {
-    if (previousWorldRef.current === activeWorld) {
-      return;
-    }
+    if (previousWorldRef.current === activeWorld) return;
 
     previousWorldRef.current = activeWorld;
 
-    const targetId = worldIds[activeWorld];
-    const target = document.getElementById(targetId);
-
+    const target = document.getElementById(worldIds[activeWorld]);
     if (!target) return;
 
     target.scrollIntoView({

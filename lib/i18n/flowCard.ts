@@ -31,77 +31,22 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
     },
     flows: {
       storyverse: {
-        title: "Storyverse Lab",
+        title: "Storyverse",
         shortTitle: "Storyverse",
-        subtitle: "AI çizgi film ve hikâye üretimi",
+        subtitle: "Çocuk güvenli AI hikâye ve içerik üretimi",
         description:
-          "Çocuk kendi karakterini, dünyasını ve hikâyesini tasarlar; mevcut üretim motoru ile sahne, görsel, ses ve video çıktısına ilerler.",
-        outputs: [
-          "Çizgi film",
-          "Karakter kartı",
-          "Sahne görselleri",
-          "Seslendirme",
-        ],
+          "8-18 yaş aralığı için güvenli, kontrollü ve export edilebilir AI hikâye üretim ortamı. Karakter, sahne, görsel, seslendirme ve video çıktısına ilerler.",
+        outputs: ["Hikâye", "Sahne görselleri", "Seslendirme", "Export edilebilir video"],
         ctaLabel: "Storyverse ile başla",
       },
-      career_lab: {
-        title: "AI Career Lab",
-        shortTitle: "Career Lab",
-        subtitle: "Interactive profession simulation",
-        description:
-          "Çocuk Astronot, Doktor, Pilot, AI Engineer veya Cyber Detective rolünü seçer; güvenli ve kontrollü görev simülasyonunda kararlar verir.",
-        outputs: ["Deneyim raporu", "Kariyer kartı", "Karar haritası"],
-        ctaLabel: "Career Lab’i aç",
-      },
-      interactive_quest: {
-        title: "Interactive Quest",
-        shortTitle: "Quest",
-        subtitle: "Dallanan hikâye ve seçimli görev",
-        description:
-          "AI hikâyeyi başlatır; çocuk seçim yapar, hikâye dallanır ve kişisel görev haritası oluşur.",
-        outputs: ["Kişisel hikâye", "Quest haritası", "İpucu kartları"],
-        ctaLabel: "Pilot akışı aç",
-      },
-      ai_character: {
-        title: "Build Your AI Character",
-        shortTitle: "AI Character",
-        subtitle: "Kişisel AI karakter tasarımı",
-        description:
-          "Çocuk karakterini oluşturur, kişilik verir, ses seçer ve güvenli sınırlarla ilk etkileşim deneyimini yaşar.",
-        outputs: [
-          "AI karakter profili",
-          "Avatar",
-          "Sesli tanıtım",
-          "Karakter kartı",
-        ],
-        ctaLabel: "Yakında",
-      },
-      thinking_lab: {
-        title: "AI Thinking Lab",
-        shortTitle: "Thinking Lab",
-        subtitle: "Problem çözme ve düşünme becerisi",
-        description:
-          "Çocuk problem çözer, alternatif üretir, ipuçları alır ve düşünme sürecini görünür hale getiren çıktı alır.",
-        outputs: ["Düşünme raporu", "Worksheet", "İpucu sesleri"],
-        ctaLabel: "Yakında",
-      },
       creator_lab: {
-        title: "Content Creator Lab",
-        shortTitle: "Creator Lab",
-        subtitle: "YouTube / Shorts odaklı içerik üretimi",
+        title: "CreatorLab",
+        shortTitle: "CreatorLab",
+        subtitle: "Profesyonel AI içerik motoru",
         description:
-          "Kısa video konsepti, senaryo, görsel paket, voice-over ve publish-ready çıktı üretimi için ürünleşmiş akış.",
+          "18+ içerik üreticileri için sosyal medya konsepti, script, thumbnail, voice-over, imaj/video üretimi ve publish-ready paket hazırlayan ürünleşmiş AI studio.",
         outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-        ctaLabel: "Creator Lab ile başla",
-      },
-      maker_hybrid: {
-        title: "AI + Maker Hybrid",
-        shortTitle: "Maker Hybrid",
-        subtitle: "AI tasarımından fiziksel üretime",
-        description:
-          "AI ile tasarlanan fikri Maker Zone’da fiziksel çıktıya, VR Zone’da deneyimsel sunuma bağlayan hibrit ürün akışı.",
-        outputs: ["Maker planı", "Build card", "Mockup", "Demo klip"],
-        ctaLabel: "Yakında",
+        ctaLabel: "CreatorLab’i aç",
       },
     },
   },
@@ -119,77 +64,22 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
     },
     flows: {
       storyverse: {
-        title: "Storyverse Lab",
+        title: "Storyverse",
         shortTitle: "Storyverse",
-        subtitle: "AI cartoon and story generation",
+        subtitle: "Child-safe AI story and content creation",
         description:
-          "The child designs their own character, world, and story, then moves through the existing production engine to generate scenes, visuals, voice, and video.",
-        outputs: [
-          "Cartoon video",
-          "Character card",
-          "Scene visuals",
-          "Voice-over",
-        ],
-        ctaLabel: "Start with Storyverse",
-      },
-      career_lab: {
-        title: "AI Career Lab",
-        shortTitle: "Career Lab",
-        subtitle: "Interactive profession simulation",
-        description:
-          "The child chooses Astronaut, Doctor, Pilot, AI Engineer, or Cyber Detective and makes decisions inside a safe guided mission simulation.",
-        outputs: ["Experience report", "Career card", "Decision map"],
-        ctaLabel: "Open Career Lab",
-      },
-      interactive_quest: {
-        title: "Interactive Quest",
-        shortTitle: "Quest",
-        subtitle: "Branching story and choice-based mission",
-        description:
-          "AI starts the story; the child makes choices, the story branches, and a personal quest map is created.",
-        outputs: ["Personal story", "Quest map", "Hint cards"],
-        ctaLabel: "Open pilot flow",
-      },
-      ai_character: {
-        title: "Build Your AI Character",
-        shortTitle: "AI Character",
-        subtitle: "Personal AI character design",
-        description:
-          "The child creates a character, defines its personality, selects a voice, and experiences a first interaction within safe boundaries.",
-        outputs: [
-          "AI character profile",
-          "Avatar",
-          "Voice intro",
-          "Character card",
-        ],
-        ctaLabel: "Coming soon",
-      },
-      thinking_lab: {
-        title: "AI Thinking Lab",
-        shortTitle: "Thinking Lab",
-        subtitle: "Problem solving and thinking skills",
-        description:
-          "The child solves problems, generates alternatives, receives hints, and gets an output that makes the thinking process visible.",
-        outputs: ["Thinking report", "Worksheet", "Hint audio"],
-        ctaLabel: "Coming soon",
+          "A safe, controlled and exportable AI storytelling environment for ages 8-18. It supports characters, scenes, visuals, voice-over and video outputs.",
+        outputs: ["Story", "Scene visuals", "Voice-over", "Exportable video"],
+        ctaLabel: "Start Storyverse",
       },
       creator_lab: {
-        title: "Content Creator Lab",
-        shortTitle: "Creator Lab",
-        subtitle: "YouTube / Shorts-focused content generation",
+        title: "CreatorLab",
+        shortTitle: "CreatorLab",
+        subtitle: "Professional AI content engine",
         description:
-          "A productized flow for short video concepts, scripts, visual packages, voice-over, and publish-ready outputs.",
+          "A productized AI studio for 18+ creators, built for social media concepts, scripts, thumbnails, voice-over, image/video generation and publish-ready packages.",
         outputs: ["Short video", "Thumbnail", "Caption", "Script"],
-        ctaLabel: "Start Creator Lab",
-      },
-      maker_hybrid: {
-        title: "AI + Maker Hybrid",
-        shortTitle: "Maker Hybrid",
-        subtitle: "From AI design to physical production",
-        description:
-          "A hybrid product flow connecting AI-generated ideas to physical outputs in the Maker Zone and experiential presentation in the VR Zone.",
-        outputs: ["Maker plan", "Build card", "Mockup", "Demo clip"],
-        ctaLabel: "Coming soon",
+        ctaLabel: "Open CreatorLab",
       },
     },
   },

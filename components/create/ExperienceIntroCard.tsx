@@ -4,8 +4,6 @@
 
 // X11.7 IntroCard Localization Consistency: internal labels follow selected TR/EN UI language.
 
-// X11.5A World Identity Intro Polish: stronger emotional distinction for Storyverse, Creator Lab and Career Lab intros.
-
 // X.7.25 Emotional CTA Polish: warmer, clearer premium CTA hierarchy.
 // X.7.26 Mobile & Tablet Cohesion Polish: responsive card and CTA spacing refinement.
 // X.7.27 Cinematic Immersion Pass: premium visual depth and cinematic CTA feel.
@@ -25,7 +23,7 @@ type ExperienceIntroCardProps = {
   eyebrow: string;
   title: string;
   description: string;
-  tone: "storyverse" | "creator" | "career";
+  tone: "storyverse" | "creator";
   stage: "Active Product" | "Pilot Experience";
   duration: string;
   ageRange: string;
@@ -38,7 +36,6 @@ type ExperienceIntroCardProps = {
 const worldTargetIds: Record<ActiveWorld, string> = {
   storyverse: "storyverse-workspace",
   creatorlab: "creatorlab-workspace",
-  careerlab: "careerlab-workspace",
 };
 
 const toneStyles = {
@@ -67,19 +64,6 @@ const toneStyles = {
     label: "text-rose-800 bg-rose-50 border-rose-200",
     badge: "text-slate-700 bg-white border-slate-200",
     accent: "bg-rose-500",
-  },
-  career: {
-    active:
-      "border-teal-300 bg-gradient-to-br from-emerald-50 via-cyan-50 to-lime-50 shadow-[0_28px_86px_rgba(20,184,166,0.14)]",
-    passive:
-      "border-teal-100/70 bg-white/72 shadow-[0_12px_38px_rgba(20,184,166,0.06)]",
-    button:
-      "border-teal-500 bg-gradient-to-r from-teal-600 to-emerald-600 text-white hover:from-teal-700 hover:to-emerald-700",
-    softButton:
-      "border-teal-200 bg-white text-teal-800 hover:border-teal-300 hover:bg-teal-50",
-    label: "text-teal-800 bg-teal-50 border-teal-200",
-    badge: "text-slate-700 bg-white border-slate-200",
-    accent: "bg-teal-500",
   },
 } as const;
 
@@ -173,9 +157,7 @@ export default function ExperienceIntroCard({
                 <span>
                   {tone === "storyverse"
                     ? (isEnglish ? "Story Adventure" : "Hikâye Macerası")
-                    : tone === "creator"
-                      ? (isEnglish ? "Creator Path" : "Creator Yolu")
-                      : (isEnglish ? "Mission Path" : "Görev Yolu")}
+                    : (isEnglish ? "Creator Path" : "Creator Yolu")}
                 </span>
               </div>
 

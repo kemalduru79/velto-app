@@ -8,10 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type ActiveWorld =
-  | "storyverse"
-  | "creatorlab"
-  | "careerlab";
+export type ActiveWorld = "storyverse" | "creatorlab";
 
 type WorldContextType = {
   activeWorld: ActiveWorld;
@@ -20,35 +17,20 @@ type WorldContextType = {
 
 const fallbackWorldContext: WorldContextType = {
   activeWorld: "storyverse",
-  setActiveWorld: () => {
-    // Runtime-safe fallback until CreatePage is wrapped with WorldProvider.
-  },
+  setActiveWorld: () => {},
 };
 
-const WorldContext =
-  createContext<WorldContextType | null>(null);
+const WorldContext = createContext<WorldContextType | null>(null);
 
-export function WorldProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const [activeWorld, setActiveWorld] =
-    useState<ActiveWorld>("storyverse");
+export function WorldProvider({ children }: { children: ReactNode }) {
+  const [activeWorld, setActiveWorld] = useState<ActiveWorld>("storyverse");
 
   const value = useMemo(
-    () => ({
-      activeWorld,
-      setActiveWorld,
-    }),
+    () => ({ activeWorld, setActiveWorld }),
     [activeWorld],
   );
 
-  return (
-    <WorldContext.Provider value={value}>
-      {children}
-    </WorldContext.Provider>
-  );
+  return <WorldContext.Provider value={value}>{children}</WorldContext.Provider>;
 }
 
 export function useWorldState() {

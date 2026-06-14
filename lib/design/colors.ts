@@ -5,7 +5,4 @@ export const colors = {
   creator: {
     primary: "from-pink-500/20 to-orange-500/20",
   },
-  career: {
-    primary: "from-cyan-500/20 to-blue-500/20",
-  },
 } as const;

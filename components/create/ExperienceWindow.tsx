@@ -34,14 +34,6 @@ const worldThemes = {
     glow: "bg-rose-50/[0.025]",
     alignment: "items-center text-center",
   },
-  careerlab: {
-    label: "Career Lab",
-    atmosphere:
-      "A guided mission environment for discovering future professions.",
-    tone: "border-teal-200/14 bg-[#091717]",
-    glow: "bg-teal-50/[0.025]",
-    alignment: "items-end text-right",
-  },
 } as const;
 
 export default function ExperienceWindow({

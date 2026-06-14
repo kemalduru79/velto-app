@@ -34,17 +34,6 @@ const worldThemes = {
     label: "Creator Lab",
     ribbon: "Creator playground",
   },
-  careerlab: {
-    background:
-      "from-[#e5fff8] via-[#f7fffc] to-[#ffffff]",
-    accent: "text-teal-700",
-    border: "border-teal-200/80",
-    glow: "bg-teal-100/50",
-    button: "bg-teal-500 text-white hover:bg-teal-600",
-    emoji: "🚀",
-    label: "Career Lab",
-    ribbon: "Mission discovery",
-  },
 } as const;
 
 export default function WorldShell({
