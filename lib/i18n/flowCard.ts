@@ -33,19 +33,19 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
       storyverse: {
         title: "Storyverse",
         shortTitle: "Storyverse",
-        subtitle: "Çocuk güvenli AI hikâye ve içerik üretimi",
+        subtitle: "8-18 yaş için güvenli AI hikâye üretimi",
         description:
-          "8-18 yaş aralığı için güvenli, kontrollü ve export edilebilir AI hikâye üretim ortamı. Karakter, sahne, görsel, seslendirme ve video çıktısına ilerler.",
-        outputs: ["Hikâye", "Sahne görselleri", "Seslendirme", "Export edilebilir video"],
+          "Çocuklar ve gençler için güvenli, kontrollü ve premium bir üretim alanı. Karakter, sahne, görsel, seslendirme ve güvenli export çıktısına ilerler.",
+        outputs: ["Hikâye", "Sahne görselleri", "Seslendirme", "Güvenli export"],
         ctaLabel: "Storyverse ile başla",
       },
       creator_lab: {
         title: "CreatorLab",
         shortTitle: "CreatorLab",
-        subtitle: "Profesyonel AI içerik motoru",
+        subtitle: "AI destekli sosyal içerik işletim sistemi",
         description:
-          "18+ içerik üreticileri için sosyal medya konsepti, script, thumbnail, voice-over, imaj/video üretimi ve publish-ready paket hazırlayan ürünleşmiş AI studio.",
-        outputs: ["Short video", "Thumbnail", "Caption", "Script"],
+          "18+ creator’lar için fikirden yayına uzanan profesyonel üretim motoru. Script, hook, thumbnail, voice-over, imaj/video sahneleri ve publish-ready paket üretir.",
+        outputs: ["Long-form", "Shorts/Reels", "Thumbnail", "Metadata"],
         ctaLabel: "CreatorLab’i aç",
       },
     },
@@ -66,19 +66,19 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
       storyverse: {
         title: "Storyverse",
         shortTitle: "Storyverse",
-        subtitle: "Child-safe AI story and content creation",
+        subtitle: "Safe AI storytelling for ages 8-18",
         description:
-          "A safe, controlled and exportable AI storytelling environment for ages 8-18. It supports characters, scenes, visuals, voice-over and video outputs.",
-        outputs: ["Story", "Scene visuals", "Voice-over", "Exportable video"],
+          "A premium, controlled creation space for children and teenagers. It supports characters, scenes, visuals, voice-over and safe export outputs.",
+        outputs: ["Story", "Scene visuals", "Voice-over", "Safe export"],
         ctaLabel: "Start Storyverse",
       },
       creator_lab: {
         title: "CreatorLab",
         shortTitle: "CreatorLab",
-        subtitle: "Professional AI content engine",
+        subtitle: "AI-powered social content operating system",
         description:
-          "A productized AI studio for 18+ creators, built for social media concepts, scripts, thumbnails, voice-over, image/video generation and publish-ready packages.",
-        outputs: ["Short video", "Thumbnail", "Caption", "Script"],
+          "A professional production engine for 18+ creators, built for scripts, hooks, thumbnails, voice-over, image/video scenes and publish-ready packages.",
+        outputs: ["Long-form", "Shorts/Reels", "Thumbnail", "Metadata"],
         ctaLabel: "Open CreatorLab",
       },
     },

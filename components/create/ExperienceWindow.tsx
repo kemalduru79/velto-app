@@ -21,9 +21,9 @@ const worldThemes = {
   storyverse: {
     label: "Storyverse",
     atmosphere:
-      "A cinematic imagination space for stories, scenes and emotional worlds.",
-    tone: "border-sky-200/14 bg-[#08131d]",
-    glow: "bg-sky-50/[0.025]",
+      "A calm, child-safe story studio for guided ideas, consistent characters, cinematic scenes and controlled export outputs.",
+    tone: "border-cyan-200/14 bg-[#071421] shadow-[0_34px_120px_rgba(2,6,23,0.52)]",
+    glow: "bg-cyan-300/[0.055]",
     alignment: "items-start text-left",
   },
   creatorlab: {

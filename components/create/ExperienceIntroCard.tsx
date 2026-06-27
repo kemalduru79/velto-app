@@ -1,16 +1,6 @@
 "use client";
 
-// X11.8 IntroCard Microcopy Polish: refines shared child-facing intro labels.
-
-// X11.7 IntroCard Localization Consistency: internal labels follow selected TR/EN UI language.
-
-// X.7.25 Emotional CTA Polish: warmer, clearer premium CTA hierarchy.
-// X.7.26 Mobile & Tablet Cohesion Polish: responsive card and CTA spacing refinement.
-// X.7.27 Cinematic Immersion Pass: premium visual depth and cinematic CTA feel.
-// X.7.28 Section Cleanup & Simplification: cleaner intro density and calmer hierarchy.
-// X.7.29 Final QA & X7 Closure: final intro-card readability and consistency polish.
-// X.8.1 Cognitive Load Reduction Pass: simplified onboarding copy and reduced metadata density.
-// X.8.2 Single Action Focus Pass: primary action emphasized and secondary choices softened.
+// X12.1 Premium UI Foundation: shared intro cards now separate Storyverse calm safety from CreatorLab studio positioning.
 
 import { useState } from "react";
 
@@ -41,29 +31,39 @@ const worldTargetIds: Record<ActiveWorld, string> = {
 const toneStyles = {
   storyverse: {
     active:
-      "border-sky-300 bg-gradient-to-br from-sky-50 via-indigo-50 to-orange-50 shadow-[0_28px_90px_rgba(14,165,233,0.16)]",
+      "border-cyan-200/18 bg-[#0a1727]/[0.88] shadow-[0_32px_110px_rgba(8,47,73,0.42)] backdrop-blur-2xl",
     passive:
-      "border-sky-100/70 bg-white/72 shadow-[0_12px_38px_rgba(14,165,233,0.07)]",
+      "border-cyan-200/14 bg-[#0a1727]/[0.70] shadow-[0_16px_52px_rgba(8,47,73,0.22)] backdrop-blur-2xl",
+    glow: "bg-cyan-300/16",
+    title: "text-white",
+    description: "text-slate-200/72",
+    meta: "text-slate-300/68",
+    panel: "border-cyan-100/12 bg-white/[0.055] text-slate-100/78",
     button:
-      "border-sky-500 bg-gradient-to-r from-sky-700 to-indigo-700 text-white hover:from-sky-700 hover:to-blue-700",
+      "border-cyan-300/30 bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:from-cyan-400 hover:to-indigo-500",
     softButton:
-      "border-sky-200 bg-white text-sky-800 hover:border-sky-300 hover:bg-sky-50",
-    label: "text-sky-800 bg-sky-50 border-sky-200",
-    badge: "text-slate-700 bg-white border-slate-200",
-    accent: "bg-sky-500",
+      "border-cyan-100/14 bg-white/[0.06] text-cyan-50/78 hover:border-cyan-100/24 hover:bg-white/[0.10] hover:text-white",
+    label: "text-cyan-50 bg-cyan-400/12 border-cyan-200/18",
+    badge: "text-slate-200/68 bg-white/[0.06] border-white/10",
+    accent: "bg-cyan-300",
   },
   creator: {
     active:
-      "border-rose-300 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 shadow-[0_28px_86px_rgba(244,63,94,0.14)]",
+      "border-white/12 bg-slate-950/[0.88] shadow-[0_30px_105px_rgba(0,0,0,0.32)]",
     passive:
-      "border-rose-100/70 bg-white/72 shadow-[0_12px_38px_rgba(244,63,94,0.06)]",
+      "border-white/10 bg-slate-950/[0.70] shadow-[0_16px_52px_rgba(0,0,0,0.24)]",
+    glow: "bg-rose-400/25",
+    title: "text-white",
+    description: "text-white/68",
+    meta: "text-white/56",
+    panel: "border-white/10 bg-white/[0.07] text-white/72",
     button:
-      "border-rose-500 bg-gradient-to-r from-rose-600 to-pink-600 text-white hover:from-rose-700 hover:to-pink-700",
+      "border-rose-400 bg-gradient-to-r from-rose-500 to-orange-400 text-white hover:from-rose-600 hover:to-orange-500",
     softButton:
-      "border-rose-200 bg-white text-rose-800 hover:border-rose-300 hover:bg-rose-50",
-    label: "text-rose-800 bg-rose-50 border-rose-200",
-    badge: "text-slate-700 bg-white border-slate-200",
-    accent: "bg-rose-500",
+      "border-white/10 bg-white/[0.08] text-white/72 hover:border-white/20 hover:bg-white/[0.12] hover:text-white",
+    label: "text-rose-100 bg-rose-500/15 border-rose-300/25",
+    badge: "text-white/68 bg-white/[0.07] border-white/10",
+    accent: "bg-rose-400",
   },
 } as const;
 
@@ -111,22 +111,29 @@ export default function ExperienceIntroCard({
   return (
     <>
       <section
-        className={`relative overflow-hidden rounded-[30px] border p-4 transition-all duration-500 sm:p-5 md:rounded-[34px] md:p-6 ${
-          isActive ? styles.active : `opacity-80 hover:opacity-100 ${styles.passive}`
+        className={`relative overflow-hidden rounded-[32px] border p-5 transition-all duration-500 md:rounded-[38px] md:p-7 ${
+          isActive ? styles.active : `opacity-[0.88] hover:opacity-100 ${styles.passive}`
         }`}
       >
-        <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/70 blur-3xl" />
+        <div className={`pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full blur-3xl ${styles.glow}`} />
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
-        <div className="relative z-10 space-y-3">
+        <div className="relative z-10 space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <div
-              className={`rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] ${styles.label}`}
+              className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.10em] ${styles.label}`}
             >
               {eyebrow}
             </div>
 
             <div
-              className={`rounded-full border px-4 py-2 text-xs font-medium uppercase tracking-[0.04em] ${styles.badge}`}
+              className={`rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] ${styles.badge}`}
+            >
+              {stage}
+            </div>
+
+            <div
+              className={`rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] ${styles.badge}`}
             >
               {isActive ? (isEnglish ? "Selected" : "Seçili") : (isEnglish ? "Explore" : "Keşfet")}
             </div>
@@ -134,15 +141,15 @@ export default function ExperienceIntroCard({
 
           <div className="space-y-3">
             <h2
-              className={`font-extrabold tracking-tight text-slate-950 transition-all duration-500 ${
-                isActive ? "text-2xl sm:text-3xl md:text-5xl" : "text-xl sm:text-2xl md:text-3xl"
+              className={`font-black tracking-[-0.04em] transition-all duration-500 ${styles.title} ${
+                isActive ? "text-3xl sm:text-4xl md:text-6xl" : "text-2xl sm:text-3xl md:text-4xl"
               }`}
             >
               {title}
             </h2>
 
             <p
-              className={`max-w-2xl leading-8 text-slate-700 ${
+              className={`max-w-3xl font-medium leading-8 ${styles.description} ${
                 isActive ? "text-base md:text-lg" : "line-clamp-3 text-sm md:line-clamp-2 md:text-base"
               }`}
             >
@@ -151,25 +158,25 @@ export default function ExperienceIntroCard({
           </div>
 
           {isActive ? (
-            <div className="rounded-[22px] border border-orange-200/55 bg-white/78 p-4 sm:p-5 shadow-[0_12px_35px_rgba(251,146,60,0.08)]">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-500">
+            <div className={`rounded-[24px] border p-4 shadow-[0_16px_42px_rgba(15,23,42,0.08)] sm:p-5 ${styles.panel}`}>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] opacity-75">
                 <span className={`h-2.5 w-2.5 rounded-full ${styles.accent}`} />
                 <span>
                   {tone === "storyverse"
-                    ? (isEnglish ? "Story Adventure" : "Hikâye Macerası")
-                    : (isEnglish ? "Creator Path" : "Creator Yolu")}
+                    ? (isEnglish ? "Safe story path" : "Güvenli hikâye yolu")
+                    : (isEnglish ? "Creator production path" : "Creator üretim yolu")}
                 </span>
               </div>
 
-              <div className="mt-3 text-base leading-7 text-slate-700">
+              <div className="mt-3 text-base font-medium leading-7">
                 {nextAction}
               </div>
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600">
+          <div className={`flex flex-wrap items-center gap-3 text-sm font-semibold ${styles.meta}`}>
             <div>{duration}</div>
-            <div className="text-slate-500">•</div>
+            <div className="opacity-60">•</div>
             <div>{isEnglish ? "Age" : "Yaş"} {ageRange}</div>
           </div>
 
@@ -177,7 +184,7 @@ export default function ExperienceIntroCard({
             <button
               type="button"
               onClick={openFocusedWindow}
-              className={`inline-flex min-h-12 items-center justify-center rounded-full border px-5 py-3 sm:px-7 sm:py-3.5 text-sm font-black shadow-[0_14px_36px_rgba(15,23,42,0.14)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_20px_46px_rgba(15,23,42,0.18)] ${styles.button}`}
+              className={`inline-flex min-h-12 items-center justify-center rounded-full border px-5 py-3 text-sm font-black shadow-[0_16px_38px_rgba(15,23,42,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:shadow-[0_22px_52px_rgba(15,23,42,0.22)] sm:px-7 sm:py-3.5 ${styles.button}`}
             >
               {primaryCta}
             </button>
@@ -186,7 +193,7 @@ export default function ExperienceIntroCard({
               <button
                 type="button"
                 onClick={focusWorld}
-                className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-3 text-sm font-medium opacity-85 transition-all duration-300 hover:-translate-y-0.5 ${styles.softButton}`}
+                className={`inline-flex min-h-11 items-center justify-center rounded-full border px-5 py-3 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5 ${styles.softButton}`}
               >
                 {secondaryCta}
               </button>

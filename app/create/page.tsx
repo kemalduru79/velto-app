@@ -327,10 +327,10 @@ const CREATOR_COUNTRY_OPTIONS = [
 ];
 
 const CREATOR_AGE_GROUP_OPTIONS: Array<{ value: CreatorAgeGroup; label: string }> = [
-  { value: "6-8", label: "6–8" },
-  { value: "8-12", label: "8–12" },
-  { value: "10-16", label: "10–16" },
-  { value: "13-17", label: "13–17" },
+  { value: "6-8", label: "Broad / 18+" },
+  { value: "8-12", label: "Mainstream / 18+" },
+  { value: "10-16", label: "Niche / 18+" },
+  { value: "13-17", label: "Professional / 18+" },
 ];
 
 const CREATOR_CONTENT_TYPE_OPTIONS: Array<{ value: CreatorContentType; label: string }> = [
@@ -806,16 +806,16 @@ const UI_TEXT = {
     writeContinue: "Devamını Yaz",
     sceneListTitle: "Sahneler",
     creatorMentor: "Content Creator Mentor",
-    creatorStrategySetup: "YouTube Strateji Kurulumu",
-    creatorMentorDesc: "Bu mod, sahne üretmeden önce AI’ın içerik stratejisti gibi düşünmesini sağlar. YouTube Data API entegrasyonu Faz-2 yol haritasındadır; bu MVP önce mentor analiz katmanını kullanır.",
+    creatorStrategySetup: "Creator Strateji Kurulumu",
+    creatorMentorDesc: "Bu mod, sahne üretmeden önce konuyu hedef pazar, izleyici profili, format ve yaratıcı açı üzerinden netleştirir.",
     targetMarket: "Hedef Pazar",
-    ageGroup: "Yaş Grubu",
+    ageGroup: "Kitle Profili",
     contentType: "İçerik Tipi",
     videoFormat: "Video Formatı",
     analyzeContentOpportunity: "İçerik Fırsatını Analiz Et",
     analyzingContentOpportunity: "İçerik fırsatı analiz ediliyor...",
     creatorTopicLabel: "Content Creator Lab hangi konu veya video fikrini analiz etsin?",
-    creatorTopicPlaceholder: "Örn: Ahtapotlar neden çok zeki? veya çocuklara yönelik yüksek potansiyelli bir bilim videosu fikri öner",
+    creatorTopicPlaceholder: "Örn: LinkedIn’de AI trendleri nasıl anlatılmalı? veya YouTube için güçlü bir faceless video fikri öner",
     mentorAnalysisTitle: "Mentor Analizi",
     audienceInsight: "Audience Insight",
     hookPatterns: "Hook Patterns",
@@ -898,7 +898,7 @@ const UI_TEXT = {
     generateSelectedBulk: "🚀 Seçilenleri Üret",
     generatingSelectedBulk: "Seçilenler üretiliyor...",
     selectedBulkCount: "Seçili fikir",
-    productionPackageNote: "Bu paket hazırlandıktan sonra mevcut Storyverse üretim motoru ile karakter, sahne, görsel, ses ve video üretimine devam edebilirsin.",
+    productionPackageNote: "Bu paket hazırlandıktan sonra CreatorLab akışı sahne, görsel, ses, video, thumbnail ve metadata üretimine devam eder.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
     refinedScenesReady: "Sahneler AI ile geliştirildi ✅",
@@ -1135,16 +1135,16 @@ const UI_TEXT = {
     writeContinue: "Write Continuation",
     sceneListTitle: "Scenes",
     creatorMentor: "Content Creator Mentor",
-    creatorStrategySetup: "YouTube Strategy Setup",
+    creatorStrategySetup: "Creator Strategy Setup",
     creatorMentorDesc: "This mode helps shape the idea before creating scenes. It looks at the topic, audience, format and creator direction first.",
     targetMarket: "Target Market",
-    ageGroup: "Age Group",
+    ageGroup: "Audience Profile",
     contentType: "Content Type",
     videoFormat: "Video Format",
     analyzeContentOpportunity: "Analyze Content Opportunity",
     analyzingContentOpportunity: "Analyzing content opportunity...",
     creatorTopicLabel: "What topic or video idea should Content Creator Lab analyze?",
-    creatorTopicPlaceholder: "Example: Why octopuses are so intelligent, or recommend a high-potential kids science video idea",
+    creatorTopicPlaceholder: "Example: How should AI trends be explained on LinkedIn, or suggest a strong faceless YouTube video idea",
     mentorAnalysisTitle: "Mentor Analysis",
     audienceInsight: "Audience Insight",
     hookPatterns: "Hook Patterns",
@@ -1227,7 +1227,7 @@ const UI_TEXT = {
     generateSelectedBulk: "🚀 Generate Selected",
     generatingSelectedBulk: "Generating selected...",
     selectedBulkCount: "Selected ideas",
-    productionPackageNote: "After this package is prepared, you can continue with the existing Storyverse production engine for characters, scenes, visuals, audio, and video.",
+    productionPackageNote: "After this package is prepared, CreatorLab continues into scenes, visuals, audio, video, thumbnail and metadata production.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
     refinedScenesReady: "Scenes refined with AI ✅",
@@ -1616,7 +1616,7 @@ export default function CreatePage() {
   const localizedSelectedFlow = localizedFlowMessages.flows[activeFlowKey] ?? selectedFlow;
 
   const [creatorCountry, setCreatorCountry] = useState("global");
-  const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("8-12");
+  const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("13-17");
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational");
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("shorts_60");
@@ -6373,11 +6373,33 @@ export default function CreatePage() {
     <WorldProvider>
       <ActiveProductShell>
         <WorldFocusRouter />
-        <main className="relative min-h-screen overflow-hidden px-3 py-6 text-slate-900 sm:px-4 md:px-6 md:py-10">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_10%_6%,#ffdff1_0%,transparent_30%),radial-gradient(circle_at_88%_10%,#d6f5ff_0%,transparent_34%),radial-gradient(circle_at_52%_88%,#fff0b8_0%,transparent_38%),radial-gradient(circle_at_16%_78%,#dcfff5_0%,transparent_28%),linear-gradient(180deg,#fffaf4_0%,#f7fbff_48%,#f4fff8_100%)]" />
-      <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-white/70 to-transparent" />
-      <div className="pointer-events-none fixed left-1/2 top-36 -z-10 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-white/35 blur-3xl" />
-      <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-72 w-full bg-gradient-to-t from-white/55 to-transparent" />
+        <main
+          data-storyverse-ui={isStoryverseFlow ? "true" : undefined}
+          data-creatorlab-ui={isCreatorLabFlow ? "true" : undefined}
+          className={`relative min-h-screen overflow-hidden px-3 py-6 sm:px-4 md:px-6 md:py-10 ${isStoryverseFlow || isCreatorLabFlow ? "text-slate-100" : "text-slate-900"}`}
+        >
+      {isStoryverseFlow ? (
+        <>
+          <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_10%_6%,rgba(56,189,248,0.18)_0%,transparent_31%),radial-gradient(circle_at_88%_10%,rgba(129,140,248,0.15)_0%,transparent_34%),radial-gradient(circle_at_52%_88%,rgba(14,165,233,0.10)_0%,transparent_38%),linear-gradient(180deg,#06111f_0%,#071727_48%,#09111f_100%)]" />
+          <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-white/[0.08] to-transparent" />
+          <div className="pointer-events-none fixed left-1/2 top-36 -z-10 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-cyan-300/[0.08] blur-3xl" />
+          <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-72 w-full bg-gradient-to-t from-slate-950/70 to-transparent" />
+        </>
+      ) : isCreatorLabFlow ? (
+        <>
+          <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_10%_6%,rgba(244,63,94,0.15)_0%,transparent_30%),radial-gradient(circle_at_88%_10%,rgba(251,146,60,0.13)_0%,transparent_34%),radial-gradient(circle_at_52%_88%,rgba(124,58,237,0.12)_0%,transparent_40%),linear-gradient(180deg,#070711_0%,#120914_48%,#070a15_100%)]" />
+          <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-white/[0.07] to-transparent" />
+          <div className="pointer-events-none fixed left-1/2 top-36 -z-10 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-rose-400/[0.08] blur-3xl" />
+          <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-72 w-full bg-gradient-to-t from-black/70 to-transparent" />
+        </>
+      ) : (
+        <>
+          <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_10%_6%,#ffdff1_0%,transparent_30%),radial-gradient(circle_at_88%_10%,#d6f5ff_0%,transparent_34%),radial-gradient(circle_at_52%_88%,#fff0b8_0%,transparent_38%),radial-gradient(circle_at_16%_78%,#dcfff5_0%,transparent_28%),linear-gradient(180deg,#fffaf4_0%,#f7fbff_48%,#f4fff8_100%)]" />
+          <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-white/70 to-transparent" />
+          <div className="pointer-events-none fixed left-1/2 top-36 -z-10 h-[38rem] w-[38rem] -translate-x-1/2 rounded-full bg-white/35 blur-3xl" />
+          <div className="pointer-events-none fixed bottom-0 left-0 -z-10 h-72 w-full bg-gradient-to-t from-white/55 to-transparent" />
+        </>
+      )}
       <div className="relative z-10 mx-auto w-full max-w-7xl space-y-6 sm:space-y-8 md:space-y-12">
         {/* X.1.B.2: Creator Lab shell foundation is available for creator-specific render activation. */}
         {isStoryverseFlow ? (

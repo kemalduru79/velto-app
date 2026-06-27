@@ -1,26 +1,466 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  min-height: 100%;
+  background: var(--background);
+  scroll-behavior: smooth;
 }
 
 body {
+  min-height: 100%;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(45, 212, 191, 0.24);
+  color: #f8fafc;
+}
+
+/* Storyverse premium interface skin
+   Scope: only the Storyverse product shell. Dashboard and CreatorLab stay untouched. */
+.storyverse-premium-surface {
+  --sv-page: #050816;
+  --sv-page-2: #071526;
+  --sv-surface: rgba(7, 22, 36, 0.86);
+  --sv-surface-soft: rgba(10, 30, 48, 0.74);
+  --sv-surface-strong: rgba(11, 37, 58, 0.92);
+  --sv-chip: rgba(45, 212, 191, 0.10);
+  --sv-border: rgba(125, 211, 252, 0.16);
+  --sv-border-strong: rgba(94, 234, 212, 0.26);
+  --sv-text: #eef7ff;
+  --sv-muted: rgba(203, 225, 235, 0.76);
+  --sv-soft: rgba(226, 242, 247, 0.58);
+  --sv-accent: #2dd4bf;
+  --sv-accent-blue: #38bdf8;
+  --sv-warm: #fbbf24;
+  --sv-shadow: 0 28px 90px rgba(0, 0, 0, 0.32);
+  color: var(--sv-text);
+}
+
+.storyverse-premium-surface main {
+  color: var(--sv-text) !important;
+}
+
+.storyverse-premium-surface h1,
+.storyverse-premium-surface h2,
+.storyverse-premium-surface h3,
+.storyverse-premium-surface h4,
+.storyverse-premium-surface strong,
+.storyverse-premium-surface label {
+  color: var(--sv-text) !important;
+}
+
+.storyverse-premium-surface p,
+.storyverse-premium-surface span,
+.storyverse-premium-surface li,
+.storyverse-premium-surface div {
+  border-color: var(--sv-border);
+}
+
+.storyverse-premium-surface p,
+.storyverse-premium-surface li {
+  color: var(--sv-muted);
+}
+
+.storyverse-premium-surface [class*="text-slate-900"],
+.storyverse-premium-surface [class*="text-slate-950"],
+.storyverse-premium-surface [class*="text-slate-800"],
+.storyverse-premium-surface [class*="text-black"] {
+  color: var(--sv-text) !important;
+}
+
+.storyverse-premium-surface [class*="text-slate-700"],
+.storyverse-premium-surface [class*="text-slate-600"],
+.storyverse-premium-surface [class*="text-slate-500"],
+.storyverse-premium-surface [class*="text-violet-"],
+.storyverse-premium-surface [class*="text-purple-"],
+.storyverse-premium-surface [class*="text-sky-"],
+.storyverse-premium-surface [class*="text-cyan-"],
+.storyverse-premium-surface [class*="text-indigo-"],
+.storyverse-premium-surface [class*="text-teal-"],
+.storyverse-premium-surface [class*="text-emerald-"],
+.storyverse-premium-surface [class*="text-amber-"],
+.storyverse-premium-surface [class*="text-yellow-"],
+.storyverse-premium-surface [class*="text-rose-"],
+.storyverse-premium-surface [class*="text-red-"] {
+  color: var(--sv-muted) !important;
+}
+
+.storyverse-premium-surface [class*="bg-white"],
+.storyverse-premium-surface [class*="bg-slate-50"],
+.storyverse-premium-surface [class*="bg-slate-100"],
+.storyverse-premium-surface [class*="bg-gray-"],
+.storyverse-premium-surface [class*="bg-zinc-"],
+.storyverse-premium-surface [class*="bg-neutral-"],
+.storyverse-premium-surface [class*="bg-violet-50"],
+.storyverse-premium-surface [class*="bg-purple-50"],
+.storyverse-premium-surface [class*="bg-sky-50"],
+.storyverse-premium-surface [class*="bg-cyan-50"],
+.storyverse-premium-surface [class*="bg-indigo-50"],
+.storyverse-premium-surface [class*="bg-teal-50"],
+.storyverse-premium-surface [class*="bg-emerald-50"],
+.storyverse-premium-surface [class*="bg-green-50"],
+.storyverse-premium-surface [class*="bg-yellow-50"],
+.storyverse-premium-surface [class*="bg-amber-50"],
+.storyverse-premium-surface [class*="bg-rose-50"],
+.storyverse-premium-surface [class*="bg-red-50"] {
+  background: var(--sv-surface-soft) !important;
+  border-color: var(--sv-border) !important;
+  color: var(--sv-text) !important;
+  backdrop-filter: blur(18px);
+}
+
+.storyverse-premium-surface section,
+.storyverse-premium-surface article,
+.storyverse-premium-surface aside,
+.storyverse-premium-surface [class*="rounded-[28px]"],
+.storyverse-premium-surface [class*="rounded-[32px]"],
+.storyverse-premium-surface [class*="rounded-[36px]"],
+.storyverse-premium-surface [class*="rounded-[40px]"],
+.storyverse-premium-surface [class*="rounded-[42px]"],
+.storyverse-premium-surface [class*="rounded-[48px]"] {
+  border-color: var(--sv-border) !important;
+}
+
+.storyverse-premium-surface section,
+.storyverse-premium-surface article,
+.storyverse-premium-surface aside > div,
+.storyverse-premium-surface [class*="shadow-"] {
+  box-shadow: var(--sv-shadow) !important;
+}
+
+.storyverse-premium-surface [class*="border-orange"],
+.storyverse-premium-surface [class*="border-purple"],
+.storyverse-premium-surface [class*="border-violet"],
+.storyverse-premium-surface [class*="border-sky"],
+.storyverse-premium-surface [class*="border-cyan"],
+.storyverse-premium-surface [class*="border-indigo"],
+.storyverse-premium-surface [class*="border-teal"],
+.storyverse-premium-surface [class*="border-emerald"],
+.storyverse-premium-surface [class*="border-yellow"],
+.storyverse-premium-surface [class*="border-amber"],
+.storyverse-premium-surface [class*="border-rose"],
+.storyverse-premium-surface [class*="border-red"] {
+  border-color: var(--sv-border) !important;
+}
+
+.storyverse-premium-surface [class*="uppercase"][class*="tracking-"] {
+  color: rgba(125, 211, 252, 0.72) !important;
+  letter-spacing: 0.16em;
+}
+
+.storyverse-premium-surface input,
+.storyverse-premium-surface textarea,
+.storyverse-premium-surface select {
+  background: rgba(5, 14, 27, 0.86) !important;
+  border: 1px solid var(--sv-border) !important;
+  color: var(--sv-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  outline: none;
+}
+
+.storyverse-premium-surface input::placeholder,
+.storyverse-premium-surface textarea::placeholder {
+  color: rgba(203, 225, 235, 0.52) !important;
+}
+
+.storyverse-premium-surface input:focus,
+.storyverse-premium-surface textarea:focus,
+.storyverse-premium-surface select:focus {
+  border-color: rgba(45, 212, 191, 0.58) !important;
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.11);
+}
+
+.storyverse-premium-surface button:not(:disabled),
+.storyverse-premium-surface a {
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.storyverse-premium-surface button:not(:disabled):hover,
+.storyverse-premium-surface a:hover {
+  transform: translateY(-1px);
+}
+
+.storyverse-premium-surface button[class*="bg-purple"],
+.storyverse-premium-surface button[class*="bg-violet"],
+.storyverse-premium-surface button[class*="bg-cyan"],
+.storyverse-premium-surface button[class*="bg-sky"],
+.storyverse-premium-surface button[class*="bg-indigo"],
+.storyverse-premium-surface button[class*="bg-emerald"],
+.storyverse-premium-surface button[class*="bg-white"] {
+  background: linear-gradient(135deg, #2dd4bf 0%, #38bdf8 48%, #6366f1 100%) !important;
+  border-color: rgba(125, 211, 252, 0.34) !important;
+  color: #04111f !important;
+  font-weight: 800;
+  box-shadow: 0 18px 44px rgba(20, 184, 166, 0.22) !important;
+}
+
+.storyverse-premium-surface button[class*="border"]:not([class*="bg-purple"]):not([class*="bg-violet"]):not([class*="bg-cyan"]):not([class*="bg-sky"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-white"]) {
+  background: rgba(8, 24, 40, 0.72) !important;
+  border-color: var(--sv-border) !important;
+  color: var(--sv-muted) !important;
+}
+
+.storyverse-premium-surface img {
+  border-color: rgba(125, 211, 252, 0.16) !important;
+}
+
+.storyverse-premium-surface [class*="bg-white"] img,
+.storyverse-premium-surface [class*="bg-slate"] img {
+  background: transparent !important;
+}
+
+.storyverse-premium-surface [class*="bg-yellow"],
+.storyverse-premium-surface [class*="bg-amber"] {
+  background: rgba(251, 191, 36, 0.10) !important;
+  color: rgba(254, 243, 199, 0.86) !important;
+  border-color: rgba(251, 191, 36, 0.18) !important;
+}
+
+.storyverse-premium-surface [class*="bg-red"],
+.storyverse-premium-surface [class*="bg-rose"] {
+  background: rgba(244, 63, 94, 0.10) !important;
+  color: rgba(255, 228, 230, 0.86) !important;
+  border-color: rgba(244, 63, 94, 0.18) !important;
+}
+
+.storyverse-premium-surface [class*="bg-green"],
+.storyverse-premium-surface [class*="bg-emerald"],
+.storyverse-premium-surface [class*="bg-teal"] {
+  background: rgba(20, 184, 166, 0.11) !important;
+  color: rgba(204, 251, 241, 0.90) !important;
+  border-color: rgba(45, 212, 191, 0.20) !important;
+}
+
+.storyverse-premium-surface [class*="bg-purple"],
+.storyverse-premium-surface [class*="bg-violet"],
+.storyverse-premium-surface [class*="bg-indigo"] {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: rgba(224, 231, 255, 0.88) !important;
+  border-color: rgba(129, 140, 248, 0.20) !important;
+}
+
+.storyverse-premium-surface [class*="bg-cyan"],
+.storyverse-premium-surface [class*="bg-sky"] {
+  background: rgba(14, 165, 233, 0.12) !important;
+  color: rgba(224, 242, 254, 0.90) !important;
+  border-color: rgba(56, 189, 248, 0.22) !important;
+}
+/* CreatorLab premium production interface skin
+   Scope: CreatorLab only. Storyverse and Dashboard remain untouched. */
+.creatorlab-premium-surface {
+  --cl-page: #070711;
+  --cl-page-2: #120914;
+  --cl-surface: rgba(12, 14, 27, 0.88);
+  --cl-surface-soft: rgba(22, 17, 34, 0.76);
+  --cl-surface-strong: rgba(31, 19, 42, 0.92);
+  --cl-border: rgba(251, 146, 60, 0.16);
+  --cl-border-strong: rgba(251, 113, 133, 0.26);
+  --cl-text: #fff7ed;
+  --cl-muted: rgba(255, 237, 213, 0.72);
+  --cl-soft: rgba(255, 237, 213, 0.54);
+  --cl-rose: #fb7185;
+  --cl-orange: #fb923c;
+  --cl-amber: #f59e0b;
+  --cl-violet: #8b5cf6;
+  --cl-shadow: 0 30px 96px rgba(0, 0, 0, 0.42);
+  color: var(--cl-text);
+}
+
+.creatorlab-premium-surface main {
+  color: var(--cl-text) !important;
+}
+
+.creatorlab-premium-surface main > .pointer-events-none.fixed {
+  display: none !important;
+}
+
+.creatorlab-premium-surface h1,
+.creatorlab-premium-surface h2,
+.creatorlab-premium-surface h3,
+.creatorlab-premium-surface h4,
+.creatorlab-premium-surface strong,
+.creatorlab-premium-surface label {
+  color: var(--cl-text) !important;
+}
+
+.creatorlab-premium-surface p,
+.creatorlab-premium-surface li {
+  color: var(--cl-muted) !important;
+}
+
+.creatorlab-premium-surface div,
+.creatorlab-premium-surface section,
+.creatorlab-premium-surface article,
+.creatorlab-premium-surface aside {
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface [class*="text-slate-900"],
+.creatorlab-premium-surface [class*="text-slate-950"],
+.creatorlab-premium-surface [class*="text-slate-800"],
+.creatorlab-premium-surface [class*="text-black"] {
+  color: var(--cl-text) !important;
+}
+
+.creatorlab-premium-surface [class*="text-slate-700"],
+.creatorlab-premium-surface [class*="text-slate-600"],
+.creatorlab-premium-surface [class*="text-slate-500"],
+.creatorlab-premium-surface [class*="text-sky-"],
+.creatorlab-premium-surface [class*="text-cyan-"],
+.creatorlab-premium-surface [class*="text-emerald-"],
+.creatorlab-premium-surface [class*="text-teal-"],
+.creatorlab-premium-surface [class*="text-indigo-"],
+.creatorlab-premium-surface [class*="text-purple-"],
+.creatorlab-premium-surface [class*="text-violet-"],
+.creatorlab-premium-surface [class*="text-rose-"],
+.creatorlab-premium-surface [class*="text-red-"],
+.creatorlab-premium-surface [class*="text-orange-"],
+.creatorlab-premium-surface [class*="text-yellow-"],
+.creatorlab-premium-surface [class*="text-amber-"] {
+  color: var(--cl-muted) !important;
+}
+
+.creatorlab-premium-surface [class*="bg-white"],
+.creatorlab-premium-surface [class*="bg-slate-50"],
+.creatorlab-premium-surface [class*="bg-slate-100"],
+.creatorlab-premium-surface [class*="bg-gray-"],
+.creatorlab-premium-surface [class*="bg-zinc-"],
+.creatorlab-premium-surface [class*="bg-neutral-"],
+.creatorlab-premium-surface [class*="bg-sky-50"],
+.creatorlab-premium-surface [class*="bg-cyan-50"],
+.creatorlab-premium-surface [class*="bg-emerald-50"],
+.creatorlab-premium-surface [class*="bg-teal-50"],
+.creatorlab-premium-surface [class*="bg-indigo-50"],
+.creatorlab-premium-surface [class*="bg-purple-50"],
+.creatorlab-premium-surface [class*="bg-violet-50"],
+.creatorlab-premium-surface [class*="bg-rose-50"],
+.creatorlab-premium-surface [class*="bg-red-50"],
+.creatorlab-premium-surface [class*="bg-orange-50"],
+.creatorlab-premium-surface [class*="bg-yellow-50"],
+.creatorlab-premium-surface [class*="bg-amber-50"] {
+  background: linear-gradient(180deg, rgba(20, 18, 32, 0.90), rgba(14, 15, 27, 0.86)) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text) !important;
+  backdrop-filter: blur(18px);
+}
+
+.creatorlab-premium-surface section,
+.creatorlab-premium-surface article,
+.creatorlab-premium-surface aside,
+.creatorlab-premium-surface [class*="rounded-[28px]"],
+.creatorlab-premium-surface [class*="rounded-[30px]"],
+.creatorlab-premium-surface [class*="rounded-[32px]"],
+.creatorlab-premium-surface [class*="rounded-[36px]"],
+.creatorlab-premium-surface [class*="rounded-[40px]"],
+.creatorlab-premium-surface [class*="rounded-[42px]"],
+.creatorlab-premium-surface [class*="rounded-[48px]"] {
+  border-color: var(--cl-border) !important;
+}
+
+.creatorlab-premium-surface section,
+.creatorlab-premium-surface article,
+.creatorlab-premium-surface aside > div,
+.creatorlab-premium-surface [class*="shadow-"] {
+  box-shadow: var(--cl-shadow) !important;
+}
+
+.creatorlab-premium-surface [class*="uppercase"][class*="tracking-"] {
+  color: rgba(251, 146, 60, 0.74) !important;
+  letter-spacing: 0.16em;
+}
+
+.creatorlab-premium-surface input,
+.creatorlab-premium-surface textarea,
+.creatorlab-premium-surface select {
+  background: rgba(6, 8, 17, 0.88) !important;
+  border: 1px solid rgba(251, 146, 60, 0.20) !important;
+  color: var(--cl-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  outline: none;
+}
+
+.creatorlab-premium-surface input::placeholder,
+.creatorlab-premium-surface textarea::placeholder {
+  color: rgba(255, 237, 213, 0.42) !important;
+}
+
+.creatorlab-premium-surface input:focus,
+.creatorlab-premium-surface textarea:focus,
+.creatorlab-premium-surface select:focus {
+  border-color: rgba(251, 113, 133, 0.58) !important;
+  box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.11);
+}
+
+.creatorlab-premium-surface option {
+  background: #11101b;
+  color: #fff7ed;
+}
+
+.creatorlab-premium-surface button:not(:disabled),
+.creatorlab-premium-surface a {
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.creatorlab-premium-surface button:not(:disabled):hover,
+.creatorlab-premium-surface a:hover {
+  transform: translateY(-1px);
+}
+
+.creatorlab-premium-surface button[class*="bg-purple"],
+.creatorlab-premium-surface button[class*="bg-violet"],
+.creatorlab-premium-surface button[class*="bg-indigo"],
+.creatorlab-premium-surface button[class*="bg-red"],
+.creatorlab-premium-surface button[class*="bg-rose"],
+.creatorlab-premium-surface button[class*="bg-orange"],
+.creatorlab-premium-surface button[class*="bg-amber"],
+.creatorlab-premium-surface button[class*="bg-white"],
+.creatorlab-premium-surface button[class*="bg-cyan"],
+.creatorlab-premium-surface button[class*="bg-emerald"] {
+  background: linear-gradient(135deg, #f97316 0%, #e11d48 46%, #7c3aed 100%) !important;
+  border-color: rgba(251, 146, 60, 0.34) !important;
+  color: #fff7ed !important;
+  font-weight: 800;
+  box-shadow: 0 20px 50px rgba(225, 29, 72, 0.22) !important;
+}
+
+.creatorlab-premium-surface button[class*="border"]:not([class*="bg-purple"]):not([class*="bg-violet"]):not([class*="bg-indigo"]):not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-orange"]):not([class*="bg-amber"]):not([class*="bg-white"]):not([class*="bg-cyan"]):not([class*="bg-emerald"]) {
+  background: rgba(18, 16, 29, 0.76) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-muted) !important;
+}
+
+.creatorlab-premium-surface [data-bulk-generator-panel="true"],
+.creatorlab-premium-surface [data-bulk-selection-toolbar="true"] {
+  background: linear-gradient(180deg, rgba(35, 23, 52, 0.82), rgba(18, 18, 32, 0.86)) !important;
+  border-color: rgba(168, 85, 247, 0.22) !important;
+}
+
+.creatorlab-premium-surface img {
+  border-color: rgba(251, 146, 60, 0.18) !important;
+}
+
+.creatorlab-premium-surface ::selection {
+  background: rgba(251, 113, 133, 0.32);
+  color: #fff7ed;
 }

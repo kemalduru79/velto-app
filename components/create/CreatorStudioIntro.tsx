@@ -10,11 +10,11 @@ export default function CreatorStudioIntro() {
   return (
     <ExperienceIntroCard
       eyebrow="CreatorLab"
-      title={isEnglish ? "Build Content Like a Professional Creator" : "Profesyonel Creator Gibi İçerik Üret"}
+      title={isEnglish ? "Professional creator production engine." : "Profesyonel creator üretim motoru."}
       description={
         isEnglish
-          ? "Shape social media ideas, scripts, thumbnails, voice-over and AI-assisted image/video packages."
-          : "Sosyal medya fikirleri, script, thumbnail, voice-over ve AI destekli imaj/video paketleri oluştur."
+          ? "Turn one topic into a publish-ready content system: hook, script, scenes, thumbnail, voice direction, metadata and multi-format export planning."
+          : "Tek bir konuyu yayına hazır içerik sistemine dönüştür: hook, script, sahneler, thumbnail, voice yönü, metadata ve çok formatlı export planı."
       }
       tone="creator"
       stage="Active Product"
@@ -22,11 +22,11 @@ export default function CreatorStudioIntro() {
       ageRange="18+"
       nextAction={
         isEnglish
-          ? "Pick a topic, research patterns, create idea cards and prepare a publish-ready creator package."
-          : "Bir konu seç, pattern araştır, fikir kartları oluştur ve publish-ready creator paketi hazırla."
+          ? "Start with a topic, define the creative angle, build the production package, then move into assets and platform-ready publishing outputs."
+          : "Bir konu ile başla, kreatif açıyı netleştir, üretim paketini oluştur; ardından asset ve platforma hazır yayın çıktısına ilerle."
       }
-      primaryCta={isEnglish ? "Open CreatorLab" : "CreatorLab’i Aç"}
-      secondaryCta={isEnglish ? "Browse Formats" : "Formatları İncele"}
+      primaryCta={isEnglish ? "Build Production Package" : "Üretim Paketi Oluştur"}
+      secondaryCta={isEnglish ? "Review Pipeline" : "Üretim Hattını İncele"}
       primaryWorld="creatorlab"
     />
   );

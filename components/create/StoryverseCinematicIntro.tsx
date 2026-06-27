@@ -9,12 +9,12 @@ export default function StoryverseCinematicIntro() {
 
   return (
     <ExperienceIntroCard
-      eyebrow={isEnglish ? "Child-safe Storyverse" : "Çocuk güvenli Storyverse"}
-      title={isEnglish ? "Enter Your Own Story World" : "Kendi Hikâye Dünyana Gir"}
+      eyebrow={isEnglish ? "Storyverse Safety Studio" : "Storyverse Güvenli Stüdyo"}
+      title={isEnglish ? "A premium story studio for young creators." : "Genç yaratıcılar için premium hikâye stüdyosu."}
       description={
         isEnglish
-          ? "Create safe characters, emotional scenes and exportable story outputs."
-          : "Güvenli karakterler, duygulu sahneler ve export edilebilir hikâye çıktıları oluştur."
+          ? "Storyverse helps children and teenagers turn one safe idea into characters, scenes, narration and exportable story outputs with calm guidance and strict content boundaries."
+          : "Storyverse çocukların ve gençlerin güvenli bir fikri karakterlere, sahnelere, anlatıma ve export edilebilir hikâye çıktılarına dönüştürmesini; sakin yönlendirme ve güçlü içerik sınırlarıyla sağlar."
       }
       tone="storyverse"
       stage="Active Product"
@@ -22,11 +22,11 @@ export default function StoryverseCinematicIntro() {
       ageRange="8–18"
       nextAction={
         isEnglish
-          ? "Start with one idea, then build characters, scenes and your final content package."
-          : "Bir fikirle başla; sonra karakterleri, sahneleri ve final içerik paketini oluştur."
+          ? "Start with a safe premise, define the visual world, shape characters and move toward a controlled story package without exposing young users to unsafe prompts."
+          : "Güvenli bir fikirle başla, görsel dünyayı tanımla, karakterleri oluştur ve genç kullanıcıları riskli prompt alanlarına maruz bırakmadan kontrollü hikâye paketine ilerle."
       }
-      primaryCta={isEnglish ? "Start Storyverse" : "Storyverse’e Başla"}
-      secondaryCta={isEnglish ? "Explore Story Worlds" : "Hikâye Dünyalarını Keşfet"}
+      primaryCta={isEnglish ? "Open Storyverse Studio" : "Storyverse Stüdyoyu Aç"}
+      secondaryCta={isEnglish ? "View Safe Story Path" : "Güvenli Hikâye Yolunu Gör"}
       primaryWorld="storyverse"
     />
   );
