@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import {
+  createTimelineSyncPlan,
+  normalizeVideoQualityTier,
+  type VideoQualityTier,
+} from "../../../lib/video/timelineSync";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -22,6 +27,7 @@ type CreatorProductionRequest = {
   durationSec?: number;
   sceneCount?: number;
   language?: "tr" | "en";
+  qualityMode?: VideoQualityTier;
   mentorAnalysis?: CreatorMentorResult;
 };
 
@@ -61,36 +67,36 @@ function getPacingBlueprint(sceneCount: number) {
 }
 
 const CREATOR_LAB_CONSISTENCY_GUARD = {
-  recurringCharacter:
-    "Joe is a consistent 10-year-old boy with short slightly messy brown hair, large green eyes, a red baseball cap, a blue t-shirt with a clear rocket logo, simple blue jeans, and simple white sneakers.",
-  personality:
-    "Joe is curious, energetic, kind, brave, slightly playful, emotionally expressive, and asks short questions that help children understand the topic.",
+  characterFreedom:
+    "Do not force Joe, a child guide, or any recurring cartoon cast unless the user explicitly requested that character. Support user-defined characters, faceless formats, documentary formats, product-led formats, and channel-specific visual identities.",
+  characterContinuity:
+    "When the user defines characters, keep their identity, face, outfit, age impression, accessories, and visual role consistent across scenes. If no character is defined, preserve the chosen visual universe instead of inventing a recurring mascot.",
   narrationStyle:
-    "Narration must stay clean, short, warm, direct, and speakable. Do not include emotion tags, SFX tags, voice labels, or acting directions inside narration or dialogue.",
+    "Narration must stay clean, short, direct, and speakable. Do not include emotion tags, SFX tags, voice labels, or acting directions inside narration or dialogue.",
   visualContinuity:
-    "All scenes must feel like one premium 3D animated film episode, not separate AI-generated slides. Keep character design, color energy, lighting quality, and cinematic framing consistent.",
+    "All scenes must feel like one coherent premium production timeline, not separate AI-generated slides. Keep style, color energy, lighting quality, camera logic, and editorial rhythm consistent.",
   creatorLabVisualEnergy:
-    "Creator Lab visuals should be high-clarity, thumbnail-friendly, high-contrast, premium 3D animated, mobile-readable, and child-safe.",
+    "CreatorLab visuals should be high-clarity, thumbnail-friendly, high-contrast, mobile-readable, platform-aware, and suitable for professional creator output.",
 };
 
 function getCreatorLabConsistencyRules(language: "tr" | "en") {
   if (language === "tr") {
     return [
-      "Joe her sahnede aynı karakter olarak korunmalı: 10 yaşında erkek çocuk, kısa hafif dağınık kahverengi saç, büyük yeşil gözler, kırmızı beyzbol şapkası, roket logolu mavi t-shirt, mavi jean ve beyaz spor ayakkabılar.",
-      "Joe'nun kişiliği tutarlı kalmalı: meraklı, enerjik, nazik, cesur, hafif oyunbaz, duygusal olarak ifade gücü yüksek ve konuyu anlamaya yardım eden kısa sorular soran bir rehber.",
-      "Anlatım kısa, sıcak, doğrudan ve seslendirilebilir olmalı. Anlatım veya diyalog içine emotion, SFX, voice label veya oyunculuk yönlendirmesi yazma.",
-      "Tüm sahneler tek bir premium 3D animasyon bölümüne ait gibi hissettirmeli; ayrı ayrı üretilmiş AI slaytları gibi görünmemeli.",
-      "Sahneler arasında tempo, duygu, karakter davranışı, ışık kalitesi, renk enerjisi ve sinematik çerçeveleme tutarlı kalmalı.",
-      "Creator Lab görselleri YouTube için mobile-readable, thumbnail-friendly, yüksek kontrastlı, premium 3D animated ve child-safe olmalı.",
+      "Joe, çocuk rehber veya sabit çizgi film karakteri zorunlu değildir. Kullanıcının tanımladığı karakterleri, faceless formatları, belgesel anlatımı, ürün odaklı formatları ve kanal kimliğine özel görsel dili destekle.",
+      "Kullanıcı karakter tanımladıysa yüz, yaş hissi, kıyafet, aksesuar, görsel rol ve davranış sürekliliğini koru. Karakter tanımlanmadıysa sahte bir maskot eklemek yerine görsel evreni ve editoryal dili tutarlı tut.",
+      "Anlatım kısa, doğrudan ve seslendirilebilir olmalı. Anlatım veya diyalog içine emotion, SFX, voice label veya oyunculuk yönlendirmesi yazma.",
+      "Tüm sahneler tek bir premium üretim timeline'ına ait gibi hissettirmeli; ayrı ayrı üretilmiş AI slaytları gibi görünmemeli.",
+      "Sahneler arasında tempo, duygu, ışık kalitesi, renk enerjisi, kamera mantığı ve editoryal ritim tutarlı kalmalı.",
+      "CreatorLab görselleri mobile-readable, thumbnail-friendly, yüksek kontrastlı, platforma uygun ve profesyonel creator çıktısı seviyesinde olmalı.",
     ];
   }
 
   return [
-    CREATOR_LAB_CONSISTENCY_GUARD.recurringCharacter,
-    CREATOR_LAB_CONSISTENCY_GUARD.personality,
+    CREATOR_LAB_CONSISTENCY_GUARD.characterFreedom,
+    CREATOR_LAB_CONSISTENCY_GUARD.characterContinuity,
     CREATOR_LAB_CONSISTENCY_GUARD.narrationStyle,
     CREATOR_LAB_CONSISTENCY_GUARD.visualContinuity,
-    "Maintain consistent pacing, emotion, character behavior, lighting quality, color energy, and cinematic framing across scenes.",
+    "Maintain consistent pacing, emotion, lighting quality, color energy, camera logic, and editorial rhythm across scenes.",
     CREATOR_LAB_CONSISTENCY_GUARD.creatorLabVisualEnergy,
   ];
 }
@@ -154,7 +160,7 @@ function getCreatorLabTestReadinessProfile(
       "Validate one complete Creator Lab package before Vercel/Railway push."
     ],
     manualChecks: [
-      "Characters and Joe identity remain visually consistent.",
+      "User-defined characters or the selected visual universe remain consistent.",
       "Images look premium 3D/cinematic rather than flat 2D.",
       "Speech does not continue into the next scene after the visual changes.",
       "Speech is not cut before a sentence finishes.",
@@ -312,7 +318,7 @@ export async function POST(req: Request) {
 
     const topic = asString(body?.topic);
     const country = asString(body?.country, "Global / International");
-    const ageGroup = asString(body?.ageGroup, "8-12");
+    const ageGroup = asString(body?.ageGroup, "Professional creator audience / 18+");
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
     const durationSec = clampNumber(body?.durationSec, 60, 45, 360);
@@ -324,6 +330,7 @@ export async function POST(req: Request) {
     const durationBudget = getDurationBudget(durationSec, sceneCount);
     const language = body?.language === "tr" ? "tr" : "en";
     const mentorAnalysis = body?.mentorAnalysis || {};
+    const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
     const pacingBlueprint = getPacingBlueprint(sceneCount);
 
     if (!topic && !mentorAnalysis?.recommendedIdea?.title) {
@@ -345,7 +352,7 @@ export async function POST(req: Request) {
     });
 
     const systemPrompt = [
-      "You are a senior YouTube animated video producer, retention editor, and child-safe storytelling designer.",
+      "You are a senior YouTube producer, retention editor, creative director, and platform packaging strategist.",
       "You convert a creator mentor analysis into a production-ready package for an AI video generation pipeline.",
       "This is Smart Production Sync: duration, scene count, pacing, and story structure must match.",
       "Return strict JSON only. No markdown. No code fences.",
@@ -420,12 +427,13 @@ export async function POST(req: Request) {
         "Dialogue may be empty if the format is narrator-led. If dialogue is used, keep it very short.",
         "Do not compensate with long dialogue. The total speech budget includes narration and dialogue together.",
         "Scenes must be visual and easy for AI image/video generation.",
-        "Keep content age-appropriate, educational, and safe.",
-        "Create simple reusable characters if the video benefits from character continuity.",
-        "Joe must stay visually and behaviorally consistent if he appears in the video.",
+        "Keep content safe, platform-appropriate, and aligned with the selected audience profile.",
+        "Do not force a fixed mascot, child guide, or Joe unless the user explicitly requested it.",
+        "Create reusable characters only when the video concept benefits from character continuity.",
+        "If Joe appears because the user requested him, keep him visually and behaviorally consistent; otherwise do not inject Joe into the production package.",
         "All scenes must preserve one coherent visual universe, not separate unrelated image styles.",
         "Maintain consistent narration tone, emotional rhythm, and cinematic energy from scene to scene.",
-        "Creator Lab visual prompts should stay high-clarity, premium 3D animated, mobile-readable, and thumbnail-friendly.",
+        "CreatorLab visual prompts should stay high-clarity, platform-aware, mobile-readable, premium, and thumbnail-friendly; do not limit the style to cartoons unless requested.",
         "Avoid repetitive scene openings; each scene should advance the story or explanation.",
       ],
     };
@@ -499,6 +507,13 @@ export async function POST(req: Request) {
       estimatedTotalSpeechSeconds,
       durationBudget.upperTotalSpeechSec,
     );
+    const timelineSyncPlan = createTimelineSyncPlan({
+      product: "creatorlab",
+      qualityTier: qualityMode,
+      durationSec,
+      sceneCount,
+      scenes,
+    });
 
     const productionPackage = {
       title: asString(
@@ -511,7 +526,7 @@ export async function POST(req: Request) {
       visualBible: {
         style: asString(
           parsed?.visualBible?.style,
-          "Premium cinematic 3D animated film style suitable for children, with consistent character identity and high production value.",
+          "Premium platform-ready visual style with consistent character identity or consistent visual universe, high production value, and strong editorial clarity.",
         ),
         palette: asString(
           parsed?.visualBible?.palette,
@@ -523,7 +538,7 @@ export async function POST(req: Request) {
         ),
         consistencyRules: asString(
           parsed?.visualBible?.consistencyRules,
-          "Keep Joe, character outfits, colors, lighting quality, emotional tone, and accessories consistent across scenes. Avoid generic AI slideshow variation.",
+          "Keep user-defined characters, visual universe, colors, lighting quality, emotional tone, and editorial rhythm consistent across scenes. Avoid generic AI slideshow variation.",
         ),
       },
       scenes,
@@ -536,6 +551,8 @@ export async function POST(req: Request) {
       durationBudget,
       estimatedTotalSpeechSeconds,
       estimatedTotalSpeechWords,
+      qualityMode,
+      timelineSyncPlan,
       creatorLabTestReadiness,
       pacingBlueprint,
     };

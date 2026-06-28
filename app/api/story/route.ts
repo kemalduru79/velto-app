@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { createTimelineSyncPlan } from "../../../lib/video/timelineSync";
 
 export const runtime = "nodejs";
 
@@ -133,11 +134,20 @@ ${prompt.trim()}
       );
     }
 
+    const timelineSyncPlan = createTimelineSyncPlan({
+      product: "storyverse",
+      qualityTier: "lite",
+      durationSec: parsed.scenes.length * 7,
+      sceneCount: parsed.scenes.length,
+      scenes: parsed.scenes,
+    });
+
     return NextResponse.json({
       title: parsed.title,
       characters: parsed.characters,
       visualBible: parsed.visualBible,
       scenes: parsed.scenes,
+      timelineSyncPlan,
     });
   } catch (error) {
     console.error("story error:", error);

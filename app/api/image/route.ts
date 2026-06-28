@@ -39,33 +39,37 @@ function normalizeNameForCharacter(value: unknown) {
     .trim();
 }
 
-function ensureDefaultGuideCharacter(characters?: Character[]) {
+function normalizeCharactersForPrompt(
+  characters?: Character[],
+  useDefaultGuideCharacter = false,
+) {
   const safeCharacters = Array.isArray(characters) ? characters : [];
   const hasJoe = safeCharacters.some(
     (character) => normalizeNameForCharacter(character?.name) === "joe",
   );
 
-  if (hasJoe) {
-    return safeCharacters.map((character) =>
-      normalizeNameForCharacter(character?.name) === "joe"
-        ? {
-            ...DEFAULT_GUIDE_CHARACTER,
-            ...character,
-            name: "Joe",
-            age: character.age || DEFAULT_GUIDE_CHARACTER.age,
-            appearance:
-              character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
-            outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
-            accessory: character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
-            personality:
-              character.personality || DEFAULT_GUIDE_CHARACTER.personality,
-          }
-        : character,
-    );
+  const normalizedCharacters = safeCharacters.map((character) =>
+    normalizeNameForCharacter(character?.name) === "joe"
+      ? {
+          ...DEFAULT_GUIDE_CHARACTER,
+          ...character,
+          name: "Joe",
+          age: character.age || DEFAULT_GUIDE_CHARACTER.age,
+          appearance: character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
+          outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
+          accessory: character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+          personality: character.personality || DEFAULT_GUIDE_CHARACTER.personality,
+        }
+      : character,
+  );
+
+  if (!hasJoe && useDefaultGuideCharacter) {
+    return [DEFAULT_GUIDE_CHARACTER, ...normalizedCharacters];
   }
 
-  return [DEFAULT_GUIDE_CHARACTER, ...safeCharacters];
+  return normalizedCharacters;
 }
+
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -79,12 +83,29 @@ function getOpenAIClient() {
   });
 }
 
-function buildCharacterBlock(characters?: Character[]) {
-  const effectiveCharacters = ensureDefaultGuideCharacter(characters);
+function buildCharacterBlock(
+  characters?: Character[],
+  useDefaultGuideCharacter = false,
+) {
+  const effectiveCharacters = normalizeCharactersForPrompt(
+    characters,
+    useDefaultGuideCharacter,
+  );
+
+  if (!effectiveCharacters.length) {
+    return `
+NO LOCKED CHARACTER PROVIDED:
+- Do not inject Joe or any default mascot.
+- Follow the scene description and visual bible.
+- If the format is faceless, documentary, product-led, or abstract, keep the same visual universe rather than inventing a recurring character.
+- If a character appears in the scene text, keep that character consistent inside this scene and avoid adding unrelated extra lead characters.
+`;
+  }
 
   return effectiveCharacters
     .map((character, index) => {
       const hasReference = Boolean(character.referenceImage);
+      const isJoe = normalizeNameForCharacter(character?.name) === "joe";
 
       return `
 Character ${index + 1}
@@ -106,8 +127,8 @@ REFERENCE IMAGE VALUE:
 ${character.referenceImage || "No reference image yet"}
 
 CRITICAL CHARACTER LOCK:
-- Joe is the primary recurring guide character and must remain visually identical whenever he appears.
-- This character MUST look IDENTICAL across all scenes.
+- This character MUST look IDENTICAL whenever the same character appears across scenes.
+${isJoe ? "- Joe was explicitly provided, so preserve Joe's established identity exactly." : "- This is a user-defined character, not a default Joe mascot."}
 - If a reference image exists, it OVERRIDES all text description.
 - NEVER redesign this character.
 - NEVER change face shape.
@@ -167,6 +188,7 @@ export async function POST(req: Request) {
       isHookScene,
       imageUseCase,
       premiumVisualMode,
+      useDefaultGuideCharacter,
     }: {
       title?: string;
       sceneText?: string;
@@ -179,6 +201,7 @@ export async function POST(req: Request) {
       isHookScene?: boolean;
       imageUseCase?: "scene" | "thumbnail" | "hook";
       premiumVisualMode?: boolean;
+      useDefaultGuideCharacter?: boolean;
     } = await req.json();
 
     if (!sceneText || !sceneText.trim()) {
@@ -188,7 +211,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const characterBlock = buildCharacterBlock(characters);
+    const characterBlock = buildCharacterBlock(characters, Boolean(useDefaultGuideCharacter));
     const visualBlock = buildVisualBlock(visualBible);
     const normalizedImageUseCase =
       imageUseCase ||
@@ -200,7 +223,7 @@ export async function POST(req: Request) {
 PREMIUM VISUAL LAYER:
 - This is a high-impact ${normalizedImageUseCase === "thumbnail" ? "YouTube thumbnail / hero marketing image" : normalizedImageUseCase === "hook" ? "hook scene / opening hero frame" : "premium story scene frame"}.
 - Use premium 3D animated feature film quality with strong emotional readability and high visual impact.
-- Make Joe's facial expression highly readable and engaging.
+- Make the primary subject or key visual idea highly readable and engaging.
 - Prioritize a clean, bold composition with one dominant visual idea.
 - Use cinematic lighting, professional color grading, stronger contrast, and clear subject separation.
 - Use detailed but controlled environments: rich enough to feel premium, never cluttered.
@@ -215,7 +238,7 @@ STANDARD VISUAL LAYER:
 `;
 
     const imagePrompt = `
-Create a polished still frame from the SAME children's animated film universe.
+Create a polished still frame from the SAME coherent visual universe.
 
 Story title:
 ${title || "Untitled Story"}
@@ -241,24 +264,22 @@ Motion feeling:
 ${motionHint || "gentle cinematic movement"}
 
 High-priority continuity instructions:
-- Joe must stay visually consistent as the recurring guide character
-- Joe should not be redesigned, renamed, removed, aged up, aged down, or replaced
+- do not inject Joe or any default mascot unless it is explicitly present in the character bible or scene request
 - if a reference image exists, treat it as the ONLY valid design
 - do not generate alternative versions of the same character
-- do not create visual variations
-- this is NOT a new interpretation of the characters
-- this is the SAME cast from the same film
-- preserve the exact same hero design across scenes
-- preserve the same face structure, eye shape, nose proportions, hair design, age feeling, outfit, and accessory
-- if multiple siblings or multiple children exist, preserve their count and do not merge or remove them
+- do not create visual variations for established characters
+- this is NOT a new interpretation of the characters or visual universe
+- preserve the exact same hero design when a hero character is provided
+- preserve face structure, eye shape, nose proportions, hair design, age feeling, outfit, and accessory for all locked characters
+- if multiple siblings, multiple children, presenters, or objects exist, preserve their count and do not merge or remove them
 - do not swap genders
 - do not change ethnicity cues unless explicitly required by the story
 - do not generate a new costume unless the scene explicitly describes a costume change
-- do not make the characters look older, younger, taller, or shorter than before
-- do not replace the main characters with visually different alternatives
+- do not make characters look older, younger, taller, or shorter than before
+- do not replace main characters with visually different alternatives
 - avoid random extra main characters
-- keep all characters readable and child-friendly
-- keep the same animation universe, same design language, same art direction
+- keep all characters readable and appropriate for the requested product context
+- keep the same visual universe, same design language, same art direction
 
 Cinematic direction:
 - strongly follow the requested camera direction
@@ -291,14 +312,13 @@ Negative guidance:
 - no muddy lighting
 - no blurry character face
 - no distorted hands, distorted eyes, or broken anatomy
-- no unreadable rocket logo on Joe's t-shirt when visible
 - no new lead character invention
 
 Output style:
 ${
   shouldUsePremiumVisuals
-    ? "premium high-impact animated movie frame, strong YouTube visual appeal, consistent characters, polished cinematic lighting, bold readable composition, child-friendly, same film continuity"
-    : "high-quality animated movie frame, consistent characters, polished lighting, cinematic composition, child-friendly, storybook warmth, same film continuity"
+    ? "premium high-impact production frame, strong platform visual appeal, consistent characters or visual universe, polished cinematic lighting, bold readable composition, same timeline continuity"
+    : "high-quality production frame, consistent characters or visual universe, polished lighting, cinematic composition, same timeline continuity"
 }
 `;
 

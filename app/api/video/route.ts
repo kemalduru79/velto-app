@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import RunwayML from "@runwayml/sdk";
+import { normalizeRunwayClipDuration, normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
 
 export const runtime = "nodejs";
 
@@ -212,9 +213,11 @@ export async function POST(req: NextRequest) {
     const cameraDirection = body?.cameraDirection ?? "";
     const emotion = body?.emotion ?? "";
 
-    const duration = 7;
-
-    const model: RunwayVideoModel = "gen4_turbo";
+    const model = getModel();
+    const qualityTier = normalizeVideoQualityTier(body?.qualityMode, "standard");
+    const durationPolicy = normalizeRunwayClipDuration(body?.duration, qualityTier);
+    const duration = durationPolicy.durationSec;
+    const requestedRatio = body?.ratio || body?.requestedRatio || "960:960";
 
     const imageValidationError = validateImageInput(imageUrl);
     if (!imageValidationError && typeof imageUrl === "string" && imageUrl.startsWith("https://")) {
@@ -233,7 +236,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const promptText = "Create a clean, stable, short animated video from the image. Smooth gentle motion, no distortion, no artifacts.";
+    const promptText = buildPrompt({
+      text,
+      motionHint,
+      cameraDirection,
+      emotion,
+    });
 
     const client = getClient();
 
@@ -242,7 +250,7 @@ export async function POST(req: NextRequest) {
       model,
       imageUrl,
       promptText,
-      requestedRatio: "960:960",
+      requestedRatio,
       duration,
     });
 
@@ -252,6 +260,8 @@ export async function POST(req: NextRequest) {
       status: "PENDING",
       model,
       duration,
+      durationPolicy,
+      requestedRatio,
       promptText,
       debug: { imageUrl }
     });
