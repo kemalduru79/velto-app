@@ -120,10 +120,70 @@ function toStringArray(value: unknown, fallback: string[]): string[] {
   return normalized.length ? normalized : fallback;
 }
 
+function normalizeCreatorAudienceProfile(value: unknown): string {
+  const raw = asString(value, "professional_18").toLowerCase();
+
+  if (["6-8", "8-12", "10-16", "13-17"].includes(raw)) {
+    return "professional_18";
+  }
+
+  if (raw.includes("broad")) {
+    return "broad_18";
+  }
+
+  if (raw.includes("mainstream")) {
+    return "mainstream_18";
+  }
+
+  if (raw.includes("niche") || raw.includes("expert")) {
+    return "niche_18";
+  }
+
+  return "professional_18";
+}
+
+function audienceProfileLabel(value: string): string {
+  switch (value) {
+    case "broad_18":
+      return "broad adult consumer audience, 18+";
+    case "mainstream_18":
+      return "mainstream adult audience, 18+";
+    case "niche_18":
+      return "niche expert or enthusiast audience, 18+";
+    case "professional_18":
+    default:
+      return "professional or B2B adult audience, 18+";
+  }
+}
+
+function sanitizeCreatorText(value: string): string {
+  return value
+    .replace(/\bJoe\b/g, "the creator")
+    .replace(/\bteen viewers\b/gi, "adult viewers")
+    .replace(/\bGen Z attention spans\b/gi, "platform-native attention spans")
+    .replace(/\byoung viewers\b/gi, "adult viewers")
+    .replace(/\bfor teens\b/gi, "for adult viewers")
+    .replace(/\bteens\b/gi, "adult viewers")
+    .replace(/\bteen\b/gi, "adult")
+    .replace(/\bchildren\b/gi, "viewers")
+    .replace(/\bkids\b/gi, "viewers")
+    .replace(/\bparents\b/gi, "decision-makers")
+    .replace(/\bclassroom\b/gi, "professional learning context");
+}
+
+function sanitizeStringArray(items: string[]): string[] {
+  return items.map(sanitizeCreatorText).filter(Boolean);
+}
+
+type CreatorMentorIdea = {
+  title: string;
+  concept: string;
+};
+
 function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
   const fallbackHook = `Wait… ${topic.replace(/[?.!]+$/g, "")}?!`;
 
-  const videoIdeas = Array.isArray(parsed?.videoIdeas)
+  const videoIdeas: CreatorMentorIdea[] = Array.isArray(parsed?.videoIdeas)
     ? parsed.videoIdeas
         .map((item: any) => ({
           title: asString(item?.title),
@@ -133,13 +193,13 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
         .slice(0, 5)
     : [];
 
-  const safeIdeas = videoIdeas.length
+  const safeIdeas: CreatorMentorIdea[] = videoIdeas.length
     ? videoIdeas
     : [
         {
           title: topic,
           concept:
-            "A curiosity-driven animated explainer where Joe guides kids through the surprising answer using fast visuals and one clear learning takeaway.",
+            "A professional creator-format video concept that turns the topic into a clear hook, structured narrative, strong viewer payoff, and platform-ready production angle.",
         },
       ];
 
@@ -147,30 +207,40 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
     asString(parsed?.recommendedIdea?.title) || safeIdeas[0]?.title || topic;
 
   return {
-    audienceInsight: toStringArray(parsed?.audienceInsight, [
-      "Kids aged 8-12 respond well to surprising questions, fast visual reveals, and simple explanations.",
-      "Parents are more likely to approve content that combines curiosity, learning value, and a safe animated style.",
-      "Joe should act as the guide: he asks the question, reacts with surprise, and helps the audience understand the answer.",
-    ]).slice(0, 5),
-    hookPatterns: toStringArray(parsed?.hookPatterns, [
-      fallbackHook,
-      "Open with a surprising visual reveal in the first 3 seconds.",
-      "Avoid slow openings like 'Did you know'; use shock, urgency, or a direct question.",
-    ]).slice(0, 5),
-    videoIdeas: safeIdeas,
+    audienceInsight: sanitizeStringArray(
+      toStringArray(parsed?.audienceInsight, [
+        "Professional viewers respond to clear value, strong first-5-second hooks, credible framing, and practical takeaways.",
+        "CreatorLab should optimize the idea for platform performance, audience retention, thumbnail clarity, and publish-ready positioning.",
+        "Use a professional narrator, faceless creator format, brand voice, or presenter concept only when it fits the selected adult audience and topic.",
+      ]).slice(0, 5),
+    ),
+    hookPatterns: sanitizeStringArray(
+      toStringArray(parsed?.hookPatterns, [
+        fallbackHook,
+        "Open with a surprising visual reveal in the first 3 seconds.",
+        "Avoid slow openings like 'Did you know'; use shock, urgency, or a direct question.",
+      ]).slice(0, 5),
+    ),
+    videoIdeas: safeIdeas.map((item: CreatorMentorIdea) => ({
+      title: sanitizeCreatorText(item.title),
+      concept: sanitizeCreatorText(item.concept),
+    })),
     recommendedIdea: {
-      title: recommendedTitle,
-      reason:
+      title: sanitizeCreatorText(recommendedTitle),
+      reason: sanitizeCreatorText(
         asString(parsed?.recommendedIdea?.reason) ||
-        "This idea has a clear curiosity gap, strong visual potential, and fits a short animated explainer format.",
+          "This idea has a clear audience promise, strong hook potential, and fits a professional creator production workflow.",
+      ),
     },
-    productionPlan: toStringArray(parsed?.productionPlan, [
-      "Start with a strong Joe-led hook under 7 words.",
-      "Show the surprising concept visually before explaining it.",
-      "Break the answer into 3 simple visual beats.",
-      "Use bright, readable animation and short narration lines.",
-      "End with a quick recap and a new curiosity question.",
-    ]).slice(0, 7),
+    productionPlan: sanitizeStringArray(
+      toStringArray(parsed?.productionPlan, [
+        "Start with a sharp first-line hook under 8 words.",
+        "Make the audience promise clear before adding context.",
+        "Break the idea into short retention-focused visual beats.",
+        "Use platform-native pacing, concise narration, and clear visual direction.",
+        "End with a practical takeaway, call-to-action, or next-step prompt.",
+      ]).slice(0, 7),
+    ),
   };
 }
 
@@ -181,7 +251,8 @@ export async function POST(req: Request) {
 
     const topic = asString(body?.topic);
     const country = asString(body?.country, "Global / International");
-    const ageGroup = asString(body?.ageGroup, "8-12");
+    const audienceProfile = normalizeCreatorAudienceProfile(body?.ageGroup);
+    const audienceProfileText = audienceProfileLabel(audienceProfile);
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
     const language = normalizeLanguage(body?.language);
@@ -201,11 +272,11 @@ export async function POST(req: Request) {
 
     const youtubeContext = youtubeData.length
       ? JSON.stringify(youtubeData, null, 2)
-      : "No YouTube trend data was provided. Use general YouTube kids edutainment best practices.";
+      : "No YouTube trend data was provided. Use professional YouTube creator strategy, retention, thumbnail, and short-form best practices.";
 
     const systemPrompt = `
-You are a senior YouTube kids edutainment strategist.
-You design content for an AI animated channel with a recurring guide character named Joe.
+You are a senior YouTube creator strategist for CreatorLab.
+You design professional 18+ creator content for YouTube, Shorts, Reels, TikTok, and faceless or presenter-led social video workflows.
 
 CRITICAL OUTPUT RULES:
 - Return ONLY valid JSON.
@@ -219,11 +290,12 @@ HOOK QUALITY RULES:
 - Hooks must be stronger than passive "Did you know" openings.
 - Prefer surprise, urgency, contradiction, or a direct curiosity gap.
 - At least one hook pattern must be a concrete first-line hook under 7 words.
-- Joe may deliver the hook as a guide character.
+- Do not use Joe, children, parents, teens, teen viewers, Gen Z, classroom framing, school framing, or child-cartoon assumptions unless the user explicitly asks for them in the topic or brief.
+- Optimize for professional creator output: strong audience promise, retention, authority, clarity, and platform performance.
 - Example strong hooks:
-  - "Wait… octopuses have THREE hearts?!"
-  - "Why does it need 3 hearts?!"
-  - "This animal has THREE hearts?!"
+  - "This trend is already changing work."
+  - "Most creators are missing this."
+  - "Here is the signal behind the hype."
 
 Return exactly this JSON structure:
 {
@@ -251,8 +323,8 @@ ${topic}
 Target market:
 ${country}
 
-Age group:
-${ageGroup}
+Audience profile:
+${audienceProfileText}
 
 Content type:
 ${contentType}
@@ -260,13 +332,17 @@ ${contentType}
 Format:
 ${format}
 
-Recurring guide character:
-Joe, a curious 10-year-old guide. Joe asks questions and reacts, but the content topic remains the hero.
+Creator format rules:
+- CreatorLab is an 18+ professional creator production engine.
+- Treat the selected audience as adults only: ${audienceProfileText}.
+- Do not default to Joe, child/teen characters, teen audience language, parent reassurance, or classroom framing.
+- Prefer faceless documentary, professional narrator, brand voice, subject-matter host, product-led, or presenter-led concepts depending on the selected adult audience profile.
+- If the user explicitly names a character, preserve it; otherwise keep the recommendation character-neutral.
 
 YouTube data sample:
 ${youtubeContext}
 
-Create a mentor analysis optimized for high CTR, strong first 5 seconds, child-friendly education, and parent-approved viewing.
+Create a mentor analysis optimized for high CTR, strong first 5 seconds, retention, professional creator quality, thumbnail potential, and publish-ready production planning. Do not mention teens, parents, children, Joe, classroom, or young viewers unless the topic itself explicitly asks for that audience.
 `;
 
     const response = await client.responses.create({

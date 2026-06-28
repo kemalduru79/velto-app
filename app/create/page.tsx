@@ -43,6 +43,25 @@ import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
+import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
+
+type CreatorEditPlanPriority = "render_safe" | "review" | "edit_required";
+
+type CreatorEditPlanItem = {
+  sceneId: string | number;
+  priority: CreatorEditPlanPriority;
+  decision: string;
+  reason: string;
+  recommendation: string;
+  speechSeconds: number;
+  visualBlocks: number;
+};
+
+type CreatorEditPlan = {
+  status: "ready_to_render" | "needs_edit_plan";
+  summary: string;
+  items: CreatorEditPlanItem[];
+};
 
 type SceneTiming = {
   narrationDuration: number;
@@ -164,7 +183,7 @@ type ChildProfile = {
 
 type ContentLanguage = "tr" | "en";
 
-type CreatorAgeGroup = "6-8" | "8-12" | "10-16" | "13-17";
+type CreatorAgeGroup = "broad_18" | "mainstream_18" | "niche_18" | "professional_18";
 type CreatorContentType =
   | "educational"
   | "fun_facts"
@@ -226,6 +245,7 @@ type CreatorProductionPackage = {
   durationSec?: number;
   sceneCount?: number;
   targetSceneDurationSec?: number;
+  timelineSyncPlan?: TimelineSyncPlan;
 };
 
 type YoutubeMetadataResult = {
@@ -327,10 +347,10 @@ const CREATOR_COUNTRY_OPTIONS = [
 ];
 
 const CREATOR_AGE_GROUP_OPTIONS: Array<{ value: CreatorAgeGroup; label: string }> = [
-  { value: "6-8", label: "Broad / 18+" },
-  { value: "8-12", label: "Mainstream / 18+" },
-  { value: "10-16", label: "Niche / 18+" },
-  { value: "13-17", label: "Professional / 18+" },
+  { value: "broad_18", label: "Broad consumer / 18+" },
+  { value: "mainstream_18", label: "Mainstream adult / 18+" },
+  { value: "niche_18", label: "Niche expert audience / 18+" },
+  { value: "professional_18", label: "Professional / B2B / 18+" },
 ];
 
 const CREATOR_CONTENT_TYPE_OPTIONS: Array<{ value: CreatorContentType; label: string }> = [
@@ -483,21 +503,21 @@ const optimizeCreatorPackageOpeningHook = (
   const firstScene = scenes[0];
   const firstDialogue = firstScene.dialogue?.trim()
     ? firstScene.dialogue
-    : `Joe: ${optimizedHook}`;
+    : optimizedHook;
 
   scenes[0] = {
     ...firstScene,
-    text: firstScene.text?.toLowerCase().includes("joe")
+    text: firstScene.text?.trim()
       ? firstScene.text
-      : `Joe reacts with surprise as the episode reveals the main question: ${optimizedHook}`,
+      : `The opening scene reveals the main question with a direct creator hook: ${optimizedHook}`,
     narration: firstScene.narration?.trim()
       ? firstScene.narration
-      : "Joe spots something surprising right away.",
+      : optimizedHook,
     dialogue: firstDialogue.toLowerCase().includes("did you know")
-      ? `Joe: ${optimizedHook}`
+      ? optimizedHook
       : firstDialogue,
-    emotion: firstScene.emotion || "surprised curiosity",
-    motionHint: firstScene.motionHint || "Joe leans forward with wide-eyed surprise",
+    emotion: firstScene.emotion || "focused curiosity",
+    motionHint: firstScene.motionHint || "fast creator-style opening with a clear visual reveal",
   };
 
   return {
@@ -1008,7 +1028,7 @@ const UI_TEXT = {
     open: "Open",
     contentLanguage: "Content Language",
     contentLanguageHint: "The selected language controls the generation language for the selected workspace outputs.",
-    turkish: "Türkçe",
+    turkish: "Turkish",
     english: "English",
     storyPromptLabel: "What kind of cartoon / story do you want to create in Storyverse?",
     storyPromptPlaceholder: "Example: A curious child by the sea discovers a lost star map",
@@ -1588,6 +1608,435 @@ const generateSceneRecommendation = (
 
 
 
+
+const formatTimelineSeconds = (value?: number) => {
+  const numericValue = Number(value || 0);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return "0s";
+  }
+
+  return `${Math.round(numericValue * 10) / 10}s`;
+};
+
+const getTimelineActionLabel = (action?: TimelineScenePlan["visualAction"]) => {
+  switch (action) {
+    case "keep_clip":
+      return "Keep clip";
+    case "slow_clip":
+      return "Slow clip";
+    case "image_motion_tail":
+      return "Image motion tail";
+    case "split_scene":
+      return "Split scene";
+    case "rewrite_voice":
+      return "Rewrite voice";
+    default:
+      return "Review";
+  }
+};
+
+const getTimelineRiskLabel = (plan: TimelineSyncPlan) => {
+  const criticalCount = plan.scenes.filter(
+    (scene) => scene.audioMismatch === "critical" || scene.speechFit === "too_long",
+  ).length;
+  const longCount = plan.scenes.filter(
+    (scene) => scene.audioMismatch === "long" || scene.speechFit === "tight",
+  ).length;
+
+  if (criticalCount > 0) {
+    return {
+      label: "Needs edit plan",
+      className: "border-rose-400/30 bg-rose-500/[0.12] text-rose-100",
+    };
+  }
+
+  if (longCount > 0) {
+    return {
+      label: "Tight timing",
+      className: "border-amber-400/30 bg-amber-500/[0.12] text-amber-100",
+    };
+  }
+
+  return {
+    label: "Timeline safe",
+    className: "border-emerald-400/30 bg-emerald-500/[0.12] text-emerald-100",
+  };
+};
+
+const creatorTimelineNeedsEditPlan = (plan?: TimelineSyncPlan | null) => {
+  if (!plan || !Array.isArray(plan.scenes)) {
+    return false;
+  }
+
+  return plan.scenes.some(
+    (scene) =>
+      scene.audioMismatch === "critical" ||
+      scene.speechFit === "too_long" ||
+      scene.visualAction === "split_scene" ||
+      scene.visualAction === "rewrite_voice" ||
+      scene.visualAction === "image_motion_tail",
+  );
+};
+
+const getCreatorEditRecommendation = (scene: TimelineScenePlan) => {
+  if (scene.visualAction === "split_scene") {
+    return "Split this scene into two shorter visual beats before cinematic rendering.";
+  }
+
+  if (scene.visualAction === "rewrite_voice") {
+    return "Shorten or rewrite the narration so the speech lands inside the visual beat.";
+  }
+
+  if (scene.visualAction === "image_motion_tail" || scene.speechFit === "too_long") {
+    return "Keep the AI video clip as the opening visual block, then complete the remaining narration with image-motion, B-roll, or cutaway visuals.";
+  }
+
+  if (scene.visualAction === "slow_clip" || scene.speechFit === "tight") {
+    return "Render with sentence-boundary cuts and avoid cutting speech at the 7-second clip boundary.";
+  }
+
+  return "Safe for standard visual rendering.";
+};
+
+
+const CREATOR_TIMELINE_TARGET_WORDS_PER_SECOND = 2.15;
+const CREATOR_TIMELINE_SAFE_CLIP_SECONDS = 6.4;
+const CREATOR_TIMELINE_TIGHT_CLIP_SECONDS = 6.9;
+
+const trimCreatorSpeechToWords = (value: string, maxWords: number) => {
+  const words = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  if (words.length <= maxWords) {
+    return words.join(" ");
+  }
+
+  const trimmed = words.slice(0, Math.max(8, maxWords)).join(" ").replace(/[,.!?:;]+$/, "");
+  return `${trimmed}.`;
+};
+
+const getTimelineOptimizedSpeechTargetWords = (scenePlan?: TimelineScenePlan) => {
+  if (!scenePlan) {
+    return Math.round(CREATOR_TIMELINE_SAFE_CLIP_SECONDS * CREATOR_TIMELINE_TARGET_WORDS_PER_SECOND);
+  }
+
+  if (
+    scenePlan.visualAction === "image_motion_tail" ||
+    scenePlan.visualAction === "split_scene" ||
+    scenePlan.visualAction === "rewrite_voice" ||
+    scenePlan.speechFit === "too_long" ||
+    scenePlan.audioMismatch === "critical"
+  ) {
+    return Math.round(CREATOR_TIMELINE_SAFE_CLIP_SECONDS * CREATOR_TIMELINE_TARGET_WORDS_PER_SECOND);
+  }
+
+  if (
+    scenePlan.visualAction === "slow_clip" ||
+    scenePlan.speechFit === "tight" ||
+    scenePlan.audioMismatch === "long"
+  ) {
+    return Math.round(CREATOR_TIMELINE_TIGHT_CLIP_SECONDS * CREATOR_TIMELINE_TARGET_WORDS_PER_SECOND);
+  }
+
+  return Math.round(CREATOR_TIMELINE_TIGHT_CLIP_SECONDS * CREATOR_TIMELINE_TARGET_WORDS_PER_SECOND);
+};
+
+const sceneNeedsTimelineTextOptimization = (scenePlan?: TimelineScenePlan) => {
+  if (!scenePlan) {
+    return false;
+  }
+
+  return (
+    scenePlan.audioMismatch === "critical" ||
+    scenePlan.audioMismatch === "long" ||
+    scenePlan.speechFit === "too_long" ||
+    scenePlan.speechFit === "tight" ||
+    scenePlan.visualAction === "image_motion_tail" ||
+    scenePlan.visualAction === "split_scene" ||
+    scenePlan.visualAction === "rewrite_voice" ||
+    scenePlan.visualAction === "slow_clip"
+  );
+};
+
+const optimizeCreatorScenesForTimelineText = <T extends Partial<CreatorProductionScene & Scene>>(
+  sourceScenes: T[],
+  plan: TimelineSyncPlan,
+): T[] => {
+  const planById = new Map(
+    plan.scenes.map((scenePlan) => [String(scenePlan.id), scenePlan]),
+  );
+
+  return sourceScenes.map((scene, index) => {
+    const sceneId = scene.id || index + 1;
+    const scenePlan = planById.get(String(sceneId)) || plan.scenes[index];
+
+    if (!sceneNeedsTimelineTextOptimization(scenePlan)) {
+      return scene;
+    }
+
+    const targetWords = getTimelineOptimizedSpeechTargetWords(scenePlan);
+    const sourceSpeech = [scene.narration, scene.dialogue]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .join(" ") || String(scene.text || "").trim();
+    const optimizedNarration = trimCreatorSpeechToWords(sourceSpeech, targetWords);
+
+    return {
+      ...scene,
+      narration: optimizedNarration,
+      dialogue: "",
+      text: String(scene.text || "").trim() || optimizedNarration,
+      motionHint: scene.motionHint || "sentence-boundary editorial beat",
+    };
+  });
+};
+
+const createCreatorEditPlanFromTimeline = (plan: TimelineSyncPlan): CreatorEditPlan => {
+  const items = plan.scenes.map((scene) => {
+    const needsEdit =
+      scene.audioMismatch === "critical" ||
+      scene.speechFit === "too_long" ||
+      scene.visualAction === "split_scene" ||
+      scene.visualAction === "rewrite_voice" ||
+      scene.visualAction === "image_motion_tail";
+    const needsReview =
+      !needsEdit &&
+      (scene.audioMismatch === "long" ||
+        scene.speechFit === "tight" ||
+        scene.visualAction === "slow_clip");
+
+    const priority: CreatorEditPlanPriority = needsEdit
+      ? "edit_required"
+      : needsReview
+        ? "review"
+        : "render_safe";
+
+    return {
+      sceneId: scene.id,
+      priority,
+      decision: getTimelineActionLabel(scene.visualAction),
+      reason: `${scene.speechFit || "safe"} speech fit · ${scene.audioMismatch || "no"} mismatch`,
+      recommendation: getCreatorEditRecommendation(scene),
+      speechSeconds: Number(scene.estimatedSpeechSeconds || 0),
+      visualBlocks: scene.visualBlocks?.length || 0,
+    };
+  });
+
+  const requiredEdits = items.filter((item) => item.priority === "edit_required").length;
+  const reviews = items.filter((item) => item.priority === "review").length;
+
+  return {
+    status: requiredEdits > 0 ? "needs_edit_plan" : "ready_to_render",
+    summary:
+      requiredEdits > 0
+        ? `${requiredEdits} scene(s) need timeline edits before paid cinematic rendering. ${reviews} additional scene(s) should be reviewed.`
+        : reviews > 0
+          ? `${reviews} scene(s) have tight timing but can proceed with careful sentence-boundary editing.`
+          : "All scenes are safe for standard rendering.",
+    items,
+  };
+};
+
+function CreatorTimelinePreviewPanel({
+  plan,
+  editPlan,
+  onGenerateEditPlan,
+  onOptimizeTimeline,
+  isOptimizingTimeline,
+}: {
+  plan?: TimelineSyncPlan | null;
+  editPlan?: CreatorEditPlan | null;
+  onGenerateEditPlan?: () => void;
+  onOptimizeTimeline?: () => void;
+  isOptimizingTimeline?: boolean;
+}) {
+  if (!plan || !Array.isArray(plan.scenes) || plan.scenes.length === 0) {
+    return null;
+  }
+
+  const risk = getTimelineRiskLabel(plan);
+  const sceneCount = plan.scenes.length;
+  const criticalScenes = plan.scenes.filter(
+    (scene) => scene.audioMismatch === "critical" || scene.speechFit === "too_long",
+  ).length;
+  const imageMotionScenes = plan.scenes.filter(
+    (scene) => scene.visualAction === "image_motion_tail",
+  ).length;
+  const splitScenes = plan.scenes.filter(
+    (scene) => scene.visualAction === "split_scene",
+  ).length;
+  const visualBlockCount = plan.scenes.reduce(
+    (sum, scene) => sum + (scene.visualBlocks?.length || 0),
+    0,
+  );
+  const previewScenes = plan.scenes.slice(0, 6);
+
+  return (
+    <div className="mt-5 rounded-[30px] border border-white/10 bg-slate-950/72 p-5 text-sm text-slate-200 shadow-[0_24px_80px_rgba(2,6,23,0.28)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.26em] text-cyan-200/70">
+            Timeline preview
+          </p>
+          <h3 className="mt-2 text-xl font-semibold text-white">
+            Audio-first continuity plan
+          </h3>
+          <p className="mt-2 max-w-3xl leading-6 text-slate-300">
+            CreatorLab now checks narration timing before final rendering and decides whether each scene should keep the generated clip, slow it down, add image-motion/B-roll, or split the scene.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className={`rounded-2xl border px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] ${risk.className}`}>
+            {risk.label}
+          </div>
+          {onOptimizeTimeline && (
+            <button
+              type="button"
+              onClick={onOptimizeTimeline}
+              disabled={Boolean(isOptimizingTimeline)}
+              className="rounded-2xl border border-orange-300/30 bg-orange-400 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-950 transition hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isOptimizingTimeline ? "Optimizing…" : "Optimize Timeline"}
+            </button>
+          )}
+          {onGenerateEditPlan && creatorTimelineNeedsEditPlan(plan) && (
+            <button
+              type="button"
+              onClick={onGenerateEditPlan}
+              className="rounded-2xl border border-cyan-300/25 bg-cyan-300 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-950 transition hover:bg-cyan-200"
+            >
+              Generate Edit Plan
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Scenes</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{sceneCount}</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Speech</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {formatTimelineSeconds(plan.estimatedSpeechSeconds)}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Blocks</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{visualBlockCount}</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Image tails</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{imageMotionScenes}</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Splits</p>
+          <p className="mt-2 text-2xl font-semibold text-white">{splitScenes}</p>
+        </div>
+      </div>
+
+      {criticalScenes > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4 text-amber-100">
+          {criticalScenes} scene(s) should be split, rewritten, or supported with B-roll before expensive cinematic rendering. Speech should not be cut at the 7-second clip boundary.
+        </div>
+      )}
+
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
+        <div className="grid min-w-[640px] grid-cols-[72px_1fr_140px_120px] gap-3 bg-white/[0.06] px-4 py-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+          <span>Scene</span>
+          <span>Decision</span>
+          <span>Speech</span>
+          <span>Blocks</span>
+        </div>
+
+        <div className="divide-y divide-white/10">
+          {previewScenes.map((scene) => (
+            <div
+              key={`timeline-scene-${scene.id}`}
+              className="grid min-w-[640px] grid-cols-[72px_1fr_140px_120px] gap-3 px-4 py-3 text-slate-200"
+            >
+              <span className="font-semibold text-white">#{scene.id}</span>
+              <span>
+                {getTimelineActionLabel(scene.visualAction)}
+                <span className="ml-2 text-slate-500">· {scene.speechFit}</span>
+              </span>
+              <span>{formatTimelineSeconds(scene.estimatedSpeechSeconds)}</span>
+              <span>{scene.visualBlocks?.length || 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {editPlan && (
+        <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200/70">
+                Edit plan
+              </p>
+              <h4 className="mt-2 text-lg font-semibold text-white">
+                Pre-render actions
+              </h4>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                {editPlan.summary}
+              </p>
+            </div>
+            <span className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs uppercase tracking-[0.16em] text-slate-300">
+              {editPlan.status === "needs_edit_plan" ? "Edit required" : "Render ready"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {editPlan.items.slice(0, 6).map((item) => (
+              <div
+                key={`creator-edit-plan-${item.sceneId}`}
+                className="rounded-2xl border border-white/10 bg-slate-950/55 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-white">Scene #{item.sceneId}</p>
+                  <span className={
+                    item.priority === "edit_required"
+                      ? "rounded-full border border-rose-300/25 bg-rose-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-rose-100"
+                      : item.priority === "review"
+                        ? "rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100"
+                        : "rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-emerald-100"
+                  }>
+                    {item.priority.replace("_", " ")}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm text-slate-300">
+                  {item.decision} · {formatTimelineSeconds(item.speechSeconds)} · {item.visualBlocks} block(s)
+                </p>
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
+                  {item.reason}
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-200">
+                  {item.recommendation}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {plan.warnings?.length > 0 && (
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-xs leading-5 text-slate-400">
+          {plan.warnings.slice(0, 3).map((warning, index) => (
+            <li key={`timeline-warning-${index}`}>{warning}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+
 export default function CreatePage() {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
@@ -1604,10 +2053,11 @@ export default function CreatePage() {
   const [addingChild, setAddingChild] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+  const [creatorProjectsHidden, setCreatorProjectsHidden] = useState(true);
   const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
-  const { language: uiLanguage } = useLanguage();
+  const { language: uiLanguage, setLanguage: setUiLanguage } = useLanguage();
   const [language, setLanguage] = useState<ContentLanguage>(
     uiLanguage === "en" ? "en" : "tr"
   );
@@ -1616,7 +2066,7 @@ export default function CreatePage() {
   const localizedSelectedFlow = localizedFlowMessages.flows[activeFlowKey] ?? selectedFlow;
 
   const [creatorCountry, setCreatorCountry] = useState("global");
-  const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("13-17");
+  const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("professional_18");
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational");
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("shorts_60");
@@ -1627,6 +2077,14 @@ export default function CreatePage() {
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
   const [creatorProductionPackage, setCreatorProductionPackage] =
     useState<CreatorProductionPackage | null>(null);
+  const [creatorTimelinePreviewPlan, setCreatorTimelinePreviewPlan] =
+    useState<TimelineSyncPlan | null>(null);
+  const [creatorEditPlan, setCreatorEditPlan] =
+    useState<CreatorEditPlan | null>(null);
+  const [creatorTimelinePreviewLoading, setCreatorTimelinePreviewLoading] =
+    useState(false);
+  const [creatorTimelineOptimizeLoading, setCreatorTimelineOptimizeLoading] =
+    useState(false);
   const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
   const [isGeneratingFullYoutubePackage, setIsGeneratingFullYoutubePackage] = useState(false);
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
@@ -2234,11 +2692,19 @@ export default function CreatePage() {
   };
 
   const handleStitchVideo = async () => {
-    const videoUrls = scenes
+    const stitchScenes = scenes
       .filter((scene) => scene.videoUrl && scene.videoStatus === "done")
-      .map((scene) => scene.videoUrl as string);
+      .map((scene) => ({
+        id: scene.id,
+        videoUrl: scene.videoUrl,
+        imageUrl: scene.image,
+        audioUrl: scene.audioUrl,
+        dialogueAudioUrl: scene.dialogueAudioUrl,
+        durationSec: scene.timing?.targetSceneDuration,
+        timing: scene.timing,
+      }));
 
-    if (videoUrls.length < 2) {
+    if (stitchScenes.length < 2) {
       setError("Final video oluşturmak için en az 2 hazır sahne videosu gerekir.");
       return;
     }
@@ -2253,7 +2719,10 @@ export default function CreatePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ videoUrls }),
+        body: JSON.stringify({
+          scenes: stitchScenes,
+          timelineSyncPlan: creatorProductionPackage?.timelineSyncPlan,
+        }),
       });
 
       if (!response.ok) {
@@ -4567,6 +5036,174 @@ export default function CreatePage() {
     }
   };
 
+  const buildCreatorTimelineInputScenes = (
+    sourceScenes: Array<Partial<CreatorProductionScene & Scene>>
+  ) =>
+    sourceScenes.map((scene, index) => ({
+      id: scene.id || index + 1,
+      text: scene.text || scene.narration || `CreatorLab scene ${index + 1}`,
+      narration: scene.narration || "",
+      dialogue: scene.dialogue || "",
+      visualPrompt:
+        scene.visualPrompt ||
+        scene.motionHint ||
+        scene.cameraDirection ||
+        `Professional CreatorLab visual beat ${index + 1}`,
+      cameraDirection: scene.cameraDirection || "Clean editorial shot with readable composition.",
+      motionHint: scene.motionHint || "controlled editorial motion",
+    }));
+
+  const fetchCreatorTimelinePreviewPlan = async (
+    topicForPreview: string,
+    mentorAnalysisOverride?: CreatorMentorResult | null,
+    scenesOverride?: Array<Partial<CreatorProductionScene & Scene>> | null,
+  ) => {
+    const accessToken = await getAccessTokenOrThrow();
+
+    const res = await fetch("/api/creator-timeline-preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        topic: topicForPreview,
+        country: getCreatorCountryLabel(),
+        ageGroup: creatorAgeGroup,
+        contentType: getCreatorContentTypeLabel(),
+        format: getCreatorFormatLabel(),
+        durationSec: creatorVideoDurationSec,
+        sceneCount: scenesOverride?.length || getCreatorSceneCount(),
+        language,
+        qualityMode: "pro",
+        mentorAnalysis: mentorAnalysisOverride || creatorMentorResult,
+        scenes:
+          scenesOverride && scenesOverride.length > 0
+            ? buildCreatorTimelineInputScenes(scenesOverride)
+            : undefined,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.success || !data?.timelineSyncPlan) {
+      throw new Error(
+        data?.error ||
+          (uiLanguage === "en"
+            ? "Timeline preview could not be generated."
+            : "Timeline önizlemesi oluşturulamadı."),
+      );
+    }
+
+    return data.timelineSyncPlan as TimelineSyncPlan;
+  };
+
+  const handleGenerateCreatorEditPlan = () => {
+    const nextPlan =
+      creatorProductionPackage?.timelineSyncPlan || creatorTimelinePreviewPlan;
+
+    if (!nextPlan) {
+      setError(
+        uiLanguage === "en"
+          ? "Generate a timeline preview before creating an edit plan."
+          : "Edit plan oluşturmadan önce timeline önizlemesi üret."
+      );
+      return;
+    }
+
+    const nextEditPlan = createCreatorEditPlanFromTimeline(nextPlan);
+    setCreatorEditPlan(nextEditPlan);
+    setSaveMessage(
+      nextEditPlan.status === "needs_edit_plan"
+        ? uiLanguage === "en"
+          ? "Edit plan is ready. Review the risky scenes before paid rendering."
+          : "Edit plan hazır. Ücretli render öncesi riskli sahneleri kontrol et."
+        : uiLanguage === "en"
+          ? "Edit plan is ready. Timeline is safe for rendering."
+          : "Edit plan hazır. Timeline render için güvenli."
+    );
+  };
+
+  const handleOptimizeCreatorTimeline = async () => {
+    const sourceScenes =
+      creatorProductionPackage?.scenes?.length
+        ? creatorProductionPackage.scenes
+        : scenes.length > 0
+          ? scenes
+          : [];
+
+    if (sourceScenes.length === 0) {
+      setError(
+        uiLanguage === "en"
+          ? "Create the text production stage first. Timeline optimization needs editable scenes, but it will not generate image, video, or voice assets."
+          : "Önce text production stage oluştur. Timeline optimizasyonu düzenlenebilir sahnelere ihtiyaç duyar; görsel, video veya ses üretmez."
+      );
+      return;
+    }
+
+    setCreatorTimelineOptimizeLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const initialPlan = await fetchCreatorTimelinePreviewPlan(
+        input.trim() || creatorProductionPackage?.title || "CreatorLab video",
+        creatorMentorResult,
+        sourceScenes,
+      );
+
+      const optimizedScenes = creatorTimelineNeedsEditPlan(initialPlan)
+        ? optimizeCreatorScenesForTimelineText(sourceScenes, initialPlan)
+        : sourceScenes;
+
+      const nextPlan =
+        optimizedScenes !== sourceScenes
+          ? await fetchCreatorTimelinePreviewPlan(
+              input.trim() || creatorProductionPackage?.title || "CreatorLab video",
+              creatorMentorResult,
+              optimizedScenes,
+            )
+          : initialPlan;
+
+      setCreatorTimelinePreviewPlan(nextPlan);
+      setCreatorEditPlan(createCreatorEditPlanFromTimeline(nextPlan));
+
+      if (creatorProductionPackage) {
+        setCreatorProductionPackage({
+          ...creatorProductionPackage,
+          scenes: normalizeScenesWithIntelligence(
+            optimizedScenes as CreatorProductionScene[],
+          ) as CreatorProductionScene[],
+          timelineSyncPlan: nextPlan,
+        });
+      } else if (scenes.length > 0) {
+        setScenes(
+          normalizeScenesWithIntelligence(optimizedScenes as Scene[]) as Scene[],
+        );
+      }
+
+      setSaveMessage(
+        optimizedScenes !== sourceScenes
+          ? uiLanguage === "en"
+            ? "Timeline optimized the editable scene narration. No image, video, voice, or export cost was triggered."
+            : "Timeline, düzenlenebilir sahne anlatımlarını kısalttı. Görsel, video, ses veya export maliyeti tetiklenmedi."
+          : uiLanguage === "en"
+            ? "Timeline checked against actual editable scenes. No image, video, voice, or export cost was triggered."
+            : "Timeline, gerçek düzenlenebilir sahnelere göre kontrol edildi. Görsel, video, ses veya export maliyeti tetiklenmedi."
+      );
+    } catch (e: any) {
+      console.error("handleOptimizeCreatorTimeline error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Timeline optimization failed."
+            : "Timeline optimizasyonu başarısız oldu.")
+      );
+    } finally {
+      setCreatorTimelineOptimizeLoading(false);
+    }
+  };
+
   const handleGenerateFullYoutubePackage = async (
     topicOverride?: string,
     options?: { forceNewProject?: boolean }
@@ -4590,6 +5227,38 @@ export default function CreatePage() {
     if (!selectedChildId) {
       setError("Lütfen önce bir çocuk seç.");
       return;
+    }
+
+    setCreatorTimelinePreviewLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const guardPlan = await fetchCreatorTimelinePreviewPlan(topic);
+      setCreatorTimelinePreviewPlan(guardPlan);
+
+      if (creatorTimelineNeedsEditPlan(guardPlan)) {
+        setCreatorEditPlan(createCreatorEditPlanFromTimeline(guardPlan));
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Pre-render guard stopped the full package. Review the edit plan before paid cinematic rendering."
+            : "Render öncesi kontrol tam paketi durdurdu. Ücretli cinematic render öncesi edit planı kontrol et."
+        );
+        return;
+      }
+
+      setCreatorEditPlan(null);
+    } catch (e: any) {
+      console.error("pre-render timeline guard error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Pre-render timeline check failed."
+            : "Render öncesi timeline kontrolü başarısız oldu.")
+      );
+      return;
+    } finally {
+      setCreatorTimelinePreviewLoading(false);
     }
 
     setIsGeneratingFullYoutubePackage(true);
@@ -4688,6 +5357,7 @@ export default function CreatePage() {
       const nextVisualBible = nextPackage.visualBible || emptyVisualBible;
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
       setStorySetup({
         title: nextPackage.title || "",
@@ -4853,6 +5523,8 @@ export default function CreatePage() {
     setCreatorMentorLoading(true);
     setLoadingSetup(true);
     setCreatorMentorResult(null);
+    setCreatorTimelinePreviewPlan(null);
+    setCreatorProductionPackage(null);
     setError("");
     setSaveMessage("");
 
@@ -4904,6 +5576,45 @@ export default function CreatePage() {
     } finally {
       setCreatorMentorLoading(false);
       setLoadingSetup(false);
+    }
+  };
+
+
+  const handleCreatorTimelinePreviewOnly = async () => {
+    const topic = input.trim();
+
+    if (!topic) {
+      setError(
+        uiLanguage === "en"
+          ? "Please enter a CreatorLab topic before previewing the timeline."
+          : "Timeline önizlemesi için önce CreatorLab konusu gir."
+      );
+      return;
+    }
+
+    setCreatorTimelinePreviewLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const nextPlan = await fetchCreatorTimelinePreviewPlan(topic);
+      setCreatorTimelinePreviewPlan(nextPlan);
+      setCreatorEditPlan(null);
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Dry-run timeline preview is ready. No video, image, voice, or export cost was triggered."
+          : "Dry-run timeline önizlemesi hazır. Video, görsel, ses veya export maliyeti tetiklenmedi."
+      );
+    } catch (e: any) {
+      console.error("handleCreatorTimelinePreviewOnly error:", e);
+      setError(
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Timeline preview failed."
+            : "Timeline önizlemesi sırasında hata oluştu.")
+      );
+    } finally {
+      setCreatorTimelinePreviewLoading(false);
     }
   };
 
@@ -4967,6 +5678,7 @@ export default function CreatePage() {
       );
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
 
       setStorySetup({
@@ -5192,6 +5904,7 @@ export default function CreatePage() {
           metadata: youtubeMetadataResult,
           thumbnail: youtubeThumbnailResult,
           scenes,
+          timelineSyncPlan: creatorProductionPackage?.timelineSyncPlan,
           language,
           flowType: activeFlowKey,
         }),
@@ -5293,16 +6006,17 @@ export default function CreatePage() {
     const shortHeadline = getShortThumbnailHeadline();
 
     return [
-      `Create a premium 16:9 YouTube thumbnail for a kids curiosity video titled: ${packageTitle}`,
+      `Create a premium 16:9 YouTube thumbnail for a professional creator video titled: ${packageTitle}`,
       packageHook ? `Core hook: ${packageHook}` : "",
       recommendedTitle ? `YouTube title: ${recommendedTitle}` : "",
       thumbnailIdea ? `Thumbnail idea: ${thumbnailIdea}` : "",
       thumbnailTextIdeas ? `Raw text ideas to simplify: ${thumbnailTextIdeas}` : "",
       `Use this short thumbnail headline concept only: ${shortHeadline}`,
-      "Show Joe, the recurring 10-year-old guide character, very close to camera with a huge shocked / amazed / no-way expression.",
+      "Do not use Joe or a default child presenter unless the user explicitly requested that character.",
+      "Use a professional presenter, faceless creator visual, product-led composition, or bold symbolic subject depending on the topic.",
       "Use one oversized focal object related to the topic on the opposite side of the frame.",
       "Make the image feel like a scroll-stopping YouTube thumbnail, not an educational poster or infographic.",
-      "Use bold contrast, cinematic lighting, large readable shapes, bright kid-friendly colors, strong depth, and premium animated movie style.",
+      "Use bold contrast, cinematic lighting, large readable shapes, platform-native creator energy, strong depth, and premium visual style.",
       "Leave clean empty space for a short headline overlay. Prefer no rendered text inside the image; if text appears, use only the short headline.",
       "Avoid multi-line text, subtitles, poster layout, labels, arrows, clutter, tiny details, scary imagery, or confusing composition.",
     ]
@@ -5827,18 +6541,11 @@ export default function CreatePage() {
         }));
 
         setScenes(packageScenes);
-
-        for (const scene of packageScenes) {
-          try {
-            const image = await generateSceneImage(scene);
-
-            setScenes((prev) =>
-              prev.map((s) => (s.id === scene.id ? { ...s, image } : s))
-            );
-          } catch (imageError) {
-            console.error("creator package scene image error:", imageError);
-          }
-        }
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Editable production scenes are ready. No image, video, voice, or export cost was triggered."
+            : "Düzenlenebilir production sahneleri hazır. Görsel, video, ses veya export maliyeti tetiklenmedi."
+        );
       } finally {
         setBuildingStory(false);
       }
@@ -6401,6 +7108,28 @@ export default function CreatePage() {
         </>
       )}
       <div className="relative z-10 mx-auto w-full max-w-7xl space-y-6 sm:space-y-8 md:space-y-12">
+        <div className="flex justify-end">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/22 px-2 py-1 text-xs text-slate-300 shadow-lg shadow-black/20 backdrop-blur-xl">
+            <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              {uiLanguage === "en" ? "Interface" : "Arayüz"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setUiLanguage("tr")}
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${uiLanguage === "tr" ? "bg-white text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
+            >
+              TR
+            </button>
+            <button
+              type="button"
+              onClick={() => setUiLanguage("en")}
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${uiLanguage === "en" ? "bg-white text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
+            >
+              EN
+            </button>
+          </div>
+        </div>
+
         {/* X.1.B.2: Creator Lab shell foundation is available for creator-specific render activation. */}
         {isStoryverseFlow ? (
           <StoryverseCinematicIntro />
@@ -6411,8 +7140,6 @@ export default function CreatePage() {
         ) : null}
 
         {isStoryverseFlow ? <FocusedWorldWorkspace /> : null}
-
-        {isCreatorLabFlow ? <FocusedWorldWorkspace /> : null}
 
 {/* 🚀 EPISODE PACKAGE PANEL */}
 <div className={`${isStoryverseFlow ? "" : "hidden"} rounded-[36px] border border-purple-400/20 bg-violet-50/80 p-6 mb-6`}>
@@ -6693,6 +7420,7 @@ export default function CreatePage() {
 </aside>
 
           <div className="space-y-10">
+        {!isCreatorLabFlow && (
         <div className="rounded-[28px] border border-orange-200/24 bg-white/62 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold">{ui.childProfile}</h2>
@@ -6743,6 +7471,7 @@ export default function CreatePage() {
             {ui.childProfileHint}
           </p>
         </div>
+        )}
 
         <div className="rounded-[28px] border border-orange-200/24 bg-white/62 p-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
@@ -6754,16 +7483,38 @@ export default function CreatePage() {
                     : (uiLanguage === "en" ? "Only Storyverse projects are shown." : "Yalnızca Storyverse projeleri gösteriliyor.")}
               </p>
             </div>
-            <button
-              onClick={fetchProjects}
-              disabled={loadingProjects}
-              className="rounded-2xl border border-orange-200/24 bg-white/68 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white/82/15 disabled:opacity-50"
-            >
-              {loadingProjects ? ui.refreshing : ui.refresh}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {isCreatorLabFlow && (
+                <button
+                  type="button"
+                  onClick={() => setCreatorProjectsHidden((prev) => !prev)}
+                  className="rounded-2xl border border-orange-200/24 bg-white/68 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white/82/15"
+                >
+                  {creatorProjectsHidden
+                    ? (uiLanguage === "en" ? "Show Projects" : "Projeleri Göster")
+                    : (uiLanguage === "en" ? "Hide" : "Gizle")}
+                </button>
+              )}
+
+              {(!isCreatorLabFlow || !creatorProjectsHidden) && (
+                <button
+                  onClick={fetchProjects}
+                  disabled={loadingProjects}
+                  className="rounded-2xl border border-orange-200/24 bg-white/68 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white/82/15 disabled:opacity-50"
+                >
+                  {loadingProjects ? ui.refreshing : ui.refresh}
+                </button>
+              )}
+            </div>
           </div>
 
-          {loadingProjects ? (
+          {isCreatorLabFlow && creatorProjectsHidden ? (
+            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-sm text-slate-600">
+              {uiLanguage === "en"
+                ? "CreatorLab projects are hidden to keep the production flow focused."
+                : "CreatorLab projeleri üretim akışını sade tutmak için gizlendi."}
+            </div>
+          ) : loadingProjects ? (
             <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-sm text-slate-600">
               {ui.projectsLoading}
             </div>
@@ -7357,17 +8108,6 @@ export default function CreatePage() {
             placeholder={getFlowAwarePlaceholder()}
           />
 
-          {isCreatorLabFlow && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsAdvancedMode((prev) => !prev)}
-                className="rounded-full border border-orange-200/24 bg-white/62 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-orange-200/26 hover:bg-white/68 hover:text-slate-900"
-              >
-                {isAdvancedMode ? "Hide Advanced Tools" : "Show Advanced Tools"}
-              </button>
-            </div>
-          )}
 
           <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
             {!isCreatorLabFlow && (
@@ -7380,7 +8120,7 @@ export default function CreatePage() {
               </button>
             )}
 
-            {isCreatorLabFlow && isAdvancedMode && (
+            {isCreatorLabFlow && (
               <button
                 onClick={createSetup}
                 disabled={loadingSetup}
@@ -7392,19 +8132,7 @@ export default function CreatePage() {
               </button>
             )}
 
-            {isCreatorLabFlow && (
-              <button
-                type="button"
-                data-auto-mode-button="true"
-                onClick={() => handleGenerateFullYoutubePackage()}
-                disabled={isGeneratingFullYoutubePackage || loadingSetup || !input.trim()}
-                className="rounded-2xl border border-purple-300/40 bg-purple-400 px-6 py-3 font-semibold text-slate-950 transition hover:scale-105 hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isGeneratingFullYoutubePackage
-                  ? ui.generatingFullYoutubePackage
-                  : ui.generateFullYoutubePackage}
-              </button>
-            )}
+
           </div>
         </div>
 
@@ -7426,7 +8154,7 @@ export default function CreatePage() {
           </div>
         )}
 
-        {isCreatorLabFlow && isAdvancedMode && creatorMentorResult && (
+        {isCreatorLabFlow && creatorMentorResult && (
           <section className="rounded-[28px] border border-sky-200 bg-cyan-500/[0.08] p-5 text-sm text-slate-700">
             <div className="mb-5">
               <p className="text-xs uppercase tracking-[0.25em] text-sky-700">
@@ -7558,7 +8286,17 @@ export default function CreatePage() {
               </div>
             )}
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            {scenes.length > 0 ? (
+              <>
+                <CreatorTimelinePreviewPanel
+                  plan={creatorProductionPackage.timelineSyncPlan}
+                  editPlan={creatorEditPlan}
+                  onGenerateEditPlan={handleGenerateCreatorEditPlan}
+                  onOptimizeTimeline={handleOptimizeCreatorTimeline}
+                  isOptimizingTimeline={creatorTimelineOptimizeLoading}
+                />
+
+                <div className="grid gap-4 lg:grid-cols-3">
               <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
                 <h3 className="font-semibold text-slate-900">{ui.thumbnailIdea}</h3>
                 <p className="mt-3 leading-6 text-slate-600">
@@ -7836,7 +8574,7 @@ export default function CreatePage() {
             <div className="mt-5 rounded-[28px] border border-lime-300/20 bg-lime-500/10 p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
+                  <h3 className="text-lg font-semibold text-lime-50">
                     {ui.costOptimizationEngine}
                   </h3>
                   <p className="mt-1 text-sm text-lime-100/75">
@@ -7845,31 +8583,27 @@ export default function CreatePage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {isAdvancedMode && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleOptimizeScenes}
-                        disabled={sceneOptimizationLoading}
-                        className="rounded-2xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {sceneOptimizationLoading
-                          ? ui.optimizingScenes
-                          : ui.optimizeScenes}
-                      </button>
+                  <button
+                    type="button"
+                    onClick={handleOptimizeScenes}
+                    disabled={sceneOptimizationLoading}
+                    className="rounded-2xl border border-lime-300/30 bg-lime-400/10 px-5 py-3 text-sm font-semibold text-lime-100 transition hover:bg-lime-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sceneOptimizationLoading
+                      ? ui.optimizingScenes
+                      : ui.optimizeScenes}
+                  </button>
 
-                      <button
-                        type="button"
-                        onClick={handleOptimizeScenesAI}
-                        disabled={sceneOptimizationAILoading}
-                        className="rounded-2xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {sceneOptimizationAILoading
-                          ? ui.aiOptimizingScenes
-                          : ui.aiOptimizeScenes}
-                      </button>
-                    </>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleOptimizeScenesAI}
+                    disabled={sceneOptimizationAILoading}
+                    className="rounded-2xl border border-purple-300/30 bg-purple-400/10 px-5 py-3 text-sm font-semibold text-purple-100 transition hover:bg-purple-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {sceneOptimizationAILoading
+                      ? ui.aiOptimizingScenes
+                      : ui.aiOptimizeScenes}
+                  </button>
 
                   {sceneOptimizationResult.length > 0 && (
                     <button
@@ -7955,22 +8689,30 @@ export default function CreatePage() {
               {ui.productionPackageNote}
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-              <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 text-slate-600">
-                {refinedCreatorScenes.length > 0
-                  ? ui.refinedScenesNote
-                  : ui.creatorProductionDesc}
-              </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 text-slate-600">
+                    {refinedCreatorScenes.length > 0
+                      ? ui.refinedScenesNote
+                      : ui.creatorProductionDesc}
+                  </div>
 
-              <button
-                type="button"
-                onClick={handleRefineCreatorScenes}
-                disabled={refineScenesLoading}
-                className="rounded-[28px] border border-teal-200 bg-teal-50/80 px-5 py-3 text-sm font-semibold text-teal-800 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {refineScenesLoading ? ui.refiningScenes : ui.refineScenes}
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={handleRefineCreatorScenes}
+                    disabled={refineScenesLoading}
+                    className="rounded-[28px] border border-teal-200 bg-teal-50/80 px-5 py-3 text-sm font-semibold text-teal-800 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {refineScenesLoading ? ui.refiningScenes : ui.refineScenes}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-5 rounded-[28px] border border-orange-300/20 bg-orange-500/10 p-5 text-sm leading-6 text-orange-50/85">
+                {uiLanguage === "en"
+                  ? "Next step: start scene production to create editable text scenes. Timeline optimization, metadata, thumbnail, export and cost optimization will appear after scenes exist."
+                  : "Sonraki adım: düzenlenebilir metin sahnelerini oluşturmak için sahne üretimini başlat. Timeline optimizasyonu, metadata, thumbnail, export ve maliyet optimizasyonu sahneler oluştuktan sonra görünür."}
+              </div>
+            )}
           </section>
         )}
 
@@ -8804,10 +9546,10 @@ export default function CreatePage() {
                           <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Scene pipeline</p>
                           <div className="mt-3 grid gap-2">
                             {[
-                              { label: "Image", ready: hasImage, pending: redrawLoadingId === scene.id },
-                              { label: "Narration", ready: narrationReady, pending: loadingAudioSceneId === scene.id },
-                              { label: "Dialogue", ready: dialogueReady, pending: loadingDialogueSceneId === scene.id && hasDialogue },
-                              { label: "Video", ready: hasVideo, pending: scene.videoStatus === "processing" },
+                              { label: uiLanguage === "en" ? "Image" : "Görsel", ready: hasImage, pending: redrawLoadingId === scene.id },
+                              { label: uiLanguage === "en" ? "Narration" : "Anlatım", ready: narrationReady, pending: loadingAudioSceneId === scene.id },
+                              { label: uiLanguage === "en" ? "Dialogue" : "Diyalog", ready: dialogueReady, pending: loadingDialogueSceneId === scene.id && hasDialogue },
+                              { label: uiLanguage === "en" ? "Video" : "Video", ready: hasVideo, pending: scene.videoStatus === "processing" },
                             ].map((item) => (
                               <div key={item.label} className="flex items-center justify-between rounded-2xl border border-orange-200/24 bg-white/62 px-3 py-2">
                                 <span className="text-sm text-slate-700">{item.label}</span>
@@ -8820,7 +9562,7 @@ export default function CreatePage() {
                                       : "border border-orange-200/22 bg-white/62 text-slate-500"
                                   }`}
                                 >
-                                  {item.pending ? "Processing" : item.ready ? "Ready" : "Pending"}
+                                  {item.pending ? (uiLanguage === "en" ? "Processing" : "İşleniyor") : item.ready ? (uiLanguage === "en" ? "Ready" : "Hazır") : (uiLanguage === "en" ? "Pending" : "Bekliyor")}
                                 </span>
                               </div>
                             ))}
@@ -8828,7 +9570,7 @@ export default function CreatePage() {
                         </div>
 
                         <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Quick actions</p>
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{uiLanguage === "en" ? "Quick actions" : "Hızlı aksiyonlar"}</p>
                           <div className="mt-3 flex flex-wrap gap-3">
                       <button
                         onClick={() => playNarration(scene.id, scene.narration)}
@@ -8841,10 +9583,10 @@ export default function CreatePage() {
                         className="rounded-xl border border-purple-400/40 bg-violet-50/80 px-4 py-2 text-sm text-purple-100 disabled:opacity-50"
                       >
                         {loadingAudioSceneId === scene.id
-                          ? "Ses hazırlanıyor..."
+                          ? (uiLanguage === "en" ? "Preparing narration..." : "Ses hazırlanıyor...")
                           : playingSceneId === scene.id
-                          ? "Sesi Durdur"
-                          : "Anlatıcıyı Dinle"}
+                          ? (uiLanguage === "en" ? "Stop narration" : "Sesi Durdur")
+                          : (uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı Dinle")}
                       </button>
 
                       <button
@@ -8857,14 +9599,14 @@ export default function CreatePage() {
                         className="rounded-xl border border-pink-400/40 bg-pink-500/10 px-4 py-2 text-sm text-pink-100 disabled:opacity-50"
                       >
                         {loadingDialogueSceneId === scene.id
-                          ? "Diyalog hazırlanıyor..."
+                          ? (uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor...")
                           : playingDialogueSceneId === scene.id
-                          ? "Diyaloğu Durdur"
-                          : "Karakter Diyaloğunu Dinle"}
+                          ? (uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu Durdur")
+                          : (uiLanguage === "en" ? "Listen to character dialogue" : "Karakter Diyaloğunu Dinle")}
                       </button>
 
                       <label className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-teal-50/80 px-3 py-2 text-xs text-teal-800">
-                        <span>Export</span>
+                        <span>{uiLanguage === "en" ? "Export" : "Dışa aktar"}</span>
                         <select
                           value={scene.renderMode || "auto"}
                           onChange={(e) => {

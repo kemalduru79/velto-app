@@ -242,6 +242,34 @@ function extractJsonObject(raw: string) {
   return cleaned.slice(firstBrace, lastBrace + 1);
 }
 
+function repairCommonJsonIssues(value: string) {
+  return value
+    .replace(/[“”]/g, "'")
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1")
+    .replace(/',\s*"([A-Za-z][A-Za-z0-9_]*)"\s*:/g, `',"$1":`)
+    .trim();
+}
+
+function parseCreatorProductionJson(raw: string) {
+  const extracted = extractJsonObject(raw);
+
+  try {
+    return JSON.parse(extracted);
+  } catch (firstError) {
+    const repaired = repairCommonJsonIssues(extracted);
+
+    try {
+      return JSON.parse(repaired);
+    } catch (secondError) {
+      console.error("creator-production JSON parse error:", raw);
+      console.error("creator-production repaired JSON parse error:", repaired);
+
+      throw secondError;
+    }
+  }
+}
+
 function normalizeCharacters(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
@@ -288,6 +316,126 @@ function normalizeScenes(value: unknown, sceneCount: number) {
       visualPrompt: asString(scene.visualPrompt),
     };
   });
+}
+
+function createFallbackCreatorAnchor(
+  language: "tr" | "en",
+  topic: string,
+  visualStyle: string,
+) {
+  const isTurkish = language === "tr";
+
+  return [
+    {
+      name: isTurkish ? "CreatorLab Anlatıcı / Marka Sesi" : "CreatorLab Narrator / Brand Voice",
+      age: "18+ professional voice profile",
+      appearance: isTurkish
+        ? "Faceless veya marka odaklı formatlarda görsel evreni temsil eden profesyonel anlatıcı profili. Zorunlu karakter ya da Joe değildir."
+        : "Professional narrator profile representing the visual universe in faceless or brand-led formats. This is not a forced character or Joe.",
+      outfit: isTurkish
+        ? "Kanal kimliğine ve konuya uygun; gerekiyorsa ekranda görünmez."
+        : "Aligned to the channel identity and topic; may remain off-screen when the format is faceless.",
+      accessory: topic || visualStyle || "",
+      personality: isTurkish
+        ? "Net, güvenilir, platforma uygun ve profesyonel creator tonu."
+        : "Clear, credible, platform-aware professional creator tone.",
+      referenceImage: "",
+      voiceId: "",
+    },
+  ];
+}
+
+function createFallbackScene(
+  index: number,
+  sceneCount: number,
+  topic: string,
+  language: "tr" | "en",
+) {
+  const isTurkish = language === "tr";
+  const safeTopic = topic || (isTurkish ? "bu içerik fikri" : "this content idea");
+  const isFirst = index === 0;
+  const isLast = index === sceneCount - 1;
+
+  if (isTurkish) {
+    const narration = isFirst
+      ? `${safeTopic} neden şimdi önemli? Kısa ve net şekilde başlayalım.`
+      : isLast
+        ? `Bu fikri güçlü bir kapanışla özetleyip izleyiciyi aksiyona çağıralım.`
+        : `${safeTopic} için ana içgörüyü kısa, görsel ve anlaşılır şekilde anlatalım.`;
+
+    return {
+      id: index + 1,
+      text: isFirst
+        ? `Açılış hook'u ve izleyicinin dikkatini çeken net bağlam.`
+        : isLast
+          ? `Kapanış, özet ve izleyiciye net aksiyon çağrısı.`
+          : `Ana içgörü ${index}: kısa açıklama ve görsel örnek.`,
+      narration,
+      dialogue: "",
+      cameraDirection: isFirst
+        ? "Güçlü açılış kadrajı, net odak ve yumuşak kamera hareketi."
+        : isLast
+          ? "Yakın kapanış kadrajı, güven veren final kompozisyonu."
+          : "Temiz orta plan, destekleyici B-roll veya grafik geçişi.",
+      emotion: isFirst ? "merak uyandıran" : isLast ? "güven veren" : "bilgilendirici",
+      motionHint: "Yumuşak zoom, hafif pan veya motion graphic destekli geçiş.",
+      visualPrompt: `${safeTopic} hakkında premium creator video sahnesi, profesyonel ışık, yüksek kontrast, platforma uygun görsel evren`,
+    };
+  }
+
+  const narration = isFirst
+    ? `Why does ${safeTopic} matter right now? Let’s make it clear fast.`
+    : isLast
+      ? `Now wrap the idea with a clear takeaway and a simple next action.`
+      : `Explain the key insight about ${safeTopic} with a short visual example.`;
+
+  return {
+    id: index + 1,
+    text: isFirst
+      ? "Opening hook with immediate context and viewer relevance."
+      : isLast
+        ? "Closing recap with a clear takeaway and soft call to action."
+        : `Key insight ${index}: concise explanation with a visual example.`,
+    narration,
+    dialogue: "",
+    cameraDirection: isFirst
+      ? "Strong opening frame with clean focus and subtle camera movement."
+      : isLast
+        ? "Confident closing frame with a clear final composition."
+        : "Clean medium frame with supporting B-roll or motion graphic cutaway.",
+    emotion: isFirst ? "curious and sharp" : isLast ? "confident" : "informative",
+    motionHint: "Soft zoom, gentle pan, or motion-graphic assisted transition.",
+    visualPrompt: `premium creator video scene about ${safeTopic}, professional lighting, high contrast, platform-ready visual universe`,
+  };
+}
+
+function padCreatorScenes(
+  scenes: ReturnType<typeof normalizeScenes>,
+  sceneCount: number,
+  topic: string,
+  language: "tr" | "en",
+) {
+  const nextScenes = [...scenes].slice(0, sceneCount);
+
+  while (nextScenes.length < sceneCount) {
+    nextScenes.push(
+      createFallbackScene(nextScenes.length, sceneCount, topic, language),
+    );
+  }
+
+  return nextScenes.map((scene, index) => ({
+    ...scene,
+    id: index + 1,
+    text: asString(scene.text, createFallbackScene(index, sceneCount, topic, language).text),
+    narration: asString(
+      scene.narration,
+      createFallbackScene(index, sceneCount, topic, language).narration,
+    ),
+    visualPrompt: asString(
+      scene.visualPrompt,
+      createFallbackScene(index, sceneCount, topic, language).visualPrompt,
+    ),
+  }));
 }
 
 export async function POST(req: Request) {
@@ -355,7 +503,9 @@ export async function POST(req: Request) {
       "You are a senior YouTube producer, retention editor, creative director, and platform packaging strategist.",
       "You convert a creator mentor analysis into a production-ready package for an AI video generation pipeline.",
       "This is Smart Production Sync: duration, scene count, pacing, and story structure must match.",
-      "Return strict JSON only. No markdown. No code fences.",
+      "Return strict valid JSON only. No markdown. No code fences. No comments.",
+      "Every JSON string must use valid escaping. Do not use raw double quotes inside string values.",
+      "For thumbnail text, do not wrap the visible text in single or double quote marks; write the text plainly.",
       "The output must be compatible with a scene-based animation engine.",
     ].join(" ");
 
@@ -428,7 +578,8 @@ export async function POST(req: Request) {
         "Do not compensate with long dialogue. The total speech budget includes narration and dialogue together.",
         "Scenes must be visual and easy for AI image/video generation.",
         "Keep content safe, platform-appropriate, and aligned with the selected audience profile.",
-        "Do not force a fixed mascot, child guide, or Joe unless the user explicitly requested it.",
+        "Do not force a fixed mascot, child guide, or Joe unless the user explicitly requested it in the topic, mentor analysis, or channel concept.",
+        "CreatorLab is an 18+ professional creator workflow. Do not create teen or child presenters unless the user explicitly requested a teen/child audience or character.",
         "Create reusable characters only when the video concept benefits from character continuity.",
         "If Joe appears because the user requested him, keep him visually and behaviorally consistent; otherwise do not inject Joe into the production package.",
         "All scenes must preserve one coherent visual universe, not separate unrelated image styles.",
@@ -450,47 +601,52 @@ export async function POST(req: Request) {
           content: JSON.stringify(userPrompt),
         },
       ],
-      temperature: 0.62,
+      temperature: 0.35,
     });
 
     const rawText = response.output_text || "";
-    const cleanedJson = extractJsonObject(rawText);
 
     let parsed: any;
 
     try {
-      parsed = JSON.parse(cleanedJson);
+      parsed = parseCreatorProductionJson(rawText);
     } catch {
-      console.error("creator-production JSON parse error:", rawText);
-
       return NextResponse.json(
         { error: "Creator production çıktısı JSON olarak parse edilemedi." },
         { status: 500 },
       );
     }
 
-    const characters = normalizeCharacters(parsed.characters);
-    const scenes = normalizeScenesWithBudget(
+    const visualStyle = asString(
+      parsed?.visualBible?.style,
+      "Premium platform-ready visual universe",
+    );
+    const characters = normalizeCharacters(parsed.characters).length
+      ? normalizeCharacters(parsed.characters)
+      : createFallbackCreatorAnchor(language, topic, visualStyle);
+    const normalizedScenes = normalizeScenes(
       parsed.scenes,
+      sceneCount,
+    );
+    const paddedScenes = padCreatorScenes(
+      normalizedScenes,
+      sceneCount,
+      topic,
+      language,
+    );
+    const scenes = normalizeScenesWithBudget(
+      paddedScenes,
       sceneCount,
       durationBudget.maxWordsPerScene,
     );
-
-    if (!characters.length || !scenes.length) {
-      return NextResponse.json(
-        { error: "Production package eksik karakter veya sahne içeriyor." },
-        { status: 500 },
-      );
-    }
-
-    if (scenes.length < sceneCount) {
-      return NextResponse.json(
-        {
-          error: `Production package beklenen minimum sahne sayısına ulaşamadı. Beklenen: ${sceneCount}, gelen: ${scenes.length}.`,
-        },
-        { status: 500 },
-      );
-    }
+    const productionRepairNotes = [
+      !normalizeCharacters(parsed.characters).length
+        ? "No explicit character set was returned by the model; CreatorLab inserted a neutral narrator / brand voice anchor for faceless or professional formats."
+        : "",
+      normalizedScenes.length < sceneCount
+        ? `The model returned ${normalizedScenes.length} scene(s); CreatorLab padded the text-only production stage to ${sceneCount} editable scenes before paid rendering.`
+        : "",
+    ].filter(Boolean);
 
     const estimatedTotalSpeechSeconds =
       Math.round(
@@ -555,6 +711,8 @@ export async function POST(req: Request) {
       timelineSyncPlan,
       creatorLabTestReadiness,
       pacingBlueprint,
+      productionRepairNotes,
+      textOnlyProductionStage: true,
     };
 
     return NextResponse.json({

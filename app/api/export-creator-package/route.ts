@@ -22,6 +22,161 @@ function safeArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function safeObject(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+
+  return {} as Record<string, any>;
+}
+
+function createTimelineWarningsText(timelineSyncPlan: Record<string, any>) {
+  const warnings = Array.isArray(timelineSyncPlan?.warnings)
+    ? timelineSyncPlan.warnings.filter(
+        (item: unknown) => typeof item === "string",
+      )
+    : [];
+  const sceneWarnings = Array.isArray(timelineSyncPlan?.scenes)
+    ? timelineSyncPlan.scenes
+        .filter((scene: any) => scene?.speechFit && scene.speechFit !== "safe")
+        .map(
+          (scene: any) =>
+            `Scene ${scene?.id ?? "?"}: speechFit=${scene.speechFit}, audioMismatch=${scene?.audioMismatch ?? "?"}, visualAction=${scene?.visualAction ?? "?"}, estimatedSpeech=${scene?.estimatedSpeechSeconds ?? "?"}s, recommendation=${scene?.productionRecommendation ?? "review"}`,
+        )
+    : [];
+
+  const lines = [
+    "VELTO Timeline Sync Notes",
+    "",
+    `Timeline mode: ${timelineSyncPlan?.timelineMode || "not provided"}`,
+    `Quality tier: ${timelineSyncPlan?.qualityTier || "not provided"}`,
+    `Estimated speech: ${timelineSyncPlan?.estimatedSpeechSeconds ?? "?"}s`,
+    `Recommended clip seconds: ${timelineSyncPlan?.recommendedClipSeconds ?? "?"}`,
+    "",
+    "Warnings:",
+    ...(warnings.length
+      ? warnings.map((warning: string) => `- ${warning}`)
+      : ["- No global warnings."]),
+    "",
+    "Scene review:",
+    ...(sceneWarnings.length
+      ? sceneWarnings.map((warning: string) => `- ${warning}`)
+      : ["- All scenes are marked safe or no scene-level plan was provided."]),
+  ];
+
+  return lines.join("\n");
+}
+
+function createTimelineScenesCsv(timelineSyncPlan: Record<string, any>) {
+  const scenes = Array.isArray(timelineSyncPlan?.scenes)
+    ? timelineSyncPlan.scenes
+    : [];
+  const rows: unknown[][] = [
+    [
+      "scene_id",
+      "speech_fit",
+      "estimated_speech_seconds",
+      "target_visual_seconds",
+      "recommended_clip_seconds",
+      "freeze_padding_seconds",
+      "audio_mismatch",
+      "visual_action",
+      "production_recommendation",
+      "visual_blocks",
+    ],
+    ...scenes.map((scene: any) => [
+      scene?.id ?? "",
+      scene?.speechFit ?? "",
+      scene?.estimatedSpeechSeconds ?? "",
+      scene?.targetVisualSeconds ?? "",
+      scene?.recommendedClipSeconds ?? "",
+      scene?.freezePaddingSeconds ?? "",
+      scene?.audioMismatch ?? "",
+      scene?.visualAction ?? "",
+      scene?.productionRecommendation ?? "",
+      Array.isArray(scene?.visualBlocks)
+        ? scene.visualBlocks
+            .map(
+              (block: any) =>
+                `${block?.type || "block"}:${block?.startSec ?? "?"}-${block?.endSec ?? "?"}s:${block?.source || "source"}:${block?.motionPreset || "motion"}`,
+            )
+            .join(" | ")
+        : "",
+    ]),
+  ];
+
+  return rows
+    .map((row) =>
+      row.map((cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+    )
+    .join("\n");
+}
+
+function createVisualBlockPlan(timelineSyncPlan: Record<string, any>) {
+  const scenes = Array.isArray(timelineSyncPlan?.scenes)
+    ? timelineSyncPlan.scenes
+    : [];
+
+  return scenes.map((scene: any) => ({
+    sceneId: scene?.id ?? null,
+    speechFit: scene?.speechFit ?? null,
+    audioMismatch: scene?.audioMismatch ?? null,
+    visualAction: scene?.visualAction ?? null,
+    estimatedSpeechSeconds: scene?.estimatedSpeechSeconds ?? null,
+    targetVisualSeconds: scene?.targetVisualSeconds ?? null,
+    blocks: Array.isArray(scene?.visualBlocks)
+      ? scene.visualBlocks.map((block: any, index: number) => ({
+          index: index + 1,
+          type: block?.type ?? "unknown",
+          startSec: block?.startSec ?? null,
+          endSec: block?.endSec ?? null,
+          durationSec: block?.durationSec ?? null,
+          source: block?.source ?? null,
+          motionPreset: block?.motionPreset ?? null,
+          reason: block?.reason ?? "",
+        }))
+      : [],
+  }));
+}
+
+function createVisualBlocksCsv(timelineSyncPlan: Record<string, any>) {
+  const blockPlan = createVisualBlockPlan(timelineSyncPlan);
+  const rows: unknown[][] = [
+    [
+      "scene_id",
+      "block_index",
+      "block_type",
+      "start_sec",
+      "end_sec",
+      "duration_sec",
+      "source",
+      "motion_preset",
+      "reason",
+    ],
+    ...blockPlan.flatMap((scene: any) =>
+      Array.isArray(scene.blocks) && scene.blocks.length
+        ? scene.blocks.map((block: any) => [
+            scene.sceneId ?? "",
+            block.index ?? "",
+            block.type ?? "",
+            block.startSec ?? "",
+            block.endSec ?? "",
+            block.durationSec ?? "",
+            block.source ?? "",
+            block.motionPreset ?? "",
+            block.reason ?? "",
+          ])
+        : [[scene.sceneId ?? "", "", "", "", "", "", "", "", ""]],
+    ),
+  ];
+
+  return rows
+    .map((row) =>
+      row.map((cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+    )
+    .join("\n");
+}
+
 function sanitizeFileName(value: string) {
   const cleaned = value
     .toLowerCase()
@@ -39,9 +194,7 @@ function dosDateTime(date = new Date()) {
     (date.getMinutes() << 5) |
     Math.floor(date.getSeconds() / 2);
   const dosDate =
-    ((year - 1980) << 9) |
-    ((date.getMonth() + 1) << 5) |
-    date.getDate();
+    ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
 
   return { dosTime, dosDate };
 }
@@ -153,7 +306,8 @@ function decodeDataImage(value: unknown) {
     return null;
   }
 
-  const ext = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+  const ext =
+    match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
   const buffer = Buffer.from(match[2], "base64");
 
   return { ext, buffer };
@@ -163,22 +317,31 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const title = safeString(body?.title, safeString(body?.productionPackage?.title, "VELTO Creator Package"));
+    const title = safeString(
+      body?.title,
+      safeString(body?.productionPackage?.title, "VELTO Creator Package"),
+    );
     const safeTitle = sanitizeFileName(title);
     const videoUrl = safeString(body?.videoUrl);
     const productionPackage = body?.productionPackage || {};
     const metadata = body?.metadata || {};
     const thumbnail = body?.thumbnail || {};
     const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
+    const timelineSyncPlan = safeObject(
+      body?.timelineSyncPlan ||
+        body?.productionPackage?.timelineSyncPlan ||
+        productionPackage?.timelineSyncPlan,
+    );
+    const hasTimelineSyncPlan = Object.keys(timelineSyncPlan).length > 0;
 
     const recommendedTitle = safeString(
       metadata?.recommendedTitle,
-      safeString(productionPackage?.youtubeTitle, title)
+      safeString(productionPackage?.youtubeTitle, title),
     );
 
     const description = safeString(
       metadata?.description,
-      safeString(productionPackage?.caption)
+      safeString(productionPackage?.caption),
     );
 
     const hashtags = safeArray(metadata?.hashtags);
@@ -229,7 +392,13 @@ export async function POST(req: Request) {
       },
       {
         name: "thumbnail_prompt.txt",
-        data: Buffer.from(safeString(thumbnail?.prompt, safeString(productionPackage?.thumbnailIdea)), "utf8"),
+        data: Buffer.from(
+          safeString(
+            thumbnail?.prompt,
+            safeString(productionPackage?.thumbnailIdea),
+          ),
+          "utf8",
+        ),
       },
       {
         name: "production_package.json",
@@ -244,6 +413,37 @@ export async function POST(req: Request) {
         data: Buffer.from(JSON.stringify(metadata || {}, null, 2), "utf8"),
       },
     ];
+
+    if (hasTimelineSyncPlan) {
+      entries.push(
+        {
+          name: "timeline_sync_plan.json",
+          data: Buffer.from(JSON.stringify(timelineSyncPlan, null, 2), "utf8"),
+        },
+        {
+          name: "timeline_sync_notes.txt",
+          data: Buffer.from(
+            createTimelineWarningsText(timelineSyncPlan),
+            "utf8",
+          ),
+        },
+        {
+          name: "timeline_scenes.csv",
+          data: Buffer.from(createTimelineScenesCsv(timelineSyncPlan), "utf8"),
+        },
+        {
+          name: "visual_block_plan.json",
+          data: Buffer.from(
+            JSON.stringify(createVisualBlockPlan(timelineSyncPlan), null, 2),
+            "utf8",
+          ),
+        },
+        {
+          name: "visual_blocks.csv",
+          data: Buffer.from(createVisualBlocksCsv(timelineSyncPlan), "utf8"),
+        },
+      );
+    }
 
     const decodedThumbnail = decodeDataImage(thumbnail?.imageUrl);
 
@@ -277,7 +477,7 @@ export async function POST(req: Request) {
         ok: false,
         error: error?.message || "Creator package export failed.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
