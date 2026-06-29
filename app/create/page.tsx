@@ -42,7 +42,7 @@ import StoryverseShell from "@/components/experience/StoryverseShell";
 import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
-import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
+import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
 
 type CreatorEditPlanPriority = "render_safe" | "review" | "edit_required";
@@ -101,6 +101,7 @@ type Scene = {
   cameraDirection: string;
   emotion: string;
   motionHint: string;
+  visualPrompt?: string;
   image?: string;
   audioUrl?: string;
   audioPath?: string;
@@ -192,7 +193,20 @@ type CreatorContentType =
   | "science"
   | "history"
   | "life_skills";
-type CreatorFormat = "shorts_60" | "two_min" | "five_min";
+type CreatorFormat = "short_form" | "youtube_video";
+type CreatorDurationPreset =
+  | "short_15"
+  | "short_30"
+  | "short_45"
+  | "short_60"
+  | "video_180"
+  | "video_300"
+  | "video_480"
+  | "video_600"
+  | "video_900"
+  | "custom";
+
+type CreatorQualityMode = "draft" | "standard" | "pro" | "cinematic";
 
 type CreatorVideoIdea = {
   title: string;
@@ -307,7 +321,7 @@ type YoutubePatternSummary = {
   reasoning: string[];
 };
 
-type CreatorVideoDurationSec = 60 | 90 | 180 | 300;
+type CreatorVideoDurationSec = number;
 
 const CREATOR_SCENE_CLIP_DURATION_SECONDS = 10;
 const CREATOR_MAX_SCENE_COUNT = 36;
@@ -319,16 +333,44 @@ const getCreatorSceneCountForTargetDuration = (durationSec: number) => {
   );
 };
 
-const CREATOR_DURATION_OPTIONS: Array<{
-  value: CreatorVideoDurationSec;
+type CreatorDurationOption = {
+  preset: CreatorDurationPreset;
+  seconds: number;
   label: string;
-  sceneCount: number;
-}> = [
-  { value: 60, label: "60 sec", sceneCount: getCreatorSceneCountForTargetDuration(60) },
-  { value: 90, label: "90 sec", sceneCount: getCreatorSceneCountForTargetDuration(90) },
-  { value: 180, label: "180 sec", sceneCount: getCreatorSceneCountForTargetDuration(180) },
-  { value: 300, label: "300 sec", sceneCount: getCreatorSceneCountForTargetDuration(300) },
+};
+
+const CREATOR_SHORT_DURATION_OPTIONS: CreatorDurationOption[] = [
+  { preset: "short_15", seconds: 15, label: "15 sec" },
+  { preset: "short_30", seconds: 30, label: "30 sec" },
+  { preset: "short_45", seconds: 45, label: "45 sec" },
+  { preset: "short_60", seconds: 60, label: "60 sec" },
 ];
+
+const CREATOR_VIDEO_DURATION_OPTIONS: CreatorDurationOption[] = [
+  { preset: "video_180", seconds: 180, label: "3 min" },
+  { preset: "video_300", seconds: 300, label: "5 min" },
+  { preset: "video_480", seconds: 480, label: "8 min" },
+  { preset: "video_600", seconds: 600, label: "10 min" },
+  { preset: "video_900", seconds: 900, label: "15 min" },
+];
+
+const getCreatorDurationOptionsByFormat = (format: CreatorFormat) => {
+  return format === "youtube_video"
+    ? CREATOR_VIDEO_DURATION_OPTIONS
+    : CREATOR_SHORT_DURATION_OPTIONS;
+};
+
+const getNearestCreatorDurationOption = (
+  format: CreatorFormat,
+  durationSec: number
+) => {
+  const options = getCreatorDurationOptionsByFormat(format);
+  return options.reduce((best, option) => {
+    return Math.abs(option.seconds - durationSec) < Math.abs(best.seconds - durationSec)
+      ? option
+      : best;
+  }, options[0]);
+};
 
 const getCreatorSceneCountByDuration = (durationSec: CreatorVideoDurationSec) => {
   return getCreatorSceneCountForTargetDuration(durationSec);
@@ -363,10 +405,68 @@ const CREATOR_CONTENT_TYPE_OPTIONS: Array<{ value: CreatorContentType; label: st
   { value: "life_skills", label: "Life Skills" },
 ];
 
-const CREATOR_FORMAT_OPTIONS: Array<{ value: CreatorFormat; label: string }> = [
-  { value: "shorts_60", label: "Shorts / 60 sec" },
-  { value: "two_min", label: "2 min video" },
-  { value: "five_min", label: "5 min video" },
+const CREATOR_FORMAT_OPTIONS: Array<{
+  value: CreatorFormat;
+  label: string;
+  guidance: string;
+}> = [
+  {
+    value: "short_form",
+    label: "Shorts / Reels / TikTok",
+    guidance: "Best for 15-60 second vertical social content.",
+  },
+  {
+    value: "youtube_video",
+    label: "YouTube Video",
+    guidance: "Best for 3-15 minute structured video packages.",
+  },
+];
+
+const CREATOR_QUALITY_MODE_OPTIONS: Array<{
+  value: CreatorQualityMode;
+  labelEn: string;
+  labelTr: string;
+  guidanceEn: string;
+  guidanceTr: string;
+  creditTierEn: string;
+  creditTierTr: string;
+}> = [
+  {
+    value: "draft",
+    labelEn: "Draft",
+    labelTr: "Taslak",
+    guidanceEn: "Strategy, hook, script outline and metadata planning only. No media generation.",
+    guidanceTr: "Strateji, hook, script taslağı ve metadata planlama. Medya üretimi yok.",
+    creditTierEn: "Lowest credit use",
+    creditTierTr: "En düşük kredi kullanımı",
+  },
+  {
+    value: "standard",
+    labelEn: "Standard",
+    labelTr: "Standart",
+    guidanceEn: "Balanced production for usable social packages with controlled image and voice generation.",
+    guidanceTr: "Kontrollü görsel ve ses üretimiyle dengeli sosyal medya paketi.",
+    creditTierEn: "Balanced credit use",
+    creditTierTr: "Dengeli kredi kullanımı",
+  },
+  {
+    value: "pro",
+    labelEn: "Pro",
+    labelTr: "Pro",
+    guidanceEn: "Stronger scene planning, thumbnail/metadata intelligence and higher-quality visual routing.",
+    guidanceTr: "Daha güçlü sahne planı, thumbnail/metadata zekası ve daha kaliteli görsel yönlendirme.",
+    creditTierEn: "Higher credit use",
+    creditTierTr: "Daha yüksek kredi kullanımı",
+  },
+  {
+    value: "cinematic",
+    labelEn: "Cinematic",
+    labelTr: "Sinematik",
+    guidanceEn: "Maximum-quality path for premium video blocks, voice-over and continuity-aware export.",
+    guidanceTr: "Premium video blokları, seslendirme ve süreklilik odaklı export için maksimum kalite yolu.",
+    creditTierEn: "Maximum credit use",
+    creditTierTr: "Maksimum kredi kullanımı",
+  },
 ];
 
 
@@ -412,6 +512,23 @@ const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[
   };
 
   return [defaultGuideCharacter, ...normalizedCharacters];
+};
+
+
+const isCreatorLabSystemCharacter = (character?: Partial<Character> | null) => {
+  const name = (character?.name || "").trim().toLowerCase();
+  return name === "creatorlab narrator";
+};
+
+const normalizeCreatorLabCharacters = (incomingCharacters?: Character[]): Character[] => {
+  return Array.isArray(incomingCharacters)
+    ? incomingCharacters
+        .filter((character) => !isCreatorLabSystemCharacter(character))
+        .map((character) => ({
+          ...character,
+          voiceId: character.voiceId || "",
+        }))
+    : [];
 };
 
 const emphasizeHook = (value: string) => {
@@ -826,12 +943,12 @@ const UI_TEXT = {
     writeContinue: "Devamını Yaz",
     sceneListTitle: "Sahneler",
     creatorMentor: "Content Creator Mentor",
-    creatorStrategySetup: "Creator Strateji Kurulumu",
-    creatorMentorDesc: "Bu mod, sahne üretmeden önce konuyu hedef pazar, izleyici profili, format ve yaratıcı açı üzerinden netleştirir.",
+    creatorStrategySetup: "Creator Strategy Brief",
+    creatorMentorDesc: "Üretime geçmeden önce hedef pazar, kitle, format ve süreyi netleştir. Velto bu brief’i analiz, sahne planı, timeline ve export paketi için kullanır.",
     targetMarket: "Hedef Pazar",
     ageGroup: "Kitle Profili",
     contentType: "İçerik Tipi",
-    videoFormat: "Video Formatı",
+    videoFormat: "Üretim Formatı",
     analyzeContentOpportunity: "İçerik Fırsatını Analiz Et",
     analyzingContentOpportunity: "İçerik fırsatı analiz ediliyor...",
     creatorTopicLabel: "Content Creator Lab hangi konu veya video fikrini analiz etsin?",
@@ -877,30 +994,30 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Video linki, başlık, açıklama, hashtag, ilk yorum, thumbnail ve sahne datasını ZIP paketi olarak indirir.",
     downloadCreatorPackage: "Creator Package İndir",
     downloadingCreatorPackage: "Paket hazırlanıyor...",
-    costOptimizationEngine: "Cost Optimization Engine",
-    costOptimizationDesc: "Sahneler için Video / Image önerisi üretir ve tahmini Runway maliyetini azaltır.",
-    costPricingNote: `Fiyat bazı: ${CREATOR_COST_BASIS_LABEL}`,
+    costOptimizationEngine: "Credit Efficiency Advisor",
+    costOptimizationDesc: "Mevcut sahne planı için daha kredi-verimli medya yönlendirmesi önerir. Toplam kredi tahmini Production Quality alanında kalır.",
+    costPricingNote: "Not: Bu alan yeni bir kredi tahmini üretmez; yalnızca seçilen üretim planını daha verimli hale getirecek önerileri gösterir.",
     optimizeScenes: "Sahneleri Optimize Et",
     optimizingScenes: "Sahneler optimize ediliyor...",
-    costSummary: "Maliyet Özeti",
-    recommendedVideoScenes: "Önerilen Video Sahneleri",
-    recommendedImageScenes: "Önerilen Image Sahneleri",
-    estimatedCost: "Tahmini Maliyet",
-    estimatedSavings: "Tahmini Tasarruf",
+    costSummary: "Verimlilik Özeti",
+    recommendedVideoScenes: "Premium Video Blokları",
+    recommendedImageScenes: "Image-motion Blokları",
+    estimatedCost: "Kredi Rotası",
+    estimatedSavings: "Verimlilik Kazancı",
     applyOptimization: "Önerileri Uygula",
     optimizationApplied: "Optimizasyon önerileri uygulandı ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimize ediyor...",
     youtubeAutoMode: "YouTube Auto Mode",
-    youtubeAutoModeDesc: "Konu fikrinden production package, metadata, thumbnail, cost optimization ve kayıt adımlarını tek akışta hazırlar. Video üretmez; maliyetli render kararı sende kalır.",
+    youtubeAutoModeDesc: "Konu fikrinden production package, metadata, thumbnail, kredi verimliliği önerileri ve kayıt adımlarını tek akışta hazırlar. Video üretmez; premium render kararı sende kalır.",
     generateFullYoutubePackage: "Full YouTube Package Üret",
     generatingFullYoutubePackage: "Full package hazırlanıyor...",
     fullYoutubePackageReady: "Full YouTube package hazır ✅",
     productionBridgeTitle: "Üretime Devam Et",
-    productionBridgeDesc: "Creator Lab paketi hazır. Şimdi bu paketi gerçek sahnelere dönüştürebilir, ardından görsel/ses/video üretimine geçebilirsin.",
-    productionBridgeButton: "🎬 Sahne Üretimine Başla",
-    productionBridgeReady: "Creator Lab paketi hazır. Henüz üretim sahnesi oluşturulmadı.",
-    productionBridgeCostNote: "Not: Bu adım sahne görsellerini üretmeye başlayabilir; maliyet kontrolü sende kalır.",
+    productionBridgeDesc: "Creator Lab paketi hazır. Önce paketi düzenlenebilir üretim sahnelerine dönüştür; görsel, ses, video ve export adımları ayrı kontrol edilir.",
+    productionBridgeButton: "🎬 Production Stage Oluştur",
+    productionBridgeReady: "Creator Lab paketi hazır. Henüz düzenlenebilir üretim sahnesi oluşturulmadı.",
+    productionBridgeCostNote: "Not: Bu adım yalnızca metin tabanlı sahne yapısını oluşturur; görsel, ses, video veya export kredi kullanımı başlatmaz.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Birden fazla video fikrini hızlıca analiz eder. Bu aşamada video veya thumbnail üretmez; sadece seçilebilir fikir kartları oluşturur.",
     bulkTopicsLabel: "Her satıra bir video fikri yaz",
@@ -943,8 +1060,16 @@ const UI_TEXT = {
     patternCompetition: "Rekabet Seviyesi",
     patternAngle: "Önerilen İçerik Açısı",
     patternReasoning: "Gerekçe",
-    creatorDurationTitle: "Video Süresi",
-    creatorDurationDesc: "Seçilen hedef süre, 10 saniyelik varsayılan sahne ritmine göre hesaplanır. Sistem konuşma yoğunluğuna göre sahneleri 8-12 saniye aralığında dengeler. Örn: 60 sn hedef ≈ 6 sahne.",
+    creatorDurationTitle: "Hedef Süre",
+    creatorDurationDesc: "Format ve süre seçimi sahne sayısını, anlatım uzunluğunu, timeline riskini ve kredi verimliliği önerilerini yönlendirir. Custom süre seçerek özgürce hedef belirleyebilirsin.",
+    creatorQualityTitle: "Üretim Kalitesi",
+    creatorQualityDesc: "Kalite modu; kredi tüketimini, görsel/video yönlendirmesini ve render aşamasında hangi üretim hattının kullanılacağını belirler.",
+    creditProfile: "Kredi Profili",
+    mediaRouting: "Medya Yönlendirme",
+    customDuration: "Custom Süre",
+    customDurationSeconds: "Süre (saniye)",
+    customDurationMinutes: "Süre (dakika)",
+    durationScenePlan: "Tahmini sahne planı",
     usePatternDuration: "Pattern önerisini kullan",
     autoSaved: "Otomatik kaydedildi ✅",
     projectSaved: "Proje kaydedildi ✅",
@@ -1155,12 +1280,12 @@ const UI_TEXT = {
     writeContinue: "Write Continuation",
     sceneListTitle: "Scenes",
     creatorMentor: "Content Creator Mentor",
-    creatorStrategySetup: "Creator Strategy Setup",
-    creatorMentorDesc: "This mode helps shape the idea before creating scenes. It looks at the topic, audience, format and creator direction first.",
+    creatorStrategySetup: "Creator Strategy Brief",
+    creatorMentorDesc: "Define the target market, audience, format and duration before production. Velto uses this brief to shape opportunity analysis, scene planning, timeline safety and export packaging.",
     targetMarket: "Target Market",
     ageGroup: "Audience Profile",
     contentType: "Content Type",
-    videoFormat: "Video Format",
+    videoFormat: "Production Format",
     analyzeContentOpportunity: "Analyze Content Opportunity",
     analyzingContentOpportunity: "Analyzing content opportunity...",
     creatorTopicLabel: "What topic or video idea should Content Creator Lab analyze?",
@@ -1206,30 +1331,30 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Downloads video link, title, description, hashtags, first comment, thumbnail, and scene data as a ZIP package.",
     downloadCreatorPackage: "Download Creator Package",
     downloadingCreatorPackage: "Preparing package...",
-    costOptimizationEngine: "Cost Optimization Engine",
-    costOptimizationDesc: "Generates Video / Image recommendations per scene and reduces estimated Runway cost.",
-    costPricingNote: `Pricing basis: ${CREATOR_COST_BASIS_LABEL}`,
+    costOptimizationEngine: "Credit Efficiency Advisor",
+    costOptimizationDesc: "Recommends a more credit-efficient media route for the current scene plan. The total credit estimate stays in Production Quality.",
+    costPricingNote: "Note: This area does not create a second credit estimate; it only suggests ways to make the selected production plan more efficient.",
     optimizeScenes: "Optimize Scenes",
     optimizingScenes: "Optimizing scenes...",
-    costSummary: "Cost Summary",
-    recommendedVideoScenes: "Recommended Video Scenes",
-    recommendedImageScenes: "Recommended Image Scenes",
-    estimatedCost: "Estimated Cost",
-    estimatedSavings: "Estimated Savings",
+    costSummary: "Efficiency Summary",
+    recommendedVideoScenes: "Premium Video Blocks",
+    recommendedImageScenes: "Image-motion Blocks",
+    estimatedCost: "Credit Route",
+    estimatedSavings: "Efficiency Gain",
     applyOptimization: "Apply Recommendations",
     optimizationApplied: "Optimization recommendations applied ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimizing...",
     youtubeAutoMode: "YouTube Auto Mode",
-    youtubeAutoModeDesc: "Builds production package, metadata, thumbnail, cost optimization, and save steps from one topic. It does not render video; expensive rendering remains under your control.",
+    youtubeAutoModeDesc: "Builds production package, metadata, thumbnail, credit-efficiency recommendations, and save steps from one topic. It does not render video; premium rendering remains under your control.",
     generateFullYoutubePackage: "Create Ready-to-Share Package",
     generatingFullYoutubePackage: "Preparing full package...",
     fullYoutubePackageReady: "Full YouTube package is ready ✅",
     productionBridgeTitle: "Continue to Production",
-    productionBridgeDesc: "The Creator Lab package is ready. Convert it into production scenes, then continue with image, audio, and video generation.",
-    productionBridgeButton: "🎬 Start Scene Production",
-    productionBridgeReady: "Creator Lab package is ready. No production scenes have been created yet.",
-    productionBridgeCostNote: "Note: This step may start generating scene visuals; rendering cost remains under your control.",
+    productionBridgeDesc: "The Creator Lab package is ready. Convert it into editable production scenes first; image, voice, video and export actions remain separate.",
+    productionBridgeButton: "🎬 Create Production Stage",
+    productionBridgeReady: "Creator Lab package is ready. No editable production scenes have been created yet.",
+    productionBridgeCostNote: "Note: This step creates a text-only scene structure; it does not start image, voice, video or export credit usage.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Quickly turns multiple video ideas into simple idea cards you can choose from.",
     bulkTopicsLabel: "Write one video idea per line",
@@ -1272,8 +1397,16 @@ const UI_TEXT = {
     patternCompetition: "Competition Level",
     patternAngle: "Recommended Content Angle",
     patternReasoning: "Reasoning",
-    creatorDurationTitle: "Video Duration",
-    creatorDurationDesc: "The selected target duration is calculated with a 10-second default scene rhythm. The system balances scenes within an 8-12 second adaptive range based on speech density. Example: 60 sec target ≈ 6 scenes.",
+    creatorDurationTitle: "Target Duration",
+    creatorDurationDesc: "Format and duration guide scene count, narration length, timeline risk and credit-efficiency recommendations. Choose a preset or set a custom duration freely.",
+    creatorQualityTitle: "Production Quality",
+    creatorQualityDesc: "Quality mode controls credit usage, visual/video routing and which production path is used during rendering.",
+    creditProfile: "Credit Profile",
+    mediaRouting: "Media Routing",
+    customDuration: "Custom Duration",
+    customDurationSeconds: "Duration (seconds)",
+    customDurationMinutes: "Duration (minutes)",
+    durationScenePlan: "Estimated scene plan",
     usePatternDuration: "Use pattern recommendation",
     autoSaved: "Autosaved ✅",
     projectSaved: "Project saved ✅",
@@ -2069,9 +2202,15 @@ export default function CreatePage() {
   const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("professional_18");
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational");
-  const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("shorts_60");
+  const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("short_form");
+  const [creatorDurationPreset, setCreatorDurationPreset] =
+    useState<CreatorDurationPreset>("short_60");
   const [creatorVideoDurationSec, setCreatorVideoDurationSec] =
     useState<CreatorVideoDurationSec>(60);
+  const [creatorCustomDurationSec, setCreatorCustomDurationSec] =
+    useState<CreatorVideoDurationSec>(60);
+  const [creatorQualityMode, setCreatorQualityMode] =
+    useState<CreatorQualityMode>("standard");
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
@@ -2081,6 +2220,8 @@ export default function CreatePage() {
     useState<TimelineSyncPlan | null>(null);
   const [creatorEditPlan, setCreatorEditPlan] =
     useState<CreatorEditPlan | null>(null);
+  const [creatorTimelineApprovedSignature, setCreatorTimelineApprovedSignature] =
+    useState("");
   const [creatorTimelinePreviewLoading, setCreatorTimelinePreviewLoading] =
     useState(false);
   const [creatorTimelineOptimizeLoading, setCreatorTimelineOptimizeLoading] =
@@ -3026,6 +3167,10 @@ export default function CreatePage() {
       imageUseCase?: "scene" | "thumbnail" | "hook";
     }
   ) => {
+    if (!canRunCreatorMediaAction()) {
+      throw new Error(getCreatorTimelineGateError());
+    }
+
     const safeScene = getSafeSceneForImagePrompt(scene);
     const isHookScene = Boolean(options?.isHookScene || scene.id === 1);
     const isThumbnail = Boolean(options?.isThumbnail);
@@ -3134,6 +3279,10 @@ export default function CreatePage() {
       scene.audioSettingsKey === currentSettingsKey
     ) {
       return scene.audioUrl;
+    }
+
+    if (!canRunCreatorMediaAction()) {
+      throw new Error(getCreatorTimelineGateError());
     }
 
     const res = await fetch("/api/store-audio", {
@@ -3282,6 +3431,10 @@ export default function CreatePage() {
       scene.dialogueAudioSettingsKey === currentSettingsKey
     ) {
       return scene.dialogueAudioUrl;
+    }
+
+    if (!canRunCreatorMediaAction()) {
+      throw new Error(getCreatorTimelineGateError());
     }
 
     const lines = parseDialogueLines(scene.dialogue);
@@ -3558,6 +3711,10 @@ export default function CreatePage() {
       return;
     }
 
+    if (!canRunCreatorMediaAction()) {
+      return;
+    }
+
     if (!scene.image) {
       setError("Önce sahne görseli hazır olmalı.");
       return;
@@ -3640,7 +3797,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!selectedChildId) {
+    if (!selectedChildId && !isCreatorLabFlow) {
       throw new Error("Lütfen önce bir çocuk seç.");
     }
 
@@ -3654,7 +3811,7 @@ export default function CreatePage() {
       },
       body: JSON.stringify({
         projectId: currentProjectId || undefined,
-        childId: selectedChildId,
+        childId: getProjectChildId(),
         title,
         inputPrompt: input,
         flowKey: activeFlowKey,
@@ -3747,6 +3904,10 @@ export default function CreatePage() {
       throw new Error("Video için önce sahne görseli hazırlanmalı.");
     }
 
+    if (!canRunCreatorMediaAction()) {
+      throw new Error(getCreatorTimelineGateError());
+    }
+
     clearVideoPollForScene(scene.id);
 
     setScenes((prev) =>
@@ -3821,14 +3982,234 @@ export default function CreatePage() {
     setSaveMessage(uiLanguage === "en" ? "Batch render stop requested." : "Batch render durdurma isteği alındı.");
   };
 
+  const generateAllSceneVisuals = async () => {
+    if (scenes.length === 0) {
+      setError(uiLanguage === "en" ? "Create the production stage first." : "Önce production stage oluşturmalısın.");
+      return;
+    }
+
+    if (!selectedChildId && !isCreatorLabFlow) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    if (!canRunCreatorMediaAction()) {
+      return;
+    }
+
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setIsBatchRendering(true);
+    setBatchRenderStartedAt(new Date().toISOString());
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+    resetBatchRenderItems(scenes);
+
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    let hasFailure = false;
+
+    try {
+      for (let index = 0; index < workingScenes.length; index += 1) {
+        if (batchRenderCancelRef.current) {
+          break;
+        }
+
+        let scene = workingScenes[index];
+
+        updateBatchRenderItem(scene.id, {
+          status: "processing",
+          step: "image",
+          message: uiLanguage === "en" ? "Generating visual..." : "Görsel üretiliyor...",
+        });
+
+        try {
+          let nextImage = scene.image || "";
+
+          if (!nextImage) {
+            setRedrawLoadingId(scene.id);
+            nextImage = await generateSceneImage(scene);
+            scene = {
+              ...scene,
+              image: nextImage,
+              videoUrl: "",
+              videoStatus: "idle",
+              videoJobId: "",
+            };
+            workingScenes[index] = scene;
+
+            setScenes((prev) =>
+              prev.map((item) => (item.id === scene.id ? scene : item))
+            );
+          }
+
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "image",
+            message: uiLanguage === "en" ? "Visual ready." : "Görsel hazır.",
+          });
+        } catch (sceneError: any) {
+          hasFailure = true;
+          console.error("visual generation error:", scene.id, sceneError);
+
+          updateBatchRenderItem(scene.id, {
+            status: "failed",
+            step: "image",
+            message: sceneError?.message || (uiLanguage === "en" ? "Visual generation failed." : "Görsel üretimi başarısız oldu."),
+          });
+        } finally {
+          setRedrawLoadingId(null);
+        }
+      }
+
+      setScenes([...workingScenes]);
+
+      try {
+        await persistProjectSnapshot([...workingScenes]);
+      } catch (persistError) {
+        console.error("visual generation persist error:", persistError);
+      }
+
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(uiLanguage === "en" ? "Visual generation stopped." : "Görsel üretimi durduruldu.");
+      } else if (hasFailure) {
+        setError(uiLanguage === "en" ? "Some visuals could not be generated." : "Bazı görseller üretilemedi.");
+      } else {
+        setSaveMessage(uiLanguage === "en" ? "Visuals generated." : "Görseller üretildi.");
+      }
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setRedrawLoadingId(null);
+    }
+  };
+
+  const generateAllAiVideoBlocks = async () => {
+    if (scenes.length === 0) {
+      setError(uiLanguage === "en" ? "Create the production stage first." : "Önce production stage oluşturmalısın.");
+      return;
+    }
+
+    if (!selectedChildId && !isCreatorLabFlow) {
+      setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    if (!canRunCreatorMediaAction()) {
+      return;
+    }
+
+    if (scenes.some((scene) => !scene.image)) {
+      setError(
+        uiLanguage === "en"
+          ? "Generate visuals before creating AI video blocks."
+          : "AI video block üretmeden önce görselleri üretmelisin."
+      );
+      return;
+    }
+
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setIsBatchRendering(true);
+    setBatchRenderStartedAt(new Date().toISOString());
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+    resetBatchRenderItems(scenes);
+
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    let hasFailure = false;
+
+    try {
+      for (let index = 0; index < workingScenes.length; index += 1) {
+        if (batchRenderCancelRef.current) {
+          break;
+        }
+
+        let scene = workingScenes[index];
+
+        updateBatchRenderItem(scene.id, {
+          status: "processing",
+          step: "video",
+          message: uiLanguage === "en" ? "Generating AI video block..." : "AI video block üretiliyor...",
+        });
+
+        try {
+          if (!scene.videoUrl || scene.videoStatus !== "done") {
+            const videoResult = await generateSceneVideoAndWait(scene);
+            scene = {
+              ...scene,
+              videoUrl: videoResult.videoUrl,
+              videoStatus: "done",
+              videoJobId: videoResult.videoJobId,
+            };
+            workingScenes[index] = scene;
+          }
+
+          setScenes([...workingScenes]);
+          await persistProjectSnapshot([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "video",
+            message: uiLanguage === "en" ? "AI video block ready." : "AI video block hazır.",
+          });
+        } catch (sceneError: any) {
+          hasFailure = true;
+          console.error("ai video block generation error:", scene.id, sceneError);
+
+          workingScenes[index] = {
+            ...workingScenes[index],
+            videoStatus: workingScenes[index].videoStatus === "processing" ? "error" : workingScenes[index].videoStatus,
+          };
+
+          setScenes([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "failed",
+            step: "video",
+            message: sceneError?.message || (uiLanguage === "en" ? "AI video block failed." : "AI video block üretimi başarısız oldu."),
+          });
+
+          try {
+            await persistProjectSnapshot([...workingScenes]);
+          } catch (persistError) {
+            console.error("ai video block persist after failure error:", persistError);
+          }
+        }
+      }
+
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(uiLanguage === "en" ? "AI video block generation stopped." : "AI video block üretimi durduruldu.");
+      } else if (hasFailure) {
+        setError(uiLanguage === "en" ? "Some AI video blocks could not be generated." : "Bazı AI video block'lar üretilemedi.");
+      } else {
+        setSaveMessage(uiLanguage === "en" ? "AI video blocks generated." : "AI video block'lar üretildi.");
+      }
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setLoadingAudioSceneId(null);
+      setLoadingDialogueSceneId(null);
+    }
+  };
+
   const startBatchRender = async () => {
     if (scenes.length === 0) {
       setError("Önce sahneleri oluşturmalısın.");
       return;
     }
 
-    if (!selectedChildId) {
+    if (!selectedChildId && !isCreatorLabFlow) {
       setError("Lütfen önce bir çocuk seç.");
+      return;
+    }
+
+    if (!canRunCreatorMediaAction()) {
       return;
     }
 
@@ -4012,6 +4393,10 @@ export default function CreatePage() {
           ? "No failed scenes to retry."
           : "Yeniden denenecek hatalı sahne bulunamadı."
       );
+      return;
+    }
+
+    if (!canRunCreatorMediaAction()) {
       return;
     }
 
@@ -4204,6 +4589,10 @@ export default function CreatePage() {
       return;
     }
 
+    if (!canRunCreatorMediaAction()) {
+      return;
+    }
+
     if (!exportApiBase) {
       setError("Export servisi URL'i tanımlı değil. Vercel ortam değişkenlerinde NEXT_PUBLIC_EXPORT_API_URL eklenmeli.");
       return;
@@ -4295,7 +4684,7 @@ export default function CreatePage() {
           },
           body: JSON.stringify({
             projectId: currentProjectId || undefined,
-            childId: selectedChildId,
+            childId: getProjectChildId(),
             title,
             inputPrompt: input,
             flowKey: activeFlowKey,
@@ -4400,6 +4789,10 @@ export default function CreatePage() {
   const prepareAllAudio = async () => {
     if (scenes.length === 0) {
       setError("Önce sahneleri oluşturmalısın.");
+      return;
+    }
+
+    if (!canRunCreatorMediaAction()) {
       return;
     }
 
@@ -4553,7 +4946,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!selectedChildId) {
+    if (!selectedChildId && !isCreatorLabFlow) {
       setError("Lütfen önce bir çocuk seç.");
       return;
     }
@@ -4568,7 +4961,7 @@ export default function CreatePage() {
       },
       body: JSON.stringify({
         projectId: currentProjectId || undefined,
-        childId: selectedChildId,
+        childId: getProjectChildId(),
         title,
         inputPrompt: input,
         flowKey: activeFlowKey,
@@ -4616,7 +5009,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!selectedChildId) {
+    if (!selectedChildId && !isCreatorLabFlow) {
       setError("Lütfen önce bir çocuk seç.");
       return;
     }
@@ -4678,7 +5071,11 @@ export default function CreatePage() {
       setInput(project.input_prompt || "");
       // SADECE content language güncellensin
       setLanguage(project.language === "en" ? "en" : "tr");
-      setCharacters(withDefaultGuideCharacter(project.characters));
+      setCharacters(
+        project.flow_type === "creator_lab"
+          ? normalizeCreatorLabCharacters(project.characters)
+          : withDefaultGuideCharacter(project.characters)
+      );
       setVisualBible(project.visual_bible || emptyVisualBible);
       setScenes(
         Array.isArray(project.scenes)
@@ -4722,12 +5119,14 @@ export default function CreatePage() {
       setStorySetup({
         title: project.title || "",
         storyPremise: project.story_premise || "",
-        characters: Array.isArray(project.characters)
-          ? project.characters.map((character: Character) => ({
-              ...character,
-              voiceId: character.voiceId || "",
-            }))
-          : [],
+        characters: project.flow_type === "creator_lab"
+          ? normalizeCreatorLabCharacters(project.characters)
+          : Array.isArray(project.characters)
+            ? project.characters.map((character: Character) => ({
+                ...character,
+                voiceId: character.voiceId || "",
+              }))
+            : [],
         visualBible: project.visual_bible || emptyVisualBible,
       });
 
@@ -4744,6 +5143,14 @@ export default function CreatePage() {
     }
   };
 
+  const getProjectChildId = () => {
+    if (selectedChildId) {
+      return selectedChildId;
+    }
+
+    return isCreatorLabFlow ? "creator_lab" : "";
+  };
+
   const getCreatorCountryLabel = () => {
     return (
       CREATOR_COUNTRY_OPTIONS.find((option) => option.value === creatorCountry)?.label ||
@@ -4758,16 +5165,310 @@ export default function CreatePage() {
     );
   };
 
+  const getCreatorDurationOptions = () => {
+    return getCreatorDurationOptionsByFormat(creatorFormat);
+  };
+
+  const formatCreatorDuration = (durationSec: number) => {
+    if (durationSec >= 120) {
+      const minutes = durationSec / 60;
+      return Number.isInteger(minutes) ? `${minutes} min` : `${minutes.toFixed(1)} min`;
+    }
+
+    return `${durationSec} sec`;
+  };
+
   const getCreatorDurationLabel = () => {
-    return (
-      CREATOR_DURATION_OPTIONS.find(
-        (option) => option.value === creatorVideoDurationSec
-      )?.label || `${creatorVideoDurationSec} sec`
+    const selectedOption = getCreatorDurationOptions().find(
+      (option) => option.preset === creatorDurationPreset
     );
+
+    if (creatorDurationPreset === "custom") {
+      return `Custom / ${formatCreatorDuration(creatorVideoDurationSec)}`;
+    }
+
+    return selectedOption?.label || formatCreatorDuration(creatorVideoDurationSec);
+  };
+
+  const getCreatorQualityModeOption = () => {
+    return (
+      CREATOR_QUALITY_MODE_OPTIONS.find((option) => option.value === creatorQualityMode) ||
+      CREATOR_QUALITY_MODE_OPTIONS[1]
+    );
+  };
+
+  const getCreatorQualityModeLabel = () => {
+    const option = getCreatorQualityModeOption();
+    return uiLanguage === "en" ? option.labelEn : option.labelTr;
+  };
+
+  const getCreatorQualityModeGuidance = () => {
+    const option = getCreatorQualityModeOption();
+    return uiLanguage === "en" ? option.guidanceEn : option.guidanceTr;
+  };
+
+  const getCreatorQualityCreditTier = () => {
+    const option = getCreatorQualityModeOption();
+    return uiLanguage === "en" ? option.creditTierEn : option.creditTierTr;
+  };
+
+  const getCreatorQualityEstimate = () => {
+    const sceneCount = getCreatorSceneCount();
+    const durationMinutes = Math.max(1, Math.ceil(creatorVideoDurationSec / 60));
+
+    const modePolicy: Record<
+      CreatorQualityMode,
+      {
+        baseCredits: number;
+        sceneCredits: number;
+        durationCredits: number;
+        videoRatio: number;
+        mediaPathEn: string;
+        mediaPathTr: string;
+        timelineGateEn: string;
+        timelineGateTr: string;
+        exportReadinessEn: string;
+        exportReadinessTr: string;
+      }
+    > = {
+      draft: {
+        baseCredits: 1,
+        sceneCredits: 0,
+        durationCredits: 0,
+        videoRatio: 0,
+        mediaPathEn: "Text-only strategy package",
+        mediaPathTr: "Yalnızca metin strateji paketi",
+        timelineGateEn: "No paid media. Timeline preview is advisory.",
+        timelineGateTr: "Ücretli medya yok. Timeline önizleme danışman niteliğinde.",
+        exportReadinessEn: "Brief, hooks, scene outline and metadata draft",
+        exportReadinessTr: "Brief, hook, sahne taslağı ve metadata ön çalışması",
+      },
+      standard: {
+        baseCredits: 3,
+        sceneCredits: 1,
+        durationCredits: 1,
+        videoRatio: 0.25,
+        mediaPathEn: "Mostly images, voice and light motion",
+        mediaPathTr: "Ağırlıklı görsel, ses ve hafif hareket",
+        timelineGateEn: "Timeline should be reviewed before asset generation.",
+        timelineGateTr: "Asset üretiminden önce timeline kontrol edilmeli.",
+        exportReadinessEn: "Usable creator package with controlled credit use",
+        exportReadinessTr: "Kontrollü kredi kullanımıyla hazırlanabilir creator paketi",
+      },
+      pro: {
+        baseCredits: 6,
+        sceneCredits: 2,
+        durationCredits: 2,
+        videoRatio: 0.45,
+        mediaPathEn: "Selective video blocks, stronger voice and thumbnail routing",
+        mediaPathTr: "Seçili video blokları, daha güçlü ses ve thumbnail yönlendirme",
+        timelineGateEn: "Edit plan is recommended before paid rendering.",
+        timelineGateTr: "Ücretli render öncesi edit plan önerilir.",
+        exportReadinessEn: "Professional publish-ready package",
+        exportReadinessTr: "Profesyonel yayına hazır paket",
+      },
+      cinematic: {
+        baseCredits: 10,
+        sceneCredits: 4,
+        durationCredits: 4,
+        videoRatio: 0.75,
+        mediaPathEn: "Premium video blocks, continuity-aware export and higher-end voice",
+        mediaPathTr: "Premium video blokları, süreklilik odaklı export ve üst kalite ses",
+        timelineGateEn: "Timeline must be safe or approved before cinematic rendering.",
+        timelineGateTr: "Sinematik render öncesi timeline güvenli ya da onaylı olmalı.",
+        exportReadinessEn: "Highest-quality production path",
+        exportReadinessTr: "En yüksek kalite üretim hattı",
+      },
+    };
+
+    const policy = modePolicy[creatorQualityMode];
+    const estimatedCredits = policy.baseCredits + sceneCount * policy.sceneCredits + durationMinutes * policy.durationCredits;
+    const estimatedVideoBlocks = Math.min(sceneCount, Math.max(0, Math.round(sceneCount * policy.videoRatio)));
+    const estimatedImageMotionBlocks = Math.max(0, sceneCount - estimatedVideoBlocks);
+
+    return {
+      estimatedCredits,
+      estimatedVideoBlocks,
+      estimatedImageMotionBlocks,
+      mediaPath: uiLanguage === "en" ? policy.mediaPathEn : policy.mediaPathTr,
+      timelineGate: uiLanguage === "en" ? policy.timelineGateEn : policy.timelineGateTr,
+      exportReadiness: uiLanguage === "en" ? policy.exportReadinessEn : policy.exportReadinessTr,
+    };
   };
 
   const getCreatorSceneCount = () => {
     return getCreatorSceneCountByDuration(creatorVideoDurationSec);
+  };
+
+  const getCreatorCustomDurationInputValue = () => {
+    if (creatorFormat === "youtube_video") {
+      return Number((creatorCustomDurationSec / 60).toFixed(1));
+    }
+
+    return creatorCustomDurationSec;
+  };
+
+  const getCreatorActiveTimelinePlan = () =>
+    creatorProductionPackage?.timelineSyncPlan || creatorTimelinePreviewPlan;
+
+  const buildCreatorTimelineGateSignature = () =>
+    JSON.stringify({
+      qualityMode: creatorQualityMode,
+      durationSec: creatorVideoDurationSec,
+      sceneCount: scenes.length,
+      scenes: scenes.map((scene) => ({
+        id: scene.id,
+        text: scene.text || "",
+        narration: scene.narration || "",
+        dialogue: scene.dialogue || "",
+        visualPrompt: scene.visualPrompt || "",
+        renderMode: scene.renderMode || "auto",
+      })),
+    });
+
+  const getCreatorTimelineMediaGate = () => {
+    if (!isCreatorLabFlow || scenes.length === 0) {
+      return {
+        status: "not_applicable" as const,
+        approved: true,
+        title: "",
+        message: "",
+        action: "",
+      };
+    }
+
+    const plan = getCreatorActiveTimelinePlan();
+    const signature = buildCreatorTimelineGateSignature();
+    const manuallyApproved = creatorTimelineApprovedSignature === signature;
+
+    if (!plan) {
+      return {
+        status: "needs_preview" as const,
+        approved: false,
+        title: uiLanguage === "en" ? "Timeline check required" : "Timeline kontrolü gerekli",
+        message:
+          uiLanguage === "en"
+            ? "Run a timeline check before image, voice, video or export credit usage starts."
+            : "Görsel, ses, video veya export kredi kullanımı başlamadan önce timeline kontrolü çalıştır.",
+        action: uiLanguage === "en" ? "Run Timeline Check" : "Timeline Kontrolü Çalıştır",
+      };
+    }
+
+    if (creatorTimelineNeedsEditPlan(plan) && !manuallyApproved) {
+      return {
+        status: "blocked" as const,
+        approved: false,
+        title: uiLanguage === "en" ? "Media generation is gated" : "Medya üretimi kilitli",
+        message:
+          uiLanguage === "en"
+            ? "The current timeline has narration or visual-block risks. Optimize it, review the edit plan, or explicitly approve the risk before using credits."
+            : "Mevcut timeline’da anlatım veya visual-block riski var. Kredi kullanmadan önce optimize et, edit planı incele veya riski açıkça onayla.",
+        action: uiLanguage === "en" ? "Optimize Timeline" : "Timeline Optimize Et",
+      };
+    }
+
+    if (creatorTimelineNeedsEditPlan(plan) && manuallyApproved) {
+      return {
+        status: "approved_with_risk" as const,
+        approved: true,
+        title: uiLanguage === "en" ? "Timeline risk approved" : "Timeline riski onaylandı",
+        message:
+          uiLanguage === "en"
+            ? "Media actions are available, but this plan still carries timing risk. Use Pro/Cinematic rendering carefully."
+            : "Medya aksiyonları açık, ancak bu planda hâlâ zamanlama riski var. Pro/Cinematic render’ı dikkatli kullan.",
+        action: uiLanguage === "en" ? "Re-check Timeline" : "Timeline’ı Tekrar Kontrol Et",
+      };
+    }
+
+    return {
+      status: "safe" as const,
+      approved: true,
+      title: uiLanguage === "en" ? "Timeline safe" : "Timeline güvenli",
+      message:
+        uiLanguage === "en"
+          ? "Media generation can continue. The current narration and visual block plan are safe enough for rendering."
+          : "Medya üretimine geçilebilir. Mevcut anlatım ve visual block planı render için yeterince güvenli.",
+      action: uiLanguage === "en" ? "Re-check Timeline" : "Timeline’ı Tekrar Kontrol Et",
+    };
+  };
+
+  const creatorTimelineGateSignature = buildCreatorTimelineGateSignature();
+  const creatorTimelineMediaGate = getCreatorTimelineMediaGate();
+  const isCreatorMediaGenerationBlocked =
+    isCreatorLabFlow && scenes.length > 0 && !creatorTimelineMediaGate.approved;
+
+  const getCreatorTimelineGateError = () =>
+    creatorTimelineMediaGate.message ||
+    (uiLanguage === "en"
+      ? "Run and approve the CreatorLab timeline before using media credits."
+      : "Medya kredisi kullanmadan önce CreatorLab timeline kontrolünü çalıştır ve onayla.");
+
+  const canRunCreatorMediaAction = () => {
+    if (!isCreatorMediaGenerationBlocked) {
+      return true;
+    }
+
+    setSaveMessage("");
+    setError(getCreatorTimelineGateError());
+    return false;
+  };
+
+  const approveCreatorTimelineRisk = () => {
+    setCreatorTimelineApprovedSignature(creatorTimelineGateSignature);
+    setError("");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? "Timeline risk approved for this version of the scenes. Media actions are now available."
+        : "Bu sahne versiyonu için timeline riski onaylandı. Medya aksiyonları artık açık."
+    );
+  };
+
+  const handleCreatorFormatChange = (nextFormat: CreatorFormat) => {
+    setCreatorFormat(nextFormat);
+
+    const defaultOption = nextFormat === "youtube_video"
+      ? CREATOR_VIDEO_DURATION_OPTIONS[1]
+      : CREATOR_SHORT_DURATION_OPTIONS[3];
+
+    setCreatorDurationPreset(defaultOption.preset);
+    setCreatorVideoDurationSec(defaultOption.seconds);
+    setCreatorCustomDurationSec(defaultOption.seconds);
+  };
+
+  const handleCreatorDurationPresetChange = (preset: CreatorDurationPreset) => {
+    setCreatorDurationPreset(preset);
+
+    if (preset === "custom") {
+      setCreatorVideoDurationSec(creatorCustomDurationSec);
+      return;
+    }
+
+    const selectedOption = getCreatorDurationOptions().find(
+      (option) => option.preset === preset
+    );
+
+    if (selectedOption) {
+      setCreatorVideoDurationSec(selectedOption.seconds);
+    }
+  };
+
+  const handleCreatorCustomDurationChange = (rawValue: string) => {
+    const parsed = Number(rawValue);
+
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+
+    const nextDurationSec = creatorFormat === "youtube_video"
+      ? Math.round(parsed * 60)
+      : Math.round(parsed);
+    const minDuration = creatorFormat === "youtube_video" ? 60 : 5;
+    const maxDuration = creatorFormat === "youtube_video" ? 3600 : 180;
+    const clampedDuration = Math.min(maxDuration, Math.max(minDuration, nextDurationSec));
+
+    setCreatorCustomDurationSec(clampedDuration);
+    setCreatorVideoDurationSec(clampedDuration);
+    setCreatorDurationPreset("custom");
   };
 
   const applyPatternRecommendedDuration = () => {
@@ -4777,22 +5478,13 @@ export default function CreatePage() {
       return;
     }
 
-    if (recommended <= 75) {
-      setCreatorVideoDurationSec(60);
-      return;
-    }
+    const nextFormat: CreatorFormat = recommended <= 90 ? "short_form" : "youtube_video";
+    const nearestOption = getNearestCreatorDurationOption(nextFormat, recommended);
 
-    if (recommended <= 120) {
-      setCreatorVideoDurationSec(90);
-      return;
-    }
-
-    if (recommended <= 220) {
-      setCreatorVideoDurationSec(180);
-      return;
-    }
-
-    setCreatorVideoDurationSec(300);
+    setCreatorFormat(nextFormat);
+    setCreatorDurationPreset(nearestOption.preset);
+    setCreatorVideoDurationSec(nearestOption.seconds);
+    setCreatorCustomDurationSec(nearestOption.seconds);
   };
 
   const getCreatorContentTypeLabel = () => {
@@ -4880,6 +5572,7 @@ export default function CreatePage() {
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
+          qualityMode: creatorQualityMode,
           language,
           videos: youtubeResearchVideos,
         }),
@@ -5073,9 +5766,9 @@ export default function CreatePage() {
         contentType: getCreatorContentTypeLabel(),
         format: getCreatorFormatLabel(),
         durationSec: creatorVideoDurationSec,
+        qualityMode: creatorQualityMode,
         sceneCount: scenesOverride?.length || getCreatorSceneCount(),
         language,
-        qualityMode: "pro",
         mentorAnalysis: mentorAnalysisOverride || creatorMentorResult,
         scenes:
           scenesOverride && scenesOverride.length > 0
@@ -5185,11 +5878,11 @@ export default function CreatePage() {
       setSaveMessage(
         optimizedScenes !== sourceScenes
           ? uiLanguage === "en"
-            ? "Timeline optimized the editable scene narration. No image, video, voice, or export cost was triggered."
-            : "Timeline, düzenlenebilir sahne anlatımlarını kısalttı. Görsel, video, ses veya export maliyeti tetiklenmedi."
+            ? "Timeline optimized the editable scene narration. No image, video, voice, or export credit usage was triggered."
+            : "Timeline, düzenlenebilir sahne anlatımlarını kısalttı. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
           : uiLanguage === "en"
-            ? "Timeline checked against actual editable scenes. No image, video, voice, or export cost was triggered."
-            : "Timeline, gerçek düzenlenebilir sahnelere göre kontrol edildi. Görsel, video, ses veya export maliyeti tetiklenmedi."
+            ? "Timeline checked against actual editable scenes. No image, video, voice, or export credit usage was triggered."
+            : "Timeline, gerçek düzenlenebilir sahnelere göre kontrol edildi. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
       );
     } catch (e: any) {
       console.error("handleOptimizeCreatorTimeline error:", e);
@@ -5221,11 +5914,6 @@ export default function CreatePage() {
           ? "Please enter a topic or video idea first."
           : "Lütfen önce bir konu veya video fikri yaz."
       );
-      return;
-    }
-
-    if (!selectedChildId) {
-      setError("Lütfen önce bir çocuk seç.");
       return;
     }
 
@@ -5287,6 +5975,7 @@ export default function CreatePage() {
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
+          qualityMode: creatorQualityMode,
           language,
           youtubeData: youtubeResearchVideos,
         }),
@@ -5321,6 +6010,7 @@ export default function CreatePage() {
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
           durationSec: creatorVideoDurationSec,
+          qualityMode: creatorQualityMode,
           sceneCount: getCreatorSceneCount(),
           language,
           mentorAnalysis: nextMentorResult,
@@ -5346,7 +6036,7 @@ export default function CreatePage() {
         productionData.productionPackage as CreatorProductionPackage,
         topic
       );
-      const nextCharacters = withDefaultGuideCharacter(
+      const nextCharacters = normalizeCreatorLabCharacters(
         Array.isArray(nextPackage.characters)
           ? nextPackage.characters.map((character: Character) => ({
               ...character,
@@ -5407,13 +6097,13 @@ export default function CreatePage() {
       setYoutubeMetadataLoading(false);
 
       // 4) Thumbnail
-      // Scene-based thumbnail selection is intentionally used to avoid extra AI image cost.
+      // Scene-based thumbnail selection is intentionally used to avoid extra AI image credit usage.
       // A thumbnail will be selected manually or automatically from generated scene images.
       const nextThumbnail: YoutubeThumbnailResult | null = null;
       setYoutubeThumbnailResult(null);
       setYoutubeThumbnailLoading(false);
 
-      // 5) AI cost optimization
+      // 5) AI credit-efficiency optimization
       const optimizeRes = await fetch("/api/optimize-scenes-ai", {
         method: "POST",
         headers: {
@@ -5454,7 +6144,7 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           projectId: forceNewProject ? undefined : currentProjectId || undefined,
-          childId: selectedChildId,
+          childId: getProjectChildId(),
           title: nextPackage.title || topic,
           inputPrompt: topic,
           flowKey: activeFlowKey,
@@ -5543,6 +6233,7 @@ export default function CreatePage() {
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
+          qualityMode: creatorQualityMode,
           language,
           youtubeData: youtubeResearchVideos,
         }),
@@ -5602,8 +6293,8 @@ export default function CreatePage() {
       setCreatorEditPlan(null);
       setSaveMessage(
         uiLanguage === "en"
-          ? "Dry-run timeline preview is ready. No video, image, voice, or export cost was triggered."
-          : "Dry-run timeline önizlemesi hazır. Video, görsel, ses veya export maliyeti tetiklenmedi."
+          ? "Dry-run timeline preview is ready. No video, image, voice, or export credit usage was triggered."
+          : "Dry-run timeline önizlemesi hazır. Video, görsel, ses veya export kredi kullanımı tetiklenmedi."
       );
     } catch (e: any) {
       console.error("handleCreatorTimelinePreviewOnly error:", e);
@@ -5650,6 +6341,7 @@ export default function CreatePage() {
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
           durationSec: creatorVideoDurationSec,
+          qualityMode: creatorQualityMode,
           sceneCount: getCreatorSceneCount(),
           language,
           mentorAnalysis: creatorMentorResult,
@@ -5684,7 +6376,7 @@ export default function CreatePage() {
       setStorySetup({
         title: nextPackage.title || "",
         storyPremise: nextPackage.storyPremise || "",
-        characters: withDefaultGuideCharacter(
+        characters: normalizeCreatorLabCharacters(
           Array.isArray(nextPackage.characters)
             ? nextPackage.characters.map((character: Character) => ({
                 ...character,
@@ -5697,7 +6389,7 @@ export default function CreatePage() {
 
       setTitle(nextPackage.title || "");
       setCharacters(
-        withDefaultGuideCharacter(
+        normalizeCreatorLabCharacters(
           Array.isArray(nextPackage.characters)
             ? nextPackage.characters.map((character: Character) => ({
                 ...character,
@@ -6025,6 +6717,10 @@ export default function CreatePage() {
   };
 
   const generatePremiumYoutubeThumbnailImage = async () => {
+    if (!canRunCreatorMediaAction()) {
+      throw new Error(getCreatorTimelineGateError());
+    }
+
     const thumbnailPrompt = buildPremiumThumbnailPrompt();
 
     const imageRes = await fetch("/api/image", {
@@ -6260,6 +6956,7 @@ export default function CreatePage() {
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
           durationSec: creatorVideoDurationSec,
+          qualityMode: creatorQualityMode,
           sceneCount: getCreatorSceneCount(),
           language,
           productionPackage: creatorProductionPackage,
@@ -6543,8 +7240,8 @@ export default function CreatePage() {
         setScenes(packageScenes);
         setSaveMessage(
           uiLanguage === "en"
-            ? "Editable production scenes are ready. No image, video, voice, or export cost was triggered."
-            : "Düzenlenebilir production sahneleri hazır. Görsel, video, ses veya export maliyeti tetiklenmedi."
+            ? "Editable production scenes are ready. No image, video, voice, or export credit usage was triggered."
+            : "Düzenlenebilir production sahneleri hazır. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
         );
       } finally {
         setBuildingStory(false);
@@ -7195,7 +7892,7 @@ export default function CreatePage() {
     <button
       type="button"
       onClick={() => handleExportMovie(true)}
-      disabled={isExportingMovie || readyExportCount === 0}
+      disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
       className="rounded-2xl border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 transition hover:bg-amber-300/10 disabled:opacity-50"
     >
       {isExportingMovie
@@ -7638,7 +8335,7 @@ export default function CreatePage() {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.targetMarket}
@@ -7692,14 +8389,14 @@ export default function CreatePage() {
                   </select>
                 </div>
 
-                <div>
+                <div className="xl:col-span-1">
                   <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.videoFormat}
                   </label>
                   <select
                     className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
                     value={creatorFormat}
-                    onChange={(e) => setCreatorFormat(e.target.value as CreatorFormat)}
+                    onChange={(e) => handleCreatorFormatChange(e.target.value as CreatorFormat)}
                   >
                     {CREATOR_FORMAT_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -7707,29 +8404,354 @@ export default function CreatePage() {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-2 text-xs leading-5 text-sky-800/75">
+                    {CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.guidance}
+                  </p>
                 </div>
 
-                <div>
+                <div className="xl:col-span-2">
                   <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
                     {ui.creatorDurationTitle}
                   </label>
-                  <select
-                    className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                    value={creatorVideoDurationSec}
-                    onChange={(e) =>
-                      setCreatorVideoDurationSec(
-                        Number(e.target.value) as CreatorVideoDurationSec
-                      )
-                    }
-                  >
-                    {CREATOR_DURATION_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label} / {option.sceneCount} {ui.sceneCountLabel}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(160px,0.55fr)]">
+                    <select
+                      className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
+                      value={creatorDurationPreset}
+                      onChange={(e) =>
+                        handleCreatorDurationPresetChange(
+                          e.target.value as CreatorDurationPreset
+                        )
+                      }
+                    >
+                      {getCreatorDurationOptions().map((option) => (
+                        <option key={option.preset} value={option.preset}>
+                          {option.label} / {getCreatorSceneCountForTargetDuration(option.seconds)} {ui.sceneCountLabel}
+                        </option>
+                      ))}
+                      <option value="custom">{ui.customDuration}</option>
+                    </select>
+
+                    {creatorDurationPreset === "custom" && (
+                      <input
+                        type="number"
+                        min={creatorFormat === "youtube_video" ? 1 : 5}
+                        max={creatorFormat === "youtube_video" ? 60 : 180}
+                        step={creatorFormat === "youtube_video" ? 0.5 : 1}
+                        className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
+                        value={getCreatorCustomDurationInputValue()}
+                        onChange={(e) => handleCreatorCustomDurationChange(e.target.value)}
+                        aria-label={
+                          creatorFormat === "youtube_video"
+                            ? ui.customDurationMinutes
+                            : ui.customDurationSeconds
+                        }
+                      />
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-sky-800/75">
+                    {ui.durationScenePlan}: {getCreatorDurationLabel()} / {getCreatorSceneCount()} {ui.sceneCountLabel}
+                  </p>
+                </div>
+
+                <div className="xl:col-span-3 rounded-3xl border border-orange-200/28 bg-white/70 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
+                        {ui.creatorQualityTitle}
+                      </label>
+                      <p className="mt-2 max-w-3xl text-xs leading-5 text-sky-800/75">
+                        {ui.creatorQualityDesc}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-900/10 bg-slate-950 px-4 py-3 text-right text-xs text-white shadow-sm">
+                      <p className="uppercase tracking-[0.18em] text-white/45">{ui.creditProfile}</p>
+                      <p className="mt-1 font-semibold">{getCreatorQualityCreditTier()}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    {CREATOR_QUALITY_MODE_OPTIONS.map((option) => {
+                      const isSelected = option.value === creatorQualityMode;
+                      const label = uiLanguage === "en" ? option.labelEn : option.labelTr;
+                      const guidance = uiLanguage === "en" ? option.guidanceEn : option.guidanceTr;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setCreatorQualityMode(option.value)}
+                          className={`rounded-2xl border p-4 text-left transition ${
+                            isSelected
+                              ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-950/20"
+                              : "border-slate-900/10 bg-white/80 text-slate-800 hover:border-slate-400"
+                          }`}
+                        >
+                          <p className="text-sm font-semibold">{label}</p>
+                          <p className={`mt-2 text-xs leading-5 ${isSelected ? "text-white/70" : "text-slate-600"}`}>
+                            {guidance}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-3 text-xs leading-5 text-sky-800/75">
+                    {ui.mediaRouting}: {getCreatorQualityModeLabel()} — {getCreatorQualityModeGuidance()}
+                  </p>
+
+                  {(() => {
+                    const estimate = getCreatorQualityEstimate();
+
+                    return (
+                      <div className="mt-4 space-y-3">
+                        <div className="grid gap-3 md:grid-cols-4">
+                        <div className="rounded-2xl border border-slate-900/10 bg-white/82 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Credit Estimate" : "Kredi Tahmini"}
+                          </p>
+                          <p className="mt-2 text-lg font-semibold text-slate-950">
+                            {estimate.estimatedCredits}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {uiLanguage === "en" ? "Planning estimate, not final billing." : "Planlama tahmini; nihai ücretlendirme değildir."}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-900/10 bg-white/82 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Media Routing" : "Medya Yönlendirme"}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-slate-950">
+                            {estimate.estimatedVideoBlocks} video / {estimate.estimatedImageMotionBlocks} image-motion
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {estimate.mediaPath}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-900/10 bg-white/82 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Timeline Gate" : "Timeline Kontrolü"}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-slate-950">
+                            {creatorQualityMode === "cinematic" || creatorQualityMode === "pro"
+                              ? uiLanguage === "en"
+                                ? "Required"
+                                : "Zorunlu"
+                              : uiLanguage === "en"
+                                ? "Recommended"
+                                : "Önerilir"}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {estimate.timelineGate}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-900/10 bg-white/82 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Export Path" : "Export Yolu"}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-slate-950">
+                            {getCreatorQualityModeLabel()}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {estimate.exportReadiness}
+                          </p>
+                        </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-900/10 bg-slate-950 p-4 text-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+                                {uiLanguage === "en" ? "Quality Gate" : "Kalite Kontrol Kapısı"}
+                              </p>
+                              <h4 className="mt-2 text-base font-semibold">
+                                {creatorQualityMode === "draft"
+                                  ? uiLanguage === "en"
+                                    ? "Draft keeps the workflow text-only."
+                                    : "Draft modu akışı yalnızca metin seviyesinde tutar."
+                                  : creatorQualityMode === "standard"
+                                    ? uiLanguage === "en"
+                                      ? "Standard can proceed after scene review."
+                                      : "Standard modu sahne kontrolü sonrası ilerleyebilir."
+                                    : creatorQualityMode === "pro"
+                                      ? uiLanguage === "en"
+                                        ? "Pro should pass timeline review before media generation."
+                                        : "Pro modu medya üretimi öncesi timeline kontrolünden geçmeli."
+                                      : uiLanguage === "en"
+                                        ? "Cinematic requires a safe or approved timeline."
+                                        : "Cinematic modu güvenli veya onaylı timeline gerektirir."}
+                              </h4>
+                              <p className="mt-2 max-w-3xl text-xs leading-5 text-white/68">
+                                {creatorQualityMode === "draft"
+                                  ? uiLanguage === "en"
+                                    ? "Use this mode for strategy, hooks, scenes and metadata drafts without paid media generation."
+                                    : "Bu modu ücretli medya üretimi olmadan strateji, hook, sahne ve metadata taslağı için kullan."
+                                  : creatorQualityMode === "standard"
+                                    ? uiLanguage === "en"
+                                      ? "Best for controlled image/voice production after editable scenes are reviewed."
+                                      : "Düzenlenebilir sahneler kontrol edildikten sonra kontrollü görsel/ses üretimi için uygundur."
+                                    : creatorQualityMode === "pro"
+                                      ? uiLanguage === "en"
+                                        ? "Use timeline optimization and credit-efficiency guidance before generating selected video blocks."
+                                        : "Seçili video blokları üretilmeden önce timeline optimizasyonu ve kredi verimliliği yönlendirmesi kullanılmalı."
+                                      : uiLanguage === "en"
+                                        ? "Do not start premium cinematic rendering until mismatch, split and image-motion risks are resolved or approved."
+                                        : "Mismatch, split ve image-motion riskleri çözülmeden veya onaylanmadan premium cinematic render başlatma."}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold text-white">
+                              {uiLanguage === "en" ? "Next safe step" : "Sıradaki güvenli adım"}: {creatorQualityMode === "draft"
+                                ? uiLanguage === "en" ? "Export text package" : "Metin paketi export"
+                                : creatorQualityMode === "standard"
+                                  ? uiLanguage === "en" ? "Review scenes" : "Sahneleri incele"
+                                  : uiLanguage === "en" ? "Validate timeline" : "Timeline doğrula"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
+            </div>
+          )}
+
+          {isCreatorLabFlow && (
+            <div className="rounded-[28px] border border-slate-200 bg-white/82 p-5 shadow-[0_14px_42px_rgba(15,23,42,0.10)] space-y-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+                    {uiLanguage === "en" ? "Creator Character Cast" : "Creator Karakter Kadrosu"}
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold text-slate-950">
+                    {uiLanguage === "en" ? "Define any characters, presenters or brand voices freely" : "Karakterleri, sunucuları veya marka seslerini özgürce tanımla"}
+                  </h3>
+                  <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+                    {uiLanguage === "en"
+                      ? "CreatorLab no longer injects a default child guide. Add as many characters as the production needs, or keep this empty for faceless / narrator-led content. These definitions will guide scenes, reference images, dialogue voices and later media generation."
+                      : "CreatorLab artık varsayılan çocuk rehber karakter eklemez. Üretimin ihtiyaç duyduğu kadar karakter ekleyebilir veya faceless / narrator-led içerik için bu alanı boş bırakabilirsin. Bu tanımlar sahne, referans görsel, diyalog sesi ve sonraki medya üretimini yönlendirir."}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addCharacter}
+                  className="rounded-2xl border border-slate-300 bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  {ui.addCharacter}
+                </button>
+              </div>
+
+              {characters.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/90 p-5 text-sm leading-6 text-slate-600">
+                  {uiLanguage === "en"
+                    ? "No character has been defined yet. This is valid for faceless channels, documentary narration, product explainers or brand-led videos. Use Add Character when the content needs people, presenters, fictional personas or recurring cast members."
+                    : "Henüz karakter tanımlanmadı. Bu durum faceless kanal, belgesel anlatımı, ürün anlatımı veya marka odaklı videolar için uygundur. İnsan, sunucu, kurgu persona veya tekrar eden karakterler gerekiyorsa Karakter Ekle ile ilerleyebilirsin."}
+                </div>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {characters.map((character, index) => (
+                    <div
+                      key={`creator-character-${index}`}
+                      className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="font-semibold text-slate-950">
+                          {ui.characterLabel} {index + 1}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => removeCharacter(index)}
+                          className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                        >
+                          {ui.delete}
+                        </button>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <input
+                          className="rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                          placeholder={ui.namePlaceholder}
+                          value={character.name}
+                          onChange={(e) => updateCharacter(index, "name", e.target.value)}
+                        />
+                        <input
+                          className="rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                          placeholder={uiLanguage === "en" ? "Age / role / archetype" : "Yaş / rol / arketip"}
+                          value={character.age}
+                          onChange={(e) => updateCharacter(index, "age", e.target.value)}
+                        />
+                      </div>
+
+                      <textarea
+                        className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                        placeholder={ui.appearancePlaceholder}
+                        value={character.appearance}
+                        onChange={(e) => updateCharacter(index, "appearance", e.target.value)}
+                      />
+
+                      <textarea
+                        className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                        placeholder={ui.outfitPlaceholder}
+                        value={character.outfit}
+                        onChange={(e) => updateCharacter(index, "outfit", e.target.value)}
+                      />
+
+                      <input
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                        placeholder={ui.accessoryPlaceholder}
+                        value={character.accessory || ""}
+                        onChange={(e) => updateCharacter(index, "accessory", e.target.value)}
+                      />
+
+                      <textarea
+                        className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                        placeholder={ui.personalityPlaceholder}
+                        value={character.personality}
+                        onChange={(e) => updateCharacter(index, "personality", e.target.value)}
+                      />
+
+                      <input
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-black"
+                        placeholder={ui.characterVoicePlaceholder}
+                        value={character.voiceId || ""}
+                        onChange={(e) => updateCharacter(index, "voiceId", e.target.value)}
+                      />
+
+                      <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-xs leading-5 text-slate-500">
+                        {ui.characterVoiceHint}
+                      </div>
+
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => generateCharacterReference(index)}
+                          disabled={characterLoadingIndex === index}
+                          className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          {characterLoadingIndex === index
+                            ? ui.preparingReferenceImage
+                            : ui.generateReferenceImage}
+                        </button>
+
+                        {character.referenceImage ? (
+                          <img
+                            src={character.referenceImage}
+                            alt={`${character.name || `${ui.characterLabel} ${index + 1}`} ${ui.referenceImageAlt}`}
+                            className="w-full max-w-md rounded-2xl"
+                          />
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
+                            {ui.noCharacterReference}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -8541,7 +9563,7 @@ export default function CreatePage() {
                   <h3 className="text-lg font-semibold text-slate-900">
                     {ui.exportCreatorPackage}
                   </h3>
-                  <p className="mt-1 text-sm text-orange-100/75">
+                  <p className="mt-1 text-sm text-sky-800/75">
                     {ui.exportCreatorPackageDesc}
                   </p>
                 </div>
@@ -8619,7 +9641,7 @@ export default function CreatePage() {
 
               {sceneOptimizationSummary && (
                 <>
-                <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
+                <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
                   <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.recommendedVideoScenes}</div>
                     <div className="mt-1 text-xl font-semibold">
@@ -8633,12 +9655,6 @@ export default function CreatePage() {
                     </div>
                   </div>
                   <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-lime-50">
-                    <div className="text-lime-100/60">{ui.estimatedCost}</div>
-                    <div className="mt-1 text-xl font-semibold">
-                      ${sceneOptimizationSummary.estimatedRunwayCostUsd.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-lime-50">
                     <div className="text-lime-100/60">{ui.estimatedSavings}</div>
                     <div className="mt-1 text-xl font-semibold">
                       {sceneOptimizationSummary.estimatedSavingsPercent}%
@@ -8646,7 +9662,7 @@ export default function CreatePage() {
                   </div>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-lime-100/60">
-                  {sceneOptimizationSummary.pricingBasis || ui.costPricingNote}
+                  {ui.costPricingNote}
                 </p>
                 </>
               )}
@@ -8677,7 +9693,7 @@ export default function CreatePage() {
                       </p>
                       <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                         <span>Confidence: {item.confidence}</span>
-                        <span>${item.estimatedCostUsd.toFixed(2)}</span>
+                        <span>{item.exportMode === "video" ? (uiLanguage === "en" ? "Premium route" : "Premium rota") : (uiLanguage === "en" ? "Lower-credit route" : "Daha düşük kredi rotası")}</span>
                       </div>
                     </div>
                   ))}
@@ -8709,37 +9725,39 @@ export default function CreatePage() {
             ) : (
               <div className="mt-5 rounded-[28px] border border-orange-300/20 bg-orange-500/10 p-5 text-sm leading-6 text-orange-50/85">
                 {uiLanguage === "en"
-                  ? "Next step: start scene production to create editable text scenes. Timeline optimization, metadata, thumbnail, export and cost optimization will appear after scenes exist."
-                  : "Sonraki adım: düzenlenebilir metin sahnelerini oluşturmak için sahne üretimini başlat. Timeline optimizasyonu, metadata, thumbnail, export ve maliyet optimizasyonu sahneler oluştuktan sonra görünür."}
+                  ? "Next step: start scene production to create editable text scenes. Timeline optimization, metadata, thumbnail, export and credit-efficiency guidance will appear after scenes exist."
+                  : "Sonraki adım: düzenlenebilir metin sahnelerini oluşturmak için sahne üretimini başlat. Timeline optimizasyonu, metadata, thumbnail, export ve kredi verimliliği yönlendirmesi sahneler oluştuktan sonra görünür."}
               </div>
             )}
           </section>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.studioSnapshot}</p>
-            <p className="mt-3 text-lg font-semibold text-slate-900">{setupReady ? ui.setupReady : ui.setupWaiting}</p>
-            <p className="mt-2 text-sm text-slate-600">{ui.studioSnapshotDesc}</p>
+        {!isCreatorLabFlow && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.studioSnapshot}</p>
+              <p className="mt-3 text-lg font-semibold text-slate-900">{setupReady ? ui.setupReady : ui.setupWaiting}</p>
+              <p className="mt-2 text-sm text-slate-600">{ui.studioSnapshotDesc}</p>
+            </div>
+            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.dialogueLayer}</p>
+              <p className="mt-3 text-lg font-semibold text-slate-900">{dialogueReadyCount} {ui.sceneCountLabel}</p>
+              <p className="mt-2 text-sm text-slate-600">{ui.dialogueLayerDesc}</p>
+            </div>
+            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.freezeRisk}</p>
+              <p className="mt-3 text-lg font-semibold text-slate-900">{freezeNeededCount} {ui.sceneCountLabel}</p>
+              <p className="mt-2 text-sm text-slate-600">{ui.freezeRiskDesc}</p>
+            </div>
+            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.quickModePrep}</p>
+              <p className="mt-3 text-lg font-semibold text-slate-900">{ui.activePlan}</p>
+              <p className="mt-2 text-sm text-slate-600">{ui.quickModePrepDesc}</p>
+            </div>
           </div>
-          <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.dialogueLayer}</p>
-            <p className="mt-3 text-lg font-semibold text-slate-900">{dialogueReadyCount} {ui.sceneCountLabel}</p>
-            <p className="mt-2 text-sm text-slate-600">{ui.dialogueLayerDesc}</p>
-          </div>
-          <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.freezeRisk}</p>
-            <p className="mt-3 text-lg font-semibold text-slate-900">{freezeNeededCount} {ui.sceneCountLabel}</p>
-            <p className="mt-2 text-sm text-slate-600">{ui.freezeRiskDesc}</p>
-          </div>
-          <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{ui.quickModePrep}</p>
-            <p className="mt-3 text-lg font-semibold text-slate-900">{ui.activePlan}</p>
-            <p className="mt-2 text-sm text-slate-600">{ui.quickModePrepDesc}</p>
-          </div>
-        </div>
+        )}
 
-        {setupReady && (
+        {!isCreatorLabFlow && setupReady && (
           <div className="space-y-6 rounded-[28px] border border-orange-200/24 bg-white/74 p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
             <div className="space-y-2">
               <h2 className="text-2xl font-bold">{ui.initialDesign}</h2>
@@ -9113,93 +10131,324 @@ export default function CreatePage() {
 
         {scenes.length > 0 && (
           <>
-            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
-              <div className="flex flex-wrap justify-center gap-3">
-              <button
-                onClick={saveProject}
-                disabled={isSavingProject}
-                className="rounded-2xl bg-green-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isSavingProject ? ui.savingProject : ui.saveProject}
-              </button>
+            {isCreatorLabFlow && (
+              <div className="rounded-[28px] border border-rose-300/20 bg-slate-950/55 p-5 shadow-[0_16px_44px_rgba(15,23,42,0.28)]">
+                <p className="text-xs uppercase tracking-[0.25em] text-rose-200/80">
+                  {uiLanguage === "en" ? "CreatorLab Scene Review" : "CreatorLab Sahne İnceleme"}
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  {uiLanguage === "en" ? "Review scenes before asset generation" : "Medya üretiminden önce sahneleri kontrol et"}
+                </h2>
+                <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
+                  {uiLanguage === "en"
+                    ? "Edit narration, dialogue, visual prompts and timeline decisions here before starting image, voice, video or export actions."
+                    : "Görsel, ses, video veya export aksiyonlarından önce narration, dialogue, visual prompt ve timeline kararlarını burada düzenle."}
+                </p>
 
-              <button
-                onClick={prepareAllAudio}
-                disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null}
-                className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isPreparingAudio ? ui.preparingAudio : ui.prepareAudio}
-              </button>
+                <div className={`mt-4 rounded-3xl border p-4 ${
+                  creatorTimelineMediaGate.approved
+                    ? "border-emerald-300/25 bg-emerald-500/10"
+                    : "border-amber-300/30 bg-amber-500/10"
+                }`}>
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+                        {uiLanguage === "en" ? "Media generation gate" : "Medya üretim kontrolü"}
+                      </p>
+                      <h3 className="mt-1 text-lg font-semibold text-white">
+                        {creatorTimelineMediaGate.title}
+                      </h3>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                        {creatorTimelineMediaGate.message}
+                      </p>
+                    </div>
 
-              <button
-                onClick={playWholeStory}
-                disabled={
-                  (loadingAudioSceneId !== null && !isPlayingStory) ||
-                  isPreparingAudio ||
-                  playingDialogueSceneId !== null
-                }
-                className="rounded-2xl bg-purple-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isPlayingStory ? ui.stopStory : ui.listenStory}
-              </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleOptimizeCreatorTimeline}
+                        disabled={creatorTimelineOptimizeLoading}
+                        className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15 disabled:opacity-50"
+                      >
+                        {creatorTimelineOptimizeLoading
+                          ? (uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…")
+                          : creatorTimelineMediaGate.action}
+                      </button>
 
-              <button
-                onClick={() => handleExportMovie(false)}
-                disabled={isExportingMovie || readyExportCount === 0}
-                className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isExportingMovie
-                  ? ui.creatingMovie
-                  : exportedMovieUrl && hasReusableExport()
-                    ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
-                    : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleExportMovie(true)}
-                disabled={isExportingMovie || readyExportCount === 0}
-                className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isExportingMovie
-                  ? ui.creatingMovie
-                  : uiLanguage === "en"
-                    ? "🔁 Re-create Movie"
-                    : "🔁 Yeniden Oluştur"}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetExport}
-                disabled={isExportingMovie || !exportedMovieUrl}
-                className="rounded-2xl border border-red-400/40 bg-rose-50/80 px-6 py-3 font-semibold text-rose-700 transition hover:scale-105 disabled:opacity-50"
-              >
-                {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
-              </button>
-
-              <button
-                onClick={isBatchRendering ? stopBatchRender : startBatchRender}
-                disabled={
-                  isPreparingAudio ||
-                  isExportingMovie ||
-                  playingDialogueSceneId !== null ||
-                  (loadingAudioSceneId !== null && !isBatchRendering)
-                }
-                className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-              >
-                {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
-              </button>
-
-              {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
-                <button
-                  onClick={() => retryFailedScenes()}
-                  disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null}
-                  className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                >
-                  {getBatchLabel("retryFailed")}
-                </button>
-              )}
+                      {getCreatorActiveTimelinePlan() &&
+                        creatorTimelineNeedsEditPlan(getCreatorActiveTimelinePlan() as TimelineSyncPlan) &&
+                        creatorTimelineMediaGate.status === "blocked" && (
+                          <button
+                            type="button"
+                            onClick={approveCreatorTimelineRisk}
+                            className="rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15"
+                          >
+                            {uiLanguage === "en" ? "Approve risk" : "Riski onayla"}
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                </div>
               </div>
+            )}
+
+            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+              {isCreatorLabFlow ? (
+                <div>
+                  <div className="flex flex-col gap-2 text-center md:text-left">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                      {uiLanguage === "en" ? "Guided production" : "Yönlendirmeli üretim"}
+                    </p>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {uiLanguage === "en" ? "Simple creator workflow" : "Sade creator akışı"}
+                    </h3>
+                    <p className="text-sm leading-6 text-slate-600">
+                      {uiLanguage === "en"
+                        ? "Use the main actions for the standard workflow. Advanced AI video block controls stay hidden unless advanced mode is enabled."
+                        : "Standart akış için ana aksiyonları kullan. Gelişmiş AI video block kontrolleri yalnızca advanced mode açıkken görünür."}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <button
+                      onClick={saveProject}
+                      disabled={isSavingProject}
+                      className="rounded-2xl bg-green-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      {isSavingProject ? ui.savingProject : ui.saveProject}
+                    </button>
+
+                    <button
+                      onClick={generateAllSceneVisuals}
+                      disabled={isBatchRendering || isPreparingAudio || isExportingMovie || isCreatorMediaGenerationBlocked}
+                      className="rounded-2xl bg-sky-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      {isBatchRendering
+                        ? (uiLanguage === "en" ? "Generating visuals..." : "Görseller üretiliyor...")
+                        : uiLanguage === "en"
+                          ? "Generate Visuals"
+                          : "Görselleri Üret"}
+                    </button>
+
+                    <button
+                      onClick={prepareAllAudio}
+                      disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                      className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      {isPreparingAudio
+                        ? ui.preparingAudio
+                        : uiLanguage === "en"
+                          ? "Generate Voice-over"
+                          : "Seslendirme Üret"}
+                    </button>
+
+                    <button
+                      onClick={() => handleExportMovie(false)}
+                      disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                      className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
+                    >
+                      {isExportingMovie
+                        ? ui.creatingMovie
+                        : exportedMovieUrl && hasReusableExport()
+                          ? (uiLanguage === "en" ? "▶ Open Existing Video" : "▶ Mevcut Videoyu Aç")
+                          : (uiLanguage === "en" ? `Create Final Video (${readyExportCount})` : `Final Video Oluştur (${readyExportCount})`)}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setIsAdvancedMode((prev) => !prev)}
+                      className="rounded-2xl border border-slate-300 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:bg-slate-100"
+                    >
+                      {isAdvancedMode
+                        ? uiLanguage === "en"
+                          ? "Hide Advanced Mode"
+                          : "Advanced Mode'u Gizle"
+                        : uiLanguage === "en"
+                          ? "Show Advanced Mode"
+                          : "Advanced Mode'u Göster"}
+                    </button>
+                  </div>
+
+                  {!isAdvancedMode && (
+                    <p className="mt-3 rounded-2xl border border-slate-200 bg-white/60 p-3 text-center text-xs leading-5 text-slate-500">
+                      {uiLanguage === "en"
+                        ? "Standard users can create the output with visuals, voice-over and final video. Advanced AI video blocks are optional for Pro/Cinematic workflows."
+                        : "Standart kullanıcı görseller, seslendirme ve final video ile çıktıyı oluşturabilir. Gelişmiş AI video block üretimi Pro/Cinematic akışlar için opsiyoneldir."}
+                    </p>
+                  )}
+
+                  {isAdvancedMode && (
+                    <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="mb-2 text-xs uppercase tracking-[0.22em] text-slate-500">
+                        {uiLanguage === "en" ? "Advanced controls" : "Gelişmiş kontroller"}
+                      </p>
+                      <p className="mb-3 text-xs leading-5 text-slate-500">
+                        {uiLanguage === "en"
+                          ? "Use AI video blocks only when you want scene-level premium motion before creating the final video."
+                          : "AI video block üretimini yalnızca final video öncesinde sahne bazlı premium hareket istediğinde kullan."}
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={generateAllAiVideoBlocks}
+                          disabled={
+                            isBatchRendering ||
+                            isPreparingAudio ||
+                            isExportingMovie ||
+                            playingDialogueSceneId !== null ||
+                            isCreatorMediaGenerationBlocked
+                          }
+                          className="rounded-2xl bg-fuchsia-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                        >
+                          {isBatchRendering
+                            ? uiLanguage === "en"
+                              ? "Generating AI video blocks..."
+                              : "AI video block üretiliyor..."
+                            : uiLanguage === "en"
+                              ? "Generate AI Video Blocks"
+                              : "AI Video Block Üret"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExportMovie(true)}
+                          disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                          className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
+                        >
+                          {isExportingMovie
+                            ? ui.creatingMovie
+                            : uiLanguage === "en"
+                              ? "🔁 Re-create Video"
+                              : "🔁 Videoyu Yeniden Oluştur"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleResetExport}
+                          disabled={isExportingMovie || !exportedMovieUrl}
+                          className="rounded-2xl border border-red-400/40 bg-rose-50/80 px-6 py-3 font-semibold text-rose-700 transition hover:scale-105 disabled:opacity-50"
+                        >
+                          {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
+                        </button>
+
+                        <button
+                          onClick={isBatchRendering ? stopBatchRender : startBatchRender}
+                          disabled={
+                            isPreparingAudio ||
+                            isExportingMovie ||
+                            playingDialogueSceneId !== null ||
+                            (loadingAudioSceneId !== null && !isBatchRendering) ||
+                            (!isBatchRendering && isCreatorMediaGenerationBlocked)
+                          }
+                          className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                        >
+                          {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
+                        </button>
+
+                        {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
+                          <button
+                            onClick={() => retryFailedScenes()}
+                            disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                            className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                          >
+                            {getBatchLabel("retryFailed")}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    onClick={saveProject}
+                    disabled={isSavingProject}
+                    className="rounded-2xl bg-green-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isSavingProject ? ui.savingProject : ui.saveProject}
+                  </button>
+
+                  <button
+                    onClick={prepareAllAudio}
+                    disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                    className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isPreparingAudio ? ui.preparingAudio : ui.prepareAudio}
+                  </button>
+
+                  <button
+                    onClick={playWholeStory}
+                    disabled={
+                      (loadingAudioSceneId !== null && !isPlayingStory) ||
+                      isPreparingAudio ||
+                      playingDialogueSceneId !== null
+                    }
+                    className="rounded-2xl bg-purple-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isPlayingStory ? ui.stopStory : ui.listenStory}
+                  </button>
+
+                  <button
+                    onClick={() => handleExportMovie(false)}
+                    disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                    className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isExportingMovie
+                      ? ui.creatingMovie
+                      : exportedMovieUrl && hasReusableExport()
+                        ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
+                        : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportMovie(true)}
+                    disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                    className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isExportingMovie
+                      ? ui.creatingMovie
+                      : uiLanguage === "en"
+                        ? "🔁 Re-create Movie"
+                        : "🔁 Yeniden Oluştur"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetExport}
+                    disabled={isExportingMovie || !exportedMovieUrl}
+                    className="rounded-2xl border border-red-400/40 bg-rose-50/80 px-6 py-3 font-semibold text-rose-700 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
+                  </button>
+
+                  <button
+                    onClick={isBatchRendering ? stopBatchRender : startBatchRender}
+                    disabled={
+                      isPreparingAudio ||
+                      isExportingMovie ||
+                      playingDialogueSceneId !== null ||
+                      (loadingAudioSceneId !== null && !isBatchRendering) ||
+                      (!isBatchRendering && isCreatorMediaGenerationBlocked)
+                    }
+                    className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                  >
+                    {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
+                  </button>
+
+                  {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
+                    <button
+                      onClick={() => retryFailedScenes()}
+                      disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                      className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                    >
+                      {getBatchLabel("retryFailed")}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {(batchRenderItems.length > 0 || isBatchRendering) && (
@@ -9634,7 +10883,7 @@ export default function CreatePage() {
 
                       <button
                         onClick={() => handleGenerateVideo(scene.id)}
-                        disabled={scene.videoStatus === "processing" || !scene.image}
+                        disabled={scene.videoStatus === "processing" || !scene.image || isCreatorMediaGenerationBlocked}
                         className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
                       >
                         {scene.videoStatus === "processing"

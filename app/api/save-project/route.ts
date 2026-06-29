@@ -53,10 +53,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "title ve scenes zorunlu" }, { status: 400 });
     }
 
-    if (!childId) {
-      return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
-    }
-
     const requestedFlowType =
       typeof flowType === "string" && flowType.trim()
         ? flowType.trim()
@@ -67,12 +63,23 @@ export async function POST(req: Request) {
     const normalizedFlowType =
       requestedFlowType === "creator_lab" ? "creator_lab" : "storyverse";
 
+    const normalizedChildId =
+      typeof childId === "string" && childId.trim()
+        ? childId.trim()
+        : normalizedFlowType === "creator_lab"
+          ? "creator_lab"
+          : "";
+
+    if (!normalizedChildId) {
+      return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
+    }
+
     if (projectId) {
       const { data, error } = await supabase
         .from("velto_projects")
         .update({
           owner_user_id: user.id,
-          child_id: childId,
+          child_id: normalizedChildId,
           title,
           input_prompt: inputPrompt || "",
           story_premise: storyPremise || "",
@@ -108,7 +115,7 @@ export async function POST(req: Request) {
       .from("velto_projects")
       .insert([{
         owner_user_id: user.id,
-        child_id: childId,
+        child_id: normalizedChildId,
         title,
         input_prompt: inputPrompt || "",
         story_premise: storyPremise || "",
