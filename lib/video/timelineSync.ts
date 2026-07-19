@@ -1,5 +1,19 @@
+import {
+  matchAudioDurationToScene,
+  type AudioDurationMatch,
+} from "./audioDurationMatching";
+import {
+  createVisualFillerPlan,
+  type VisualFillerPlan,
+} from "./visualFiller";
+
 export type VideoProductProfile = "storyverse" | "creatorlab";
-export type VideoQualityTier = "lite" | "standard" | "pro" | "cinematic";
+export type VideoQualityTier =
+  | "lite"
+  | "draft"
+  | "standard"
+  | "pro"
+  | "cinematic";
 
 export type TimelineSceneInput = {
   id?: number;
@@ -50,6 +64,8 @@ export type TimelineScenePlan = {
     reason: string;
   }>;
   transitionHint: string;
+  durationMatch?: AudioDurationMatch;
+  fallbackVisualPlan?: VisualFillerPlan;
 };
 
 export type TimelineSyncPlan = {
@@ -65,9 +81,13 @@ export type TimelineSyncPlan = {
   routePolicy: {
     storyverseCostProfile: "economy" | "balanced";
     creatorLabCreditProfile: "draft" | "standard" | "pro" | "cinematic";
-    defaultVisualStrategy: "image_motion" | "standard_clip" | "premium_clip";
-    runwayUsage: "limited" | "selective" | "premium";
-    voiceStrategy: "economy_tts" | "professional_voice";
+    defaultVisualStrategy:
+      | "none"
+      | "image_motion"
+      | "standard_clip"
+      | "premium_clip";
+    runwayUsage: "none" | "limited" | "selective" | "premium";
+    voiceStrategy: "none" | "economy_tts" | "professional_voice";
   };
   scenes: TimelineScenePlan[];
   warnings: string[];
@@ -102,6 +122,7 @@ export function normalizeVideoQualityTier(
 ): VideoQualityTier {
   if (
     value === "lite" ||
+    value === "draft" ||
     value === "standard" ||
     value === "pro" ||
     value === "cinematic"
@@ -131,7 +152,13 @@ export function normalizeRunwayClipDuration(
   requestedDuration: unknown,
   qualityTier: VideoQualityTier = "standard",
 ) {
-  const requested = normalizePositiveNumber(requestedDuration, 7, 3, 12);
+  const fallbackDuration = qualityTier === "cinematic" ? 10 : 5;
+  const requested = normalizePositiveNumber(
+    requestedDuration,
+    fallbackDuration,
+    3,
+    12,
+  );
 
   if (requested <= 5) {
     return {
@@ -144,7 +171,7 @@ export function normalizeRunwayClipDuration(
     return {
       durationSec: 7 as const,
       reason:
-        "Keeping the current 7-second Velto default for backward compatibility.",
+        "Requested duration fits the available mid-length visual block.",
     };
   }
 
@@ -167,6 +194,16 @@ function getRoutePolicy(
         qualityTier === "lite" ? "image_motion" : "standard_clip",
       runwayUsage: "limited",
       voiceStrategy: "economy_tts",
+    };
+  }
+
+  if (qualityTier === "draft") {
+    return {
+      storyverseCostProfile: "balanced",
+      creatorLabCreditProfile: "draft",
+      defaultVisualStrategy: "none",
+      runwayUsage: "none",
+      voiceStrategy: "none",
     };
   }
 
@@ -214,6 +251,10 @@ function getProductionRecommendation({
 }): TimelineScenePlan["productionRecommendation"] {
   if (speechFit === "too_long") {
     return "split_or_rewrite";
+  }
+
+  if (product === "creatorlab" && qualityTier === "draft") {
+    return "image_motion";
   }
 
   if (product === "storyverse" && qualityTier === "lite") {
@@ -273,9 +314,13 @@ function getTimelineVisualAction({
   }
 
   if (audioMismatch === "long") {
-    return product === "storyverse" || qualityTier === "lite"
-      ? "image_motion_tail"
-      : "slow_clip";
+    return (
+      product === "storyverse" ||
+      qualityTier === "lite" ||
+      qualityTier === "draft"
+        ? "image_motion_tail"
+        : "slow_clip"
+    );
   }
 
   const overrunSeconds = estimatedSpeechSeconds - recommendedClipSeconds;
@@ -321,12 +366,16 @@ function createVisualBlocks({
   estimatedSpeechSeconds,
   product,
   qualityTier,
+  targetDurationSeconds,
+  fallbackVisualPlan,
 }: {
   visualAction: TimelineVisualAction;
   recommendedClipSeconds: number;
   estimatedSpeechSeconds: number;
   product: VideoProductProfile;
   qualityTier: VideoQualityTier;
+  targetDurationSeconds?: number;
+  fallbackVisualPlan?: VisualFillerPlan;
 }): TimelineScenePlan["visualBlocks"] {
   const safeSpeechSeconds = Math.max(
     0,
@@ -335,6 +384,7 @@ function createVisualBlocks({
   const targetSeconds = Math.max(
     recommendedClipSeconds,
     safeSpeechSeconds || recommendedClipSeconds,
+    Number(targetDurationSeconds || 0),
   );
   const tailSeconds = Math.max(
     0,
@@ -343,6 +393,44 @@ function createVisualBlocks({
   const shouldUsePremiumBlocks =
     product === "creatorlab" &&
     (qualityTier === "pro" || qualityTier === "cinematic");
+
+  if (product === "creatorlab" && qualityTier === "draft") {
+    return withVisualBlockOffsets([
+      {
+        type: "split_marker",
+        durationSec: targetSeconds,
+        source: "planning",
+        motionPreset: "manual_split",
+        reason:
+          "Draft mode keeps this beat as a text-only planning marker and does not start paid media generation.",
+      },
+    ]);
+  }
+
+  if (product === "creatorlab" && fallbackVisualPlan) {
+    return withVisualBlockOffsets(
+      fallbackVisualPlan.segments.map((segment) => ({
+        type:
+          segment.type === "primary_video" || segment.type === "motion_loop"
+            ? ("video_clip" as const)
+            : segment.type === "cutaway"
+              ? ("b_roll" as const)
+              : ("image_motion" as const),
+        durationSec: segment.durationSec,
+        source:
+          segment.source === "source_video"
+            ? ("ai_video" as const)
+            : segment.source === "b_roll"
+              ? ("b_roll" as const)
+              : ("reference_image" as const),
+        motionPreset:
+          segment.motionPreset === "motion_loop"
+            ? ("source_motion" as const)
+            : segment.motionPreset,
+        reason: segment.reason,
+      })),
+    );
+  }
 
   if (visualAction === "image_motion_tail" && tailSeconds > 0) {
     return withVisualBlockOffsets([
@@ -447,16 +535,16 @@ export function createTimelineSyncPlan({
   );
   const safeDurationSec = Math.max(
     5,
-    Math.round(durationSec || safeSceneCount * 7),
+    Math.round(durationSec || safeSceneCount * 5),
   );
-  const targetVisualSeconds = Math.max(
-    5,
-    Math.round(safeDurationSec / safeSceneCount),
+  const plannedSceneDurationSeconds = Math.max(
+    product === "creatorlab" ? 3 : 5,
+    Math.round((safeDurationSec / safeSceneCount) * 10) / 10,
   );
   const maxSpeechRatio = product === "creatorlab" ? 0.82 : 0.72;
   const routePolicy = getRoutePolicy(product, qualityTier);
   const recommendedClipSeconds = normalizeRunwayClipDuration(
-    targetVisualSeconds,
+    plannedSceneDurationSeconds,
     qualityTier,
   ).durationSec;
 
@@ -470,20 +558,47 @@ export function createTimelineSyncPlan({
     const speechWordCount = Number.isFinite(scene.speechWordCount)
       ? Number(scene.speechWordCount)
       : countSpeechWords(speechText);
-    const availableSpeechWindow = recommendedClipSeconds * maxSpeechRatio;
+    const durationMatch =
+      product === "creatorlab"
+        ? matchAudioDurationToScene({
+            audioDurationSec: estimatedSpeechSeconds,
+            plannedDurationSec: plannedSceneDurationSeconds,
+            fallbackDurationSec: plannedSceneDurationSeconds,
+            minDurationSec: 3,
+            maxDurationSec: 30,
+            preferredMaxSceneDurationSec: 20,
+            tailBufferSec: 0.75,
+          })
+        : null;
+    const targetVisualSeconds =
+      durationMatch?.targetDurationSec || plannedSceneDurationSeconds;
+    const sceneRecommendedClipSeconds = normalizeRunwayClipDuration(
+      targetVisualSeconds,
+      qualityTier,
+    ).durationSec;
+    const availableSpeechWindow =
+      product === "creatorlab"
+        ? Math.max(
+            0,
+            targetVisualSeconds - (durationMatch?.tailBufferSec || 0.75),
+          )
+        : sceneRecommendedClipSeconds * maxSpeechRatio;
     const freezePaddingSeconds = Math.max(
       0,
-      Math.round((estimatedSpeechSeconds - recommendedClipSeconds) * 10) / 10,
+      Math.round((targetVisualSeconds - sceneRecommendedClipSeconds) * 10) /
+        10,
     );
     const speechFit: TimelineScenePlan["speechFit"] =
-      estimatedSpeechSeconds <= availableSpeechWindow
+      durationMatch?.status === "unsafe" || durationMatch?.splitRecommended
+        ? "too_long"
+        : estimatedSpeechSeconds <= availableSpeechWindow
         ? "safe"
-        : estimatedSpeechSeconds <= recommendedClipSeconds
+        : estimatedSpeechSeconds <= sceneRecommendedClipSeconds
           ? "tight"
           : "too_long";
     const audioMismatch = getTimelineAudioMismatch({
       estimatedSpeechSeconds,
-      recommendedClipSeconds,
+      recommendedClipSeconds: sceneRecommendedClipSeconds,
       safeSpeechWindow: availableSpeechWindow,
     });
     const visualAction = getTimelineVisualAction({
@@ -491,8 +606,26 @@ export function createTimelineSyncPlan({
       qualityTier,
       audioMismatch,
       estimatedSpeechSeconds,
-      recommendedClipSeconds,
+      recommendedClipSeconds: sceneRecommendedClipSeconds,
     });
+    const creatorUsesVideoBlock =
+      product === "creatorlab" &&
+      (qualityTier === "pro" || qualityTier === "cinematic");
+    const fallbackVisualPlan =
+      product === "creatorlab" && qualityTier !== "draft"
+        ? createVisualFillerPlan({
+            targetDurationSec: targetVisualSeconds,
+            sourceDurationSec: creatorUsesVideoBlock
+              ? sceneRecommendedClipSeconds
+              : 0,
+            hasVideo: creatorUsesVideoBlock,
+            hasReferenceImage: true,
+            preferCutaway:
+              creatorUsesVideoBlock &&
+              (visualAction === "split_scene" ||
+                targetVisualSeconds - sceneRecommendedClipSeconds > 4),
+          })
+        : undefined;
     const productionRecommendation = getProductionRecommendation({
       product,
       qualityTier,
@@ -506,7 +639,7 @@ export function createTimelineSyncPlan({
       estimatedSpeechSeconds,
       speechWordCount,
       targetVisualSeconds,
-      recommendedClipSeconds,
+      recommendedClipSeconds: sceneRecommendedClipSeconds,
       freezePaddingSeconds,
       speechFit,
       audioMismatch,
@@ -514,15 +647,21 @@ export function createTimelineSyncPlan({
       productionRecommendation,
       visualBlocks: createVisualBlocks({
         visualAction,
-        recommendedClipSeconds,
+        recommendedClipSeconds: sceneRecommendedClipSeconds,
         estimatedSpeechSeconds,
         product,
         qualityTier,
+        targetDurationSeconds: targetVisualSeconds,
+        fallbackVisualPlan,
       }),
       transitionHint:
-        speechFit === "too_long"
+        durationMatch?.splitRecommended
+          ? `Split this narration into at least ${durationMatch.recommendedSplitCount} scene beats; do not cut audio at the boundary.`
+          : speechFit === "too_long"
           ? "Shorten or split speech before rendering video. Do not cut audio at scene boundary."
           : "Cut on sentence boundary and use the next visual beat after speech settles.",
+      durationMatch: durationMatch || undefined,
+      fallbackVisualPlan,
     };
   });
 
@@ -542,6 +681,12 @@ export function createTimelineSyncPlan({
   const tightCount = scenePlans.filter(
     (scene) => scene.speechFit === "tight",
   ).length;
+  const splitRecommendedCount = scenePlans.filter(
+    (scene) => scene.durationMatch?.splitRecommended,
+  ).length;
+  const visualFillerCount = scenePlans.filter(
+    (scene) => scene.fallbackVisualPlan?.requiresFiller,
+  ).length;
 
   if (tooLongCount) {
     warnings.push(
@@ -552,6 +697,18 @@ export function createTimelineSyncPlan({
   if (tightCount) {
     warnings.push(
       `${tightCount} scene(s) are tight; render with sentence-boundary cuts and avoid abrupt transitions.`,
+    );
+  }
+
+  if (splitRecommendedCount) {
+    warnings.push(
+      `${splitRecommendedCount} scene(s) should be split into shorter narration beats before final export.`,
+    );
+  }
+
+  if (visualFillerCount) {
+    warnings.push(
+      `${visualFillerCount} scene(s) use moving visual filler so the timeline never holds a frozen final frame.`,
     );
   }
 
@@ -597,6 +754,8 @@ export type TimelineAwareScene = TimelineSceneInput & {
     visualAction?: TimelineScenePlan["visualAction"];
     visualBlocks?: TimelineScenePlan["visualBlocks"];
     transitionHint?: string;
+    durationMatch?: AudioDurationMatch;
+    fallbackVisualPlan?: VisualFillerPlan;
     timelineAware?: boolean;
     timelineMode?: TimelineSyncPlan["timelineMode"];
   };
@@ -635,9 +794,9 @@ export function getTimelineScenePlan(
 
 export function getAudioSafeSceneDuration({
   scenePlan,
-  fallbackDuration = 7,
+  fallbackDuration = 5,
   minDuration = 3,
-  maxDuration = 20,
+  maxDuration = 30,
   tailBufferSeconds = 0.75,
 }: {
   scenePlan?: TimelineScenePlan;
@@ -648,12 +807,22 @@ export function getAudioSafeSceneDuration({
 }) {
   const baseDuration = Number.isFinite(fallbackDuration)
     ? Number(fallbackDuration)
-    : 7;
+    : 5;
 
   if (!scenePlan) {
     return Math.min(
       maxDuration,
       Math.max(minDuration, Math.round(baseDuration * 10) / 10),
+    );
+  }
+
+  if (scenePlan.durationMatch?.targetDurationSec) {
+    return Math.min(
+      maxDuration,
+      Math.max(
+        minDuration,
+        Math.round(scenePlan.durationMatch.targetDurationSec * 10) / 10,
+      ),
     );
   }
 
@@ -731,6 +900,8 @@ export function applyTimelineSyncPlanToScenes<T extends TimelineAwareScene>(
         visualAction: scenePlan.visualAction,
         visualBlocks: scenePlan.visualBlocks,
         transitionHint: scenePlan.transitionHint,
+        durationMatch: scenePlan.durationMatch,
+        fallbackVisualPlan: scenePlan.fallbackVisualPlan,
         timelineAware: true,
         timelineMode: timelineSyncPlan.timelineMode,
       },

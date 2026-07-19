@@ -7,6 +7,7 @@ import {
   type TimelineSceneInput,
   type VideoQualityTier,
 } from "../../../lib/video/timelineSync";
+import { getCreatorVoiceScriptGuidance } from "../../../lib/creator/voiceRouting";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -113,16 +114,23 @@ function createDryRunScenes({
   durationSec,
   sceneCount,
   language,
+  format,
 }: {
   topic: string;
   mentorAnalysis: CreatorMentorResult;
   durationSec: number;
   sceneCount: number;
   language: "tr" | "en";
+  format: string;
 }): TimelineSceneInput[] {
   const outlineItems = buildOutlineItems({ topic, mentorAnalysis, sceneCount });
-  const targetWordsPerScene = Math.max(10, Math.round((durationSec / sceneCount) * 2.15));
-  const softMaxWords = Math.max(targetWordsPerScene + 5, 16);
+  const voiceGuidance = getCreatorVoiceScriptGuidance({
+    format,
+    durationSec,
+    sceneCount,
+    language,
+  });
+  const softMaxWords = voiceGuidance.maxWordsPerScene;
 
   return outlineItems.map((outline, index) => {
     const sceneNumber = index + 1;
@@ -183,8 +191,8 @@ export async function POST(req: Request) {
       body?.topic || body?.mentorAnalysis?.recommendedIdea?.title,
       "CreatorLab video",
     );
-    const durationSec = clampNumber(body?.durationSec, 60, 45, 360);
-    const sceneCount = clampNumber(body?.sceneCount, 6, 6, 36);
+    const durationSec = clampNumber(body?.durationSec, 60, 5, 3600);
+    const sceneCount = clampNumber(body?.sceneCount, 6, 1, 36);
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
     const language = body?.language === "tr" ? "tr" : "en";
     const mentorAnalysis = body?.mentorAnalysis || {};
@@ -193,25 +201,38 @@ export async function POST(req: Request) {
       ? body.scenes
           .filter((scene) => scene && typeof scene === "object")
           .map((scene, index) => {
-            const id = (scene as any).id || index + 1;
-            const narration = asString((scene as any).narration);
-            const dialogue = asString((scene as any).dialogue);
-            const text = asString((scene as any).text, narration || dialogue || `${topic} scene ${index + 1}`);
+            const id = scene.id || index + 1;
+            const narration = asString(scene.narration);
+            const dialogue = asString(scene.dialogue);
+            const text = asString(
+              scene.text,
+              narration || dialogue || `${topic} scene ${index + 1}`,
+            );
             const speechText = [narration, dialogue].filter(Boolean).join(" ");
 
             return {
-              ...(scene as TimelineSceneInput),
+              ...scene,
               id,
               text,
               narration,
               dialogue,
-              visualPrompt: asString((scene as any).visualPrompt, `Professional YouTube-ready visual beat for ${topic}.`),
-              cameraDirection: asString((scene as any).cameraDirection, "Clean editorial shot with readable composition."),
-              motionHint: asString((scene as any).motionHint, "controlled editorial motion"),
+              visualPrompt: asString(
+                scene.visualPrompt,
+                `Professional YouTube-ready visual beat for ${topic}.`,
+              ),
+              cameraDirection: asString(
+                scene.cameraDirection,
+                "Clean editorial shot with readable composition.",
+              ),
+              motionHint: asString(
+                scene.motionHint,
+                "controlled editorial motion",
+              ),
               estimatedSpeechSeconds:
-                Number((scene as any).estimatedSpeechSeconds) || estimateSpeechSeconds(speechText || text),
+                Number(scene.estimatedSpeechSeconds) ||
+                estimateSpeechSeconds(speechText || text),
               speechWordCount:
-                Number((scene as any).speechWordCount) ||
+                Number(scene.speechWordCount) ||
                 (speechText || text).split(/\s+/).filter(Boolean).length,
             };
           })
@@ -225,6 +246,7 @@ export async function POST(req: Request) {
           durationSec,
           sceneCount,
           language,
+          format: asString(body?.format, "Shorts / Reels / TikTok"),
         });
 
     const timelineSyncPlan = createTimelineSyncPlan({
@@ -242,17 +264,18 @@ export async function POST(req: Request) {
       timelineSyncPlan,
       previewScenes: scenes,
       notes: [
-        "Dry-run preview does not call Runway, ElevenLabs, OpenAI Image, or final export.",
+        "Dry-run preview does not call paid video, voice, image, or final export services.",
         "Use this plan to find likely audio/video mismatch before paid asset generation.",
       ],
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("creator-timeline-preview error:", e);
 
     return NextResponse.json(
       {
         error:
-          e?.message || "Timeline preview oluşturulurken hata oluştu.",
+          (e instanceof Error ? e.message : "") ||
+          "Timeline preview oluşturulurken hata oluştu.",
       },
       { status: 500 },
     );

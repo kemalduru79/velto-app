@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { getCreatorVoiceScriptGuidance } from "../../../lib/creator/voiceRouting";
 
 type CreatorProductionScene = {
   id?: number;
@@ -42,6 +43,16 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
 }
 
 function getPacingBlueprint(sceneCount: number) {
+  if (sceneCount <= 3) {
+    return {
+      hook: "Scene 1: preserve or strengthen the immediate hook",
+      setup: "Scene 1: clarify the promise without a slow introduction",
+      development: `Scene ${Math.min(2, sceneCount)}: deliver the core explanation or example`,
+      climax: `Scene ${sceneCount}: sharpen the strongest payoff`,
+      resolution: `Scene ${sceneCount}: close with one memorable takeaway`,
+    };
+  }
+
   const hookEnd = Math.max(1, Math.ceil(sceneCount * 0.15));
   const setupEnd = Math.max(hookEnd + 1, Math.ceil(sceneCount * 0.3));
   const developmentEnd = Math.max(setupEnd + 1, Math.ceil(sceneCount * 0.72));
@@ -103,32 +114,46 @@ function limitWords(value: string, maxWords: number) {
   return clipped.replace(/[,:;\-–—]+$/, "") + ".";
 }
 
-function estimateSpeechSeconds(value: string) {
+function estimateSpeechSeconds(value: string, language: "tr" | "en") {
   const words = countWords(value);
   if (!words) {
     return 0;
   }
 
-  // Conservative child-friendly narration pace: ~135 words/minute.
-  return Number(((words / 135) * 60).toFixed(2));
+  const wordsPerMinute = language === "tr" ? 129 : 141;
+  return Number(((words / wordsPerMinute) * 60).toFixed(2));
 }
 
-function getSceneWordBudget(durationSec: number, sceneCount: number) {
-  const safeDuration = Math.max(45, Math.min(durationSec || sceneCount * 8, 360));
-  const safeSceneCount = Math.max(1, sceneCount);
-  const targetSceneDuration = Math.max(5, Math.round(safeDuration / safeSceneCount));
-
-  // Keep 15% headroom for TTS variance and the 0.75 sec export tail buffer.
-  const wordsPerSecond = 2.15;
-  const maxTotalWordsPerScene = Math.max(10, Math.floor(targetSceneDuration * wordsPerSecond * 0.85));
-  const maxNarrationWords = Math.max(7, Math.floor(maxTotalWordsPerScene * 0.68));
-  const maxDialogueWords = Math.max(5, maxTotalWordsPerScene - maxNarrationWords);
+function getSceneWordBudget(
+  durationSec: number,
+  sceneCount: number,
+  format: string,
+  language: "tr" | "en",
+) {
+  const guidance = getCreatorVoiceScriptGuidance({
+    format,
+    durationSec,
+    sceneCount,
+    language,
+  });
+  const maxTotalWordsPerScene = guidance.maxWordsPerScene;
+  const maxNarrationWords = Math.max(
+    5,
+    Math.floor(maxTotalWordsPerScene * 0.78),
+  );
+  const maxDialogueWords = Math.max(
+    3,
+    Math.floor(maxTotalWordsPerScene * 0.45),
+  );
 
   return {
-    targetSceneDuration,
+    targetSceneDuration: guidance.targetSceneDurationSec,
     maxTotalWordsPerScene,
     maxNarrationWords,
     maxDialogueWords,
+    deliveryStyle: guidance.deliveryStyle,
+    openingRule: guidance.openingRule,
+    structureRule: guidance.structureRule,
   };
 }
 
@@ -152,7 +177,8 @@ function fitSceneSpeechToBudget(scene: CreatorProductionScene, budget: ReturnTyp
 function normalizeScenes(
   value: unknown,
   fallbackScenes: CreatorProductionScene[],
-  budget: ReturnType<typeof getSceneWordBudget>
+  budget: ReturnType<typeof getSceneWordBudget>,
+  language: "tr" | "en",
 ) {
   if (!Array.isArray(value)) {
     value = fallbackScenes;
@@ -197,7 +223,10 @@ function normalizeScenes(
         "Simple animated motion."
       ),
       visualPrompt: asString(scene.visualPrompt, fallbackScene.visualPrompt || ""),
-      estimatedSpeechSeconds: estimateSpeechSeconds(`${narration} ${dialogue}`),
+      estimatedSpeechSeconds: estimateSpeechSeconds(
+        `${narration} ${dialogue}`,
+        language,
+      ),
       speechWordCount: countWords(`${narration} ${dialogue}`),
     };
   });
@@ -263,15 +292,22 @@ export async function POST(req: Request) {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const language = body?.language === "tr" ? "Turkish" : "English";
+    const contentLanguage = body?.language === "tr" ? "tr" : "en";
+    const language = contentLanguage === "tr" ? "Turkish" : "English";
     const sceneCount = clampNumber(body?.sceneCount, scenes.length, scenes.length, scenes.length);
-    const durationSec = clampNumber(body?.durationSec, sceneCount * 8, 45, 360);
-    const speechBudget = getSceneWordBudget(durationSec, sceneCount);
+    const durationSec = clampNumber(body?.durationSec, sceneCount * 8, 5, 3600);
+    const format = body?.format || "Shorts / 60 sec";
+    const speechBudget = getSceneWordBudget(
+      durationSec,
+      sceneCount,
+      format,
+      contentLanguage,
+    );
     const targetSceneDurationSec = speechBudget.targetSceneDuration;
     const pacingBlueprint = getPacingBlueprint(sceneCount);
 
     const systemPrompt = [
-      "You are an expert animation director, YouTube retention editor, and child-safe content producer.",
+      "You are an expert CreatorLab director, YouTube retention editor, and professional voice-over producer for an 18+ creator workflow.",
       "This is Smart Production Sync refinement: improve scenes while preserving duration, scene count, and pacing strategy.",
       "Your job is to refine scene objects for stronger retention, clearer narration, better animation direction, and better first-3-second hook.",
       "Do not change the number of scenes.",
@@ -286,9 +322,9 @@ export async function POST(req: Request) {
       target: {
         topic: body?.topic || "",
         market: body?.country || "Global / International",
-        ageGroup: body?.ageGroup || "8-12",
+        ageGroup: body?.ageGroup || "Professional creator audience / 18+",
         contentType: body?.contentType || "Educational",
-        format: body?.format || "Shorts / 60 sec",
+        format,
         durationSec,
         sceneCount,
         targetSceneDurationSec,
@@ -322,10 +358,13 @@ export async function POST(req: Request) {
         `Dialogue should stay under ${speechBudget.maxDialogueWords} words per scene.`,
         "If you improve a scene, make it clearer and tighter; do not make it longer.",
         "Improve hook and pacing.",
+        speechBudget.deliveryStyle,
+        speechBudget.openingRule,
+        speechBudget.structureRule,
         "Respect beginning-development-climax-resolution flow based on pacingBlueprint.",
         "Keep narration clean: no emotion tags, no sound-effect labels, no voice direction metadata.",
         "Make each scene visually clear for AI image generation.",
-        "Keep language age-appropriate.",
+        "Keep language appropriate for the selected adult creator audience and subject.",
         "Do not include unsafe content.",
         "Avoid long narration; each scene should be concise.",
         "Preserve the educational point of each scene.",
@@ -350,10 +389,10 @@ export async function POST(req: Request) {
 
     const rawText = response.output_text || "";
 
-    let parsed: any;
+    let parsed: { scenes?: unknown };
 
     try {
-      parsed = extractJsonObject(rawText);
+      parsed = extractJsonObject(rawText) as { scenes?: unknown };
     } catch {
       console.error("creator-refine-scenes JSON parse error:", rawText);
       return NextResponse.json(
@@ -362,7 +401,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const refinedScenes = normalizeScenes(parsed.scenes, scenes, speechBudget).slice(0, scenes.length);
+    const refinedScenes = normalizeScenes(
+      parsed.scenes,
+      scenes,
+      speechBudget,
+      contentLanguage,
+    ).slice(0, scenes.length);
 
     if (refinedScenes.length !== scenes.length) {
       return NextResponse.json(
@@ -380,11 +424,15 @@ export async function POST(req: Request) {
       speechBudget,
       pacingBlueprint,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("creator-refine-scenes error:", e);
 
     return NextResponse.json(
-      { error: e?.message || "Sahneler geliştirilirken hata oluştu." },
+      {
+        error:
+          (e instanceof Error ? e.message : "") ||
+          "Sahneler geliştirilirken hata oluştu.",
+      },
       { status: 500 }
     );
   }

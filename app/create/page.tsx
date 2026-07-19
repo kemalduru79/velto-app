@@ -43,6 +43,22 @@ import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
+import {
+  getCreatorMediaRoute,
+  getCreatorVideoBlockSceneIds,
+  isCreatorMediaActionAllowed,
+  type CreatorMediaAction,
+  type CreatorQualityMode,
+} from "@/lib/creator/mediaRouting";
+import { getCreatorVoiceRoute } from "@/lib/creator/voiceRouting";
+import {
+  createFlowContinuityAudit,
+  type FlowContinuityAuditReport,
+} from "@/lib/video/flowContinuityAudit";
+import {
+  matchAudioDurationToScene,
+  type AudioDurationMatchStatus,
+} from "@/lib/video/audioDurationMatching";
 import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
 
 type CreatorEditPlanPriority = "render_safe" | "review" | "edit_required";
@@ -71,6 +87,11 @@ type SceneTiming = {
   maxSpeechDuration?: number;
   freezeDuration: number;
   needsFreezeFrame: boolean;
+  durationMatchStatus?: AudioDurationMatchStatus;
+  plannedSceneDuration?: number;
+  unnecessaryExtensionRemoved?: number;
+  splitRecommended?: boolean;
+  recommendedSplitCount?: number;
 };
 
 type SceneIntelligence = {
@@ -114,6 +135,7 @@ type Scene = {
   videoUrl?: string;
   videoStatus?: "idle" | "processing" | "done" | "error";
   videoJobId?: string;
+  videoDurationSeconds?: number;
   timing?: SceneTiming;
   intelligence?: SceneIntelligence;
 };
@@ -123,7 +145,15 @@ type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped"
 type BatchRenderItem = {
   sceneId: number;
   status: BatchSceneStatus;
-  step: "waiting" | "image" | "audio" | "video" | "save" | "complete" | "error";
+  step:
+    | "waiting"
+    | "route"
+    | "image"
+    | "audio"
+    | "video"
+    | "save"
+    | "complete"
+    | "error";
   message?: string;
   updatedAt: string;
 };
@@ -205,8 +235,6 @@ type CreatorDurationPreset =
   | "video_600"
   | "video_900"
   | "custom";
-
-type CreatorQualityMode = "draft" | "standard" | "pro" | "cinematic";
 
 type CreatorVideoIdea = {
   title: string;
@@ -740,6 +768,10 @@ const DEFAULT_VIDEO_DURATION_SECONDS = 10;
 const TARGET_SCENE_DURATION_SECONDS = 10;
 const MAX_SCENE_DURATION_SECONDS = 12;
 const MIN_SCENE_DURATION_SECONDS = 8;
+const CREATOR_MIN_SCENE_DURATION_SECONDS = 3;
+const CREATOR_MAX_SCENE_DURATION_SECONDS = 30;
+const CREATOR_PREFERRED_MAX_SCENE_DURATION_SECONDS = 20;
+const CREATOR_SPEECH_TAIL_BUFFER_SECONDS = 0.75;
 const FREEZE_TOLERANCE_SECONDS = 0.35;
 const MAX_SPEECH_RATIO = 0.82;
 const CREATOR_LAB_MAX_SPEECH_RATIO = 0.95;
@@ -779,7 +811,7 @@ const UI_TEXT = {
     storySetupChip: "Hikaye kurulumu",
     sceneTimingChip: "Sahne zamanlaması",
     voiceDialogueChip: "Ses + Diyalog",
-    runwayVideoChip: "Runway video",
+    runwayVideoChip: "AI video blockları",
     finalExportChip: "Final export",
     sceneStatus: "Sahne Durumu",
     totalScene: "Toplam sahne",
@@ -1116,7 +1148,7 @@ const UI_TEXT = {
     storySetupChip: "Story setup",
     sceneTimingChip: "Scene timing",
     voiceDialogueChip: "Voice + Dialogue",
-    runwayVideoChip: "Runway video",
+    runwayVideoChip: "AI video blocks",
     finalExportChip: "Final export",
     sceneStatus: "Scene Status",
     totalScene: "Total scenes",
@@ -1453,11 +1485,60 @@ const getAudioDurationFromUrl = (url?: string) => {
 
 const buildSceneTiming = (
   narrationDuration: number,
-  dialogueDuration: number
+  dialogueDuration: number,
+  options?: {
+    audioFirst?: boolean;
+    plannedDuration?: number;
+  },
 ): SceneTiming => {
   const safeNarration = Number.isFinite(narrationDuration) ? narrationDuration : 0;
   const safeDialogue = Number.isFinite(dialogueDuration) ? dialogueDuration : 0;
   const totalAudioDuration = safeNarration + safeDialogue;
+
+  if (options?.audioFirst) {
+    const durationMatch = matchAudioDurationToScene({
+      audioDurationSec: totalAudioDuration,
+      plannedDurationSec:
+        options.plannedDuration || TARGET_SCENE_DURATION_SECONDS,
+      fallbackDurationSec: TARGET_SCENE_DURATION_SECONDS,
+      minDurationSec: CREATOR_MIN_SCENE_DURATION_SECONDS,
+      maxDurationSec: CREATOR_MAX_SCENE_DURATION_SECONDS,
+      preferredMaxSceneDurationSec:
+        CREATOR_PREFERRED_MAX_SCENE_DURATION_SECONDS,
+      tailBufferSec: CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+    });
+    const targetSceneDuration = durationMatch.targetDurationSec;
+    const maxSpeechDuration = Number(
+      Math.max(
+        0,
+        targetSceneDuration - CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+      ).toFixed(2),
+    );
+    const freezeDuration = Math.max(
+      0,
+      Number(
+        (
+          targetSceneDuration - durationMatch.plannedDurationSec
+        ).toFixed(2),
+      ),
+    );
+
+    return {
+      narrationDuration: safeNarration,
+      dialogueDuration: safeDialogue,
+      totalAudioDuration,
+      targetSceneDuration,
+      maxSpeechDuration,
+      freezeDuration,
+      needsFreezeFrame: freezeDuration > FREEZE_TOLERANCE_SECONDS,
+      durationMatchStatus: durationMatch.status,
+      plannedSceneDuration: durationMatch.plannedDurationSec,
+      unnecessaryExtensionRemoved:
+        durationMatch.unnecessaryExtensionRemovedSec,
+      splitRecommended: durationMatch.splitRecommended,
+      recommendedSplitCount: durationMatch.recommendedSplitCount,
+    };
+  }
 
   const adaptiveDurationFromSpeech =
     totalAudioDuration > 0
@@ -2751,6 +2832,39 @@ export default function CreatePage() {
     return "none";
   };
 
+  const buildFlowContinuityAudit = (
+    sourceScenes: Scene[] = scenes,
+  ): FlowContinuityAuditReport => {
+    const timelinePlan = getCreatorActiveTimelinePlan();
+
+    return createFlowContinuityAudit(
+      sourceScenes.map((scene) => {
+        const timelineScene = timelinePlan?.scenes?.find(
+          (item) => Number(item.id) === Number(scene.id),
+        );
+        const exportSource = getSceneExportSource(scene);
+
+        return {
+          id: scene.id,
+          source: exportSource,
+          hasNarration: Boolean(scene.narration?.trim()),
+          hasDialogue: Boolean(scene.dialogue?.trim()),
+          narrationDurationSec: scene.timing?.narrationDuration,
+          dialogueDurationSec: scene.timing?.dialogueDuration,
+          targetDurationSec:
+            scene.timing?.targetSceneDuration ||
+            timelineScene?.targetVisualSeconds ||
+            TARGET_SCENE_DURATION_SECONDS,
+          videoDurationSec: scene.videoDurationSeconds,
+          fallbackVideoDurationSec:
+            timelineScene?.recommendedClipSeconds ||
+            DEFAULT_VIDEO_DURATION_SECONDS,
+          visualBlocks: timelineScene?.visualBlocks,
+        };
+      }),
+    );
+  };
+
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
     const exportableScenes = nextScenes
       .filter((scene) => getSceneExportSource(scene) !== "none")
@@ -2770,6 +2884,7 @@ export default function CreatePage() {
           image: scene.image || "",
           videoUrl: exportSource === "video" ? scene.videoUrl || "" : "",
           videoStatus: scene.videoStatus || "idle",
+          videoDurationSeconds: scene.videoDurationSeconds || 0,
           timing: scene.timing || null,
         };
       });
@@ -2909,13 +3024,50 @@ export default function CreatePage() {
     );
   };
 
+  const getCreatorPlannedSceneDuration = (scene?: Scene) => {
+    const timelinePlan =
+      creatorProductionPackage?.timelineSyncPlan || creatorTimelinePreviewPlan;
+    const timelineScene = timelinePlan?.scenes?.find(
+      (item) => Number(item.id) === Number(scene?.id),
+    );
+    const fallbackSceneCount = Math.max(
+      1,
+      scenes.length || getCreatorSceneCountByDuration(creatorVideoDurationSec),
+    );
+
+    return Math.min(
+      CREATOR_MAX_SCENE_DURATION_SECONDS,
+      Math.max(
+        CREATOR_MIN_SCENE_DURATION_SECONDS,
+        Number(
+          timelineScene?.durationMatch?.plannedDurationSec ||
+            timelineScene?.targetVisualSeconds ||
+            scene?.timing?.plannedSceneDuration ||
+            creatorVideoDurationSec / fallbackSceneCount,
+        ),
+      ),
+    );
+  };
+
+  const buildSceneTimingForCurrentFlow = (
+    narrationDuration: number,
+    dialogueDuration: number,
+    scene?: Scene,
+  ) =>
+    buildSceneTiming(narrationDuration, dialogueDuration, {
+      audioFirst: isCreatorLabFlow,
+      plannedDuration: isCreatorLabFlow
+        ? getCreatorPlannedSceneDuration(scene)
+        : undefined,
+    });
+
   const clearSceneTimingData = (sceneId: number) => {
     setScenes((prev) =>
       prev.map((scene) =>
         scene.id === sceneId
           ? {
               ...scene,
-              timing: buildSceneTiming(0, 0),
+              timing: buildSceneTimingForCurrentFlow(0, 0, scene),
             }
           : scene
       )
@@ -2926,7 +3078,7 @@ export default function CreatePage() {
     setScenes((prev) =>
       prev.map((scene) => ({
         ...scene,
-        timing: buildSceneTiming(0, 0),
+        timing: buildSceneTimingForCurrentFlow(0, 0, scene),
       }))
     );
   };
@@ -2948,7 +3100,11 @@ export default function CreatePage() {
       getAudioDurationFromUrl(dialogueUrl),
     ]);
 
-    const timing = buildSceneTiming(narrationDuration, dialogueDuration);
+    const timing = buildSceneTimingForCurrentFlow(
+      narrationDuration,
+      dialogueDuration,
+      currentScene,
+    );
 
     updateSceneTimingData(sceneId, timing);
 
@@ -2970,19 +3126,104 @@ export default function CreatePage() {
     videoPollIntervalsRef.current = {};
   };
 
-  const getNarratorSettingsKey = (settings: NarratorSettings) => {
-  return [
-    settings.voiceId || "",
-    settings.modelId,
-    settings.stability,
-    settings.similarityBoost,
-    settings.style ?? "",
-    settings.speed ?? "",
-  ].join("-");
-};
+  const getCreatorNarratorProfileHint = () => {
+    const narratorProfile = characters.find((character) =>
+      /(narrator|anlatıcı|brand voice|marka sesi|host|sunucu|presenter|persona)/i.test(
+        `${character.name} ${character.personality} ${character.appearance}`,
+      ),
+    );
+
+    if (narratorProfile) {
+      return [
+        narratorProfile.name,
+        narratorProfile.personality,
+        narratorProfile.appearance,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    return narratorSettings.voiceId ? "brand voice" : "faceless narrator";
+  };
+
+  const getCreatorSceneVoiceContext = ({
+    scene,
+    role,
+    text,
+    companionText,
+    hasExplicitVoiceId,
+    voiceProfile,
+  }: {
+    scene: Scene;
+    role: "narrator" | "dialogue";
+    text: string;
+    companionText?: string;
+    hasExplicitVoiceId: boolean;
+    voiceProfile: string;
+  }) => {
+    if (!isCreatorLabFlow) {
+      return null;
+    }
+
+    const timelineScene = getCreatorActiveTimelinePlan()?.scenes?.find(
+      (item) => Number(item.id) === Number(scene.id),
+    );
+    const fallbackSceneCount = Math.max(1, scenes.length || getCreatorSceneCount());
+    const targetSceneDurationSec =
+      timelineScene?.targetVisualSeconds ||
+      scene.timing?.plannedSceneDuration ||
+      scene.timing?.targetSceneDuration ||
+      Math.max(3, creatorVideoDurationSec / fallbackSceneCount);
+    const sceneIndex = Math.max(
+      0,
+      scenes.findIndex((item) => item.id === scene.id),
+    );
+
+    return getCreatorVoiceRoute({
+      qualityMode: creatorQualityMode,
+      format: creatorFormat,
+      role,
+      language,
+      text,
+      companionText,
+      targetSceneDurationSec,
+      sceneIndex,
+      sceneCount: fallbackSceneCount,
+      voiceProfile,
+      hasExplicitVoiceId,
+    });
+  };
+
+  const getNarratorSettingsKey = (
+    settings: NarratorSettings,
+    routeKey = "",
+    voiceIdentityKey = "",
+  ) => {
+    return [
+      settings.voiceId || "",
+      settings.modelId,
+      settings.stability,
+      settings.similarityBoost,
+      settings.style ?? "",
+      settings.speed ?? "",
+      routeKey,
+      voiceIdentityKey,
+    ].join("-");
+  };
 
   const getSceneAudioStatus = (scene: Scene) => {
-    const currentSettingsKey = getNarratorSettingsKey(narratorSettings);
+    const voiceRoute = getCreatorSceneVoiceContext({
+      scene,
+      role: "narrator",
+      text: scene.narration,
+      companionText: scene.dialogue,
+      hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
+      voiceProfile: getCreatorNarratorProfileHint(),
+    });
+    const currentSettingsKey = getNarratorSettingsKey(
+      narratorSettings,
+      voiceRoute?.routeKey,
+    );
 
     return !!(
       scene.audioUrl &&
@@ -3023,7 +3264,11 @@ export default function CreatePage() {
         audioPath: "",
         audioSourceText: "",
         audioSettingsKey: "",
-        timing: buildSceneTiming(0, scene.timing?.dialogueDuration || 0),
+        timing: buildSceneTimingForCurrentFlow(
+          0,
+          scene.timing?.dialogueDuration || 0,
+          scene,
+        ),
       }))
     );
   };
@@ -3038,7 +3283,11 @@ export default function CreatePage() {
               dialogueAudioPath: "",
               dialogueAudioSourceText: "",
               dialogueAudioSettingsKey: "",
-              timing: buildSceneTiming(scene.timing?.narrationDuration || 0, 0),
+              timing: buildSceneTimingForCurrentFlow(
+                scene.timing?.narrationDuration || 0,
+                0,
+                scene,
+              ),
             }
           : scene
       )
@@ -3053,7 +3302,11 @@ export default function CreatePage() {
         dialogueAudioPath: "",
         dialogueAudioSourceText: "",
         dialogueAudioSettingsKey: "",
-        timing: buildSceneTiming(scene.timing?.narrationDuration || 0, 0),
+        timing: buildSceneTimingForCurrentFlow(
+          scene.timing?.narrationDuration || 0,
+          0,
+          scene,
+        ),
       }))
     );
   };
@@ -3123,8 +3376,22 @@ export default function CreatePage() {
     return `${textValue.slice(0, maxLength)}...`;
   };
 
-  const getSafeCharactersForImagePrompt = () => {
-    return characters.slice(0, 6).map((character) => ({
+  const getSafeCharactersForImagePrompt = (sceneText = "") => {
+    const normalizedSceneText = sceneText.toLocaleLowerCase("en-US");
+    const prioritizedCharacters = [...characters].sort((left, right) => {
+      const leftName = left.name.trim().toLocaleLowerCase("en-US");
+      const rightName = right.name.trim().toLocaleLowerCase("en-US");
+      const leftMentioned = Boolean(
+        leftName && normalizedSceneText.includes(leftName),
+      );
+      const rightMentioned = Boolean(
+        rightName && normalizedSceneText.includes(rightName),
+      );
+
+      return Number(rightMentioned) - Number(leftMentioned);
+    });
+
+    return prioritizedCharacters.slice(0, 12).map((character) => ({
       name: limitForImagePrompt(character.name, 80),
       age: limitForImagePrompt(character.age, 40),
       appearance: limitForImagePrompt(character.appearance, 500),
@@ -3158,6 +3425,36 @@ export default function CreatePage() {
     };
   };
 
+  const getSafeCreatorContinuityContext = (sceneId: number) => {
+    const sceneIndex = scenes.findIndex((scene) => scene.id === sceneId);
+
+    if (sceneIndex < 0) {
+      return {
+        sceneId,
+        sceneCount: scenes.length || 1,
+        previousScene: null,
+        nextScene: null,
+      };
+    }
+
+    const toContinuityScene = (scene?: Scene) =>
+      scene
+        ? {
+            text: limitForImagePrompt(scene.text, 500),
+            cameraDirection: limitForImagePrompt(scene.cameraDirection, 240),
+            emotion: limitForImagePrompt(scene.emotion, 120),
+            motionHint: limitForImagePrompt(scene.motionHint, 240),
+          }
+        : null;
+
+    return {
+      sceneId,
+      sceneCount: scenes.length,
+      previousScene: toContinuityScene(scenes[sceneIndex - 1]),
+      nextScene: toContinuityScene(scenes[sceneIndex + 1]),
+    };
+  };
+
   const generateSceneImage = async (
     scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">,
     options?: {
@@ -3167,8 +3464,8 @@ export default function CreatePage() {
       imageUseCase?: "scene" | "thumbnail" | "hook";
     }
   ) => {
-    if (!canRunCreatorMediaAction()) {
-      throw new Error(getCreatorTimelineGateError());
+    if (!canRunCreatorMediaAction("visuals")) {
+      throw new Error(getCreatorMediaActionError());
     }
 
     const safeScene = getSafeSceneForImagePrompt(scene);
@@ -3186,17 +3483,23 @@ export default function CreatePage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+        qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+        creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
         title: limitForImagePrompt(title, 160),
         sceneText: safeScene.text,
         cameraDirection: safeScene.cameraDirection,
         emotion: safeScene.emotion,
         motionHint: safeScene.motionHint,
-        characters: getSafeCharactersForImagePrompt(),
+        characters: getSafeCharactersForImagePrompt(safeScene.text),
         visualBible: getSafeVisualBibleForImagePrompt(),
         isHookScene,
         isThumbnail,
         premiumVisualMode,
         imageUseCase,
+        continuityContext: isCreatorLabFlow
+          ? getSafeCreatorContinuityContext(scene.id)
+          : undefined,
       }),
     });
 
@@ -3233,10 +3536,9 @@ export default function CreatePage() {
     sceneId: number,
     audioUrl: string,
     audioPath: string,
-    audioSourceText: string
+    audioSourceText: string,
+    audioSettingsKey: string,
   ) => {
-    const currentSettingsKey = getNarratorSettingsKey(narratorSettings);
-
     setScenes((prev) =>
       prev.map((scene) =>
         scene.id === sceneId
@@ -3245,7 +3547,7 @@ export default function CreatePage() {
               audioUrl,
               audioPath,
               audioSourceText,
-              audioSettingsKey: currentSettingsKey,
+              audioSettingsKey,
             }
           : scene
       )
@@ -3262,7 +3564,11 @@ export default function CreatePage() {
               audioPath: "",
               audioSourceText: "",
               audioSettingsKey: "",
-              timing: buildSceneTiming(0, scene.timing?.dialogueDuration || 0),
+              timing: buildSceneTimingForCurrentFlow(
+                0,
+                scene.timing?.dialogueDuration || 0,
+                scene,
+              ),
             }
           : scene
       )
@@ -3270,7 +3576,19 @@ export default function CreatePage() {
   };
 
   const getSceneAudioUrl = async (scene: Scene) => {
-    const currentSettingsKey = getNarratorSettingsKey(narratorSettings);
+    const voiceProfile = getCreatorNarratorProfileHint();
+    const voiceRoute = getCreatorSceneVoiceContext({
+      scene,
+      role: "narrator",
+      text: scene.narration,
+      companionText: scene.dialogue,
+      hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
+      voiceProfile,
+    });
+    const currentSettingsKey = getNarratorSettingsKey(
+      narratorSettings,
+      voiceRoute?.routeKey,
+    );
 
     if (
       scene.audioUrl &&
@@ -3281,8 +3599,16 @@ export default function CreatePage() {
       return scene.audioUrl;
     }
 
-    if (!canRunCreatorMediaAction()) {
-      throw new Error(getCreatorTimelineGateError());
+    if (!canRunCreatorMediaAction("voice_over")) {
+      throw new Error(getCreatorMediaActionError("voice_over"));
+    }
+
+    if (voiceRoute && !voiceRoute.canGenerate) {
+      throw new Error(
+        uiLanguage === "en"
+          ? voiceRoute.warning
+          : "Anlatım bu sahnenin güvenli süresini aşıyor. Ses üretmeden önce metni kısalt veya sahneyi böl.",
+      );
     }
 
     const res = await fetch("/api/store-audio", {
@@ -3295,7 +3621,16 @@ export default function CreatePage() {
         sceneId: scene.id,
         projectKey: getProjectKey(),
         narratorSettings,
-        language, // 🔥 EKLENDİ
+        language,
+        productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+        qualityMode: creatorQualityMode,
+        creatorFormat,
+        targetSceneDurationSec: voiceRoute?.targetSceneDurationSec,
+        sceneIndex: scenes.findIndex((item) => item.id === scene.id),
+        sceneCount: scenes.length,
+        voiceProfile,
+        companionText: scene.dialogue,
+        clientSettingsKey: currentSettingsKey,
       }),
     });
 
@@ -3323,7 +3658,8 @@ export default function CreatePage() {
       scene.id,
       data.audioUrl,
       data.audioPath,
-      data.audioSourceText
+      data.audioSourceText,
+      data.settingsKey || currentSettingsKey,
     );
 
     await refreshSceneTiming(scene.id, {
@@ -3422,7 +3758,28 @@ export default function CreatePage() {
   };
 
   const getSceneDialogueUrl = async (scene: Scene) => {
-    const currentSettingsKey = getNarratorSettingsKey(narratorSettings);
+    const lines = parseDialogueLines(scene.dialogue);
+
+    if (lines.length === 0) {
+      throw new Error("Bu sahnede diyalog üretilecek içerik bulunamadı.");
+    }
+
+    const voiceIdentityKey = lines
+      .map((line) => `${line.speaker}:${line.voiceId || "fallback"}`)
+      .join("|");
+    const voiceRoute = getCreatorSceneVoiceContext({
+      scene,
+      role: "dialogue",
+      text: lines.map((line) => line.text).join(" "),
+      companionText: scene.narration,
+      hasExplicitVoiceId: lines.some((line) => Boolean(line.voiceId)),
+      voiceProfile: voiceIdentityKey,
+    });
+    const currentSettingsKey = getNarratorSettingsKey(
+      narratorSettings,
+      voiceRoute?.routeKey,
+      voiceIdentityKey,
+    );
 
     if (
       scene.dialogueAudioUrl &&
@@ -3433,14 +3790,16 @@ export default function CreatePage() {
       return scene.dialogueAudioUrl;
     }
 
-    if (!canRunCreatorMediaAction()) {
-      throw new Error(getCreatorTimelineGateError());
+    if (!canRunCreatorMediaAction("voice_over")) {
+      throw new Error(getCreatorMediaActionError("voice_over"));
     }
 
-    const lines = parseDialogueLines(scene.dialogue);
-
-    if (lines.length === 0) {
-      throw new Error("Bu sahnede diyalog üretilecek içerik bulunamadı.");
+    if (voiceRoute && !voiceRoute.canGenerate) {
+      throw new Error(
+        uiLanguage === "en"
+          ? voiceRoute.warning
+          : "Diyalog bu sahnenin güvenli süresini aşıyor. Ses üretmeden önce metni kısalt veya sahneyi böl.",
+      );
     }
 
     const res = await fetch("/api/store-dialogue-audio", {
@@ -3456,7 +3815,18 @@ export default function CreatePage() {
         modelId: narratorSettings.modelId,
         stability: narratorSettings.stability,
         similarityBoost: narratorSettings.similarityBoost,
-        language, // 🔥 EKLENDİ
+        style: narratorSettings.style,
+        speed: narratorSettings.speed,
+        language,
+        productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+        qualityMode: creatorQualityMode,
+        creatorFormat,
+        targetSceneDurationSec: voiceRoute?.targetSceneDurationSec,
+        sceneIndex: scenes.findIndex((item) => item.id === scene.id),
+        sceneCount: scenes.length,
+        voiceProfile: voiceIdentityKey,
+        companionText: scene.narration,
+        clientSettingsKey: currentSettingsKey,
       }),
     });
 
@@ -3625,7 +3995,7 @@ export default function CreatePage() {
           clearVideoPollForScene(sceneId);
 
           if (!data.videoUrl) {
-            throw new Error("Runway video URL dönmedi.");
+            throw new Error("AI video çıktısı alınamadı.");
           }
 
           const storeRes = await fetch("/api/store-video", {
@@ -3711,7 +4081,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("ai_video_blocks")) {
       return;
     }
 
@@ -3734,6 +4104,7 @@ export default function CreatePage() {
               ...s,
               videoStatus: "processing",
               videoUrl: "",
+              videoDurationSeconds: 0,
             }
           : s
       )
@@ -3746,6 +4117,8 @@ export default function CreatePage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+          qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           imageUrl: scene.image,
           text: scene.text,
           motionHint: scene.motionHint,
@@ -3768,6 +4141,7 @@ export default function CreatePage() {
                 ...s,
                 videoJobId: data.taskId,
                 videoStatus: "processing",
+                videoDurationSeconds: Number(data.duration) || 0,
               }
             : s
         )
@@ -3865,7 +4239,7 @@ export default function CreatePage() {
 
       if (status === "SUCCEEDED") {
         if (!data.videoUrl) {
-          throw new Error("Runway video URL dönmedi.");
+          throw new Error("AI video çıktısı alınamadı.");
         }
 
         const storeRes = await fetch("/api/store-video", {
@@ -3904,8 +4278,8 @@ export default function CreatePage() {
       throw new Error("Video için önce sahne görseli hazırlanmalı.");
     }
 
-    if (!canRunCreatorMediaAction()) {
-      throw new Error(getCreatorTimelineGateError());
+    if (!canRunCreatorMediaAction("ai_video_blocks")) {
+      throw new Error(getCreatorMediaActionError("ai_video_blocks"));
     }
 
     clearVideoPollForScene(scene.id);
@@ -3928,6 +4302,8 @@ export default function CreatePage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+        qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         imageUrl: scene.image,
         text: scene.text,
         motionHint: scene.motionHint,
@@ -3950,6 +4326,7 @@ export default function CreatePage() {
               ...item,
               videoJobId: data.taskId,
               videoStatus: "processing",
+              videoDurationSeconds: Number(data.duration) || 0,
             }
           : item
       )
@@ -3965,6 +4342,7 @@ export default function CreatePage() {
               videoStatus: "done",
               videoUrl,
               videoJobId: data.taskId,
+              videoDurationSeconds: Number(data.duration) || 0,
             }
           : item
       )
@@ -3973,6 +4351,7 @@ export default function CreatePage() {
     return {
       videoUrl,
       videoJobId: data.taskId as string,
+      videoDurationSeconds: Number(data.duration) || 0,
     };
   };
 
@@ -3993,7 +4372,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("visuals")) {
       return;
     }
 
@@ -4097,7 +4476,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("ai_video_blocks")) {
       return;
     }
 
@@ -4122,6 +4501,10 @@ export default function CreatePage() {
     resetBatchRenderItems(scenes);
 
     const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const routedVideoSceneIds = isCreatorLabFlow
+      ? getCreatorRoutedVideoSceneIds(workingScenes)
+      : workingScenes.map((scene) => scene.id);
+    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
     let hasFailure = false;
 
     try {
@@ -4131,6 +4514,18 @@ export default function CreatePage() {
         }
 
         let scene = workingScenes[index];
+
+        if (!routedVideoSceneIdSet.has(scene.id)) {
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "route",
+            message:
+              uiLanguage === "en"
+                ? "Image-motion route selected; no AI video credit used."
+                : "Image-motion rotası seçildi; AI video kredisi kullanılmadı.",
+          });
+          continue;
+        }
 
         updateBatchRenderItem(scene.id, {
           status: "processing",
@@ -4146,6 +4541,7 @@ export default function CreatePage() {
               videoUrl: videoResult.videoUrl,
               videoStatus: "done",
               videoJobId: videoResult.videoJobId,
+              videoDurationSeconds: videoResult.videoDurationSeconds,
             };
             workingScenes[index] = scene;
           }
@@ -4188,7 +4584,11 @@ export default function CreatePage() {
       } else if (hasFailure) {
         setError(uiLanguage === "en" ? "Some AI video blocks could not be generated." : "Bazı AI video block'lar üretilemedi.");
       } else {
-        setSaveMessage(uiLanguage === "en" ? "AI video blocks generated." : "AI video block'lar üretildi.");
+        setSaveMessage(
+          uiLanguage === "en"
+            ? `${routedVideoSceneIds.length} routed AI video block(s) generated.`
+            : `${routedVideoSceneIds.length} yönlendirilmiş AI video block üretildi.`
+        );
       }
     } finally {
       suspendAutosaveRef.current = false;
@@ -4209,7 +4609,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("batch_render")) {
       return;
     }
 
@@ -4225,6 +4625,10 @@ export default function CreatePage() {
     resetBatchRenderItems(scenes);
 
     const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const routedVideoSceneIds = isCreatorLabFlow
+      ? getCreatorRoutedVideoSceneIds(workingScenes)
+      : workingScenes.map((scene) => scene.id);
+    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
     let hasFailure = false;
 
     try {
@@ -4294,23 +4698,35 @@ export default function CreatePage() {
           };
           workingScenes[index] = scene;
 
-          updateBatchRenderItem(scene.id, {
-            status: "processing",
-            step: "video",
-            message: uiLanguage === "en" ? "Generating video..." : "Video üretiliyor...",
-          });
-
-          const shouldGenerateVideo = !scene.videoUrl || scene.videoStatus !== "done";
+          const shouldGenerateVideo =
+            routedVideoSceneIdSet.has(scene.id) &&
+            (!scene.videoUrl || scene.videoStatus !== "done");
 
           if (shouldGenerateVideo) {
+            updateBatchRenderItem(scene.id, {
+              status: "processing",
+              step: "video",
+              message: uiLanguage === "en" ? "Generating routed video block..." : "Yönlendirilmiş video block üretiliyor...",
+            });
+
             const videoResult = await generateSceneVideoAndWait(scene);
             scene = {
               ...scene,
               videoUrl: videoResult.videoUrl,
               videoStatus: "done",
               videoJobId: videoResult.videoJobId,
+              videoDurationSeconds: videoResult.videoDurationSeconds,
             };
             workingScenes[index] = scene;
+          } else if (!routedVideoSceneIdSet.has(scene.id)) {
+            updateBatchRenderItem(scene.id, {
+              status: "processing",
+              step: "route",
+              message:
+                uiLanguage === "en"
+                  ? "Image-motion route selected; skipping AI video generation."
+                  : "Image-motion rotası seçildi; AI video üretimi atlanıyor.",
+            });
           }
 
           updateBatchRenderItem(scene.id, {
@@ -4396,7 +4812,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("batch_render")) {
       return;
     }
 
@@ -4414,6 +4830,10 @@ export default function CreatePage() {
     }
 
     const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const routedVideoSceneIds = isCreatorLabFlow
+      ? getCreatorRoutedVideoSceneIds(workingScenes)
+      : workingScenes.map((scene) => scene.id);
+    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
     let hasFailure = false;
 
     try {
@@ -4493,20 +4913,32 @@ export default function CreatePage() {
           };
           workingScenes[index] = scene;
 
-          updateBatchRenderItem(scene.id, {
-            status: "processing",
-            step: "video",
-            message: uiLanguage === "en" ? "Retry: generating video..." : "Retry: video üretiliyor...",
-          });
+          if (routedVideoSceneIdSet.has(scene.id)) {
+            updateBatchRenderItem(scene.id, {
+              status: "processing",
+              step: "video",
+              message: uiLanguage === "en" ? "Retry: generating routed video block..." : "Retry: yönlendirilmiş video block üretiliyor...",
+            });
 
-          const videoResult = await generateSceneVideoAndWait(scene);
-          scene = {
-            ...scene,
-            videoUrl: videoResult.videoUrl,
-            videoStatus: "done",
-            videoJobId: videoResult.videoJobId,
-          };
-          workingScenes[index] = scene;
+            const videoResult = await generateSceneVideoAndWait(scene);
+            scene = {
+              ...scene,
+              videoUrl: videoResult.videoUrl,
+              videoStatus: "done",
+              videoJobId: videoResult.videoJobId,
+              videoDurationSeconds: videoResult.videoDurationSeconds,
+            };
+            workingScenes[index] = scene;
+          } else {
+            updateBatchRenderItem(scene.id, {
+              status: "processing",
+              step: "route",
+              message:
+                uiLanguage === "en"
+                  ? "Retry uses the image-motion route; no AI video credit used."
+                  : "Retry image-motion rotasını kullanıyor; AI video kredisi kullanılmadı.",
+            });
+          }
 
           updateBatchRenderItem(scene.id, {
             status: "processing",
@@ -4583,13 +5015,16 @@ export default function CreatePage() {
     const exportScenes = scenes.filter(
       (scene) => getSceneExportSource(scene) !== "none"
     );
+    const flowContinuityAudit = isCreatorLabFlow
+      ? buildFlowContinuityAudit(scenes)
+      : null;
 
     if (exportScenes.length === 0) {
       setError("Film oluşturmak için en az bir görsel veya hazır video içeren sahne gerekli.");
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("final_video")) {
       return;
     }
 
@@ -4628,15 +5063,27 @@ export default function CreatePage() {
           title,
           projectId: getProjectKey(),
           exportMode: "mixed",
+          flowContinuityAudit,
           scenes: exportScenes.map((scene) => {
-            const timing = scene.timing || buildSceneTiming(0, 0);
-            const normalizedTarget = Math.min(
-              Math.max(
-                timing.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
-                TARGET_SCENE_DURATION_SECONDS
-              ),
-              MAX_SCENE_DURATION_SECONDS
-            );
+            const timing =
+              scene.timing || buildSceneTimingForCurrentFlow(0, 0, scene);
+            const normalizedTarget = isCreatorLabFlow
+              ? Math.min(
+                  CREATOR_MAX_SCENE_DURATION_SECONDS,
+                  Math.max(
+                    CREATOR_MIN_SCENE_DURATION_SECONDS,
+                    timing.targetSceneDuration ||
+                      getCreatorPlannedSceneDuration(scene),
+                  ),
+                )
+              : Math.min(
+                  Math.max(
+                    timing.targetSceneDuration ||
+                      TARGET_SCENE_DURATION_SECONDS,
+                    TARGET_SCENE_DURATION_SECONDS,
+                  ),
+                  MAX_SCENE_DURATION_SECONDS,
+                );
 
             return {
               ...scene,
@@ -4645,9 +5092,19 @@ export default function CreatePage() {
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
-                maxSpeechDuration: Number(
-                  (normalizedTarget * getActiveMaxSpeechRatio()).toFixed(2)
-                ),
+                maxSpeechDuration: isCreatorLabFlow
+                  ? Number(
+                      Math.max(
+                        0,
+                        normalizedTarget -
+                          CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+                      ).toFixed(2),
+                    )
+                  : Number(
+                      (
+                        normalizedTarget * getActiveMaxSpeechRatio()
+                      ).toFixed(2),
+                    ),
               },
             };
           }),
@@ -4792,7 +5249,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!canRunCreatorMediaAction()) {
+    if (!canRunCreatorMediaAction("voice_over")) {
       return;
     }
 
@@ -5311,6 +5768,37 @@ export default function CreatePage() {
   const getCreatorActiveTimelinePlan = () =>
     creatorProductionPackage?.timelineSyncPlan || creatorTimelinePreviewPlan;
 
+  const creatorMediaRoute = getCreatorMediaRoute(creatorQualityMode);
+
+  const isCreatorActionBlocked = (action: CreatorMediaAction) =>
+    isCreatorLabFlow &&
+    !isCreatorMediaActionAllowed(creatorMediaRoute, action);
+
+  const getCreatorMediaRoutingError = (action: CreatorMediaAction) => {
+    if (creatorQualityMode === "draft") {
+      return uiLanguage === "en"
+        ? "Draft is a text-only planning mode. Select Standard, Pro or Cinematic before using media credits."
+        : "Draft yalnızca metin tabanlı planlama modudur. Medya kredisi kullanmadan önce Standard, Pro veya Cinematic seç.";
+    }
+
+    if (action === "ai_video_blocks" && creatorQualityMode === "standard") {
+      return uiLanguage === "en"
+        ? "Standard uses images, voice and light motion. Select Pro or Cinematic for AI video blocks."
+        : "Standard; görsel, ses ve hafif hareket kullanır. AI video block için Pro veya Cinematic seç.";
+    }
+
+    return uiLanguage === "en"
+      ? "This media action is not available for the selected production quality."
+      : "Bu medya aksiyonu seçilen üretim kalitesinde kullanılamaz.";
+  };
+
+  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) =>
+    getCreatorVideoBlockSceneIds({
+      route: creatorMediaRoute,
+      sceneIds: sourceScenes.map((scene) => scene.id),
+      timelinePlan: getCreatorActiveTimelinePlan(),
+    });
+
   const buildCreatorTimelineGateSignature = () =>
     JSON.stringify({
       qualityMode: creatorQualityMode,
@@ -5403,7 +5891,22 @@ export default function CreatePage() {
       ? "Run and approve the CreatorLab timeline before using media credits."
       : "Medya kredisi kullanmadan önce CreatorLab timeline kontrolünü çalıştır ve onayla.");
 
-  const canRunCreatorMediaAction = () => {
+  const getCreatorMediaActionError = (
+    action: CreatorMediaAction = "paid_media",
+  ) =>
+    isCreatorActionBlocked(action)
+      ? getCreatorMediaRoutingError(action)
+      : getCreatorTimelineGateError();
+
+  const canRunCreatorMediaAction = (
+    action: CreatorMediaAction = "paid_media",
+  ) => {
+    if (isCreatorActionBlocked(action)) {
+      setSaveMessage("");
+      setError(getCreatorMediaRoutingError(action));
+      return false;
+    }
+
     if (!isCreatorMediaGenerationBlocked) {
       return true;
     }
@@ -6717,8 +7220,8 @@ export default function CreatePage() {
   };
 
   const generatePremiumYoutubeThumbnailImage = async () => {
-    if (!canRunCreatorMediaAction()) {
-      throw new Error(getCreatorTimelineGateError());
+    if (!canRunCreatorMediaAction("visuals")) {
+      throw new Error(getCreatorMediaActionError());
     }
 
     const thumbnailPrompt = buildPremiumThumbnailPrompt();
@@ -6729,6 +7232,9 @@ export default function CreatePage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        productProfile: "creatorlab",
+        qualityMode: creatorQualityMode,
+        creatorFormat,
         title: limitForImagePrompt(
           youtubeMetadataResult?.recommendedTitle || creatorProductionPackage?.title || title,
           180
@@ -6739,7 +7245,7 @@ export default function CreatePage() {
         emotion: "surprise, curiosity, excitement",
         motionHint:
           "dynamic hero pose, cinematic energy, clear emotional reaction",
-        characters: getSafeCharactersForImagePrompt(),
+        characters: getSafeCharactersForImagePrompt(thumbnailPrompt),
         visualBible: getSafeVisualBibleForImagePrompt(),
         isThumbnail: true,
         premiumVisualMode: true,
@@ -7722,6 +8228,22 @@ export default function CreatePage() {
   const totalTargetDuration = scenes.reduce(
     (sum, scene) => sum + (scene.timing?.targetSceneDuration || 0),
     0
+  );
+  const flowContinuityAudit = isCreatorLabFlow
+    ? buildFlowContinuityAudit(scenes)
+    : null;
+  const audioDurationMatchedCount = scenes.filter(
+    (scene) =>
+      scene.timing?.durationMatchStatus &&
+      scene.timing.durationMatchStatus !== "unmeasured",
+  ).length;
+  const audioSplitRecommendedCount = scenes.filter(
+    (scene) => scene.timing?.splitRecommended,
+  ).length;
+  const unnecessaryExtensionRemovedTotal = scenes.reduce(
+    (sum, scene) =>
+      sum + Number(scene.timing?.unnecessaryExtensionRemoved || 0),
+    0,
   );
 
   const currentJourneyStep = !setupReady
@@ -10220,7 +10742,7 @@ export default function CreatePage() {
 
                     <button
                       onClick={generateAllSceneVisuals}
-                      disabled={isBatchRendering || isPreparingAudio || isExportingMovie || isCreatorMediaGenerationBlocked}
+                      disabled={isBatchRendering || isPreparingAudio || isExportingMovie || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("visuals")}
                       className="rounded-2xl bg-sky-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
                     >
                       {isBatchRendering
@@ -10232,7 +10754,7 @@ export default function CreatePage() {
 
                     <button
                       onClick={prepareAllAudio}
-                      disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                      disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("voice_over")}
                       className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
                     >
                       {isPreparingAudio
@@ -10244,7 +10766,7 @@ export default function CreatePage() {
 
                     <button
                       onClick={() => handleExportMovie(false)}
-                      disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                      disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("final_video")}
                       className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
                     >
                       {isExportingMovie
@@ -10254,6 +10776,90 @@ export default function CreatePage() {
                           : (uiLanguage === "en" ? `Create Final Video (${readyExportCount})` : `Final Video Oluştur (${readyExportCount})`)}
                     </button>
                   </div>
+
+                  {flowContinuityAudit && (
+                    <div
+                      className={`mt-4 rounded-3xl border p-4 ${
+                        flowContinuityAudit.status === "high_risk"
+                          ? "border-rose-300/40 bg-rose-50/90"
+                          : flowContinuityAudit.status === "review"
+                            ? "border-amber-300/40 bg-amber-50/90"
+                            : "border-emerald-300/40 bg-emerald-50/90"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                            3N-1 · {uiLanguage === "en" ? "Flow continuity audit" : "Akış sürekliliği denetimi"}
+                          </p>
+                          <h4 className="mt-2 text-sm font-semibold text-slate-950">
+                            {flowContinuityAudit.status === "ready"
+                              ? uiLanguage === "en"
+                                ? "No freeze or duration gap detected"
+                                : "Donma veya süre boşluğu tespit edilmedi"
+                              : flowContinuityAudit.status === "review"
+                                ? uiLanguage === "en"
+                                  ? "Review timing warnings before export"
+                                  : "Export öncesi süre uyarılarını kontrol et"
+                                : uiLanguage === "en"
+                                  ? "High freeze or duration risk detected"
+                                  : "Yüksek donma veya süre riski tespit edildi"}
+                          </h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            {uiLanguage === "en"
+                              ? "Detection only: this micro-sprint reports risk and does not change or block the export."
+                              : "Yalnızca tespit: bu mikro sprint riski raporlar; export'u değiştirmez veya engellemez."}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                          <div className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-emerald-700">
+                            <p className="text-base font-semibold">{flowContinuityAudit.safeScenes}</p>
+                            <p>{uiLanguage === "en" ? "Safe" : "Güvenli"}</p>
+                          </div>
+                          <div className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-amber-700">
+                            <p className="text-base font-semibold">{flowContinuityAudit.warningScenes}</p>
+                            <p>{uiLanguage === "en" ? "Review" : "Kontrol"}</p>
+                          </div>
+                          <div className="rounded-xl border border-rose-200 bg-white/80 px-3 py-2 text-rose-700">
+                            <p className="text-base font-semibold">{flowContinuityAudit.highRiskScenes}</p>
+                            <p>{uiLanguage === "en" ? "High" : "Yüksek"}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-slate-700">
+                            <p className="text-base font-semibold">
+                              {flowContinuityAudit.totalUncoveredDurationSec.toFixed(1)}s
+                            </p>
+                            <p>{uiLanguage === "en" ? "Gap" : "Boşluk"}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-sky-200/70 bg-white/75 px-3 py-2 text-xs text-slate-600 md:flex-row md:items-center md:justify-between">
+                        <p>
+                          <span className="font-semibold text-sky-800">
+                            3N-2 · {uiLanguage === "en" ? "Audio-first duration matching" : "Ses öncelikli süre eşleme"}
+                          </span>
+                          {" · "}
+                          {audioDurationMatchedCount > 0
+                            ? uiLanguage === "en"
+                              ? `${audioDurationMatchedCount} scene duration(s) matched to measured audio.`
+                              : `${audioDurationMatchedCount} sahnenin süresi ölçülen sese eşlendi.`
+                            : uiLanguage === "en"
+                              ? "Generate voice-over to measure and match scene durations."
+                              : "Sahne sürelerini ölçüp eşlemek için seslendirme üret."}
+                        </p>
+                        <p className={audioSplitRecommendedCount > 0 ? "font-semibold text-amber-700" : "text-slate-500"}>
+                          {audioSplitRecommendedCount > 0
+                            ? uiLanguage === "en"
+                              ? `${audioSplitRecommendedCount} long scene(s): split suggested`
+                              : `${audioSplitRecommendedCount} uzun sahne: bölme öneriliyor`
+                            : uiLanguage === "en"
+                              ? `${unnecessaryExtensionRemovedTotal.toFixed(1)}s unnecessary extension removed`
+                              : `${unnecessaryExtensionRemovedTotal.toFixed(1)} sn gereksiz uzama kaldırıldı`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 flex justify-center">
                     <button
@@ -10298,7 +10904,8 @@ export default function CreatePage() {
                             isPreparingAudio ||
                             isExportingMovie ||
                             playingDialogueSceneId !== null ||
-                            isCreatorMediaGenerationBlocked
+                            isCreatorMediaGenerationBlocked ||
+                            isCreatorActionBlocked("ai_video_blocks")
                           }
                           className="rounded-2xl bg-fuchsia-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                         >
@@ -10314,7 +10921,7 @@ export default function CreatePage() {
                         <button
                           type="button"
                           onClick={() => handleExportMovie(true)}
-                          disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
+                          disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("final_video")}
                           className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
                         >
                           {isExportingMovie
@@ -10340,7 +10947,9 @@ export default function CreatePage() {
                             isExportingMovie ||
                             playingDialogueSceneId !== null ||
                             (loadingAudioSceneId !== null && !isBatchRendering) ||
-                            (!isBatchRendering && isCreatorMediaGenerationBlocked)
+                            (!isBatchRendering &&
+                              (isCreatorMediaGenerationBlocked ||
+                                isCreatorActionBlocked("batch_render")))
                           }
                           className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                         >
@@ -10350,7 +10959,7 @@ export default function CreatePage() {
                         {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
                           <button
                             onClick={() => retryFailedScenes()}
-                            disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
+                            disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("batch_render")}
                             className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
                           >
                             {getBatchLabel("retryFailed")}
@@ -10827,7 +11436,9 @@ export default function CreatePage() {
                           loadingAudioSceneId === scene.id ||
                           isPreparingAudio ||
                           (isPlayingStory && playingSceneId !== scene.id) ||
-                          playingDialogueSceneId !== null
+                          playingDialogueSceneId !== null ||
+                          isCreatorMediaGenerationBlocked ||
+                          isCreatorActionBlocked("voice_over")
                         }
                         className="rounded-xl border border-purple-400/40 bg-violet-50/80 px-4 py-2 text-sm text-purple-100 disabled:opacity-50"
                       >
@@ -10843,7 +11454,9 @@ export default function CreatePage() {
                         disabled={
                           loadingDialogueSceneId === scene.id ||
                           isPlayingStory ||
-                          isPreparingAudio
+                          isPreparingAudio ||
+                          isCreatorMediaGenerationBlocked ||
+                          isCreatorActionBlocked("voice_over")
                         }
                         className="rounded-xl border border-pink-400/40 bg-pink-500/10 px-4 py-2 text-sm text-pink-100 disabled:opacity-50"
                       >
@@ -10883,7 +11496,7 @@ export default function CreatePage() {
 
                       <button
                         onClick={() => handleGenerateVideo(scene.id)}
-                        disabled={scene.videoStatus === "processing" || !scene.image || isCreatorMediaGenerationBlocked}
+                        disabled={scene.videoStatus === "processing" || !scene.image || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("ai_video_blocks")}
                         className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
                       >
                         {scene.videoStatus === "processing"
@@ -10913,7 +11526,7 @@ export default function CreatePage() {
 
                       <button
                         onClick={() => redrawSceneImage(scene)}
-                        disabled={redrawLoadingId === scene.id}
+                        disabled={redrawLoadingId === scene.id || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("visuals")}
                         className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm disabled:opacity-50"
                       >
                         {redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import RunwayML from "@runwayml/sdk";
+import {
+  getCreatorMediaRoute,
+  isCreatorMediaActionAllowed,
+  normalizeCreatorQualityMode,
+} from "../../../lib/creator/mediaRouting";
 import { normalizeRunwayClipDuration, normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
 
 export const runtime = "nodejs";
@@ -129,7 +134,7 @@ function validateImageInput(imageUrl: unknown) {
     return null;
   }
 
-  return "imageUrl must be either a public HTTPS URL or a base64 data:image URI accessible by Runway";
+  return "imageUrl must be either a public HTTPS URL or a supported base64 data:image URI";
 }
 
 async function createVideoTask({
@@ -213,8 +218,31 @@ export async function POST(req: NextRequest) {
     const cameraDirection = body?.cameraDirection ?? "";
     const emotion = body?.emotion ?? "";
 
+    const isCreatorLabRequest = body?.productProfile === "creatorlab";
+    const qualityTier = isCreatorLabRequest
+      ? normalizeCreatorQualityMode(body?.qualityMode, "standard")
+      : normalizeVideoQualityTier(body?.qualityMode, "standard");
+    const creatorMediaRoute = isCreatorLabRequest
+      ? getCreatorMediaRoute(qualityTier)
+      : null;
+
+    if (
+      creatorMediaRoute &&
+      !isCreatorMediaActionAllowed(creatorMediaRoute, "ai_video_blocks")
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            qualityTier === "draft"
+              ? "Draft mode does not start paid media generation."
+              : "AI video blocks are available in Pro and Cinematic modes.",
+        },
+        { status: 409 },
+      );
+    }
+
     const model = getModel();
-    const qualityTier = normalizeVideoQualityTier(body?.qualityMode, "standard");
     const durationPolicy = normalizeRunwayClipDuration(body?.duration, qualityTier);
     const duration = durationPolicy.durationSec;
     const requestedRatio = body?.ratio || body?.requestedRatio || "960:960";
@@ -224,7 +252,7 @@ export async function POST(req: NextRequest) {
       const ok = await checkUrlAccessible(imageUrl);
       if (!ok) {
         return NextResponse.json(
-          { ok: false, error: "imageUrl not accessible by Runway (HEAD failed)", imageUrl },
+          { ok: false, error: "imageUrl is not accessible to the video service", imageUrl },
           { status: 400 }
         );
       }
@@ -271,7 +299,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Failed to create Runway video task",
+        error: error?.message || "Failed to create AI video task",
       },
       { status: 500 }
     );
@@ -312,7 +340,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Failed to retrieve Runway task",
+        error: error?.message || "Failed to retrieve AI video task",
       },
       { status: 500 }
     );
