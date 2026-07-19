@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  getCreatorRoutedVoiceSettings,
+  getCreatorVoiceRoute,
+} from "@/lib/creator/voiceRouting";
 
 export const runtime = "nodejs";
 
@@ -106,7 +110,10 @@ function getNumericSetting(
   return fallback;
 }
 
-function getCharacterVoiceSettings(language: "tr" | "en", body: any) {
+function getCharacterVoiceSettings(
+  language: "tr" | "en",
+  body: Record<string, unknown>,
+) {
   const defaults =
     language === "en"
       ? {
@@ -150,6 +157,7 @@ export async function POST(req: NextRequest) {
       typeof body?.sourceText === "string" ? body.sourceText : "";
 
     const language = body?.language === "en" ? "en" : "tr";
+    const isCreatorLab = body?.productProfile === "creatorlab";
 
     const modelId =
       typeof body?.modelId === "string" && body.modelId.trim()
@@ -206,7 +214,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const voiceSettings = getCharacterVoiceSettings(language, body);
+    const creatorVoiceRoute = isCreatorLab
+      ? getCreatorVoiceRoute({
+          qualityMode: body?.qualityMode,
+          format: body?.creatorFormat,
+          role: "dialogue",
+          language,
+          text: fullText,
+          companionText: body?.companionText,
+          targetSceneDurationSec: body?.targetSceneDurationSec,
+          sceneIndex: body?.sceneIndex,
+          sceneCount: body?.sceneCount,
+          voiceProfile: body?.voiceProfile,
+          hasExplicitVoiceId: Boolean(firstLineVoiceId),
+        })
+      : null;
+
+    if (creatorVoiceRoute && !creatorVoiceRoute.canGenerate) {
+      const isDraft = creatorVoiceRoute.qualityMode === "draft";
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: isDraft
+            ? language === "tr"
+              ? "Taslak modunda diyalog sesi üretilmez."
+              : "Draft mode does not generate dialogue audio."
+            : language === "tr"
+              ? "Diyalog bu sahnenin güvenli süresini aşıyor. Ses üretmeden önce metni kısalt veya sahneyi böl."
+              : creatorVoiceRoute.warning,
+          voiceRoute: creatorVoiceRoute,
+        },
+        { status: isDraft ? 403 : 422 },
+      );
+    }
+
+    const voiceSettings = creatorVoiceRoute
+      ? getCreatorRoutedVoiceSettings({
+          route: creatorVoiceRoute,
+          settings: body,
+        })
+      : getCharacterVoiceSettings(language, body);
 
     const elevenRes = await fetchWithTimeout(
       `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
@@ -233,7 +281,8 @@ export async function POST(req: NextRequest) {
 
     if (!elevenRes.ok) {
       const errorText = await elevenRes.text().catch(() => "");
-      throw new Error(errorText || "ElevenLabs dialogue synthesis failed");
+      console.error("voice provider dialogue error:", errorText);
+      throw new Error("Voice provider rejected dialogue generation");
     }
 
     const arrayBuffer = await elevenRes.arrayBuffer();
@@ -260,15 +309,22 @@ export async function POST(req: NextRequest) {
       .from("dialogue-audio")
       .getPublicUrl(filePath);
 
-    const settingsKey = [
-      finalVoiceId,
-      modelId,
-      voiceSettings.stability,
-      voiceSettings.similarityBoost,
-      voiceSettings.style,
-      voiceSettings.speed,
-      language,
-    ].join("-");
+    const clientSettingsKey =
+      typeof body?.clientSettingsKey === "string" && body.clientSettingsKey.trim()
+        ? body.clientSettingsKey.trim()
+        : "";
+    const settingsKey =
+      clientSettingsKey ||
+      [
+        finalVoiceId,
+        modelId,
+        voiceSettings.stability,
+        voiceSettings.similarityBoost,
+        voiceSettings.style,
+        voiceSettings.speed,
+        language,
+        creatorVoiceRoute?.routeKey || "storyverse",
+      ].join("-");
 
     return NextResponse.json({
       ok: true,
@@ -280,14 +336,26 @@ export async function POST(req: NextRequest) {
       voiceId: finalVoiceId,
       voiceSettings,
       settingsKey,
+      voiceRoute: creatorVoiceRoute
+        ? {
+            strategy: creatorVoiceRoute.voiceStrategy,
+            deliveryStyle: creatorVoiceRoute.deliveryStyle,
+            continuity: creatorVoiceRoute.continuity,
+            timingStatus: creatorVoiceRoute.timingStatus,
+            estimatedSpeechSeconds:
+              creatorVoiceRoute.estimatedSpeechSecondsAtRouteSpeed,
+            targetSceneDurationSec: creatorVoiceRoute.targetSceneDurationSec,
+            warning: creatorVoiceRoute.warning,
+          }
+        : null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("store-dialogue-audio error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Dialogue audio could not be stored",
+        error: "Diyalog sesi üretimi tamamlanamadı.",
       },
       { status: 500 }
     );

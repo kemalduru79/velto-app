@@ -10,6 +10,15 @@ import {
   type TimelineScenePlan,
   type TimelineSyncPlan,
 } from "../../../lib/video/timelineSync";
+import {
+  matchAudioDurationToScene,
+  type AudioDurationMatch,
+} from "../../../lib/video/audioDurationMatching";
+import {
+  createVisualFillerPlan,
+  type VisualFillerMotionPreset,
+  type VisualFillerPlan,
+} from "../../../lib/video/visualFiller";
 
 type StitchSceneInput = {
   id?: number;
@@ -32,6 +41,8 @@ type StitchSceneInput = {
       | "split_scene"
       | "rewrite_voice";
     visualBlocks?: TimelineScenePlan["visualBlocks"];
+    durationMatch?: AudioDurationMatch;
+    fallbackVisualPlan?: VisualFillerPlan;
     timelineAware?: boolean;
   };
   timelineDecision?: {
@@ -43,8 +54,9 @@ type StitchSceneInput = {
   };
 };
 
-const DEFAULT_SCENE_DURATION_SECONDS = 7;
-const MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS = 20;
+const DEFAULT_UNMEASURED_SCENE_DURATION_SECONDS = 5;
+const MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS = 30;
+const PREFERRED_MAX_SCENE_DURATION_SECONDS = 20;
 const SPEECH_TAIL_BUFFER_SECONDS = 0.75;
 const OUTPUT_SIZE = "960:960";
 const OUTPUT_FPS = "30";
@@ -129,7 +141,7 @@ function safeDuration(value: unknown) {
   const numberValue = Number(value);
 
   if (!Number.isFinite(numberValue) || numberValue <= 0) {
-    return DEFAULT_SCENE_DURATION_SECONDS;
+    return DEFAULT_UNMEASURED_SCENE_DURATION_SECONDS;
   }
 
   return Math.min(
@@ -150,59 +162,20 @@ function getSceneVisualAction(scene: StitchSceneInput) {
   return scene?.timelineDecision?.visualAction || scene?.timing?.visualAction;
 }
 
-function getSceneVisualBlocks(scene: StitchSceneInput) {
-  return Array.isArray(scene?.timing?.visualBlocks)
-    ? scene.timing.visualBlocks.filter(
-        (block) =>
-          Number(block?.durationSec) > 0 && block?.type !== "split_marker",
-      )
-    : [];
-}
-
-function shouldPreferImageMotionFallback({
-  scene,
-  sourceDurationSec,
-  targetDurationSec,
-}: {
-  scene: StitchSceneInput;
-  sourceDurationSec: number;
-  targetDurationSec: number;
-}) {
-  if (
-    !scene.imageUrl ||
-    sourceDurationSec <= 0 ||
-    targetDurationSec <= sourceDurationSec
-  ) {
-    return false;
-  }
-
-  const extensionSec = targetDurationSec - sourceDurationSec;
-  const stretchFactor = targetDurationSec / sourceDurationSec;
-  const visualAction = getSceneVisualAction(scene);
-  const speechFit =
-    scene?.timelineDecision?.speechFit || scene?.timing?.speechFit;
-
-  return (
-    visualAction === "image_motion_tail" ||
-    visualAction === "split_scene" ||
-    speechFit === "too_long" ||
-    extensionSec > 2 ||
-    stretchFactor > 1.35
-  );
-}
-
 async function createImageMotionVideoBase({
   imageUrl,
   tempDir,
   index,
   durationSec,
   outputVideoPath,
+  motionPreset = "slow_push_in",
 }: {
   imageUrl: string;
   tempDir: string;
   index: number;
   durationSec: number;
   outputVideoPath: string;
+  motionPreset?: VisualFillerMotionPreset;
 }) {
   const sourceImagePath = path.join(
     tempDir,
@@ -211,10 +184,16 @@ async function createImageMotionVideoBase({
   await downloadToFile(imageUrl, sourceImagePath);
 
   const frameCount = Math.max(1, Math.round(durationSec * Number(OUTPUT_FPS)));
+  const zoomPanExpression =
+    motionPreset === "soft_pan"
+      ? `zoompan=z='1.04':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`
+      : motionPreset === "cutaway"
+        ? `zoompan=z='max(1.02,1.08-on*0.0007)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`
+        : `zoompan=z='min(zoom+0.0009,1.045)':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`;
   const imageMotionFilter = [
     "scale=1100:1100:force_original_aspect_ratio=increase",
     "crop=960:960",
-    `zoompan=z='min(zoom+0.0009,1.045)':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`,
+    zoomPanExpression,
     `trim=duration=${durationSec.toFixed(3)}`,
     "format=yuv420p",
   ].join(",");
@@ -273,6 +252,41 @@ async function createVideoClipSegmentFromSource({
   ]);
 }
 
+async function createMotionLoopSegmentFromSource({
+  sourceVideoPath,
+  outputVideoPath,
+  durationSec,
+}: {
+  sourceVideoPath: string;
+  outputVideoPath: string;
+  durationSec: number;
+}) {
+  const normalizeVideoFilter = `scale=${OUTPUT_SIZE}:force_original_aspect_ratio=decrease,pad=${OUTPUT_SIZE}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${OUTPUT_FPS},trim=duration=${durationSec.toFixed(3)},format=yuv420p`;
+
+  await runFfmpeg([
+    "-stream_loop",
+    "-1",
+    "-i",
+    sourceVideoPath,
+    "-t",
+    String(durationSec),
+    "-vf",
+    normalizeVideoFilter,
+    "-an",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    outputVideoPath,
+  ]);
+}
+
 async function concatVideoSegments(
   segmentPaths: string[],
   tempDir: string,
@@ -303,7 +317,7 @@ async function concatVideoSegments(
   ]);
 }
 
-async function createTimelineVisualBlockVideoBase({
+async function createFallbackVisualFillerVideoBase({
   scene,
   sourceVideoPath,
   sourceDurationSec,
@@ -313,111 +327,94 @@ async function createTimelineVisualBlockVideoBase({
   outputVideoPath,
 }: {
   scene: StitchSceneInput;
-  sourceVideoPath: string;
+  sourceVideoPath?: string;
   sourceDurationSec: number;
   tempDir: string;
   index: number;
   durationSec: number;
   outputVideoPath: string;
 }) {
-  const visualBlocks = getSceneVisualBlocks(scene);
+  const visualAction = getSceneVisualAction(scene);
+  const plannedStrategy = scene.timing?.fallbackVisualPlan?.strategy;
+  const fillerPlan = createVisualFillerPlan({
+    targetDurationSec: durationSec,
+    sourceDurationSec,
+    hasVideo: Boolean(sourceVideoPath),
+    hasReferenceImage: Boolean(scene.imageUrl),
+    preferCutaway:
+      plannedStrategy === "cutaway_sequence" ||
+      visualAction === "split_scene",
+    gapToleranceSec: 0.05,
+  });
 
-  if (!scene.imageUrl || visualBlocks.length < 2 || sourceDurationSec <= 0) {
-    return false;
-  }
-
-  const firstVideoBlock = visualBlocks.find(
-    (block) => block.type === "video_clip",
-  );
-  const primaryDurationSec = safeDuration(
-    Math.min(
-      durationSec,
-      sourceDurationSec,
-      Number(firstVideoBlock?.durationSec || sourceDurationSec),
-    ),
-  );
-  const remainingDurationSec =
-    Math.round((durationSec - primaryDurationSec) * 1000) / 1000;
-
-  if (remainingDurationSec < 1) {
-    return false;
+  if (!fillerPlan.requiresFiller || !fillerPlan.preventsFreeze) {
+    return {
+      created: false,
+      fillerPlan,
+    };
   }
 
   const segmentPaths: string[] = [];
-  const primarySegmentPath = path.join(
-    tempDir,
-    `scene_${index}_block_0_video.mp4`,
-  );
 
-  await createVideoClipSegmentFromSource({
-    sourceVideoPath,
-    outputVideoPath: primarySegmentPath,
-    durationSec: primaryDurationSec,
-  });
-
-  segmentPaths.push(primarySegmentPath);
-
-  const tailBlocks = visualBlocks.filter(
-    (block) => block.type !== "video_clip",
-  );
-  const tailBlockTotal = tailBlocks.reduce(
-    (sum, block) => sum + Number(block.durationSec || 0),
-    0,
-  );
-
-  if (tailBlocks.length === 0 || tailBlockTotal <= 0) {
-    const tailPath = path.join(
+  for (
+    let segmentIndex = 0;
+    segmentIndex < fillerPlan.segments.length;
+    segmentIndex += 1
+  ) {
+    const segment = fillerPlan.segments[segmentIndex];
+    const segmentPath = path.join(
       tempDir,
-      `scene_${index}_block_1_image_tail.mp4`,
+      `scene_${index}_filler_${segmentIndex}_${segment.type}.mp4`,
     );
-    await createImageMotionVideoBase({
-      imageUrl: scene.imageUrl,
-      tempDir,
-      index: index * 100 + 1,
-      durationSec: remainingDurationSec,
-      outputVideoPath: tailPath,
-    });
-    segmentPaths.push(tailPath);
-  } else {
-    let allocatedTailSec = 0;
 
-    for (let blockIndex = 0; blockIndex < tailBlocks.length; blockIndex += 1) {
-      const block = tailBlocks[blockIndex];
-      const isLast = blockIndex === tailBlocks.length - 1;
-      const proportionalDuration =
-        tailBlockTotal > 0
-          ? (Number(block.durationSec || 0) / tailBlockTotal) *
-            remainingDurationSec
-          : remainingDurationSec / tailBlocks.length;
-      const blockDurationSec = isLast
-        ? Math.max(
-            0.5,
-            Math.round((remainingDurationSec - allocatedTailSec) * 1000) / 1000,
-          )
-        : Math.max(0.5, Math.round(proportionalDuration * 1000) / 1000);
+    if (segment.type === "primary_video") {
+      if (!sourceVideoPath) {
+        throw new Error("Visual filler primary segment is missing source video.");
+      }
 
-      allocatedTailSec += blockDurationSec;
+      await createVideoClipSegmentFromSource({
+        sourceVideoPath,
+        outputVideoPath: segmentPath,
+        durationSec: segment.durationSec,
+      });
+    } else if (segment.type === "motion_loop") {
+      if (!sourceVideoPath) {
+        throw new Error("Visual filler motion loop is missing source video.");
+      }
 
-      const tailPath = path.join(
-        tempDir,
-        `scene_${index}_block_${blockIndex + 1}_${block.type}.mp4`,
-      );
+      await createMotionLoopSegmentFromSource({
+        sourceVideoPath,
+        outputVideoPath: segmentPath,
+        durationSec: segment.durationSec,
+      });
+    } else {
+      if (!scene.imageUrl) {
+        throw new Error("Visual filler image segment is missing reference image.");
+      }
 
       await createImageMotionVideoBase({
         imageUrl: scene.imageUrl,
         tempDir,
-        index: index * 100 + blockIndex + 1,
-        durationSec: blockDurationSec,
-        outputVideoPath: tailPath,
+        index: index * 100 + segmentIndex + 1,
+        durationSec: segment.durationSec,
+        outputVideoPath: segmentPath,
+        motionPreset: segment.motionPreset,
       });
-
-      segmentPaths.push(tailPath);
     }
+
+    segmentPaths.push(segmentPath);
   }
 
-  await concatVideoSegments(segmentPaths, tempDir, index, outputVideoPath);
+  if (segmentPaths.length === 1) {
+    await fs.copyFile(segmentPaths[0], outputVideoPath);
+  } else {
+    await concatVideoSegments(segmentPaths, tempDir, index, outputVideoPath);
+  }
 
-  return true;
+  return {
+    created: true,
+    fillerPlan,
+  };
 }
 
 async function createSilentAudio(outputPath: string, durationSec: number) {
@@ -449,11 +446,21 @@ async function createSceneAudioClip(
   const outputAudioPath = path.join(tempDir, `scene_${index}_audio.m4a`);
 
   if (audioInputs.length === 0) {
+    const durationMatch = matchAudioDurationToScene({
+      audioDurationSec: 0,
+      plannedDurationSec: requestedDurationSec,
+      fallbackDurationSec: DEFAULT_UNMEASURED_SCENE_DURATION_SECONDS,
+      minDurationSec: 3,
+      maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
+      preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
+      tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+    });
     await createSilentAudio(outputAudioPath, requestedDurationSec);
     return {
       audioPath: outputAudioPath,
       durationSec: requestedDurationSec,
       audioDurationSec: 0,
+      durationMatch,
     };
   }
 
@@ -472,12 +479,23 @@ async function createSceneAudioClip(
     (sum, duration) => sum + duration,
     0,
   );
-  const effectiveDuration = safeDuration(
-    Math.max(
-      requestedDurationSec,
-      estimatedAudioDuration + SPEECH_TAIL_BUFFER_SECONDS,
-    ),
-  );
+  const durationMatch = matchAudioDurationToScene({
+    audioDurationSec: estimatedAudioDuration,
+    plannedDurationSec: requestedDurationSec,
+    fallbackDurationSec: DEFAULT_UNMEASURED_SCENE_DURATION_SECONDS,
+    minDurationSec: 3,
+    maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
+    preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
+    tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+  });
+
+  if (!durationMatch.fitsWithinHardLimit) {
+    throw new Error(
+      `Scene ${scene.id ?? index + 1} narration is too long for one safe visual beat. Split it into at least ${durationMatch.recommendedSplitCount} scenes before export.`,
+    );
+  }
+
+  const effectiveDuration = durationMatch.targetDurationSec;
 
   if (downloadedAudioPaths.length === 1) {
     await runFfmpeg([
@@ -500,6 +518,7 @@ async function createSceneAudioClip(
       audioPath: outputAudioPath,
       durationSec: effectiveDuration,
       audioDurationSec: roundDuration(estimatedAudioDuration),
+      durationMatch,
     };
   }
 
@@ -529,6 +548,7 @@ async function createSceneAudioClip(
     audioPath: outputAudioPath,
     durationSec: effectiveDuration,
     audioDurationSec: roundDuration(estimatedAudioDuration),
+    durationMatch,
   };
 }
 
@@ -550,8 +570,7 @@ async function createSceneVideoBase(
 
     const sourceDurationSec = await getMediaDuration(sourceVideoPath);
 
-    const didCreateVisualBlockTimeline =
-      await createTimelineVisualBlockVideoBase({
+    const fillerResult = await createFallbackVisualFillerVideoBase({
         scene,
         sourceVideoPath,
         sourceDurationSec,
@@ -561,50 +580,18 @@ async function createSceneVideoBase(
         outputVideoPath,
       });
 
-    if (didCreateVisualBlockTimeline) {
-      return outputVideoPath;
+    if (fillerResult.created) {
+      return {
+        videoPath: outputVideoPath,
+        fillerPlan: fillerResult.fillerPlan,
+      };
     }
-
-    if (
-      shouldPreferImageMotionFallback({
-        scene,
-        sourceDurationSec,
-        targetDurationSec: durationSec,
-      })
-    ) {
-      await createImageMotionVideoBase({
-        imageUrl: scene.imageUrl as string,
-        tempDir,
-        index,
-        durationSec,
-        outputVideoPath,
-      });
-
-      return outputVideoPath;
-    }
-
-    const stretchFactor =
-      sourceDurationSec > 0 && durationSec > sourceDurationSec
-        ? durationSec / sourceDurationSec
-        : 1;
-    const cappedStretchFactor = Math.min(stretchFactor, 1.35);
-    const stretchedDurationSec = sourceDurationSec * cappedStretchFactor;
-    const residualExtensionSec = Math.max(
-      0,
-      durationSec - stretchedDurationSec,
-    );
-    const audioSafeVideoFilter =
-      stretchFactor > 1.05
-        ? residualExtensionSec > 0.05
-          ? `${normalizeVideoFilter},setpts=${cappedStretchFactor.toFixed(4)}*PTS,tpad=stop_mode=clone:stop_duration=${residualExtensionSec.toFixed(3)},trim=duration=${durationSec.toFixed(3)}`
-          : `${normalizeVideoFilter},setpts=${cappedStretchFactor.toFixed(4)}*PTS,trim=duration=${durationSec.toFixed(3)}`
-        : `${normalizeVideoFilter},trim=duration=${durationSec.toFixed(3)}`;
 
     await runFfmpeg([
       "-i",
       sourceVideoPath,
       "-vf",
-      audioSafeVideoFilter,
+      `${normalizeVideoFilter},trim=duration=${durationSec.toFixed(3)}`,
       "-an",
       "-c:v",
       "libx264",
@@ -619,19 +606,32 @@ async function createSceneVideoBase(
       outputVideoPath,
     ]);
 
-    return outputVideoPath;
+    return {
+      videoPath: outputVideoPath,
+      fillerPlan: fillerResult.fillerPlan,
+    };
   }
 
   if (scene.imageUrl) {
-    await createImageMotionVideoBase({
-      imageUrl: scene.imageUrl,
+    const fillerResult = await createFallbackVisualFillerVideoBase({
+      scene,
+      sourceDurationSec: 0,
       tempDir,
       index,
       durationSec,
       outputVideoPath,
     });
 
-    return outputVideoPath;
+    if (!fillerResult.created) {
+      throw new Error(
+        `Scene ${scene.id ?? index + 1} could not create an animated still fallback.`,
+      );
+    }
+
+    return {
+      videoPath: outputVideoPath,
+      fillerPlan: fillerResult.fillerPlan,
+    };
   }
 
   throw new Error(`Scene ${scene.id ?? index + 1} has no videoUrl or imageUrl`);
@@ -696,7 +696,7 @@ export async function POST(req: NextRequest) {
       filteredScenes,
       timelineSyncPlan,
       {
-        fallbackDuration: DEFAULT_SCENE_DURATION_SECONDS,
+        fallbackDuration: DEFAULT_UNMEASURED_SCENE_DURATION_SECONDS,
         minDuration: 3,
         maxDuration: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
         tailBufferSeconds: SPEECH_TAIL_BUFFER_SECONDS,
@@ -731,6 +731,12 @@ export async function POST(req: NextRequest) {
     await fs.mkdir(tempDir, { recursive: true });
 
     const finalSceneClipPaths: string[] = [];
+    let matchedDurationSceneCount = 0;
+    let splitRecommendedSceneCount = 0;
+    let unnecessaryExtensionRemovedSec = 0;
+    let visualFillerSceneCount = 0;
+    let visualFillerDurationSec = 0;
+    const visualFillerStrategyCount: Record<string, number> = {};
 
     for (let i = 0; i < scenes.length; i += 1) {
       const scene = scenes[i];
@@ -743,16 +749,33 @@ export async function POST(req: NextRequest) {
       );
       const durationSec = safeDuration(audioResult.durationSec);
 
-      const videoBasePath = await createSceneVideoBase(
+      if (audioResult.durationMatch.status !== "unmeasured") {
+        matchedDurationSceneCount += 1;
+      }
+      if (audioResult.durationMatch.splitRecommended) {
+        splitRecommendedSceneCount += 1;
+      }
+      unnecessaryExtensionRemovedSec +=
+        audioResult.durationMatch.unnecessaryExtensionRemovedSec;
+
+      const videoResult = await createSceneVideoBase(
         scene,
         tempDir,
         i,
         durationSec,
       );
+      const fillerStrategy = videoResult.fillerPlan.strategy;
+
+      if (videoResult.fillerPlan.requiresFiller) {
+        visualFillerSceneCount += 1;
+        visualFillerDurationSec += videoResult.fillerPlan.fillerDurationSec;
+      }
+      visualFillerStrategyCount[fillerStrategy] =
+        (visualFillerStrategyCount[fillerStrategy] || 0) + 1;
       const finalScenePath = path.join(tempDir, `scene_${i}_final.mp4`);
 
       await muxSceneVideoAndAudio(
-        videoBasePath,
+        videoResult.videoPath,
         audioResult.audioPath,
         finalScenePath,
         durationSec,
@@ -794,17 +817,33 @@ export async function POST(req: NextRequest) {
         "X-Scene-Count": String(scenes.length),
         "X-Timeline-Aware": timelineSyncPlan ? "true" : "false",
         "X-Audio-Safe-Stitch": "true",
+        "X-Audio-Duration-Matched": String(matchedDurationSceneCount),
         "X-Audio-Mismatch-Scenes": String(audioMismatchSceneCount),
+        "X-Split-Recommended-Scenes": String(splitRecommendedSceneCount),
+        "X-Unnecessary-Extension-Removed": String(
+          roundDuration(unnecessaryExtensionRemovedSec),
+        ),
+        "X-Visual-Filler-Scenes": String(visualFillerSceneCount),
+        "X-Visual-Filler-Duration": String(
+          roundDuration(visualFillerDurationSec),
+        ),
+        "X-Visual-Filler-Strategies": JSON.stringify(
+          visualFillerStrategyCount,
+        ),
+        "X-Freeze-Frame-Fallback": "disabled",
         "X-Timeline-Visual-Actions": JSON.stringify(timelineVisualActionCount),
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("SCENE COMPOSER ERROR:", err);
 
     return NextResponse.json(
       {
         ok: false,
-        error: err?.message || "Final video could not be composed.",
+        error:
+          err instanceof Error
+            ? err.message
+            : "Final video could not be composed.",
       },
       { status: 500 },
     );

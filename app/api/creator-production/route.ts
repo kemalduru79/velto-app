@@ -6,6 +6,7 @@ import {
   normalizeVideoQualityTier,
   type VideoQualityTier,
 } from "../../../lib/video/timelineSync";
+import { getCreatorVoiceScriptGuidance } from "../../../lib/creator/voiceRouting";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -31,6 +32,23 @@ type CreatorProductionRequest = {
   mentorAnalysis?: CreatorMentorResult;
 };
 
+type CreatorProductionModelOutput = {
+  title?: unknown;
+  hook?: unknown;
+  storyPremise?: unknown;
+  characters?: unknown;
+  scenes?: unknown;
+  thumbnailIdea?: unknown;
+  youtubeTitle?: unknown;
+  caption?: unknown;
+  visualBible?: {
+    style?: unknown;
+    palette?: unknown;
+    camera?: unknown;
+    consistencyRules?: unknown;
+  };
+};
+
 function asString(value: unknown, fallback = "") {
   const result = String(value || "").trim();
   return result || fallback;
@@ -52,6 +70,16 @@ function clampNumber(
 }
 
 function getPacingBlueprint(sceneCount: number) {
+  if (sceneCount <= 3) {
+    return {
+      hook: "Scene 1: immediate hook and visual payoff",
+      setup: "Scene 1: establish the promise without a slow introduction",
+      development: `Scene ${Math.min(2, sceneCount)}: deliver the core explanation or example`,
+      climax: `Scene ${sceneCount}: strongest payoff or transformation`,
+      resolution: `Scene ${sceneCount}: concise takeaway and soft next action`,
+    };
+  }
+
   const hookEnd = Math.max(1, Math.ceil(sceneCount * 0.15));
   const setupEnd = Math.max(hookEnd + 1, Math.ceil(sceneCount * 0.3));
   const developmentEnd = Math.max(setupEnd + 1, Math.ceil(sceneCount * 0.72));
@@ -101,40 +129,39 @@ function getCreatorLabConsistencyRules(language: "tr" | "en") {
   ];
 }
 
-function getDurationBudget(durationSec: number, sceneCount: number) {
-  const lowerTotalSpeechSec = Math.max(10, Math.round(durationSec * 0.9));
+function getDurationBudget(
+  durationSec: number,
+  sceneCount: number,
+  format: string,
+  language: "tr" | "en",
+) {
+  const guidance = getCreatorVoiceScriptGuidance({
+    format,
+    durationSec,
+    sceneCount,
+    language,
+  });
+  const targetTotalSpeechSec = Math.max(
+    4,
+    Math.round(durationSec * guidance.speechCoverage),
+  );
+  const lowerTotalSpeechSec = Math.max(
+    3,
+    Math.round(targetTotalSpeechSec * 0.88),
+  );
   const upperTotalSpeechSec = Math.max(
-    lowerTotalSpeechSec + 3,
-    Math.round(durationSec * 1.1),
-  );
-  const targetTotalSpeechSec = Math.round(
-    (lowerTotalSpeechSec + upperTotalSpeechSec) / 2,
-  );
-  const targetWordsTotal = Math.max(
-    24,
-    Math.round(targetTotalSpeechSec * 2.35),
-  );
-  const maxWordsTotal = Math.max(
-    targetWordsTotal + sceneCount,
-    Math.round(upperTotalSpeechSec * 2.55),
-  );
-  const targetWordsPerScene = Math.max(
-    6,
-    Math.floor(targetWordsTotal / Math.max(1, sceneCount)),
-  );
-  const maxWordsPerScene = Math.max(
-    targetWordsPerScene + 2,
-    Math.ceil(maxWordsTotal / Math.max(1, sceneCount)),
+    lowerTotalSpeechSec + 2,
+    Math.round(durationSec * 0.9),
   );
 
   return {
     lowerTotalSpeechSec,
     targetTotalSpeechSec,
     upperTotalSpeechSec,
-    targetWordsTotal,
-    maxWordsTotal,
-    targetWordsPerScene,
-    maxWordsPerScene,
+    targetWordsTotal: guidance.targetWordsTotal,
+    maxWordsTotal: guidance.maxWordsTotal,
+    targetWordsPerScene: guidance.targetWordsPerScene,
+    maxWordsPerScene: guidance.maxWordsPerScene,
   };
 }
 
@@ -146,14 +173,14 @@ function getCreatorLabTestReadinessProfile(
   upperTotalSpeechSec: number,
 ) {
   const speechWithinBudget = estimatedTotalSpeechSeconds <= upperTotalSpeechSec;
-  const recommendedTestMode = sceneCount <= 6 ? "minimum-cost-6-scene-test" : "standard-flow-test";
+  const recommendedTestMode = sceneCount <= 6 ? "minimum-cost-multi-scene-test" : "standard-flow-test";
 
   return {
     recommendedTestMode,
-    minimumSceneRule: "Creator Lab test flow should keep at least 6 scenes. Do not reduce to a single-scene test because the current product flow is designed around a minimum multi-scene structure.",
+    minimumSceneRule: "Keep the duration-driven scene plan intact; do not collapse a multi-scene package into a single scene for testing.",
     testAfterSprintBundle: true,
     costControl: [
-      "Use exactly 6 scenes for the first validation run.",
+      `Use the current ${sceneCount}-scene duration-driven plan for validation.`,
       "Use a short, simple topic with compact narration.",
       "Avoid batch generation during validation.",
       "Do not test Shorts-native export in this phase.",
@@ -168,7 +195,7 @@ function getCreatorLabTestReadinessProfile(
       "Export package includes usable caption, title, description, hashtags, and checklist files."
     ],
     passCriteria: [
-      "All 6 scenes are generated.",
+      `All ${sceneCount} planned scenes are generated.`,
       "Estimated total speech duration stays within target budget.",
       "No scene changes while speech is still continuing from the previous scene.",
       "No audio is abruptly cut at scene boundaries.",
@@ -197,30 +224,39 @@ function trimToWordLimit(value: string, maxWords: number) {
     .replace(/[,.!?:;]+$/, "")}…`;
 }
 
-function estimateSpeechSeconds(value: string) {
-  return Math.round((countWords(value) / 2.35) * 10) / 10;
+function estimateSpeechSeconds(value: string, language: "tr" | "en") {
+  const wordsPerSecond = language === "tr" ? 2.15 : 2.35;
+  return Math.round((countWords(value) / wordsPerSecond) * 10) / 10;
 }
 
 function normalizeScenesWithBudget(
   value: unknown,
   sceneCount: number,
   maxWordsPerScene: number,
+  language: "tr" | "en",
 ) {
   const scenes = normalizeScenes(value, sceneCount);
 
   return scenes.map((scene) => {
-    const narration = trimToWordLimit(scene.narration, maxWordsPerScene);
-    const dialogue = trimToWordLimit(
-      scene.dialogue,
-      Math.max(0, Math.floor(maxWordsPerScene * 0.45)),
+    const hasDialogue = Boolean(scene.dialogue.trim());
+    const narrationLimit = hasDialogue
+      ? Math.max(3, Math.floor(maxWordsPerScene * 0.75))
+      : maxWordsPerScene;
+    const narration = trimToWordLimit(scene.narration, narrationLimit);
+    const dialogueLimit = Math.max(
+      0,
+      maxWordsPerScene - countWords(narration),
     );
+    const dialogue = dialogueLimit
+      ? trimToWordLimit(scene.dialogue, dialogueLimit)
+      : "";
     const combinedSpeech = [narration, dialogue].filter(Boolean).join(" ");
 
     return {
       ...scene,
       narration,
       dialogue,
-      estimatedSpeechSeconds: estimateSpeechSeconds(combinedSpeech),
+      estimatedSpeechSeconds: estimateSpeechSeconds(combinedSpeech, language),
       speechWordCount: countWords(combinedSpeech),
     };
   });
@@ -256,7 +292,7 @@ function parseCreatorProductionJson(raw: string) {
 
   try {
     return JSON.parse(extracted);
-  } catch (firstError) {
+  } catch {
     const repaired = repairCommonJsonIssues(extracted);
 
     try {
@@ -469,14 +505,25 @@ export async function POST(req: Request) {
     const ageGroup = asString(body?.ageGroup, "Professional creator audience / 18+");
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
-    const durationSec = clampNumber(body?.durationSec, 60, 45, 360);
-    const sceneCount = clampNumber(body?.sceneCount, 6, 6, 36);
+    const durationSec = clampNumber(body?.durationSec, 60, 5, 3600);
+    const sceneCount = clampNumber(body?.sceneCount, 6, 1, 36);
     const targetSceneDurationSec = Math.max(
-      5,
+      3,
       Math.round(durationSec / sceneCount),
     );
-    const durationBudget = getDurationBudget(durationSec, sceneCount);
     const language = body?.language === "tr" ? "tr" : "en";
+    const durationBudget = getDurationBudget(
+      durationSec,
+      sceneCount,
+      format,
+      language,
+    );
+    const voiceScriptGuidance = getCreatorVoiceScriptGuidance({
+      format,
+      durationSec,
+      sceneCount,
+      language,
+    });
     const mentorAnalysis = body?.mentorAnalysis || {};
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
     const pacingBlueprint = getPacingBlueprint(sceneCount);
@@ -520,6 +567,7 @@ export async function POST(req: Request) {
         sceneCount,
         targetSceneDurationSec,
         speechDurationBudget: durationBudget,
+        voiceScriptGuidance,
         outputLanguage: language === "en" ? "English" : "Turkish",
       },
       pacingBlueprint,
@@ -564,12 +612,14 @@ export async function POST(req: Request) {
       },
       rules: [
         `Create exactly ${sceneCount} scenes.`,
-        "The product flow has a minimum of 6 scenes. Never collapse this into a single-scene test structure.",
         `Design the video for approximately ${durationSec} seconds total.`,
         `Total spoken narration + dialogue must stay between ${durationBudget.lowerTotalSpeechSec} and ${durationBudget.upperTotalSpeechSec} seconds, targeting ${durationBudget.targetTotalSpeechSec} seconds.`,
         `Total spoken words must stay under ${durationBudget.maxWordsTotal} words across all scenes.`,
         `Each scene should fit roughly ${targetSceneDurationSec} seconds and should use about ${durationBudget.targetWordsPerScene} spoken words, never more than ${durationBudget.maxWordsPerScene} spoken words including narration and dialogue.`,
         "Scene 1 must open with a strong 3-second curiosity hook.",
+        voiceScriptGuidance.deliveryStyle,
+        voiceScriptGuidance.openingRule,
+        voiceScriptGuidance.structureRule,
         "Follow the provided pacingBlueprint so the video has a clear beginning, development, climax, and resolution.",
         "Do not create a 7-scene short if sceneCount is larger; match the requested scene count.",
         "Keep narration clean. Do not include emotion tags, voice labels, or sound-effect labels inside narration.",
@@ -606,10 +656,10 @@ export async function POST(req: Request) {
 
     const rawText = response.output_text || "";
 
-    let parsed: any;
+    let parsed: CreatorProductionModelOutput;
 
     try {
-      parsed = parseCreatorProductionJson(rawText);
+      parsed = parseCreatorProductionJson(rawText) as CreatorProductionModelOutput;
     } catch {
       return NextResponse.json(
         { error: "Creator production çıktısı JSON olarak parse edilemedi." },
@@ -638,6 +688,7 @@ export async function POST(req: Request) {
       paddedScenes,
       sceneCount,
       durationBudget.maxWordsPerScene,
+      language,
     );
     const productionRepairNotes = [
       !normalizeCharacters(parsed.characters).length
@@ -719,13 +770,14 @@ export async function POST(req: Request) {
       success: true,
       productionPackage,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("creator-production error:", e);
 
     return NextResponse.json(
       {
         error:
-          e?.message || "Creator production paketi oluşturulurken hata oluştu.",
+          (e instanceof Error ? e.message : "") ||
+          "Creator production paketi oluşturulurken hata oluştu.",
       },
       { status: 500 },
     );
