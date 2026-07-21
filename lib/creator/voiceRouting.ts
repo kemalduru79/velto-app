@@ -272,14 +272,16 @@ export function getCreatorVoiceRoute(
       : estimatedSpeechSecondsAtRouteSpeed <= hardWindowSeconds
         ? "tight"
         : "blocked";
-  const canGenerate = mediaRoute.actions.voice_over && timingStatus !== "blocked";
+  // CreatorLab is audio-first: timing risk must inform the timeline, not block TTS.
+  // Draft remains the only mode where voice generation is unavailable.
+  const canGenerate = mediaRoute.actions.voice_over;
   const warning =
     qualityMode === "draft"
       ? "Draft mode does not generate voice-over."
       : timingStatus === "blocked"
-        ? "Spoken text is too long for this scene. Shorten or split it before voice generation."
+        ? "Spoken text is longer than the planned scene. Voice-over can continue; the timeline should extend or split this scene after the real audio duration is measured."
         : timingStatus === "tight"
-          ? "Spoken text is tight for this scene; smart pacing is applied to protect the ending."
+          ? "Spoken text is tight for this scene; smart pacing is applied and the measured audio duration will update the timeline."
           : "";
   const deliveryStyle =
     format === "short_form" ? "hook_led_concise" : "sectioned_narration";

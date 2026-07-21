@@ -63,42 +63,47 @@ export async function POST(req: Request) {
     const normalizedFlowType =
       requestedFlowType === "creator_lab" ? "creator_lab" : "storyverse";
 
+    // child_id is a UUID column. CreatorLab projects are user-owned and do not
+    // belong to a Storyverse child profile, so they must persist NULL here.
+    // Never use a textual sentinel such as "creator_lab" in this field.
     const normalizedChildId =
-      typeof childId === "string" && childId.trim()
-        ? childId.trim()
-        : normalizedFlowType === "creator_lab"
-          ? "creator_lab"
-          : "";
+      normalizedFlowType === "creator_lab"
+        ? null
+        : typeof childId === "string" && childId.trim()
+          ? childId.trim()
+          : null;
 
-    if (!normalizedChildId) {
+    if (normalizedFlowType === "storyverse" && !normalizedChildId) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
+
+    const projectPayload = {
+      owner_user_id: user.id,
+      child_id: normalizedChildId,
+      title,
+      input_prompt: inputPrompt || "",
+      story_premise: storyPremise || "",
+      language: language === "en" ? "en" : "tr",
+      visual_bible: visualBible || {},
+      characters: characters || [],
+      scenes: scenes || [],
+      exported_movie_url: exportedMovieUrl || null,
+      exported_movie_result: exportedMovieResult || null,
+      export_signature: exportSignature || null,
+      flow_type: normalizedFlowType,
+      creator_mentor_result: creatorMentorResult || null,
+      creator_production_package: creatorProductionPackage || null,
+      youtube_metadata: youtubeMetadataResult || null,
+      youtube_thumbnail: youtubeThumbnailResult || null,
+      scene_optimization: sceneOptimizationResult || null,
+      scene_optimization_summary: sceneOptimizationSummary || null,
+      refined_creator_scenes: refinedCreatorScenes || null,
+    };
 
     if (projectId) {
       const { data, error } = await supabase
         .from("velto_projects")
-        .update({
-          owner_user_id: user.id,
-          child_id: normalizedChildId,
-          title,
-          input_prompt: inputPrompt || "",
-          story_premise: storyPremise || "",
-          language: language === "en" ? "en" : "tr",
-          visual_bible: visualBible || {},
-          characters: characters || [],
-          scenes: scenes || [],
-          exported_movie_url: exportedMovieUrl || null,
-          exported_movie_result: exportedMovieResult || null,
-          export_signature: exportSignature || null,
-          flow_type: normalizedFlowType,
-          creator_mentor_result: creatorMentorResult || null,
-          creator_production_package: creatorProductionPackage || null,
-          youtube_metadata: youtubeMetadataResult || null,
-          youtube_thumbnail: youtubeThumbnailResult || null,
-          scene_optimization: sceneOptimizationResult || null,
-          scene_optimization_summary: sceneOptimizationSummary || null,
-          refined_creator_scenes: refinedCreatorScenes || null,
-        })
+        .update(projectPayload)
         .eq("id", projectId)
         .eq("owner_user_id", user.id)
         .select()
@@ -113,28 +118,7 @@ export async function POST(req: Request) {
 
     const { data, error } = await supabase
       .from("velto_projects")
-      .insert([{
-        owner_user_id: user.id,
-        child_id: normalizedChildId,
-        title,
-        input_prompt: inputPrompt || "",
-        story_premise: storyPremise || "",
-        language: language === "en" ? "en" : "tr",
-        visual_bible: visualBible || {},
-        characters: characters || [],
-        scenes: scenes || [],
-        exported_movie_url: exportedMovieUrl || null,
-        exported_movie_result: exportedMovieResult || null,
-        export_signature: exportSignature || null,
-        flow_type: normalizedFlowType,
-        creator_mentor_result: creatorMentorResult || null,
-        creator_production_package: creatorProductionPackage || null,
-        youtube_metadata: youtubeMetadataResult || null,
-        youtube_thumbnail: youtubeThumbnailResult || null,
-        scene_optimization: sceneOptimizationResult || null,
-        scene_optimization_summary: sceneOptimizationSummary || null,
-        refined_creator_scenes: refinedCreatorScenes || null,
-      }])
+      .insert([projectPayload])
       .select()
       .single();
 
@@ -143,8 +127,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, mode: "created", project: data });
-
-  } catch {
+  } catch (error) {
+    console.error("save-project error:", error);
     return NextResponse.json({ error: "Kayıt sırasında hata oluştu" }, { status: 500 });
   }
 }
