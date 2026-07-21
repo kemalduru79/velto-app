@@ -325,6 +325,7 @@ export async function POST(req: Request) {
     const videoUrl = safeString(body?.videoUrl);
     const productionPackage = body?.productionPackage || {};
     const metadata = body?.metadata || {};
+    const creatorIntelligence = safeObject(body?.creatorIntelligence);
     const thumbnail = body?.thumbnail || {};
     const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
     const timelineSyncPlan = safeObject(
@@ -349,9 +350,12 @@ export async function POST(req: Request) {
     const titleOptions = safeArray(metadata?.titleOptions);
     const thumbnailTextIdeas = safeArray(metadata?.thumbnailTextIdeas);
     const seoKeywords = safeArray(metadata?.seoKeywords);
+    const hookAlternatives = safeArray(metadata?.hookAlternatives);
+    const chapters = safeArray(metadata?.chapters);
     const uploadChecklist = safeArray(metadata?.uploadChecklist);
     const publishingNotes = safeArray(metadata?.publishingNotes);
     const shortCaption = safeString(metadata?.shortCaption);
+    const linkedInCaption = safeString(metadata?.linkedInCaption);
 
     const entries: ZipEntry[] = [
       {
@@ -373,6 +377,26 @@ export async function POST(req: Request) {
       {
         name: "short_caption.txt",
         data: Buffer.from(shortCaption || description || "", "utf8"),
+      },
+      {
+        name: "linkedin_caption.txt",
+        data: Buffer.from(linkedInCaption || "", "utf8"),
+      },
+      {
+        name: "hook_alternatives.txt",
+        data: Buffer.from(hookAlternatives.join("\n") || "", "utf8"),
+      },
+      {
+        name: "chapters.txt",
+        data: Buffer.from(chapters.join("\n") || "", "utf8"),
+      },
+      {
+        name: "publishing_checklist.txt",
+        data: Buffer.from(uploadChecklist.join("\n") || "", "utf8"),
+      },
+      {
+        name: "publishing_notes.txt",
+        data: Buffer.from(publishingNotes.join("\n") || "", "utf8"),
       },
       {
         name: "hashtags.txt",
@@ -413,6 +437,13 @@ export async function POST(req: Request) {
         data: Buffer.from(JSON.stringify(metadata || {}, null, 2), "utf8"),
       },
     ];
+
+    if (Object.keys(creatorIntelligence).length > 0) {
+      entries.push({
+        name: "creator_intelligence.json",
+        data: Buffer.from(JSON.stringify(creatorIntelligence, null, 2), "utf8"),
+      });
+    }
 
     if (hasTimelineSyncPlan) {
       entries.push(

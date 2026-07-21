@@ -65,6 +65,21 @@ function compactYoutubeData(videos: unknown): YoutubeResearchVideo[] {
   }));
 }
 
+function creatorProfileContext(value: unknown) {
+  const profile = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const fields = [
+    ["Creator / brand", asString(profile.brandName)],
+    ["Brand voice", asString(profile.brandVoice)],
+    ["Default audience", asString(profile.defaultAudience)],
+    ["Default visual style", asString(profile.defaultVisualStyle)],
+    ["Credit preference", asString(profile.defaultCreditPreference)],
+  ].filter(([, field]) => field);
+
+  return fields.length
+    ? fields.map(([label, field]) => `${label}: ${field}`).join("\n")
+    : "No saved creator profile was provided.";
+}
+
 function parseJsonSafely(rawText: string) {
   const cleaned = rawText
     .trim()
@@ -257,6 +272,7 @@ export async function POST(req: Request) {
     const format = asString(body?.format, "Shorts / 60 sec");
     const language = normalizeLanguage(body?.language);
     const youtubeData = compactYoutubeData(body?.youtubeData);
+    const profileContext = creatorProfileContext(body?.creatorProfile);
 
     if (!topic) {
       return NextResponse.json(
@@ -338,6 +354,9 @@ Creator format rules:
 - Do not default to Joe, child/teen characters, teen audience language, parent reassurance, or classroom framing.
 - Prefer faceless documentary, professional narrator, brand voice, subject-matter host, product-led, or presenter-led concepts depending on the selected adult audience profile.
 - If the user explicitly names a character, preserve it; otherwise keep the recommendation character-neutral.
+
+Saved creator profile (use this for tone, audience framing and visual positioning when present; do not invent missing details):
+${profileContext}
 
 YouTube data sample:
 ${youtubeContext}

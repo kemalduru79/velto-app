@@ -30,6 +30,7 @@ type CreatorProductionRequest = {
   language?: "tr" | "en";
   qualityMode?: VideoQualityTier;
   mentorAnalysis?: CreatorMentorResult;
+  creatorProfile?: Record<string, unknown>;
 };
 
 type CreatorProductionModelOutput = {
@@ -52,6 +53,17 @@ type CreatorProductionModelOutput = {
 function asString(value: unknown, fallback = "") {
   const result = String(value || "").trim();
   return result || fallback;
+}
+
+function creatorProfileContext(value: unknown) {
+  const profile = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    brandName: asString(profile.brandName),
+    brandVoice: asString(profile.brandVoice),
+    defaultAudience: asString(profile.defaultAudience),
+    defaultVisualStyle: asString(profile.defaultVisualStyle),
+    creditPreference: asString(profile.defaultCreditPreference, "balanced"),
+  };
 }
 
 function clampNumber(
@@ -525,6 +537,7 @@ export async function POST(req: Request) {
       language,
     });
     const mentorAnalysis = body?.mentorAnalysis || {};
+    const creatorProfile = creatorProfileContext(body?.creatorProfile);
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
     const pacingBlueprint = getPacingBlueprint(sceneCount);
 
@@ -569,6 +582,7 @@ export async function POST(req: Request) {
         speechDurationBudget: durationBudget,
         voiceScriptGuidance,
         outputLanguage: language === "en" ? "English" : "Turkish",
+        creatorProfile,
       },
       pacingBlueprint,
       consistencyGuard: getCreatorLabConsistencyRules(language),
@@ -635,6 +649,7 @@ export async function POST(req: Request) {
         "All scenes must preserve one coherent visual universe, not separate unrelated image styles.",
         "Maintain consistent narration tone, emotional rhythm, and cinematic energy from scene to scene.",
         "CreatorLab visual prompts should stay high-clarity, platform-aware, mobile-readable, premium, and thumbnail-friendly; do not limit the style to cartoons unless requested.",
+        "When creatorProfile includes a brand voice, audience, or visual style, make the output consistent with it without repeating the profile verbatim in every scene.",
         "Avoid repetitive scene openings; each scene should advance the story or explanation.",
       ],
     };

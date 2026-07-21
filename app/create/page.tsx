@@ -52,9 +52,31 @@ import {
 } from "@/lib/creator/mediaRouting";
 import { getCreatorVoiceRoute } from "@/lib/creator/voiceRouting";
 import {
+  createCreatorFinalVideoReadiness,
+  type CreatorFinalVideoReadinessReport,
+} from "@/lib/creator/finalVideoReadiness";
+import {
+  createCreatorIntelligence,
+  type CreatorIntelligenceReport,
+} from "@/lib/creator/creatorIntelligence";
+import {
+  CREATOR_PROFILE_STORAGE_KEY,
+  EMPTY_CREATOR_PROFILE,
+  hasCreatorProfileContext,
+  parseCreatorProfile,
+  type CreatorProfile,
+} from "@/lib/creator/creatorProfile";
+import { createCreatorProjectReadiness } from "@/lib/creator/projectReadiness";
+import {
   createFlowContinuityAudit,
   type FlowContinuityAuditReport,
 } from "@/lib/video/flowContinuityAudit";
+import {
+  applyExportFlowAutoFixes,
+  createExportFlowValidation,
+  type ExportFlowValidationInputScene,
+  type ExportFlowValidationReport,
+} from "@/lib/video/exportFlowValidation";
 import {
   matchAudioDurationToScene,
   type AudioDurationMatchStatus,
@@ -299,6 +321,12 @@ type YoutubeMetadataResult = {
   thumbnailTextIdeas: string[];
   seoKeywords: string[];
   audiencePromise: string;
+  hookAlternatives: string[];
+  chapters: string[];
+  shortCaption: string;
+  linkedInCaption: string;
+  uploadChecklist: string[];
+  publishingNotes: string[];
 };
 
 type YoutubeThumbnailResult = {
@@ -2292,6 +2320,9 @@ export default function CreatePage() {
     useState<CreatorVideoDurationSec>(60);
   const [creatorQualityMode, setCreatorQualityMode] =
     useState<CreatorQualityMode>("standard");
+  const [creatorProfile, setCreatorProfile] =
+    useState<CreatorProfile>(EMPTY_CREATOR_PROFILE);
+  const [creatorProfileLoaded, setCreatorProfileLoaded] = useState(false);
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
@@ -2526,6 +2557,19 @@ export default function CreatePage() {
 
     setLanguage(uiLanguage === "en" ? "en" : "tr");
   }, [uiLanguage, title, input, storySetup, characters.length, visualBible, scenes.length]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CREATOR_PROFILE_STORAGE_KEY);
+      if (saved) {
+        setCreatorProfile(parseCreatorProfile(JSON.parse(saved)));
+      }
+    } catch {
+      // A profile is optional; an invalid local value must not block the workspace.
+    } finally {
+      setCreatorProfileLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2832,37 +2876,87 @@ export default function CreatePage() {
     return "none";
   };
 
-  const buildFlowContinuityAudit = (
+  const buildFlowContinuityInputScenes = (
     sourceScenes: Scene[] = scenes,
-  ): FlowContinuityAuditReport => {
+  ): ExportFlowValidationInputScene[] => {
     const timelinePlan = getCreatorActiveTimelinePlan();
 
-    return createFlowContinuityAudit(
-      sourceScenes.map((scene) => {
-        const timelineScene = timelinePlan?.scenes?.find(
-          (item) => Number(item.id) === Number(scene.id),
-        );
-        const exportSource = getSceneExportSource(scene);
+    return sourceScenes.map((scene) => {
+      const timelineScene = timelinePlan?.scenes?.find(
+        (item) => Number(item.id) === Number(scene.id),
+      );
+      const exportSource = getSceneExportSource(scene);
 
-        return {
-          id: scene.id,
-          source: exportSource,
-          hasNarration: Boolean(scene.narration?.trim()),
-          hasDialogue: Boolean(scene.dialogue?.trim()),
-          narrationDurationSec: scene.timing?.narrationDuration,
-          dialogueDurationSec: scene.timing?.dialogueDuration,
-          targetDurationSec:
-            scene.timing?.targetSceneDuration ||
-            timelineScene?.targetVisualSeconds ||
-            TARGET_SCENE_DURATION_SECONDS,
-          videoDurationSec: scene.videoDurationSeconds,
-          fallbackVideoDurationSec:
-            timelineScene?.recommendedClipSeconds ||
-            DEFAULT_VIDEO_DURATION_SECONDS,
-          visualBlocks: timelineScene?.visualBlocks,
-        };
-      }),
-    );
+      return {
+        id: scene.id,
+        source: exportSource,
+        hasNarration: Boolean(scene.narration?.trim()),
+        hasDialogue: Boolean(scene.dialogue?.trim()),
+        narrationDurationSec: scene.timing?.narrationDuration,
+        dialogueDurationSec: scene.timing?.dialogueDuration,
+        targetDurationSec:
+          scene.timing?.targetSceneDuration ||
+          timelineScene?.targetVisualSeconds ||
+          TARGET_SCENE_DURATION_SECONDS,
+        videoDurationSec: scene.videoDurationSeconds,
+        fallbackVideoDurationSec:
+          timelineScene?.recommendedClipSeconds ||
+          DEFAULT_VIDEO_DURATION_SECONDS,
+        visualBlocks: timelineScene?.visualBlocks,
+        hasReferenceImage: Boolean(scene.image),
+      };
+    });
+  };
+
+  const buildFlowContinuityAudit = (
+    sourceScenes: Scene[] = scenes,
+  ): FlowContinuityAuditReport =>
+    createFlowContinuityAudit(buildFlowContinuityInputScenes(sourceScenes));
+
+  const buildExportFlowValidation = (
+    sourceScenes: Scene[] = scenes,
+  ): ExportFlowValidationReport =>
+    createExportFlowValidation({
+      scenes: buildFlowContinuityInputScenes(sourceScenes),
+      maxSceneDurationSec: CREATOR_MAX_SCENE_DURATION_SECONDS,
+      speechTailBufferSec: CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+    });
+
+  const approveExportFlow = (sourceScenes: Scene[]) => {
+    if (!isCreatorLabFlow) {
+      return null;
+    }
+
+    const report = buildExportFlowValidation(sourceScenes);
+
+    if (!report.canExport) {
+      const sceneList = report.blockingSceneIds.join(", ");
+      setError(
+        uiLanguage === "en"
+          ? `Export blocked: scene(s) ${sceneList} have unresolved critical visual or timing risks.`
+          : `Export durduruldu: ${sceneList} numaralı sahnelerde çözülemeyen kritik görsel veya süre riski var.`,
+      );
+      return undefined;
+    }
+
+    if (report.requiresManualConfirmation) {
+      const approved = window.confirm(
+        uiLanguage === "en"
+          ? `${report.reviewSceneIds.length} scene(s) contain unmeasured audio or timing warnings. Safe visual fixes will be applied automatically. Continue with export?`
+          : `${report.reviewSceneIds.length} sahnede ölçülmemiş ses veya süre uyarısı var. Güvenli görsel düzeltmeler otomatik uygulanacak. Export'a devam edilsin mi?`,
+      );
+
+      if (!approved) {
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Export cancelled for review."
+            : "Kontrol için export iptal edildi.",
+        );
+        return undefined;
+      }
+    }
+
+    return report;
   };
 
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
@@ -2948,8 +3042,25 @@ export default function CreatePage() {
   };
 
   const handleStitchVideo = async () => {
-    const stitchScenes = scenes
-      .filter((scene) => scene.videoUrl && scene.videoStatus === "done")
+    const stitchSourceScenes = scenes.filter(
+      (scene) => scene.videoUrl && scene.videoStatus === "done",
+    );
+
+    if (stitchSourceScenes.length < 2) {
+      setError("Final video oluşturmak için en az 2 hazır sahne videosu gerekir.");
+      return;
+    }
+
+    const exportFlowValidation = approveExportFlow(stitchSourceScenes);
+
+    if (isCreatorLabFlow && !exportFlowValidation) {
+      return;
+    }
+
+    const preparedStitchScenes = exportFlowValidation
+      ? applyExportFlowAutoFixes(stitchSourceScenes, exportFlowValidation)
+      : stitchSourceScenes;
+    const stitchScenes = preparedStitchScenes
       .map((scene) => ({
         id: scene.id,
         videoUrl: scene.videoUrl,
@@ -2959,11 +3070,6 @@ export default function CreatePage() {
         durationSec: scene.timing?.targetSceneDuration,
         timing: scene.timing,
       }));
-
-    if (stitchScenes.length < 2) {
-      setError("Final video oluşturmak için en az 2 hazır sahne videosu gerekir.");
-      return;
-    }
 
     try {
       setIsExportingMovie(true);
@@ -2977,7 +3083,10 @@ export default function CreatePage() {
         },
         body: JSON.stringify({
           scenes: stitchScenes,
-          timelineSyncPlan: creatorProductionPackage?.timelineSyncPlan,
+          timelineSyncPlan: getCreatorActiveTimelinePlan(),
+          exportFlowValidation,
+          manualConfirmationGranted:
+            exportFlowValidation?.requiresManualConfirmation || false,
         }),
       });
 
@@ -4073,6 +4182,29 @@ export default function CreatePage() {
     videoPollIntervalsRef.current[sceneId] = intervalId;
   };
 
+  const getCreatorCinematicVideoInputs = (scene: Scene) => {
+    if (!isCreatorLabFlow || creatorQualityMode !== "cinematic") {
+      return {};
+    }
+
+    const sceneIndex = scenes.findIndex((item) => item.id === scene.id);
+    const lastFrameUrl = sceneIndex >= 0
+      ? scenes[sceneIndex + 1]?.image
+      : undefined;
+    const referenceImageUrls = Array.from(
+      new Set(
+        characters
+          .map((character) => character.referenceImage?.trim())
+          .filter((url): url is string => Boolean(url)),
+      ),
+    ).slice(0, 3);
+
+    return {
+      lastFrameUrl,
+      referenceImageUrls,
+    };
+  };
+
   const handleGenerateVideo = async (sceneId: number) => {
     const scene = scenes.find((s) => s.id === sceneId);
 
@@ -4119,12 +4251,14 @@ export default function CreatePage() {
         body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+          creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
           imageUrl: scene.image,
           text: scene.text,
           motionHint: scene.motionHint,
           cameraDirection: scene.cameraDirection,
           emotion: scene.emotion,
           duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+          ...getCreatorCinematicVideoInputs(scene),
         }),
       });
 
@@ -4304,12 +4438,14 @@ export default function CreatePage() {
       body: JSON.stringify({
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
         qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+        creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
         imageUrl: scene.image,
         text: scene.text,
         motionHint: scene.motionHint,
         cameraDirection: scene.cameraDirection,
         emotion: scene.emotion,
         duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+        ...getCreatorCinematicVideoInputs(scene),
       }),
     });
 
@@ -5011,20 +5147,104 @@ export default function CreatePage() {
     setSaveMessage(uiLanguage === "en" ? "Export reset ✅" : "Export sıfırlandı ✅");
   };
 
+  const getCreatorFinalVideoReadinessMessage = (
+    readiness: CreatorFinalVideoReadinessReport,
+  ) => {
+    const missingVisuals = readiness.missingVisualSceneIds.join(", ");
+    const missingVoice = readiness.missingVoiceSceneIds.join(", ");
+    const blockingScenes = readiness.blockingSceneIds.join(", ");
+
+    if (readiness.status === "production_stage_required") {
+      return uiLanguage === "en"
+        ? "Create the Production Stage before creating the final video."
+        : "Final videodan önce Production Stage oluştur.";
+    }
+
+    if (readiness.status === "timeline_required") {
+      return uiLanguage === "en"
+        ? "Run and approve the Timeline Check before creating the final video."
+        : "Final videodan önce Timeline Kontrolü'nü çalıştır ve onayla.";
+    }
+
+    if (readiness.status === "visuals_required") {
+      return uiLanguage === "en"
+        ? `Generate Visuals first. Missing scene(s): ${missingVisuals}.`
+        : `Önce Görselleri Üret. Eksik sahne(ler): ${missingVisuals}.`;
+    }
+
+    if (readiness.status === "voice_over_required") {
+      return uiLanguage === "en"
+        ? `Generate Voice-over first. Missing scene(s): ${missingVoice}.`
+        : `Önce Seslendirme Üret. Eksik sahne(ler): ${missingVoice}.`;
+    }
+
+    if (readiness.status === "continuity_blocked") {
+      return uiLanguage === "en"
+        ? `Final video is blocked by unresolved continuity risk in scene(s): ${blockingScenes}.`
+        : `Final video, ${blockingScenes} numaralı sahnelerdeki çözülmemiş akış riski nedeniyle durduruldu.`;
+    }
+
+    if (readiness.status === "confirmation_required") {
+      return uiLanguage === "en"
+        ? "Assets are ready. Timing warnings will require confirmation when final video production starts."
+        : "Görseller ve sesler hazır. Final video başlarken süre uyarıları için onay istenecek.";
+    }
+
+    return uiLanguage === "en"
+      ? "Timeline, visuals, voice-over and continuity are ready."
+      : "Timeline, görseller, seslendirme ve akış hazır.";
+  };
+
   const handleExportMovie = async (forceRebuild = false) => {
-    const exportScenes = scenes.filter(
+    const currentSignature = buildExportSignature(title, scenes);
+
+    if (
+      !forceRebuild &&
+      exportedMovieUrl &&
+      exportSignature === currentSignature
+    ) {
+      setError("");
+      setSaveMessage(ui.movieCreated);
+
+      if (typeof window !== "undefined") {
+        window.open(
+          exportMovieResult?.downloadUrl || exportedMovieUrl,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      }
+
+      return;
+    }
+
+    if (isCreatorLabFlow) {
+      if (!canRunCreatorMediaAction("final_video")) {
+        return;
+      }
+
+      const readiness = createCreatorFinalVideoReadiness({
+        scenes,
+        timelineApproved: getCreatorTimelineMediaGate().approved,
+        flowValidation: buildExportFlowValidation(scenes),
+      });
+
+      if (!readiness.canStartFinalVideo) {
+        setSaveMessage("");
+        setError(getCreatorFinalVideoReadinessMessage(readiness));
+        return;
+      }
+    }
+
+    const rawExportScenes = scenes.filter(
       (scene) => getSceneExportSource(scene) !== "none"
     );
-    const flowContinuityAudit = isCreatorLabFlow
-      ? buildFlowContinuityAudit(scenes)
-      : null;
 
-    if (exportScenes.length === 0) {
+    if (rawExportScenes.length === 0) {
       setError("Film oluşturmak için en az bir görsel veya hazır video içeren sahne gerekli.");
       return;
     }
 
-    if (!canRunCreatorMediaAction("final_video")) {
+    if (!isCreatorLabFlow && !canRunCreatorMediaAction("final_video")) {
       return;
     }
 
@@ -5033,18 +5253,16 @@ export default function CreatePage() {
       return;
     }
 
-    const currentSignature = buildExportSignature(title, scenes);
+    const exportFlowValidation = approveExportFlow(scenes);
 
-    if (!forceRebuild && exportedMovieUrl && exportSignature === currentSignature) {
-      setError("");
-      setSaveMessage(ui.movieCreated);
-
-      if (typeof window !== "undefined") {
-        window.open(exportMovieResult?.downloadUrl || exportedMovieUrl, "_blank", "noopener,noreferrer");
-      }
-
+    if (isCreatorLabFlow && !exportFlowValidation) {
       return;
     }
+
+    const exportScenes = exportFlowValidation
+      ? applyExportFlowAutoFixes(rawExportScenes, exportFlowValidation)
+      : rawExportScenes;
+    const flowContinuityAudit = exportFlowValidation?.audit || null;
 
     setIsExportingMovie(true);
     setError("");
@@ -5064,6 +5282,9 @@ export default function CreatePage() {
           projectId: getProjectKey(),
           exportMode: "mixed",
           flowContinuityAudit,
+          exportFlowValidation,
+          manualConfirmationGranted:
+            exportFlowValidation?.requiresManualConfirmation || false,
           scenes: exportScenes.map((scene) => {
             const timing =
               scene.timing || buildSceneTimingForCurrentFlow(0, 0, scene);
@@ -5613,6 +5834,31 @@ export default function CreatePage() {
       CREATOR_COUNTRY_OPTIONS.find((option) => option.value === creatorCountry)?.label ||
       creatorCountry
     );
+  };
+
+  const applyCreatorProfile = (profile = creatorProfile) => {
+    const safeProfile = parseCreatorProfile(profile);
+    setCreatorCountry(safeProfile.defaultCountry);
+    setCreatorFormat(safeProfile.defaultFormat);
+    setCreatorQualityMode(safeProfile.defaultQualityMode);
+    const defaultOption = getCreatorDurationOptionsByFormat(safeProfile.defaultFormat)[0];
+    if (defaultOption) {
+      setCreatorDurationPreset(defaultOption.preset);
+      setCreatorVideoDurationSec(defaultOption.seconds);
+      setCreatorCustomDurationSec(defaultOption.seconds);
+    }
+  };
+
+  const saveCreatorProfile = () => {
+    const nextProfile = parseCreatorProfile({
+      ...creatorProfile,
+      defaultCountry: creatorCountry,
+      defaultFormat: creatorFormat,
+      defaultQualityMode: creatorQualityMode,
+    });
+    setCreatorProfile(nextProfile);
+    window.localStorage.setItem(CREATOR_PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
+    setSaveMessage(uiLanguage === "en" ? "Creator profile saved on this device ✅" : "Creator profili bu cihazda kaydedildi ✅");
   };
 
   const getCreatorFormatLabel = () => {
@@ -6481,6 +6727,7 @@ export default function CreatePage() {
           qualityMode: creatorQualityMode,
           language,
           youtubeData: youtubeResearchVideos,
+          creatorProfile,
         }),
       });
 
@@ -6517,6 +6764,7 @@ export default function CreatePage() {
           sceneCount: getCreatorSceneCount(),
           language,
           mentorAnalysis: nextMentorResult,
+          creatorProfile,
         }),
       });
 
@@ -6584,6 +6832,7 @@ export default function CreatePage() {
           targetMarket: creatorCountry,
           ageGroup: creatorAgeGroup,
           contentType: creatorContentType,
+          creatorFormat,
           videoDurationSec: creatorVideoDurationSec,
           patternSummary: youtubePatternSummary,
         }),
@@ -6739,6 +6988,7 @@ export default function CreatePage() {
           qualityMode: creatorQualityMode,
           language,
           youtubeData: youtubeResearchVideos,
+          creatorProfile,
         }),
       });
 
@@ -6848,6 +7098,7 @@ export default function CreatePage() {
           sceneCount: getCreatorSceneCount(),
           language,
           mentorAnalysis: creatorMentorResult,
+          creatorProfile,
         }),
       });
 
@@ -7097,6 +7348,7 @@ export default function CreatePage() {
           videoUrl: exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl,
           productionPackage: creatorProductionPackage,
           metadata: youtubeMetadataResult,
+          creatorIntelligence: creatorIntelligenceReport,
           thumbnail: youtubeThumbnailResult,
           scenes,
           timelineSyncPlan: creatorProductionPackage?.timelineSyncPlan,
@@ -7407,6 +7659,7 @@ export default function CreatePage() {
           targetMarket: creatorCountry,
           ageGroup: creatorAgeGroup,
           contentType: creatorContentType,
+          creatorFormat,
           videoDurationSec: creatorVideoDurationSec,
           patternSummary: youtubePatternSummary,
         }),
@@ -8232,6 +8485,43 @@ export default function CreatePage() {
   const flowContinuityAudit = isCreatorLabFlow
     ? buildFlowContinuityAudit(scenes)
     : null;
+  const exportFlowValidation = isCreatorLabFlow
+    ? buildExportFlowValidation(scenes)
+    : null;
+  const creatorFinalVideoReadiness = isCreatorLabFlow
+    ? createCreatorFinalVideoReadiness({
+        scenes,
+        timelineApproved: creatorTimelineMediaGate.approved,
+        flowValidation: exportFlowValidation,
+      })
+    : null;
+  const creatorFinalVideoReadinessMessage = creatorFinalVideoReadiness
+    ? getCreatorFinalVideoReadinessMessage(creatorFinalVideoReadiness)
+    : "";
+  const creatorProjectReadiness = isCreatorLabFlow
+    ? createCreatorProjectReadiness({
+        hasProductionStage: Boolean(creatorProductionPackage || scenes.length > 0),
+        totalScenes: scenes.length,
+        visualReadyCount: readyExportCount,
+        voiceReadyCount: audioReadyCount,
+        finalVideoReady: creatorFinalVideoReadiness?.status === "ready",
+        hasExportedVideo: Boolean(exportedMovieUrl && hasReusableExport()),
+        qualityMode: creatorQualityMode,
+      })
+    : null;
+  const creatorIntelligenceReport: CreatorIntelligenceReport | null =
+    isCreatorLabFlow && creatorProductionPackage
+      ? createCreatorIntelligence({
+          title: creatorProductionPackage.title || title,
+          hook: creatorProductionPackage.hook,
+          format: creatorFormat,
+          durationSec: creatorVideoDurationSec,
+          locale: uiLanguage === "en" ? "en" : "tr",
+          metadata: youtubeMetadataResult,
+          mentorAnalysis: creatorMentorResult,
+          patternSummary: youtubePatternSummary,
+        })
+      : null;
   const audioDurationMatchedCount = scenes.filter(
     (scene) =>
       scene.timing?.durationMatchStatus &&
@@ -8855,6 +9145,76 @@ export default function CreatePage() {
                 <p className="mt-2 text-sm leading-6 text-sky-800/80">
                   {ui.creatorMentorDesc}
                 </p>
+              </div>
+
+              <div className="rounded-3xl border border-sky-200/80 bg-white/70 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                      Creator profile
+                    </p>
+                    <p className="mt-1 text-sm text-sky-900/75">
+                      {uiLanguage === "en"
+                        ? "Save your channel defaults once and reuse them for each new brief."
+                        : "Kanal varsayılanlarını bir kez kaydet; her yeni brief'te yeniden kullan."}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyCreatorProfile()}
+                      disabled={!creatorProfileLoaded || !hasCreatorProfileContext(creatorProfile)}
+                      className="rounded-2xl border border-sky-300/40 bg-white px-3 py-2 text-xs font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {uiLanguage === "en" ? "Apply defaults" : "Varsayılanları uygula"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveCreatorProfile}
+                      className="rounded-2xl bg-sky-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-800"
+                    >
+                      {uiLanguage === "en" ? "Save profile" : "Profili kaydet"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <input
+                    className="w-full rounded-2xl border border-sky-200 bg-white/90 p-3 text-sm text-slate-900"
+                    value={creatorProfile.brandName}
+                    onChange={(event) => setCreatorProfile((current) => ({ ...current, brandName: event.target.value }))}
+                    placeholder={uiLanguage === "en" ? "Creator or brand name" : "Creator veya marka adı"}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-sky-200 bg-white/90 p-3 text-sm text-slate-900"
+                    value={creatorProfile.defaultAudience}
+                    onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultAudience: event.target.value }))}
+                    placeholder={uiLanguage === "en" ? "Default audience" : "Varsayılan hedef kitle"}
+                  />
+                  <select
+                    className="w-full rounded-2xl border border-sky-200 bg-white/90 p-3 text-sm text-slate-900"
+                    value={creatorProfile.defaultCreditPreference}
+                    onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultCreditPreference: event.target.value as CreatorProfile["defaultCreditPreference"] }))}
+                  >
+                    <option value="efficient">{uiLanguage === "en" ? "Credit preference: efficient" : "Kredi tercihi: verimli"}</option>
+                    <option value="balanced">{uiLanguage === "en" ? "Credit preference: balanced" : "Kredi tercihi: dengeli"}</option>
+                    <option value="premium">{uiLanguage === "en" ? "Credit preference: premium" : "Kredi tercihi: premium"}</option>
+                  </select>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <input
+                    className="w-full rounded-2xl border border-sky-200 bg-white/90 p-3 text-sm text-slate-900"
+                    value={creatorProfile.brandVoice}
+                    onChange={(event) => setCreatorProfile((current) => ({ ...current, brandVoice: event.target.value }))}
+                    placeholder={uiLanguage === "en" ? "Brand voice (e.g. direct, credible, optimistic)" : "Marka sesi (örn. net, güvenilir, iyimser)"}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-sky-200 bg-white/90 p-3 text-sm text-slate-900"
+                    value={creatorProfile.defaultVisualStyle}
+                    onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultVisualStyle: event.target.value }))}
+                    placeholder={uiLanguage === "en" ? "Default visual style" : "Varsayılan görsel stil"}
+                  />
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -9959,6 +10319,136 @@ export default function CreatePage() {
                       {youtubeMetadataResult.audiencePromise}
                     </p>
                   </div>
+
+                  {(youtubeMetadataResult.hookAlternatives?.length > 0 ||
+                    youtubeMetadataResult.chapters?.length > 0) && (
+                    <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
+                      <h4 className="font-semibold text-slate-900">
+                        {uiLanguage === "en" ? "Hooks & chapters" : "Hook'lar ve bölümler"}
+                      </h4>
+                      {youtubeMetadataResult.hookAlternatives?.length > 0 && (
+                        <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600">
+                          {youtubeMetadataResult.hookAlternatives.map((item, index) => (
+                            <li key={`publish-hook-${index}`}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {youtubeMetadataResult.chapters?.length > 0 && (
+                        <ol className="mt-4 space-y-2 text-sm text-slate-600">
+                          {youtubeMetadataResult.chapters.map((item, index) => (
+                            <li key={`publish-chapter-${index}`}>{item}</li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  )}
+
+                  {(youtubeMetadataResult.shortCaption ||
+                    youtubeMetadataResult.linkedInCaption) && (
+                    <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 lg:col-span-2">
+                      <h4 className="font-semibold text-slate-900">
+                        {uiLanguage === "en" ? "Platform adaptations" : "Platform uyarlamaları"}
+                      </h4>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 p-3 text-sm leading-6 text-slate-700">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-800">
+                            Shorts / Reels / TikTok
+                          </p>
+                          <p className="mt-2 whitespace-pre-line">{youtubeMetadataResult.shortCaption}</p>
+                        </div>
+                        <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 p-3 text-sm leading-6 text-slate-700">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-800">
+                            LinkedIn
+                          </p>
+                          <p className="mt-2 whitespace-pre-line">{youtubeMetadataResult.linkedInCaption}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(youtubeMetadataResult.uploadChecklist?.length > 0 ||
+                    youtubeMetadataResult.publishingNotes?.length > 0) && (
+                    <div className="rounded-[28px] border border-emerald-300/25 bg-emerald-50/80 p-4 lg:col-span-2">
+                      <h4 className="font-semibold text-emerald-950">
+                        {uiLanguage === "en" ? "Publishing checklist" : "Yayın kontrol listesi"}
+                      </h4>
+                      <ul className="mt-3 grid gap-2 text-sm text-emerald-900 md:grid-cols-2">
+                        {(youtubeMetadataResult.uploadChecklist || []).map((item, index) => (
+                          <li key={`publish-check-${index}`}>✓ {item}</li>
+                        ))}
+                        {(youtubeMetadataResult.publishingNotes || []).map((item, index) => (
+                          <li key={`publish-note-${index}`}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {creatorIntelligenceReport && (
+                <div className="mt-5 rounded-[28px] border border-violet-300/25 bg-violet-50/80 p-5">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">
+                        {uiLanguage === "en" ? "Creator intelligence" : "Creator intelligence"}
+                      </p>
+                      <h4 className="mt-1 font-semibold text-slate-900">
+                        {uiLanguage === "en"
+                          ? "A focused release plan from your current package"
+                          : "Mevcut paketinden çıkarılan odaklı yayın planı"}
+                      </h4>
+                    </div>
+                    <span className="rounded-full border border-violet-300/30 bg-white px-3 py-1 text-sm font-semibold text-violet-800">
+                      {uiLanguage === "en" ? "Hook readiness" : "Hook hazırlığı"}: {creatorIntelligenceReport.hookScore}/100
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-2xl border border-violet-200/70 bg-white/80 p-4">
+                      <h5 className="font-semibold text-slate-900">
+                        {uiLanguage === "en" ? "Opening" : "Açılış"}
+                      </h5>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {creatorIntelligenceReport.recommendedOpening}
+                      </p>
+                      <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                        {creatorIntelligenceReport.hookSignals.map((signal, index) => (
+                          <li key={`hook-signal-${index}`}>• {signal}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-2xl border border-violet-200/70 bg-white/80 p-4">
+                      <h5 className="font-semibold text-slate-900">
+                        {uiLanguage === "en" ? "Thumbnail angles" : "Thumbnail açıları"}
+                      </h5>
+                      <div className="mt-3 space-y-3">
+                        {creatorIntelligenceReport.thumbnailAngles.slice(0, 2).map((angle, index) => (
+                          <div key={`thumbnail-angle-${index}`}>
+                            <p className="text-sm font-semibold text-violet-900">{angle.label}: {angle.text}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-600">{angle.guidance}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-violet-200/70 bg-white/80 p-4">
+                      <h5 className="font-semibold text-slate-900">
+                        {uiLanguage === "en" ? "Platform strategy" : "Platform stratejisi"}
+                      </h5>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {creatorIntelligenceReport.platformStrategy}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        {creatorIntelligenceReport.audienceAngle}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 rounded-2xl border border-violet-200/70 bg-white/70 p-3 text-sm text-slate-700">
+                    <span className="font-semibold text-slate-900">{uiLanguage === "en" ? "Next:" : "Sonraki adım:"}</span>{" "}
+                    {creatorIntelligenceReport.nextBestAction}
+                  </p>
                 </div>
               )}
             </div>
@@ -10107,10 +10597,10 @@ export default function CreatePage() {
                   video_link.txt
                 </div>
                 <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                  title / description / hashtags
+                  title / hooks / chapters / captions
                 </div>
                 <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                  thumbnail.png + scenes.json
+                  thumbnail + checklist + scenes.json
                 </div>
               </div>
             </div>
@@ -10766,7 +11256,8 @@ export default function CreatePage() {
 
                     <button
                       onClick={() => handleExportMovie(false)}
-                      disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("final_video")}
+                      disabled={isExportingMovie || isCreatorActionBlocked("final_video")}
+                      title={creatorFinalVideoReadinessMessage}
                       className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-[1.02] disabled:opacity-50"
                     >
                       {isExportingMovie
@@ -10777,12 +11268,95 @@ export default function CreatePage() {
                     </button>
                   </div>
 
+                  {creatorFinalVideoReadiness && (
+                    <p
+                      className={`mt-3 text-center text-xs leading-5 ${
+                        creatorFinalVideoReadiness.status === "ready"
+                          ? "text-emerald-700"
+                          : "text-amber-700"
+                      }`}
+                    >
+                      <span className="font-semibold">Final video:</span>{" "}
+                      {creatorFinalVideoReadinessMessage}
+                    </p>
+                  )}
+
+                  {creatorProjectReadiness && (
+                    <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                            {uiLanguage === "en" ? "Project readiness" : "Proje hazırlığı"}
+                          </p>
+                          <h4 className="mt-1 text-sm font-semibold text-slate-950">
+                            {creatorProjectReadiness.status === "exported"
+                              ? (uiLanguage === "en" ? "Exported" : "Export edildi")
+                              : creatorProjectReadiness.status === "ready"
+                                ? (uiLanguage === "en" ? "Ready for export" : "Export için hazır")
+                                : (uiLanguage === "en" ? "Draft in progress" : "Taslak devam ediyor")}
+                          </h4>
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          {creatorProjectReadiness.creditSummary === "not_started"
+                            ? (uiLanguage === "en" ? "No production credits used yet" : "Henüz üretim kredisi kullanılmadı")
+                            : creatorProjectReadiness.creditSummary === "exported"
+                              ? (uiLanguage === "en" ? "Export completed with selected quality" : "Export seçilen kaliteyle tamamlandı")
+                              : creatorProjectReadiness.creditSummary === "production_ready"
+                                ? (uiLanguage === "en" ? "Assets are ready for final production" : "Varlıklar final üretim için hazır")
+                                : (uiLanguage === "en" ? "Production is in progress" : "Üretim devam ediyor")}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        {[
+                          {
+                            label: uiLanguage === "en" ? "Visuals" : "Görseller",
+                            ready: creatorProjectReadiness.visuals === "ready",
+                            detail: `${creatorProjectReadiness.visualReadyCount}/${creatorProjectReadiness.totalScenes}`,
+                          },
+                          {
+                            label: uiLanguage === "en" ? "Voice-over" : "Seslendirme",
+                            ready: creatorProjectReadiness.voiceOver === "ready",
+                            detail: `${creatorProjectReadiness.voiceReadyCount}/${creatorProjectReadiness.totalScenes}`,
+                          },
+                          {
+                            label: uiLanguage === "en" ? "Final video" : "Final video",
+                            ready: creatorProjectReadiness.finalVideo === "ready",
+                            detail: creatorProjectReadiness.finalVideo === "ready"
+                              ? (uiLanguage === "en" ? "Ready" : "Hazır")
+                              : (uiLanguage === "en" ? "Waiting" : "Bekliyor"),
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className={`rounded-2xl border px-3 py-3 text-sm ${
+                              item.ready
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                                : "border-amber-200 bg-amber-50 text-amber-900"
+                            }`}
+                          >
+                            <p className="font-semibold">{item.ready ? "✓" : "○"} {item.label}</p>
+                            <p className="mt-1 text-xs opacity-80">{item.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {exportMovieResult && (
+                        <p className="mt-3 text-xs text-slate-600">
+                          {uiLanguage === "en" ? "Latest export:" : "Son export:"}{" "}
+                          {exportMovieResult.fileName || (uiLanguage === "en" ? "Final video" : "Final video")}
+                          {exportMovieResult.durationSeconds ? ` · ${formatDurationLabel(exportMovieResult.durationSeconds)}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {flowContinuityAudit && (
                     <div
                       className={`mt-4 rounded-3xl border p-4 ${
-                        flowContinuityAudit.status === "high_risk"
+                        exportFlowValidation?.status === "blocked"
                           ? "border-rose-300/40 bg-rose-50/90"
-                          : flowContinuityAudit.status === "review"
+                          : exportFlowValidation?.status === "confirmation_required"
                             ? "border-amber-300/40 bg-amber-50/90"
                             : "border-emerald-300/40 bg-emerald-50/90"
                       }`}
@@ -10858,6 +11432,41 @@ export default function CreatePage() {
                               : `${unnecessaryExtensionRemovedTotal.toFixed(1)} sn gereksiz uzama kaldırıldı`}
                         </p>
                       </div>
+
+                      {exportFlowValidation && (
+                        <div
+                          className={`mt-3 flex flex-col gap-2 rounded-2xl border px-3 py-2 text-xs md:flex-row md:items-center md:justify-between ${
+                            exportFlowValidation.status === "blocked"
+                              ? "border-rose-200 bg-rose-50 text-rose-800"
+                              : exportFlowValidation.status === "confirmation_required"
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          }`}
+                        >
+                          <p>
+                            <span className="font-semibold">
+                              3N-5 · {uiLanguage === "en" ? "Export preflight" : "Export öncesi kontrol"}
+                            </span>
+                            {" · "}
+                            {exportFlowValidation.status === "blocked"
+                              ? uiLanguage === "en"
+                                ? `Export is blocked for scene(s): ${exportFlowValidation.blockingSceneIds.join(", ")}.`
+                                : `Export şu sahneler için durdurulacak: ${exportFlowValidation.blockingSceneIds.join(", ")}.`
+                              : exportFlowValidation.status === "confirmation_required"
+                                ? uiLanguage === "en"
+                                  ? "Export will ask for confirmation because timing is not fully measured."
+                                  : "Süreler tam ölçülmediği için export onay isteyecek."
+                                : uiLanguage === "en"
+                                  ? "Export can start safely."
+                                  : "Export güvenle başlatılabilir."}
+                          </p>
+                          <p className="font-semibold">
+                            {uiLanguage === "en"
+                              ? `${exportFlowValidation.autoFixedScenes} safe auto-fix(es)`
+                              : `${exportFlowValidation.autoFixedScenes} güvenli otomatik düzeltme`}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -10921,7 +11530,8 @@ export default function CreatePage() {
                         <button
                           type="button"
                           onClick={() => handleExportMovie(true)}
-                          disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked || isCreatorActionBlocked("final_video")}
+                          disabled={isExportingMovie || isCreatorActionBlocked("final_video")}
+                          title={creatorFinalVideoReadinessMessage}
                           className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
                         >
                           {isExportingMovie
