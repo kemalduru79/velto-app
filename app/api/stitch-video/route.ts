@@ -19,6 +19,15 @@ import {
   type VisualFillerMotionPreset,
   type VisualFillerPlan,
 } from "../../../lib/video/visualFiller";
+import {
+  alignDurationToFrameGrid,
+  createStitchContinuityCheck,
+  describeStitchContinuityIssues,
+  STITCH_OUTPUT_FPS,
+  type MediaStreamDurations,
+  type StitchContinuityCheck,
+} from "../../../lib/video/stitchContinuity";
+import type { ExportFlowValidationReport } from "../../../lib/video/exportFlowValidation";
 
 type StitchSceneInput = {
   id?: number;
@@ -59,7 +68,8 @@ const MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS = 30;
 const PREFERRED_MAX_SCENE_DURATION_SECONDS = 20;
 const SPEECH_TAIL_BUFFER_SECONDS = 0.75;
 const OUTPUT_SIZE = "960:960";
-const OUTPUT_FPS = "30";
+const OUTPUT_FPS = String(STITCH_OUTPUT_FPS);
+const OUTPUT_AUDIO_SAMPLE_RATE = "44100";
 
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
@@ -100,26 +110,52 @@ function runFfprobe(args: string[]) {
 
 async function getMediaDuration(filePath: string) {
   try {
-    const output = await runFfprobe([
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      filePath,
-    ]);
+    const media = await probeMediaStreams(filePath);
 
-    const parsed = Number(output);
-
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return 0;
-    }
-
-    return parsed;
+    return (
+      media.formatDurationSec ||
+      media.videoDurationSec ||
+      media.audioDurationSec ||
+      0
+    );
   } catch {
     return 0;
   }
+}
+
+function finiteDuration(value: unknown) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+async function probeMediaStreams(
+  filePath: string,
+): Promise<MediaStreamDurations> {
+  const output = await runFfprobe([
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=codec_type,duration:format=duration",
+      "-of",
+      "json",
+      filePath,
+    ]);
+  const parsed = JSON.parse(output) as {
+    streams?: Array<{ codec_type?: string; duration?: string }>;
+    format?: { duration?: string };
+  };
+  const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+  const videoStream = streams.find((stream) => stream.codec_type === "video");
+  const audioStream = streams.find((stream) => stream.codec_type === "audio");
+
+  return {
+    formatDurationSec: finiteDuration(parsed.format?.duration),
+    videoDurationSec: finiteDuration(videoStream?.duration),
+    audioDurationSec: finiteDuration(audioStream?.duration),
+    hasVideo: Boolean(videoStream),
+    hasAudio: Boolean(audioStream),
+  };
 }
 
 function roundDuration(value: number) {
@@ -154,12 +190,59 @@ function getSceneRequestedDuration(scene: StitchSceneInput) {
   return safeDuration(scene?.durationSec || scene?.timing?.targetSceneDuration);
 }
 
-function escapeConcatPath(filePath: string) {
-  return filePath.replace(/'/g, "'\\''");
+async function verifyRenderedContinuity(
+  filePath: string,
+  expectedDurationSec: number,
+  label: string,
+) {
+  const check = createStitchContinuityCheck({
+    expectedDurationSec,
+    media: await probeMediaStreams(filePath),
+  });
+
+  if (!check.ok) {
+    throw new Error(
+      `${label} failed continuity verification: ${describeStitchContinuityIssues(check)}.`,
+    );
+  }
+
+  return check;
 }
 
 function getSceneVisualAction(scene: StitchSceneInput) {
   return scene?.timelineDecision?.visualAction || scene?.timing?.visualAction;
+}
+
+function createNormalizedVideoFilter(durationSec: number) {
+  return [
+    `scale=${OUTPUT_SIZE}:force_original_aspect_ratio=decrease`,
+    `pad=${OUTPUT_SIZE}:(ow-iw)/2:(oh-ih)/2`,
+    "setsar=1",
+    `fps=${OUTPUT_FPS}`,
+    `trim=start=0:duration=${durationSec.toFixed(3)}`,
+    "settb=AVTB",
+    `setpts=N/(${OUTPUT_FPS}*TB)`,
+    "format=yuv420p",
+  ].join(",");
+}
+
+function createNormalizedAudioFilter(durationSec: number) {
+  return [
+    "asetpts=PTS-STARTPTS",
+    `aresample=${OUTPUT_AUDIO_SAMPLE_RATE}:async=1:first_pts=0`,
+    `aformat=sample_fmts=fltp:sample_rates=${OUTPUT_AUDIO_SAMPLE_RATE}:channel_layouts=stereo`,
+    "apad",
+    `atrim=start=0:duration=${durationSec.toFixed(3)}`,
+    "asetpts=N/SR/TB",
+  ].join(",");
+}
+
+function createNormalizedAudioInputFilter() {
+  return [
+    "asetpts=PTS-STARTPTS",
+    `aresample=${OUTPUT_AUDIO_SAMPLE_RATE}:async=1:first_pts=0`,
+    `aformat=sample_fmts=fltp:sample_rates=${OUTPUT_AUDIO_SAMPLE_RATE}:channel_layouts=stereo`,
+  ].join(",");
 }
 
 async function createImageMotionVideoBase({
@@ -194,7 +277,9 @@ async function createImageMotionVideoBase({
     "scale=1100:1100:force_original_aspect_ratio=increase",
     "crop=960:960",
     zoomPanExpression,
-    `trim=duration=${durationSec.toFixed(3)}`,
+    `trim=start=0:duration=${durationSec.toFixed(3)}`,
+    "settb=AVTB",
+    `setpts=N/(${OUTPUT_FPS}*TB)`,
     "format=yuv420p",
   ].join(",");
 
@@ -230,13 +315,11 @@ async function createVideoClipSegmentFromSource({
   outputVideoPath: string;
   durationSec: number;
 }) {
-  const normalizeVideoFilter = `scale=${OUTPUT_SIZE}:force_original_aspect_ratio=decrease,pad=${OUTPUT_SIZE}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${OUTPUT_FPS},format=yuv420p`;
-
   await runFfmpeg([
     "-i",
     sourceVideoPath,
     "-vf",
-    `${normalizeVideoFilter},trim=duration=${durationSec.toFixed(3)}`,
+    createNormalizedVideoFilter(durationSec),
     "-an",
     "-c:v",
     "libx264",
@@ -261,8 +344,6 @@ async function createMotionLoopSegmentFromSource({
   outputVideoPath: string;
   durationSec: number;
 }) {
-  const normalizeVideoFilter = `scale=${OUTPUT_SIZE}:force_original_aspect_ratio=decrease,pad=${OUTPUT_SIZE}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${OUTPUT_FPS},trim=duration=${durationSec.toFixed(3)},format=yuv420p`;
-
   await runFfmpeg([
     "-stream_loop",
     "-1",
@@ -271,7 +352,7 @@ async function createMotionLoopSegmentFromSource({
     "-t",
     String(durationSec),
     "-vf",
-    normalizeVideoFilter,
+    createNormalizedVideoFilter(durationSec),
     "-an",
     "-c:v",
     "libx264",
@@ -289,28 +370,38 @@ async function createMotionLoopSegmentFromSource({
 
 async function concatVideoSegments(
   segmentPaths: string[],
-  tempDir: string,
-  index: number,
+  segmentDurationsSec: number[],
   outputVideoPath: string,
 ) {
-  const fileListPath = path.join(tempDir, `scene_${index}_visual_blocks.txt`);
+  const inputs = segmentPaths.flatMap((segmentPath) => ["-i", segmentPath]);
+  const normalizedSegments = segmentPaths.map((_, segmentIndex) => {
+    const durationSec = segmentDurationsSec[segmentIndex];
 
-  await fs.writeFile(
-    fileListPath,
-    segmentPaths
-      .map((filePath) => `file '${escapeConcatPath(filePath)}'`)
-      .join("\n"),
-  );
+    return `[${segmentIndex}:v]${createNormalizedVideoFilter(durationSec)}[v${segmentIndex}]`;
+  });
+  const concatInputs = segmentPaths
+    .map((_, segmentIndex) => `[v${segmentIndex}]`)
+    .join("");
+  const filter = [
+    ...normalizedSegments,
+    `${concatInputs}concat=n=${segmentPaths.length}:v=1:a=0[outv]`,
+  ].join(";");
 
   await runFfmpeg([
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    fileListPath,
-    "-c",
-    "copy",
+    ...inputs,
+    "-filter_complex",
+    filter,
+    "-map",
+    "[outv]",
+    "-an",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
     "-movflags",
     "+faststart",
     outputVideoPath,
@@ -408,7 +499,11 @@ async function createFallbackVisualFillerVideoBase({
   if (segmentPaths.length === 1) {
     await fs.copyFile(segmentPaths[0], outputVideoPath);
   } else {
-    await concatVideoSegments(segmentPaths, tempDir, index, outputVideoPath);
+    await concatVideoSegments(
+      segmentPaths,
+      fillerPlan.segments.map((segment) => segment.durationSec),
+      outputVideoPath,
+    );
   }
 
   return {
@@ -429,6 +524,10 @@ async function createSilentAudio(outputPath: string, durationSec: number) {
     "aac",
     "-b:a",
     "128k",
+    "-ar",
+    OUTPUT_AUDIO_SAMPLE_RATE,
+    "-ac",
+    "2",
     outputPath,
   ]);
 }
@@ -502,11 +601,9 @@ async function createSceneAudioClip(
       "-i",
       downloadedAudioPaths[0],
       "-filter_complex",
-      `[0:a]apad,atrim=0:${effectiveDuration}[a]`,
+      `[0:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`,
       "-map",
       "[a]",
-      "-t",
-      String(effectiveDuration),
       "-c:a",
       "aac",
       "-b:a",
@@ -526,8 +623,17 @@ async function createSceneAudioClip(
     "-i",
     audioPath,
   ]);
-  const concatLabels = downloadedAudioPaths.map((_, i) => `[${i}:a]`).join("");
-  const filter = `${concatLabels}concat=n=${downloadedAudioPaths.length}:v=0:a=1,apad,atrim=0:${effectiveDuration}[a]`;
+  const normalizedAudioInputs = downloadedAudioPaths.map(
+    (_, inputIndex) =>
+      `[${inputIndex}:a]${createNormalizedAudioInputFilter()}[a${inputIndex}]`,
+  );
+  const concatLabels = downloadedAudioPaths
+    .map((_, inputIndex) => `[a${inputIndex}]`)
+    .join("");
+  const filter = [
+    ...normalizedAudioInputs,
+    `${concatLabels}concat=n=${downloadedAudioPaths.length}:v=0:a=1,${createNormalizedAudioFilter(effectiveDuration)}[a]`,
+  ].join(";");
 
   await runFfmpeg([
     ...concatInputs,
@@ -535,8 +641,6 @@ async function createSceneAudioClip(
     filter,
     "-map",
     "[a]",
-    "-t",
-    String(effectiveDuration),
     "-c:a",
     "aac",
     "-b:a",
@@ -559,7 +663,6 @@ async function createSceneVideoBase(
   durationSec: number,
 ) {
   const outputVideoPath = path.join(tempDir, `scene_${index}_video.mp4`);
-  const normalizeVideoFilter = `scale=${OUTPUT_SIZE}:force_original_aspect_ratio=decrease,pad=${OUTPUT_SIZE}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${OUTPUT_FPS},format=yuv420p`;
 
   if (scene.videoUrl) {
     const sourceVideoPath = path.join(
@@ -571,14 +674,14 @@ async function createSceneVideoBase(
     const sourceDurationSec = await getMediaDuration(sourceVideoPath);
 
     const fillerResult = await createFallbackVisualFillerVideoBase({
-        scene,
-        sourceVideoPath,
-        sourceDurationSec,
-        tempDir,
-        index,
-        durationSec,
-        outputVideoPath,
-      });
+      scene,
+      sourceVideoPath,
+      sourceDurationSec,
+      tempDir,
+      index,
+      durationSec,
+      outputVideoPath,
+    });
 
     if (fillerResult.created) {
       return {
@@ -591,7 +694,7 @@ async function createSceneVideoBase(
       "-i",
       sourceVideoPath,
       "-vf",
-      `${normalizeVideoFilter},trim=duration=${durationSec.toFixed(3)}`,
+      createNormalizedVideoFilter(durationSec),
       "-an",
       "-c:v",
       "libx264",
@@ -648,12 +751,15 @@ async function muxSceneVideoAndAudio(
     videoPath,
     "-i",
     audioPath,
+    "-filter_complex",
+    [
+      `[0:v]${createNormalizedVideoFilter(durationSec)}[v]`,
+      `[1:a]${createNormalizedAudioFilter(durationSec)}[a]`,
+    ].join(";"),
     "-map",
-    "0:v:0",
+    "[v]",
     "-map",
-    "1:a:0",
-    "-t",
-    String(durationSec),
+    "[a]",
     "-c:v",
     "libx264",
     "-preset",
@@ -664,8 +770,68 @@ async function muxSceneVideoAndAudio(
     "aac",
     "-b:a",
     "128k",
+    "-ar",
+    OUTPUT_AUDIO_SAMPLE_RATE,
+    "-ac",
+    "2",
     "-pix_fmt",
     "yuv420p",
+    "-video_track_timescale",
+    "90000",
+    "-movflags",
+    "+faststart",
+    outputPath,
+  ]);
+}
+
+async function stitchSceneClips(
+  scenePaths: string[],
+  sceneDurationsSec: number[],
+  outputPath: string,
+) {
+  const inputs = scenePaths.flatMap((scenePath) => ["-i", scenePath]);
+  const normalizedStreams = scenePaths.flatMap((_, sceneIndex) => {
+    const durationSec = sceneDurationsSec[sceneIndex];
+
+    return [
+      `[${sceneIndex}:v]${createNormalizedVideoFilter(durationSec)}[v${sceneIndex}]`,
+      `[${sceneIndex}:a]${createNormalizedAudioFilter(durationSec)}[a${sceneIndex}]`,
+    ];
+  });
+  const concatInputs = scenePaths
+    .map((_, sceneIndex) => `[v${sceneIndex}][a${sceneIndex}]`)
+    .join("");
+  const filter = [
+    ...normalizedStreams,
+    `${concatInputs}concat=n=${scenePaths.length}:v=1:a=1[outv][outa]`,
+  ].join(";");
+
+  await runFfmpeg([
+    ...inputs,
+    "-filter_complex",
+    filter,
+    "-map",
+    "[outv]",
+    "-map",
+    "[outa]",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ar",
+    OUTPUT_AUDIO_SAMPLE_RATE,
+    "-ac",
+    "2",
+    "-pix_fmt",
+    "yuv420p",
+    "-video_track_timescale",
+    "90000",
     "-movflags",
     "+faststart",
     outputPath,
@@ -677,6 +843,36 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    const exportFlowValidation = body?.exportFlowValidation as
+      | ExportFlowValidationReport
+      | undefined;
+
+    if (exportFlowValidation?.version === "3N-5") {
+      if (!exportFlowValidation.canExport) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Export blocked by continuity preflight for scene(s): ${exportFlowValidation.blockingSceneIds.join(", ")}.`,
+            exportFlowValidation,
+          },
+          { status: 409 },
+        );
+      }
+
+      if (
+        exportFlowValidation.requiresManualConfirmation &&
+        body?.manualConfirmationGranted !== true
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Export requires manual confirmation before stitching.",
+            exportFlowValidation,
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const rawScenes: StitchSceneInput[] = Array.isArray(body?.scenes)
       ? body.scenes
@@ -731,6 +927,8 @@ export async function POST(req: NextRequest) {
     await fs.mkdir(tempDir, { recursive: true });
 
     const finalSceneClipPaths: string[] = [];
+    const finalSceneDurationsSec: number[] = [];
+    const sceneContinuityChecks: StitchContinuityCheck[] = [];
     let matchedDurationSceneCount = 0;
     let splitRecommendedSceneCount = 0;
     let unnecessaryExtensionRemovedSec = 0;
@@ -747,7 +945,9 @@ export async function POST(req: NextRequest) {
         i,
         requestedDurationSec,
       );
-      const durationSec = safeDuration(audioResult.durationSec);
+      const durationSec = alignDurationToFrameGrid(
+        safeDuration(audioResult.durationSec),
+      );
 
       if (audioResult.durationMatch.status !== "unmeasured") {
         matchedDurationSceneCount += 1;
@@ -781,32 +981,36 @@ export async function POST(req: NextRequest) {
         durationSec,
       );
 
+      const continuityCheck = await verifyRenderedContinuity(
+        finalScenePath,
+        durationSec,
+        `Scene ${scene.id ?? i + 1}`,
+      );
+
       finalSceneClipPaths.push(finalScenePath);
+      finalSceneDurationsSec.push(durationSec);
+      sceneContinuityChecks.push(continuityCheck);
     }
 
-    const fileListPath = path.join(tempDir, "files.txt");
     const outputPath = path.join(tempDir, "final-video.mp4");
-
-    await fs.writeFile(
-      fileListPath,
-      finalSceneClipPaths
-        .map((filePath) => `file '${escapeConcatPath(filePath)}'`)
-        .join("\n"),
+    const expectedFinalDurationSec = roundDuration(
+      finalSceneDurationsSec.reduce((sum, duration) => sum + duration, 0),
     );
 
-    await runFfmpeg([
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      fileListPath,
-      "-c",
-      "copy",
-      "-movflags",
-      "+faststart",
+    await stitchSceneClips(
+      finalSceneClipPaths,
+      finalSceneDurationsSec,
       outputPath,
-    ]);
+    );
+    const finalContinuityCheck = await verifyRenderedContinuity(
+      outputPath,
+      expectedFinalDurationSec,
+      "Final video",
+    );
+    const maxSceneAudioVideoDriftSec = Math.max(
+      0,
+      ...sceneContinuityChecks.map((check) => check.audioVideoDriftSec),
+    );
 
     const videoBuffer = await fs.readFile(outputPath);
 
@@ -831,6 +1035,21 @@ export async function POST(req: NextRequest) {
           visualFillerStrategyCount,
         ),
         "X-Freeze-Frame-Fallback": "disabled",
+        "X-Stitch-Continuity": "verified",
+        "X-Export-Preflight": exportFlowValidation?.status || "not-provided",
+        "X-Export-Auto-Fixes": String(
+          exportFlowValidation?.autoFixedScenes || 0,
+        ),
+        "X-Clip-Trim": "frame-aligned",
+        "X-Transition-Mode": "normalized-cut",
+        "X-Scene-Gap-Removal": "enabled",
+        "X-Black-Frame-Guard": "timestamp-normalized",
+        "X-Expected-Duration": String(expectedFinalDurationSec),
+        "X-Final-Duration": String(finalContinuityCheck.actualDurationSec),
+        "X-Final-AV-Drift": String(
+          finalContinuityCheck.audioVideoDriftSec,
+        ),
+        "X-Max-Scene-AV-Drift": String(maxSceneAudioVideoDriftSec),
         "X-Timeline-Visual-Actions": JSON.stringify(timelineVisualActionCount),
       },
     });
