@@ -266,28 +266,49 @@ select {
   color: rgba(224, 242, 254, 0.90) !important;
   border-color: rgba(56, 189, 248, 0.22) !important;
 }
-/* CreatorLab premium production interface skin
+
+/* CreatorLab product workspace foundation
    Scope: CreatorLab only. Storyverse and Dashboard remain untouched. */
 .creatorlab-premium-surface {
-  --cl-page: #070711;
-  --cl-page-2: #120914;
-  --cl-surface: rgba(12, 14, 27, 0.88);
-  --cl-surface-soft: rgba(22, 17, 34, 0.76);
-  --cl-surface-strong: rgba(31, 19, 42, 0.92);
-  --cl-border: rgba(251, 146, 60, 0.16);
-  --cl-border-strong: rgba(251, 113, 133, 0.26);
-  --cl-text: #fff7ed;
-  --cl-muted: rgba(255, 237, 213, 0.72);
-  --cl-soft: rgba(255, 237, 213, 0.54);
-  --cl-rose: #fb7185;
-  --cl-orange: #fb923c;
-  --cl-amber: #f59e0b;
-  --cl-violet: #8b5cf6;
-  --cl-shadow: 0 30px 96px rgba(0, 0, 0, 0.42);
+  --cl-page: #faf9f6;
+  --cl-page-top: #fffdf9;
+  --cl-surface: #fffefa;
+  --cl-surface-raised: #ffffff;
+  --cl-surface-muted: #f6f5f1;
+  --cl-surface-subtle: #f9f8f5;
+  --cl-border: #e5e2dc;
+  --cl-border-strong: #d8d5cf;
+  --cl-divider: #ece9e3;
+  --cl-text: #13243e;
+  --cl-text-strong: #0e203a;
+  --cl-muted: #5e6978;
+  --cl-soft: #7b8492;
+  --cl-disabled: #a3a9b2;
+  --cl-accent: #1769e0;
+  --cl-accent-hover: #125bc5;
+  --cl-accent-soft: #edf4ff;
+  --cl-accent-border: #bcd4fb;
+  --cl-success: #18865b;
+  --cl-success-soft: #eff8f3;
+  --cl-warning: #a76416;
+  --cl-warning-soft: #fff8eb;
+  --cl-danger: #b83a45;
+  --cl-danger-soft: #fff3f4;
+  --cl-shadow-card: 0 8px 24px rgba(20, 34, 55, 0.045), 0 1px 2px rgba(20, 34, 55, 0.035);
+  --cl-shadow-floating: 0 14px 38px rgba(20, 34, 55, 0.08), 0 2px 6px rgba(20, 34, 55, 0.04);
+  --cl-font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cl-font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+
+  min-height: 100vh;
+  background: var(--cl-page);
   color: var(--cl-text);
+  font-family: var(--cl-font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .creatorlab-premium-surface main {
+  background: transparent !important;
   color: var(--cl-text) !important;
 }
 
@@ -297,72 +318,72 @@ select {
 
 .creatorlab-premium-surface h1,
 .creatorlab-premium-surface h2,
-.creatorlab-premium-surface h3,
+.creatorlab-premium-surface h3 {
+  color: var(--cl-text-strong) !important;
+  font-family: var(--cl-font-display);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
 .creatorlab-premium-surface h4,
+.creatorlab-premium-surface h5,
+.creatorlab-premium-surface h6,
 .creatorlab-premium-surface strong,
 .creatorlab-premium-surface label {
-  color: var(--cl-text) !important;
+  color: var(--cl-text-strong) !important;
 }
 
 .creatorlab-premium-surface p,
 .creatorlab-premium-surface li {
-  color: var(--cl-muted) !important;
+  color: var(--cl-muted);
 }
 
-.creatorlab-premium-surface div,
-.creatorlab-premium-surface section,
-.creatorlab-premium-surface article,
-.creatorlab-premium-surface aside {
-  border-color: var(--cl-border);
-}
-
-.creatorlab-premium-surface [class*="text-slate-900"],
 .creatorlab-premium-surface [class*="text-slate-950"],
+.creatorlab-premium-surface [class*="text-slate-900"],
 .creatorlab-premium-surface [class*="text-slate-800"],
 .creatorlab-premium-surface [class*="text-black"] {
-  color: var(--cl-text) !important;
+  color: var(--cl-text-strong) !important;
 }
 
 .creatorlab-premium-surface [class*="text-slate-700"],
-.creatorlab-premium-surface [class*="text-slate-600"],
-.creatorlab-premium-surface [class*="text-slate-500"],
-.creatorlab-premium-surface [class*="text-sky-"],
-.creatorlab-premium-surface [class*="text-cyan-"],
-.creatorlab-premium-surface [class*="text-emerald-"],
-.creatorlab-premium-surface [class*="text-teal-"],
-.creatorlab-premium-surface [class*="text-indigo-"],
-.creatorlab-premium-surface [class*="text-purple-"],
-.creatorlab-premium-surface [class*="text-violet-"],
-.creatorlab-premium-surface [class*="text-rose-"],
-.creatorlab-premium-surface [class*="text-red-"],
-.creatorlab-premium-surface [class*="text-orange-"],
-.creatorlab-premium-surface [class*="text-yellow-"],
-.creatorlab-premium-surface [class*="text-amber-"] {
+.creatorlab-premium-surface [class*="text-slate-600"] {
   color: var(--cl-muted) !important;
 }
 
-.creatorlab-premium-surface [class*="bg-white"],
-.creatorlab-premium-surface [class*="bg-slate-50"],
-.creatorlab-premium-surface [class*="bg-slate-100"],
-.creatorlab-premium-surface [class*="bg-gray-"],
-.creatorlab-premium-surface [class*="bg-zinc-"],
-.creatorlab-premium-surface [class*="bg-neutral-"],
-.creatorlab-premium-surface [class*="bg-sky-50"],
-.creatorlab-premium-surface [class*="bg-cyan-50"],
-.creatorlab-premium-surface [class*="bg-emerald-50"],
-.creatorlab-premium-surface [class*="bg-teal-50"],
-.creatorlab-premium-surface [class*="bg-indigo-50"],
-.creatorlab-premium-surface [class*="bg-purple-50"],
-.creatorlab-premium-surface [class*="bg-violet-50"],
-.creatorlab-premium-surface [class*="bg-rose-50"],
-.creatorlab-premium-surface [class*="bg-red-50"],
-.creatorlab-premium-surface [class*="bg-orange-50"],
-.creatorlab-premium-surface [class*="bg-yellow-50"],
-.creatorlab-premium-surface [class*="bg-amber-50"] {
-  background: linear-gradient(180deg, rgba(20, 18, 32, 0.90), rgba(14, 15, 27, 0.86)) !important;
-  border-color: var(--cl-border) !important;
-  color: var(--cl-text) !important;
-  backdrop-filter: blur(18px);
+.creatorlab-premium-surface [class*="text-slate-500"],
+.creatorlab-premium-surface [class*="text-slate-400"],
+.creatorlab-premium-surface [class*="text-slate-300"] {
+  color: var(--cl-soft) !important;
+}
+
+.creatorlab-premium-surface [class*="text-white"] {
+  color: var(--cl-text-strong) !important;
+}
+
+.creatorlab-premium-surface [class*="text-blue-"],
+.creatorlab-premium-surface [class*="text-sky-"],
+.creatorlab-premium-surface [class*="text-cyan-"],
+.creatorlab-premium-surface [class*="text-indigo-"],
+.creatorlab-premium-surface [class*="text-purple-"],
+.creatorlab-premium-surface [class*="text-violet-"] {
+  color: var(--cl-accent) !important;
+}
+
+.creatorlab-premium-surface [class*="text-emerald-"],
+.creatorlab-premium-surface [class*="text-green-"],
+.creatorlab-premium-surface [class*="text-teal-"] {
+  color: var(--cl-success) !important;
+}
+
+.creatorlab-premium-surface [class*="text-amber-"],
+.creatorlab-premium-surface [class*="text-yellow-"],
+.creatorlab-premium-surface [class*="text-orange-"] {
+  color: var(--cl-warning) !important;
+}
+
+.creatorlab-premium-surface [class*="text-red-"],
+.creatorlab-premium-surface [class*="text-rose-"] {
+  color: var(--cl-danger) !important;
 }
 
 .creatorlab-premium-surface section,
@@ -382,85 +403,966 @@ select {
 .creatorlab-premium-surface article,
 .creatorlab-premium-surface aside > div,
 .creatorlab-premium-surface [class*="shadow-"] {
-  box-shadow: var(--cl-shadow) !important;
+  box-shadow: var(--cl-shadow-card) !important;
+}
+
+.creatorlab-premium-surface [class*="backdrop-blur"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.creatorlab-premium-surface [class*="bg-white"],
+.creatorlab-premium-surface [class*="bg-slate-50"],
+.creatorlab-premium-surface [class*="bg-slate-100"],
+.creatorlab-premium-surface [class*="bg-slate-900"],
+.creatorlab-premium-surface [class*="bg-slate-950"],
+.creatorlab-premium-surface [class*="bg-gray-"],
+.creatorlab-premium-surface [class*="bg-zinc-"],
+.creatorlab-premium-surface [class*="bg-neutral-"] {
+  background: var(--cl-surface-raised) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text) !important;
+}
+
+.creatorlab-premium-surface [class*="bg-blue-50"],
+.creatorlab-premium-surface [class*="bg-sky-50"],
+.creatorlab-premium-surface [class*="bg-cyan-50"],
+.creatorlab-premium-surface [class*="bg-indigo-50"],
+.creatorlab-premium-surface [class*="bg-purple-50"],
+.creatorlab-premium-surface [class*="bg-violet-50"],
+.creatorlab-premium-surface [class*="bg-orange-50"] {
+  background: var(--cl-surface-raised) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text) !important;
+}
+
+.creatorlab-premium-surface [class*="bg-emerald-50"],
+.creatorlab-premium-surface [class*="bg-green-50"],
+.creatorlab-premium-surface [class*="bg-teal-50"] {
+  background: var(--cl-success-soft) !important;
+  border-color: #cce8da !important;
+}
+
+.creatorlab-premium-surface [class*="bg-amber-50"],
+.creatorlab-premium-surface [class*="bg-yellow-50"] {
+  background: var(--cl-warning-soft) !important;
+  border-color: #efdfbd !important;
+}
+
+.creatorlab-premium-surface [class*="bg-red-50"],
+.creatorlab-premium-surface [class*="bg-rose-50"] {
+  background: var(--cl-danger-soft) !important;
+  border-color: #efd1d5 !important;
+}
+
+.creatorlab-premium-surface [class*="border-orange"],
+.creatorlab-premium-surface [class*="border-purple"],
+.creatorlab-premium-surface [class*="border-violet"],
+.creatorlab-premium-surface [class*="border-sky"],
+.creatorlab-premium-surface [class*="border-cyan"],
+.creatorlab-premium-surface [class*="border-indigo"],
+.creatorlab-premium-surface [class*="border-blue"] {
+  border-color: var(--cl-border) !important;
 }
 
 .creatorlab-premium-surface [class*="uppercase"][class*="tracking-"] {
-  color: rgba(251, 146, 60, 0.74) !important;
-  letter-spacing: 0.16em;
+  color: var(--cl-soft) !important;
+  font-family: var(--cl-font-ui);
+  letter-spacing: 0.12em;
 }
 
 .creatorlab-premium-surface input,
 .creatorlab-premium-surface textarea,
 .creatorlab-premium-surface select {
-  background: rgba(6, 8, 17, 0.88) !important;
-  border: 1px solid rgba(251, 146, 60, 0.20) !important;
-  color: var(--cl-text) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  color: var(--cl-text-strong) !important;
+  box-shadow: inset 0 1px 0 rgba(19, 36, 62, 0.02);
   outline: none;
 }
 
 .creatorlab-premium-surface input::placeholder,
 .creatorlab-premium-surface textarea::placeholder {
-  color: rgba(255, 237, 213, 0.42) !important;
+  color: #9199a5 !important;
+  opacity: 1;
+}
+
+.creatorlab-premium-surface input:hover,
+.creatorlab-premium-surface textarea:hover,
+.creatorlab-premium-surface select:hover {
+  border-color: #c7c9cd !important;
 }
 
 .creatorlab-premium-surface input:focus,
 .creatorlab-premium-surface textarea:focus,
 .creatorlab-premium-surface select:focus {
-  border-color: rgba(251, 113, 133, 0.58) !important;
-  box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.11);
+  border-color: var(--cl-accent) !important;
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.12) !important;
+}
+
+.creatorlab-premium-surface input:disabled,
+.creatorlab-premium-surface textarea:disabled,
+.creatorlab-premium-surface select:disabled {
+  background: #f3f2ef !important;
+  color: var(--cl-disabled) !important;
 }
 
 .creatorlab-premium-surface option {
-  background: #11101b;
-  color: #fff7ed;
+  background: #ffffff;
+  color: var(--cl-text-strong);
 }
 
-.creatorlab-premium-surface button:not(:disabled),
+.creatorlab-premium-surface button,
 .creatorlab-premium-surface a {
-  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, opacity 160ms ease !important;
 }
 
 .creatorlab-premium-surface button:not(:disabled):hover,
 .creatorlab-premium-surface a:hover {
-  transform: translateY(-1px);
+  transform: none !important;
 }
 
+.creatorlab-premium-surface button[class*="bg-blue"],
+.creatorlab-premium-surface button[class*="bg-sky"],
+.creatorlab-premium-surface button[class*="bg-cyan"],
+.creatorlab-premium-surface button[class*="bg-indigo"],
 .creatorlab-premium-surface button[class*="bg-purple"],
 .creatorlab-premium-surface button[class*="bg-violet"],
-.creatorlab-premium-surface button[class*="bg-indigo"],
-.creatorlab-premium-surface button[class*="bg-red"],
-.creatorlab-premium-surface button[class*="bg-rose"],
 .creatorlab-premium-surface button[class*="bg-orange"],
 .creatorlab-premium-surface button[class*="bg-amber"],
-.creatorlab-premium-surface button[class*="bg-white"],
-.creatorlab-premium-surface button[class*="bg-cyan"],
-.creatorlab-premium-surface button[class*="bg-emerald"] {
-  background: linear-gradient(135deg, #f97316 0%, #e11d48 46%, #7c3aed 100%) !important;
-  border-color: rgba(251, 146, 60, 0.34) !important;
-  color: #fff7ed !important;
-  font-weight: 800;
-  box-shadow: 0 20px 50px rgba(225, 29, 72, 0.22) !important;
+.creatorlab-premium-surface button[class*="bg-emerald"],
+.creatorlab-premium-surface a[class*="bg-blue"],
+.creatorlab-premium-surface a[class*="bg-sky"],
+.creatorlab-premium-surface a[class*="bg-cyan"],
+.creatorlab-premium-surface a[class*="bg-indigo"],
+.creatorlab-premium-surface a[class*="bg-purple"],
+.creatorlab-premium-surface a[class*="bg-violet"] {
+  background: var(--cl-accent) !important;
+  border-color: var(--cl-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 7px 18px rgba(23, 105, 224, 0.17) !important;
 }
 
-.creatorlab-premium-surface button[class*="border"]:not([class*="bg-purple"]):not([class*="bg-violet"]):not([class*="bg-indigo"]):not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-orange"]):not([class*="bg-amber"]):not([class*="bg-white"]):not([class*="bg-cyan"]):not([class*="bg-emerald"]) {
-  background: rgba(18, 16, 29, 0.76) !important;
-  border-color: var(--cl-border) !important;
-  color: var(--cl-muted) !important;
+.creatorlab-premium-surface button[class*="bg-blue"] *,
+.creatorlab-premium-surface button[class*="bg-sky"] *,
+.creatorlab-premium-surface button[class*="bg-cyan"] *,
+.creatorlab-premium-surface button[class*="bg-indigo"] *,
+.creatorlab-premium-surface button[class*="bg-purple"] *,
+.creatorlab-premium-surface button[class*="bg-violet"] *,
+.creatorlab-premium-surface button[class*="bg-orange"] *,
+.creatorlab-premium-surface button[class*="bg-amber"] *,
+.creatorlab-premium-surface button[class*="bg-emerald"] * {
+  color: #ffffff !important;
+}
+
+.creatorlab-premium-surface button[class*="bg-blue"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-sky"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-cyan"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-indigo"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-purple"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-violet"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-orange"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-amber"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="bg-emerald"]:not(:disabled):hover {
+  background: var(--cl-accent-hover) !important;
+  border-color: var(--cl-accent-hover) !important;
+  box-shadow: 0 9px 22px rgba(23, 105, 224, 0.2) !important;
+}
+
+.creatorlab-premium-surface button[class*="bg-red"],
+.creatorlab-premium-surface button[class*="bg-rose"] {
+  background: var(--cl-danger-soft) !important;
+  border-color: #e7bdc2 !important;
+  color: var(--cl-danger) !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface button[class*="bg-white"],
+.creatorlab-premium-surface button[class*="border"]:not([class*="bg-blue"]):not([class*="bg-sky"]):not([class*="bg-cyan"]):not([class*="bg-indigo"]):not([class*="bg-purple"]):not([class*="bg-violet"]):not([class*="bg-orange"]):not([class*="bg-amber"]):not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-rose"]) {
+  background: #ffffff !important;
+  border-color: var(--cl-border-strong) !important;
+  color: var(--cl-text-strong) !important;
+  box-shadow: 0 1px 2px rgba(19, 36, 62, 0.035) !important;
+}
+
+.creatorlab-premium-surface button[class*="bg-white"]:not(:disabled):hover,
+.creatorlab-premium-surface button[class*="border"]:not([class*="bg-blue"]):not([class*="bg-sky"]):not([class*="bg-cyan"]):not([class*="bg-indigo"]):not([class*="bg-purple"]):not([class*="bg-violet"]):not([class*="bg-orange"]):not([class*="bg-amber"]):not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-rose"]):not(:disabled):hover {
+  background: #f8f7f4 !important;
+  border-color: #c9c7c2 !important;
+}
+
+.creatorlab-premium-surface button:disabled,
+.creatorlab-premium-surface a[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.52 !important;
+  box-shadow: none !important;
 }
 
 .creatorlab-premium-surface [data-bulk-generator-panel="true"],
 .creatorlab-premium-surface [data-bulk-selection-toolbar="true"] {
-  background: linear-gradient(180deg, rgba(35, 23, 52, 0.82), rgba(18, 18, 32, 0.86)) !important;
-  border-color: rgba(168, 85, 247, 0.22) !important;
+  background: var(--cl-surface-raised) !important;
+  border-color: var(--cl-border) !important;
+  box-shadow: var(--cl-shadow-card) !important;
 }
 
-.creatorlab-premium-surface img {
-  border-color: rgba(251, 146, 60, 0.18) !important;
+.creatorlab-premium-surface img,
+.creatorlab-premium-surface video {
+  border-color: var(--cl-border) !important;
+}
+
+.creatorlab-premium-surface hr {
+  border-color: var(--cl-divider);
 }
 
 .creatorlab-premium-surface ::selection {
-  background: rgba(251, 113, 133, 0.32);
-  color: #fff7ed;
+  background: rgba(23, 105, 224, 0.18);
+  color: var(--cl-text-strong);
+}
+
+.creatorlab-premium-surface :focus-visible {
+  outline: 2px solid var(--cl-accent);
+  outline-offset: 2px;
+}
+
+.creatorlab-premium-surface .cl-surface,
+.creatorlab-premium-surface .cl-card {
+  background: var(--cl-surface-raised);
+  border: 1px solid var(--cl-border);
+  box-shadow: var(--cl-shadow-card);
+}
+
+.creatorlab-premium-surface .cl-surface-muted {
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-premium-surface .cl-kicker {
+  color: var(--cl-soft);
+  font-family: var(--cl-font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.creatorlab-premium-surface .cl-display-title {
+  color: var(--cl-text-strong);
+  font-family: var(--cl-font-display);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.creatorlab-premium-surface .cl-primary-button {
+  background: var(--cl-accent) !important;
+  border: 1px solid var(--cl-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 7px 18px rgba(23, 105, 224, 0.17) !important;
+}
+
+.creatorlab-premium-surface .cl-secondary-button {
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  color: var(--cl-text-strong) !important;
+  box-shadow: 0 1px 2px rgba(19, 36, 62, 0.035) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-premium-surface *,
+  .creatorlab-premium-surface *::before,
+  .creatorlab-premium-surface *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* CreatorLab UX-R2 — product workspace shell
+   The shell establishes the persistent workflow, project readiness and contextual AI areas.
+   Existing product functions remain in the center canvas and are migrated step by step. */
+.creatorlab-product-frame {
+  display: grid;
+  grid-template-columns: minmax(224px, 252px) minmax(0, 1fr) minmax(276px, 312px);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: start;
+  width: min(100%, 1680px);
+  min-height: 100vh;
+  margin: 0 auto;
+  background: #fffdf9;
+  border-inline: 1px solid var(--cl-border);
+}
+
+.creatorlab-product-frame > * {
+  min-width: 0;
+  margin-block: 0 !important;
+}
+
+.creatorlab-main-column {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  align-content: start;
+  gap: 22px;
+  min-width: 0;
+  padding: 28px;
+}
+
+.creatorlab-workspace-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(360px, auto) minmax(190px, 1fr);
+  align-items: center;
+  min-height: 82px;
+  padding: 12px 22px;
+  background: rgba(255, 253, 249, 0.97);
+  border-bottom: 1px solid var(--cl-border);
+  box-shadow: 0 1px 0 rgba(19, 36, 62, 0.025) !important;
+}
+
+.creatorlab-brand-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.creatorlab-brand-mark {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  color: var(--cl-accent);
+  background: #fffefa;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 50%;
+  box-shadow: 0 5px 16px rgba(19, 36, 62, 0.06);
+  font-family: var(--cl-font-display);
+  font-size: 1.1rem;
+  letter-spacing: -0.04em;
+}
+
+.creatorlab-brand-name {
+  color: var(--cl-text-strong);
+  font-family: var(--cl-font-display);
+  font-size: clamp(1.7rem, 2.1vw, 2.25rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.creatorlab-project-name {
+  max-width: 34rem;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--cl-soft) !important;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-readiness-block {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 190px) auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.creatorlab-readiness-copy {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.creatorlab-readiness-copy span {
+  color: var(--cl-soft);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.creatorlab-readiness-copy strong {
+  color: var(--cl-text-strong) !important;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.creatorlab-readiness-track {
+  height: 5px;
+  overflow: hidden;
+  background: #eceae5;
+  border-radius: 999px;
+}
+
+.creatorlab-readiness-track span {
+  display: block;
+  height: 100%;
+  background: var(--cl-accent);
+  border-radius: inherit;
+  transition: width 260ms ease;
+}
+
+.creatorlab-readiness-value {
+  color: var(--cl-accent);
+  font-size: 0.74rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.creatorlab-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 27px;
+  padding: 5px 10px;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  color: var(--cl-muted);
+  background: #f7f6f2;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.creatorlab-status-pill.is-ready {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border-color: #c8e5d7;
+}
+
+.creatorlab-status-pill.is-exported {
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.creatorlab-language-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+  padding: 3px;
+  background: #f3f2ee;
+  border: 1px solid var(--cl-border);
+  border-radius: 10px;
+}
+
+.creatorlab-language-toggle button {
+  min-width: 34px;
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--cl-soft) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 7px;
+  box-shadow: none !important;
+  font-size: 0.67rem;
+  font-weight: 750;
+}
+
+.creatorlab-language-toggle button[aria-pressed="true"] {
+  color: var(--cl-text-strong) !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(19, 36, 62, 0.08) !important;
+}
+
+.creatorlab-pulse-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--cl-muted);
+  background: #fffefa;
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+}
+
+.creatorlab-workflow-rail,
+.creatorlab-ai-workspace {
+  position: sticky;
+  top: 82px;
+  z-index: 20;
+  align-self: start;
+  height: calc(100vh - 82px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #fffdf9;
+  box-shadow: none !important;
+  scrollbar-width: thin;
+  scrollbar-color: #d9d6cf transparent;
+}
+
+.creatorlab-workflow-rail {
+  grid-column: 1;
+  grid-row: 2;
+  padding: 30px 18px 24px 22px;
+  border-right: 1px solid var(--cl-border);
+}
+
+.creatorlab-ai-workspace {
+  grid-column: 3;
+  grid-row: 2;
+  padding: 30px 22px 24px 18px;
+  border-left: 1px solid var(--cl-border);
+}
+
+.creatorlab-rail-kicker {
+  margin: 0 0 22px;
+  color: var(--cl-soft) !important;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.creatorlab-step-list {
+  position: relative;
+  display: grid;
+  gap: 14px;
+}
+
+.creatorlab-workflow-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 12px;
+  min-height: 84px;
+  padding: 11px 10px 11px 4px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+}
+
+.creatorlab-workflow-step:not(:last-child)::after {
+  position: absolute;
+  top: 63px;
+  left: 24px;
+  width: 1px;
+  height: 35px;
+  background: #d9d6d0;
+  content: "";
+}
+
+.creatorlab-workflow-step.is-active {
+  background: #f6f9ff;
+  border-color: var(--cl-accent-border);
+  box-shadow: inset 3px 0 0 var(--cl-accent);
+}
+
+.creatorlab-workflow-step.is-complete:not(.is-active) .creatorlab-step-number {
+  color: var(--cl-accent);
+  border-color: var(--cl-accent);
+}
+
+.creatorlab-workflow-step.is-complete:not(:last-child)::after {
+  background: var(--cl-accent);
+}
+
+.creatorlab-step-number {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--cl-muted);
+  background: #fffefa;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 50%;
+  font-family: var(--cl-font-display);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.creatorlab-workflow-step.is-active .creatorlab-step-number {
+  color: var(--cl-accent);
+  background: #ffffff;
+  border-color: var(--cl-accent);
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.08);
+}
+
+.creatorlab-step-check {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  color: #ffffff;
+  background: var(--cl-accent);
+  border: 2px solid #fffdf9;
+  border-radius: 50%;
+  font-family: var(--cl-font-ui);
+  font-size: 0.55rem;
+  font-weight: 800;
+}
+
+.creatorlab-step-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.creatorlab-step-copy strong {
+  color: var(--cl-text-strong) !important;
+  font-family: var(--cl-font-display);
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.creatorlab-workflow-step.is-active .creatorlab-step-copy strong {
+  color: var(--cl-accent) !important;
+}
+
+.creatorlab-step-copy span {
+  color: var(--cl-soft);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.creatorlab-complete-badge {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border: 1px solid #9fd5bd;
+  border-radius: 50%;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.creatorlab-rail-promise {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  padding: 13px 14px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 12px;
+}
+
+.creatorlab-rail-promise span {
+  font-size: 1rem;
+}
+
+.creatorlab-rail-promise p {
+  margin: 0;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.creatorlab-ai-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+}
+
+.creatorlab-ai-spark {
+  color: var(--cl-accent);
+  font-size: 1.1rem;
+}
+
+.creatorlab-ai-heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.creatorlab-ai-heading p {
+  margin: 0;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.creatorlab-ai-heading span {
+  color: var(--cl-soft);
+  font-size: 0.72rem;
+}
+
+.creatorlab-ai-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.creatorlab-ai-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 15px;
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+  border-radius: 13px;
+  box-shadow: 0 5px 15px rgba(19, 36, 62, 0.04) !important;
+}
+
+.creatorlab-ai-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-radius: 11px;
+}
+
+.creatorlab-ai-icon.is-violet {
+  color: #7547bf;
+  background: #f2edfb;
+}
+
+.creatorlab-ai-icon.is-green {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+}
+
+.creatorlab-ai-icon.is-amber {
+  color: var(--cl-warning);
+  background: var(--cl-warning-soft);
+}
+
+.creatorlab-ai-card-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.creatorlab-ai-card-copy strong {
+  color: var(--cl-text-strong) !important;
+  font-family: var(--cl-font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.creatorlab-ai-card-copy p {
+  margin: 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.creatorlab-ai-card-copy span {
+  width: fit-content;
+  margin-top: 2px;
+  color: var(--cl-accent);
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.creatorlab-stage-guidance {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  margin-top: 18px;
+  padding: 15px;
+  background: #fffefa;
+  border: 1px solid var(--cl-border);
+  border-radius: 13px;
+}
+
+.creatorlab-stage-guidance-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--cl-muted);
+  background: var(--cl-surface-muted);
+  border-radius: 9px;
+}
+
+.creatorlab-stage-guidance strong {
+  display: block;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.creatorlab-stage-guidance p {
+  margin: 5px 0 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+/* The current center experience stays fully functional while later sprints move
+   its capability groups into the four workflow stages. */
+.creatorlab-main-column > * {
+  min-width: 0;
+  margin-block: 0 !important;
+}
+
+@media (max-width: 1379px) {
+  .creatorlab-product-frame {
+    grid-template-columns: 224px minmax(0, 1fr) 282px;
+  }
+
+  .creatorlab-main-column {
+    padding-inline: 20px;
+  }
+
+  .creatorlab-workspace-topbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(330px, auto) minmax(150px, 1fr);
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .creatorlab-product-frame {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .creatorlab-workspace-topbar {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, auto) auto;
+  }
+
+  .creatorlab-workflow-rail {
+    grid-column: 1;
+  }
+
+  .creatorlab-ai-workspace {
+    display: none;
+  }
+
+  .creatorlab-main-column {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 899px) {
+  .creatorlab-product-frame {
+    display: block;
+    border-inline: 0;
+  }
+
+  .creatorlab-workspace-topbar {
+    position: sticky;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    min-height: 74px;
+    padding: 10px 14px;
+  }
+
+  .creatorlab-readiness-block {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: auto minmax(80px, 1fr) auto;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid var(--cl-divider);
+  }
+
+  .creatorlab-readiness-copy strong,
+  .creatorlab-status-pill {
+    display: none;
+  }
+
+  .creatorlab-topbar-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .creatorlab-pulse-icon {
+    display: none;
+  }
+
+  .creatorlab-workflow-rail {
+    position: static;
+    height: auto;
+    padding: 14px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--cl-border);
+  }
+
+  .creatorlab-rail-kicker,
+  .creatorlab-rail-promise,
+  .creatorlab-complete-badge {
+    display: none;
+  }
+
+  .creatorlab-step-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(118px, 1fr));
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .creatorlab-workflow-step {
+    grid-template-columns: 32px minmax(0, 1fr);
+    min-height: 64px;
+    padding: 9px;
+  }
+
+  .creatorlab-workflow-step::after {
+    display: none;
+  }
+
+  .creatorlab-step-number {
+    width: 32px;
+    height: 32px;
+    font-size: 0.95rem;
+  }
+
+  .creatorlab-step-copy strong {
+    font-size: 0.84rem;
+  }
+
+  .creatorlab-step-copy span {
+    font-size: 0.64rem;
+  }
+
+  .creatorlab-main-column {
+    display: grid;
+    gap: 18px;
+    padding: 16px 14px 20px;
+  }
+}
+
+@media (max-width: 599px) {
+  .creatorlab-brand-mark {
+    width: 38px;
+    height: 38px;
+    font-size: 0.95rem;
+  }
+
+  .creatorlab-brand-name {
+    font-size: 1.5rem;
+  }
+
+  .creatorlab-project-name {
+    max-width: 13rem;
+  }
+
+  .creatorlab-language-toggle button {
+    min-width: 30px;
+    padding-inline: 5px;
+  }
+
+  .creatorlab-readiness-copy span {
+    font-size: 0.58rem;
+  }
 }

@@ -49,11 +49,19 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function optionalString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value : null;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getApiKey() {
+  return (
+    process.env.RUNWAY_API_KEY?.trim() ||
+    process.env.RUNWAYML_API_SECRET?.trim() ||
+    ""
+  );
 }
 
 function getClient() {
-  const apiKey = process.env.RUNWAY_API_KEY;
+  const apiKey = getApiKey();
 
   if (!apiKey) {
     throw new Error("Primary video service is not configured.");
@@ -151,7 +159,7 @@ export class RunwayVideoProvider implements VideoProvider {
   };
 
   isAvailable() {
-    return Boolean(process.env.RUNWAY_API_KEY);
+    return Boolean(getApiKey());
   }
 
   normalizeDuration(requestedDuration: unknown, qualityMode: unknown) {
@@ -173,7 +181,6 @@ export class RunwayVideoProvider implements VideoProvider {
 
   async retrieveTask(nativeTaskId: string) {
     const task = await getClient().tasks.retrieve(nativeTaskId);
-
     return normalizeTask(task);
   }
 

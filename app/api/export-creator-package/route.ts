@@ -1,10 +1,28 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
+
+const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const ASSET_TIMEOUT_MS = 45_000;
 
 type ZipEntry = {
   name: string;
   data: Buffer;
+};
+
+type PackageAssetResult = {
+  buffer: Buffer;
+  contentType: string;
+  finalUrl: string;
+};
+
+type CaptionCue = {
+  index: number;
+  startSec: number;
+  endSec: number;
+  text: string;
 };
 
 function safeString(value: unknown, fallback = "") {
@@ -12,9 +30,7 @@ function safeString(value: unknown, fallback = "") {
 }
 
 function safeArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  if (!Array.isArray(value)) return [];
 
   return value
     .filter((item) => typeof item === "string")
@@ -22,159 +38,10 @@ function safeArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function safeObject(value: unknown) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, any>;
-  }
-
-  return {} as Record<string, any>;
-}
-
-function createTimelineWarningsText(timelineSyncPlan: Record<string, any>) {
-  const warnings = Array.isArray(timelineSyncPlan?.warnings)
-    ? timelineSyncPlan.warnings.filter(
-        (item: unknown) => typeof item === "string",
-      )
-    : [];
-  const sceneWarnings = Array.isArray(timelineSyncPlan?.scenes)
-    ? timelineSyncPlan.scenes
-        .filter((scene: any) => scene?.speechFit && scene.speechFit !== "safe")
-        .map(
-          (scene: any) =>
-            `Scene ${scene?.id ?? "?"}: speechFit=${scene.speechFit}, audioMismatch=${scene?.audioMismatch ?? "?"}, visualAction=${scene?.visualAction ?? "?"}, estimatedSpeech=${scene?.estimatedSpeechSeconds ?? "?"}s, recommendation=${scene?.productionRecommendation ?? "review"}`,
-        )
-    : [];
-
-  const lines = [
-    "VELTO Timeline Sync Notes",
-    "",
-    `Timeline mode: ${timelineSyncPlan?.timelineMode || "not provided"}`,
-    `Quality tier: ${timelineSyncPlan?.qualityTier || "not provided"}`,
-    `Estimated speech: ${timelineSyncPlan?.estimatedSpeechSeconds ?? "?"}s`,
-    `Recommended clip seconds: ${timelineSyncPlan?.recommendedClipSeconds ?? "?"}`,
-    "",
-    "Warnings:",
-    ...(warnings.length
-      ? warnings.map((warning: string) => `- ${warning}`)
-      : ["- No global warnings."]),
-    "",
-    "Scene review:",
-    ...(sceneWarnings.length
-      ? sceneWarnings.map((warning: string) => `- ${warning}`)
-      : ["- All scenes are marked safe or no scene-level plan was provided."]),
-  ];
-
-  return lines.join("\n");
-}
-
-function createTimelineScenesCsv(timelineSyncPlan: Record<string, any>) {
-  const scenes = Array.isArray(timelineSyncPlan?.scenes)
-    ? timelineSyncPlan.scenes
-    : [];
-  const rows: unknown[][] = [
-    [
-      "scene_id",
-      "speech_fit",
-      "estimated_speech_seconds",
-      "target_visual_seconds",
-      "recommended_clip_seconds",
-      "freeze_padding_seconds",
-      "audio_mismatch",
-      "visual_action",
-      "production_recommendation",
-      "visual_blocks",
-    ],
-    ...scenes.map((scene: any) => [
-      scene?.id ?? "",
-      scene?.speechFit ?? "",
-      scene?.estimatedSpeechSeconds ?? "",
-      scene?.targetVisualSeconds ?? "",
-      scene?.recommendedClipSeconds ?? "",
-      scene?.freezePaddingSeconds ?? "",
-      scene?.audioMismatch ?? "",
-      scene?.visualAction ?? "",
-      scene?.productionRecommendation ?? "",
-      Array.isArray(scene?.visualBlocks)
-        ? scene.visualBlocks
-            .map(
-              (block: any) =>
-                `${block?.type || "block"}:${block?.startSec ?? "?"}-${block?.endSec ?? "?"}s:${block?.source || "source"}:${block?.motionPreset || "motion"}`,
-            )
-            .join(" | ")
-        : "",
-    ]),
-  ];
-
-  return rows
-    .map((row) =>
-      row.map((cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
-    )
-    .join("\n");
-}
-
-function createVisualBlockPlan(timelineSyncPlan: Record<string, any>) {
-  const scenes = Array.isArray(timelineSyncPlan?.scenes)
-    ? timelineSyncPlan.scenes
-    : [];
-
-  return scenes.map((scene: any) => ({
-    sceneId: scene?.id ?? null,
-    speechFit: scene?.speechFit ?? null,
-    audioMismatch: scene?.audioMismatch ?? null,
-    visualAction: scene?.visualAction ?? null,
-    estimatedSpeechSeconds: scene?.estimatedSpeechSeconds ?? null,
-    targetVisualSeconds: scene?.targetVisualSeconds ?? null,
-    blocks: Array.isArray(scene?.visualBlocks)
-      ? scene.visualBlocks.map((block: any, index: number) => ({
-          index: index + 1,
-          type: block?.type ?? "unknown",
-          startSec: block?.startSec ?? null,
-          endSec: block?.endSec ?? null,
-          durationSec: block?.durationSec ?? null,
-          source: block?.source ?? null,
-          motionPreset: block?.motionPreset ?? null,
-          reason: block?.reason ?? "",
-        }))
-      : [],
-  }));
-}
-
-function createVisualBlocksCsv(timelineSyncPlan: Record<string, any>) {
-  const blockPlan = createVisualBlockPlan(timelineSyncPlan);
-  const rows: unknown[][] = [
-    [
-      "scene_id",
-      "block_index",
-      "block_type",
-      "start_sec",
-      "end_sec",
-      "duration_sec",
-      "source",
-      "motion_preset",
-      "reason",
-    ],
-    ...blockPlan.flatMap((scene: any) =>
-      Array.isArray(scene.blocks) && scene.blocks.length
-        ? scene.blocks.map((block: any) => [
-            scene.sceneId ?? "",
-            block.index ?? "",
-            block.type ?? "",
-            block.startSec ?? "",
-            block.endSec ?? "",
-            block.durationSec ?? "",
-            block.source ?? "",
-            block.motionPreset ?? "",
-            block.reason ?? "",
-          ])
-        : [[scene.sceneId ?? "", "", "", "", "", "", "", "", ""]],
-    ),
-  ];
-
-  return rows
-    .map((row) =>
-      row.map((cell: unknown) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
-    )
-    .join("\n");
+function safeObject(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : {};
 }
 
 function sanitizeFileName(value: string) {
@@ -273,14 +140,13 @@ function createZip(entries: ZipEntry[]) {
     centralHeader.writeUInt32LE(offset, 42);
 
     centralParts.push(centralHeader, nameBuffer);
-
     offset += localHeader.length + nameBuffer.length + data.length;
   }
 
   const centralDirectory = Buffer.concat(centralParts);
   const localData = Buffer.concat(localParts);
-
   const end = Buffer.alloc(22);
+
   end.writeUInt32LE(0x06054b50, 0);
   end.writeUInt16LE(0, 4);
   end.writeUInt16LE(0, 6);
@@ -295,56 +161,275 @@ function createZip(entries: ZipEntry[]) {
 
 function decodeDataImage(value: unknown) {
   const text = safeString(value);
-
-  if (!text.startsWith("data:image/")) {
-    return null;
-  }
-
   const match = text.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
 
-  if (!match) {
-    return null;
-  }
+  if (!match) return null;
 
-  const ext =
-    match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+  const extension = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
   const buffer = Buffer.from(match[2], "base64");
 
-  return { ext, buffer };
+  if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) return null;
+
+  return {
+    buffer,
+    extension,
+    contentType: extension === "jpg" ? "image/jpeg" : `image/${extension}`,
+  };
+}
+
+function isPrivateHostname(hostname: string) {
+  const normalized = hostname.toLowerCase();
+
+  return (
+    normalized === "localhost" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::1" ||
+    normalized.endsWith(".local") ||
+    /^127\./.test(normalized) ||
+    /^10\./.test(normalized) ||
+    /^192\.168\./.test(normalized) ||
+    /^169\.254\./.test(normalized) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(normalized)
+  );
+}
+
+function resolveAssetUrl(value: string, requestUrl: string) {
+  const resolved = new URL(value, requestUrl);
+  const requestOrigin = new URL(requestUrl).origin;
+  const isSameOrigin = resolved.origin === requestOrigin;
+
+  if (resolved.protocol !== "https:" && !(isSameOrigin && resolved.protocol === "http:")) {
+    throw new Error("Only HTTPS package assets are supported.");
+  }
+
+  if (!isSameOrigin && isPrivateHostname(resolved.hostname)) {
+    throw new Error("Private network package assets are not supported.");
+  }
+
+  return resolved;
+}
+
+async function fetchPackageAsset(
+  value: string,
+  requestUrl: string,
+  maxBytes: number,
+): Promise<PackageAssetResult> {
+  const resolved = resolveAssetUrl(value, requestUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ASSET_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(resolved, {
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Asset download failed with HTTP ${response.status}.`);
+    }
+
+    const finalUrl = response.url || resolved.toString();
+    const finalResolved = new URL(finalUrl);
+    const requestOrigin = new URL(requestUrl).origin;
+
+    if (finalResolved.origin !== requestOrigin && isPrivateHostname(finalResolved.hostname)) {
+      throw new Error("Asset redirect to a private network was blocked.");
+    }
+
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+
+    if (declaredLength > maxBytes) {
+      throw new Error("Asset exceeds the Creator Package size limit.");
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    if (!buffer.length) {
+      throw new Error("Downloaded package asset is empty.");
+    }
+
+    if (buffer.length > maxBytes) {
+      throw new Error("Asset exceeds the Creator Package size limit.");
+    }
+
+    return {
+      buffer,
+      contentType: response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream",
+      finalUrl,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function imageExtension(contentType: string, url: string) {
+  if (contentType === "image/png") return "png";
+  if (contentType === "image/webp") return "webp";
+  if (contentType === "image/jpeg" || contentType === "image/jpg") return "jpg";
+  if (/\.png(?:$|\?)/i.test(url)) return "png";
+  if (/\.webp(?:$|\?)/i.test(url)) return "webp";
+  return "jpg";
+}
+
+function videoExtension(contentType: string, url: string) {
+  if (contentType === "video/webm" || /\.webm(?:$|\?)/i.test(url)) return "webm";
+  return "mp4";
+}
+
+function getSceneDuration(
+  scene: Record<string, any>,
+  index: number,
+  productionPackage: Record<string, any>,
+  timelineSyncPlan: Record<string, any>,
+) {
+  const timelineScene = Array.isArray(timelineSyncPlan?.scenes)
+    ? timelineSyncPlan.scenes.find(
+        (item: Record<string, any>) => Number(item?.id) === Number(scene?.id ?? index + 1),
+      )
+    : null;
+  const candidates = [
+    scene?.timing?.plannedSceneDuration,
+    scene?.timing?.targetSceneDuration,
+    scene?.videoDurationSeconds,
+    timelineScene?.targetVisualSeconds,
+    productionPackage?.targetSceneDurationSec,
+  ];
+
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+
+  return 5;
+}
+
+function getSceneCaptionText(scene: Record<string, any>) {
+  return [safeString(scene?.narration), safeString(scene?.dialogue)]
+    .filter(Boolean)
+    .join("\n") || safeString(scene?.text);
+}
+
+function createCaptionCues(
+  scenes: Record<string, any>[],
+  productionPackage: Record<string, any>,
+  timelineSyncPlan: Record<string, any>,
+): CaptionCue[] {
+  const cues: CaptionCue[] = [];
+  let cursor = 0;
+
+  scenes.forEach((scene, index) => {
+    const duration = Math.max(
+      0.5,
+      getSceneDuration(scene, index, productionPackage, timelineSyncPlan),
+    );
+    const text = getSceneCaptionText(scene);
+
+    if (text) {
+      cues.push({
+        index: cues.length + 1,
+        startSec: cursor,
+        endSec: cursor + duration,
+        text,
+      });
+    }
+
+    cursor += duration;
+  });
+
+  return cues;
+}
+
+function formatTimestamp(seconds: number, separator: "," | ".") {
+  const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const secs = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}${separator}${String(milliseconds).padStart(3, "0")}`;
+}
+
+function createSrt(cues: CaptionCue[]) {
+  return cues
+    .map(
+      (cue) =>
+        `${cue.index}\n${formatTimestamp(cue.startSec, ",")} --> ${formatTimestamp(cue.endSec, ",")}\n${cue.text}\n`,
+    )
+    .join("\n");
+}
+
+function createVtt(cues: CaptionCue[]) {
+  return `WEBVTT\n\n${cues
+    .map(
+      (cue) =>
+        `${formatTimestamp(cue.startSec, ".")} --> ${formatTimestamp(cue.endSec, ".")}\n${cue.text}\n`,
+    )
+    .join("\n")}`;
+}
+
+function createProductionSummary(input: {
+  title: string;
+  recommendedTitle: string;
+  description: string;
+  language: string;
+  format: string;
+  qualityMode: string;
+  scenes: Record<string, any>[];
+  cues: CaptionCue[];
+  includedVideoFile: string;
+  includedThumbnailFile: string;
+}) {
+  const totalDuration = input.cues.length
+    ? input.cues[input.cues.length - 1].endSec
+    : 0;
+
+  return [
+    "VELTO Creator Package",
+    "",
+    `Project: ${input.title}`,
+    `Publishing title: ${input.recommendedTitle}`,
+    `Language: ${input.language || "not specified"}`,
+    `Format: ${input.format || "not specified"}`,
+    `Production quality: ${input.qualityMode || "not specified"}`,
+    `Scene count: ${input.scenes.length}`,
+    `Caption timeline duration: ${totalDuration.toFixed(1)} seconds`,
+    `Final video asset: ${input.includedVideoFile || "link fallback only"}`,
+    `Thumbnail asset: ${input.includedThumbnailFile || "not included"}`,
+    "",
+    "Description",
+    input.description || "No description was generated.",
+  ].join("\n");
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-
+    const productionPackage = safeObject(body?.productionPackage);
+    const metadata = safeObject(body?.metadata);
+    const thumbnail = safeObject(body?.thumbnail);
+    const creatorIntelligence = safeObject(body?.creatorIntelligence);
+    const timelineSyncPlan = safeObject(
+      body?.timelineSyncPlan || productionPackage?.timelineSyncPlan,
+    );
+    const scenes = Array.isArray(body?.scenes)
+      ? (body.scenes as Record<string, any>[])
+      : [];
     const title = safeString(
       body?.title,
-      safeString(body?.productionPackage?.title, "VELTO Creator Package"),
+      safeString(productionPackage?.title, "VELTO Creator Package"),
     );
     const safeTitle = sanitizeFileName(title);
     const videoUrl = safeString(body?.videoUrl);
-    const productionPackage = body?.productionPackage || {};
-    const metadata = body?.metadata || {};
-    const creatorIntelligence = safeObject(body?.creatorIntelligence);
-    const thumbnail = body?.thumbnail || {};
-    const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
-    const timelineSyncPlan = safeObject(
-      body?.timelineSyncPlan ||
-        body?.productionPackage?.timelineSyncPlan ||
-        productionPackage?.timelineSyncPlan,
-    );
-    const hasTimelineSyncPlan = Object.keys(timelineSyncPlan).length > 0;
-
+    const thumbnailUrl = safeString(thumbnail?.imageUrl);
     const recommendedTitle = safeString(
       metadata?.recommendedTitle,
       safeString(productionPackage?.youtubeTitle, title),
     );
-
     const description = safeString(
       metadata?.description,
       safeString(productionPackage?.caption),
     );
-
     const hashtags = safeArray(metadata?.hashtags);
     const firstComment = safeString(metadata?.firstComment);
     const titleOptions = safeArray(metadata?.titleOptions);
@@ -356,139 +441,204 @@ export async function POST(req: Request) {
     const publishingNotes = safeArray(metadata?.publishingNotes);
     const shortCaption = safeString(metadata?.shortCaption);
     const linkedInCaption = safeString(metadata?.linkedInCaption);
+    const cues = createCaptionCues(scenes, productionPackage, timelineSyncPlan);
+    const warnings: string[] = [];
+    const entries: ZipEntry[] = [];
+    let includedVideoFile = "";
+    let includedThumbnailFile = "";
 
-    const entries: ZipEntry[] = [
+    if (videoUrl) {
+      try {
+        const videoAsset = await fetchPackageAsset(videoUrl, req.url, MAX_VIDEO_BYTES);
+        const extension = videoExtension(videoAsset.contentType, videoAsset.finalUrl);
+        includedVideoFile = `final-video.${extension}`;
+        entries.push({ name: includedVideoFile, data: videoAsset.buffer });
+      } catch (error) {
+        warnings.push(
+          `The final video could not be embedded: ${error instanceof Error ? error.message : "download failed"}`,
+        );
+        entries.push({
+          name: "final-video-link.txt",
+          data: Buffer.from(videoUrl, "utf8"),
+        });
+      }
+    } else {
+      warnings.push("No final video URL was provided.");
+    }
+
+    const dataThumbnail = decodeDataImage(thumbnailUrl);
+
+    if (dataThumbnail) {
+      includedThumbnailFile = `thumbnail.${dataThumbnail.extension}`;
+      entries.push({ name: includedThumbnailFile, data: dataThumbnail.buffer });
+    } else if (thumbnailUrl) {
+      try {
+        const thumbnailAsset = await fetchPackageAsset(
+          thumbnailUrl,
+          req.url,
+          MAX_IMAGE_BYTES,
+        );
+        const extension = imageExtension(
+          thumbnailAsset.contentType,
+          thumbnailAsset.finalUrl,
+        );
+        includedThumbnailFile = `thumbnail.${extension}`;
+        entries.push({ name: includedThumbnailFile, data: thumbnailAsset.buffer });
+      } catch (error) {
+        warnings.push(
+          `The thumbnail could not be embedded: ${error instanceof Error ? error.message : "download failed"}`,
+        );
+        entries.push({
+          name: "thumbnail-link.txt",
+          data: Buffer.from(thumbnailUrl, "utf8"),
+        });
+      }
+    } else {
+      warnings.push("No thumbnail image was provided.");
+    }
+
+    entries.push(
       {
-        name: "video_link.txt",
-        data: Buffer.from(videoUrl || "No video URL available.", "utf8"),
-      },
-      {
-        name: "title.txt",
+        name: "publishing/title.txt",
         data: Buffer.from(recommendedTitle, "utf8"),
       },
       {
-        name: "title_options.txt",
+        name: "publishing/title-options.txt",
         data: Buffer.from(titleOptions.join("\n") || recommendedTitle, "utf8"),
       },
       {
-        name: "description.txt",
-        data: Buffer.from(description || "No description available.", "utf8"),
+        name: "publishing/description.txt",
+        data: Buffer.from(description, "utf8"),
       },
       {
-        name: "short_caption.txt",
-        data: Buffer.from(shortCaption || description || "", "utf8"),
-      },
-      {
-        name: "linkedin_caption.txt",
-        data: Buffer.from(linkedInCaption || "", "utf8"),
-      },
-      {
-        name: "hook_alternatives.txt",
-        data: Buffer.from(hookAlternatives.join("\n") || "", "utf8"),
-      },
-      {
-        name: "chapters.txt",
-        data: Buffer.from(chapters.join("\n") || "", "utf8"),
-      },
-      {
-        name: "publishing_checklist.txt",
-        data: Buffer.from(uploadChecklist.join("\n") || "", "utf8"),
-      },
-      {
-        name: "publishing_notes.txt",
-        data: Buffer.from(publishingNotes.join("\n") || "", "utf8"),
-      },
-      {
-        name: "hashtags.txt",
+        name: "publishing/hashtags.txt",
         data: Buffer.from(hashtags.join(" "), "utf8"),
       },
       {
-        name: "first_comment.txt",
-        data: Buffer.from(firstComment || "", "utf8"),
+        name: "publishing/first-comment.txt",
+        data: Buffer.from(firstComment, "utf8"),
       },
       {
-        name: "seo_keywords.txt",
+        name: "publishing/short-caption.txt",
+        data: Buffer.from(shortCaption, "utf8"),
+      },
+      {
+        name: "publishing/linkedin-caption.txt",
+        data: Buffer.from(linkedInCaption, "utf8"),
+      },
+      {
+        name: "publishing/chapters.txt",
+        data: Buffer.from(chapters.join("\n"), "utf8"),
+      },
+      {
+        name: "publishing/hook-alternatives.txt",
+        data: Buffer.from(hookAlternatives.join("\n"), "utf8"),
+      },
+      {
+        name: "publishing/seo-keywords.txt",
         data: Buffer.from(seoKeywords.join(", "), "utf8"),
       },
       {
-        name: "thumbnail_text_ideas.txt",
+        name: "publishing/thumbnail-text-ideas.txt",
         data: Buffer.from(thumbnailTextIdeas.join("\n"), "utf8"),
       },
       {
-        name: "thumbnail_prompt.txt",
-        data: Buffer.from(
-          safeString(
-            thumbnail?.prompt,
-            safeString(productionPackage?.thumbnailIdea),
-          ),
-          "utf8",
-        ),
+        name: "publishing/checklist.txt",
+        data: Buffer.from(uploadChecklist.map((item) => `- ${item}`).join("\n"), "utf8"),
       },
       {
-        name: "production_package.json",
+        name: "publishing/notes.txt",
+        data: Buffer.from(publishingNotes.map((item) => `- ${item}`).join("\n"), "utf8"),
+      },
+      {
+        name: "captions/captions.srt",
+        data: Buffer.from(createSrt(cues), "utf8"),
+      },
+      {
+        name: "captions/captions.vtt",
+        data: Buffer.from(createVtt(cues), "utf8"),
+      },
+      {
+        name: "project/production-package.json",
         data: Buffer.from(JSON.stringify(productionPackage, null, 2), "utf8"),
       },
       {
-        name: "scenes.json",
+        name: "project/scenes.json",
         data: Buffer.from(JSON.stringify(scenes, null, 2), "utf8"),
       },
       {
-        name: "metadata.json",
-        data: Buffer.from(JSON.stringify(metadata || {}, null, 2), "utf8"),
+        name: "project/metadata.json",
+        data: Buffer.from(JSON.stringify(metadata, null, 2), "utf8"),
       },
-    ];
+    );
 
-    if (Object.keys(creatorIntelligence).length > 0) {
+    if (Object.keys(creatorIntelligence).length) {
       entries.push({
-        name: "creator_intelligence.json",
+        name: "project/creator-intelligence.json",
         data: Buffer.from(JSON.stringify(creatorIntelligence, null, 2), "utf8"),
       });
     }
 
-    if (hasTimelineSyncPlan) {
-      entries.push(
-        {
-          name: "timeline_sync_plan.json",
-          data: Buffer.from(JSON.stringify(timelineSyncPlan, null, 2), "utf8"),
-        },
-        {
-          name: "timeline_sync_notes.txt",
-          data: Buffer.from(
-            createTimelineWarningsText(timelineSyncPlan),
-            "utf8",
-          ),
-        },
-        {
-          name: "timeline_scenes.csv",
-          data: Buffer.from(createTimelineScenesCsv(timelineSyncPlan), "utf8"),
-        },
-        {
-          name: "visual_block_plan.json",
-          data: Buffer.from(
-            JSON.stringify(createVisualBlockPlan(timelineSyncPlan), null, 2),
-            "utf8",
-          ),
-        },
-        {
-          name: "visual_blocks.csv",
-          data: Buffer.from(createVisualBlocksCsv(timelineSyncPlan), "utf8"),
-        },
-      );
-    }
-
-    const decodedThumbnail = decodeDataImage(thumbnail?.imageUrl);
-
-    if (decodedThumbnail) {
+    if (Object.keys(timelineSyncPlan).length) {
       entries.push({
-        name: `thumbnail.${decodedThumbnail.ext}`,
-        data: decodedThumbnail.buffer,
-      });
-    } else if (safeString(thumbnail?.imageUrl)) {
-      entries.push({
-        name: "thumbnail_link.txt",
-        data: Buffer.from(safeString(thumbnail?.imageUrl), "utf8"),
+        name: "project/timeline-sync-plan.json",
+        data: Buffer.from(JSON.stringify(timelineSyncPlan, null, 2), "utf8"),
       });
     }
+
+    const summary = createProductionSummary({
+      title,
+      recommendedTitle,
+      description,
+      language: safeString(body?.language),
+      format: safeString(body?.creatorFormat),
+      qualityMode: safeString(body?.qualityMode, safeString(productionPackage?.qualityMode)),
+      scenes,
+      cues,
+      includedVideoFile,
+      includedThumbnailFile,
+    });
+
+    entries.push({
+      name: "project/production-summary.txt",
+      data: Buffer.from(summary, "utf8"),
+    });
+
+    const readme = [
+      "VELTO Creator Package",
+      "",
+      "Main release assets",
+      `- ${includedVideoFile || "final-video-link.txt"}`,
+      `- ${includedThumbnailFile || "thumbnail-link.txt / not available"}`,
+      "",
+      "Publishing copy is under /publishing.",
+      "Captions are under /captions in SRT and VTT formats.",
+      "Editable production data is under /project.",
+      warnings.length ? "" : "Package completed without asset warnings.",
+      ...warnings.map((warning) => `Warning: ${warning}`),
+    ].join("\n");
+
+    entries.unshift({
+      name: "README.txt",
+      data: Buffer.from(readme, "utf8"),
+    });
+
+    const manifest = {
+      version: "px5-creator-package-v1",
+      generatedAt: new Date().toISOString(),
+      projectTitle: title,
+      publishingTitle: recommendedTitle,
+      includedVideoFile: includedVideoFile || null,
+      includedThumbnailFile: includedThumbnailFile || null,
+      captionFormats: ["srt", "vtt"],
+      warnings,
+      files: entries.map((entry) => entry.name),
+    };
+
+    entries.push({
+      name: "package-manifest.json",
+      data: Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
+    });
 
     const zipBuffer = createZip(entries);
 
@@ -498,15 +648,18 @@ export async function POST(req: Request) {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${safeTitle}.zip"`,
         "Cache-Control": "no-store",
+        "X-Velto-Package-Warnings": String(warnings.length),
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("export-creator-package error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Creator package export failed.",
+        error:
+          (error instanceof Error ? error.message : "") ||
+          "Creator package export failed.",
       },
       { status: 500 },
     );
