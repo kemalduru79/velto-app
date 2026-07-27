@@ -6,21 +6,31 @@ import {
 
 export type CreatorVisualFormat = "short_form" | "youtube_video";
 export type CreatorImageUseCase = "scene" | "thumbnail" | "hook";
+export type CreatorImageModel =
+  | "gpt-image-1"
+  | "gpt-image-2"
+  | "gpt-image-2-2026-04-21";
+export type CreatorImageSize = "1024x1536" | "1536x1024";
 
 export type CreatorVisualRoute = {
   qualityMode: CreatorQualityMode;
   format: CreatorVisualFormat;
   imageUseCase: CreatorImageUseCase;
   generationAllowed: boolean;
+  imageModel: CreatorImageModel;
   imageQuality: "medium" | "high";
-  imageSize: "1024x1536" | "1536x1024";
+  imageSize: CreatorImageSize;
   targetAspectRatio: "9:16" | "16:9";
   composition:
     | "vertical_mobile_safe"
     | "wide_creator_safe"
     | "wide_thumbnail_safe";
   continuityStrength: "balanced" | "strong" | "maximum";
-  frameRole: "scene_asset" | "video_reference_frame" | "cinematic_reference_frame";
+  frameRole:
+    | "scene_asset"
+    | "video_reference_frame"
+    | "cinematic_reference_frame";
+  referenceImageLimit: 0 | 1 | 2;
 };
 
 export function normalizeCreatorVisualFormat(
@@ -46,17 +56,16 @@ export function getCreatorVisualRoute({
   const mediaRoute = getCreatorMediaRoute(normalizedQualityMode);
   const isWide =
     imageUseCase === "thumbnail" || normalizedFormat === "youtube_video";
+  const isCinematic = normalizedQualityMode === "cinematic";
+  const isPro = normalizedQualityMode === "pro";
 
   return {
     qualityMode: normalizedQualityMode,
     format: normalizedFormat,
     imageUseCase,
     generationAllowed: mediaRoute.actions.visuals,
-    imageQuality:
-      normalizedQualityMode === "pro" ||
-      normalizedQualityMode === "cinematic"
-        ? "high"
-        : "medium",
+    imageModel: "gpt-image-2-2026-04-21",
+    imageQuality: isPro || isCinematic ? "high" : "medium",
     imageSize: isWide ? "1536x1024" : "1024x1536",
     targetAspectRatio: isWide ? "16:9" : "9:16",
     composition:
@@ -65,17 +74,16 @@ export function getCreatorVisualRoute({
         : isWide
           ? "wide_creator_safe"
           : "vertical_mobile_safe",
-    continuityStrength:
-      normalizedQualityMode === "cinematic"
-        ? "maximum"
-        : normalizedQualityMode === "pro"
-          ? "strong"
-          : "balanced",
-    frameRole:
-      normalizedQualityMode === "cinematic"
-        ? "cinematic_reference_frame"
-        : normalizedQualityMode === "pro"
-          ? "video_reference_frame"
-          : "scene_asset",
+    continuityStrength: isCinematic
+      ? "maximum"
+      : isPro
+        ? "strong"
+        : "balanced",
+    frameRole: isCinematic
+      ? "cinematic_reference_frame"
+      : isPro
+        ? "video_reference_frame"
+        : "scene_asset",
+    referenceImageLimit: isCinematic ? 2 : isPro ? 1 : 0,
   };
 }

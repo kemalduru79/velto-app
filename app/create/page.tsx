@@ -91,6 +91,18 @@ import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSy
 type CreatorWorkspaceIconName = "insights" | "ideas" | "safety" | "package";
 type CreatorWorkspaceTone = "blue" | "violet" | "green" | "amber";
 type CreatorNoCastMode = "faceless" | "narrator";
+type CreatorDirectorMode = "help" | "project";
+type CreatorDirectorMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  } | null;
+};
 
 function CreatorWorkspaceIcon({ name }: { name: CreatorWorkspaceIconName }) {
   const sharedProps = {
@@ -225,6 +237,19 @@ type CreatorSceneScriptDraft = {
   dialogue: string;
 };
 
+type CreatorSceneInspectorTab = "script" | "visual" | "audio";
+
+type CreatorSceneAssetKind = "image" | "video";
+
+type CreatorSceneAssetVersion = {
+  id: string;
+  kind: CreatorSceneAssetKind;
+  url: string;
+  createdAt: string;
+  source: "generated" | "restored" | "loaded";
+  durationSec?: number;
+};
+
 type Scene = {
   renderMode?: "video" | "image";
   id: number;
@@ -255,6 +280,7 @@ type Scene = {
   speechWordCount?: number;
   scriptHealth?: CreatorScriptHealth;
   visualBlockPlan?: CreatorVisualBlockPlan[];
+  assetHistory?: CreatorSceneAssetVersion[];
 };
 
 type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
@@ -344,6 +370,34 @@ type CreatorContentType =
   | "entertainment_storytelling"
   | "social_campaign";
 type CreatorFormat = "short_form" | "youtube_video";
+type CreatorPublishPlatform =
+  | "youtube"
+  | "youtube_shorts"
+  | "instagram_reels"
+  | "tiktok"
+  | "linkedin";
+type CreatorThumbnailVariant = "subject" | "conflict" | "symbol";
+type CreatorThumbnailTextPosition = "top" | "center" | "bottom";
+type CreatorThumbnailFont = "bold_sans" | "editorial" | "condensed";
+type CreatorReleaseConfirmationKey =
+  | "videoReviewed"
+  | "claimsVerified"
+  | "rightsConfirmed"
+  | "thumbnailApproved";
+
+type CreatorThumbnailStudioState = {
+  variant: CreatorThumbnailVariant;
+  headline: string;
+  subHeadline: string;
+  accentColor: string;
+  textColor: string;
+  textPosition: CreatorThumbnailTextPosition;
+  font: CreatorThumbnailFont;
+  focalX: number;
+  focalY: number;
+  safeZone: boolean;
+};
+
 type CreatorDurationPreset =
   | "short_15"
   | "short_30"
@@ -356,9 +410,34 @@ type CreatorDurationPreset =
   | "video_900"
   | "custom";
 
+type CreatorBriefDraftSaveState = "idle" | "saving" | "saved" | "error";
+
+type CreatorBriefDraftSnapshot = {
+  version: 1;
+  input: string;
+  language: ContentLanguage;
+  country: string;
+  ageGroup: CreatorAgeGroup;
+  contentType: CreatorContentType;
+  format: CreatorFormat;
+  durationPreset: CreatorDurationPreset;
+  videoDurationSec: CreatorVideoDurationSec;
+  customDurationSec: CreatorVideoDurationSec;
+  qualityMode: CreatorQualityMode;
+  targetPlatforms?: CreatorPublishPlatform[];
+  updatedAt: string;
+};
+
 type CreatorVideoIdea = {
   title: string;
   concept: string;
+};
+
+type CreatorStrategyDirection = {
+  id: string;
+  title: string;
+  concept: string;
+  source: "recommended" | "alternative";
 };
 
 type BulkIdeaResult = {
@@ -414,6 +493,7 @@ type CreatorProductionPackage = {
   targetSceneDurationSec?: number;
   qualityMode?: CreatorQualityMode;
   timelineSyncPlan?: TimelineSyncPlan;
+  targetPlatforms?: CreatorPublishPlatform[];
   scriptPlan?: {
     version: string;
     durationSec: number;
@@ -422,6 +502,14 @@ type CreatorProductionPackage = {
     needsReviewSceneIds: number[];
     providerAwareVisualBlocks: boolean;
   };
+};
+
+type CreatorUndoEntry = {
+  id: string;
+  label: string;
+  createdAt: string;
+  scenes: Scene[];
+  productionPackage: CreatorProductionPackage | null;
 };
 
 type YoutubeMetadataResult = {
@@ -446,6 +534,8 @@ type YoutubeThumbnailResult = {
   prompt: string;
   headline: string;
   subHeadline: string;
+  sourceImageUrl?: string;
+  design?: CreatorThumbnailStudioState;
 };
 
 type SceneOptimizationResult = {
@@ -622,6 +712,8 @@ const CREATOR_CONTENT_TYPE_OPTIONS: Array<{
   },
 ];
 
+const CREATOR_BRIEF_DRAFT_STORAGE_KEY = "velto.creatorlab.briefDraft.v1";
+
 const CREATOR_FORMAT_OPTIONS: Array<{
   value: CreatorFormat;
   label: string;
@@ -638,6 +730,98 @@ const CREATOR_FORMAT_OPTIONS: Array<{
     guidance: "Best for 3-15 minute structured video packages.",
   },
 ];
+
+const CREATOR_PUBLISH_PLATFORM_OPTIONS: Array<{
+  value: CreatorPublishPlatform;
+  label: string;
+  guidanceEn: string;
+  guidanceTr: string;
+  nativeFormat: CreatorFormat | "both";
+}> = [
+  {
+    value: "youtube",
+    label: "YouTube",
+    guidanceEn: "Long-form title, description, chapters and thumbnail.",
+    guidanceTr: "Uzun format başlık, açıklama, bölümleme ve thumbnail.",
+    nativeFormat: "youtube_video",
+  },
+  {
+    value: "youtube_shorts",
+    label: "YouTube Shorts",
+    guidanceEn: "Vertical short-form packaging and caption copy.",
+    guidanceTr: "Dikey kısa format paketleme ve paylaşım metni.",
+    nativeFormat: "short_form",
+  },
+  {
+    value: "instagram_reels",
+    label: "Instagram Reels",
+    guidanceEn: "Mobile-first cover and concise social caption.",
+    guidanceTr: "Mobil öncelikli kapak ve kısa sosyal medya metni.",
+    nativeFormat: "short_form",
+  },
+  {
+    value: "tiktok",
+    label: "TikTok",
+    guidanceEn: "Fast hook, vertical cover and short caption.",
+    guidanceTr: "Hızlı hook, dikey kapak ve kısa paylaşım metni.",
+    nativeFormat: "short_form",
+  },
+  {
+    value: "linkedin",
+    label: "LinkedIn",
+    guidanceEn: "Professional context and thought-leadership copy.",
+    guidanceTr: "Profesyonel bağlam ve düşünce liderliği metni.",
+    nativeFormat: "both",
+  },
+];
+
+const CREATOR_RELEASE_CONFIRMATION_DEFAULTS: Record<CreatorReleaseConfirmationKey, boolean> = {
+  videoReviewed: false,
+  claimsVerified: false,
+  rightsConfirmed: false,
+  thumbnailApproved: false,
+};
+
+const CREATOR_THUMBNAIL_STUDIO_DEFAULTS: CreatorThumbnailStudioState = {
+  variant: "subject",
+  headline: "",
+  subHeadline: "",
+  accentColor: "#1769e0",
+  textColor: "#ffffff",
+  textPosition: "bottom",
+  font: "bold_sans",
+  focalX: 50,
+  focalY: 50,
+  safeZone: true,
+};
+
+function getDefaultCreatorTargetPlatforms(format: CreatorFormat): CreatorPublishPlatform[] {
+  return format === "youtube_video"
+    ? ["youtube", "linkedin"]
+    : ["youtube_shorts", "instagram_reels", "tiktok"];
+}
+
+function normalizeCreatorTargetPlatforms(
+  value: unknown,
+  format: CreatorFormat,
+): CreatorPublishPlatform[] {
+  const allowed = new Set(CREATOR_PUBLISH_PLATFORM_OPTIONS.map((option) => option.value));
+  const normalized = Array.isArray(value)
+    ? value.filter(
+        (item): item is CreatorPublishPlatform =>
+          typeof item === "string" && allowed.has(item as CreatorPublishPlatform),
+      )
+    : [];
+
+  return normalized.length ? Array.from(new Set(normalized)) : getDefaultCreatorTargetPlatforms(format);
+}
+
+function sameCreatorPlatformSelection(
+  left: CreatorPublishPlatform[],
+  right: CreatorPublishPlatform[],
+) {
+  return left.length === right.length && left.every((item) => right.includes(item));
+}
 
 const CREATOR_QUALITY_MODE_OPTIONS: Array<{
   value: CreatorQualityMode;
@@ -661,8 +845,8 @@ const CREATOR_QUALITY_MODE_OPTIONS: Array<{
     value: "standard",
     labelEn: "Standard",
     labelTr: "Standart",
-    guidanceEn: "Balanced production for usable social packages with controlled image and voice generation.",
-    guidanceTr: "Kontrollü görsel ve ses üretimiyle dengeli sosyal medya paketi.",
+    guidanceEn: "Next-generation medium-quality visuals and balanced voice production for efficient social packages.",
+    guidanceTr: "Verimli sosyal medya paketleri için yeni nesil orta kalite görseller ve dengeli ses üretimi.",
     creditTierEn: "Balanced credit use",
     creditTierTr: "Dengeli kredi kullanımı",
   },
@@ -670,8 +854,8 @@ const CREATOR_QUALITY_MODE_OPTIONS: Array<{
     value: "pro",
     labelEn: "Pro",
     labelTr: "Pro",
-    guidanceEn: "Stronger scene planning, thumbnail/metadata intelligence and higher-quality visual routing.",
-    guidanceTr: "Daha güçlü sahne planı, thumbnail/metadata zekası ve daha kaliteli görsel yönlendirme.",
+    guidanceEn: "High-fidelity professional visuals, realistic adult human rendering and reference-aware character consistency.",
+    guidanceTr: "Yüksek doğrulukta profesyonel görseller, gerçekçi yetişkin insan üretimi ve referans destekli karakter tutarlılığı.",
     creditTierEn: "Higher credit use",
     creditTierTr: "Daha yüksek kredi kullanımı",
   },
@@ -679,8 +863,8 @@ const CREATOR_QUALITY_MODE_OPTIONS: Array<{
     value: "cinematic",
     labelEn: "Cinematic",
     labelTr: "Sinematik",
-    guidanceEn: "Maximum-quality path for premium video blocks, voice-over and continuity-aware export.",
-    guidanceTr: "Premium video blokları, seslendirme ve süreklilik odaklı export için maksimum kalite yolu.",
+    guidanceEn: "Maximum-fidelity visual masters, stronger multi-reference continuity and premium production routing.",
+    guidanceTr: "Maksimum doğrulukta ana görseller, daha güçlü çoklu referans sürekliliği ve premium üretim yönlendirmesi.",
     creditTierEn: "Maximum credit use",
     creditTierTr: "Maksimum kredi kullanımı",
   },
@@ -2499,6 +2683,81 @@ function splitCreatorSpeechNearMiddle(value: string) {
 }
 
 
+const CREATOR_ASSET_HISTORY_LIMIT = 12;
+const CREATOR_UNDO_LIMIT = 10;
+
+function createCreatorHistoryId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function cloneCreatorHistoryValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizeCreatorAssetHistory(scene: Scene): Scene {
+  const rawHistory = Array.isArray(scene.assetHistory) ? scene.assetHistory : [];
+  const validHistory = rawHistory.filter(
+    (asset): asset is CreatorSceneAssetVersion =>
+      Boolean(
+        asset &&
+          (asset.kind === "image" || asset.kind === "video") &&
+          typeof asset.id === "string" &&
+          typeof asset.url === "string" &&
+          asset.url.trim() &&
+          typeof asset.createdAt === "string",
+      ),
+  );
+  let nextHistory = validHistory;
+  let changed = validHistory.length !== rawHistory.length;
+
+  const appendCurrentAsset = (
+    kind: CreatorSceneAssetKind,
+    url: string | undefined,
+    durationSec?: number,
+  ) => {
+    const normalizedUrl = String(url || "").trim();
+    if (!normalizedUrl || nextHistory.some((asset) => asset.kind === kind && asset.url === normalizedUrl)) {
+      return;
+    }
+
+    nextHistory = [
+      ...nextHistory,
+      {
+        id: createCreatorHistoryId(`${kind}-${scene.id}`),
+        kind,
+        url: normalizedUrl,
+        createdAt: new Date().toISOString(),
+        source: "generated" as const,
+        ...(Number.isFinite(Number(durationSec)) && Number(durationSec) > 0
+          ? { durationSec: Number(durationSec) }
+          : {}),
+      },
+    ].slice(-CREATOR_ASSET_HISTORY_LIMIT);
+    changed = true;
+  };
+
+  appendCurrentAsset("image", scene.image);
+  if (scene.videoStatus === "done") {
+    appendCurrentAsset("video", scene.videoUrl, scene.videoDurationSeconds);
+  }
+
+  return changed ? { ...scene, assetHistory: nextHistory } : scene;
+}
+
+function formatCreatorAssetTimestamp(value: string, language: "tr" | "en") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(language === "en" ? "en-US" : "tr-TR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
@@ -2516,6 +2775,14 @@ export default function CreatePage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [creatorProjectsHidden, setCreatorProjectsHidden] = useState(true);
+  const [creatorProjectsDrawerOpen, setCreatorProjectsDrawerOpen] = useState(false);
+  const [creatorDirectorOpen, setCreatorDirectorOpen] = useState(false);
+  const [creatorDirectorMode, setCreatorDirectorMode] = useState<CreatorDirectorMode>("project");
+  const [creatorDirectorMessages, setCreatorDirectorMessages] = useState<CreatorDirectorMessage[]>([]);
+  const [creatorDirectorInput, setCreatorDirectorInput] = useState("");
+  const [creatorDirectorLoading, setCreatorDirectorLoading] = useState(false);
+  const [creatorDirectorError, setCreatorDirectorError] = useState("");
+  const creatorDirectorMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
@@ -2532,6 +2799,9 @@ export default function CreatePage() {
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational_explainer");
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("short_form");
+  const [creatorTargetPlatforms, setCreatorTargetPlatforms] = useState<CreatorPublishPlatform[]>(
+    getDefaultCreatorTargetPlatforms("short_form"),
+  );
   const [creatorDurationPreset, setCreatorDurationPreset] =
     useState<CreatorDurationPreset>("short_60");
   const [creatorVideoDurationSec, setCreatorVideoDurationSec] =
@@ -2546,6 +2816,9 @@ export default function CreatePage() {
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
+  const [creatorSelectedStrategyDirectionId, setCreatorSelectedStrategyDirectionId] =
+    useState("recommended");
+  const [creatorSelectedHookPattern, setCreatorSelectedHookPattern] = useState("");
   const [creatorSelectedWorkspaceStep, setCreatorSelectedWorkspaceStep] =
     useState<1 | 2 | 3 | 4>(1);
   const creatorLastAutoStepRef = useRef<1 | 2 | 3 | 4>(1);
@@ -2588,6 +2861,12 @@ export default function CreatePage() {
   const [youtubeThumbnailResult, setYoutubeThumbnailResult] =
     useState<YoutubeThumbnailResult | null>(null);
   const [youtubeThumbnailLoading, setYoutubeThumbnailLoading] = useState(false);
+  const [creatorThumbnailStudio, setCreatorThumbnailStudio] =
+    useState<CreatorThumbnailStudioState>(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
+  const [creatorThumbnailChooserOpen, setCreatorThumbnailChooserOpen] = useState(false);
+  const [creatorReleaseConfirmations, setCreatorReleaseConfirmations] = useState<
+    Record<CreatorReleaseConfirmationKey, boolean>
+  >(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
   const [isDownloadingCreatorPackage, setIsDownloadingCreatorPackage] = useState(false);
   const [creatorPackageDownloaded, setCreatorPackageDownloaded] = useState(false);
   const [sceneOptimizationResult, setSceneOptimizationResult] = useState<
@@ -2610,6 +2889,11 @@ export default function CreatePage() {
   const [error, setError] = useState("");
 
   const [saveMessage, setSaveMessage] = useState("");
+  const [creatorBriefDraftSaveState, setCreatorBriefDraftSaveState] =
+    useState<CreatorBriefDraftSaveState>("idle");
+  const [creatorBriefDraftSavedAt, setCreatorBriefDraftSavedAt] = useState<string>("");
+  const [creatorBriefDraftHydrated, setCreatorBriefDraftHydrated] = useState(false);
+  const [creatorBriefDraftRestored, setCreatorBriefDraftRestored] = useState(false);
 
   const [continuePrompt, setContinuePrompt] = useState("");
   const [isContinuing, setIsContinuing] = useState(false);
@@ -2617,6 +2901,11 @@ export default function CreatePage() {
   const [editingSceneId, setEditingSceneId] = useState<number | null>(null);
   const [sceneInstructions, setSceneInstructions] = useState<Record<number, string>>({});
   const [sceneScriptDrafts, setSceneScriptDrafts] = useState<Record<number, CreatorSceneScriptDraft>>({});
+  const [creatorSceneInspectorTabs, setCreatorSceneInspectorTabs] = useState<Record<number, CreatorSceneInspectorTab>>({});
+  const [creatorSelectedSceneIds, setCreatorSelectedSceneIds] = useState<number[]>([]);
+  const [creatorAssetHistoryOpen, setCreatorAssetHistoryOpen] = useState<Record<number, boolean>>({});
+  const [creatorAssetCompareSelection, setCreatorAssetCompareSelection] = useState<Record<number, string[]>>({});
+  const [creatorUndoStack, setCreatorUndoStack] = useState<CreatorUndoEntry[]>([]);
   const [sceneScriptFitLoadingId, setSceneScriptFitLoadingId] = useState<number | null>(null);
   const [sceneLoadingId, setSceneLoadingId] = useState<number | null>(null);
 
@@ -2656,6 +2945,116 @@ export default function CreatePage() {
     setCreatorPackageDownloaded(false);
   }, [exportedMovieUrl, youtubeMetadataResult, youtubeThumbnailResult]);
 
+  useEffect(() => {
+    const availableSceneIds = new Set(scenes.map((scene) => scene.id));
+    setCreatorSelectedSceneIds((prev) => {
+      const next = prev.filter((sceneId) => availableSceneIds.has(sceneId));
+      return next.length === prev.length && next.every((sceneId, index) => sceneId === prev[index])
+        ? prev
+        : next;
+    });
+    setCreatorAssetCompareSelection((prev) => {
+      const entries = Object.entries(prev).filter(([sceneId]) =>
+        availableSceneIds.has(Number(sceneId)),
+      );
+      return entries.length === Object.keys(prev).length
+        ? prev
+        : Object.fromEntries(entries);
+    });
+  }, [scenes]);
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || scenes.length === 0) {
+      return;
+    }
+
+    setScenes((prev) => {
+      let changed = false;
+      const next = prev.map((scene) => {
+        const normalized = normalizeCreatorAssetHistory(scene);
+        if (normalized !== scene) {
+          changed = true;
+        }
+        return normalized;
+      });
+      return changed ? next : prev;
+    });
+  }, [isCreatorLabFlow, scenes]);
+
+
+  useEffect(() => {
+    const headline =
+      youtubeThumbnailResult?.headline ||
+      youtubeMetadataResult?.thumbnailTextIdeas?.[0] ||
+      youtubeMetadataResult?.recommendedTitle ||
+      creatorProductionPackage?.youtubeTitle ||
+      creatorProductionPackage?.title ||
+      "";
+    const subHeadline =
+      youtubeThumbnailResult?.subHeadline ||
+      youtubeMetadataResult?.thumbnailTextIdeas?.[1] ||
+      creatorProductionPackage?.hook ||
+      "";
+
+    setCreatorThumbnailStudio((prev) => ({
+      ...prev,
+      headline: prev.headline.trim() ? prev.headline : headline,
+      subHeadline: prev.subHeadline.trim() ? prev.subHeadline : subHeadline,
+    }));
+  }, [
+    youtubeThumbnailResult?.headline,
+    youtubeThumbnailResult?.subHeadline,
+    youtubeMetadataResult?.recommendedTitle,
+    youtubeMetadataResult?.thumbnailTextIdeas,
+    creatorProductionPackage?.youtubeTitle,
+    creatorProductionPackage?.title,
+    creatorProductionPackage?.hook,
+  ]);
+
+  useEffect(() => {
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, videoReviewed: false }));
+    setCreatorPackageDownloaded(false);
+  }, [exportedMovieUrl, exportMovieResult?.movieUrl, exportMovieResult?.downloadUrl]);
+
+  useEffect(() => {
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
+    setCreatorPackageDownloaded(false);
+  }, [youtubeThumbnailResult?.imageUrl, creatorThumbnailStudio.headline, creatorThumbnailStudio.subHeadline]);
+
+  useEffect(() => {
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, claimsVerified: false }));
+    setCreatorPackageDownloaded(false);
+  }, [youtubeMetadataResult?.recommendedTitle, youtubeMetadataResult?.description]);
+
+  useEffect(() => {
+    setYoutubeThumbnailResult((prev) => {
+      if (!prev) return prev;
+      const nextHeadline = creatorThumbnailStudio.headline || prev.headline;
+      const nextSubHeadline = creatorThumbnailStudio.subHeadline || prev.subHeadline;
+      if (
+        prev.headline === nextHeadline &&
+        prev.subHeadline === nextSubHeadline &&
+        JSON.stringify(prev.design || null) === JSON.stringify(creatorThumbnailStudio)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        headline: nextHeadline,
+        subHeadline: nextSubHeadline,
+        design: creatorThumbnailStudio,
+      };
+    });
+  }, [creatorThumbnailStudio]);
+
+  useEffect(() => {
+    setCreatorProductionPackage((prev) =>
+      prev && !sameCreatorPlatformSelection(prev.targetPlatforms || [], creatorTargetPlatforms)
+        ? { ...prev, targetPlatforms: creatorTargetPlatforms }
+        : prev,
+    );
+    setCreatorPackageDownloaded(false);
+  }, [creatorTargetPlatforms]);
 
   const [shareUrl, setShareUrl] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
@@ -2666,6 +3065,8 @@ export default function CreatePage() {
   );
 
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const creatorBriefDraftTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const creatorProfileAutoAppliedRef = useRef(false);
   const skipAutosaveRef = useRef(true);
   const isHydratingRef = useRef(false);
   const suspendAutosaveRef = useRef(false);
@@ -3056,6 +3457,159 @@ export default function CreatePage() {
     return session.access_token;
   };
 
+
+  const buildCreatorDirectorContext = () => {
+    const selectedScene =
+      creatorSelectedSceneIds.length === 1
+        ? scenes.find((scene) => scene.id === creatorSelectedSceneIds[0])
+        : null;
+
+    return {
+      product: "CreatorLab",
+      interfaceLanguage: uiLanguage,
+      activeStage: creatorWorkspaceStep,
+      project: {
+        projectId: currentProjectId || null,
+        title: title || creatorProductionPackage?.title || null,
+        topic: input || null,
+        contentLanguage: language,
+        country: creatorCountry,
+        audience: creatorAgeGroup,
+        contentType: creatorContentType,
+        format: creatorFormat,
+        durationSeconds: creatorVideoDurationSec,
+        qualityLevel: creatorQualityMode,
+        targetPlatforms: creatorTargetPlatforms,
+      },
+      strategy: {
+        mentorReady: Boolean(creatorMentorResult),
+        selectedDirectionId: creatorSelectedStrategyDirectionId,
+        selectedHook: creatorSelectedHookPattern || null,
+        recommendedTitle: creatorMentorResult?.recommendedIdea?.title || null,
+      },
+      production: {
+        sceneCount: scenes.length,
+        selectedSceneIds: creatorSelectedSceneIds,
+        selectedScene: selectedScene
+          ? {
+              id: selectedScene.id,
+              text: selectedScene.text,
+              narration: selectedScene.narration,
+              dialogue: selectedScene.dialogue,
+              renderMode: selectedScene.renderMode || null,
+              hasImage: Boolean(selectedScene.image),
+              hasVoice: Boolean(selectedScene.audioUrl),
+              hasVideo: selectedScene.videoStatus === "done" && Boolean(selectedScene.videoUrl),
+              targetDurationSeconds:
+                selectedScene.timing?.targetSceneDuration || selectedScene.targetDurationSec || null,
+            }
+          : null,
+        scenes: scenes.slice(0, 24).map((scene) => ({
+          id: scene.id,
+          text: scene.text,
+          narration: scene.narration,
+          hasDialogue: Boolean(scene.dialogue?.trim()),
+          renderMode: scene.renderMode || null,
+          imageReady: Boolean(scene.image),
+          voiceReady: Boolean(scene.audioUrl),
+          videoStatus: scene.videoStatus || "idle",
+          targetDurationSeconds:
+            scene.timing?.targetSceneDuration || scene.targetDurationSec || null,
+        })),
+      },
+      publish: {
+        finalVideoReady: Boolean(exportedMovieUrl),
+        thumbnailSelected: Boolean(youtubeThumbnailResult?.imageUrl),
+        metadataReady: Boolean(youtubeMetadataResult),
+        creatorConfirmations: creatorReleaseConfirmations,
+        packageDownloaded: creatorPackageDownloaded,
+      },
+      safety: {
+        paidMediaRequiresExplicitConfirmation: true,
+        directorCanApplyChanges: false,
+      },
+    };
+  };
+
+  const sendCreatorDirectorMessage = async (rawMessage?: string) => {
+    const message = String(rawMessage ?? creatorDirectorInput).trim();
+
+    if (!message || creatorDirectorLoading) {
+      return;
+    }
+
+    const userMessage: CreatorDirectorMessage = {
+      id: `director-user-${Date.now()}`,
+      role: "user",
+      content: message,
+      createdAt: new Date().toISOString(),
+    };
+    const history = creatorDirectorMessages.slice(-8).map((item) => ({
+      role: item.role,
+      content: item.content,
+    }));
+
+    setCreatorDirectorMessages((prev) => [...prev, userMessage]);
+    setCreatorDirectorInput("");
+    setCreatorDirectorError("");
+    setCreatorDirectorLoading(true);
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      const response = await fetch("/api/creator-director", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          mode: creatorDirectorMode,
+          language: uiLanguage,
+          message,
+          history,
+          context: buildCreatorDirectorContext(),
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Creator Director is unavailable."
+              : "Creator Director kullanılamıyor."),
+        );
+      }
+
+      const assistantMessage: CreatorDirectorMessage = {
+        id: `director-assistant-${Date.now()}`,
+        role: "assistant",
+        content: String(data?.answer || "").trim(),
+        createdAt: new Date().toISOString(),
+        usage: data?.usage || null,
+      };
+
+      if (!assistantMessage.content) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "Creator Director returned an empty response."
+            : "Creator Director boş yanıt döndürdü.",
+        );
+      }
+
+      setCreatorDirectorMessages((prev) => [...prev, assistantMessage]);
+    } catch (directorError) {
+      setCreatorDirectorError(
+        directorError instanceof Error
+          ? directorError.message
+          : uiLanguage === "en"
+            ? "Creator Director is temporarily unavailable."
+            : "Creator Director geçici olarak kullanılamıyor.",
+      );
+    } finally {
+      setCreatorDirectorLoading(false);
+    }
+  };
 
   const fetchUserRole = async () => {
     try {
@@ -3755,6 +4309,9 @@ export default function CreatePage() {
     setYoutubePatternSummary(null);
     setYoutubeMetadataResult(null);
     setYoutubeThumbnailResult(null);
+    setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms("short_form"));
+    setCreatorThumbnailStudio(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
+    setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
     setSceneOptimizationResult([]);
     setSceneOptimizationSummary(null);
     setRefinedCreatorScenes([]);
@@ -3824,16 +4381,26 @@ export default function CreatePage() {
       return Number(rightMentioned) - Number(leftMentioned);
     });
 
-    return prioritizedCharacters.slice(0, 12).map((character) => ({
+    const creatorReferenceImageLimit =
+      isCreatorLabFlow && creatorQualityMode === "cinematic"
+        ? 2
+        : isCreatorLabFlow && creatorQualityMode === "pro"
+          ? 1
+          : 0;
+
+    return prioritizedCharacters.slice(0, 12).map((character, index) => ({
       name: limitForImagePrompt(character.name, 80),
       age: limitForImagePrompt(character.age, 40),
       appearance: limitForImagePrompt(character.appearance, 500),
       outfit: limitForImagePrompt(character.outfit, 300),
       accessory: limitForImagePrompt(character.accessory, 250),
       personality: limitForImagePrompt(character.personality, 300),
-      referenceImage: character.referenceImage?.startsWith("http")
-        ? character.referenceImage
-        : "",
+      referenceImage:
+        isCreatorLabFlow && index < creatorReferenceImageLimit
+          ? character.referenceImage?.trim() || ""
+          : !isCreatorLabFlow && character.referenceImage?.startsWith("http")
+            ? character.referenceImage
+            : "",
     }));
   };
 
@@ -4576,13 +5143,167 @@ export default function CreatePage() {
     };
   };
 
-  const setCreatorSceneRenderMode = (
+  const pushCreatorUndoSnapshot = (label: string) => {
+    if (!isCreatorLabFlow || scenes.length === 0) {
+      return;
+    }
+
+    const entry: CreatorUndoEntry = {
+      id: createCreatorHistoryId("undo"),
+      label,
+      createdAt: new Date().toISOString(),
+      scenes: cloneCreatorHistoryValue(scenes),
+      productionPackage: creatorProductionPackage
+        ? cloneCreatorHistoryValue(creatorProductionPackage)
+        : null,
+    };
+
+    setCreatorUndoStack((prev) => [...prev, entry].slice(-CREATOR_UNDO_LIMIT));
+  };
+
+  const undoLastCreatorChange = () => {
+    const entry = creatorUndoStack[creatorUndoStack.length - 1];
+    if (!entry) {
+      return;
+    }
+
+    clearAllVideoPolls();
+    stopDialoguePlayback();
+    stopStoryPlayback();
+    const restoredScenes = cloneCreatorHistoryValue(entry.scenes);
+    setScenes(restoredScenes);
+    setCreatorProductionPackage(
+      entry.productionPackage ? cloneCreatorHistoryValue(entry.productionPackage) : null,
+    );
+    setCreatorUndoStack((prev) => prev.slice(0, -1));
+    setCreatorSelectedSceneIds((prev) =>
+      prev.filter((sceneId) => restoredScenes.some((scene) => scene.id === sceneId)),
+    );
+    setCreatorAssetCompareSelection({});
+    setSceneScriptDrafts({});
+    setEditingSceneId(null);
+    setCreatorTimelinePreviewPlan(null);
+    setCreatorEditPlan(null);
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setError("");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? `Undone: ${entry.label}`
+        : `Geri alındı: ${entry.label}`,
+    );
+  };
+
+  const toggleCreatorAssetCompare = (sceneId: number, assetId: string) => {
+    setCreatorAssetCompareSelection((prev) => {
+      const current = prev[sceneId] || [];
+      const next = current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current.slice(-1), assetId];
+      return { ...prev, [sceneId]: next };
+    });
+  };
+
+  const restoreCreatorSceneAsset = (
     sceneId: number,
+    asset: CreatorSceneAssetVersion,
+  ) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene) {
+      return;
+    }
+
+    const isCurrent =
+      asset.kind === "image"
+        ? scene.image === asset.url
+        : scene.videoUrl === asset.url && scene.videoStatus === "done";
+    if (isCurrent) {
+      return;
+    }
+
+    pushCreatorUndoSnapshot(
+      asset.kind === "image"
+        ? uiLanguage === "en" ? `Restore scene ${sceneId} image` : `Sahne ${sceneId} görselini geri yükle`
+        : uiLanguage === "en" ? `Restore scene ${sceneId} video` : `Sahne ${sceneId} videosunu geri yükle`,
+    );
+
+    clearVideoPollForScene(sceneId);
+    setScenes((prev) =>
+      prev.map((item) => {
+        if (item.id !== sceneId) {
+          return item;
+        }
+
+        if (asset.kind === "image") {
+          return {
+            ...item,
+            image: asset.url,
+            videoUrl: "",
+            videoStatus: "idle",
+            videoJobId: "",
+            videoDurationSeconds: 0,
+          };
+        }
+
+        return {
+          ...item,
+          renderMode: "video",
+          videoUrl: asset.url,
+          videoStatus: "done",
+          videoJobId: "",
+          videoDurationSeconds: asset.durationSec || item.videoDurationSeconds || 0,
+        };
+      }),
+    );
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setError("");
+    setSaveMessage(
+      asset.kind === "image"
+        ? uiLanguage === "en"
+          ? "The selected image version was restored. Existing motion was invalidated."
+          : "Seçilen görsel sürümü geri yüklendi. Mevcut hareketli video geçersizleştirildi."
+        : uiLanguage === "en"
+          ? "The selected video version was restored."
+          : "Seçilen video sürümü geri yüklendi.",
+    );
+  };
+
+  const setCreatorScenesRenderMode = (
+    sceneIds: number[],
     renderMode: "image" | "video",
   ) => {
+    const normalizedSceneIds = Array.from(
+      new Set(sceneIds.map(Number).filter((sceneId) => Number.isFinite(sceneId))),
+    );
+
+    if (normalizedSceneIds.length === 0) {
+      setError(
+        uiLanguage === "en"
+          ? "Select at least one scene first."
+          : "Önce en az bir sahne seç.",
+      );
+      return;
+    }
+
+    const selectedSceneIdSet = new Set(normalizedSceneIds);
+    const hasRenderModeChange = scenes.some(
+      (scene) => selectedSceneIdSet.has(scene.id) && scene.renderMode !== renderMode,
+    );
+    if (!hasRenderModeChange) {
+      return;
+    }
+
+    pushCreatorUndoSnapshot(
+      renderMode === "video"
+        ? uiLanguage === "en" ? "Change scene output to video" : "Sahne çıktısını videoya çevir"
+        : uiLanguage === "en" ? "Change scene output to image" : "Sahne çıktısını görsele çevir",
+    );
     setScenes((prev) =>
       prev.map((scene) =>
-        scene.id === sceneId
+        selectedSceneIdSet.has(scene.id)
           ? {
               ...scene,
               renderMode,
@@ -4597,12 +5318,46 @@ export default function CreatePage() {
     setSaveMessage(
       renderMode === "video"
         ? uiLanguage === "en"
-          ? `Scene ${sceneId} will use a generated video block.`
-          : `Sahne ${sceneId}, üretilen video bloğunu kullanacak.`
+          ? `${normalizedSceneIds.length} scene(s) will use generated video blocks.`
+          : `${normalizedSceneIds.length} sahne, üretilen video bloklarını kullanacak.`
         : uiLanguage === "en"
-          ? `Scene ${sceneId} will use the generated still image.`
-          : `Sahne ${sceneId}, üretilen sabit görseli kullanacak.`,
+          ? `${normalizedSceneIds.length} scene(s) will use generated still images.`
+          : `${normalizedSceneIds.length} sahne, üretilen sabit görselleri kullanacak.`,
     );
+  };
+
+  const setCreatorSceneRenderMode = (
+    sceneId: number,
+    renderMode: "image" | "video",
+  ) => {
+    setCreatorScenesRenderMode([sceneId], renderMode);
+  };
+
+  const toggleCreatorSceneSelection = (sceneId: number) => {
+    setCreatorSelectedSceneIds((prev) =>
+      prev.includes(sceneId)
+        ? prev.filter((item) => item !== sceneId)
+        : [...prev, sceneId],
+    );
+  };
+
+  const focusCreatorScene = (
+    sceneId: number,
+    tab: CreatorSceneInspectorTab = "script",
+  ) => {
+    setCreatorSceneInspectorTabs((prev) => ({ ...prev, [sceneId]: tab }));
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const target = document.getElementById(`creator-scene-${sceneId}`);
+      if (target instanceof HTMLDetailsElement) {
+        target.open = true;
+      }
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 40);
   };
 
   const handleGenerateVideo = async (sceneId: number) => {
@@ -5012,6 +5767,141 @@ export default function CreatePage() {
         setError(uiLanguage === "en" ? "Some visuals could not be generated." : "Bazı görseller üretilemedi.");
       } else {
         setSaveMessage(uiLanguage === "en" ? "Visuals generated." : "Görseller üretildi.");
+      }
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setRedrawLoadingId(null);
+    }
+  };
+
+  const generateSelectedSceneVisuals = async () => {
+    const selectedSceneIdSet = new Set(creatorSelectedSceneIds);
+    const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
+    const targetScenes = selectedScenes.filter((scene) => !scene.image);
+
+    if (selectedScenes.length === 0) {
+      setError(
+        uiLanguage === "en"
+          ? "Select at least one scene before generating visuals."
+          : "Görsel üretmeden önce en az bir sahne seç.",
+      );
+      return;
+    }
+
+    if (targetScenes.length === 0) {
+      setError("");
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "All selected scenes already have visuals. Use each scene inspector to regenerate a specific asset."
+          : "Seçili sahnelerin tümünde görsel hazır. Belirli bir varlığı yeniden üretmek için ilgili sahne denetleyicisini kullan.",
+      );
+      return;
+    }
+
+    if (!(await prepareCreatorMediaAction("visuals"))) {
+      return;
+    }
+
+    setError("");
+    setSaveMessage("");
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setIsBatchRendering(true);
+    setBatchRenderStartedAt(new Date().toISOString());
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+    resetBatchRenderItems(targetScenes);
+
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    let hasFailure = false;
+
+    try {
+      for (const selectedScene of targetScenes) {
+        if (batchRenderCancelRef.current) {
+          break;
+        }
+
+        const sceneIndex = workingScenes.findIndex(
+          (scene) => scene.id === selectedScene.id,
+        );
+        if (sceneIndex < 0) {
+          continue;
+        }
+
+        const scene = workingScenes[sceneIndex];
+        updateBatchRenderItem(scene.id, {
+          status: "processing",
+          step: "image",
+          message:
+            uiLanguage === "en"
+              ? "Generating selected visual..."
+              : "Seçili görsel üretiliyor...",
+        });
+
+        try {
+          setRedrawLoadingId(scene.id);
+          const nextImage = await generateSceneImage(scene);
+          const nextScene = {
+            ...scene,
+            image: nextImage,
+            videoUrl: "",
+            videoStatus: "idle" as const,
+            videoJobId: "",
+          };
+          workingScenes[sceneIndex] = nextScene;
+          setScenes([...workingScenes]);
+
+          updateBatchRenderItem(scene.id, {
+            status: "done",
+            step: "image",
+            message:
+              uiLanguage === "en" ? "Selected visual ready." : "Seçili görsel hazır.",
+          });
+        } catch (sceneError: any) {
+          hasFailure = true;
+          console.error("selected visual generation error:", scene.id, sceneError);
+          updateBatchRenderItem(scene.id, {
+            status: "failed",
+            step: "image",
+            message:
+              sceneError?.message ||
+              (uiLanguage === "en"
+                ? "Selected visual generation failed."
+                : "Seçili görsel üretimi başarısız oldu."),
+          });
+        } finally {
+          setRedrawLoadingId(null);
+        }
+      }
+
+      setScenes([...workingScenes]);
+
+      try {
+        await persistProjectSnapshot([...workingScenes]);
+      } catch (persistError) {
+        console.error("selected visual persist error:", persistError);
+      }
+
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Selected visual generation stopped."
+            : "Seçili görsel üretimi durduruldu.",
+        );
+      } else if (hasFailure) {
+        setError(
+          uiLanguage === "en"
+            ? "Some selected visuals could not be generated."
+            : "Bazı seçili görseller üretilemedi.",
+        );
+      } else {
+        setSaveMessage(
+          uiLanguage === "en"
+            ? `${targetScenes.length} selected visual(s) generated.`
+            : `${targetScenes.length} seçili görsel üretildi.`,
+        );
       }
     } finally {
       suspendAutosaveRef.current = false;
@@ -5931,140 +6821,79 @@ export default function CreatePage() {
     }
   };
 
-  const runCreatorGenerateVisuals = async () => {
-    if (scenes.length === 0) {
+  const prepareSelectedSceneAudio = async () => {
+    const selectedSceneIdSet = new Set(creatorSelectedSceneIds);
+    const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
+    const targetScenes = selectedScenes.filter((scene) => !getSceneVoiceStatus(scene));
+
+    if (selectedScenes.length === 0) {
       setError(
         uiLanguage === "en"
-          ? "Prepare the scene plan before generating visuals."
-          : "Görsel üretmeden önce sahne planını hazırla.",
+          ? "Select at least one scene before generating voice-over."
+          : "Seslendirme üretmeden önce en az bir sahne seç.",
       );
+      return;
+    }
+
+    if (targetScenes.length === 0) {
+      setError("");
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Voice-over is already ready for all selected scenes."
+          : "Seçili sahnelerin tümünde seslendirme hazır.",
+      );
+      return;
+    }
+
+    if (!(await prepareCreatorMediaAction("voice_over"))) {
       return;
     }
 
     setError("");
-    await generateAllSceneVisuals();
-  };
+    setSaveMessage("");
+    setIsPreparingAudio(true);
+    suspendAutosaveRef.current = true;
 
-  const runCreatorGenerateVoiceOver = async () => {
-    if (scenes.length === 0) {
-      setError(
+    try {
+      for (const scene of targetScenes) {
+        let latestNarrationUrl = scene.audioUrl || "";
+        let latestDialogueUrl = scene.dialogueAudioUrl || "";
+
+        if (scene.narration?.trim()) {
+          setLoadingAudioSceneId(scene.id);
+          latestNarrationUrl = await getSceneAudioUrl(scene);
+        }
+
+        if (scene.dialogue?.trim()) {
+          setLoadingDialogueSceneId(scene.id);
+          latestDialogueUrl = await getSceneDialogueUrl(scene);
+        }
+
+        await refreshSceneTiming(scene.id, {
+          audioUrl: latestNarrationUrl,
+          dialogueAudioUrl: latestDialogueUrl,
+        });
+      }
+
+      setSaveMessage(
         uiLanguage === "en"
-          ? "Prepare the scene plan before generating voice-over."
-          : "Seslendirme üretmeden önce sahne planını hazırla.",
+          ? `${targetScenes.length} selected scene voice track(s) prepared.`
+          : `${targetScenes.length} seçili sahnenin seslendirmesi hazırlandı.`,
       );
-      return;
-    }
-
-    const hasSpokenContent = scenes.some(
-      (scene) => scene.narration?.trim() || scene.dialogue?.trim(),
-    );
-
-    if (!hasSpokenContent) {
+    } catch (e: any) {
+      console.error("prepareSelectedSceneAudio error:", e);
       setError(
-        uiLanguage === "en"
-          ? "There is no narration or dialogue to generate."
-          : "Üretilecek anlatım veya diyalog bulunmuyor.",
+        e?.message ||
+          (uiLanguage === "en"
+            ? "Selected voice tracks could not be prepared."
+            : "Seçili seslendirmeler hazırlanamadı."),
       );
-      return;
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsPreparingAudio(false);
+      setLoadingAudioSceneId(null);
+      setLoadingDialogueSceneId(null);
     }
-
-    setError("");
-    await prepareAllAudio();
-  };
-
-  const runCreatorGenerateMotion = async () => {
-    if (creatorUnselectedSceneCount > 0) {
-      setError(
-        uiLanguage === "en"
-          ? "Choose Image or Video for every scene before creating motion."
-          : "Hareket üretmeden önce her sahne için Görsel veya Video seç.",
-      );
-      scrollCreatorWorkspaceTo("creatorlab-production-storyboard");
-      return;
-    }
-
-    if (!creatorMotionRequired) {
-      setError(
-        uiLanguage === "en"
-          ? "No scene is selected as Video."
-          : "Video olarak seçilmiş sahne bulunmuyor.",
-      );
-      return;
-    }
-
-    if (creatorVideoSelectionBlockedByQuality) {
-      setError(
-        uiLanguage === "en"
-          ? "Video scenes require Pro or Cinematic Production Quality."
-          : "Video sahneleri Pro veya Cinematic Production Quality gerektiriyor.",
-      );
-      scrollCreatorWorkspaceTo("creatorlab-production-canvas");
-      return;
-    }
-
-    if (!creatorVisualsComplete) {
-      setError(
-        uiLanguage === "en"
-          ? "Generate the missing scene visuals before creating motion."
-          : "Hareket üretmeden önce eksik sahne görsellerini üret.",
-      );
-      return;
-    }
-
-    setError("");
-    await generateAllAiVideoBlocks();
-  };
-
-  const runCreatorCreateFinalVideo = async () => {
-    if (creatorUnselectedSceneCount > 0) {
-      setError(
-        uiLanguage === "en"
-          ? "Choose Image or Video for every scene before creating the final video."
-          : "Final videoyu oluşturmadan önce her sahne için Görsel veya Video seç.",
-      );
-      scrollCreatorWorkspaceTo("creatorlab-production-storyboard");
-      return;
-    }
-
-    if (creatorVideoSelectionBlockedByQuality) {
-      setError(
-        uiLanguage === "en"
-          ? "Video scenes require Pro or Cinematic Production Quality."
-          : "Video sahneleri Pro veya Cinematic Production Quality gerektiriyor.",
-      );
-      scrollCreatorWorkspaceTo("creatorlab-production-canvas");
-      return;
-    }
-
-    if (!creatorVisualsComplete) {
-      setError(
-        uiLanguage === "en"
-          ? "Generate all missing visuals before creating the final video."
-          : "Final videodan önce tüm eksik görselleri üret.",
-      );
-      return;
-    }
-
-    if (!creatorVoiceOverComplete) {
-      setError(
-        uiLanguage === "en"
-          ? "Generate the missing voice-over before creating the final video."
-          : "Final videodan önce eksik seslendirmeyi üret.",
-      );
-      return;
-    }
-
-    if (!creatorMotionComplete) {
-      setError(
-        uiLanguage === "en"
-          ? "Generate the selected Video scenes before creating the final video."
-          : "Final videodan önce Video olarak seçilen sahneleri üret.",
-      );
-      return;
-    }
-
-    setError("");
-    await handleExportMovie(false);
   };
 
   const continueCreatorProduction = async () => {
@@ -6390,6 +7219,9 @@ export default function CreatePage() {
           : withDefaultGuideCharacter(project.characters)
       );
       setVisualBible(project.visual_bible || emptyVisualBible);
+      setCreatorUndoStack([]);
+      setCreatorAssetCompareSelection({});
+      setCreatorAssetHistoryOpen({});
       setScenes(
         loadedProjectScenes.length
           ? loadedProjectScenes.map((scene: Scene) => ({
@@ -6441,8 +7273,22 @@ export default function CreatePage() {
       }
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
+      setCreatorTargetPlatforms(
+        normalizeCreatorTargetPlatforms(
+          normalizedSavedCreatorPackage?.targetPlatforms,
+          savedCreatorPackage?.durationSec && savedCreatorPackage.durationSec > 180
+            ? "youtube_video"
+            : creatorFormat,
+        ),
+      );
       setYoutubeMetadataResult(project.youtube_metadata || null);
       setYoutubeThumbnailResult(project.youtube_thumbnail || null);
+      setCreatorThumbnailStudio(
+        project.youtube_thumbnail?.design
+          ? { ...CREATOR_THUMBNAIL_STUDIO_DEFAULTS, ...project.youtube_thumbnail.design }
+          : CREATOR_THUMBNAIL_STUDIO_DEFAULTS,
+      );
+      setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
       setSceneOptimizationResult(
         Array.isArray(project.scene_optimization) ? project.scene_optimization : []
       );
@@ -6514,6 +7360,7 @@ export default function CreatePage() {
     const safeProfile = parseCreatorProfile(profile);
     setCreatorCountry(safeProfile.defaultCountry);
     setCreatorFormat(safeProfile.defaultFormat);
+    setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms(safeProfile.defaultFormat));
     setCreatorQualityMode(safeProfile.defaultQualityMode);
     const defaultOption = getCreatorDurationOptionsByFormat(safeProfile.defaultFormat)[0];
     if (defaultOption) {
@@ -6534,6 +7381,170 @@ export default function CreatePage() {
     window.localStorage.setItem(CREATOR_PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
     setSaveMessage(uiLanguage === "en" ? "Creator profile saved on this device ✅" : "Creator profili bu cihazda kaydedildi ✅");
   };
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || creatorBriefDraftHydrated) {
+      return;
+    }
+
+    try {
+      const rawDraft = window.localStorage.getItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
+      if (rawDraft) {
+        const draft = JSON.parse(rawDraft) as Partial<CreatorBriefDraftSnapshot>;
+        if (draft.version === 1 && typeof draft.input === "string") {
+          setInput(draft.input);
+          setLanguage(draft.language === "en" ? "en" : "tr");
+          setCreatorCountry(typeof draft.country === "string" ? draft.country : "global");
+          setCreatorAgeGroup(
+            CREATOR_AGE_GROUP_OPTIONS.some((option) => option.value === draft.ageGroup)
+              ? (draft.ageGroup as CreatorAgeGroup)
+              : "professional_18",
+          );
+          setCreatorContentType(
+            CREATOR_CONTENT_TYPE_OPTIONS.some((option) => option.value === draft.contentType)
+              ? (draft.contentType as CreatorContentType)
+              : "educational_explainer",
+          );
+          const nextFormat: CreatorFormat = draft.format === "youtube_video" ? "youtube_video" : "short_form";
+          setCreatorFormat(nextFormat);
+          setCreatorTargetPlatforms(
+            normalizeCreatorTargetPlatforms(draft.targetPlatforms, nextFormat),
+          );
+          const validDurationPreset = getCreatorDurationOptionsByFormat(nextFormat).some(
+            (option) => option.preset === draft.durationPreset,
+          ) || draft.durationPreset === "custom";
+          setCreatorDurationPreset(
+            validDurationPreset ? (draft.durationPreset as CreatorDurationPreset) : getCreatorDurationOptionsByFormat(nextFormat)[0].preset,
+          );
+          const fallbackDuration = getCreatorDurationOptionsByFormat(nextFormat)[0].seconds;
+          setCreatorVideoDurationSec(
+            typeof draft.videoDurationSec === "number" ? draft.videoDurationSec : fallbackDuration,
+          );
+          setCreatorCustomDurationSec(
+            typeof draft.customDurationSec === "number" ? draft.customDurationSec : fallbackDuration,
+          );
+          if (["draft", "standard", "pro", "cinematic"].includes(String(draft.qualityMode))) {
+            setCreatorQualityMode(draft.qualityMode as CreatorQualityMode);
+          }
+          setCreatorBriefDraftSavedAt(typeof draft.updatedAt === "string" ? draft.updatedAt : "");
+          setCreatorBriefDraftSaveState("saved");
+          setCreatorBriefDraftRestored(Boolean(draft.input.trim()));
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
+      setCreatorBriefDraftSaveState("error");
+    } finally {
+      setCreatorBriefDraftHydrated(true);
+    }
+  }, [isCreatorLabFlow, creatorBriefDraftHydrated]);
+
+  useEffect(() => {
+    if (
+      !isCreatorLabFlow ||
+      !creatorBriefDraftHydrated ||
+      !creatorProfileLoaded ||
+      creatorProfileAutoAppliedRef.current ||
+      currentProjectId ||
+      input.trim() ||
+      creatorBriefDraftRestored ||
+      !hasCreatorProfileContext(creatorProfile)
+    ) {
+      return;
+    }
+
+    creatorProfileAutoAppliedRef.current = true;
+    applyCreatorProfile(creatorProfile);
+  }, [
+    isCreatorLabFlow,
+    creatorBriefDraftHydrated,
+    creatorProfileLoaded,
+    currentProjectId,
+    input,
+    creatorBriefDraftRestored,
+    creatorProfile,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isCreatorLabFlow ||
+      !creatorBriefDraftHydrated ||
+      isHydratingRef.current ||
+      currentProjectId
+    ) {
+      return;
+    }
+
+    if (creatorBriefDraftTimerRef.current) {
+      clearTimeout(creatorBriefDraftTimerRef.current);
+    }
+
+    if (!input.trim()) {
+      window.localStorage.removeItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
+      setCreatorBriefDraftSaveState("idle");
+      setCreatorBriefDraftSavedAt("");
+      setCreatorBriefDraftRestored(false);
+      return;
+    }
+
+    setCreatorBriefDraftSaveState("saving");
+    creatorBriefDraftTimerRef.current = setTimeout(() => {
+      try {
+        const updatedAt = new Date().toISOString();
+        const snapshot: CreatorBriefDraftSnapshot = {
+          version: 1,
+          input,
+          language,
+          country: creatorCountry,
+          ageGroup: creatorAgeGroup,
+          contentType: creatorContentType,
+          format: creatorFormat,
+          durationPreset: creatorDurationPreset,
+          videoDurationSec: creatorVideoDurationSec,
+          customDurationSec: creatorCustomDurationSec,
+          qualityMode: creatorQualityMode,
+          targetPlatforms: creatorTargetPlatforms,
+          updatedAt,
+        };
+        window.localStorage.setItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
+        setCreatorBriefDraftSavedAt(updatedAt);
+        setCreatorBriefDraftSaveState("saved");
+      } catch {
+        setCreatorBriefDraftSaveState("error");
+      }
+    }, 700);
+
+    return () => {
+      if (creatorBriefDraftTimerRef.current) {
+        clearTimeout(creatorBriefDraftTimerRef.current);
+      }
+    };
+  }, [
+    isCreatorLabFlow,
+    creatorBriefDraftHydrated,
+    currentProjectId,
+    input,
+    language,
+    creatorCountry,
+    creatorAgeGroup,
+    creatorContentType,
+    creatorFormat,
+    creatorDurationPreset,
+    creatorVideoDurationSec,
+    creatorCustomDurationSec,
+    creatorQualityMode,
+    creatorTargetPlatforms,
+  ]);
+
+  useEffect(() => {
+    if (!currentProjectId) {
+      return;
+    }
+
+    window.localStorage.removeItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
+    setCreatorBriefDraftRestored(false);
+    setCreatorBriefDraftSaveState("saved");
+  }, [currentProjectId]);
 
   const getCreatorFormatLabel = () => {
     return (
@@ -6849,7 +7860,15 @@ export default function CreatePage() {
   };
 
   const handleCreatorFormatChange = (nextFormat: CreatorFormat) => {
+    const currentDefaults = getDefaultCreatorTargetPlatforms(creatorFormat);
+    const shouldApplyNextDefaults =
+      creatorTargetPlatforms.length === 0 ||
+      sameCreatorPlatformSelection(creatorTargetPlatforms, currentDefaults);
+
     setCreatorFormat(nextFormat);
+    if (shouldApplyNextDefaults) {
+      setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms(nextFormat));
+    }
 
     const defaultOption = nextFormat === "youtube_video"
       ? CREATOR_VIDEO_DURATION_OPTIONS[1]
@@ -6858,6 +7877,15 @@ export default function CreatePage() {
     setCreatorDurationPreset(defaultOption.preset);
     setCreatorVideoDurationSec(defaultOption.seconds);
     setCreatorCustomDurationSec(defaultOption.seconds);
+  };
+
+  const toggleCreatorTargetPlatform = (platform: CreatorPublishPlatform) => {
+    setCreatorTargetPlatforms((prev) => {
+      if (prev.includes(platform)) {
+        return prev.length === 1 ? prev : prev.filter((item) => item !== platform);
+      }
+      return [...prev, platform];
+    });
   };
 
   const handleCreatorDurationPresetChange = (preset: CreatorDurationPreset) => {
@@ -6907,6 +7935,7 @@ export default function CreatePage() {
     const nearestOption = getNearestCreatorDurationOption(nextFormat, recommended);
 
     setCreatorFormat(nextFormat);
+    setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms(nextFormat));
     setCreatorDurationPreset(nearestOption.preset);
     setCreatorVideoDurationSec(nearestOption.seconds);
     setCreatorCustomDurationSec(nearestOption.seconds);
@@ -7599,15 +8628,18 @@ export default function CreatePage() {
         topic,
         accessToken,
       });
-      const nextPackage = normalizeCreatorLabGeneratedPackage(
-        scriptPlannedPackage,
-        {
-          topic,
-          contentType: getCreatorContentTypeLabel(),
-          format: getCreatorFormatLabel(),
-          language,
-        },
-      );
+      const nextPackage = {
+        ...normalizeCreatorLabGeneratedPackage(
+          scriptPlannedPackage,
+          {
+            topic,
+            contentType: getCreatorContentTypeLabel(),
+            format: getCreatorFormatLabel(),
+            language,
+          },
+        ),
+        targetPlatforms: creatorTargetPlatforms,
+      };
       const nextCharacters = normalizeCreatorLabCharacters(
         Array.isArray(nextPackage.characters)
           ? nextPackage.characters.map((character: Character) => ({
@@ -7903,6 +8935,27 @@ export default function CreatePage() {
     try {
       const accessToken = await getAccessTokenOrThrow();
 
+      const approvedDirection = creatorSelectedStrategyDirection || {
+        title: creatorMentorRecommendedIdea.title,
+        concept: creatorMentorRecommendedIdea.reason,
+      };
+      const approvedHookPatterns = creatorSelectedStrategyHook
+        ? [
+            creatorSelectedStrategyHook,
+            ...creatorMentorHookPatterns.filter(
+              (item) => item.trim() !== creatorSelectedStrategyHook.trim(),
+            ),
+          ]
+        : creatorMentorHookPatterns;
+      const approvedMentorAnalysis: CreatorMentorResult = {
+        ...creatorMentorResult,
+        recommendedIdea: {
+          title: approvedDirection.title,
+          reason: approvedDirection.concept || creatorMentorRecommendedIdea.reason,
+        },
+        hookPatterns: approvedHookPatterns,
+      };
+
       const res = await fetch("/api/creator-production", {
         method: "POST",
         headers: {
@@ -7919,7 +8972,7 @@ export default function CreatePage() {
           qualityMode: creatorQualityMode,
           sceneCount: getCreatorSceneCount(),
           language,
-          mentorAnalysis: creatorMentorResult,
+          mentorAnalysis: approvedMentorAnalysis,
           creatorProfile,
         }),
       });
@@ -8148,6 +9201,166 @@ export default function CreatePage() {
     setSaveMessage(ui.optimizationApplied);
   };
 
+  const applyCreatorThumbnailVariant = (variant: CreatorThumbnailVariant) => {
+    const presets: Record<CreatorThumbnailVariant, Partial<CreatorThumbnailStudioState>> = {
+      subject: {
+        variant: "subject",
+        textPosition: "bottom",
+        font: "bold_sans",
+        accentColor: "#1769e0",
+        textColor: "#ffffff",
+        focalX: 50,
+        focalY: 45,
+      },
+      conflict: {
+        variant: "conflict",
+        textPosition: "center",
+        font: "condensed",
+        accentColor: "#f59e0b",
+        textColor: "#ffffff",
+        focalX: 50,
+        focalY: 50,
+      },
+      symbol: {
+        variant: "symbol",
+        textPosition: "top",
+        font: "editorial",
+        accentColor: "#7c3aed",
+        textColor: "#ffffff",
+        focalX: 50,
+        focalY: 58,
+      },
+    };
+
+    setCreatorThumbnailStudio((prev) => ({ ...prev, ...presets[variant] }));
+  };
+
+  const toggleCreatorReleaseConfirmation = (key: CreatorReleaseConfirmationKey) => {
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const loadCreatorThumbnailImage = (url: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      if (!url.startsWith("data:")) {
+        image.crossOrigin = "anonymous";
+      }
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Thumbnail image could not be loaded for composition."));
+      image.src = url;
+    });
+
+  const drawCreatorThumbnailText = (
+    context: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    maxLines: number,
+    lineHeight: number,
+    x: number,
+    startY: number,
+  ) => {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (context.measureText(candidate).width <= maxWidth || !current) {
+        current = candidate;
+      } else {
+        lines.push(current);
+        current = word;
+        if (lines.length >= maxLines - 1) break;
+      }
+    }
+
+    if (current && lines.length < maxLines) lines.push(current);
+    lines.forEach((line, index) => context.fillText(line, x, startY + index * lineHeight));
+    return lines.length;
+  };
+
+  const renderCreatorThumbnailDataUrl = async (sourceUrl: string) => {
+    if (!sourceUrl) return "";
+
+    const image = await loadCreatorThumbnailImage(sourceUrl);
+    const isWide = creatorFormat === "youtube_video" || creatorTargetPlatforms.includes("youtube");
+    const canvas = document.createElement("canvas");
+    canvas.width = isWide ? 1280 : 1080;
+    canvas.height = isWide ? 720 : 1920;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Thumbnail canvas could not be initialized.");
+
+    const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    const maxOffsetX = Math.max(0, drawWidth - canvas.width);
+    const maxOffsetY = Math.max(0, drawHeight - canvas.height);
+    const drawX = -(maxOffsetX * (creatorThumbnailStudio.focalX / 100));
+    const drawY = -(maxOffsetY * (creatorThumbnailStudio.focalY / 100));
+    context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, creatorThumbnailStudio.textPosition === "top" ? "rgba(0,0,0,.76)" : "rgba(0,0,0,.08)");
+    gradient.addColorStop(0.5, creatorThumbnailStudio.textPosition === "center" ? "rgba(0,0,0,.58)" : "rgba(0,0,0,.10)");
+    gradient.addColorStop(1, creatorThumbnailStudio.textPosition === "bottom" ? "rgba(0,0,0,.82)" : "rgba(0,0,0,.12)");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const accentHeight = Math.max(12, Math.round(canvas.height * 0.012));
+    context.fillStyle = creatorThumbnailStudio.accentColor;
+    context.fillRect(0, creatorThumbnailStudio.textPosition === "top" ? 0 : canvas.height - accentHeight, canvas.width, accentHeight);
+
+    const padding = Math.round(canvas.width * 0.07);
+    const contentWidth = canvas.width - padding * 2;
+    const headlineSize = Math.round(canvas.width * (isWide ? 0.064 : 0.086));
+    const subSize = Math.round(headlineSize * 0.42);
+    const fontFamily = creatorThumbnailStudio.font === "editorial"
+      ? "Georgia, serif"
+      : creatorThumbnailStudio.font === "condensed"
+        ? "Arial Narrow, Arial, sans-serif"
+        : "Arial, Helvetica, sans-serif";
+    const weight = creatorThumbnailStudio.font === "editorial" ? "700" : "900";
+    const blockY = creatorThumbnailStudio.textPosition === "top"
+      ? Math.round(canvas.height * 0.11)
+      : creatorThumbnailStudio.textPosition === "center"
+        ? Math.round(canvas.height * 0.43)
+        : Math.round(canvas.height * 0.72);
+
+    context.textBaseline = "top";
+    context.fillStyle = creatorThumbnailStudio.textColor;
+    context.shadowColor = "rgba(0,0,0,.55)";
+    context.shadowBlur = Math.round(canvas.width * 0.01);
+    context.font = `${weight} ${headlineSize}px ${fontFamily}`;
+    const headlineLines = drawCreatorThumbnailText(
+      context,
+      creatorThumbnailStudio.headline || creatorPublishTitle,
+      contentWidth,
+      3,
+      Math.round(headlineSize * 1.02),
+      padding,
+      blockY,
+    );
+
+    const subHeadline = creatorThumbnailStudio.subHeadline.trim();
+    if (subHeadline) {
+      context.font = `700 ${subSize}px Arial, Helvetica, sans-serif`;
+      context.globalAlpha = 0.94;
+      drawCreatorThumbnailText(
+        context,
+        subHeadline,
+        contentWidth,
+        2,
+        Math.round(subSize * 1.15),
+        padding,
+        blockY + headlineLines * Math.round(headlineSize * 1.02) + Math.round(subSize * 0.7),
+      );
+      context.globalAlpha = 1;
+    }
+
+    context.shadowBlur = 0;
+    return canvas.toDataURL("image/png", 0.95);
+  };
+
   const prepareCreatorPublishMetadata = async (): Promise<YoutubeMetadataResult> => {
     if (youtubeMetadataResult) {
       return youtubeMetadataResult;
@@ -8247,11 +9460,13 @@ export default function CreatePage() {
 
     try {
       const metadataForExport = await prepareCreatorPublishMetadata();
+      const cleanThumbnailUrl = youtubeThumbnailResult?.imageUrl || "";
+      const composedThumbnailUrl = cleanThumbnailUrl
+        ? await renderCreatorThumbnailDataUrl(cleanThumbnailUrl).catch(() => "")
+        : "";
       const thumbnailForExport: YoutubeThumbnailResult = {
-        imageUrl:
-          youtubeThumbnailResult?.imageUrl ||
-          scenes.find((scene) => scene.image)?.image ||
-          "",
+        imageUrl: composedThumbnailUrl || cleanThumbnailUrl,
+        sourceImageUrl: cleanThumbnailUrl,
         prompt:
           youtubeThumbnailResult?.prompt ||
           creatorProductionPackage.thumbnailIdea ||
@@ -8262,10 +9477,12 @@ export default function CreatePage() {
           metadataForExport.recommendedTitle ||
           creatorProductionPackage.title,
         subHeadline:
+          creatorThumbnailStudio.subHeadline ||
           youtubeThumbnailResult?.subHeadline ||
           metadataForExport.audiencePromise ||
           creatorProductionPackage.hook ||
           "",
+        design: creatorThumbnailStudio,
       };
 
       const res = await fetch("/api/export-creator-package", {
@@ -8285,6 +9502,13 @@ export default function CreatePage() {
           language,
           creatorFormat,
           qualityMode: creatorQualityMode,
+          targetPlatforms: creatorTargetPlatforms,
+          thumbnailDesign: creatorThumbnailStudio,
+          releaseChecklist: {
+            systemChecks: creatorPublishSystemChecks,
+            userConfirmations: creatorReleaseConfirmations,
+            readyToExport: creatorReleaseReady,
+          },
           flowType: activeFlowKey,
         }),
       });
@@ -8515,7 +9739,14 @@ export default function CreatePage() {
       return;
     }
 
-    setYoutubeThumbnailResult(buildSceneBasedThumbnailResult(scene));
+    const nextThumbnail = buildSceneBasedThumbnailResult(scene);
+    setYoutubeThumbnailResult(nextThumbnail);
+    setCreatorThumbnailStudio((prev) => ({
+      ...prev,
+      headline: prev.headline.trim() ? prev.headline : nextThumbnail.headline,
+      subHeadline: prev.subHeadline.trim() ? prev.subHeadline : nextThumbnail.subHeadline,
+    }));
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
     setSaveMessage(
       uiLanguage === "en"
         ? `Scene ${scene.id} selected as thumbnail ✅`
@@ -8556,7 +9787,14 @@ export default function CreatePage() {
         return currentScore > bestScore ? currentScene : bestSceneCandidate;
       }, sceneCandidates[0]);
 
-      setYoutubeThumbnailResult(buildSceneBasedThumbnailResult(bestScene));
+      const nextThumbnail = buildSceneBasedThumbnailResult(bestScene);
+      setYoutubeThumbnailResult(nextThumbnail);
+      setCreatorThumbnailStudio((prev) => ({
+        ...prev,
+        headline: prev.headline.trim() ? prev.headline : nextThumbnail.headline,
+        subHeadline: prev.subHeadline.trim() ? prev.subHeadline : nextThumbnail.subHeadline,
+      }));
+      setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
       setSaveMessage(
         uiLanguage === "en"
           ? `Best scene thumbnail selected from Scene ${bestScene.id} ✅`
@@ -8852,6 +10090,8 @@ export default function CreatePage() {
           title,
           character,
           visualBible,
+          productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+          qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         }),
       });
 
@@ -8880,6 +10120,9 @@ export default function CreatePage() {
       setError("");
       setSaveMessage("");
       setScenes([]);
+      setCreatorUndoStack([]);
+      setCreatorAssetCompareSelection({});
+      setCreatorAssetHistoryOpen({});
       setContinuePrompt("");
       setEditingSceneId(null);
       setSceneInstructions({});
@@ -9078,6 +10321,13 @@ export default function CreatePage() {
     setError("");
 
     try {
+      if (scene.image || scene.videoUrl) {
+        pushCreatorUndoSnapshot(
+          uiLanguage === "en"
+            ? `Regenerate scene ${scene.id} image`
+            : `Sahne ${scene.id} görselini yeniden üret`,
+        );
+      }
       clearVideoPollForScene(scene.id);
       setExportedMovieUrl("");
     setExportMovieResult(null);
@@ -9110,6 +10360,7 @@ export default function CreatePage() {
   };
 
   const openCreatorSceneEditor = (scene: Scene) => {
+    setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "script" }));
     setEditingSceneId(scene.id);
     setBranchingSceneId(null);
     setSceneScriptDrafts((prev) => ({
@@ -9138,6 +10389,7 @@ export default function CreatePage() {
       .join(" ")
       .trim();
 
+    setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "script" }));
     setEditingSceneId(scene.id);
     setBranchingSceneId(null);
     setSceneScriptDrafts((prev) => ({
@@ -9211,6 +10463,11 @@ export default function CreatePage() {
       visualBlockCount: requiredVisualBlocks,
     };
 
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en"
+        ? `Edit scene ${sceneId} script`
+        : `Sahne ${sceneId} metnini düzenle`,
+    );
     clearSceneAudioData(sceneId);
     clearSceneDialogueAudioData(sceneId);
     clearVideoPollForScene(sceneId);
@@ -9442,6 +10699,11 @@ export default function CreatePage() {
       blockCount: nextBlockCount,
     });
 
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en"
+        ? `Add a visual beat to scene ${sceneId}`
+        : `Sahne ${sceneId} için görsel akış ekle`,
+    );
     clearVideoPollForScene(sceneId);
     setScenes((prev) =>
       prev.map((item) =>
@@ -9501,6 +10763,12 @@ export default function CreatePage() {
     );
     if (!confirmed) return;
 
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en"
+        ? `Split scene ${sceneId}`
+        : `Sahne ${sceneId} bölümünü ayır`,
+    );
+
     const originalTarget = Math.max(
       6,
       Number(
@@ -9546,6 +10814,7 @@ export default function CreatePage() {
       scriptHealth: undefined,
       visualBlockPlan: undefined,
       image: "",
+      assetHistory: [],
       audioUrl: "",
       audioPath: "",
       audioSourceText: "",
@@ -9759,6 +11028,11 @@ export default function CreatePage() {
           )
         : 0;
 
+      pushCreatorUndoSnapshot(
+        uiLanguage === "en"
+          ? `AI edit scene ${sceneId}`
+          : `Sahne ${sceneId} AI düzenlemesi`,
+      );
       clearSceneAudioData(sceneId);
       clearSceneDialogueAudioData(sceneId);
       clearVideoPollForScene(sceneId);
@@ -10273,6 +11547,75 @@ export default function CreatePage() {
         ? "The opportunity analysis is ready. Review the available signals and continue to the production plan."
         : "Fırsat analizi hazır. Mevcut sinyalleri inceleyip üretim planına geç."),
   };
+  const creatorStrategyAlternativeDirections: CreatorStrategyDirection[] =
+    creatorMentorVideoIdeas
+      .filter(
+        (idea) =>
+          idea.title.trim().toLocaleLowerCase() !==
+          creatorMentorRecommendedIdea.title.trim().toLocaleLowerCase(),
+      )
+      .slice(0, 2)
+      .map((idea, index) => ({
+        id: `alternative-${index + 1}`,
+        title: idea.title.trim(),
+        concept:
+          idea.concept.trim() ||
+          (uiLanguage === "en"
+            ? "Alternative creative direction retained for comparison."
+            : "Karşılaştırma için korunan alternatif yaratıcı yön."),
+        source: "alternative" as const,
+      }));
+  const creatorStrategyDirections: CreatorStrategyDirection[] = [
+    {
+      id: "recommended",
+      title: creatorMentorRecommendedIdea.title,
+      concept: creatorMentorRecommendedIdea.reason,
+      source: "recommended",
+    },
+    ...creatorStrategyAlternativeDirections,
+  ];
+  const creatorSelectedStrategyDirection =
+    creatorStrategyDirections.find(
+      (direction) => direction.id === creatorSelectedStrategyDirectionId,
+    ) || creatorStrategyDirections[0];
+  const creatorStrategyHookOptions = Array.from(
+    new Set(
+      [
+        ...creatorMentorHookPatterns,
+        ...(youtubePatternSummary?.hookPatterns || []),
+      ]
+        .map((item) => String(item || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 3);
+  const creatorSelectedStrategyHook =
+    creatorSelectedHookPattern || creatorStrategyHookOptions[0] || "";
+  const creatorAudienceFitLabel =
+    creatorMentorAudienceInsights.length >= 3
+      ? uiLanguage === "en" ? "Strong" : "Güçlü"
+      : creatorMentorAudienceInsights.length > 0
+        ? uiLanguage === "en" ? "Defined" : "Tanımlı"
+        : uiLanguage === "en" ? "Needs review" : "Kontrol gerekli";
+  const creatorCompetitionLabel = youtubePatternSummary
+    ? youtubePatternSummary.competitionLevel === "low"
+      ? uiLanguage === "en" ? "Low competition" : "Düşük rekabet"
+      : youtubePatternSummary.competitionLevel === "high"
+        ? uiLanguage === "en" ? "High competition" : "Yüksek rekabet"
+        : uiLanguage === "en" ? "Moderate competition" : "Orta rekabet"
+    : youtubeResearchVideos.length > 0
+      ? uiLanguage === "en" ? "Evidence available" : "Pazar kanıtı mevcut"
+      : uiLanguage === "en" ? "Research optional" : "Araştırma isteğe bağlı";
+
+  useEffect(() => {
+    if (!creatorMentorResult) {
+      setCreatorSelectedStrategyDirectionId("recommended");
+      setCreatorSelectedHookPattern("");
+      return;
+    }
+
+    setCreatorSelectedStrategyDirectionId("recommended");
+    setCreatorSelectedHookPattern(creatorMentorResult.hookPatterns?.[0] || "");
+  }, [creatorMentorResult]);
 
   useEffect(() => {
     if (!isCreatorLabFlow) {
@@ -10351,6 +11694,15 @@ export default function CreatePage() {
   ];
   const creatorVisualsComplete = scenes.length > 0 && visualAssetReadyCount >= scenes.length;
   const creatorVoiceOverComplete = scenes.length > 0 && audioReadyCount >= scenes.length;
+  const creatorSelectedSceneIdSet = new Set(creatorSelectedSceneIds);
+  const creatorAllScenesSelected =
+    scenes.length > 0 && creatorSelectedSceneIds.length === scenes.length;
+  const creatorSelectedMissingVisualCount = scenes.filter(
+    (scene) => creatorSelectedSceneIdSet.has(scene.id) && !scene.image,
+  ).length;
+  const creatorSelectedMissingVoiceCount = scenes.filter(
+    (scene) => creatorSelectedSceneIdSet.has(scene.id) && !getSceneVoiceStatus(scene),
+  ).length;
   const creatorUnselectedSceneCount = scenes.filter(
     (scene) => scene.renderMode !== "image" && scene.renderMode !== "video",
   ).length;
@@ -10548,8 +11900,20 @@ export default function CreatePage() {
     }, targetStep && targetStep !== creatorWorkspaceStep ? 90 : 30);
   };
 
-  const creatorBriefSignalCount = input.trim() ? 5 : 4;
-  const creatorBriefSignalPercent = Math.round((creatorBriefSignalCount / 5) * 100);
+  const navigateFromCreatorDirector = (targetId: string) => {
+    setCreatorDirectorOpen(false);
+    window.setTimeout(() => scrollCreatorWorkspaceTo(targetId), 40);
+  };
+
+  const creatorBriefSignalCount = [
+    Boolean(input.trim()),
+    Boolean(language),
+    Boolean(creatorFormat),
+    creatorVideoDurationSec > 0,
+    Boolean(creatorQualityMode),
+    creatorTargetPlatforms.length > 0,
+  ].filter(Boolean).length;
+  const creatorBriefSignalPercent = Math.round((creatorBriefSignalCount / 6) * 100);
   const creatorVisualProgressPercent = scenes.length > 0
     ? Math.round((visualAssetReadyCount / scenes.length) * 100)
     : 0;
@@ -10559,9 +11923,6 @@ export default function CreatePage() {
   const creatorProductionProgressPercent = scenes.length > 0
     ? Math.round((creatorVisualProgressPercent + creatorVoiceProgressPercent) / 2)
     : 0;
-  const creatorPublishChecklistCount = youtubeMetadataResult
-    ? youtubeMetadataResult.uploadChecklist.length + youtubeMetadataResult.publishingNotes.length
-    : 0;
   const creatorStrategySignalCount = [
     Boolean(creatorMentorResult),
     Boolean(youtubePatternSummary),
@@ -10569,21 +11930,9 @@ export default function CreatePage() {
     Boolean(creatorProductionPackage),
   ].filter(Boolean).length;
   const creatorStrategyProgressPercent = Math.round((creatorStrategySignalCount / 4) * 100);
-  const creatorPublishProgressPercent = creatorPublishComplete
-    ? 100
-    : Math.round(
-        ([
-          Boolean(exportedMovieUrl),
-          Boolean(youtubeMetadataResult),
-          creatorProductionComplete,
-          creatorPublishChecklistCount > 0,
-        ].filter(Boolean).length / 4) * 100,
-      );
-
   const creatorPublishVideoUrl =
     exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl;
-  const creatorPublishThumbnailUrl =
-    youtubeThumbnailResult?.imageUrl || scenes.find((scene) => scene.image)?.image || "";
+  const creatorPublishThumbnailUrl = youtubeThumbnailResult?.imageUrl || "";
   const creatorPublishTitle =
     youtubeMetadataResult?.recommendedTitle ||
     creatorProductionPackage?.youtubeTitle ||
@@ -10597,15 +11946,112 @@ export default function CreatePage() {
     creatorProductionPackage?.hook ||
     creatorIntelligenceReport?.recommendedOpening ||
     "";
-  const creatorPackageReady = Boolean(creatorProductionPackage && creatorPublishVideoUrl);
+  const creatorPublishCaptionReady = scenes.some(
+    (scene) => Boolean(scene.narration?.trim() || scene.dialogue?.trim()),
+  );
+  const creatorPublishRatioLabel = creatorFormat === "youtube_video" ? "16:9" : "9:16";
+  const creatorPublishSystemChecks = [
+    {
+      key: "finalVideo",
+      label: uiLanguage === "en" ? "Final video exists" : "Final video mevcut",
+      detail: uiLanguage === "en" ? "A downloadable final render is available." : "İndirilebilir final render hazır.",
+      ready: Boolean(creatorPublishVideoUrl),
+    },
+    {
+      key: "thumbnail",
+      label: uiLanguage === "en" ? "Thumbnail selected" : "Thumbnail seçildi",
+      detail: uiLanguage === "en" ? "A clean source image and overlay design are defined." : "Temiz kaynak görsel ve yazı katmanı tanımlandı.",
+      ready: Boolean(creatorPublishThumbnailUrl),
+    },
+    {
+      key: "captions",
+      label: uiLanguage === "en" ? "Captions can be generated" : "Altyazılar üretilebilir",
+      detail: uiLanguage === "en" ? "Narration or dialogue is available for SRT/VTT." : "SRT/VTT için anlatım veya diyalog mevcut.",
+      ready: creatorPublishCaptionReady,
+    },
+    {
+      key: "metadata",
+      label: uiLanguage === "en" ? "Publishing copy prepared" : "Yayın metinleri hazır",
+      detail: uiLanguage === "en" ? "Title, description and channel copy are ready." : "Başlık, açıklama ve kanal metinleri hazır.",
+      ready: Boolean(youtubeMetadataResult),
+    },
+    {
+      key: "ratio",
+      label: uiLanguage === "en" ? `${creatorPublishRatioLabel} output preset` : `${creatorPublishRatioLabel} çıktı oranı`,
+      detail: uiLanguage === "en" ? "The export format matches the selected primary format." : "Export formatı seçilen ana formatla uyumlu.",
+      ready: Boolean(creatorPublishVideoUrl && creatorFormat),
+    },
+  ];
+  const creatorPublishSystemReady = creatorPublishSystemChecks.every((item) => item.ready);
+  const creatorReleaseConfirmationItems: Array<{
+    key: CreatorReleaseConfirmationKey;
+    label: string;
+    detail: string;
+  }> = [
+    {
+      key: "videoReviewed",
+      label: uiLanguage === "en" ? "I reviewed the final video" : "Final videoyu kontrol ettim",
+      detail: uiLanguage === "en" ? "Playback, timing and visible output were checked." : "Oynatma, zamanlama ve görünen çıktı kontrol edildi.",
+    },
+    {
+      key: "claimsVerified",
+      label: uiLanguage === "en" ? "Claims and facts are verified" : "İddia ve bilgiler doğrulandı",
+      detail: uiLanguage === "en" ? "Names, figures, quotations and assertions were reviewed." : "İsimler, rakamlar, alıntılar ve iddialar gözden geçirildi.",
+    },
+    {
+      key: "rightsConfirmed",
+      label: uiLanguage === "en" ? "Usage rights are confirmed" : "Kullanım hakları doğrulandı",
+      detail: uiLanguage === "en" ? "Visual, audio, brand and reference permissions are valid." : "Görsel, ses, marka ve referans izinleri geçerli.",
+    },
+    {
+      key: "thumbnailApproved",
+      label: uiLanguage === "en" ? "Thumbnail is approved" : "Thumbnail onaylandı",
+      detail: uiLanguage === "en" ? "Crop, text, safe zone and readability were reviewed." : "Kadraj, metin, güvenli alan ve okunabilirlik kontrol edildi.",
+    },
+  ];
+  const creatorReleaseConfirmed = creatorReleaseConfirmationItems.every(
+    (item) => creatorReleaseConfirmations[item.key],
+  );
+  const creatorReleaseReady = creatorPublishSystemReady && creatorReleaseConfirmed;
+  const creatorPublishChecklistCount =
+    creatorPublishSystemChecks.filter((item) => item.ready).length +
+    creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length;
+  const creatorPublishProgressPercent = creatorPublishComplete
+    ? 100
+    : Math.round(
+        (creatorPublishChecklistCount /
+          (creatorPublishSystemChecks.length + creatorReleaseConfirmationItems.length)) *
+          100,
+      );
+  const creatorPackageReady = Boolean(creatorProductionPackage && creatorReleaseReady);
   const creatorPublishAssetCount = [
     Boolean(creatorPublishVideoUrl),
     Boolean(creatorPublishThumbnailUrl),
     Boolean(youtubeMetadataResult),
   ].filter(Boolean).length;
-  const creatorPublishCaptionReady = scenes.some(
-    (scene) => Boolean(scene.narration?.trim() || scene.dialogue?.trim()),
-  );
+  const getCreatorPlatformLabel = (platform: CreatorPublishPlatform) =>
+    CREATOR_PUBLISH_PLATFORM_OPTIONS.find((option) => option.value === platform)?.label || platform;
+  const getCreatorPlatformCopy = (platform: CreatorPublishPlatform) => {
+    if (platform === "youtube") {
+      return youtubeMetadataResult?.firstComment || creatorProductionPackage?.caption || "";
+    }
+    if (platform === "linkedin") {
+      return youtubeMetadataResult?.linkedInCaption || "";
+    }
+
+    const shortCaption = youtubeMetadataResult?.shortCaption || "";
+    const hashtags = (youtubeMetadataResult?.hashtags || []).join(" ");
+    if (platform === "instagram_reels") {
+      return [shortCaption, hashtags].filter(Boolean).join("\n\n");
+    }
+    if (platform === "tiktok") {
+      return [creatorPublishHook || shortCaption, (youtubeMetadataResult?.hashtags || []).slice(0, 5).join(" ")]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+    return shortCaption;
+  };
+
   const creatorPublishPackageItems = [
     {
       name: uiLanguage === "en" ? "Final video file" : "Final video dosyası",
@@ -10774,14 +12220,16 @@ export default function CreatePage() {
             tone: "green",
           },
           {
-            title: uiLanguage === "en" ? "Production plan" : "Üretim planı",
-            description: uiLanguage === "en" ? "Convert the approved direction into an editable scene plan." : "Onaylanan yönü düzenlenebilir sahne planına dönüştür.",
+            title: uiLanguage === "en" ? "Approved direction" : "Onaylanan yön",
+            description: creatorSelectedStrategyDirection
+              ? creatorSelectedStrategyDirection.title
+              : uiLanguage === "en" ? "Select the direction that should shape the scene plan." : "Sahne planını şekillendirecek yönü seç.",
             status: creatorProductionPackage
               ? uiLanguage === "en" ? "Created" : "Oluşturuldu"
               : uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon",
-            metric: creatorMentorResult
-              ? `${creatorMentorProductionPlan.length} ${uiLanguage === "en" ? "plan points" : "plan maddesi"}`
-              : uiLanguage === "en" ? "Strategy required" : "Strateji gerekli",
+            metric: creatorSelectedStrategyHook
+              ? uiLanguage === "en" ? "Opening direction selected" : "Açılış yönü seçildi"
+              : uiLanguage === "en" ? "Opening direction pending" : "Açılış yönü bekliyor",
             progress: creatorStrategyProgressPercent,
             targetId: "creatorlab-strategy-action",
             icon: "package",
@@ -10901,10 +12349,89 @@ export default function CreatePage() {
             },
           ];
 
+  const creatorDirectorAttentionCount = creatorWorkspaceCards.filter((card) => card.attention).length;
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || (!creatorProjectsDrawerOpen && !creatorDirectorOpen)) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      setCreatorProjectsDrawerOpen(false);
+      setCreatorDirectorOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [creatorDirectorOpen, creatorProjectsDrawerOpen, isCreatorLabFlow]);
+
+  useEffect(() => {
+    if (!creatorDirectorOpen) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      creatorDirectorMessagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [creatorDirectorLoading, creatorDirectorMessages, creatorDirectorOpen]);
+
+  const creatorDirectorContextLabel = creatorWorkspaceStep === 1
+    ? "Brief"
+    : creatorWorkspaceStep === 2
+      ? uiLanguage === "en" ? "Strategy" : "Strateji"
+      : creatorWorkspaceStep === 3
+        ? creatorSelectedSceneIds.length === 1
+          ? `${uiLanguage === "en" ? "Production · Scene" : "Üretim · Sahne"} ${creatorSelectedSceneIds[0]}`
+          : uiLanguage === "en" ? "Production" : "Üretim"
+        : uiLanguage === "en" ? "Publish & Export" : "Yayınla ve Dışa Aktar";
+
+  const creatorDirectorPromptChips = creatorDirectorMode === "help"
+    ? [
+        uiLanguage === "en" ? "What should I do in this stage?" : "Bu aşamada ne yapmalıyım?",
+        uiLanguage === "en" ? "Why is the main action unavailable?" : "Ana aksiyon neden kullanılamıyor?",
+        uiLanguage === "en" ? "Explain the quality levels." : "Kalite seviyelerini açıkla.",
+      ]
+    : creatorWorkspaceStep === 1
+      ? [
+          uiLanguage === "en" ? "Improve this brief without making it longer." : "Bu brief'i uzatmadan güçlendir.",
+          uiLanguage === "en" ? "Is the audience and format choice coherent?" : "Hedef kitle ve format seçimi tutarlı mı?",
+          uiLanguage === "en" ? "What is the single missing decision?" : "Eksik olan tek kritik karar nedir?",
+        ]
+      : creatorWorkspaceStep === 2
+        ? [
+            uiLanguage === "en" ? "Which direction is strongest and why?" : "Hangi yön daha güçlü ve neden?",
+            uiLanguage === "en" ? "Strengthen the opening angle." : "Açılış açısını güçlendir.",
+            uiLanguage === "en" ? "What production risk should I resolve first?" : "Önce hangi üretim riskini çözmeliyim?",
+          ]
+        : creatorWorkspaceStep === 3
+          ? [
+              uiLanguage === "en" ? "Which selected scenes should use video?" : "Seçili sahnelerin hangileri video olmalı?",
+              uiLanguage === "en" ? "Find narration-duration problems." : "Anlatım-süre sorunlarını bul.",
+              uiLanguage === "en" ? "What blocks the next production action?" : "Sonraki üretim aksiyonunu ne engelliyor?",
+            ]
+          : [
+              uiLanguage === "en" ? "What blocks release approval?" : "Yayın onayını ne engelliyor?",
+              uiLanguage === "en" ? "Review the title and thumbnail promise." : "Başlık ve thumbnail vaadini değerlendir.",
+              uiLanguage === "en" ? "What should I verify before export?" : "Dışa aktarmadan önce neyi doğrulamalıyım?",
+            ];
+
   const creatorWorkspaceGuidance = creatorWorkspaceStep === 1
     ? uiLanguage === "en" ? "Complete the brief, then analyze the content opportunity." : "Brief'i tamamla, ardından içerik fırsatını analiz et."
     : creatorWorkspaceStep === 2
-      ? uiLanguage === "en" ? "Choose the strongest direction before creating the production plan." : "Üretim planını oluşturmadan önce en güçlü yönü seç."
+      ? uiLanguage === "en" ? "Confirm the creative direction and opening angle before building the scene plan." : "Sahne planını oluşturmadan önce yaratıcı yönü ve açılış açısını doğrula."
       : creatorWorkspaceStep === 3
         ? uiLanguage === "en" ? "Generate media in sequence and resolve only blocking risks." : "Medyayı sırayla üret ve yalnızca engelleyici riskleri çöz."
         : uiLanguage === "en" ? "Review the final output and download the publish-ready package." : "Final çıktıyı incele ve yayına hazır paketi indir.";
@@ -10924,9 +12451,11 @@ export default function CreatePage() {
       }
     : creatorWorkspaceStep === 2
       ? {
-          title: uiLanguage === "en" ? "Create the production plan" : "Üretim planını oluştur",
-          description: creatorIntelligenceReport?.nextBestAction || (uiLanguage === "en" ? "Use the approved direction to create the editable production package." : "Onaylanan yönü kullanarak düzenlenebilir üretim paketini oluştur."),
-          label: uiLanguage === "en" ? "Go to production plan" : "Üretim planına git",
+          title: uiLanguage === "en" ? "Approve strategy and build scenes" : "Stratejiyi onayla ve sahneleri oluştur",
+          description: creatorSelectedStrategyDirection
+            ? `${creatorSelectedStrategyDirection.title} · ${creatorSelectedStrategyHook || (uiLanguage === "en" ? "opening direction pending" : "açılış yönü bekliyor")}`
+            : creatorIntelligenceReport?.nextBestAction || (uiLanguage === "en" ? "Select the direction that should shape the production package." : "Üretim paketini şekillendirecek yönü seç."),
+          label: uiLanguage === "en" ? "Go to strategy approval" : "Strateji onayına git",
           targetId: "creatorlab-strategy-action",
         }
       : creatorWorkspaceStep === 3
@@ -11101,7 +12630,7 @@ export default function CreatePage() {
    Existing product functions remain in the center canvas and are migrated step by step. */
 .creatorlab-product-frame {
   display: grid;
-  grid-template-columns: minmax(224px, 252px) minmax(0, 1fr) minmax(276px, 312px);
+  grid-template-columns: minmax(224px, 252px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   align-items: start;
   width: min(100%, 1680px);
@@ -11296,15 +12825,94 @@ export default function CreatePage() {
   box-shadow: 0 1px 3px rgba(19, 36, 62, 0.08) !important;
 }
 
-.creatorlab-pulse-icon {
+.creatorlab-topbar-tool-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 10px !important;
+  color: var(--cl-text) !important;
+  background: #fffefa !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  font-size: 0.7rem !important;
+  font-weight: 740 !important;
+}
+
+.creatorlab-topbar-tool-button:hover:not(:disabled),
+.creatorlab-topbar-tool-button[aria-expanded="true"] {
+  color: var(--cl-accent) !important;
+  background: var(--cl-accent-soft) !important;
+  border-color: var(--cl-accent-border) !important;
+}
+
+.creatorlab-topbar-tool-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.creatorlab-topbar-tool-button small {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  color: var(--cl-muted);
-  background: #fffefa;
-  border: 1px solid var(--cl-border);
-  border-radius: 12px;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 4px;
+  color: #ffffff !important;
+  background: var(--cl-danger);
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.creatorlab-overlay-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(14, 32, 58, 0.24);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.creatorlab-drawer-panel,
+.creatorlab-project-drawer {
+  animation: creatorlab-drawer-enter 180ms ease-out;
+}
+
+@keyframes creatorlab-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.creatorlab-drawer-close {
+  display: grid !important;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0 !important;
+  color: var(--cl-muted) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  font-size: 1.25rem !important;
+  line-height: 1 !important;
+}
+
+.creatorlab-drawer-close:hover:not(:disabled) {
+  color: var(--cl-text-strong) !important;
+  border-color: var(--cl-border-strong) !important;
 }
 
 .creatorlab-workflow-rail,
@@ -11329,11 +12937,329 @@ export default function CreatePage() {
   border-right: 1px solid var(--cl-border);
 }
 
-.creatorlab-ai-workspace {
-  grid-column: 3;
-  grid-row: 2;
-  padding: 30px 22px 24px 18px;
+.creatorlab-ai-workspace.creatorlab-drawer-panel {
+  position: relative;
+  top: auto;
+  z-index: 1;
+  width: min(430px, calc(100vw - 20px));
+  height: 100dvh;
+  padding: 24px;
+  overflow-y: auto;
+  background: #fffdf9;
   border-left: 1px solid var(--cl-border);
+  box-shadow: -18px 0 44px rgba(14, 32, 58, 0.12) !important;
+}
+
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-heading {
+  position: sticky;
+  top: -24px;
+  z-index: 4;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-block: 6px 14px;
+  background: rgba(255, 253, 249, 0.97);
+  border-bottom: 1px solid var(--cl-divider);
+}
+
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-card-list {
+  width: 100%;
+  grid-template-columns: 1fr;
+  margin-inline: 0;
+}
+
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-heading,
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-stage-summary,
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-stage-guidance,
+.creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-guidance-note {
+  max-width: none;
+  margin-inline: 0;
+}
+
+.creatorlab-director-intro {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 12px;
+}
+
+.creatorlab-director-intro strong {
+  color: var(--cl-text-strong) !important;
+  font-size: 0.78rem;
+}
+
+.creatorlab-director-intro p {
+  margin: 0 !important;
+  color: var(--cl-muted) !important;
+  font-size: 0.72rem !important;
+  line-height: 1.5;
+}
+
+.creatorlab-director-context-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  align-items: center;
+  margin: 14px 0 12px;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+}
+
+.creatorlab-director-context-bar > span {
+  grid-column: 1;
+  color: var(--cl-soft);
+  font-size: 0.64rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.creatorlab-director-context-bar strong {
+  grid-column: 1;
+  color: var(--cl-text-strong);
+  font-size: 0.82rem;
+}
+
+.creatorlab-director-context-bar small {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 5px 8px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+
+.creatorlab-director-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  background: #f0f2f5;
+  border-radius: 10px;
+}
+
+.creatorlab-director-mode-tabs button {
+  min-height: 36px;
+  color: var(--cl-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.creatorlab-director-mode-tabs button.is-active {
+  color: var(--cl-text-strong);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(14, 32, 58, 0.08);
+}
+
+.creatorlab-director-chat {
+  display: grid;
+  gap: 10px;
+  max-height: min(42dvh, 430px);
+  min-height: 190px;
+  padding: 12px;
+  overflow-y: auto;
+  background: #f8f8f6;
+  border: 1px solid var(--cl-border);
+  border-radius: 14px;
+}
+
+.creatorlab-director-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  min-height: 165px;
+  padding: 18px;
+  text-align: center;
+}
+
+.creatorlab-director-empty > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: #ffffff;
+  background: var(--cl-accent);
+  border-radius: 50%;
+}
+
+.creatorlab-director-empty strong {
+  color: var(--cl-text-strong);
+  font-size: 0.86rem;
+}
+
+.creatorlab-director-empty p {
+  max-width: 310px;
+  margin: 0 !important;
+  color: var(--cl-muted) !important;
+  font-size: 0.72rem !important;
+  line-height: 1.5;
+}
+
+.creatorlab-director-message {
+  display: grid;
+  gap: 4px;
+  max-width: 92%;
+}
+
+.creatorlab-director-message.is-user {
+  justify-self: end;
+}
+
+.creatorlab-director-message > span {
+  color: var(--cl-soft);
+  font-size: 0.6rem;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.creatorlab-director-message.is-user > span {
+  text-align: right;
+}
+
+.creatorlab-director-message p {
+  margin: 0 !important;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  color: var(--cl-text) !important;
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+  border-radius: 12px 12px 12px 4px;
+  font-size: 0.74rem !important;
+  line-height: 1.55;
+}
+
+.creatorlab-director-message.is-user p {
+  color: #ffffff !important;
+  background: var(--cl-accent);
+  border-color: var(--cl-accent);
+  border-radius: 12px 12px 4px 12px;
+}
+
+.creatorlab-director-message.is-loading p {
+  color: var(--cl-muted) !important;
+  font-style: italic;
+}
+
+.creatorlab-director-prompt-chips {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.creatorlab-director-prompt-chips button {
+  flex: 0 0 auto;
+  max-width: 230px;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 720;
+  text-align: left;
+}
+
+.creatorlab-director-prompt-chips button:disabled {
+  opacity: 0.55;
+}
+
+.creatorlab-director-composer {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 14px;
+}
+
+.creatorlab-director-composer textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  color: var(--cl-text-strong);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.creatorlab-director-composer > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.creatorlab-director-composer button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.creatorlab-director-clear {
+  color: var(--cl-muted);
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-director-send {
+  color: #ffffff;
+  background: var(--cl-accent);
+  border: 1px solid var(--cl-accent);
+}
+
+.creatorlab-director-composer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.creatorlab-director-error {
+  margin-top: 8px;
+  padding: 9px 11px;
+  color: #9b2c2c;
+  background: #fff4f2;
+  border: 1px solid #f2c9c4;
+  border-radius: 10px;
+  font-size: 0.7rem;
+}
+
+.creatorlab-director-safety-note {
+  margin: 9px 2px 0 !important;
+  color: var(--cl-soft) !important;
+  font-size: 0.64rem !important;
+  line-height: 1.45;
+}
+
+.creatorlab-director-status-details {
+  margin-top: 12px;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-director-status-details > summary {
+  padding: 12px 2px;
+  color: var(--cl-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 760;
 }
 
 .creatorlab-rail-kicker {
@@ -13323,6 +15249,666 @@ export default function CreatePage() {
 }
 
 
+
+/* CreatorLab UX-P0B — focused brief and resilient local draft autosave */
+.creatorlab-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  color: var(--cl-soft);
+  font-size: 0.67rem;
+  line-height: 1.3;
+}
+
+.creatorlab-save-state > span {
+  width: 7px;
+  height: 7px;
+  background: #c6c8cc;
+  border-radius: 50%;
+}
+
+.creatorlab-save-state.is-saving > span {
+  background: var(--cl-warning);
+  animation: creatorlab-save-pulse 1s ease-in-out infinite;
+}
+
+.creatorlab-save-state.is-saved > span {
+  background: var(--cl-success);
+}
+
+.creatorlab-save-state.is-error {
+  color: var(--cl-danger);
+}
+
+.creatorlab-save-state.is-error > span {
+  background: var(--cl-danger);
+}
+
+@keyframes creatorlab-save-pulse {
+  50% { opacity: 0.35; }
+}
+
+.creatorlab-brief-card-v2 {
+  gap: 20px;
+}
+
+.creatorlab-brief-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.creatorlab-brief-section-heading p {
+  margin: 0;
+  color: var(--cl-accent) !important;
+  font-size: 0.67rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.creatorlab-brief-section-heading h3 {
+  margin: 5px 0 0 !important;
+  color: var(--cl-text-strong) !important;
+  font-family: var(--cl-font-display);
+  font-size: 1.55rem !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.03em;
+}
+
+.creatorlab-brief-section-heading div > span {
+  display: block;
+  max-width: 48rem;
+  margin-top: 6px;
+  color: var(--cl-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.creatorlab-restored-badge {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border: 1px solid #cce8da;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.creatorlab-brief-core-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.creatorlab-brief-field {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.creatorlab-brief-field > span,
+.creatorlab-custom-duration-field > span {
+  color: var(--cl-text-strong);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.creatorlab-brief-field select,
+.creatorlab-custom-duration-field input,
+.creatorlab-context-details input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px !important;
+  color: var(--cl-text-strong) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  font-size: 0.78rem !important;
+}
+
+.creatorlab-brief-field small {
+  color: var(--cl-soft);
+  font-size: 0.67rem;
+  line-height: 1.4;
+}
+
+.creatorlab-brief-decision-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-decision-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.creatorlab-decision-heading div > span {
+  display: block;
+  color: var(--cl-accent);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.creatorlab-decision-heading strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.84rem;
+}
+
+.creatorlab-decision-heading > small {
+  color: var(--cl-soft);
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.creatorlab-format-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.creatorlab-format-choice {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 13px !important;
+  color: var(--cl-text) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.creatorlab-format-choice:hover {
+  border-color: var(--cl-border-strong) !important;
+}
+
+.creatorlab-format-choice.is-selected {
+  background: var(--cl-accent-soft) !important;
+  border-color: var(--cl-accent-border) !important;
+  box-shadow: inset 3px 0 0 var(--cl-accent) !important;
+}
+
+.creatorlab-format-choice-mark {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 40px;
+  color: var(--cl-accent);
+  background: #ffffff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 8px;
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
+.creatorlab-format-choice strong,
+.creatorlab-duration-choice strong {
+  display: block;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.78rem;
+}
+
+.creatorlab-format-choice small {
+  display: block;
+  margin-top: 4px;
+  color: var(--cl-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.creatorlab-duration-choice-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.creatorlab-duration-choice {
+  min-height: 66px;
+  padding: 10px 11px !important;
+  color: var(--cl-text) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.creatorlab-duration-choice span {
+  display: block;
+  margin-top: 4px;
+  color: var(--cl-soft);
+  font-size: 0.64rem;
+}
+
+.creatorlab-duration-choice.is-selected {
+  background: var(--cl-accent-soft) !important;
+  border-color: var(--cl-accent) !important;
+}
+
+.creatorlab-custom-duration-field {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(160px, 260px);
+  align-items: center;
+  justify-content: start;
+  gap: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--cl-divider);
+  border-radius: 11px;
+}
+
+.creatorlab-context-details {
+  overflow: hidden;
+  background: #fffefa;
+  border: 1px solid var(--cl-border);
+  border-radius: 13px;
+}
+
+.creatorlab-context-details > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 13px 15px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.creatorlab-context-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.creatorlab-context-details > summary strong {
+  display: block;
+  color: var(--cl-text-strong) !important;
+  font-family: var(--cl-font-display);
+  font-size: 0.98rem;
+  font-weight: 500;
+}
+
+.creatorlab-context-details > summary div:first-child span {
+  display: block;
+  margin-top: 4px;
+  color: var(--cl-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.creatorlab-context-details[open] .creatorlab-details-chevron {
+  transform: rotate(180deg);
+}
+
+.creatorlab-context-summary-values {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.creatorlab-context-summary-values span {
+  padding: 5px 8px;
+  color: var(--cl-muted);
+  background: #f3f2ee;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  font-size: 0.63rem;
+  font-weight: 700;
+}
+
+.creatorlab-context-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-context-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  gap: 12px;
+}
+
+.creatorlab-profile-context-card {
+  padding: 13px;
+  background: #f7f6f2;
+  border: 1px solid var(--cl-divider);
+  border-radius: 11px;
+}
+
+.creatorlab-profile-context-card > span {
+  color: var(--cl-soft);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.creatorlab-profile-context-card > strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.82rem;
+}
+
+.creatorlab-profile-context-card p {
+  margin: 4px 0 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.69rem;
+}
+
+.creatorlab-profile-context-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.creatorlab-profile-context-card button {
+  min-height: 34px;
+  padding: 7px 10px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  font-size: 0.67rem !important;
+}
+
+.creatorlab-profile-context-card button:first-child {
+  color: var(--cl-text-strong) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+}
+
+.creatorlab-profile-context-card button:last-child {
+  color: #ffffff !important;
+  background: var(--cl-accent) !important;
+  border: 1px solid var(--cl-accent) !important;
+}
+
+.creatorlab-brief-strategy-note {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px 13px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 11px;
+}
+
+.creatorlab-brief-strategy-note svg {
+  width: 18px;
+  height: 18px;
+  margin: auto;
+}
+
+.creatorlab-brief-strategy-note p {
+  margin: 0;
+  color: var(--cl-text) !important;
+  font-size: 0.71rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .creatorlab-brief-core-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .creatorlab-brief-core-grid > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .creatorlab-context-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 699px) {
+  .creatorlab-brief-section-heading,
+  .creatorlab-decision-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-decision-heading > small {
+    text-align: left;
+  }
+
+  .creatorlab-brief-core-grid,
+  .creatorlab-format-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-brief-core-grid > :last-child {
+    grid-column: auto;
+  }
+
+  .creatorlab-custom-duration-field {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-context-details > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .creatorlab-context-summary-values {
+    display: none;
+  }
+}
+
+
+
+.creatorlab-idea-lab-panel {
+  background: #fffefa;
+}
+
+.creatorlab-idea-lab-body {
+  display: grid;
+  gap: 14px;
+}
+
+.creatorlab-idea-lab-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.creatorlab-idea-lab-entry label {
+  display: grid;
+  gap: 7px;
+}
+
+.creatorlab-idea-lab-entry label > span {
+  color: var(--cl-text-strong);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.creatorlab-idea-lab-entry textarea {
+  min-height: 104px;
+  resize: vertical;
+  padding: 12px 13px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  border-radius: 10px !important;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.creatorlab-idea-lab-entry > button,
+.creatorlab-idea-lab-toolbar button {
+  min-height: 42px;
+  padding: 9px 13px !important;
+  color: #ffffff !important;
+  background: var(--cl-accent) !important;
+  border: 1px solid var(--cl-accent) !important;
+  border-radius: 9px !important;
+  box-shadow: none !important;
+  font-size: 0.72rem !important;
+  font-weight: 750;
+}
+
+.creatorlab-idea-lab-empty {
+  padding: 14px;
+  color: var(--cl-muted);
+  background: #f7f6f2;
+  border: 1px solid var(--cl-divider);
+  border-radius: 10px;
+  font-size: 0.72rem;
+}
+
+.creatorlab-idea-lab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 10px;
+  color: var(--cl-muted);
+  font-size: 0.72rem;
+}
+
+.creatorlab-idea-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.creatorlab-idea-lab-grid article {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 13px;
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+  border-radius: 11px;
+}
+
+.creatorlab-idea-lab-grid article.is-selected {
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-idea-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--cl-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.creatorlab-idea-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.creatorlab-idea-title-row strong {
+  color: var(--cl-text-strong) !important;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.creatorlab-idea-title-row > span {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-radius: 999px;
+  font-size: 0.61rem;
+  font-weight: 750;
+}
+
+.creatorlab-idea-lab-grid article > p {
+  margin: 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.creatorlab-idea-lab-grid article > small {
+  color: var(--cl-soft);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.creatorlab-idea-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.creatorlab-idea-actions button {
+  min-height: 36px;
+  padding: 7px 9px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.67rem !important;
+  font-weight: 700;
+}
+
+.creatorlab-idea-actions button:last-child {
+  color: var(--cl-accent) !important;
+  border-color: var(--cl-accent-border) !important;
+}
+
+@media (max-width: 1100px) {
+  .creatorlab-idea-lab-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 699px) {
+  .creatorlab-idea-lab-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-idea-lab-entry > button {
+    width: 100%;
+  }
+
+  .creatorlab-idea-lab-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-idea-lab-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 .creatorlab-strategy-empty-state {
   display: grid;
   justify-items: start;
@@ -13550,7 +16136,7 @@ export default function CreatePage() {
 .creatorlab-production-progress-step {
   position: relative;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -13562,11 +16148,6 @@ export default function CreatePage() {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  font: inherit;
-}
-
-.creatorlab-production-progress-step:hover:not(:disabled) {
-  background: #f7f9fd;
 }
 
 .creatorlab-production-progress-step + .creatorlab-production-progress-step {
@@ -13615,6 +16196,32 @@ export default function CreatePage() {
   color: var(--cl-muted);
   font-size: 0.65rem;
   line-height: 1.4;
+}
+
+.creatorlab-production-progress-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  color: var(--cl-soft);
+  background: #f6f5f1;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 740;
+  white-space: nowrap;
+}
+
+.creatorlab-production-progress-status.is-active {
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-production-progress-status.is-complete {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border-color: #c8e5d7;
 }
 
 .creatorlab-production-safety {
@@ -13866,14 +16473,31 @@ export default function CreatePage() {
 }
 
 .creatorlab-production-action-bar {
+  position: sticky;
+  top: 96px;
+  bottom: auto;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 18px 20px;
-  background: #f7f9fd;
+  padding: 16px 18px;
+  background: rgba(247, 249, 253, 0.97);
   border: 1px solid var(--cl-accent-border);
   border-radius: 15px;
+  box-shadow: 0 16px 38px rgba(19, 36, 62, 0.14) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.creatorlab-production-action-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--cl-accent);
+  font-size: 0.61rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .creatorlab-production-actions {
@@ -13883,17 +16507,6 @@ export default function CreatePage() {
   gap: 9px;
 }
 
-.creatorlab-production-secondary-action {
-  min-height: 42px;
-  padding: 9px 13px !important;
-  color: var(--cl-text) !important;
-  background: #ffffff !important;
-  border: 1px solid var(--cl-border-strong) !important;
-  border-radius: 10px !important;
-  box-shadow: none !important;
-  font-size: 0.72rem !important;
-  font-weight: 690 !important;
-}
 
 .creatorlab-production-primary-action {
   display: inline-flex !important;
@@ -14027,6 +16640,10 @@ export default function CreatePage() {
     border-left: 0;
   }
 
+  .creatorlab-production-progress-status {
+    justify-self: end;
+  }
+
   .creatorlab-production-safety {
     grid-template-columns: 36px minmax(0, 1fr);
   }
@@ -14055,7 +16672,6 @@ export default function CreatePage() {
     flex-direction: column-reverse;
   }
 
-  .creatorlab-production-secondary-action,
   .creatorlab-production-primary-action {
     width: 100%;
   }
@@ -14766,112 +17382,591 @@ export default function CreatePage() {
   }
 }
 
-/* CreatorLab UX-R7.1 — discoverable Cast & Brand entry */
-.creatorlab-cast-entry-card {
+
+.creatorlab-publish-readiness-card.is-thumbnail-essential {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.creatorlab-publish-essential-thumbnail {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 34px;
+  overflow: hidden;
+  background: #eef1f5;
+  border: 1px solid var(--cl-border);
+  border-radius: 8px;
+}
+
+.creatorlab-publish-essential-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.creatorlab-publish-essential-action {
+  min-height: 32px;
+  padding: 6px 10px;
+  color: var(--cl-accent);
+  background: #ffffff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 8px;
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.creatorlab-primary-thumbnail-chooser {
+  display: grid;
+  gap: 12px;
+  margin-top: -8px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(14, 32, 58, 0.08);
+}
+
+.creatorlab-primary-thumbnail-heading,
+.creatorlab-primary-thumbnail-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px;
-  border: 1px solid #dce3ee;
-  border-radius: 22px;
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
-}
-
-.creatorlab-cast-entry-copy {
-  min-width: 0;
-}
-
-.creatorlab-cast-entry-copy > span {
-  display: block;
-  margin-bottom: 7px;
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.creatorlab-cast-entry-copy > strong {
-  display: block;
-  color: #172033;
-  font-size: 17px;
-  line-height: 1.35;
-}
-
-.creatorlab-cast-entry-copy > p {
-  max-width: 720px;
-  margin-top: 7px;
-  color: #5f6b7a !important;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.creatorlab-cast-entry-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
   gap: 12px;
 }
 
-.creatorlab-cast-entry-actions > span {
-  border: 1px solid #d8dee8;
-  border-radius: 999px;
-  background: #f7f8fa;
-  color: #667085;
-  padding: 7px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
+.creatorlab-primary-thumbnail-heading > div {
+  display: grid;
+  gap: 2px;
 }
 
-.creatorlab-cast-entry-actions > span.is-ready {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #16794a;
+.creatorlab-primary-thumbnail-heading span {
+  color: var(--cl-soft);
+  font-size: 0.62rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.creatorlab-cast-entry-actions > button {
-  min-height: 44px;
-  border: 1px solid #1d4ed8;
+.creatorlab-primary-thumbnail-heading strong {
+  color: var(--cl-text-strong);
+  font-size: 0.84rem;
+}
+
+.creatorlab-primary-thumbnail-heading > button {
+  width: 32px;
+  height: 32px;
+  color: var(--cl-muted);
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+  border-radius: 8px;
+  font-size: 1.1rem;
+}
+
+.creatorlab-primary-thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.creatorlab-primary-thumbnail-grid button {
+  display: grid;
+  gap: 5px;
+  padding: 5px;
+  color: var(--cl-muted);
+  background: #f8f8f6;
+  border: 1px solid var(--cl-border);
+  border-radius: 9px;
+  font-size: 0.62rem;
+  font-weight: 720;
+  text-align: left;
+}
+
+.creatorlab-primary-thumbnail-grid button.is-selected {
+  color: var(--cl-accent);
+  border-color: var(--cl-accent);
+  box-shadow: 0 0 0 2px rgba(23, 105, 224, 0.08);
+}
+
+.creatorlab-primary-thumbnail-grid img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.creatorlab-primary-thumbnail-footer span {
+  color: var(--cl-soft);
+  font-size: 0.64rem;
+}
+
+.creatorlab-primary-thumbnail-footer button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 7px 11px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 8px;
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.creatorlab-thumbnail-studio-details {
+  align-self: start;
+}
+
+.creatorlab-thumbnail-studio-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.creatorlab-thumbnail-studio-summary::-webkit-details-marker {
+  display: none;
+}
+
+.creatorlab-thumbnail-studio-summary::after {
+  content: "+";
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.creatorlab-thumbnail-studio-details[open] .creatorlab-thumbnail-studio-summary::after {
+  content: "−";
+}
+
+.creatorlab-thumbnail-studio-details > :not(summary) {
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .creatorlab-primary-thumbnail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .creatorlab-primary-thumbnail-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* CreatorLab UX-P4 — Thumbnail Studio, channel targets and release validation */
+.creatorlab-platform-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.creatorlab-platform-choice {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  min-height: 96px;
+  padding: 12px;
+  color: var(--cl-text);
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--cl-border);
   border-radius: 12px;
-  background: #2563eb;
-  color: #ffffff !important;
-  padding: 11px 16px;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.16);
 }
 
-.creatorlab-cast-entry-actions > button:hover {
-  background: #1d4ed8;
-  transform: translateY(-1px);
+.creatorlab-platform-choice:hover,
+.creatorlab-platform-choice.is-selected {
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-platform-choice-check {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--cl-accent);
+  background: #fff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 7px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.creatorlab-platform-choice strong,
+.creatorlab-platform-choice small {
+  display: block;
+}
+
+.creatorlab-platform-choice strong {
+  color: var(--cl-text-strong);
+  font-size: 0.72rem;
+}
+
+.creatorlab-platform-choice small {
+  margin-top: 4px;
+  color: var(--cl-muted);
+  font-size: 0.61rem;
+  line-height: 1.45;
+}
+
+.creatorlab-platform-choice em {
+  grid-column: 2;
+  color: var(--cl-soft);
+  font-size: 0.56rem;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.creatorlab-publish-thumbnail-card.creatorlabs-thumbnail-studio {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  align-items: start;
+}
+
+.creatorlab-publish-thumbnail-card.creatorlabs-thumbnail-studio .creatorlab-publish-card-heading {
+  grid-column: auto;
+}
+
+.creatorlab-thumbnail-studio-preview {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  background: #172033;
+  border-radius: 14px;
+}
+
+.creatorlab-thumbnail-studio-preview.is-wide {
+  aspect-ratio: 16 / 9;
+}
+
+.creatorlab-thumbnail-studio-preview.is-vertical {
+  width: min(100%, 360px);
+  aspect-ratio: 9 / 16;
+  margin-inline: auto;
+}
+
+.creatorlab-thumbnail-studio-preview > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.creatorlab-thumbnail-studio-preview > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #dbe3ef;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.creatorlab-thumbnail-studio-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 15, 28, 0.12), rgba(8, 15, 28, 0.76));
+}
+
+.creatorlab-thumbnail-studio-preview.is-top .creatorlab-thumbnail-studio-shade {
+  background: linear-gradient(180deg, rgba(8, 15, 28, 0.78), rgba(8, 15, 28, 0.08));
+}
+
+.creatorlab-thumbnail-studio-preview.is-center .creatorlab-thumbnail-studio-shade {
+  background: linear-gradient(180deg, rgba(8, 15, 28, 0.18), rgba(8, 15, 28, 0.64), rgba(8, 15, 28, 0.18));
+}
+
+.creatorlab-thumbnail-studio-accent {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 8px;
+}
+
+.creatorlab-thumbnail-studio-preview.is-top .creatorlab-thumbnail-studio-accent {
+  top: 0;
+  bottom: auto;
+}
+
+.creatorlab-thumbnail-studio-copy {
+  position: absolute;
+  right: 7%;
+  bottom: 9%;
+  left: 7%;
+  z-index: 2;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55);
+}
+
+.creatorlab-thumbnail-studio-preview.is-top .creatorlab-thumbnail-studio-copy {
+  top: 10%;
+  bottom: auto;
+}
+
+.creatorlab-thumbnail-studio-preview.is-center .creatorlab-thumbnail-studio-copy {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.creatorlab-thumbnail-studio-copy strong,
+.creatorlab-thumbnail-studio-copy span {
+  display: block;
+}
+
+.creatorlab-thumbnail-studio-copy strong {
+  max-width: 18ch;
+  font-size: clamp(1.55rem, 4vw, 3rem);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+}
+
+.creatorlab-thumbnail-studio-preview.font-editorial .creatorlab-thumbnail-studio-copy strong {
+  font-family: Georgia, serif;
+  font-weight: 700;
+}
+
+.creatorlab-thumbnail-studio-preview.font-condensed .creatorlab-thumbnail-studio-copy strong {
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+
+.creatorlab-thumbnail-studio-copy span {
+  max-width: 42ch;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.creatorlab-thumbnail-safe-zone {
+  position: absolute;
+  inset: 7%;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px dashed rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+}
+
+.creatorlab-thumbnail-variant-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.creatorlab-thumbnail-variant-row button {
+  min-height: 36px;
+  padding: 7px 9px;
+  color: var(--cl-muted);
+  background: #fff;
+  border: 1px solid var(--cl-border);
+  border-radius: 9px;
+  font-size: 0.63rem;
+  font-weight: 720;
+}
+
+.creatorlab-thumbnail-variant-row button.is-selected {
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-thumbnail-studio-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.creatorlab-thumbnail-studio-controls label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--cl-muted);
+  font-size: 0.61rem;
+  font-weight: 720;
+}
+
+.creatorlab-thumbnail-studio-controls input:not([type="range"]):not([type="color"]),
+.creatorlab-thumbnail-studio-controls select {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 10px;
+  color: var(--cl-text);
+  background: #fff;
+  border: 1px solid var(--cl-border);
+  border-radius: 9px;
+  font-size: 0.7rem;
+}
+
+.creatorlab-thumbnail-control-grid,
+.creatorlab-thumbnail-focal-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.creatorlab-thumbnail-color-control input {
+  width: 100%;
+  height: 39px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid var(--cl-border);
+  border-radius: 9px;
+}
+
+.creatorlab-thumbnail-focal-controls input {
+  width: 100%;
+}
+
+.creatorlab-thumbnail-safe-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cl-text);
+  font-size: 0.67rem;
+  font-weight: 680;
+}
+
+.creatorlab-thumbnail-safe-toggle span {
+  margin: 0 !important;
+}
+
+.creatorlab-release-validation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.creatorlab-release-validation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.creatorlab-release-validation-heading strong {
+  color: var(--cl-text-strong);
+  font-size: 0.72rem;
+}
+
+.creatorlab-release-validation-heading span {
+  color: var(--cl-muted);
+  font-size: 0.62rem;
+  font-weight: 720;
+}
+
+.creatorlab-publish-check.is-pending > span {
+  color: var(--cl-warning);
+  background: var(--cl-warning-soft);
+}
+
+.creatorlab-publish-check strong,
+.creatorlab-publish-check small {
+  display: block;
+}
+
+.creatorlab-publish-check strong {
+  color: var(--cl-text-strong);
+  font-size: 0.67rem;
+}
+
+.creatorlab-publish-check small {
+  margin-top: 3px;
+  color: var(--cl-muted);
+  font-size: 0.58rem;
+  line-height: 1.45;
+}
+
+.creatorlab-release-confirmations {
+  display: grid;
+  gap: 8px;
+}
+
+.creatorlab-release-confirmations label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--cl-border);
+  border-radius: 10px;
+}
+
+.creatorlab-release-confirmations label.is-confirmed {
+  background: var(--cl-success-soft);
+  border-color: #bfe6d4;
+}
+
+.creatorlab-release-confirmations input {
+  margin-top: 2px;
+}
+
+.creatorlab-release-confirmations strong,
+.creatorlab-release-confirmations small {
+  display: block;
+}
+
+.creatorlab-release-confirmations strong {
+  color: var(--cl-text-strong);
+  font-size: 0.67rem;
+}
+
+.creatorlab-release-confirmations small {
+  margin-top: 3px;
+  color: var(--cl-muted);
+  font-size: 0.58rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .creatorlab-platform-choice-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
-  .creatorlab-cast-entry-card {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 18px;
+  .creatorlab-platform-choice-grid,
+  .creatorlab-release-validation-grid,
+  .creatorlab-thumbnail-control-grid,
+  .creatorlab-thumbnail-focal-controls {
+    grid-template-columns: 1fr;
   }
 
-  .creatorlab-cast-entry-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .creatorlab-cast-entry-actions > span {
-    align-self: flex-start;
-  }
-
-  .creatorlab-cast-entry-actions > button {
-    width: 100%;
+  .creatorlab-thumbnail-studio-preview {
+    min-height: 240px;
   }
 }
 
 /* CreatorLab UX-R7 — Cast & Brand secondary production area */
+.creatorlab-production-identity-panel > summary {
+  min-height: 68px;
+  padding: 12px 16px;
+}
+
+.creatorlab-production-identity-panel .creatorlab-cast-brand-summary-copy strong {
+  margin-top: 3px;
+  font-size: 0.98rem;
+}
+
+.creatorlab-production-identity-panel .creatorlab-cast-brand-summary-copy p {
+  display: block;
+  max-width: 54rem;
+  overflow: hidden;
+  margin-top: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .creatorlab-cast-brand-panel {
   overflow: hidden;
   background: #ffffff;
@@ -15593,6 +18688,28 @@ export default function CreatePage() {
   box-shadow: 0 5px 18px rgba(19, 36, 62, 0.04) !important;
 }
 
+.creatorlab-project-drawer {
+  width: min(820px, calc(100vw - 20px));
+  height: 100dvh;
+  align-content: start;
+  padding: 24px;
+  overflow-y: auto;
+  border-block: 0;
+  border-right: 0;
+  border-radius: 0;
+  box-shadow: -18px 0 44px rgba(14, 32, 58, 0.12) !important;
+}
+
+.creatorlab-project-drawer .creatorlab-project-hub-header {
+  position: sticky;
+  top: -24px;
+  z-index: 4;
+  margin: -24px -24px 0;
+  padding: 22px 24px 16px;
+  background: rgba(255, 255, 255, 0.97);
+  border-bottom: 1px solid var(--cl-divider);
+}
+
 .creatorlab-project-hub-header {
   display: flex;
   align-items: center;
@@ -16018,6 +19135,22 @@ export default function CreatePage() {
 }
 
 @media (max-width: 720px) {
+  .creatorlab-ai-workspace.creatorlab-drawer-panel,
+  .creatorlab-project-drawer {
+    width: 100vw;
+    max-width: none;
+  }
+
+  .creatorlab-project-drawer {
+    padding: 18px 14px;
+  }
+
+  .creatorlab-project-drawer .creatorlab-project-hub-header {
+    top: -18px;
+    margin: -18px -14px 0;
+    padding: 16px 14px 13px;
+  }
+
   .creatorlab-project-hub-header,
   .creatorlab-project-library-summary {
     align-items: stretch;
@@ -16078,7 +19211,7 @@ export default function CreatePage() {
 
 @media (max-width: 1379px) {
   .creatorlab-product-frame {
-    grid-template-columns: 224px minmax(0, 1fr) 282px;
+    grid-template-columns: 224px minmax(0, 1fr);
   }
 
   .creatorlab-main-column {
@@ -16103,10 +19236,6 @@ export default function CreatePage() {
 
   .creatorlab-workflow-rail {
     grid-column: 1;
-  }
-
-  .creatorlab-ai-workspace {
-    display: none;
   }
 
   .creatorlab-main-column {
@@ -16149,8 +19278,22 @@ export default function CreatePage() {
     grid-row: 1;
   }
 
-  .creatorlab-pulse-icon {
+  .creatorlab-topbar-tool-button {
+    width: 38px;
+    min-height: 38px;
+    padding: 6px !important;
+  }
+
+  .creatorlab-topbar-tool-button > span {
     display: none;
+  }
+
+  .creatorlab-topbar-tool-button small {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
   }
 
   .creatorlab-workflow-rail {
@@ -16424,6 +19567,7 @@ export default function CreatePage() {
   .creatorlab-production-action-bar,
   .creatorlab-publish-action-bar {
     position: sticky;
+    top: auto;
     bottom: 10px;
     z-index: 35;
     border-color: var(--cl-accent-border) !important;
@@ -16481,6 +19625,306 @@ export default function CreatePage() {
   .creatorlab-publish-primary-action {
     width: 100%;
     min-height: 48px;
+  }
+}
+
+
+/* CreatorLab UX-P1 — strategy decision experience */
+.creatorlab-strategy-recommendation {
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.creatorlab-strategy-recommendation.is-selected {
+  background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+  border-color: var(--cl-accent);
+  box-shadow: 0 10px 28px rgba(23, 105, 224, 0.09) !important;
+}
+
+.creatorlab-strategy-recommendation-topline,
+.creatorlab-strategy-idea-title-row,
+.creatorlab-strategy-video-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.creatorlab-strategy-selection-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 9px;
+  color: var(--cl-muted);
+  background: #f5f4f0;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  font-family: var(--cl-font-ui);
+  font-size: 0.68rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.creatorlab-strategy-selection-badge.is-selected {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border-color: #b8dfcc;
+}
+
+.creatorlab-strategy-direction-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 8px 12px !important;
+  color: var(--cl-accent) !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-accent-border) !important;
+  border-radius: 9px !important;
+  box-shadow: none !important;
+  font-size: 0.75rem !important;
+  font-weight: 730 !important;
+}
+
+.creatorlab-strategy-direction-button:hover:not(:disabled) {
+  background: var(--cl-accent-soft) !important;
+  border-color: var(--cl-accent) !important;
+}
+
+.creatorlab-strategy-direction-button:disabled {
+  color: var(--cl-success) !important;
+  background: var(--cl-success-soft) !important;
+  border-color: #b8dfcc !important;
+  cursor: default;
+  opacity: 1 !important;
+}
+
+.creatorlab-strategy-signal-card.is-decision {
+  min-height: 148px;
+}
+
+.creatorlab-strategy-signal-card.is-decision strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--cl-font-ui);
+  font-size: 1.02rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.creatorlab-strategy-signal-card.is-decision p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.creatorlab-strategy-hook-selector {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  background: #f8faff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 13px;
+}
+
+.creatorlab-strategy-hook-selector > div:first-child strong {
+  display: block;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.82rem;
+}
+
+.creatorlab-strategy-hook-selector > div:first-child p,
+.creatorlab-strategy-hook-empty {
+  margin: 5px 0 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.creatorlab-strategy-hook-options {
+  display: grid;
+  gap: 8px;
+}
+
+.creatorlab-strategy-hook-option {
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 11px !important;
+  color: var(--cl-text) !important;
+  text-align: left;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-strategy-hook-option > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--cl-muted);
+  background: var(--cl-surface-muted);
+  border-radius: 8px;
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.creatorlab-strategy-hook-option strong {
+  color: var(--cl-text-strong) !important;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.creatorlab-strategy-hook-option.is-selected {
+  background: #ffffff !important;
+  border-color: var(--cl-accent) !important;
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.08) !important;
+}
+
+.creatorlab-strategy-hook-option.is-selected > span {
+  color: #ffffff;
+  background: var(--cl-accent);
+}
+
+.creatorlab-strategy-idea-card {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.creatorlab-strategy-idea-card.is-selected {
+  background: #f7faff;
+  border-color: var(--cl-accent);
+}
+
+.creatorlab-strategy-idea-title-row > span {
+  color: var(--cl-success);
+  font-family: var(--cl-font-ui);
+  font-size: 0.67rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.creatorlab-strategy-direction-empty {
+  padding: 18px;
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+}
+
+.creatorlab-strategy-direction-empty strong {
+  color: var(--cl-text-strong) !important;
+  font-size: 0.84rem;
+}
+
+.creatorlab-strategy-direction-empty p {
+  margin: 6px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.creatorlab-strategy-research-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+  border-radius: 11px;
+}
+
+.creatorlab-strategy-research-context div {
+  min-width: 0;
+}
+
+.creatorlab-strategy-research-context span,
+.creatorlab-strategy-research-context small {
+  color: var(--cl-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.creatorlab-strategy-research-context strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--cl-text-strong) !important;
+  font-size: 0.79rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-strategy-video-title-row strong {
+  min-width: 0;
+}
+
+.creatorlab-strategy-video-match {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  color: var(--cl-success) !important;
+  background: var(--cl-success-soft);
+  border: 1px solid #c8e5d7;
+  border-radius: 999px;
+  font-size: 0.62rem !important;
+  font-weight: 750 !important;
+  white-space: nowrap;
+}
+
+.creatorlab-strategy-video-reason {
+  display: -webkit-box;
+  margin: 5px 0 0 !important;
+  overflow: hidden;
+  color: var(--cl-muted) !important;
+  font-size: 0.69rem !important;
+  line-height: 1.45 !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 1199px) {
+  .creatorlab-strategy-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 699px) {
+  .creatorlab-strategy-recommendation-topline,
+  .creatorlab-strategy-video-title-row,
+  .creatorlab-strategy-research-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .creatorlab-strategy-selection-badge {
+    white-space: normal;
+  }
+
+  .creatorlab-strategy-signal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-strategy-signal-card.is-decision {
+    min-height: 0;
+  }
+
+  .creatorlab-strategy-idea-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .creatorlab-strategy-idea-card .creatorlab-strategy-direction-button {
+    grid-column: 2;
+    width: 100%;
   }
 }
 
@@ -16547,6 +19991,26 @@ export default function CreatePage() {
                 <p className="creatorlab-project-name" title={creatorRawProjectTitle}>
                   {creatorProjectDisplayTitle}
                 </p>
+                <div
+                  className={`creatorlab-save-state is-${creatorBriefDraftSaveState}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span aria-hidden="true" />
+                  {currentProjectId
+                    ? uiLanguage === "en" ? "Project saved" : "Proje kaydedildi"
+                    : creatorBriefDraftSaveState === "saving"
+                      ? uiLanguage === "en" ? "Saving draft…" : "Taslak kaydediliyor…"
+                      : creatorBriefDraftSaveState === "saved"
+                        ? `${uiLanguage === "en" ? "Draft saved" : "Taslak kaydedildi"}${
+                            creatorBriefDraftSavedAt
+                              ? ` · ${new Date(creatorBriefDraftSavedAt).toLocaleTimeString(uiLanguage === "en" ? "en-US" : "tr-TR", { hour: "2-digit", minute: "2-digit" })}`
+                              : ""
+                          }`
+                        : creatorBriefDraftSaveState === "error"
+                          ? uiLanguage === "en" ? "Draft could not be saved" : "Taslak kaydedilemedi"
+                          : uiLanguage === "en" ? "Autosave starts with your idea" : "Otomatik kayıt fikirle başlar"}
+                </div>
               </div>
             </div>
 
@@ -16590,12 +20054,36 @@ export default function CreatePage() {
               </div>
               <button
                 type="button"
-                className="creatorlab-pulse-icon"
-                onClick={() => scrollCreatorWorkspaceTo("creatorlab-projects-readiness")}
-                aria-label={uiLanguage === "en" ? "Open projects and readiness" : "Projeler ve hazırlık alanını aç"}
-                title={uiLanguage === "en" ? "Projects and readiness" : "Projeler ve hazırlık"}
+                className="creatorlab-topbar-tool-button"
+                onClick={() => {
+                  setCreatorDirectorOpen(false);
+                  setCreatorProjectsDrawerOpen(true);
+                  setCreatorProjectsHidden(false);
+                  void fetchProjects();
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={creatorProjectsDrawerOpen}
               >
-                <CreatorWorkspaceIcon name="insights" />
+                <CreatorWorkspaceIcon name="package" />
+                <span>{uiLanguage === "en" ? "Projects" : "Projeler"}</span>
+              </button>
+              <button
+                type="button"
+                className={`creatorlab-topbar-tool-button is-director ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""}`}
+                onClick={() => {
+                  setCreatorProjectsDrawerOpen(false);
+                  setCreatorDirectorOpen(true);
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={creatorDirectorOpen}
+              >
+                <CreatorWorkspaceIcon name="ideas" />
+                <span>{uiLanguage === "en" ? "Director" : "Director"}</span>
+                {creatorDirectorAttentionCount > 0 && (
+                  <small aria-label={`${creatorDirectorAttentionCount} ${uiLanguage === "en" ? "suggestions need attention" : "öneri dikkat gerektiriyor"}`}>
+                    {creatorDirectorAttentionCount}
+                  </small>
+                )}
               </button>
             </div>
           </header>
@@ -16637,87 +20125,298 @@ export default function CreatePage() {
           </aside>
         )}
 
-        {isCreatorLabFlow && (
-          <aside className="creatorlab-ai-workspace" aria-label={uiLanguage === "en" ? "AI Workspace" : "AI Çalışma Alanı"}>
-            <div className="creatorlab-ai-heading">
-              <span className="creatorlab-ai-spark" aria-hidden="true">✦</span>
-              <div>
-                <p>AI Workspace</p>
-                <span>{creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title}</span>
+        {isCreatorLabFlow && creatorDirectorOpen && (
+          <div
+            className="creatorlab-overlay-layer"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) {
+                setCreatorDirectorOpen(false);
+              }
+            }}
+          >
+            <aside
+              className="creatorlab-ai-workspace creatorlab-drawer-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={uiLanguage === "en" ? "Creator Director" : "Creator Director"}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="creatorlab-ai-heading">
+                <span className="creatorlab-ai-spark" aria-hidden="true">✦</span>
+                <div>
+                  <p>{uiLanguage === "en" ? "Creator Director" : "Creator Director"}</p>
+                  <span>{creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title}</span>
+                </div>
+                <button
+                  type="button"
+                  className="creatorlab-drawer-close"
+                  onClick={() => setCreatorDirectorOpen(false)}
+                  aria-label={uiLanguage === "en" ? "Close Creator Director" : "Creator Director'ı kapat"}
+                >
+                  ×
+                </button>
               </div>
-            </div>
 
-            <div className="creatorlab-ai-stage-summary">
-              <div className="creatorlab-ai-stage-summary-copy">
-                <span>{uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}</span>
-                <strong>{creatorWorkspaceStageStatus}</strong>
+              <div className="creatorlab-director-context-bar">
+                <span>{uiLanguage === "en" ? "Current context" : "Mevcut bağlam"}</span>
+                <strong>{creatorDirectorContextLabel}</strong>
+                <small>
+                  {creatorDirectorMode === "project"
+                    ? uiLanguage === "en" ? "Project aware" : "Projeyi anlıyor"
+                    : uiLanguage === "en" ? "Product help" : "Ürün desteği"}
+                </small>
               </div>
+
               <div
-                className="creatorlab-ai-stage-progress"
-                role="progressbar"
-                aria-label={uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={creatorWorkspaceStageProgress}
+                className="creatorlab-director-mode-tabs"
+                role="tablist"
+                aria-label={uiLanguage === "en" ? "Creator Director mode" : "Creator Director modu"}
               >
-                <span style={{ width: `${creatorWorkspaceStageProgress}%` }} />
-              </div>
-              <small>{creatorWorkspaceStageProgress}%</small>
-            </div>
-
-            <div className="creatorlab-ai-card-list">
-              {creatorWorkspaceCards.map((card) => (
                 <button
-                  key={card.title}
                   type="button"
-                  className={`creatorlab-ai-card ${card.attention ? "is-attention" : ""}`}
-                  onClick={() => scrollCreatorWorkspaceTo(card.targetId)}
-                  aria-label={`${card.title}: ${card.status}`}
+                  role="tab"
+                  aria-selected={creatorDirectorMode === "project"}
+                  className={creatorDirectorMode === "project" ? "is-active" : ""}
+                  onClick={() => {
+                    setCreatorDirectorMode("project");
+                    setCreatorDirectorMessages([]);
+                    setCreatorDirectorError("");
+                  }}
                 >
-                  <div className={`creatorlab-ai-icon is-${card.tone}`}>
-                    <CreatorWorkspaceIcon name={card.icon} />
+                  {uiLanguage === "en" ? "Project" : "Proje"}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={creatorDirectorMode === "help"}
+                  className={creatorDirectorMode === "help" ? "is-active" : ""}
+                  onClick={() => {
+                    setCreatorDirectorMode("help");
+                    setCreatorDirectorMessages([]);
+                    setCreatorDirectorError("");
+                  }}
+                >
+                  {uiLanguage === "en" ? "Help" : "Yardım"}
+                </button>
+              </div>
+
+              <div className="creatorlab-director-chat" aria-live="polite">
+                {creatorDirectorMessages.length === 0 ? (
+                  <div className="creatorlab-director-empty">
+                    <span aria-hidden="true">✦</span>
+                    <strong>
+                      {creatorDirectorMode === "project"
+                        ? uiLanguage === "en" ? "Ask about this project" : "Bu proje hakkında sor"
+                        : uiLanguage === "en" ? "Ask how CreatorLab works" : "CreatorLab kullanımını sor"}
+                    </strong>
+                    <p>
+                      {creatorDirectorMode === "project"
+                        ? uiLanguage === "en"
+                          ? "The Director can read the current brief, selected strategy, scene readiness and release blockers."
+                          : "Director mevcut brief'i, seçilen stratejiyi, sahne hazırlığını ve yayın engellerini okuyabilir."
+                        : uiLanguage === "en"
+                          ? "Get concise guidance about controls, workflow stages, quality levels and export requirements."
+                          : "Kontroller, iş akışı, kalite seviyeleri ve dışa aktarım koşulları hakkında kısa destek al."}
+                    </p>
                   </div>
-                  <div className="creatorlab-ai-card-copy">
-                    <div className="creatorlab-ai-card-title-row">
-                      <strong>{card.title}</strong>
-                      <span className="creatorlab-ai-card-status">{card.status}</span>
+                ) : (
+                  creatorDirectorMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`creatorlab-director-message is-${message.role}`}
+                    >
+                      <span>
+                        {message.role === "assistant"
+                          ? "Director"
+                          : uiLanguage === "en" ? "You" : "Sen"}
+                      </span>
+                      <p>{message.content}</p>
                     </div>
-                    <p>{card.description}</p>
-                    {card.metric && <span className="creatorlab-ai-card-metric">{card.metric}</span>}
-                    {typeof card.progress === "number" && (
-                      <div className="creatorlab-ai-card-progress" aria-hidden="true">
-                        <span style={{ width: `${Math.max(0, Math.min(100, card.progress))}%` }} />
-                      </div>
-                    )}
-                    <span className="creatorlab-ai-card-link">
-                      {uiLanguage === "en" ? "View in workspace" : "Çalışma alanında görüntüle"} →
-                    </span>
+                  ))
+                )}
+                {creatorDirectorLoading && (
+                  <div className="creatorlab-director-message is-assistant is-loading">
+                    <span>Director</span>
+                    <p>
+                      {uiLanguage === "en"
+                        ? "Reviewing the current context…"
+                        : "Mevcut bağlamı inceliyor…"}
+                    </p>
                   </div>
-                </button>
-              ))}
-            </div>
-
-            <div className="creatorlab-stage-guidance">
-              <div className="creatorlab-stage-guidance-icon">
-                <CreatorWorkspaceIcon name="safety" />
+                )}
+                <div ref={creatorDirectorMessagesEndRef} />
               </div>
-              <div>
-                <span className="creatorlab-stage-guidance-kicker">
-                  {uiLanguage === "en" ? "Next best action" : "Sıradaki en iyi aksiyon"}
-                </span>
-                <strong>{creatorWorkspaceNextAction.title}</strong>
-                <p>{creatorWorkspaceNextAction.description}</p>
-                <button
-                  type="button"
-                  onClick={() => scrollCreatorWorkspaceTo(creatorWorkspaceNextAction.targetId)}
-                >
-                  {creatorWorkspaceNextAction.label}
-                </button>
-              </div>
-            </div>
 
-            <p className="creatorlab-ai-guidance-note">{creatorWorkspaceGuidance}</p>
-          </aside>
+              <div
+                className="creatorlab-director-prompt-chips"
+                aria-label={uiLanguage === "en" ? "Suggested questions" : "Önerilen sorular"}
+              >
+                {creatorDirectorPromptChips.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => void sendCreatorDirectorMessage(prompt)}
+                    disabled={creatorDirectorLoading}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+
+              {creatorDirectorError && (
+                <div className="creatorlab-director-error" role="alert">
+                  {creatorDirectorError}
+                </div>
+              )}
+
+              <form
+                className="creatorlab-director-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void sendCreatorDirectorMessage();
+                }}
+              >
+                <textarea
+                  value={creatorDirectorInput}
+                  onChange={(event) => setCreatorDirectorInput(event.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder={
+                    creatorDirectorMode === "project"
+                      ? uiLanguage === "en"
+                        ? "Ask about the brief, a scene, production or release…"
+                        : "Brief, sahne, üretim veya yayın hakkında sor…"
+                      : uiLanguage === "en"
+                        ? "Ask how to use CreatorLab…"
+                        : "CreatorLab'in nasıl kullanılacağını sor…"
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendCreatorDirectorMessage();
+                    }
+                  }}
+                />
+                <div>
+                  <button
+                    type="button"
+                    className="creatorlab-director-clear"
+                    onClick={() => {
+                      setCreatorDirectorMessages([]);
+                      setCreatorDirectorError("");
+                    }}
+                    disabled={creatorDirectorMessages.length === 0 || creatorDirectorLoading}
+                  >
+                    {uiLanguage === "en" ? "Clear" : "Temizle"}
+                  </button>
+                  <button
+                    type="submit"
+                    className="creatorlab-director-send"
+                    disabled={!creatorDirectorInput.trim() || creatorDirectorLoading}
+                  >
+                    {creatorDirectorLoading
+                      ? uiLanguage === "en" ? "Thinking…" : "Düşünüyor…"
+                      : uiLanguage === "en" ? "Send" : "Gönder"}
+                  </button>
+                </div>
+              </form>
+
+              <p className="creatorlab-director-safety-note">
+                {uiLanguage === "en"
+                  ? "Director gives guidance only in this sprint. Paid media and project changes still require your action in the workspace."
+                  : "Director bu sprintte yalnızca yönlendirme yapar. Ücretli medya ve proje değişiklikleri çalışma alanında senin aksiyonunu gerektirir."}
+              </p>
+
+              <details className="creatorlab-director-status-details">
+                <summary>
+                  {uiLanguage === "en"
+                    ? "Workspace status and next action"
+                    : "Çalışma alanı durumu ve sonraki aksiyon"}
+                </summary>
+                <div className="creatorlab-ai-stage-summary">
+                  <div className="creatorlab-ai-stage-summary-copy">
+                    <span>{uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}</span>
+                    <strong>{creatorWorkspaceStageStatus}</strong>
+                  </div>
+                  <div
+                    className="creatorlab-ai-stage-progress"
+                    role="progressbar"
+                    aria-label={uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={creatorWorkspaceStageProgress}
+                  >
+                    <span style={{ width: `${creatorWorkspaceStageProgress}%` }} />
+                  </div>
+                  <small>{creatorWorkspaceStageProgress}%</small>
+                </div>
+
+                <div className="creatorlab-ai-card-list">
+                  {creatorWorkspaceCards.map((card) => (
+                    <button
+                      key={card.title}
+                      type="button"
+                      className={`creatorlab-ai-card ${card.attention ? "is-attention" : ""}`}
+                      onClick={() => navigateFromCreatorDirector(card.targetId)}
+                      aria-label={`${card.title}: ${card.status}`}
+                    >
+                      <div className={`creatorlab-ai-icon is-${card.tone}`}>
+                        <CreatorWorkspaceIcon name={card.icon} />
+                      </div>
+                      <div className="creatorlab-ai-card-copy">
+                        <div className="creatorlab-ai-card-title-row">
+                          <strong>{card.title}</strong>
+                          <span className="creatorlab-ai-card-status">{card.status}</span>
+                        </div>
+                        <p>{card.description}</p>
+                        {card.metric && (
+                          <span className="creatorlab-ai-card-metric">{card.metric}</span>
+                        )}
+                        {typeof card.progress === "number" && (
+                          <div className="creatorlab-ai-card-progress" aria-hidden="true">
+                            <span
+                              style={{
+                                width: `${Math.max(0, Math.min(100, card.progress))}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                        <span className="creatorlab-ai-card-link">
+                          {uiLanguage === "en"
+                            ? "View in workspace"
+                            : "Çalışma alanında görüntüle"}{" "}
+                          →
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="creatorlab-stage-guidance">
+                  <div className="creatorlab-stage-guidance-icon">
+                    <CreatorWorkspaceIcon name="safety" />
+                  </div>
+                  <div>
+                    <span className="creatorlab-stage-guidance-kicker">
+                      {uiLanguage === "en" ? "Next best action" : "Sıradaki en iyi aksiyon"}
+                    </span>
+                    <strong>{creatorWorkspaceNextAction.title}</strong>
+                    <p>{creatorWorkspaceNextAction.description}</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigateFromCreatorDirector(creatorWorkspaceNextAction.targetId)
+                      }
+                    >
+                      {creatorWorkspaceNextAction.label}
+                    </button>
+                  </div>
+                </div>
+                <p className="creatorlab-ai-guidance-note">{creatorWorkspaceGuidance}</p>
+              </details>
+            </aside>
+          </div>
         )}
                 <div
                   id={isCreatorLabFlow ? "creatorlab-main-workspace" : undefined}
@@ -17087,7 +20786,24 @@ export default function CreatePage() {
         )}
 
         {isCreatorLabFlow ? (
-          <section id="creatorlab-projects-readiness" className={`creatorlab-project-hub ${creatorWorkspaceStep === 1 ? "" : "hidden"}`} aria-label={uiLanguage === "en" ? "Projects and readiness" : "Projeler ve hazırlık"}>
+          creatorProjectsDrawerOpen ? (
+            <div
+              className="creatorlab-overlay-layer"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.currentTarget === event.target) {
+                  setCreatorProjectsDrawerOpen(false);
+                }
+              }}
+            >
+              <section
+                id="creatorlab-projects-readiness"
+                className="creatorlab-project-hub creatorlab-project-drawer"
+                role="dialog"
+                aria-modal="true"
+                aria-label={uiLanguage === "en" ? "Projects and readiness" : "Projeler ve hazırlık"}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
             <div className="creatorlab-project-hub-header">
               <div className="creatorlab-project-hub-heading">
                 <p className="creatorlab-project-hub-kicker">{uiLanguage === "en" ? "Projects & readiness" : "Projeler ve hazırlık"}</p>
@@ -17112,7 +20828,15 @@ export default function CreatePage() {
                 >
                   {creatorProjectsHidden
                     ? uiLanguage === "en" ? "Open recent projects" : "Son projeleri aç"
-                    : uiLanguage === "en" ? "Close projects" : "Projeleri kapat"}
+                    : uiLanguage === "en" ? "Hide recent projects" : "Son projeleri gizle"}
+                </button>
+                <button
+                  type="button"
+                  className="creatorlab-drawer-close"
+                  onClick={() => setCreatorProjectsDrawerOpen(false)}
+                  aria-label={uiLanguage === "en" ? "Close projects" : "Projeleri kapat"}
+                >
+                  ×
                 </button>
               </div>
             </div>
@@ -17235,7 +20959,7 @@ export default function CreatePage() {
                           <div className="creatorlab-project-row-actions">
                             <button
                               type="button"
-                              onClick={() => loadProjectById(project.id)}
+                              onClick={() => { setCreatorProjectsDrawerOpen(false); void loadProjectById(project.id); }}
                               disabled={isLoadingProject}
                             >
                               {isLoadingProject
@@ -17257,7 +20981,9 @@ export default function CreatePage() {
                 )}
               </div>
             )}
-          </section>
+              </section>
+            </div>
+          ) : null
         ) : (
           <div className="rounded-[28px] border border-orange-200/24 bg-white/62 p-6 space-y-4">
             <div className="flex items-center justify-between gap-4">
@@ -17371,275 +21097,310 @@ export default function CreatePage() {
             </>
           )}
 
-          <div className={isCreatorLabFlow ? "creatorlab-brief-language-row" : "grid gap-4 md:grid-cols-2"}>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-600">{ui.contentLanguage}</label>
-              <select
-                className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
-              >
-                <option value="tr">{ui.turkish}</option>
-                <option value="en">{ui.english}</option>
-              </select>
+          {!isCreatorLabFlow && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-600">{ui.contentLanguage}</label>
+                <select
+                  className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
+                >
+                  <option value="tr">{ui.turkish}</option>
+                  <option value="en">{ui.english}</option>
+                </select>
+              </div>
+              <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-sm text-slate-600">
+                {ui.contentLanguageHint}
+              </div>
             </div>
-
-            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-sm text-slate-600">
-              {ui.contentLanguageHint}
-            </div>
-          </div>
+          )}
 
           {isCreatorLabFlow && (
-            <section id="creatorlab-brief-settings" className="creatorlab-brief-card">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-sky-700">
-                  {uiLanguage === "en" ? "Essential choices" : "Temel tercihler"}
-                </p>
-                <h3 className="mt-2 text-lg font-semibold text-slate-900">
-                  {uiLanguage === "en" ? "Shape the production brief" : "Üretim brief'ini şekillendir"}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-sky-800/80">
-                  {uiLanguage === "en"
-                    ? "Choose the audience, market, format, duration and one authoritative production quality level."
-                    : "Hedef kitleyi, pazarı, formatı, süreyi ve tek yetkili Production Quality seviyesini seç."}
-                </p>
+            <section id="creatorlab-brief-settings" className="creatorlab-brief-card creatorlab-brief-card-v2">
+              <div className="creatorlab-brief-section-heading">
+                <div>
+                  <p>{uiLanguage === "en" ? "Essential decisions" : "Temel kararlar"}</p>
+                  <h3>{uiLanguage === "en" ? "Define the output, not the engine" : "Motoru değil, çıktıyı tanımla"}</h3>
+                  <span>
+                    {uiLanguage === "en"
+                      ? "CreatorLab keeps technical provider choices internal and asks only for decisions that shape the result."
+                      : "CreatorLab teknik sağlayıcı seçimlerini sistem içinde tutar ve yalnızca sonucu şekillendiren kararları sorar."}
+                  </span>
+                </div>
+                {creatorBriefDraftRestored && (
+                  <span className="creatorlab-restored-badge">
+                    {uiLanguage === "en" ? "Draft restored" : "Taslak geri yüklendi"}
+                  </span>
+                )}
               </div>
 
-              <details id="creatorlab-brief-profile" className="creatorlab-profile-details">
-                <summary>
-                  <div className="creatorlab-profile-summary-copy">
-                    <strong>{uiLanguage === "en" ? "Creator Profile defaults" : "Creator Profile varsayılanları"}</strong>
-                    <span>
-                      {uiLanguage === "en"
-                        ? "Apply your audience, brand voice and visual direction when they are useful."
-                        : "Gerektiğinde hedef kitle, marka sesi ve görsel yön varsayılanlarını uygula."}
-                    </span>
-                  </div>
-                  <div className="creatorlab-profile-summary-values" aria-hidden="true">
-                    <span>{creatorProfile.brandName || (uiLanguage === "en" ? "No brand" : "Marka yok")}</span>
-                    <span>{creatorProfile.defaultAudience || (uiLanguage === "en" ? "Audience optional" : "Kitle opsiyonel")}</span>
-                  </div>
-                  <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
-                </summary>
-
-                <div className="creatorlab-profile-body">
-                  <div className="creatorlab-profile-actions">
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Profile values remain optional and never block the brief."
-                        : "Profil değerleri opsiyoneldir ve brief akışını engellemez."}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => applyCreatorProfile()}
-                        disabled={!creatorProfileLoaded || !hasCreatorProfileContext(creatorProfile)}
-                      >
-                        {uiLanguage === "en" ? "Apply defaults" : "Varsayılanları uygula"}
-                      </button>
-                      <button type="button" onClick={saveCreatorProfile}>
-                        {uiLanguage === "en" ? "Save profile" : "Profili kaydet"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="creatorlab-profile-input-grid">
-                    <input
-                      value={creatorProfile.brandName}
-                      onChange={(event) => setCreatorProfile((current) => ({ ...current, brandName: event.target.value }))}
-                      placeholder={uiLanguage === "en" ? "Creator or brand name" : "Creator veya marka adı"}
-                    />
-                    <input
-                      value={creatorProfile.defaultAudience}
-                      onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultAudience: event.target.value }))}
-                      placeholder={uiLanguage === "en" ? "Default audience" : "Varsayılan hedef kitle"}
-                    />
-                    <input
-                      value={creatorProfile.brandVoice}
-                      onChange={(event) => setCreatorProfile((current) => ({ ...current, brandVoice: event.target.value }))}
-                      placeholder={uiLanguage === "en" ? "Brand voice (direct, credible, optimistic...)" : "Marka sesi (net, güvenilir, iyimser...)"}
-                    />
-                    <input
-                      value={creatorProfile.defaultVisualStyle}
-                      onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultVisualStyle: event.target.value }))}
-                      placeholder={uiLanguage === "en" ? "Default visual style" : "Varsayılan görsel stil"}
-                    />
-                  </div>
-                </div>
-              </details>
-
-              <div className="creatorlab-brief-fields">
-                <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
-                    {ui.targetMarket}
-                  </label>
-                  <select
-                    className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                    value={creatorCountry}
-                    onChange={(e) => setCreatorCountry(e.target.value)}
-                  >
-                    {CREATOR_COUNTRY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+              <div className="creatorlab-brief-core-grid">
+                <label className="creatorlab-brief-field">
+                  <span>{ui.contentLanguage}</span>
+                  <select value={language} onChange={(event) => setLanguage(event.target.value as ContentLanguage)}>
+                    <option value="tr">{ui.turkish}</option>
+                    <option value="en">{ui.english}</option>
                   </select>
-                </div>
+                  <small>{uiLanguage === "en" ? "Narration, metadata and captions" : "Anlatım, metadata ve altyazılar"}</small>
+                </label>
 
-                <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
-                    {ui.ageGroup}
-                  </label>
-                  <select
-                    className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                    value={creatorAgeGroup}
-                    onChange={(e) => setCreatorAgeGroup(e.target.value as CreatorAgeGroup)}
-                  >
+                <label className="creatorlab-brief-field">
+                  <span>{ui.ageGroup}</span>
+                  <select value={creatorAgeGroup} onChange={(event) => setCreatorAgeGroup(event.target.value as CreatorAgeGroup)}>
                     {CREATOR_AGE_GROUP_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
-                </div>
+                  <small>{uiLanguage === "en" ? "Who should immediately understand and value it?" : "İçeriği kim hemen anlamalı ve değerli bulmalı?"}</small>
+                </label>
 
-                <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
-                    {ui.contentType}
-                  </label>
-                  <select
-                    className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                    value={creatorContentType}
-                    onChange={(e) =>
-                      setCreatorContentType(e.target.value as CreatorContentType)
-                    }
-                  >
+                <label className="creatorlab-brief-field">
+                  <span>{ui.contentType}</span>
+                  <select value={creatorContentType} onChange={(event) => setCreatorContentType(event.target.value as CreatorContentType)}>
                     {CREATOR_CONTENT_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {uiLanguage === "en" ? option.labelEn : option.labelTr}
                       </option>
                     ))}
                   </select>
-                </div>
+                  <small>{uiLanguage === "en" ? "The primary storytelling structure" : "Ana anlatım ve içerik yapısı"}</small>
+                </label>
+              </div>
 
-                <div className="xl:col-span-1">
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
-                    {ui.videoFormat}
-                  </label>
-                  <select
-                    className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                    value={creatorFormat}
-                    onChange={(e) => handleCreatorFormatChange(e.target.value as CreatorFormat)}
-                  >
-                    {CREATOR_FORMAT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs leading-5 text-sky-800/75">
-                    {CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.guidance}
-                  </p>
-                </div>
-
-                <div className="xl:col-span-2">
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-sky-800">
-                    {ui.creatorDurationTitle}
-                  </label>
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(160px,0.55fr)]">
-                    <select
-                      className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                      value={creatorDurationPreset}
-                      onChange={(e) =>
-                        handleCreatorDurationPresetChange(
-                          e.target.value as CreatorDurationPreset
-                        )
-                      }
-                    >
-                      {getCreatorDurationOptions().map((option) => (
-                        <option key={option.preset} value={option.preset}>
-                          {option.label} / {getCreatorSceneCountForTargetDuration(option.seconds)} {ui.sceneCountLabel}
-                        </option>
-                      ))}
-                      <option value="custom">{ui.customDuration}</option>
-                    </select>
-
-                    {creatorDurationPreset === "custom" && (
-                      <input
-                        type="number"
-                        min={creatorFormat === "youtube_video" ? 1 : 5}
-                        max={creatorFormat === "youtube_video" ? 60 : 180}
-                        step={creatorFormat === "youtube_video" ? 0.5 : 1}
-                        className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                        value={getCreatorCustomDurationInputValue()}
-                        onChange={(e) => handleCreatorCustomDurationChange(e.target.value)}
-                        aria-label={
-                          creatorFormat === "youtube_video"
-                            ? ui.customDurationMinutes
-                            : ui.customDurationSeconds
-                        }
-                      />
-                    )}
+              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-format-title">
+                <div className="creatorlab-decision-heading">
+                  <div>
+                    <span>{uiLanguage === "en" ? "Output" : "Çıktı"}</span>
+                    <strong id="creatorlab-format-title">{ui.videoFormat}</strong>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-sky-800/75">
-                    {ui.durationScenePlan}: {getCreatorDurationLabel()} / {getCreatorSceneCount()} {ui.sceneCountLabel}
-                  </p>
+                  <small>{uiLanguage === "en" ? "Choose where the main version will live." : "Ana versiyonun yayınlanacağı formatı seç."}</small>
                 </div>
-
-                <div id="creatorlab-quality-panel" className="creatorlab-quality-panel">
-                  <div className="creatorlab-quality-heading">
-                    <div>
-                      <label>{ui.creatorQualityTitle}</label>
-                      <p>
-                        {uiLanguage === "en"
-                          ? "This is the single quality and credit decision for the project. Technical media routing stays internal."
-                          : "Bu alan projenin tek kalite ve kredi kararıdır. Teknik medya yönlendirmesi sistem içinde kalır."}
-                      </p>
-                    </div>
-                    <div className="creatorlab-credit-profile">
-                      <span>{ui.creditProfile}</span>
-                      <strong>{getCreatorQualityCreditTier()}</strong>
-                    </div>
-                  </div>
-
-                  <div className="creatorlab-quality-options">
-                    {CREATOR_QUALITY_MODE_OPTIONS.map((option) => {
-                      const isSelected = option.value === creatorQualityMode;
-                      const label = uiLanguage === "en" ? option.labelEn : option.labelTr;
-                      const guidance = uiLanguage === "en" ? option.guidanceEn : option.guidanceTr;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setCreatorQualityMode(option.value)}
-                          className={`creatorlab-quality-option ${isSelected ? "is-selected" : ""}`}
-                          aria-pressed={isSelected}
-                        >
-                          <strong>{label}</strong>
-                          <span>{guidance}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {(() => {
-                    const estimate = getCreatorQualityEstimate();
+                <div className="creatorlab-format-choice-grid">
+                  {CREATOR_FORMAT_OPTIONS.map((option) => {
+                    const isSelected = creatorFormat === option.value;
+                    const localizedGuidance = option.value === "short_form"
+                      ? uiLanguage === "en" ? "Vertical, fast and optimized for short-form feeds." : "Dikey, hızlı ve kısa video akışları için optimize."
+                      : uiLanguage === "en" ? "Structured long-form package for YouTube." : "YouTube için yapılandırılmış uzun format paket.";
                     return (
-                      <div className="creatorlab-quality-summary">
-                        <div className="creatorlab-quality-metric">
-                          <span>{uiLanguage === "en" ? "Credit estimate" : "Kredi tahmini"}</span>
-                          <strong>{estimate.estimatedCredits}</strong>
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`creatorlab-format-choice ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => handleCreatorFormatChange(option.value)}
+                        aria-pressed={isSelected}
+                      >
+                        <span className="creatorlab-format-choice-mark" aria-hidden="true">
+                          {option.value === "short_form" ? "9:16" : "16:9"}
+                        </span>
+                        <div>
+                          <strong>{option.label}</strong>
+                          <small>{localizedGuidance}</small>
                         </div>
-                        <div className="creatorlab-quality-metric">
-                          <span>{uiLanguage === "en" ? "Selected quality" : "Seçilen kalite"}</span>
-                          <strong>{getCreatorQualityModeLabel()}</strong>
-                        </div>
-                        <p>{getCreatorQualityModeGuidance()}</p>
-                      </div>
+                      </button>
                     );
-                  })()}
+                  })}
                 </div>
+              </section>
+
+              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-platform-title">
+                <div className="creatorlab-decision-heading">
+                  <div>
+                    <span>{uiLanguage === "en" ? "Distribution" : "Dağıtım"}</span>
+                    <strong id="creatorlab-platform-title">
+                      {uiLanguage === "en" ? "Target platforms" : "Hedef platformlar"}
+                    </strong>
+                  </div>
+                  <small>
+                    {creatorTargetPlatforms.length} {uiLanguage === "en" ? "selected" : "seçili"}
+                  </small>
+                </div>
+                <div className="creatorlab-platform-choice-grid">
+                  {CREATOR_PUBLISH_PLATFORM_OPTIONS.map((option) => {
+                    const isSelected = creatorTargetPlatforms.includes(option.value);
+                    const isNative = option.nativeFormat === "both" || option.nativeFormat === creatorFormat;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`creatorlab-platform-choice ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => toggleCreatorTargetPlatform(option.value)}
+                        aria-pressed={isSelected}
+                      >
+                        <span className="creatorlab-platform-choice-check" aria-hidden="true">
+                          {isSelected ? "✓" : "+"}
+                        </span>
+                        <div>
+                          <strong>{option.label}</strong>
+                          <small>{uiLanguage === "en" ? option.guidanceEn : option.guidanceTr}</small>
+                        </div>
+                        <em>{isNative ? uiLanguage === "en" ? "Native" : "Doğal" : uiLanguage === "en" ? "Adapted" : "Uyarlanır"}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-duration-title">
+                <div className="creatorlab-decision-heading">
+                  <div>
+                    <span>{uiLanguage === "en" ? "Runtime" : "Süre"}</span>
+                    <strong id="creatorlab-duration-title">{ui.creatorDurationTitle}</strong>
+                  </div>
+                  <small>{getCreatorSceneCount()} {ui.sceneCountLabel} · {getCreatorDurationLabel()}</small>
+                </div>
+                <div className="creatorlab-duration-choice-row">
+                  {getCreatorDurationOptions().map((option) => {
+                    const isSelected = creatorDurationPreset === option.preset;
+                    return (
+                      <button
+                        key={option.preset}
+                        type="button"
+                        className={`creatorlab-duration-choice ${isSelected ? "is-selected" : ""}`}
+                        onClick={() => handleCreatorDurationPresetChange(option.preset)}
+                        aria-pressed={isSelected}
+                      >
+                        <strong>{option.label}</strong>
+                        <span>{getCreatorSceneCountForTargetDuration(option.seconds)} {ui.sceneCountLabel}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className={`creatorlab-duration-choice ${creatorDurationPreset === "custom" ? "is-selected" : ""}`}
+                    onClick={() => setCreatorDurationPreset("custom")}
+                    aria-pressed={creatorDurationPreset === "custom"}
+                  >
+                    <strong>{ui.customDuration}</strong>
+                    <span>{uiLanguage === "en" ? "Set exact runtime" : "Kesin süre belirle"}</span>
+                  </button>
+                </div>
+                {creatorDurationPreset === "custom" && (
+                  <label className="creatorlab-custom-duration-field">
+                    <span>{creatorFormat === "youtube_video" ? ui.customDurationMinutes : ui.customDurationSeconds}</span>
+                    <input
+                      type="number"
+                      min={creatorFormat === "youtube_video" ? 1 : 5}
+                      max={creatorFormat === "youtube_video" ? 60 : 180}
+                      step={creatorFormat === "youtube_video" ? 0.5 : 1}
+                      value={getCreatorCustomDurationInputValue()}
+                      onChange={(event) => handleCreatorCustomDurationChange(event.target.value)}
+                    />
+                  </label>
+                )}
+              </section>
+
+              <details id="creatorlab-brief-profile" className="creatorlab-context-details">
+                <summary>
+                  <div>
+                    <strong>{uiLanguage === "en" ? "Context & creator defaults" : "Bağlam ve creator varsayılanları"}</strong>
+                    <span>
+                      {hasCreatorProfileContext(creatorProfile)
+                        ? uiLanguage === "en" ? "Your saved profile is applied automatically to new briefs." : "Kayıtlı profiliniz yeni brief'lere otomatik uygulanır."
+                        : uiLanguage === "en" ? "Market and brand context are optional." : "Pazar ve marka bağlamı opsiyoneldir."}
+                    </span>
+                  </div>
+                  <div className="creatorlab-context-summary-values" aria-hidden="true">
+                    <span>{getCreatorCountryLabel()}</span>
+                    {creatorProfile.brandName && <span>{creatorProfile.brandName}</span>}
+                  </div>
+                  <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div className="creatorlab-context-body">
+                  <div className="creatorlab-context-grid">
+                    <label className="creatorlab-brief-field">
+                      <span>{ui.targetMarket}</span>
+                      <select value={creatorCountry} onChange={(event) => setCreatorCountry(event.target.value)}>
+                        {CREATOR_COUNTRY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <small>{uiLanguage === "en" ? "Used only when regional context improves the result." : "Yalnızca bölgesel bağlam sonucu iyileştirecekse kullanılır."}</small>
+                    </label>
+                    <div className="creatorlab-profile-context-card">
+                      <span>{uiLanguage === "en" ? "Active creator profile" : "Aktif creator profili"}</span>
+                      <strong>{creatorProfile.brandName || (uiLanguage === "en" ? "No saved brand" : "Kayıtlı marka yok")}</strong>
+                      <p>{creatorProfile.defaultAudience || (uiLanguage === "en" ? "Audience remains project-specific." : "Hedef kitle proje özelinde belirlenir.")}</p>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => applyCreatorProfile()}
+                          disabled={!creatorProfileLoaded || !hasCreatorProfileContext(creatorProfile)}
+                        >
+                          {uiLanguage === "en" ? "Apply now" : "Şimdi uygula"}
+                        </button>
+                        <button type="button" onClick={saveCreatorProfile}>
+                          {uiLanguage === "en" ? "Save profile" : "Profili kaydet"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="creatorlab-profile-input-grid">
+                    <input value={creatorProfile.brandName} onChange={(event) => setCreatorProfile((current) => ({ ...current, brandName: event.target.value }))} placeholder={uiLanguage === "en" ? "Creator or brand name" : "Creator veya marka adı"} />
+                    <input value={creatorProfile.defaultAudience} onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultAudience: event.target.value }))} placeholder={uiLanguage === "en" ? "Default audience" : "Varsayılan hedef kitle"} />
+                    <input value={creatorProfile.brandVoice} onChange={(event) => setCreatorProfile((current) => ({ ...current, brandVoice: event.target.value }))} placeholder={uiLanguage === "en" ? "Brand voice" : "Marka sesi"} />
+                    <input value={creatorProfile.defaultVisualStyle} onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultVisualStyle: event.target.value }))} placeholder={uiLanguage === "en" ? "Default visual direction" : "Varsayılan görsel yön"} />
+                  </div>
+                </div>
+              </details>
+
+              <div id="creatorlab-quality-panel" className="creatorlab-quality-panel">
+                <div className="creatorlab-quality-heading">
+                  <div>
+                    <label>{ui.creatorQualityTitle}</label>
+                    <p>
+                      {uiLanguage === "en"
+                        ? "One quality and credit decision controls the whole project. Provider routing remains internal."
+                        : "Tek kalite ve kredi kararı tüm projeyi yönetir. Sağlayıcı yönlendirmesi sistem içinde kalır."}
+                    </p>
+                  </div>
+                  <div className="creatorlab-credit-profile">
+                    <span>{ui.creditProfile}</span>
+                    <strong>{getCreatorQualityCreditTier()}</strong>
+                  </div>
+                </div>
+                <div className="creatorlab-quality-options">
+                  {CREATOR_QUALITY_MODE_OPTIONS.map((option) => {
+                    const isSelected = option.value === creatorQualityMode;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCreatorQualityMode(option.value)}
+                        className={`creatorlab-quality-option ${isSelected ? "is-selected" : ""}`}
+                        aria-pressed={isSelected}
+                      >
+                        <strong>{uiLanguage === "en" ? option.labelEn : option.labelTr}</strong>
+                        <span>{uiLanguage === "en" ? option.guidanceEn : option.guidanceTr}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(() => {
+                  const estimate = getCreatorQualityEstimate();
+                  return (
+                    <div className="creatorlab-quality-summary">
+                      <div className="creatorlab-quality-metric">
+                        <span>{uiLanguage === "en" ? "Current estimate" : "Mevcut tahmin"}</span>
+                        <strong>{estimate.estimatedCredits} {uiLanguage === "en" ? "credits" : "kredi"}</strong>
+                      </div>
+                      <div className="creatorlab-quality-metric">
+                        <span>{uiLanguage === "en" ? "Selected quality" : "Seçilen kalite"}</span>
+                        <strong>{getCreatorQualityModeLabel()}</strong>
+                      </div>
+                      <p>{getCreatorQualityModeGuidance()}</p>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="creatorlab-brief-strategy-note">
+                <CreatorWorkspaceIcon name="insights" />
+                <p>
+                  {uiLanguage === "en"
+                    ? "Trend research, creative alternatives and evidence review are handled in Strategy after this brief is analyzed."
+                    : "Trend araştırması, yaratıcı alternatifler ve kanıt incelemesi bu brief analiz edildikten sonra Strateji aşamasında ele alınır."}
+                </p>
               </div>
 
               <div id="creatorlab-brief-action" className="creatorlab-brief-action-bar">
@@ -17647,16 +21408,11 @@ export default function CreatePage() {
                   <strong>{uiLanguage === "en" ? "Ready to validate the idea?" : "Fikri doğrulamaya hazır mısın?"}</strong>
                   <p>
                     {input.trim()
-                      ? (uiLanguage === "en" ? "CreatorLab will analyze the opportunity and prepare the Strategy workspace." : "CreatorLab içerik fırsatını analiz edip Strategy çalışma alanını hazırlayacak.")
-                      : (uiLanguage === "en" ? "Enter a topic or video idea to continue." : "Devam etmek için bir konu veya video fikri gir.")}
+                      ? uiLanguage === "en" ? "CreatorLab will analyze the opportunity and prepare the Strategy workspace." : "CreatorLab içerik fırsatını analiz edip Strateji çalışma alanını hazırlayacak."
+                      : uiLanguage === "en" ? "Enter a topic or video idea to continue." : "Devam etmek için bir konu veya video fikri gir."}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={createSetup}
-                  disabled={loadingSetup || !input.trim()}
-                  className="creatorlab-primary-action"
-                >
+                <button type="button" onClick={createSetup} disabled={loadingSetup || !input.trim()} className="creatorlab-primary-action">
                   {creatorMentorLoading ? ui.analyzingContentOpportunity : ui.analyzeContentOpportunity}
                 </button>
               </div>
@@ -17664,373 +21420,87 @@ export default function CreatePage() {
           )}
 
           {isCreatorLabFlow && (
-            <details className="creatorlab-secondary-panel">
+            <details className="creatorlab-secondary-panel creatorlab-idea-lab-panel">
               <summary>
                 <div className="creatorlab-secondary-summary-copy">
-                  <strong>{uiLanguage === "en" ? "Advanced idea tools" : "Gelişmiş fikir araçları"}</strong>
-                  <span>{uiLanguage === "en" ? "YouTube research, pattern analysis and bulk idea generation remain available on demand." : "YouTube araştırması, pattern analizi ve toplu fikir üretimi gerektiğinde kullanılabilir."}</span>
+                  <strong>{uiLanguage === "en" ? "Idea Lab · multi-topic mode" : "Idea Lab · çoklu konu modu"}</strong>
+                  <span>
+                    {uiLanguage === "en"
+                      ? "Generate and compare several creator directions without crowding the main brief."
+                      : "Ana brief'i kalabalıklaştırmadan birden fazla içerik yönü üret ve karşılaştır."}
+                  </span>
                 </div>
-                <span className="creatorlab-secondary-status">{youtubeResearchVideos.length > 0 || bulkResults.length > 0 ? (uiLanguage === "en" ? "Results available" : "Sonuç mevcut") : (uiLanguage === "en" ? "Optional" : "Opsiyonel")}</span>
+                <span className="creatorlab-secondary-status">
+                  {bulkResults.length > 0 ? (uiLanguage === "en" ? `${bulkResults.length} ideas` : `${bulkResults.length} fikir`) : (uiLanguage === "en" ? "Optional" : "Opsiyonel")}
+                </span>
                 <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
               </summary>
-              <div className="creatorlab-secondary-body space-y-4">
-            <div className="rounded-[28px] border border-rose-200 bg-rose-50/80 p-5 space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-red-200">
-                    Explore Popular Ideas
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold text-slate-900">
-                    {ui.youtubeResearchTitle}
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-red-50/80">
-                    {ui.youtubeResearchDesc}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleYoutubeResearch}
-                  disabled={youtubeResearchLoading}
-                  className="rounded-[28px] bg-red-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {youtubeResearchLoading
-                    ? ui.youtubeResearchLoading
-                    : ui.youtubeResearchButton}
-                </button>
-              </div>
-
-              {youtubeResearchVideos.length > 0 && (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {youtubeResearchVideos.map((video) => (
-                    <article
-                      key={video.id}
-                      className="overflow-hidden rounded-[28px] border border-orange-200/24 bg-white/74"
-                    >
-                      <div className="h-32 w-full overflow-hidden bg-white/74">
-                        {video.thumbnail ? (
-                          <img
-                            src={video.thumbnail}
-                            alt={video.title}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                            YouTube
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-2 p-3">
-                        <h4 className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
-                          {video.title}
-                        </h4>
-                        <p className="text-xs text-slate-500">{video.channel}</p>
-
-                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
-                          <span>
-                            {formatYoutubeNumber(video.views)} {ui.youtubeResearchViews}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {formatYoutubeNumber(video.likes)} {ui.youtubeResearchLikes}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {ui.youtubeResearchDuration}: {formatYoutubeDuration(video.durationSec)}
-                          </span>
-                        </div>
-
-                        <a
-                          href={video.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex rounded-2xl border border-orange-200/24 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-white/68"
-                        >
-                          YouTube
-                        </a>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-
-              {!youtubeResearchLoading && youtubeResearchVideos.length === 0 && (
-                <p className="text-sm text-red-50/70">
-                  {ui.youtubeResearchEmpty}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-[28px] border border-purple-300/20 bg-violet-50/80 p-5 space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-violet-700">
-                    Smart Creator Tips
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold text-slate-900">
-                    {ui.patternEngineTitle}
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-purple-50/80">
-                    {ui.patternEngineDesc}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleYoutubePatternEngine}
-                  disabled={youtubePatternLoading || youtubeResearchVideos.length === 0}
-                  className="rounded-[28px] bg-purple-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-purple-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {youtubePatternLoading
-                    ? ui.patternEngineLoading
-                    : ui.patternEngineButton}
-                </button>
-              </div>
-
-              {!youtubePatternSummary && !youtubePatternLoading && (
-                <p className="text-sm text-purple-50/70">
-                  {ui.patternEngineEmpty}
-                </p>
-              )}
-
-              {youtubePatternSummary && (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                    <h4 className="font-semibold text-slate-900">{ui.patternTopTitles}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
-                      {youtubePatternSummary.topTitlePatterns.map((item, index) => (
-                        <li key={`title-pattern-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                    <h4 className="font-semibold text-slate-900">{ui.patternHooks}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
-                      {youtubePatternSummary.hookPatterns.map((item, index) => (
-                        <li key={`hook-pattern-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                    <h4 className="font-semibold text-slate-900">{ui.patternAngle}</h4>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {youtubePatternSummary.recommendedContentAngle}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                          {ui.patternDuration}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">
-                          {youtubePatternSummary.recommendedDurationSec}s
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                          {ui.patternOpportunity}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">
-                          {youtubePatternSummary.opportunityScore}/100
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                          {ui.patternCompetition}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900 capitalize">
-                          {youtubePatternSummary.competitionLevel}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded-2xl border border-purple-300/20 bg-purple-400/10 p-3 text-sm text-purple-50">
-                      <p>
-                        {ui.creatorDurationTitle}: {getCreatorDurationLabel()} /{" "}
-                        {getCreatorSceneCount()} {ui.sceneCountLabel}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={applyPatternRecommendedDuration}
-                        className="mt-3 rounded-2xl border border-purple-200/30 px-3 py-2 text-xs font-semibold text-purple-50 transition hover:bg-purple-200/10"
-                      >
-                        {ui.usePatternDuration}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 lg:col-span-2">
-                    <h4 className="font-semibold text-slate-900">{ui.patternReasoning}</h4>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
-                      {youtubePatternSummary.reasoning.map((item, index) => (
-                        <li key={`pattern-reasoning-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <section
-              data-bulk-generator-panel="true"
-              className="rounded-[28px] border border-indigo-200 bg-indigo-50/800/[0.08] p-5"
-            >
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-indigo-700">
-                    Idea Machine
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-slate-900">
-                    {ui.bulkGeneratorTitle}
-                  </h2>
-                  <p className="mt-2 max-w-4xl text-sm leading-6 text-indigo-700/80">
-                    {ui.bulkGeneratorDesc}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto]">
-                <div>
-                  <label className="block text-sm font-medium text-indigo-700">
-                    {ui.bulkTopicsLabel}
+              <div className="creatorlab-secondary-body creatorlab-idea-lab-body">
+                <div className="creatorlab-idea-lab-entry">
+                  <label>
+                    <span>{ui.bulkTopicsLabel}</span>
+                    <textarea
+                      value={bulkTopics}
+                      onChange={(event) => setBulkTopics(event.target.value)}
+                      placeholder={ui.bulkTopicsPlaceholder}
+                    />
                   </label>
-                  <textarea
-                    value={bulkTopics}
-                    onChange={(e) => setBulkTopics(e.target.value)}
-                    placeholder={ui.bulkTopicsPlaceholder}
-                    className="mt-2 min-h-32 w-full rounded-[28px] border border-indigo-200 bg-white/82 p-4 text-sm text-black placeholder:text-slate-500"
-                  />
-                </div>
-
-                <div className="flex items-end">
                   <button
                     type="button"
                     onClick={handleBulkGenerateIdeas}
                     disabled={bulkLoading || !bulkTopics.trim()}
-                    className="w-full rounded-[28px] border border-indigo-300/40 bg-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
                   >
                     {bulkLoading ? ui.bulkGenerating : ui.bulkGenerate}
                   </button>
                 </div>
-              </div>
 
-              {bulkResults.length === 0 && (
-                <div className="mt-5 rounded-[28px] border border-orange-200/24 bg-white/74 p-4 text-sm text-indigo-700/70">
-                  {ui.bulkEmpty}
-                </div>
-              )}
-
-              {bulkResults.length > 0 && (
-                <div
-                  data-bulk-selection-toolbar="true"
-                  className="mt-5 flex flex-col gap-3 rounded-[28px] border border-indigo-200 bg-white/74 p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="text-sm text-indigo-700/80">
-                    {ui.selectedBulkCount}:{" "}
-                    <span className="font-semibold text-slate-900">
-                      {selectedBulkIds.length}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGenerateSelectedBulk}
-                    disabled={
-                      selectedBulkIds.length === 0 ||
-                      selectedBulkLoading ||
-                      isGeneratingFullYoutubePackage ||
-                      loadingSetup
-                    }
-                    className="rounded-2xl border border-teal-200 bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {selectedBulkLoading
-                      ? ui.generatingSelectedBulk
-                      : ui.generateSelectedBulk}
-                  </button>
-                </div>
-              )}
-
-              {bulkResults.length > 0 && (
-                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {bulkResults.map((idea, index) => (
-                    <div
-                      key={`${idea.topic}-${index}`}
-                      className={`rounded-[28px] border p-4 transition ${
-                        selectedBulkIds.includes(index)
-                          ? "border-emerald-300/50 bg-teal-50/80"
-                          : "border-orange-200/24 bg-white/68"
-                      }`}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={selectedBulkIds.includes(index)}
-                            onChange={() => toggleBulkSelection(index)}
-                            className="h-4 w-4 rounded border-orange-200/26"
-                          />
-                          {uiLanguage === "en" ? "Select" : "Seç"}
-                        </label>
-                      </div>
-
-                      <div className="flex items-start justify-between gap-3">
-                        <h3 className="text-base font-semibold leading-6 text-slate-900">
-                          {idea.title}
-                        </h3>
-                        <span className="rounded-full bg-indigo-400/15 px-3 py-1 text-xs font-semibold text-indigo-700">
-                          {ui.bulkScore}: {Math.round((idea.score || 0) * 100)}
-                        </span>
-                      </div>
-
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        {idea.hook}
-                      </p>
-
-                      <div className="mt-4 rounded-2xl border border-orange-200/24 bg-white/62 p-3 text-xs leading-5 text-slate-600">
-                        <div>
-                          <span className="font-semibold text-indigo-700">
-                            {ui.bulkAngle}:
-                          </span>{" "}
-                          {idea.angle}
-                        </div>
-                        <div className="mt-2">
-                          <span className="font-semibold text-indigo-700">
-                            {ui.bulkReason}:
-                          </span>{" "}
-                          {idea.reason}
-                        </div>
-                      </div>
-
+                {bulkResults.length === 0 ? (
+                  <div className="creatorlab-idea-lab-empty">{ui.bulkEmpty}</div>
+                ) : (
+                  <>
+                    <div className="creatorlab-idea-lab-toolbar">
+                      <span>{ui.selectedBulkCount}: <strong>{selectedBulkIds.length}</strong></span>
                       <button
                         type="button"
-                        onClick={() => handleUseBulkTopic(idea)}
-                        className="mt-4 w-full rounded-2xl border border-indigo-300/30 bg-indigo-400/10 px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-400/20"
+                        onClick={handleGenerateSelectedBulk}
+                        disabled={selectedBulkIds.length === 0 || selectedBulkLoading || isGeneratingFullYoutubePackage || loadingSetup}
                       >
-                        {ui.useBulkTopic}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateFullPackageFromBulk(idea)}
-                        disabled={isGeneratingFullYoutubePackage || loadingSetup}
-                        className="mt-3 w-full rounded-2xl border border-purple-300/30 bg-purple-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isGeneratingFullYoutubePackage
-                          ? ui.generatingFullYoutubePackage
-                          : ui.generateFullPackageFromBulk}
+                        {selectedBulkLoading ? ui.generatingSelectedBulk : ui.generateSelectedBulk}
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                    <div className="creatorlab-idea-lab-grid">
+                      {bulkResults.map((idea, index) => (
+                        <article key={`${idea.topic}-${index}`} className={selectedBulkIds.includes(index) ? "is-selected" : ""}>
+                          <label className="creatorlab-idea-select">
+                            <input
+                              type="checkbox"
+                              checked={selectedBulkIds.includes(index)}
+                              onChange={() => toggleBulkSelection(index)}
+                            />
+                            <span>{uiLanguage === "en" ? "Select" : "Seç"}</span>
+                          </label>
+                          <div className="creatorlab-idea-title-row">
+                            <strong>{idea.title}</strong>
+                            <span>{ui.bulkScore}: {Math.round((idea.score || 0) * 100)}</span>
+                          </div>
+                          <p>{idea.hook}</p>
+                          <small><b>{ui.bulkAngle}:</b> {idea.angle}</small>
+                          <small><b>{ui.bulkReason}:</b> {idea.reason}</small>
+                          <div className="creatorlab-idea-actions">
+                            <button type="button" onClick={() => handleUseBulkTopic(idea)}>{ui.useBulkTopic}</button>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateFullPackageFromBulk(idea)}
+                              disabled={isGeneratingFullYoutubePackage || loadingSetup}
+                            >
+                              {isGeneratingFullYoutubePackage ? ui.generatingFullYoutubePackage : ui.generateFullPackageFromBulk}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </details>
           )}
@@ -18156,13 +21626,36 @@ export default function CreatePage() {
               </button>
             </div>
 
-            <article id="creatorlab-strategy-recommendation" className="creatorlab-strategy-recommendation">
+            <article
+              id="creatorlab-strategy-recommendation"
+              className={`creatorlab-strategy-recommendation ${
+                creatorSelectedStrategyDirectionId === "recommended" ? "is-selected" : ""
+              }`}
+            >
               <div className="creatorlab-strategy-recommendation-copy">
-                <span className="creatorlab-strategy-recommendation-label">
-                  {uiLanguage === "en" ? "Creator Mentor recommendation" : "Creator Mentor önerisi"}
-                </span>
+                <div className="creatorlab-strategy-recommendation-topline">
+                  <span className="creatorlab-strategy-recommendation-label">
+                    {uiLanguage === "en" ? "Recommended direction" : "Önerilen yön"}
+                  </span>
+                  <span className={`creatorlab-strategy-selection-badge ${
+                    creatorSelectedStrategyDirectionId === "recommended" ? "is-selected" : ""
+                  }`}>
+                    {creatorSelectedStrategyDirectionId === "recommended"
+                      ? uiLanguage === "en" ? "Selected for Production" : "Production için seçildi"
+                      : uiLanguage === "en" ? "Mentor recommendation" : "Mentor önerisi"}
+                  </span>
+                </div>
                 <h2>{creatorMentorRecommendedIdea.title}</h2>
                 <p>{creatorMentorRecommendedIdea.reason}</p>
+                {creatorSelectedStrategyDirectionId !== "recommended" && (
+                  <button
+                    type="button"
+                    className="creatorlab-strategy-direction-button"
+                    onClick={() => setCreatorSelectedStrategyDirectionId("recommended")}
+                  >
+                    {uiLanguage === "en" ? "Use recommendation" : "Önerilen yönü kullan"}
+                  </button>
+                )}
               </div>
               <div className="creatorlab-strategy-recommendation-aside">
                 <div>
@@ -18185,25 +21678,36 @@ export default function CreatePage() {
             </article>
 
             <div id="creatorlab-strategy-signals" className="creatorlab-strategy-signal-grid">
-              <div className="creatorlab-strategy-signal-card">
-                <span>{uiLanguage === "en" ? "Audience signals" : "Kitle sinyalleri"}</span>
-                <strong>{creatorMentorAudienceInsights.length}</strong>
-                <p>{uiLanguage === "en" ? "Decision-ready audience observations" : "Karara hazır kitle gözlemleri"}</p>
+              <div className="creatorlab-strategy-signal-card is-decision">
+                <span>{uiLanguage === "en" ? "Audience fit" : "Kitle uyumu"}</span>
+                <strong>{creatorAudienceFitLabel}</strong>
+                <p>
+                  {creatorMentorAudienceInsights[0] ||
+                    (uiLanguage === "en"
+                      ? "Review the audience promise before production."
+                      : "Üretimden önce kitle vaadini kontrol et.")}
+                </p>
               </div>
-              <div className="creatorlab-strategy-signal-card">
-                <span>{uiLanguage === "en" ? "Hook directions" : "Hook yönleri"}</span>
-                <strong>{creatorMentorHookPatterns.length}</strong>
-                <p>{uiLanguage === "en" ? "Opening patterns available for the plan" : "Plan için kullanılabilir açılış kalıpları"}</p>
+              <div className="creatorlab-strategy-signal-card is-decision">
+                <span>{uiLanguage === "en" ? "Opening direction" : "Açılış yönü"}</span>
+                <strong>{creatorSelectedStrategyHook || (uiLanguage === "en" ? "Choose below" : "Aşağıdan seç")}</strong>
+                <p>{uiLanguage === "en" ? "Strategic angle for the first scene" : "İlk sahne için stratejik açı"}</p>
               </div>
-              <div className="creatorlab-strategy-signal-card">
-                <span>{uiLanguage === "en" ? "Creative alternatives" : "Yaratıcı alternatif"}</span>
-                <strong>{creatorMentorVideoIdeas.length}</strong>
-                <p>{uiLanguage === "en" ? "Directions retained for comparison" : "Karşılaştırma için korunan yönler"}</p>
+              <div className="creatorlab-strategy-signal-card is-decision">
+                <span>{uiLanguage === "en" ? "Market evidence" : "Pazar kanıtı"}</span>
+                <strong>
+                  {youtubePatternSummary
+                    ? `${youtubePatternSummary.opportunityScore}/100`
+                    : youtubeResearchVideos.length > 0
+                      ? uiLanguage === "en" ? "Research ready" : "Araştırma hazır"
+                      : uiLanguage === "en" ? "Optional" : "İsteğe bağlı"}
+                </strong>
+                <p>{creatorCompetitionLabel}</p>
               </div>
-              <div className="creatorlab-strategy-signal-card">
+              <div className="creatorlab-strategy-signal-card is-decision">
                 <span>{uiLanguage === "en" ? "Production scope" : "Üretim kapsamı"}</span>
                 <strong>{getCreatorDurationLabel()}</strong>
-                <p>{uiLanguage === "en" ? `${getCreatorSceneCount()} planned scenes` : `${getCreatorSceneCount()} planlanan sahne`}</p>
+                <p>{uiLanguage === "en" ? `${getCreatorSceneCount()} scenes · ${getCreatorQualityModeLabel()}` : `${getCreatorSceneCount()} sahne · ${getCreatorQualityModeLabel()}`}</p>
               </div>
             </div>
 
@@ -18213,7 +21717,7 @@ export default function CreatePage() {
                   <div>
                     <span>{uiLanguage === "en" ? "Audience & opening" : "Kitle ve açılış"}</span>
                     <h3>{uiLanguage === "en" ? "Why this direction can work" : "Bu yön neden çalışabilir"}</h3>
-                    <p>{uiLanguage === "en" ? "The essential signals stay visible; deeper research remains optional." : "Temel sinyaller görünür kalır; derin araştırma isteğe bağlıdır."}</p>
+                    <p>{uiLanguage === "en" ? "Review the essential audience signals, then choose the strategic opening angle." : "Temel kitle sinyallerini incele, ardından stratejik açılış açısını seç."}</p>
                   </div>
                 </div>
                 <ul className="creatorlab-strategy-insight-list">
@@ -18221,15 +21725,40 @@ export default function CreatePage() {
                     <li key={`strategy-audience-${index}`}>{item}</li>
                   ))}
                 </ul>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-6 text-slate-600">
-                  <strong className="text-slate-900">
-                    {uiLanguage === "en" ? "Opening direction reserved for Production" : "Açılış yönü Production aşamasına taşındı"}
-                  </strong>
-                  <p className="mt-1">
-                    {uiLanguage === "en"
-                      ? "Hook alternatives are applied where the opening scene can be reviewed together with narration and timing."
-                      : "Hook alternatifleri, açılış sahnesinin anlatım ve süreyle birlikte değerlendirilebildiği alanda uygulanır."}
-                  </p>
+                <div className="creatorlab-strategy-hook-selector">
+                  <div>
+                    <strong>{uiLanguage === "en" ? "Choose the opening direction" : "Açılış yönünü seç"}</strong>
+                    <p>
+                      {uiLanguage === "en"
+                        ? "Select the strategic angle here. Exact narration and timing remain editable in Production."
+                        : "Stratejik açıyı burada seç. Kesin anlatım ve süre Production aşamasında düzenlenebilir."}
+                    </p>
+                  </div>
+                  {creatorStrategyHookOptions.length > 0 ? (
+                    <div className="creatorlab-strategy-hook-options">
+                      {creatorStrategyHookOptions.map((hook, index) => {
+                        const isSelected = hook === creatorSelectedStrategyHook;
+                        return (
+                          <button
+                            key={`strategy-hook-${index}`}
+                            type="button"
+                            className={`creatorlab-strategy-hook-option ${isSelected ? "is-selected" : ""}`}
+                            aria-pressed={isSelected}
+                            onClick={() => setCreatorSelectedHookPattern(hook)}
+                          >
+                            <span>{isSelected ? "✓" : String(index + 1).padStart(2, "0")}</span>
+                            <strong>{hook}</strong>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="creatorlab-strategy-hook-empty">
+                      {uiLanguage === "en"
+                        ? "No separate hook angle was returned; the selected creative direction will guide the opening scene."
+                        : "Ayrı bir hook açısı üretilmedi; seçilen yaratıcı yön açılış sahnesini yönlendirecek."}
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -18237,21 +21766,51 @@ export default function CreatePage() {
                 <div className="creatorlab-strategy-panel-heading">
                   <div>
                     <span>{uiLanguage === "en" ? "Creative options" : "Yaratıcı seçenekler"}</span>
-                    <h3>{uiLanguage === "en" ? "Alternative directions" : "Alternatif yönler"}</h3>
-                    <p>{uiLanguage === "en" ? "Keep useful options visible without turning Strategy into an idea dashboard." : "Strategy ekranını fikir panosuna çevirmeden yararlı seçenekleri görünür tut."}</p>
+                    <h3>{uiLanguage === "en" ? "Compare and approve one direction" : "Tek bir yönü karşılaştır ve onayla"}</h3>
+                    <p>{uiLanguage === "en" ? "The recommendation remains selected by default. Two useful alternatives stay available without creating decision overload." : "Önerilen yön varsayılan olarak seçilidir. Karar yükü oluşturmadan iki yararlı alternatif erişilebilir kalır."}</p>
                   </div>
                 </div>
-                <div className="creatorlab-strategy-idea-list">
-                  {creatorMentorVideoIdeas.map((idea, index) => (
-                    <article key={`${idea.title}-${index}`} className="creatorlab-strategy-idea-card">
-                      <span className="creatorlab-strategy-idea-number">{String(index + 1).padStart(2, "0")}</span>
-                      <div>
-                        <strong>{idea.title}</strong>
-                        <p>{idea.concept}</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                {creatorStrategyAlternativeDirections.length > 0 ? (
+                  <div className="creatorlab-strategy-idea-list">
+                    {creatorStrategyAlternativeDirections.map((direction, index) => {
+                      const isSelected = creatorSelectedStrategyDirectionId === direction.id;
+                      return (
+                        <article
+                          key={direction.id}
+                          className={`creatorlab-strategy-idea-card ${isSelected ? "is-selected" : ""}`}
+                        >
+                          <span className="creatorlab-strategy-idea-number">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <div>
+                            <div className="creatorlab-strategy-idea-title-row">
+                              <strong>{direction.title}</strong>
+                              {isSelected && (
+                                <span>{uiLanguage === "en" ? "Selected" : "Seçildi"}</span>
+                              )}
+                            </div>
+                            <p>{direction.concept}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="creatorlab-strategy-direction-button"
+                            disabled={isSelected}
+                            onClick={() => setCreatorSelectedStrategyDirectionId(direction.id)}
+                          >
+                            {isSelected
+                              ? uiLanguage === "en" ? "Selected" : "Seçildi"
+                              : uiLanguage === "en" ? "Use this direction" : "Bu yönü kullan"}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="creatorlab-strategy-direction-empty">
+                    <strong>{uiLanguage === "en" ? "The mentor recommendation is the approved direction." : "Mentor önerisi onaylanan yön olarak kullanılacak."}</strong>
+                    <p>{uiLanguage === "en" ? "No additional direction is needed to continue." : "Devam etmek için ek bir yön seçimi gerekmiyor."}</p>
+                  </div>
+                )}
               </section>
             </div>
 
@@ -18290,6 +21849,18 @@ export default function CreatePage() {
                 </div>
               </div>
 
+              {youtubeResearchVideos.length > 0 && (
+                <div className="creatorlab-strategy-research-context">
+                  <div>
+                    <span>{uiLanguage === "en" ? "Research subject" : "Araştırma konusu"}</span>
+                    <strong>{input.trim()}</strong>
+                  </div>
+                  <small>
+                    {youtubeResearchVideos.length} {uiLanguage === "en" ? "relevant references retained" : "ilgili referans korundu"}
+                  </small>
+                </div>
+              )}
+
               {youtubeResearchVideos.length === 0 ? (
                 <div className="creatorlab-strategy-empty">
                   <div className="creatorlab-strategy-empty-icon">
@@ -18314,8 +21885,21 @@ export default function CreatePage() {
                         {video.thumbnail ? <img src={video.thumbnail} alt="" /> : null}
                       </div>
                       <div className="creatorlab-strategy-video-copy">
-                        <strong>{video.title}</strong>
+                        <div className="creatorlab-strategy-video-title-row">
+                          <strong>{video.title}</strong>
+                          {typeof video.relevanceScore === "number" && (
+                            <span className="creatorlab-strategy-video-match">
+                              {Math.min(100, Math.max(0, Math.round(video.relevanceScore)))}% {uiLanguage === "en" ? "match" : "uyum"}
+                            </span>
+                          )}
+                        </div>
                         <span>{formatYoutubeNumber(video.views)} {ui.youtubeResearchViews} · {video.channel}</span>
+                        <p className="creatorlab-strategy-video-reason">
+                          {video.relevanceReason ||
+                            (uiLanguage === "en"
+                              ? "Retained as evidence for title, opening and duration patterns."
+                              : "Başlık, açılış ve süre pattern'leri için kanıt olarak korundu.")}
+                        </p>
                       </div>
                     </a>
                   ))}
@@ -18415,8 +21999,12 @@ export default function CreatePage() {
 
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
-                <strong>{uiLanguage === "en" ? "Ready to create the production plan?" : "Üretim planını oluşturmaya hazır mısın?"}</strong>
-                <p>{uiLanguage === "en" ? "CreatorLab will convert the approved direction into a scene-ready production package without generating paid media yet." : "CreatorLab, onaylanan yönü henüz ücretli medya üretmeden sahneye hazır üretim paketine dönüştürecek."}</p>
+                <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
+                <p>
+                  {uiLanguage === "en"
+                    ? `CreatorLab will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build an editable scene plan. No paid media is generated yet.`
+                    : `CreatorLab, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak düzenlenebilir sahne planını oluşturacak. Henüz ücretli medya üretilmez.`}
+                </p>
               </div>
               <button
                 type="button"
@@ -18425,8 +22013,8 @@ export default function CreatePage() {
                 className="creatorlab-strategy-primary-action"
               >
                 {creatorProductionLoading
-                  ? uiLanguage === "en" ? "Creating production plan..." : "Üretim planı oluşturuluyor..."
-                  : uiLanguage === "en" ? "Create Production Plan" : "Üretim Planı Oluştur"}
+                  ? uiLanguage === "en" ? "Building scene plan..." : "Sahne planı oluşturuluyor..."
+                  : uiLanguage === "en" ? "Approve Strategy & Build Scenes" : "Stratejiyi Onayla ve Sahneleri Oluştur"}
               </button>
             </div>
           </section>
@@ -18475,60 +22063,27 @@ export default function CreatePage() {
               </div>
             </article>
 
-            <section id="creatorlab-cast-entry" className="creatorlab-cast-entry-card" aria-labelledby="creatorlab-cast-entry-title">
-              <div className="creatorlab-cast-entry-copy">
-                <span>{uiLanguage === "en" ? "Cast & Brand" : "Cast & Brand"}</span>
-                <strong id="creatorlab-cast-entry-title">
-                  {characters.length > 0
-                    ? uiLanguage === "en"
-                      ? `${characters.length} presenter or character ${characters.length === 1 ? "is" : "are"} configured`
-                      : `${characters.length} sunucu veya karakter yapılandırıldı`
-                    : uiLanguage === "en"
-                      ? "No presenter or character configured"
-                      : "Henüz sunucu veya karakter yapılandırılmadı"}
-                </strong>
-                <p>
-                  {characters.length > 0
-                    ? uiLanguage === "en"
-                      ? "Review the cast, brand voice and visual direction before generating or retrying media."
-                      : "Medya üretmeden veya yeniden denemeden önce karakter kadrosunu, marka sesini ve görsel yönü kontrol et."
-                    : uiLanguage === "en"
-                      ? "Faceless production remains valid. Add a presenter, persona or recurring character only when the concept needs one."
-                      : "Faceless üretim geçerlidir. Yalnızca içerik gerektiriyorsa sunucu, persona veya tekrar eden karakter ekle."}
-                </p>
-              </div>
-              <div className="creatorlab-cast-entry-actions">
-                <span className={characters.length > 0 ? "is-ready" : ""}>
-                  {characters.length > 0
-                    ? uiLanguage === "en" ? "Cast configured" : "Karakter planı hazır"
-                    : uiLanguage === "en" ? "Optional setup" : "Opsiyonel kurulum"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => scrollCreatorWorkspaceTo("creatorlab-cast-brand")}
-                >
-                  {characters.length > 0
-                    ? uiLanguage === "en" ? "Manage Cast & Brand" : "Cast & Brand'i Yönet"
-                    : uiLanguage === "en" ? "Add Presenter or Character" : "Sunucu veya Karakter Ekle"}
-                </button>
-              </div>
-            </section>
-
-            <details id="creatorlab-cast-brand" className="creatorlab-cast-brand-panel">
+            <details id="creatorlab-cast-brand" className="creatorlab-cast-brand-panel creatorlab-production-identity-panel">
               <summary>
                 <div className="creatorlab-cast-brand-summary-copy">
-                  <span>{uiLanguage === "en" ? "Secondary production setup" : "İkincil üretim ayarları"}</span>
-                  <strong>{uiLanguage === "en" ? "Cast & Brand" : "Cast & Brand"}</strong>
+                  <span>{uiLanguage === "en" ? "Production identity" : "Üretim kimliği"}</span>
+                  <strong>{creatorPresentationModeLabel}</strong>
                   <p>
-                    {uiLanguage === "en"
-                      ? "Configure presenters, recurring personas, brand voice, visual direction and voice performance only when the production needs them."
-                      : "Sunucu, tekrar eden persona, marka sesi, görsel yön ve ses performansını yalnızca üretim gerektirdiğinde yapılandır."}
+                    {creatorProfile.brandName || (uiLanguage === "en" ? "No brand profile" : "Marka profili yok")}
+                    {" · "}
+                    {creatorVisualDirectionConfigured
+                      ? uiLanguage === "en" ? "Visual direction ready" : "Görsel yön hazır"
+                      : uiLanguage === "en" ? "Default visual direction" : "Varsayılan görsel yön"}
                   </p>
                 </div>
                 <div className="creatorlab-cast-brand-summary-meta">
-                  <span className="creatorlab-cast-brand-mode-pill">{creatorPresentationModeLabel}</span>
+                  <span className="creatorlab-cast-brand-mode-pill">
+                    {characters.length > 0
+                      ? `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"}`
+                      : uiLanguage === "en" ? "Cast optional" : "Kadro opsiyonel"}
+                  </span>
                   <span className="creatorlab-cast-brand-readiness">
-                    {creatorCastBrandConfiguredCount}/3 {uiLanguage === "en" ? "configured" : "yapılandırıldı"}
+                    {creatorCastBrandConfiguredCount}/3 {uiLanguage === "en" ? "ready" : "hazır"}
                   </span>
                   <span className="creatorlab-cast-brand-chevron" aria-hidden="true">⌄</span>
                 </div>
@@ -19032,33 +22587,32 @@ export default function CreatePage() {
               <>
                 <div
                   className={`creatorlab-production-progress ${creatorMotionRequired ? "has-motion-step" : ""}`}
-                  aria-label={uiLanguage === "en" ? "Production actions" : "Üretim aksiyonları"}
+                  role="list"
+                  aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
                 >
                   {[
                     {
                       number: 1,
-                      label: uiLanguage === "en" ? "Generate visuals" : "Görselleri üret",
+                      label: uiLanguage === "en" ? "Visuals" : "Görseller",
                       detail: `${visualAssetReadyCount}/${scenes.length} ${uiLanguage === "en" ? "ready" : "hazır"}`,
                       complete: creatorVisualsComplete,
                       active: !creatorTimelineNeedsAttention && !creatorVisualsComplete,
-                      onClick: runCreatorGenerateVisuals,
                     },
                     {
                       number: 2,
-                      label: uiLanguage === "en" ? "Generate voice-over" : "Seslendirme üret",
+                      label: uiLanguage === "en" ? "Voice-over" : "Seslendirme",
                       detail: `${audioReadyCount}/${scenes.length} ${uiLanguage === "en" ? "ready" : "hazır"}`,
                       complete: creatorVoiceOverComplete,
                       active: creatorVisualsComplete && !creatorVoiceOverComplete,
-                      onClick: runCreatorGenerateVoiceOver,
                     },
                     ...(creatorMotionRequired
                       ? [
                           {
                             number: 3,
-                            label: uiLanguage === "en" ? "Create motion" : "Hareket üret",
+                            label: uiLanguage === "en" ? "Motion" : "Hareket",
                             detail:
                               creatorRoutedMotionSceneIds.length > 0
-                                ? `${creatorMotionReadyCount}/${creatorRoutedMotionSceneIds.length} ${uiLanguage === "en" ? "motion blocks ready" : "hareket bloğu hazır"}`
+                                ? `${creatorMotionReadyCount}/${creatorRoutedMotionSceneIds.length} ${uiLanguage === "en" ? "ready" : "hazır"}`
                                 : uiLanguage === "en"
                                   ? "No Video scenes selected"
                                   : "Video sahnesi seçilmedi",
@@ -19067,13 +22621,12 @@ export default function CreatePage() {
                               creatorVisualsComplete &&
                               creatorVoiceOverComplete &&
                               !creatorMotionComplete,
-                            onClick: runCreatorGenerateMotion,
                           },
                         ]
                       : []),
                     {
                       number: creatorMotionRequired ? 4 : 3,
-                      label: uiLanguage === "en" ? "Create final video" : "Final video oluştur",
+                      label: uiLanguage === "en" ? "Final video" : "Final video",
                       detail: creatorProductionComplete
                         ? uiLanguage === "en" ? "Ready" : "Hazır"
                         : uiLanguage === "en" ? "Waiting for assets" : "Varlıklar bekleniyor",
@@ -19083,28 +22636,27 @@ export default function CreatePage() {
                         creatorVoiceOverComplete &&
                         creatorMotionComplete &&
                         !creatorProductionComplete,
-                      onClick: runCreatorCreateFinalVideo,
                     },
                   ].map((item) => (
-                    <button
+                    <div
                       key={item.number}
-                      type="button"
-                      onClick={item.onClick}
-                      disabled={
-                        creatorMediaPreflightLoading ||
-                        isBatchRendering ||
-                        isPreparingAudio ||
-                        isExportingMovie ||
-                        buildingStory
-                      }
-                      className={`creatorlab-production-progress-step cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-60 ${item.complete ? "is-complete" : ""} ${item.active ? "is-active" : ""}`}
+                      role="listitem"
+                      aria-current={item.active ? "step" : undefined}
+                      className={`creatorlab-production-progress-step ${item.complete ? "is-complete" : ""} ${item.active ? "is-active" : ""}`}
                     >
-                      <span className="creatorlab-production-progress-number">{item.complete ? "✓" : item.number}</span>
+                      <span className="creatorlab-production-progress-number" aria-hidden="true">{item.complete ? "✓" : item.number}</span>
                       <div className="creatorlab-production-progress-copy">
                         <strong>{item.label}</strong>
                         <span>{item.detail}</span>
                       </div>
-                    </button>
+                      <span className={`creatorlab-production-progress-status ${item.complete ? "is-complete" : item.active ? "is-active" : ""}`}>
+                        {item.complete
+                          ? uiLanguage === "en" ? "Complete" : "Tamamlandı"
+                          : item.active
+                            ? uiLanguage === "en" ? "Current" : "Sıradaki"
+                            : uiLanguage === "en" ? "Waiting" : "Bekliyor"}
+                      </span>
+                    </div>
                   ))}
                 </div>
 
@@ -19133,6 +22685,38 @@ export default function CreatePage() {
                 </div>
                 )}
 
+                <div id="creatorlab-production-action" className="creatorlab-production-action-bar">
+                  <div className="creatorlab-production-action-copy" aria-live="polite">
+                    <span className="creatorlab-production-action-kicker">{uiLanguage === "en" ? "Next production action" : "Sıradaki üretim aksiyonu"}</span>
+                    <strong>{creatorNextProductionAction.title}</strong>
+                    <p>{creatorNextProductionAction.description}</p>
+                  </div>
+                  <div className="creatorlab-production-actions">
+                    <button
+                      type="button"
+                      onClick={continueCreatorProduction}
+                      disabled={
+                        creatorMediaPreflightLoading ||
+                        isBatchRendering ||
+                        isPreparingAudio ||
+                        isExportingMovie ||
+                        buildingStory
+                      }
+                      className="creatorlab-production-primary-action"
+                    >
+                      {creatorMediaPreflightLoading
+                        ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
+                        : isBatchRendering
+                          ? uiLanguage === "en" ? "Producing media..." : "Medya üretiliyor..."
+                          : isPreparingAudio
+                            ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
+                            : isExportingMovie
+                              ? ui.creatingMovie
+                              : creatorNextProductionAction.buttonLabel}
+                    </button>
+                  </div>
+                </div>
+
                 <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard">
                   <div className="creatorlab-production-storyboard-heading">
                     <div>
@@ -19144,6 +22728,179 @@ export default function CreatePage() {
                         ? `${scenes.length} scenes · ${formatDurationLabel(creatorVideoDurationSec)} target`
                         : `${scenes.length} sahne · ${formatDurationLabel(creatorVideoDurationSec)} hedef`}
                     </p>
+                  </div>
+
+                  <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {uiLanguage === "en" ? "Mini timeline" : "Mini timeline"}
+                        </span>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {uiLanguage === "en"
+                            ? "Scan pacing, output choices and readiness. Select scenes for controlled bulk actions."
+                            : "Tempo, çıktı seçimi ve hazırlığı hızlıca gör. Kontrollü toplu aksiyonlar için sahneleri seç."}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={undoLastCreatorChange}
+                          disabled={creatorUndoStack.length === 0}
+                          title={
+                            creatorUndoStack.length > 0
+                              ? creatorUndoStack[creatorUndoStack.length - 1]?.label
+                              : uiLanguage === "en" ? "No reversible change yet" : "Henüz geri alınabilir değişiklik yok"
+                          }
+                          className="min-h-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {uiLanguage === "en" ? "Undo" : "Geri al"}
+                          {creatorUndoStack.length > 0 ? ` · ${creatorUndoStack.length}` : ""}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCreatorSelectedSceneIds(
+                              creatorAllScenesSelected ? [] : scenes.map((scene) => scene.id),
+                            )
+                          }
+                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          {creatorAllScenesSelected
+                            ? uiLanguage === "en" ? "Clear selection" : "Seçimi temizle"
+                            : uiLanguage === "en" ? "Select all" : "Tümünü seç"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorScenesRenderMode(scenes.map((scene) => scene.id), "image")}
+                          className="min-h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          {uiLanguage === "en" ? "Set all to Image" : "Tümünü Görsel yap"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2" role="list" aria-label={uiLanguage === "en" ? "Scene mini timeline" : "Sahne mini timeline"}>
+                      {scenes.map((scene, index) => {
+                        const targetDurationSec = Math.max(
+                          3,
+                          Number(
+                            scene.targetDurationSec ||
+                              scene.scriptHealth?.targetDurationSec ||
+                              scene.timing?.plannedSceneDuration ||
+                              scene.timing?.targetSceneDuration ||
+                              TARGET_SCENE_DURATION_SECONDS,
+                          ),
+                        );
+                        const sceneHasWarning =
+                          scene.scriptHealth?.status === "too_long" ||
+                          scene.videoStatus === "error" ||
+                          !scene.renderMode;
+                        const sceneReady =
+                          Boolean(scene.image) &&
+                          getSceneVoiceStatus(scene) &&
+                          (scene.renderMode === "image" ||
+                            (scene.renderMode === "video" && scene.videoStatus === "done"));
+                        const selected = creatorSelectedSceneIdSet.has(scene.id);
+
+                        return (
+                          <button
+                            key={`creator-mini-timeline-${scene.id}`}
+                            type="button"
+                            role="listitem"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              toggleCreatorSceneSelection(scene.id);
+                              focusCreatorScene(scene.id, "visual");
+                            }}
+                            className={`min-w-[116px] rounded-xl border px-3 py-2 text-left transition ${
+                              selected
+                                ? "border-blue-400 bg-blue-50 shadow-sm"
+                                : sceneHasWarning
+                                  ? "border-amber-200 bg-amber-50/70 hover:border-amber-400"
+                                  : "border-slate-200 bg-slate-50 hover:border-slate-400"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <strong className="text-xs text-slate-950">{String(index + 1).padStart(2, "0")}</strong>
+                              <span
+                                className={`h-2 w-2 rounded-full ${
+                                  sceneReady
+                                    ? "bg-emerald-500"
+                                    : sceneHasWarning
+                                      ? "bg-amber-500"
+                                      : "bg-slate-300"
+                                }`}
+                                aria-hidden="true"
+                              />
+                            </div>
+                            <span className="mt-2 block text-[11px] font-semibold text-slate-700">
+                              {targetDurationSec.toFixed(0)}s · {scene.renderMode === "video"
+                                ? uiLanguage === "en" ? "Video" : "Video"
+                                : scene.renderMode === "image"
+                                  ? uiLanguage === "en" ? "Image" : "Görsel"
+                                  : uiLanguage === "en" ? "Choose" : "Seç"}
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] text-slate-500">
+                              {sceneReady
+                                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                                : sceneHasWarning
+                                  ? uiLanguage === "en" ? "Review" : "Kontrol"
+                                  : uiLanguage === "en" ? "In progress" : "Hazırlanıyor"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-2 flex flex-col gap-3 border-t border-slate-100 pt-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="text-xs text-slate-600" aria-live="polite">
+                        <strong className="text-slate-950">{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "scene(s) selected" : "sahne seçili"}
+                        {creatorSelectedSceneIds.length > 0 && (
+                          <span>
+                            {` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals missing" : "görsel eksik"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")}
+                          disabled={creatorSelectedSceneIds.length === 0}
+                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                        >
+                          {uiLanguage === "en" ? "Selected → Image" : "Seçili → Görsel"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")}
+                          disabled={creatorSelectedSceneIds.length === 0}
+                          className="min-h-10 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40"
+                        >
+                          {uiLanguage === "en" ? "Selected → Video" : "Seçili → Video"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={generateSelectedSceneVisuals}
+                          disabled={creatorSelectedSceneIds.length === 0 || isBatchRendering || creatorMediaPreflightLoading}
+                          className="min-h-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:opacity-40"
+                        >
+                          {isBatchRendering
+                            ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
+                            : uiLanguage === "en" ? "Generate missing visuals" : "Eksik görselleri üret"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={prepareSelectedSceneAudio}
+                          disabled={creatorSelectedSceneIds.length === 0 || isPreparingAudio || creatorMediaPreflightLoading}
+                          className="min-h-10 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 disabled:opacity-40"
+                        >
+                          {isPreparingAudio
+                            ? uiLanguage === "en" ? "Preparing voice..." : "Ses hazırlanıyor..."
+                            : uiLanguage === "en" ? "Generate missing voice" : "Eksik sesleri üret"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-3">
@@ -19188,13 +22945,37 @@ export default function CreatePage() {
                                 ? uiLanguage === "en" ? "Visual rhythm planned" : "Görsel ritim planlandı"
                                 : uiLanguage === "en" ? "Pacing balanced" : "Tempo dengeli";
                       const isEditingScene = editingSceneId === scene.id;
+                      const activeSceneInspectorTab = creatorSceneInspectorTabs[scene.id] || "script";
+                      const hasDialogue = Boolean(scene.dialogue?.trim());
+                      const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
+                      const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
+                      const narrationDurationSec = Number(scene.timing?.narrationDuration || 0);
+                      const dialogueDurationSec = Number(scene.timing?.dialogueDuration || 0);
+                      const sceneAssetHistory = [...(scene.assetHistory || [])].reverse();
+                      const sceneComparedAssetIds = creatorAssetCompareSelection[scene.id] || [];
+                      const sceneComparedAssets = sceneComparedAssetIds
+                        .map((assetId) => sceneAssetHistory.find((asset) => asset.id === assetId))
+                        .filter((asset): asset is CreatorSceneAssetVersion => Boolean(asset));
 
                       return (
                         <details
+                          id={`creator-scene-${scene.id}`}
                           key={`creator-scene-workspace-${scene.id}`}
-                          className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]"
+                          className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)] ${
+                            creatorSelectedSceneIdSet.has(scene.id)
+                              ? "border-blue-300 ring-2 ring-blue-100"
+                              : "border-slate-200"
+                          }`}
                         >
                           <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 transition hover:bg-slate-50 md:px-5 [&::-webkit-details-marker]:hidden">
+                            <input
+                              type="checkbox"
+                              checked={creatorSelectedSceneIdSet.has(scene.id)}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => toggleCreatorSceneSelection(scene.id)}
+                              aria-label={uiLanguage === "en" ? `Select scene ${index + 1}` : `Sahne ${index + 1} seç`}
+                              className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600"
+                            />
                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700">
                               {String(index + 1).padStart(2, "0")}
                             </span>
@@ -19272,88 +23053,107 @@ export default function CreatePage() {
                               </div>
                             )}
 
-                            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(260px,0.7fr)]">
-                              <div className="space-y-4">
+                            <div
+                              className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1"
+                              role="tablist"
+                              aria-label={uiLanguage === "en" ? `Scene ${scene.id} inspector` : `Sahne ${scene.id} denetleyicisi`}
+                            >
+                              {([
+                                { id: "script" as const, label: uiLanguage === "en" ? "Script" : "Metin", ready: sceneDraftHealth.status === "ready" },
+                                { id: "visual" as const, label: uiLanguage === "en" ? "Visual" : "Görsel", ready: visualReady },
+                                { id: "audio" as const, label: uiLanguage === "en" ? "Audio" : "Ses", ready: voiceReady },
+                              ]).map((tab) => (
+                                <button
+                                  key={`scene-${scene.id}-tab-${tab.id}`}
+                                  id={`scene-${scene.id}-${tab.id}-tab`}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={activeSceneInspectorTab === tab.id}
+                                  aria-controls={`scene-${scene.id}-${tab.id}-panel`}
+                                  onClick={() =>
+                                    setCreatorSceneInspectorTabs((prev) => ({
+                                      ...prev,
+                                      [scene.id]: tab.id,
+                                    }))
+                                  }
+                                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                    activeSceneInspectorTab === tab.id
+                                      ? "bg-slate-950 text-white shadow-sm"
+                                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                                  }`}
+                                >
+                                  <span>{tab.label}</span>
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${
+                                      tab.ready
+                                        ? activeSceneInspectorTab === tab.id
+                                          ? "bg-emerald-300"
+                                          : "bg-emerald-500"
+                                        : activeSceneInspectorTab === tab.id
+                                          ? "bg-slate-400"
+                                          : "bg-slate-300"
+                                    }`}
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+
+                            {activeSceneInspectorTab === "script" && (
+                              <div
+                                id={`scene-${scene.id}-script-panel`}
+                                role="tabpanel"
+                                aria-labelledby={`scene-${scene.id}-script-tab`}
+                                className="space-y-4"
+                              >
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
                                       <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Spoken content" : "Konuşma içeriği"}
+                                        {uiLanguage === "en" ? "Narration" : "Anlatım"}
                                       </span>
                                       <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
                                         {scene.narration || (uiLanguage === "en" ? "No narration" : "Anlatım yok")}
                                       </p>
-                                      {scene.dialogue?.trim() && (
-                                        <p className="mt-3 border-t border-slate-100 pt-3 text-sm leading-6 text-slate-600">
-                                          <strong>{uiLanguage === "en" ? "Dialogue:" : "Diyalog:"}</strong> {scene.dialogue}
-                                        </p>
+                                      {hasDialogue && (
+                                        <div className="mt-4 border-t border-slate-100 pt-4">
+                                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            {uiLanguage === "en" ? "Dialogue" : "Diyalog"}
+                                          </span>
+                                          <p className="mt-2 text-sm leading-6 text-slate-600">{scene.dialogue}</p>
+                                        </div>
                                       )}
                                     </div>
                                     {!isEditingScene && (
                                       <button
                                         type="button"
                                         onClick={() => openCreatorSceneEditor(scene)}
-                                        className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        className="min-h-11 shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                       >
                                         {uiLanguage === "en" ? "Edit script" : "Metni düzenle"}
                                       </button>
                                     )}
                                   </div>
 
-                                  <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-                                    <button
-                                      type="button"
-                                      onClick={() => playNarration(scene.id, scene.narration)}
-                                      disabled={
-                                        !scene.narration?.trim() ||
-                                        loadingAudioSceneId === scene.id ||
-                                        isPreparingAudio ||
-                                        playingDialogueSceneId !== null
-                                      }
-                                      title={
-                                        scene.narration?.trim()
-                                          ? uiLanguage === "en"
-                                            ? "Generate if needed, then play this scene's narrator voice."
-                                            : "Gerekirse üret ve bu sahnenin anlatıcı sesini oynat."
-                                          : uiLanguage === "en"
-                                            ? "This scene has no narrator text."
-                                            : "Bu sahnede anlatıcı metni yok."
-                                      }
-                                      className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      {loadingAudioSceneId === scene.id
-                                        ? uiLanguage === "en" ? "Preparing narrator..." : "Anlatıcı hazırlanıyor..."
-                                        : playingSceneId === scene.id
-                                          ? uiLanguage === "en" ? "Stop narrator" : "Anlatıcıyı durdur"
-                                          : uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => playSceneDialogue(scene)}
-                                      disabled={
-                                        !scene.dialogue?.trim() ||
-                                        loadingDialogueSceneId === scene.id ||
-                                        isPreparingAudio ||
-                                        isPlayingStory
-                                      }
-                                      title={
-                                        scene.dialogue?.trim()
-                                          ? uiLanguage === "en"
-                                            ? "Generate if needed, then play this scene's dialogue."
-                                            : "Gerekirse üret ve bu sahnenin diyaloğunu oynat."
-                                          : uiLanguage === "en"
-                                            ? "This scene has no dialogue."
-                                            : "Bu sahnede diyalog yok."
-                                      }
-                                      className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      {loadingDialogueSceneId === scene.id
-                                        ? uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor..."
-                                        : playingDialogueSceneId === scene.id
-                                          ? uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu durdur"
-                                          : uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"}
-                                    </button>
+                                  <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-3">
+                                    <div className="rounded-xl bg-slate-50 p-3">
+                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Words" : "Kelime"}</span>
+                                      <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.speechWordCount}</strong>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 p-3">
+                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Estimated speech" : "Tahmini konuşma"}</span>
+                                      <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s / {sceneDraftHealth.targetDurationSec.toFixed(1)}s</strong>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 p-3">
+                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Timing" : "Süre"}</span>
+                                      <strong className={`mt-1 block text-sm ${sceneDraftHealth.status === "ready" ? "text-emerald-700" : sceneDraftHealth.status === "too_long" ? "text-rose-700" : "text-amber-700"}`}>
+                                        {sceneDraftHealth.status === "ready"
+                                          ? uiLanguage === "en" ? "Safe" : "Güvenli"
+                                          : sceneDraftHealth.status === "too_long"
+                                            ? uiLanguage === "en" ? "Over target" : "Hedefi aşıyor"
+                                            : uiLanguage === "en" ? "Needs substance" : "İçerik gerekli"}
+                                      </strong>
+                                    </div>
                                   </div>
                                 </div>
 
@@ -19379,23 +23179,24 @@ export default function CreatePage() {
                                       </span>
                                     </div>
 
-                                    <div className="grid gap-3 lg:grid-cols-2">
-                                      <label className="text-xs font-semibold text-slate-700">
-                                        {uiLanguage === "en" ? "Narration" : "Anlatım"}
-                                        <textarea
-                                          value={sceneScriptDraft.narration}
-                                          onChange={(event) =>
-                                            setSceneScriptDrafts((prev) => ({
-                                              ...prev,
-                                              [scene.id]: {
-                                                narration: event.target.value,
-                                                dialogue: prev[scene.id]?.dialogue ?? scene.dialogue ?? "",
-                                              },
-                                            }))
-                                          }
-                                          className="mt-2 min-h-36 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
-                                        />
-                                      </label>
+                                    <label className="text-xs font-semibold text-slate-700">
+                                      {uiLanguage === "en" ? "Narration" : "Anlatım"}
+                                      <textarea
+                                        value={sceneScriptDraft.narration}
+                                        onChange={(event) =>
+                                          setSceneScriptDrafts((prev) => ({
+                                            ...prev,
+                                            [scene.id]: {
+                                              narration: event.target.value,
+                                              dialogue: prev[scene.id]?.dialogue ?? scene.dialogue ?? "",
+                                            },
+                                          }))
+                                        }
+                                        className="mt-2 min-h-40 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
+                                      />
+                                    </label>
+
+                                    {hasDialogue || sceneScriptDraft.dialogue.trim() ? (
                                       <label className="text-xs font-semibold text-slate-700">
                                         {uiLanguage === "en" ? "Dialogue · optional" : "Diyalog · opsiyonel"}
                                         <textarea
@@ -19409,10 +23210,32 @@ export default function CreatePage() {
                                               },
                                             }))
                                           }
-                                          className="mt-2 min-h-36 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
+                                          className="mt-2 min-h-28 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
                                         />
                                       </label>
-                                    </div>
+                                    ) : (
+                                      <details className="rounded-xl border border-blue-100 bg-white">
+                                        <summary className="cursor-pointer list-none px-3 py-3 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
+                                          {uiLanguage === "en" ? "+ Add optional dialogue" : "+ Opsiyonel diyalog ekle"}
+                                        </summary>
+                                        <div className="border-t border-blue-100 p-3">
+                                          <textarea
+                                            value={sceneScriptDraft.dialogue}
+                                            onChange={(event) =>
+                                              setSceneScriptDrafts((prev) => ({
+                                                ...prev,
+                                                [scene.id]: {
+                                                  narration: prev[scene.id]?.narration ?? scene.narration ?? "",
+                                                  dialogue: event.target.value,
+                                                },
+                                              }))
+                                            }
+                                            placeholder={uiLanguage === "en" ? "Add dialogue only when the scene needs a speaking character." : "Yalnızca sahnede konuşan bir karakter gerekiyorsa diyalog ekle."}
+                                            className="min-h-28 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
+                                          />
+                                        </div>
+                                      </details>
+                                    )}
 
                                     <div className="grid gap-2 sm:grid-cols-3">
                                       <div className="rounded-xl border border-blue-100 bg-white p-3">
@@ -19434,7 +23257,7 @@ export default function CreatePage() {
                                         type="button"
                                         onClick={() => autoFitCreatorSceneScript(scene.id)}
                                         disabled={sceneScriptFitLoadingId === scene.id}
-                                        className="rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
+                                        className="min-h-11 rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
                                       >
                                         {sceneScriptFitLoadingId === scene.id
                                           ? uiLanguage === "en" ? "Fitting..." : "Uyarlanıyor..."
@@ -19442,22 +23265,15 @@ export default function CreatePage() {
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => addCreatorSceneVisualBlock(scene.id)}
-                                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                                      >
-                                        {uiLanguage === "en" ? "Add visual beat" : "Görsel akış ekle"}
-                                      </button>
-                                      <button
-                                        type="button"
                                         onClick={() => splitCreatorScene(scene.id)}
-                                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                                       >
                                         {uiLanguage === "en" ? "Split scene" : "Sahneyi böl"}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => saveCreatorSceneScript(scene.id)}
-                                        className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
+                                        className="min-h-11 rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
                                       >
                                         {uiLanguage === "en" ? "Save script" : "Metni kaydet"}
                                       </button>
@@ -19471,7 +23287,7 @@ export default function CreatePage() {
                                             return next;
                                           });
                                         }}
-                                        className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500"
+                                        className="min-h-11 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500"
                                       >
                                         {ui.cancel}
                                       </button>
@@ -19494,7 +23310,7 @@ export default function CreatePage() {
                                           type="button"
                                           onClick={() => updateScene(scene.id)}
                                           disabled={sceneLoadingId === scene.id}
-                                          className="mt-2 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
+                                          className="mt-2 min-h-11 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
                                         >
                                           {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
                                         </button>
@@ -19502,155 +23318,448 @@ export default function CreatePage() {
                                     </details>
                                   </div>
                                 )}
-
-                                <details className="rounded-2xl border border-slate-200 bg-white">
-                                  <summary className="cursor-pointer list-none px-4 py-3 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
-                                    {uiLanguage === "en" ? "Advanced scene direction" : "Gelişmiş sahne yönü"}
-                                  </summary>
-                                  <div className="grid gap-3 border-t border-slate-200 p-4 md:grid-cols-2">
-                                    <div>
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Camera" : "Kamera"}</span>
-                                      <p className="mt-1 text-xs leading-5 text-slate-600">{scene.cameraDirection || "—"}</p>
-                                    </div>
-                                    <div>
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Emotion" : "Duygu"}</span>
-                                      <p className="mt-1 text-xs leading-5 text-slate-600">{scene.emotion || "—"}</p>
-                                    </div>
-                                    <div className="md:col-span-2">
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Motion direction" : "Hareket yönü"}</span>
-                                      <p className="mt-1 text-xs leading-5 text-slate-600">{scene.motionHint || "—"}</p>
-                                    </div>
-                                  </div>
-                                </details>
                               </div>
+                            )}
 
-                              <aside className="space-y-3">
-                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                    {uiLanguage === "en" ? "Scene output" : "Sahne çıktısı"}
-                                  </span>
-                                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                                    {uiLanguage === "en"
-                                      ? "Choose explicitly. CreatorLab will not decide between a still image and a generated video block."
-                                      : "Açıkça seçim yap. CreatorLab sabit görsel ile üretilen video bloğu arasında otomatik karar vermeyecek."}
-                                  </p>
-                                  <div className="mt-3 grid grid-cols-2 gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setCreatorSceneRenderMode(scene.id, "image")}
-                                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                                        sceneOutputMode === "image"
-                                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                                      }`}
-                                    >
-                                      {uiLanguage === "en" ? "Use Image" : "Görsel Kullan"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setCreatorSceneRenderMode(scene.id, "video")}
-                                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                                        sceneOutputMode === "video"
-                                          ? "border-blue-300 bg-blue-50 text-blue-800"
-                                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                                      }`}
-                                    >
-                                      {uiLanguage === "en" ? "Use Video" : "Video Kullan"}
-                                    </button>
+                            {activeSceneInspectorTab === "visual" && (
+                              <div
+                                id={`scene-${scene.id}-visual-panel`}
+                                role="tabpanel"
+                                aria-labelledby={`scene-${scene.id}-visual-tab`}
+                                className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"
+                              >
+                                <div className="space-y-3">
+                                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                                    {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
+                                      <video src={scene.videoUrl} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
+                                    ) : scene.image ? (
+                                      <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full object-cover" />
+                                    ) : (
+                                      <div className="flex aspect-video items-center justify-center bg-slate-100 px-4 text-center text-xs text-slate-500">
+                                        {uiLanguage === "en" ? "Continue Production will generate this visual." : "Üretime Devam Et bu görseli oluşturacak."}
+                                      </div>
+                                    )}
+                                    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                      <div>
+                                        <strong className="text-xs text-slate-900">{simpleGuidance}</strong>
+                                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                                          {uiLanguage === "en"
+                                            ? "Continuity and quality diagnostics run automatically in the background."
+                                            : "Süreklilik ve kalite kontrolleri arka planda otomatik çalışır."}
+                                        </p>
+                                      </div>
+                                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                        {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
+                                      </span>
+                                    </div>
                                   </div>
-                                  {sceneOutputMode === "video" && creatorVideoSelectionBlockedByQuality && (
-                                    <p className="mt-2 text-[11px] leading-4 text-amber-700">
+
+                                  {sceneOutputMode === "image" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => redrawSceneImage(scene)}
+                                      disabled={redrawLoadingId === scene.id}
+                                      className="min-h-11 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50"
+                                    >
+                                      {redrawLoadingId === scene.id
+                                        ? uiLanguage === "en" ? "Generating image..." : "Görsel üretiliyor..."
+                                        : scene.image
+                                          ? uiLanguage === "en" ? "Regenerate Image" : "Görseli Yeniden Üret"
+                                          : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"}
+                                    </button>
+                                  ) : sceneOutputMode === "video" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleGenerateVideo(scene.id)}
+                                      disabled={
+                                        scene.videoStatus === "processing" ||
+                                        !scene.image ||
+                                        creatorMediaPreflightLoading ||
+                                        creatorVideoSelectionBlockedByQuality
+                                      }
+                                      title={
+                                        !scene.image
+                                          ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
+                                          : creatorVideoSelectionBlockedByQuality
+                                            ? getCreatorMediaRoutingError("ai_video_blocks")
+                                            : uiLanguage === "en" ? "Generate a video block from this scene image." : "Bu sahne görselinden video bloğu üret."
+                                      }
+                                      className="min-h-11 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50"
+                                    >
+                                      {creatorMediaPreflightLoading
+                                        ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
+                                        : scene.videoStatus === "processing"
+                                          ? ui.videoCreating
+                                          : creatorVideoSelectionBlockedByQuality
+                                            ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
+                                            : scene.videoUrl && scene.videoStatus === "done"
+                                              ? uiLanguage === "en" ? "Regenerate Video" : "Videoyu Yeniden Üret"
+                                              : ui.convertToVideo}
+                                    </button>
+                                  ) : (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800">
                                       {uiLanguage === "en"
-                                        ? "Video generation requires Pro or Cinematic Production Quality."
-                                        : "Video üretimi Pro veya Cinematic Production Quality gerektirir."}
-                                    </p>
+                                        ? "Choose Image or Video to unlock manual generation."
+                                        : "Manuel üretimi açmak için Görsel veya Video seç."}
+                                    </div>
                                   )}
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                      <div>
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                          {uiLanguage === "en" ? "Asset versions" : "Varlık sürümleri"}
+                                        </span>
+                                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                                          {uiLanguage === "en"
+                                            ? "Generated images and completed video blocks remain available for comparison and restore."
+                                            : "Üretilen görseller ve tamamlanan video blokları karşılaştırma ve geri yükleme için korunur."}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setCreatorAssetHistoryOpen((prev) => ({
+                                            ...prev,
+                                            [scene.id]: !prev[scene.id],
+                                          }))
+                                        }
+                                        className="min-h-10 shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                      >
+                                        {creatorAssetHistoryOpen[scene.id]
+                                          ? uiLanguage === "en" ? "Hide versions" : "Sürümleri gizle"
+                                          : `${uiLanguage === "en" ? "Show versions" : "Sürümleri göster"} · ${sceneAssetHistory.length}`}
+                                      </button>
+                                    </div>
+
+                                    {creatorAssetHistoryOpen[scene.id] && (
+                                      <div className="mt-4 space-y-4">
+                                        {sceneAssetHistory.length === 0 ? (
+                                          <div className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
+                                            {uiLanguage === "en"
+                                              ? "Versions will appear after an image or video is generated."
+                                              : "Bir görsel veya video üretildikten sonra sürümler burada görünecek."}
+                                          </div>
+                                        ) : (
+                                          <div className="grid gap-3 sm:grid-cols-2">
+                                            {sceneAssetHistory.map((asset, assetIndex) => {
+                                              const isCurrentAsset =
+                                                asset.kind === "image"
+                                                  ? scene.image === asset.url
+                                                  : scene.videoUrl === asset.url && scene.videoStatus === "done";
+                                              const isSelectedForCompare = sceneComparedAssetIds.includes(asset.id);
+                                              const assetVersionNumber = sceneAssetHistory
+                                                .slice(assetIndex)
+                                                .filter((item) => item.kind === asset.kind).length;
+
+                                              return (
+                                                <article
+                                                  key={asset.id}
+                                                  className={`overflow-hidden rounded-xl border ${
+                                                    isCurrentAsset
+                                                      ? "border-emerald-300 bg-emerald-50/40"
+                                                      : isSelectedForCompare
+                                                        ? "border-blue-300 bg-blue-50/40"
+                                                        : "border-slate-200 bg-white"
+                                                  }`}
+                                                >
+                                                  {asset.kind === "video" ? (
+                                                    <video
+                                                      src={asset.url}
+                                                      muted
+                                                      playsInline
+                                                      preload="metadata"
+                                                      className="aspect-video w-full bg-slate-950 object-cover"
+                                                    />
+                                                  ) : (
+                                                    <img
+                                                      src={asset.url}
+                                                      alt={uiLanguage === "en" ? `Scene ${scene.id} image version` : `Sahne ${scene.id} görsel sürümü`}
+                                                      className="aspect-video w-full object-cover"
+                                                    />
+                                                  )}
+                                                  <div className="space-y-3 p-3">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                      <div>
+                                                        <strong className="text-xs text-slate-900">
+                                                          {asset.kind === "video"
+                                                            ? uiLanguage === "en" ? "Video version" : "Video sürümü"
+                                                            : uiLanguage === "en" ? "Image version" : "Görsel sürümü"}
+                                                          {` ${Math.max(1, assetVersionNumber)}`}
+                                                        </strong>
+                                                        <p className="mt-1 text-[10px] text-slate-500">
+                                                          {formatCreatorAssetTimestamp(asset.createdAt, uiLanguage)}
+                                                          {asset.durationSec ? ` · ${asset.durationSec.toFixed(1)}s` : ""}
+                                                        </p>
+                                                      </div>
+                                                      {isCurrentAsset && (
+                                                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                                          {uiLanguage === "en" ? "Current" : "Aktif"}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleCreatorAssetCompare(scene.id, asset.id)}
+                                                        className={`min-h-10 rounded-lg border px-2 py-2 text-[11px] font-semibold ${
+                                                          isSelectedForCompare
+                                                            ? "border-blue-300 bg-blue-50 text-blue-800"
+                                                            : "border-slate-200 bg-white text-slate-600"
+                                                        }`}
+                                                      >
+                                                        {isSelectedForCompare
+                                                          ? uiLanguage === "en" ? "Remove" : "Çıkar"
+                                                          : uiLanguage === "en" ? "Compare" : "Karşılaştır"}
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => restoreCreatorSceneAsset(scene.id, asset)}
+                                                        disabled={isCurrentAsset}
+                                                        className="min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-2 py-2 text-[11px] font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                                      >
+                                                        {uiLanguage === "en" ? "Restore" : "Geri yükle"}
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                </article>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+
+                                        {sceneComparedAssets.length > 0 && (
+                                          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                              <strong className="text-xs text-blue-950">
+                                                {uiLanguage === "en" ? "Version comparison" : "Sürüm karşılaştırması"}
+                                              </strong>
+                                              <span className="text-[10px] font-semibold text-blue-700">
+                                                {sceneComparedAssets.length}/2
+                                              </span>
+                                            </div>
+                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                              {sceneComparedAssets.map((asset) => (
+                                                <div key={`compare-${asset.id}`} className="overflow-hidden rounded-lg border border-blue-200 bg-white">
+                                                  {asset.kind === "video" ? (
+                                                    <video src={asset.url} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
+                                                  ) : (
+                                                    <img
+                                                      src={asset.url}
+                                                      alt={uiLanguage === "en" ? "Compared image version" : "Karşılaştırılan görsel sürümü"}
+                                                      className="aspect-video w-full object-cover"
+                                                    />
+                                                  )}
+                                                  <p className="px-2 py-2 text-[10px] font-semibold text-slate-600">
+                                                    {asset.kind === "video"
+                                                      ? uiLanguage === "en" ? "Video" : "Video"
+                                                      : uiLanguage === "en" ? "Image" : "Görsel"}
+                                                    {` · ${formatCreatorAssetTimestamp(asset.createdAt, uiLanguage)}`}
+                                                  </p>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
-                                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                                  {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
-                                    <video src={scene.videoUrl} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
-                                  ) : scene.image ? (
-                                    <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full object-cover" />
-                                  ) : (
-                                    <div className="flex aspect-video items-center justify-center bg-slate-100 px-4 text-center text-xs text-slate-500">
-                                      {uiLanguage === "en" ? "Continue Production will generate this visual." : "Üretime Devam Et bu görseli oluşturacak."}
-                                    </div>
-                                  )}
-                                  <div className="p-3">
-                                    <strong className="text-xs text-slate-900">{simpleGuidance}</strong>
+                                <aside className="space-y-3">
+                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                      {uiLanguage === "en" ? "Scene output" : "Sahne çıktısı"}
+                                    </span>
                                     <p className="mt-1 text-xs leading-5 text-slate-500">
                                       {uiLanguage === "en"
-                                        ? "Detailed scoring and continuity diagnostics run automatically in the background."
-                                        : "Detaylı skor ve süreklilik kontrolleri arka planda otomatik çalışır."}
+                                        ? "Choose explicitly. CreatorLab will not decide between a still image and a generated video block."
+                                        : "Açıkça seçim yap. CreatorLab sabit görsel ile üretilen video bloğu arasında otomatik karar vermeyecek."}
                                     </p>
+                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setCreatorSceneRenderMode(scene.id, "image")}
+                                        className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                                          sceneOutputMode === "image"
+                                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                                        }`}
+                                      >
+                                        {uiLanguage === "en" ? "Use Image" : "Görsel Kullan"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setCreatorSceneRenderMode(scene.id, "video")}
+                                        className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                                          sceneOutputMode === "video"
+                                            ? "border-blue-300 bg-blue-50 text-blue-800"
+                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                                        }`}
+                                      >
+                                        {uiLanguage === "en" ? "Use Video" : "Video Kullan"}
+                                      </button>
+                                    </div>
+                                    {sceneOutputMode === "video" && creatorVideoSelectionBlockedByQuality && (
+                                      <p className="mt-2 text-[11px] leading-4 text-amber-700">
+                                        {uiLanguage === "en"
+                                          ? "Video generation requires Pro or Cinematic Production Quality."
+                                          : "Video üretimi Pro veya Cinematic Production Quality gerektirir."}
+                                      </p>
+                                    )}
                                   </div>
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        {uiLanguage === "en" ? "Visual direction" : "Görsel yön"}
+                                      </span>
+                                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                                        {(scene.visualBlockPlan?.length || sceneDraftHealth.visualBlockCount)} {uiLanguage === "en" ? "beats" : "akış"}
+                                      </span>
+                                    </div>
+                                    <div className="mt-3 space-y-3">
+                                      <div>
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Camera" : "Kamera"}</span>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.cameraDirection || "—"}</p>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Emotion" : "Duygu"}</span>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.emotion || "—"}</p>
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Motion" : "Hareket"}</span>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.motionHint || "—"}</p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "script" }));
+                                        openCreatorSceneEditor(scene);
+                                      }}
+                                      className="mt-4 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      {uiLanguage === "en" ? "Edit direction with AI" : "Yönü AI ile düzenle"}
+                                    </button>
+                                  </div>
+                                </aside>
+                              </div>
+                            )}
+
+                            {activeSceneInspectorTab === "audio" && (
+                              <div
+                                id={`scene-${scene.id}-audio-panel`}
+                                role="tabpanel"
+                                aria-labelledby={`scene-${scene.id}-audio-tab`}
+                                className="space-y-4"
+                              >
+                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
+                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                          {uiLanguage === "en" ? "Narrator" : "Anlatıcı"}
+                                        </span>
+                                        <strong className="mt-2 block text-sm text-slate-950">
+                                          {narrationReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
+                                        </strong>
+                                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                                          {scene.narration?.trim()
+                                            ? `${sceneDraftHealth.speechWordCount} ${uiLanguage === "en" ? "spoken words in the scene" : "sahne konuşma kelimesi"}`
+                                            : uiLanguage === "en" ? "No narrator text in this scene." : "Bu sahnede anlatıcı metni yok."}
+                                        </p>
+                                      </div>
+                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${narrationReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                        {narrationDurationSec > 0 ? `${narrationDurationSec.toFixed(1)}s` : "—"}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => playNarration(scene.id, scene.narration)}
+                                      disabled={
+                                        !scene.narration?.trim() ||
+                                        loadingAudioSceneId === scene.id ||
+                                        isPreparingAudio ||
+                                        playingDialogueSceneId !== null
+                                      }
+                                      className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                                    >
+                                      {loadingAudioSceneId === scene.id
+                                        ? uiLanguage === "en" ? "Preparing narrator..." : "Anlatıcı hazırlanıyor..."
+                                        : playingSceneId === scene.id
+                                          ? uiLanguage === "en" ? "Stop narrator" : "Anlatıcıyı durdur"
+                                          : uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"}
+                                    </button>
+                                  </div>
+
+                                  {hasDialogue && (
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            {uiLanguage === "en" ? "Dialogue" : "Diyalog"}
+                                          </span>
+                                          <strong className="mt-2 block text-sm text-slate-950">
+                                            {dialogueReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
+                                          </strong>
+                                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{scene.dialogue}</p>
+                                        </div>
+                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${dialogueReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                          {dialogueDurationSec > 0 ? `${dialogueDurationSec.toFixed(1)}s` : "—"}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => playSceneDialogue(scene)}
+                                        disabled={
+                                          loadingDialogueSceneId === scene.id ||
+                                          isPreparingAudio ||
+                                          isPlayingStory
+                                        }
+                                        className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-45"
+                                      >
+                                        {loadingDialogueSceneId === scene.id
+                                          ? uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor..."
+                                          : playingDialogueSceneId === scene.id
+                                            ? uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu durdur"
+                                            : uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"}
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
-                                {sceneOutputMode === "image" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => redrawSceneImage(scene)}
-                                    disabled={redrawLoadingId === scene.id}
-                                    className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50"
-                                  >
-                                    {redrawLoadingId === scene.id
-                                      ? uiLanguage === "en" ? "Generating image..." : "Görsel üretiliyor..."
-                                      : scene.image
-                                        ? uiLanguage === "en" ? "Regenerate Image" : "Görseli Yeniden Üret"
-                                        : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"}
-                                  </button>
-                                ) : sceneOutputMode === "video" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleGenerateVideo(scene.id)}
-                                    disabled={
-                                      scene.videoStatus === "processing" ||
-                                      !scene.image ||
-                                      creatorMediaPreflightLoading ||
-                                      creatorVideoSelectionBlockedByQuality
-                                    }
-                                    title={
-                                      !scene.image
-                                        ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
-                                        : creatorVideoSelectionBlockedByQuality
-                                          ? getCreatorMediaRoutingError("ai_video_blocks")
-                                          : uiLanguage === "en" ? "Generate a video block from this scene image." : "Bu sahne görselinden video bloğu üret."
-                                    }
-                                    className="w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50"
-                                  >
-                                    {creatorMediaPreflightLoading
-                                      ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
-                                      : scene.videoStatus === "processing"
-                                        ? ui.videoCreating
-                                        : creatorVideoSelectionBlockedByQuality
-                                          ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                          : scene.videoUrl && scene.videoStatus === "done"
-                                            ? uiLanguage === "en" ? "Regenerate Video" : "Videoyu Yeniden Üret"
-                                            : ui.convertToVideo}
-                                  </button>
-                                ) : (
-                                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                                    {uiLanguage === "en"
-                                      ? "Choose Image or Video to unlock the scene's manual generation action."
-                                      : "Sahnenin manuel üretim aksiyonunu açmak için Görsel veya Video seç."}
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        {uiLanguage === "en" ? "Audio timing" : "Ses zamanlaması"}
+                                      </span>
+                                      <strong className="mt-2 block text-sm text-slate-950">
+                                        {(narrationDurationSec + dialogueDurationSec) > 0
+                                          ? `${(narrationDurationSec + dialogueDurationSec).toFixed(1)}s / ${targetDurationSec.toFixed(1)}s`
+                                          : uiLanguage === "en" ? "Audio duration will appear after generation." : "Ses süresi üretim sonrasında görünecek."}
+                                      </strong>
+                                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                                        {uiLanguage === "en"
+                                          ? "CreatorLab checks the actual narrator and dialogue duration before final rendering."
+                                          : "CreatorLab final render öncesinde gerçek anlatıcı ve diyalog süresini kontrol eder."}
+                                      </p>
+                                    </div>
+                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                      {voiceReady ? uiLanguage === "en" ? "Audio ready" : "Ses hazır" : uiLanguage === "en" ? "Generation needed" : "Üretim gerekli"}
+                                    </span>
                                   </div>
-                                )}
-
-                                <div className="grid grid-cols-3 gap-2 lg:hidden">
-                                  <span className={`rounded-xl p-2 text-center text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{uiLanguage === "en" ? "Visual" : "Görsel"}</span>
-                                  <span className={`rounded-xl p-2 text-center text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{uiLanguage === "en" ? "Voice" : "Ses"}</span>
-                                  <span className={`rounded-xl p-2 text-center text-[10px] font-semibold ${motionFailed ? "bg-rose-50 text-rose-700" : sceneOutputMode === "image" || motionReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                    {sceneOutputMode === "image"
-                                      ? uiLanguage === "en" ? "Image" : "Görsel"
-                                      : sceneOutputMode === "video"
-                                        ? uiLanguage === "en" ? "Video" : "Video"
-                                        : uiLanguage === "en" ? "Choose" : "Seç"}
-                                  </span>
+                                  {!hasDialogue && (
+                                    <p className="mt-4 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-600">
+                                      {uiLanguage === "en"
+                                        ? "This scene is narrator-only, so dialogue controls are intentionally hidden."
+                                        : "Bu sahne yalnızca anlatıcı içerdiği için diyalog kontrolleri bilinçli olarak gizlendi."}
+                                    </p>
+                                  )}
                                 </div>
-
-                              </aside>
-                            </div>
+                              </div>
+                            )}
                           </div>
                         </details>
                       );
@@ -19658,47 +23767,6 @@ export default function CreatePage() {
                   </div>
                 </section>
 
-                <div id="creatorlab-production-action" className="creatorlab-production-action-bar">
-                  <div className="creatorlab-production-action-copy">
-                    <strong>{creatorNextProductionAction.title}</strong>
-                    <p>{creatorNextProductionAction.description}</p>
-                  </div>
-                  <div className="creatorlab-production-actions">
-                    <button
-                      type="button"
-                      className="creatorlab-production-secondary-action"
-                      onClick={saveProject}
-                      disabled={isSavingProject}
-                    >
-                      {isSavingProject
-                        ? uiLanguage === "en" ? "Saving draft..." : "Taslak kaydediliyor..."
-                        : uiLanguage === "en" ? "Save draft" : "Taslağı kaydet"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={continueCreatorProduction}
-                      disabled={
-                        creatorMediaPreflightLoading ||
-                        isBatchRendering ||
-                        isPreparingAudio ||
-                        isExportingMovie ||
-                        buildingStory
-                      }
-                      className="creatorlab-production-primary-action"
-                    >
-                      {creatorMediaPreflightLoading
-                        ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
-                        : isBatchRendering
-                          ? uiLanguage === "en" ? "Producing media..." : "Medya üretiliyor..."
-                          : isPreparingAudio
-                            ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
-                            : isExportingMovie
-                              ? ui.creatingMovie
-                              : creatorNextProductionAction.buttonLabel}
-                    </button>
-                  </div>
-                </div>
               </>
             )}
           </section>
@@ -19709,12 +23777,12 @@ export default function CreatePage() {
             <div className="creatorlab-publish-heading">
               <div>
                 <p className="creatorlab-publish-kicker">
-                  {uiLanguage === "en" ? "Step 4 · Publish" : "Adım 4 · Yayınla"}
+                  {uiLanguage === "en" ? "Step 4 · Publish & Export" : "Adım 4 · Yayınla ve Dışa Aktar"}
                 </p>
                 <h1>
                   {uiLanguage === "en"
-                    ? "Review the final output and take the complete creator package."
-                    : "Final çıktıyı kontrol et ve eksiksiz creator paketini al."}
+                    ? "Review, approve and export the complete creator release package."
+                    : "Eksiksiz creator yayın paketini kontrol et, onayla ve dışa aktar."}
                 </h1>
                 <p>
                   {uiLanguage === "en"
@@ -19737,12 +23805,32 @@ export default function CreatePage() {
                   <strong>{creatorPublishVideoUrl ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}</strong>
                 </div>
               </div>
-              <div className={`creatorlab-publish-readiness-card ${creatorPublishThumbnailUrl ? "is-ready" : ""}`}>
-                <span className="creatorlab-publish-readiness-icon" aria-hidden="true">{creatorPublishThumbnailUrl ? "✓" : "2"}</span>
+              <div className={`creatorlab-publish-readiness-card is-thumbnail-essential ${creatorPublishThumbnailUrl ? "is-ready" : ""}`}>
+                <div className="creatorlab-publish-essential-thumbnail">
+                  {creatorPublishThumbnailUrl ? (
+                    <img src={creatorPublishThumbnailUrl} alt="" />
+                  ) : (
+                    <span className="creatorlab-publish-readiness-icon" aria-hidden="true">2</span>
+                  )}
+                </div>
                 <div className="creatorlab-publish-readiness-copy">
                   <span>Thumbnail</span>
-                  <strong>{creatorPublishThumbnailUrl ? uiLanguage === "en" ? "Selected" : "Seçildi" : uiLanguage === "en" ? "Selection recommended" : "Seçim öneriliyor"}</strong>
+                  <strong>
+                    {creatorPublishThumbnailUrl
+                      ? uiLanguage === "en" ? "Selected" : "Seçildi"
+                      : uiLanguage === "en" ? "Required" : "Gerekli"}
+                  </strong>
                 </div>
+                <button
+                  type="button"
+                  className="creatorlab-publish-essential-action"
+                  onClick={() => setCreatorThumbnailChooserOpen((prev) => !prev)}
+                  aria-expanded={creatorThumbnailChooserOpen}
+                >
+                  {creatorPublishThumbnailUrl
+                    ? uiLanguage === "en" ? "Change" : "Değiştir"
+                    : uiLanguage === "en" ? "Select" : "Seç"}
+                </button>
               </div>
               <div className={`creatorlab-publish-readiness-card ${youtubeMetadataResult ? "is-ready" : ""}`}>
                 <span className="creatorlab-publish-readiness-icon" aria-hidden="true">{youtubeMetadataResult ? "✓" : "3"}</span>
@@ -19752,6 +23840,85 @@ export default function CreatePage() {
                 </div>
               </div>
             </div>
+
+            {creatorThumbnailChooserOpen && (
+              <div
+                className="creatorlab-primary-thumbnail-chooser"
+                id="creatorlab-primary-thumbnail-chooser"
+              >
+                <div className="creatorlab-primary-thumbnail-heading">
+                  <div>
+                    <span>
+                      {uiLanguage === "en" ? "Release essential" : "Yayın için zorunlu"}
+                    </span>
+                    <strong>
+                      {uiLanguage === "en"
+                        ? "Select the thumbnail source"
+                        : "Thumbnail kaynak görselini seç"}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCreatorThumbnailChooserOpen(false)}
+                    aria-label={
+                      uiLanguage === "en"
+                        ? "Close thumbnail selection"
+                        : "Thumbnail seçimini kapat"
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="creatorlab-primary-thumbnail-grid">
+                  {scenes
+                    .filter((scene) => scene.image)
+                    .slice(0, 6)
+                    .map((scene) => (
+                      <button
+                        key={`creatorlab-primary-thumbnail-${scene.id}`}
+                        type="button"
+                        className={
+                          creatorPublishThumbnailUrl === scene.image ? "is-selected" : ""
+                        }
+                        onClick={() => {
+                          handleSelectSceneAsYoutubeThumbnail(scene);
+                          setCreatorThumbnailChooserOpen(false);
+                        }}
+                      >
+                        <img
+                          src={scene.image}
+                          alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`}
+                        />
+                        <span>
+                          {uiLanguage === "en"
+                            ? `Scene ${scene.id}`
+                            : `Sahne ${scene.id}`}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+                <div className="creatorlab-primary-thumbnail-footer">
+                  <span>
+                    {uiLanguage === "en"
+                      ? "Selection is primary. Detailed styling stays collapsed below."
+                      : "Seçim primary alandadır. Detaylı tasarım aşağıda kapalı kalır."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateYoutubeThumbnail}
+                    disabled={
+                      youtubeThumbnailLoading || !scenes.some((scene) => scene.image)
+                    }
+                  >
+                    {youtubeThumbnailLoading
+                      ? uiLanguage === "en" ? "Selecting…" : "Seçiliyor…"
+                      : uiLanguage === "en"
+                        ? "Let AI select the best scene"
+                        : "En iyi sahneyi AI seçsin"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="creatorlab-publish-media-grid">
               <article id="creatorlab-publish-video" className="creatorlab-publish-video-card">
@@ -19785,25 +23952,157 @@ export default function CreatePage() {
                 </div>
               </article>
 
-              <article className="creatorlab-publish-thumbnail-card">
-                <div className="creatorlab-publish-card-heading">
+              <details
+                id="creatorlab-publish-thumbnail"
+                className="creatorlab-publish-thumbnail-card creatorlabs-thumbnail-studio creatorlab-thumbnail-studio-details"
+              >
+                <summary className="creatorlab-publish-card-heading creatorlab-thumbnail-studio-summary">
                   <div>
-                    <span>Thumbnail</span>
-                    <strong>{uiLanguage === "en" ? "Selected cover" : "Seçilen kapak"}</strong>
+                    <span>
+                      {uiLanguage === "en" ? "Thumbnail Studio" : "Thumbnail Stüdyosu"}
+                    </span>
+                    <strong>
+                      {uiLanguage === "en"
+                        ? "Edit crop, typography and overlay"
+                        : "Kadraj, tipografi ve metin katmanını düzenle"}
+                    </strong>
                   </div>
-                  <small>{creatorPublishThumbnailUrl ? uiLanguage === "en" ? "Selected" : "Seçildi" : uiLanguage === "en" ? "Optional" : "İsteğe bağlı"}</small>
-                </div>
-                <div className="creatorlab-publish-thumbnail-preview">
+                  <small>
+                    {creatorPublishThumbnailUrl
+                      ? uiLanguage === "en" ? "Optional styling" : "Opsiyonel tasarım"
+                      : uiLanguage === "en" ? "Select source above" : "Yukarıdan kaynak seç"}
+                  </small>
+                </summary>
+
+                <div className={`creatorlab-thumbnail-studio-preview ${creatorFormat === "youtube_video" ? "is-wide" : "is-vertical"} is-${creatorThumbnailStudio.textPosition} font-${creatorThumbnailStudio.font}`}>
                   {creatorPublishThumbnailUrl ? (
-                    <img src={creatorPublishThumbnailUrl} alt={uiLanguage === "en" ? "Selected video thumbnail" : "Seçilen video thumbnail"} />
+                    <>
+                      <img
+                        src={creatorPublishThumbnailUrl}
+                        alt={uiLanguage === "en" ? "Thumbnail source preview" : "Thumbnail kaynak önizlemesi"}
+                        style={{ objectPosition: `${creatorThumbnailStudio.focalX}% ${creatorThumbnailStudio.focalY}%` }}
+                      />
+                      <div className="creatorlab-thumbnail-studio-shade" />
+                      <div
+                        className="creatorlab-thumbnail-studio-accent"
+                        style={{ backgroundColor: creatorThumbnailStudio.accentColor }}
+                      />
+                      <div
+                        className="creatorlab-thumbnail-studio-copy"
+                        style={{ color: creatorThumbnailStudio.textColor }}
+                      >
+                        <strong>{creatorThumbnailStudio.headline || creatorPublishTitle}</strong>
+                        {creatorThumbnailStudio.subHeadline && <span>{creatorThumbnailStudio.subHeadline}</span>}
+                      </div>
+                      {creatorThumbnailStudio.safeZone && <div className="creatorlab-thumbnail-safe-zone" aria-hidden="true" />}
+                    </>
                   ) : (
-                    <span>{uiLanguage === "en" ? "No thumbnail selected yet" : "Henüz thumbnail seçilmedi"}</span>
+                    <span>{uiLanguage === "en" ? "Select a scene image to start designing." : "Tasarıma başlamak için bir sahne görseli seç."}</span>
                   )}
                 </div>
-                <div className="creatorlab-publish-thumbnail-copy">
-                  <strong>{youtubeThumbnailResult?.headline || creatorProductionPackage.thumbnailIdea}</strong>
-                  <p>{youtubeThumbnailResult?.subHeadline || creatorProductionPackage.hook}</p>
+
+                <div className="creatorlab-thumbnail-variant-row" aria-label={uiLanguage === "en" ? "Thumbnail direction" : "Thumbnail yönü"}>
+                  {([
+                    ["subject", uiLanguage === "en" ? "Subject-led" : "Konu odaklı"],
+                    ["conflict", uiLanguage === "en" ? "Conflict-led" : "Çatışma odaklı"],
+                    ["symbol", uiLanguage === "en" ? "Symbol-led" : "Sembol odaklı"],
+                  ] as Array<[CreatorThumbnailVariant, string]>).map(([variant, label]) => (
+                    <button
+                      key={variant}
+                      type="button"
+                      className={creatorThumbnailStudio.variant === variant ? "is-selected" : ""}
+                      onClick={() => applyCreatorThumbnailVariant(variant)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+
+                <div className="creatorlab-thumbnail-studio-controls">
+                  <label>
+                    <span>{uiLanguage === "en" ? "Headline" : "Başlık"}</span>
+                    <input
+                      value={creatorThumbnailStudio.headline}
+                      maxLength={80}
+                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headline: event.target.value }))}
+                      placeholder={creatorPublishTitle}
+                    />
+                  </label>
+                  <label>
+                    <span>{uiLanguage === "en" ? "Sub-headline" : "Alt başlık"}</span>
+                    <input
+                      value={creatorThumbnailStudio.subHeadline}
+                      maxLength={110}
+                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadline: event.target.value }))}
+                      placeholder={creatorPublishHook}
+                    />
+                  </label>
+                  <div className="creatorlab-thumbnail-control-grid">
+                    <label>
+                      <span>{uiLanguage === "en" ? "Font" : "Yazı tipi"}</span>
+                      <select
+                        value={creatorThumbnailStudio.font}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, font: event.target.value as CreatorThumbnailFont }))}
+                      >
+                        <option value="bold_sans">Bold Sans</option>
+                        <option value="editorial">Editorial</option>
+                        <option value="condensed">Condensed</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>{uiLanguage === "en" ? "Text position" : "Metin konumu"}</span>
+                      <select
+                        value={creatorThumbnailStudio.textPosition}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textPosition: event.target.value as CreatorThumbnailTextPosition }))}
+                      >
+                        <option value="top">{uiLanguage === "en" ? "Top" : "Üst"}</option>
+                        <option value="center">{uiLanguage === "en" ? "Center" : "Orta"}</option>
+                        <option value="bottom">{uiLanguage === "en" ? "Bottom" : "Alt"}</option>
+                      </select>
+                    </label>
+                    <label className="creatorlab-thumbnail-color-control">
+                      <span>{uiLanguage === "en" ? "Accent" : "Vurgu"}</span>
+                      <input
+                        type="color"
+                        value={creatorThumbnailStudio.accentColor}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, accentColor: event.target.value }))}
+                      />
+                    </label>
+                    <label className="creatorlab-thumbnail-color-control">
+                      <span>{uiLanguage === "en" ? "Text" : "Metin"}</span>
+                      <input
+                        type="color"
+                        value={creatorThumbnailStudio.textColor}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textColor: event.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <div className="creatorlab-thumbnail-focal-controls">
+                    <label>
+                      <span>{uiLanguage === "en" ? "Horizontal focus" : "Yatay odak"} · {creatorThumbnailStudio.focalX}%</span>
+                      <input
+                        type="range" min="0" max="100" value={creatorThumbnailStudio.focalX}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, focalX: Number(event.target.value) }))}
+                      />
+                    </label>
+                    <label>
+                      <span>{uiLanguage === "en" ? "Vertical focus" : "Dikey odak"} · {creatorThumbnailStudio.focalY}%</span>
+                      <input
+                        type="range" min="0" max="100" value={creatorThumbnailStudio.focalY}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, focalY: Number(event.target.value) }))}
+                      />
+                    </label>
+                  </div>
+                  <label className="creatorlab-thumbnail-safe-toggle">
+                    <input
+                      type="checkbox"
+                      checked={creatorThumbnailStudio.safeZone}
+                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, safeZone: event.target.checked }))}
+                    />
+                    <span>{uiLanguage === "en" ? "Show platform safe zone" : "Platform güvenli alanını göster"}</span>
+                  </label>
+                </div>
+
                 <div className="creatorlab-publish-thumbnail-actions">
                   <button
                     type="button"
@@ -19818,8 +24117,10 @@ export default function CreatePage() {
                         : uiLanguage === "en" ? "Select best scene" : "En iyi sahneyi seç"}
                   </button>
                 </div>
-              </article>
+              </details>
             </div>
+
+            <div className="creatorlab-publish-content-grid">            </div>
 
             <div className="creatorlab-publish-content-grid">
               <article id="creatorlab-publish-metadata" className="creatorlab-publish-metadata-card">
@@ -19902,50 +24203,36 @@ export default function CreatePage() {
               <article className="creatorlab-publish-platform-card">
                 <div className="creatorlab-publish-card-heading">
                   <div>
-                    <span>{uiLanguage === "en" ? "Platform adaptations" : "Platform uyarlamaları"}</span>
-                    <strong>{uiLanguage === "en" ? "Ready-to-use channel copy" : "Kullanıma hazır kanal metinleri"}</strong>
+                    <span>{uiLanguage === "en" ? "Selected channels" : "Seçili kanallar"}</span>
+                    <strong>{uiLanguage === "en" ? "Channel-specific publishing copy" : "Kanala özel yayın metinleri"}</strong>
                   </div>
+                  <small>{creatorTargetPlatforms.length} {uiLanguage === "en" ? "targets" : "hedef"}</small>
                 </div>
                 <div className="creatorlab-publish-platform-list">
-                  <div className="creatorlab-publish-platform-item">
-                    <div className="creatorlab-publish-platform-heading">
-                      <span>YouTube</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText(uiLanguage === "en" ? "First comment" : "İlk yorum", youtubeMetadataResult?.firstComment || creatorProductionPackage.caption || "")}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <p>{youtubeMetadataResult?.firstComment || creatorProductionPackage.caption || (uiLanguage === "en" ? "Metadata can be prepared for YouTube publishing." : "YouTube yayını için metadata hazırlanabilir.")}</p>
-                  </div>
-                  <div className="creatorlab-publish-platform-item">
-                    <div className="creatorlab-publish-platform-heading">
-                      <span>Shorts / Reels / TikTok</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText(uiLanguage === "en" ? "Short caption" : "Kısa format metni", youtubeMetadataResult?.shortCaption || "")}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <p>{youtubeMetadataResult?.shortCaption || (uiLanguage === "en" ? "Short-form adaptation will be included when metadata is prepared." : "Metadata hazırlandığında kısa format uyarlaması pakete eklenecek.")}</p>
-                  </div>
-                  <div className="creatorlab-publish-platform-item">
-                    <div className="creatorlab-publish-platform-heading">
-                      <span>LinkedIn</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText("LinkedIn", youtubeMetadataResult?.linkedInCaption || "")}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <p>{youtubeMetadataResult?.linkedInCaption || (uiLanguage === "en" ? "LinkedIn adaptation will be included when metadata is prepared." : "Metadata hazırlandığında LinkedIn uyarlaması pakete eklenecek.")}</p>
-                  </div>
+                  {creatorTargetPlatforms.map((platform) => {
+                    const platformCopy = getCreatorPlatformCopy(platform);
+                    const platformLabel = getCreatorPlatformLabel(platform);
+                    return (
+                      <div key={platform} className="creatorlab-publish-platform-item">
+                        <div className="creatorlab-publish-platform-heading">
+                          <span>{platformLabel}</span>
+                          <button
+                            type="button"
+                            className="creatorlab-publish-copy-button"
+                            onClick={() => copyCreatorPublishText(platformLabel, platformCopy)}
+                          >
+                            {uiLanguage === "en" ? "Copy" : "Kopyala"}
+                          </button>
+                        </div>
+                        <p>
+                          {platformCopy ||
+                            (uiLanguage === "en"
+                              ? "Prepare metadata to create the selected channel copy."
+                              : "Seçili kanal metnini oluşturmak için metadata hazırla.")}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </article>
             </div>
@@ -19953,25 +24240,52 @@ export default function CreatePage() {
             <article id="creatorlab-publish-checklist" className="creatorlab-publish-checklist-card">
               <div className="creatorlab-publish-card-heading">
                 <div>
-                  <span>{uiLanguage === "en" ? "Publishing checklist" : "Yayın kontrol listesi"}</span>
-                  <strong>{uiLanguage === "en" ? "Final release checks" : "Son yayın kontrolleri"}</strong>
+                  <span>{uiLanguage === "en" ? "Release validation" : "Yayın doğrulaması"}</span>
+                  <strong>{uiLanguage === "en" ? "System checks + creator approval" : "Sistem kontrolleri + creator onayı"}</strong>
                 </div>
-                <small>{creatorPublishChecklistCount || 4} {uiLanguage === "en" ? "checks" : "kontrol"}</small>
+                <small>
+                  {creatorPublishChecklistCount}/{creatorPublishSystemChecks.length + creatorReleaseConfirmationItems.length}
+                </small>
               </div>
-              <div className="creatorlab-publish-checklist">
-                {(youtubeMetadataResult?.uploadChecklist?.length
-                  ? youtubeMetadataResult.uploadChecklist.slice(0, 4)
-                  : [
-                      uiLanguage === "en" ? "Final video reviewed" : "Final video kontrol edildi",
-                      uiLanguage === "en" ? "Thumbnail selected" : "Thumbnail seçildi",
-                      uiLanguage === "en" ? "Title and description confirmed" : "Başlık ve açıklama doğrulandı",
-                      uiLanguage === "en" ? "Platform adaptations included" : "Platform uyarlamaları eklendi",
-                    ]).map((item, index) => (
-                  <div key={`creatorlab-release-check-${index}`} className="creatorlab-publish-check">
-                    <span>✓</span>
-                    <div>{item}</div>
+              <div className="creatorlab-release-validation-grid">
+                <section>
+                  <div className="creatorlab-release-validation-heading">
+                    <strong>{uiLanguage === "en" ? "System checks" : "Sistem kontrolleri"}</strong>
+                    <span>{creatorPublishSystemChecks.filter((item) => item.ready).length}/{creatorPublishSystemChecks.length}</span>
                   </div>
-                ))}
+                  <div className="creatorlab-publish-checklist">
+                    {creatorPublishSystemChecks.map((item) => (
+                      <div key={item.key} className={`creatorlab-publish-check ${item.ready ? "is-ready" : "is-pending"}`}>
+                        <span>{item.ready ? "✓" : "!"}</span>
+                        <div>
+                          <strong>{item.label}</strong>
+                          <small>{item.detail}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                <section>
+                  <div className="creatorlab-release-validation-heading">
+                    <strong>{uiLanguage === "en" ? "Creator confirmations" : "Creator onayları"}</strong>
+                    <span>{creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length}/{creatorReleaseConfirmationItems.length}</span>
+                  </div>
+                  <div className="creatorlab-release-confirmations">
+                    {creatorReleaseConfirmationItems.map((item) => (
+                      <label key={item.key} className={creatorReleaseConfirmations[item.key] ? "is-confirmed" : ""}>
+                        <input
+                          type="checkbox"
+                          checked={creatorReleaseConfirmations[item.key]}
+                          onChange={() => toggleCreatorReleaseConfirmation(item.key)}
+                        />
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.detail}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
               </div>
             </article>
 
@@ -19999,24 +24313,6 @@ export default function CreatePage() {
                         <li key={`creatorlab-publish-chapter-${index}`}>{item}</li>
                       ))}
                     </ol>
-                  </div>
-                )}
-                {scenes.some((scene) => scene.image) && (
-                  <div className="creatorlab-publish-thumbnail-candidates">
-                    <h3>{uiLanguage === "en" ? "Thumbnail alternatives" : "Thumbnail alternatifleri"}</h3>
-                    <div className="creatorlab-publish-thumbnail-candidate-grid">
-                      {scenes.filter((scene) => scene.image).slice(0, 4).map((scene) => (
-                        <button
-                          key={`creatorlab-publish-scene-thumbnail-${scene.id}`}
-                          type="button"
-                          className="creatorlab-publish-thumbnail-candidate"
-                          onClick={() => handleSelectSceneAsYoutubeThumbnail(scene)}
-                        >
-                          <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} />
-                          <span>{uiLanguage === "en" ? `Use scene ${scene.id}` : `Sahne ${scene.id} kullan`}</span>
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
@@ -20049,7 +24345,9 @@ export default function CreatePage() {
                 <strong>
                   {creatorPublishComplete
                     ? uiLanguage === "en" ? "Creator Package delivered" : "Creator Paketi teslim edildi"
-                    : uiLanguage === "en" ? "Your publish-ready package is assembled" : "Yayına hazır paketin bir araya getirildi"}
+                    : creatorReleaseReady
+                      ? uiLanguage === "en" ? "Release approved and ready to export" : "Yayın onaylandı ve dışa aktarıma hazır"
+                      : uiLanguage === "en" ? "Complete release validation before export" : "Dışa aktarımdan önce yayın doğrulamasını tamamla"}
                 </strong>
                 <p>
                   {youtubeMetadataResult
@@ -20057,21 +24355,22 @@ export default function CreatePage() {
                       ? "The ZIP includes the final video file, thumbnail, SRT/VTT captions, publishing copy, checklist and editable project data."
                       : "ZIP; final video dosyası, thumbnail, SRT/VTT altyazılar, yayın metinleri, checklist ve düzenlenebilir proje verilerini içerir."
                     : uiLanguage === "en"
-                      ? "Download will prepare the missing publishing copy automatically and assemble the complete package."
-                      : "İndirme işlemi eksik yayın metinlerini otomatik hazırlayıp eksiksiz paketi oluşturur."}
+                      ? "Prepare the publishing copy, complete the system checks and confirm the release before export."
+                      : "Dışa aktarımdan önce yayın metinlerini hazırla, sistem kontrollerini tamamla ve yayını onayla."}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleDownloadCreatorPackage}
                 disabled={isDownloadingCreatorPackage || !creatorPackageReady}
+                title={!creatorPackageReady ? (uiLanguage === "en" ? "Complete all system checks and creator confirmations." : "Tüm sistem kontrollerini ve creator onaylarını tamamla.") : undefined}
                 className="creatorlab-publish-primary-action"
               >
                 {isDownloadingCreatorPackage
                   ? uiLanguage === "en" ? "Preparing package..." : "Paket hazırlanıyor..."
                   : creatorPublishComplete
                     ? uiLanguage === "en" ? "Download Creator Package Again" : "Creator Paketini Yeniden İndir"
-                    : uiLanguage === "en" ? "Download Creator Package" : "Creator Paketini İndir"}
+                    : uiLanguage === "en" ? "Approve & Export Creator Package" : "Onayla ve Creator Paketini Dışa Aktar"}
               </button>
             </div>
           </section>

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import {
   getCreatorVisualRoute,
   type CreatorImageUseCase,
 } from "../../../lib/creator/visualRouting";
 
 export const runtime = "nodejs";
+
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 
 type Character = {
   name: string;
@@ -25,6 +27,11 @@ type VisualBible = {
 };
 
 type ImageProductProfile = "storyverse" | "creatorlab";
+
+type ImageApiResponse = {
+  data?: Array<{ b64_json?: string | null }>;
+  usage?: unknown;
+};
 
 type SceneContinuityContext = {
   sceneId?: number;
@@ -48,7 +55,8 @@ const DEFAULT_GUIDE_CHARACTER: Character = {
   age: "10",
   appearance:
     "10-year-old boy with short slightly messy brown hair, large green eyes, soft rounded face, expressive friendly face, childlike proportions, consistent face shape and eye shape",
-  outfit: "red baseball cap, blue t-shirt with a clear rocket logo, simple blue jeans, simple white sneakers; the cap, rocket t-shirt, jeans, and sneakers must stay the same across episodes unless explicitly changed",
+  outfit:
+    "red baseball cap, blue t-shirt with a clear rocket logo, simple blue jeans, simple white sneakers; the cap, rocket t-shirt, jeans, and sneakers must stay the same across episodes unless explicitly changed",
   accessory: "red baseball cap and rocket logo t-shirt",
   personality:
     "curious, energetic, slightly playful, emotionally expressive, kind, brave, problem solver, asks simple questions that help children understand the topic",
@@ -81,25 +89,23 @@ function normalizeCharactersForPrompt(
           ...character,
           name: "Joe",
           age: character.age || DEFAULT_GUIDE_CHARACTER.age,
-          appearance: character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
+          appearance:
+            character.appearance || DEFAULT_GUIDE_CHARACTER.appearance,
           outfit: character.outfit || DEFAULT_GUIDE_CHARACTER.outfit,
-          accessory: character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
-          personality: character.personality || DEFAULT_GUIDE_CHARACTER.personality,
+          accessory:
+            character.accessory ?? DEFAULT_GUIDE_CHARACTER.accessory,
+          personality:
+            character.personality || DEFAULT_GUIDE_CHARACTER.personality,
         }
       : character,
   );
 
-  if (
-    shouldUseStoryverseJoe &&
-    !hasJoe &&
-    useDefaultGuideCharacter
-  ) {
+  if (shouldUseStoryverseJoe && !hasJoe && useDefaultGuideCharacter) {
     return [DEFAULT_GUIDE_CHARACTER, ...normalizedCharacters];
   }
 
   return normalizedCharacters;
 }
-
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -108,9 +114,7 @@ function getOpenAIClient() {
     throw new Error("OPENAI_API_KEY is missing");
   }
 
-  return new OpenAI({
-    apiKey,
-  });
+  return new OpenAI({ apiKey });
 }
 
 function buildCharacterBlock(
@@ -136,7 +140,7 @@ NO LOCKED CHARACTER PROVIDED:
 
   return effectiveCharacters
     .map((character, index) => {
-      const hasReference = Boolean(character.referenceImage);
+      const hasReference = Boolean(character.referenceImage?.trim());
       const isStoryverseJoe =
         productProfile === "storyverse" &&
         normalizeNameForCharacter(character?.name) === "joe";
@@ -149,40 +153,15 @@ Appearance: ${character.appearance || "Not specified"}
 Outfit: ${character.outfit || "Not specified"}
 Accessory: ${character.accessory || "No accessory"}
 Personality: ${character.personality || "Not specified"}
-
-REFERENCE IMAGE STATUS:
-${
-  hasReference
-    ? "A reference design image exists for this character. Treat that design as the canonical master look."
-    : "No reference image exists yet. Use the written character bible as the canonical look."
-}
-
-REFERENCE IMAGE VALUE:
-${character.referenceImage || "No reference image yet"}
+Reference image attached to request: ${hasReference ? "yes" : "no"}
 
 CRITICAL CHARACTER LOCK:
 - This character MUST look IDENTICAL whenever the same character appears across scenes.
 ${isStoryverseJoe ? "- Joe was explicitly provided for Storyverse, so preserve Joe's established identity exactly." : "- This is a user-defined character/persona, not a default mascot."}
-- If a reference image exists, it OVERRIDES all text description.
-- NEVER redesign this character.
-- NEVER change face shape.
-- NEVER change eye shape.
-- NEVER change nose proportions.
-- NEVER change hairstyle or hair color.
-- NEVER change outfit unless the scene explicitly requires it.
-- NEVER change accessory unless the scene explicitly requires it.
-- NEVER change body proportions.
-- NEVER change apparent age.
-- NEVER swap gender.
-- NEVER merge this character with another character.
-- NEVER invent a visually different replacement.
-
-STRICT VISUAL LOCK:
-- Treat the reference image as the FINAL DESIGN when available.
-- Do not reinterpret the character.
-- Do not stylize the character differently.
-- Do not drift from the established visual universe.
-- Same character means same exact visual identity.
+- If a reference image is attached, it OVERRIDES conflicting written appearance details.
+- NEVER redesign this character or change face shape, eye shape, nose proportions, hairstyle, hair color, apparent age, outfit, accessory, or body proportions unless the scene explicitly requires a temporary change.
+- NEVER swap gender, merge this character with another person, or invent a visually different replacement.
+- Preserve the same identity and production universe across scenes.
 `;
     })
     .join("\n");
@@ -211,7 +190,7 @@ Style: ${visualBible?.style || defaultStyle}
 Palette: ${visualBible?.palette || defaultPalette}
 Camera: ${visualBible?.camera || defaultCamera}
 Consistency rules: ${visualBible?.consistencyRules || defaultConsistencyRules}
-  `;
+`;
 }
 
 function buildContinuityBlock(context?: SceneContinuityContext | null) {
@@ -242,6 +221,138 @@ function buildContinuityBlock(context?: SceneContinuityContext | null) {
     describeScene("Next scene", context.nextScene),
     "Keep a deliberate visual handoff from the previous beat and leave a natural composition/motion handoff into the next beat.",
   ].join("\n");
+}
+
+function isPrivateOrLocalHostname(hostname: string) {
+  const normalized = hostname.toLowerCase();
+
+  if (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    normalized === "0.0.0.0" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1"
+  ) {
+    return true;
+  }
+
+  const ipv4 = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+
+  if (!ipv4) {
+    return false;
+  }
+
+  const [, aText, bText] = ipv4;
+  const a = Number(aText);
+  const b = Number(bText);
+
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+async function referenceSourceToFile(source: string, index: number) {
+  const trimmed = source.trim();
+  const dataMatch = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+
+  if (dataMatch) {
+    const mimeType = dataMatch[1];
+    const buffer = Buffer.from(dataMatch[2], "base64");
+
+    if (!buffer.length || buffer.length > MAX_REFERENCE_IMAGE_BYTES) {
+      throw new Error("Reference image is empty or exceeds the 10 MB limit.");
+    }
+
+    const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "png";
+    return toFile(buffer, `creator-reference-${index + 1}.${extension}`, {
+      type: mimeType,
+    });
+  }
+
+  const url = new URL(trimmed);
+
+  if (url.protocol !== "https:" || isPrivateOrLocalHostname(url.hostname)) {
+    throw new Error("Only public HTTPS reference-image URLs are accepted.");
+  }
+
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(12_000),
+    redirect: "follow",
+  });
+
+  const finalUrl = new URL(response.url || url.toString());
+
+  if (
+    finalUrl.protocol !== "https:" ||
+    isPrivateOrLocalHostname(finalUrl.hostname)
+  ) {
+    throw new Error("Reference image redirected to an unsupported location.");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Reference image could not be downloaded (${response.status}).`);
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+
+  if (contentLength > MAX_REFERENCE_IMAGE_BYTES) {
+    throw new Error("Reference image exceeds the 10 MB limit.");
+  }
+
+  const mimeType = response.headers.get("content-type")?.split(";")[0] || "";
+
+  if (!mimeType.startsWith("image/")) {
+    throw new Error("Reference URL did not return an image.");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (!buffer.length || buffer.length > MAX_REFERENCE_IMAGE_BYTES) {
+    throw new Error("Reference image is empty or exceeds the 10 MB limit.");
+  }
+
+  const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "png";
+  return toFile(buffer, `creator-reference-${index + 1}.${extension}`, {
+    type: mimeType,
+  });
+}
+
+async function loadReferenceImageFiles(
+  characters: Character[] | undefined,
+  limit: number,
+) {
+  if (!limit || !Array.isArray(characters)) {
+    return { files: [] as Awaited<ReturnType<typeof toFile>>[], warnings: [] as string[] };
+  }
+
+  const sources = Array.from(
+    new Set(
+      characters
+        .map((character) => character.referenceImage?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ).slice(0, limit);
+  const files: Awaited<ReturnType<typeof toFile>>[] = [];
+  const warnings: string[] = [];
+
+  for (let index = 0; index < sources.length; index += 1) {
+    try {
+      files.push(await referenceSourceToFile(sources[index], index));
+    } catch (error) {
+      warnings.push(
+        error instanceof Error
+          ? error.message
+          : "Reference image could not be prepared.",
+      );
+    }
+  }
+
+  return { files, warnings };
 }
 
 export async function POST(req: Request) {
@@ -338,19 +449,22 @@ export async function POST(req: Request) {
       : normalizedImageUseCase === "thumbnail"
         ? "Compose as a wide 16:9 child-safe Storyverse thumbnail with a large readable subject."
         : "Compose as a clear Storyverse scene frame with readable character action.";
+
     const qualityInstructions = creatorVisualRoute
       ? creatorVisualRoute.qualityMode === "cinematic"
-        ? "Use maximum cinematic discipline: production-grade lighting, lens intent, depth, texture, controlled atmosphere, believable material detail, and a frame designed to anchor a premium motion block."
+        ? "Use maximum cinematic discipline and feature-film-grade photorealism when the brief requests real people: production lighting, physically believable materials, natural adult anatomy, realistic skin detail, deliberate lens behavior, atmosphere, depth, and fine texture. The frame must remain clean enough to anchor a premium motion block."
         : creatorVisualRoute.qualityMode === "pro"
-          ? "Use strong professional art direction, clear subject hierarchy, refined lighting, editorial depth, and a frame suitable as the reference/first frame for a selective AI video block."
-          : "Use a clean, consistent, credit-efficient creator frame with strong readability and enough visual depth for controlled image motion."
+          ? "Use strong professional art direction and high-end photorealism when the brief requests real people: natural adult facial structure, believable skin and hair, accurate hands and anatomy, refined lighting, clear subject hierarchy, and editorial depth suitable for a selective AI video block."
+          : "Use a clean, consistent, credit-efficient creator frame with strong readability, natural anatomy, and enough visual depth for controlled image motion."
       : "Use premium 3D family-animation quality, child-safe visual storytelling, expressive acting, polished lighting, and a coherent Storyverse universe.";
+
     const productInstructions = isCreatorLab
       ? `
 CREATORLAB VISUAL ROUTE:
 - This is professional 18+ creator content, not a child-oriented Storyverse scene.
 - Follow the brief and visual bible. Do not force cartoon, 3D animation, a child presenter, or a mascot.
-- Support faceless, narrator-led, documentary, product-led, realistic, illustrative, motion-graphic, and character-led concepts.
+- Support faceless, narrator-led, documentary, product-led, photorealistic, illustrative, motion-graphic, and character-led concepts.
+- If a human subject is required, depict a clearly adult fictional person unless an authorized user-supplied reference image is attached. Do not imitate a public figure or unrelated real person.
 - If Character Cast is empty, keep the production intentionally faceless unless the scene explicitly requires a person.
 - Make the visual platform-native, mobile-readable, thumbnail-aware, and suitable for a publish-ready creator package.
 - ${formatInstructions}
@@ -364,15 +478,16 @@ STORYVERSE VISUAL ROUTE:
 - ${formatInstructions}
 - ${qualityInstructions}
 `;
+
     const negativeGuidance = isCreatorLab
       ? `
 Negative guidance:
 - no default Joe, child guide, mascot, or cartoon treatment unless explicitly requested
 - no style, realism-level, palette, lighting, wardrobe, product, or brand drift
-- no random presenter or extra lead-character invention
-- no generic AI slideshow composition, cheap stock-photo look, poster clutter, or unreadable micro-detail
+- no random presenter, celebrity lookalike, or extra lead-character invention
+- no generic AI slideshow composition, cheap stock-photo look, waxy skin, plastic face, poster clutter, or unreadable micro-detail
 - no inconsistent face, hair, age impression, outfit, accessory, or body proportions for locked cast
-- no distorted hands, eyes, text, logos, products, or anatomy
+- no distorted hands, eyes, teeth, text, logos, products, or anatomy
 - no forced text inside the image unless the brief explicitly requires it
 `
       : `
@@ -416,7 +531,7 @@ ${continuityBlock}
 High-priority continuity instructions:
 - preserve the visual bible as the single art-direction source across all scenes
 - preserve every user-defined cast member's identity, face, age impression, outfit, accessory, visual role, and behavior
-- if a character reference image exists, treat it as canonical and do not reinterpret that design
+- if a character reference image is attached, treat it as canonical and do not reinterpret that identity
 - preserve palette, lighting logic, lens/camera language, texture level, realism level, brand cues, and editorial rhythm
 - keep the number and role of recurring people, products, props, and key objects stable
 - prioritize continuity over novelty while making this scene advance the visual story
@@ -429,18 +544,42 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
 `;
 
     const client = getOpenAIClient();
-    const imageRequest = {
-      model: "gpt-image-1" as const,
-      prompt: imagePrompt,
-      size:
-        creatorVisualRoute?.imageSize ||
-        (normalizedImageUseCase === "thumbnail"
-          ? ("1536x1024" as const)
-          : ("1024x1024" as const)),
-      quality: creatorVisualRoute?.imageQuality || ("high" as const),
-    };
+    const model = creatorVisualRoute?.imageModel || "gpt-image-1";
+    const size =
+      creatorVisualRoute?.imageSize ||
+      (normalizedImageUseCase === "thumbnail" ? "1536x1024" : "1024x1024");
+    const quality = creatorVisualRoute?.imageQuality || "high";
+    const { files: referenceFiles, warnings: referenceWarnings } =
+      isCreatorLab && creatorVisualRoute
+        ? await loadReferenceImageFiles(
+            characters,
+            creatorVisualRoute.referenceImageLimit,
+          )
+        : { files: [], warnings: [] };
 
-    const image = await client.images.generate(imageRequest);
+    let image: ImageApiResponse;
+    let referenceInputApplied = false;
+
+    if (referenceFiles.length > 0 && model.startsWith("gpt-image-2")) {
+      image = (await client.images.edit({
+        model,
+        image: referenceFiles,
+        prompt: imagePrompt,
+        size,
+        quality,
+        input_fidelity: "high",
+        stream: false,
+      } as any)) as unknown as ImageApiResponse;
+      referenceInputApplied = true;
+    } else {
+      image = (await client.images.generate({
+        model,
+        prompt: imagePrompt,
+        size,
+        quality,
+        stream: false,
+      } as any)) as unknown as ImageApiResponse;
+    }
 
     const base64 = image.data?.[0]?.b64_json;
 
@@ -453,6 +592,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
 
     return NextResponse.json({
       image: `data:image/png;base64,${base64}`,
+      usage: (image as any).usage || null,
       visualRoute: creatorVisualRoute
         ? {
             qualityMode: creatorVisualRoute.qualityMode,
@@ -460,9 +600,18 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
             targetAspectRatio: creatorVisualRoute.targetAspectRatio,
             frameRole: creatorVisualRoute.frameRole,
             continuityStrength: creatorVisualRoute.continuityStrength,
+            model: creatorVisualRoute.imageModel,
+            quality: creatorVisualRoute.imageQuality,
+            size: creatorVisualRoute.imageSize,
+            referenceInputApplied,
+            referenceInputCount: referenceFiles.length,
+            referenceWarnings,
           }
         : {
             productProfile: "storyverse",
+            model: "gpt-image-1",
+            quality: "high",
+            size,
           },
     });
   } catch (error) {

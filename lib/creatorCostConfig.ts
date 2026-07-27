@@ -1,5 +1,5 @@
 export const CREATOR_COST_CONFIG = {
-  pricingAsOf: "2026-05-13",
+  pricingAsOf: "2026-07-27",
   currency: "USD",
   runway: {
     creditUsd: 0.01,
@@ -14,13 +14,35 @@ export const CREATOR_COST_CONFIG = {
     veo31FastNoAudioUsdPerSecond: 0.1,
   },
   openaiImage: {
+    // Backward-compatible default fields for existing cost consumers.
     model: "gpt-image-2",
     imageInputUsdPer1MTokens: 8,
     imageCachedInputUsdPer1MTokens: 2,
     imageOutputUsdPer1MTokens: 30,
     textInputUsdPer1MTokens: 5,
     textCachedInputUsdPer1MTokens: 1.25,
-    note: "OpenAI image generation is token-based; final per-image cost depends on size, quality, and generated image tokens.",
+    creatorLab: {
+      model: "gpt-image-2",
+      snapshot: "gpt-image-2-2026-04-21",
+      textInputUsdPer1MTokens: 5,
+      textCachedInputUsdPer1MTokens: 1.25,
+      imageInputUsdPer1MTokens: 8,
+      imageCachedInputUsdPer1MTokens: 2,
+      imageOutputUsdPer1MTokens: 30,
+      mediumSquareOutputUsd: 0.053,
+      mediumPortraitLandscapeOutputUsd: 0.041,
+      highSquareOutputUsd: 0.211,
+      highPortraitLandscapeOutputUsd: 0.165,
+      cinematicRoutingNote:
+        "Cinematic uses high quality, stronger continuity and up to two reference images. Settle from actual API usage.",
+    },
+    storyverseLegacy: {
+      model: "gpt-image-1",
+      note:
+        "Storyverse routing remains unchanged in this sprint and must be migrated separately.",
+    },
+    note:
+      "Output references exclude prompt and reference-image input. Actual cost must be settled from returned API usage.",
   },
   elevenLabs: {
     activeModel: "eleven_multilingual_v2",
@@ -37,5 +59,5 @@ export const CREATOR_DEFAULT_VIDEO_SCENE_COST_USD =
 export const CREATOR_COST_BASIS_LABEL =
   `Runway ${CREATOR_COST_CONFIG.runway.defaultModel}: $${CREATOR_COST_CONFIG.runway.gen4TurboUsdPerSecond.toFixed(2)}/sec; ` +
   `${CREATOR_COST_CONFIG.runway.defaultSceneVideoSeconds}s scene ≈ $${CREATOR_COST_CONFIG.runway.defaultRunwaySceneVideoCostUsd.toFixed(2)}. ` +
-  `OpenAI ${CREATOR_COST_CONFIG.openaiImage.model} image cost is token-based. ` +
+  `CreatorLab images use ${CREATOR_COST_CONFIG.openaiImage.creatorLab.snapshot}; image cost is token-based. ` +
   `ElevenLabs ${CREATOR_COST_CONFIG.elevenLabs.activeModel}: $${CREATOR_COST_CONFIG.elevenLabs.multilingualV2V3UsdPer1KCharacters.toFixed(2)}/1K chars.`;

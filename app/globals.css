@@ -682,7 +682,7 @@ select {
    Existing product functions remain in the center canvas and are migrated step by step. */
 .creatorlab-product-frame {
   display: grid;
-  grid-template-columns: minmax(224px, 252px) minmax(0, 1fr) minmax(276px, 312px);
+  grid-template-columns: minmax(224px, 252px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   align-items: start;
   width: min(100%, 1680px);
@@ -1213,7 +1213,7 @@ select {
 
 @media (max-width: 1379px) {
   .creatorlab-product-frame {
-    grid-template-columns: 224px minmax(0, 1fr) 282px;
+    grid-template-columns: 224px minmax(0, 1fr);
   }
 
   .creatorlab-main-column {
@@ -1238,10 +1238,6 @@ select {
 
   .creatorlab-workflow-rail {
     grid-column: 1;
-  }
-
-  .creatorlab-ai-workspace {
-    display: none;
   }
 
   .creatorlab-main-column {

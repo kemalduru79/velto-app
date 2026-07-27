@@ -379,6 +379,7 @@ function createProductionSummary(input: {
   cues: CaptionCue[];
   includedVideoFile: string;
   includedThumbnailFile: string;
+  targetPlatforms: string[];
 }) {
   const totalDuration = input.cues.length
     ? input.cues[input.cues.length - 1].endSec
@@ -396,6 +397,7 @@ function createProductionSummary(input: {
     `Caption timeline duration: ${totalDuration.toFixed(1)} seconds`,
     `Final video asset: ${input.includedVideoFile || "link fallback only"}`,
     `Thumbnail asset: ${input.includedThumbnailFile || "not included"}`,
+    `Target platforms: ${input.targetPlatforms.join(", ") || "not specified"}`,
     "",
     "Description",
     input.description || "No description was generated.",
@@ -409,6 +411,28 @@ export async function POST(req: Request) {
     const metadata = safeObject(body?.metadata);
     const thumbnail = safeObject(body?.thumbnail);
     const creatorIntelligence = safeObject(body?.creatorIntelligence);
+    const thumbnailDesign = safeObject(body?.thumbnailDesign || thumbnail?.design);
+    const releaseChecklist = safeObject(body?.releaseChecklist);
+    const targetPlatforms = safeArray(body?.targetPlatforms);
+    const releaseSystemChecks = Array.isArray(releaseChecklist?.systemChecks)
+      ? releaseChecklist.systemChecks.filter((item: unknown) => item && typeof item === "object")
+      : [];
+    const releaseUserConfirmations = safeObject(releaseChecklist?.userConfirmations);
+    const releaseChecklistText = [
+      "VELTO Creator Release Checklist",
+      "",
+      "System checks",
+      ...releaseSystemChecks.map((item: Record<string, any>) =>
+        `- [${item?.ready ? "x" : " "}] ${safeString(item?.label, safeString(item?.key, "System check"))}`,
+      ),
+      "",
+      "Creator confirmations",
+      ...Object.entries(releaseUserConfirmations).map(
+        ([key, confirmed]) => `- [${confirmed ? "x" : " "}] ${key}`,
+      ),
+      "",
+      `Ready to export: ${releaseChecklist?.readyToExport ? "yes" : "no"}`,
+    ].join("\n");
     const timelineSyncPlan = safeObject(
       body?.timelineSyncPlan || productionPackage?.timelineSyncPlan,
     );
@@ -422,6 +446,7 @@ export async function POST(req: Request) {
     const safeTitle = sanitizeFileName(title);
     const videoUrl = safeString(body?.videoUrl);
     const thumbnailUrl = safeString(thumbnail?.imageUrl);
+    const thumbnailSourceUrl = safeString(thumbnail?.sourceImageUrl);
     const recommendedTitle = safeString(
       metadata?.recommendedTitle,
       safeString(productionPackage?.youtubeTitle, title),
@@ -446,6 +471,7 @@ export async function POST(req: Request) {
     const entries: ZipEntry[] = [];
     let includedVideoFile = "";
     let includedThumbnailFile = "";
+    let includedThumbnailSourceFile = "";
 
     if (videoUrl) {
       try {
@@ -497,6 +523,32 @@ export async function POST(req: Request) {
       warnings.push("No thumbnail image was provided.");
     }
 
+    if (thumbnailSourceUrl && thumbnailSourceUrl !== thumbnailUrl) {
+      const dataThumbnailSource = decodeDataImage(thumbnailSourceUrl);
+      if (dataThumbnailSource) {
+        includedThumbnailSourceFile = `thumbnail-source.${dataThumbnailSource.extension}`;
+        entries.push({ name: includedThumbnailSourceFile, data: dataThumbnailSource.buffer });
+      } else {
+        try {
+          const thumbnailSourceAsset = await fetchPackageAsset(
+            thumbnailSourceUrl,
+            req.url,
+            MAX_IMAGE_BYTES,
+          );
+          const extension = imageExtension(
+            thumbnailSourceAsset.contentType,
+            thumbnailSourceAsset.finalUrl,
+          );
+          includedThumbnailSourceFile = `thumbnail-source.${extension}`;
+          entries.push({ name: includedThumbnailSourceFile, data: thumbnailSourceAsset.buffer });
+        } catch (error) {
+          warnings.push(
+            `The clean thumbnail source could not be embedded: ${error instanceof Error ? error.message : "download failed"}`,
+          );
+        }
+      }
+    }
+
     entries.push(
       {
         name: "publishing/title.txt",
@@ -543,8 +595,24 @@ export async function POST(req: Request) {
         data: Buffer.from(thumbnailTextIdeas.join("\n"), "utf8"),
       },
       {
-        name: "publishing/checklist.txt",
+        name: "publishing/ai-upload-checklist.txt",
         data: Buffer.from(uploadChecklist.map((item) => `- ${item}`).join("\n"), "utf8"),
+      },
+      {
+        name: "publishing/target-platforms.txt",
+        data: Buffer.from(targetPlatforms.join("\n"), "utf8"),
+      },
+      {
+        name: "publishing/checklist.txt",
+        data: Buffer.from(releaseChecklistText, "utf8"),
+      },
+      {
+        name: "publishing/release-checklist.json",
+        data: Buffer.from(JSON.stringify(releaseChecklist, null, 2), "utf8"),
+      },
+      {
+        name: "publishing/thumbnail-design.json",
+        data: Buffer.from(JSON.stringify(thumbnailDesign, null, 2), "utf8"),
       },
       {
         name: "publishing/notes.txt",
@@ -597,6 +665,7 @@ export async function POST(req: Request) {
       cues,
       includedVideoFile,
       includedThumbnailFile,
+      targetPlatforms,
     });
 
     entries.push({
@@ -610,6 +679,7 @@ export async function POST(req: Request) {
       "Main release assets",
       `- ${includedVideoFile || "final-video-link.txt"}`,
       `- ${includedThumbnailFile || "thumbnail-link.txt / not available"}`,
+      ...(includedThumbnailSourceFile ? [`- ${includedThumbnailSourceFile}`] : []),
       "",
       "Publishing copy is under /publishing.",
       "Captions are under /captions in SRT and VTT formats.",
@@ -624,13 +694,16 @@ export async function POST(req: Request) {
     });
 
     const manifest = {
-      version: "px5-creator-package-v1",
+      version: "ux-p4-creator-release-v2",
       generatedAt: new Date().toISOString(),
       projectTitle: title,
       publishingTitle: recommendedTitle,
       includedVideoFile: includedVideoFile || null,
       includedThumbnailFile: includedThumbnailFile || null,
+      includedThumbnailSourceFile: includedThumbnailSourceFile || null,
       captionFormats: ["srt", "vtt"],
+      targetPlatforms,
+      releaseReady: Boolean(releaseChecklist?.readyToExport),
       warnings,
       files: entries.map((entry) => entry.name),
     };
