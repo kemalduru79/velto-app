@@ -1,0 +1,17 @@
+/mnt/data/velto-foundation-p1/README.md
+/mnt/data/velto-foundation-p1/app/api/credits/route.ts
+/mnt/data/velto-foundation-p1/app/forgot-password/page.tsx
+/mnt/data/velto-foundation-p1/app/login/page.tsx
+/mnt/data/velto-foundation-p1/app/reset-password/page.tsx
+/mnt/data/velto-foundation-p1/app/signup/page.tsx
+/mnt/data/velto-foundation-p1/docs/FILE-MANIFEST.txt
+/mnt/data/velto-foundation-p1/docs/FOUNDATION-P1-STATUS.md
+/mnt/data/velto-foundation-p1/lib/auth/index.ts
+/mnt/data/velto-foundation-p1/lib/auth/server.ts
+/mnt/data/velto-foundation-p1/lib/auth/supabaseAuthAdapter.ts
+/mnt/data/velto-foundation-p1/lib/auth/types.ts
+/mnt/data/velto-foundation-p1/lib/credits/engine.ts
+/mnt/data/velto-foundation-p1/lib/credits/index.ts
+/mnt/data/velto-foundation-p1/lib/credits/supabaseCreditRepository.ts
+/mnt/data/velto-foundation-p1/lib/credits/types.ts
+/mnt/data/velto-foundation-p1/supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql

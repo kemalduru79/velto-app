@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:creator-smoke": "node scripts/creator-smoke-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",

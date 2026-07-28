@@ -92,17 +92,165 @@ type CreatorWorkspaceIconName = "insights" | "ideas" | "safety" | "package";
 type CreatorWorkspaceTone = "blue" | "violet" | "green" | "amber";
 type CreatorNoCastMode = "faceless" | "narrator";
 type CreatorDirectorMode = "help" | "project";
+type CreatorDirectorActionType =
+  | "update_brief_topic"
+  | "update_strategy_hook"
+  | "update_scene_script"
+  | "set_scene_output"
+  | "update_thumbnail_copy"
+  | "select_thumbnail_scene"
+  | "generate_selected_visuals"
+  | "generate_selected_voice"
+  | "generate_selected_videos"
+  | "export_creator_package";
+type CreatorDirectorActionImpact = "none" | "credit_variable" | "release";
+type CreatorDirectorActionStatus =
+  | "pending"
+  | "running"
+  | "applied"
+  | "dismissed"
+  | "error";
+type CreatorDirectorActionPayload = {
+  topic: string | null;
+  hook: string | null;
+  sceneId: number | null;
+  sceneIds: number[];
+  narration: string | null;
+  dialogue: string | null;
+  renderMode: "image" | "video" | null;
+  thumbnailHeadline: string | null;
+  thumbnailSubHeadline: string | null;
+  thumbnailSceneId: number | null;
+};
+type CreatorDirectorAction = {
+  id: string;
+  type: CreatorDirectorActionType;
+  title: string;
+  description: string;
+  impact: CreatorDirectorActionImpact;
+  requiresExplicitConfirmation: boolean;
+  changes: Array<{
+    label: string;
+    before: string;
+    after: string;
+  }>;
+  payload: CreatorDirectorActionPayload;
+  status: CreatorDirectorActionStatus;
+  error?: string;
+};
 type CreatorDirectorMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  actions?: CreatorDirectorAction[];
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
   } | null;
 };
+
+type CreatorTelemetryEventName =
+  | "workspace_opened"
+  | "stage_viewed"
+  | "brief_ready"
+  | "strategy_ready"
+  | "production_ready"
+  | "package_exported"
+  | "director_action_applied"
+  | "director_action_failed"
+  | "export_started"
+  | "export_succeeded"
+  | "export_failed";
+
+type CreatorOpsServiceKey = "database" | "ai" | "voice" | "video";
+type CreatorOpsStatus = {
+  status: "idle" | "checking" | "ready" | "degraded" | "blocked" | "error";
+  checkedAt: string;
+  release: string;
+  requestId: string;
+  services: Record<CreatorOpsServiceKey, boolean>;
+  message: string;
+};
+
+const CREATOR_DIRECTOR_ACTION_TYPES = new Set<CreatorDirectorActionType>([
+  "update_brief_topic",
+  "update_strategy_hook",
+  "update_scene_script",
+  "set_scene_output",
+  "update_thumbnail_copy",
+  "select_thumbnail_scene",
+  "generate_selected_visuals",
+  "generate_selected_voice",
+  "generate_selected_videos",
+  "export_creator_package",
+]);
+
+function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(0, 2)
+    .map((item) => (item && typeof item === "object" ? item as Record<string, any> : {}))
+    .filter((item) => CREATOR_DIRECTOR_ACTION_TYPES.has(item.type as CreatorDirectorActionType))
+    .map((item, index) => {
+      const payload = item.payload && typeof item.payload === "object"
+        ? item.payload as Record<string, any>
+        : {};
+      const renderMode = payload.renderMode === "video"
+        ? "video"
+        : payload.renderMode === "image"
+          ? "image"
+          : null;
+      const impact: CreatorDirectorActionImpact =
+        item.impact === "credit_variable"
+          ? "credit_variable"
+          : item.impact === "release"
+            ? "release"
+            : "none";
+
+      return {
+        id: String(item.id || `director-action-${Date.now()}-${index}`),
+        type: item.type as CreatorDirectorActionType,
+        title: String(item.title || "Creator Director action").trim().slice(0, 120),
+        description: String(item.description || "").trim().slice(0, 420),
+        impact,
+        requiresExplicitConfirmation: Boolean(item.requiresExplicitConfirmation),
+        changes: Array.isArray(item.changes)
+          ? item.changes.slice(0, 4).map((change: any) => ({
+              label: String(change?.label || "Change").trim().slice(0, 120),
+              before: String(change?.before || "—").trim().slice(0, 520),
+              after: String(change?.after || "—").trim().slice(0, 520),
+            }))
+          : [],
+        payload: {
+          topic: typeof payload.topic === "string" ? payload.topic.trim().slice(0, 1200) || null : null,
+          hook: typeof payload.hook === "string" ? payload.hook.trim().slice(0, 1200) || null : null,
+          sceneId: Number.isFinite(Number(payload.sceneId)) ? Number(payload.sceneId) : null,
+          sceneIds: Array.isArray(payload.sceneIds)
+            ? Array.from(new Set(payload.sceneIds.map(Number).filter((id: number) => Number.isFinite(id) && id > 0)))
+            : [],
+          narration: typeof payload.narration === "string" ? payload.narration.trim().slice(0, 1200) || null : null,
+          dialogue: typeof payload.dialogue === "string" ? payload.dialogue.trim().slice(0, 1200) || null : null,
+          renderMode,
+          thumbnailHeadline:
+            typeof payload.thumbnailHeadline === "string"
+              ? payload.thumbnailHeadline.trim().slice(0, 160) || null
+              : null,
+          thumbnailSubHeadline:
+            typeof payload.thumbnailSubHeadline === "string"
+              ? payload.thumbnailSubHeadline.trim().slice(0, 240) || null
+              : null,
+          thumbnailSceneId:
+            Number.isFinite(Number(payload.thumbnailSceneId))
+              ? Number(payload.thumbnailSceneId)
+              : null,
+        },
+        status: "pending" as const,
+      };
+    });
+}
 
 function CreatorWorkspaceIcon({ name }: { name: CreatorWorkspaceIconName }) {
   const sharedProps = {
@@ -510,6 +658,14 @@ type CreatorUndoEntry = {
   createdAt: string;
   scenes: Scene[];
   productionPackage: CreatorProductionPackage | null;
+  directorState: {
+    input: string;
+    selectedStrategyDirectionId: string;
+    selectedHookPattern: string;
+    thumbnailStudio: CreatorThumbnailStudioState;
+    thumbnailResult: YoutubeThumbnailResult | null;
+    releaseConfirmations: Record<CreatorReleaseConfirmationKey, boolean>;
+  };
 };
 
 type YoutubeMetadataResult = {
@@ -2782,7 +2938,34 @@ export default function CreatePage() {
   const [creatorDirectorInput, setCreatorDirectorInput] = useState("");
   const [creatorDirectorLoading, setCreatorDirectorLoading] = useState(false);
   const [creatorDirectorError, setCreatorDirectorError] = useState("");
+  const [creatorDirectorActionBusyId, setCreatorDirectorActionBusyId] = useState("");
+  const [creatorDirectorPendingAction, setCreatorDirectorPendingAction] = useState<{
+    messageId: string;
+    actionId: string;
+  } | null>(null);
+  const [creatorDirectorActionConfirmed, setCreatorDirectorActionConfirmed] = useState(false);
   const creatorDirectorMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const creatorDirectorDialogRef = useRef<HTMLElement | null>(null);
+  const creatorProjectsDialogRef = useRef<HTMLElement | null>(null);
+  const creatorDirectorInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const creatorProjectsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const creatorDirectorTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const creatorDrawerReturnFocusRef = useRef<HTMLElement | null>(null);
+  const creatorTelemetrySentRef = useRef<Set<string>>(new Set());
+  const [creatorTelemetryLastEvent, setCreatorTelemetryLastEvent] = useState("");
+  const [creatorOpsStatus, setCreatorOpsStatus] = useState<CreatorOpsStatus>({
+    status: "idle",
+    checkedAt: "",
+    release: "",
+    requestId: "",
+    services: {
+      database: false,
+      ai: false,
+      voice: false,
+      video: false,
+    },
+    message: "",
+  });
   const [userRole, setUserRole] = useState<"parent" | "admin" | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
   const [input, setInput] = useState("");
@@ -2940,6 +3123,130 @@ export default function CreatePage() {
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
   const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
   const [exportSignature, setExportSignature] = useState("");
+
+  const getCreatorTelemetrySessionId = () => {
+    if (typeof window === "undefined") return "server";
+
+    const storageKey = "velto.creatorlab.telemetry-session";
+    const existing = window.sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+
+    const next =
+      typeof window.crypto?.randomUUID === "function"
+        ? window.crypto.randomUUID()
+        : `creator-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    window.sessionStorage.setItem(storageKey, next);
+    return next;
+  };
+
+  const emitCreatorTelemetry = async (
+    eventName: CreatorTelemetryEventName,
+    metadata: Record<string, string | number | boolean | null> = {},
+  ) => {
+    if (!isCreatorLabFlow) return;
+
+    setCreatorTelemetryLastEvent(eventName);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return;
+
+      await fetch("/api/creator-analytics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        keepalive: true,
+        body: JSON.stringify({
+          eventName,
+          sessionId: getCreatorTelemetrySessionId(),
+          stage: creatorWorkspaceStep,
+          projectState: currentProjectId ? "saved" : "draft",
+          metadata,
+        }),
+      });
+    } catch (telemetryError) {
+      console.warn("CreatorLab telemetry delivery failed:", telemetryError);
+    }
+  };
+
+  const refreshCreatorOpsStatus = async () => {
+    if (!isCreatorLabFlow) return;
+
+    setCreatorOpsStatus((previous) => ({
+      ...previous,
+      status: "checking",
+      message: "",
+    }));
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "A valid session is required for the operational check."
+            : "Operasyon kontrolü için geçerli oturum gerekli.",
+        );
+      }
+
+      const response = await fetch("/api/creator-health", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "CreatorLab operational status could not be checked."
+              : "CreatorLab operasyon durumu kontrol edilemedi."),
+        );
+      }
+
+      setCreatorOpsStatus({
+        status:
+          data.status === "ready" ||
+          data.status === "degraded" ||
+          data.status === "blocked"
+            ? data.status
+            : "error",
+        checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : "",
+        release: typeof data.release === "string" ? data.release : "",
+        requestId: typeof data.requestId === "string" ? data.requestId : "",
+        services: {
+          database: Boolean(data.services?.database),
+          ai: Boolean(data.services?.ai),
+          voice: Boolean(data.services?.voice),
+          video: Boolean(data.services?.video),
+        },
+        message: typeof data.message === "string" ? data.message : "",
+      });
+    } catch (opsError) {
+      setCreatorOpsStatus((previous) => ({
+        ...previous,
+        status: "error",
+        checkedAt: new Date().toISOString(),
+        message:
+          opsError instanceof Error
+            ? opsError.message
+            : uiLanguage === "en"
+              ? "CreatorLab operational status could not be checked."
+              : "CreatorLab operasyon durumu kontrol edilemedi.",
+      }));
+    }
+  };
 
   useEffect(() => {
     setCreatorPackageDownloaded(false);
@@ -3520,13 +3827,31 @@ export default function CreatePage() {
       publish: {
         finalVideoReady: Boolean(exportedMovieUrl),
         thumbnailSelected: Boolean(youtubeThumbnailResult?.imageUrl),
+        thumbnailHeadline:
+          creatorThumbnailStudio.headline || youtubeThumbnailResult?.headline || null,
+        thumbnailSubHeadline:
+          creatorThumbnailStudio.subHeadline || youtubeThumbnailResult?.subHeadline || null,
         metadataReady: Boolean(youtubeMetadataResult),
         creatorConfirmations: creatorReleaseConfirmations,
         packageDownloaded: creatorPackageDownloaded,
       },
       safety: {
         paidMediaRequiresExplicitConfirmation: true,
-        directorCanApplyChanges: false,
+        releaseRequiresExplicitConfirmation: true,
+        directorCanApplyChanges: true,
+        directorRequiresUserApproval: true,
+        supportedActions: [
+          "update_brief_topic",
+          "update_strategy_hook",
+          "update_scene_script",
+          "set_scene_output",
+          "update_thumbnail_copy",
+          "select_thumbnail_scene",
+          "generate_selected_visuals",
+          "generate_selected_voice",
+          "generate_selected_videos",
+          "export_creator_package",
+        ],
       },
     };
   };
@@ -3586,6 +3911,7 @@ export default function CreatePage() {
         role: "assistant",
         content: String(data?.answer || "").trim(),
         createdAt: new Date().toISOString(),
+        actions: normalizeCreatorDirectorActions(data?.actions),
         usage: data?.usage || null,
       };
 
@@ -5144,7 +5470,7 @@ export default function CreatePage() {
   };
 
   const pushCreatorUndoSnapshot = (label: string) => {
-    if (!isCreatorLabFlow || scenes.length === 0) {
+    if (!isCreatorLabFlow) {
       return;
     }
 
@@ -5156,6 +5482,16 @@ export default function CreatePage() {
       productionPackage: creatorProductionPackage
         ? cloneCreatorHistoryValue(creatorProductionPackage)
         : null,
+      directorState: {
+        input,
+        selectedStrategyDirectionId: creatorSelectedStrategyDirectionId,
+        selectedHookPattern: creatorSelectedHookPattern,
+        thumbnailStudio: cloneCreatorHistoryValue(creatorThumbnailStudio),
+        thumbnailResult: youtubeThumbnailResult
+          ? cloneCreatorHistoryValue(youtubeThumbnailResult)
+          : null,
+        releaseConfirmations: cloneCreatorHistoryValue(creatorReleaseConfirmations),
+      },
     };
 
     setCreatorUndoStack((prev) => [...prev, entry].slice(-CREATOR_UNDO_LIMIT));
@@ -5174,6 +5510,18 @@ export default function CreatePage() {
     setScenes(restoredScenes);
     setCreatorProductionPackage(
       entry.productionPackage ? cloneCreatorHistoryValue(entry.productionPackage) : null,
+    );
+    setInput(entry.directorState.input);
+    setCreatorSelectedStrategyDirectionId(entry.directorState.selectedStrategyDirectionId);
+    setCreatorSelectedHookPattern(entry.directorState.selectedHookPattern);
+    setCreatorThumbnailStudio(cloneCreatorHistoryValue(entry.directorState.thumbnailStudio));
+    setYoutubeThumbnailResult(
+      entry.directorState.thumbnailResult
+        ? cloneCreatorHistoryValue(entry.directorState.thumbnailResult)
+        : null,
+    );
+    setCreatorReleaseConfirmations(
+      cloneCreatorHistoryValue(entry.directorState.releaseConfirmations),
     );
     setCreatorUndoStack((prev) => prev.slice(0, -1));
     setCreatorSelectedSceneIds((prev) =>
@@ -5365,7 +5713,7 @@ export default function CreatePage() {
 
     if (!scene) {
       setError("Sahne bulunamadı.");
-      return;
+      return false;
     }
 
     if (isCreatorLabFlow && scene.renderMode !== "video") {
@@ -5374,16 +5722,16 @@ export default function CreatePage() {
           ? "Select Video as this scene's output before starting video generation."
           : "Video üretimini başlatmadan önce bu sahnenin çıktısını Video olarak seç.",
       );
-      return;
+      return false;
     }
 
     if (!(await prepareCreatorMediaAction("ai_video_blocks"))) {
-      return;
+      return false;
     }
 
     if (!scene.image) {
       setError("Önce sahne görseli hazır olmalı.");
-      return;
+      return false;
     }
 
     clearVideoPollForScene(sceneId);
@@ -5456,6 +5804,7 @@ export default function CreatePage() {
       );
 
       pollVideoStatus(sceneId, data.taskId);
+      return true;
     } catch (e: any) {
       console.error("handleGenerateVideo error:", e);
 
@@ -5471,6 +5820,7 @@ export default function CreatePage() {
       );
 
       setError(e?.message || "Video oluşturulurken bir hata oluştu.");
+      return false;
     }
   };
 
@@ -5775,8 +6125,12 @@ export default function CreatePage() {
     }
   };
 
-  const generateSelectedSceneVisuals = async () => {
-    const selectedSceneIdSet = new Set(creatorSelectedSceneIds);
+  const generateSelectedSceneVisuals = async (sceneIdsOverride?: number[]) => {
+    const selectedSceneIdSet = new Set(
+      Array.isArray(sceneIdsOverride) && sceneIdsOverride.length > 0
+        ? sceneIdsOverride
+        : creatorSelectedSceneIds,
+    );
     const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
     const targetScenes = selectedScenes.filter((scene) => !scene.image);
 
@@ -5786,7 +6140,7 @@ export default function CreatePage() {
           ? "Select at least one scene before generating visuals."
           : "Görsel üretmeden önce en az bir sahne seç.",
       );
-      return;
+      return false;
     }
 
     if (targetScenes.length === 0) {
@@ -5796,11 +6150,11 @@ export default function CreatePage() {
           ? "All selected scenes already have visuals. Use each scene inspector to regenerate a specific asset."
           : "Seçili sahnelerin tümünde görsel hazır. Belirli bir varlığı yeniden üretmek için ilgili sahne denetleyicisini kullan.",
       );
-      return;
+      return true;
     }
 
     if (!(await prepareCreatorMediaAction("visuals"))) {
-      return;
+      return false;
     }
 
     setError("");
@@ -5908,6 +6262,8 @@ export default function CreatePage() {
       setIsBatchRendering(false);
       setRedrawLoadingId(null);
     }
+
+    return !batchRenderCancelRef.current && !hasFailure;
   };
 
   const generateAllAiVideoBlocks = async () => {
@@ -6821,8 +7177,12 @@ export default function CreatePage() {
     }
   };
 
-  const prepareSelectedSceneAudio = async () => {
-    const selectedSceneIdSet = new Set(creatorSelectedSceneIds);
+  const prepareSelectedSceneAudio = async (sceneIdsOverride?: number[]) => {
+    const selectedSceneIdSet = new Set(
+      Array.isArray(sceneIdsOverride) && sceneIdsOverride.length > 0
+        ? sceneIdsOverride
+        : creatorSelectedSceneIds,
+    );
     const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
     const targetScenes = selectedScenes.filter((scene) => !getSceneVoiceStatus(scene));
 
@@ -6832,7 +7192,7 @@ export default function CreatePage() {
           ? "Select at least one scene before generating voice-over."
           : "Seslendirme üretmeden önce en az bir sahne seç.",
       );
-      return;
+      return false;
     }
 
     if (targetScenes.length === 0) {
@@ -6842,17 +7202,18 @@ export default function CreatePage() {
           ? "Voice-over is already ready for all selected scenes."
           : "Seçili sahnelerin tümünde seslendirme hazır.",
       );
-      return;
+      return true;
     }
 
     if (!(await prepareCreatorMediaAction("voice_over"))) {
-      return;
+      return false;
     }
 
     setError("");
     setSaveMessage("");
     setIsPreparingAudio(true);
     suspendAutosaveRef.current = true;
+    let actionSucceeded = false;
 
     try {
       for (const scene of targetScenes) {
@@ -6880,6 +7241,7 @@ export default function CreatePage() {
           ? `${targetScenes.length} selected scene voice track(s) prepared.`
           : `${targetScenes.length} seçili sahnenin seslendirmesi hazırlandı.`,
       );
+      actionSucceeded = true;
     } catch (e: any) {
       console.error("prepareSelectedSceneAudio error:", e);
       setError(
@@ -6894,6 +7256,8 @@ export default function CreatePage() {
       setLoadingAudioSceneId(null);
       setLoadingDialogueSceneId(null);
     }
+
+    return actionSucceeded;
   };
 
   const continueCreatorProduction = async () => {
@@ -9438,7 +9802,7 @@ export default function CreatePage() {
           ? "Create a production package first."
           : "Önce üretim paketini oluşturmalısın."
       );
-      return;
+      return false;
     }
 
     const finalVideoUrl =
@@ -9450,13 +9814,19 @@ export default function CreatePage() {
           ? "Create the final movie first."
           : "Önce final filmi oluşturmalısın."
       );
-      return;
+      return false;
     }
 
     setIsDownloadingCreatorPackage(true);
     setYoutubeMetadataLoading(!youtubeMetadataResult);
     setError("");
     setSaveMessage("");
+    void emitCreatorTelemetry("export_started", {
+      qualityMode: creatorQualityMode,
+      format: creatorFormat,
+      sceneCount: scenes.length,
+      targetPlatformCount: creatorTargetPlatforms.length,
+    });
 
     try {
       const metadataForExport = await prepareCreatorPublishMetadata();
@@ -9538,6 +9908,12 @@ export default function CreatePage() {
       window.URL.revokeObjectURL(blobUrl);
 
       setCreatorPackageDownloaded(true);
+      void emitCreatorTelemetry("export_succeeded", {
+        qualityMode: creatorQualityMode,
+        format: creatorFormat,
+        sceneCount: scenes.length,
+        warningCount: packageWarningCount,
+      });
       setSaveMessage(
         packageWarningCount > 0
           ? uiLanguage === "en"
@@ -9547,9 +9923,16 @@ export default function CreatePage() {
             ? "Publish-ready Creator Package downloaded."
             : "Yayına hazır Creator Paketi indirildi."
       );
+      return true;
     } catch (e: any) {
       console.error("handleDownloadCreatorPackage error:", e);
+      void emitCreatorTelemetry("export_failed", {
+        qualityMode: creatorQualityMode,
+        format: creatorFormat,
+        errorCategory: e instanceof Error ? e.name : "unknown",
+      });
       setError(e?.message || "Creator package indirilemedi.");
+      return false;
     } finally {
       setIsDownloadingCreatorPackage(false);
       setYoutubeMetadataLoading(false);
@@ -10407,9 +10790,12 @@ export default function CreatePage() {
     );
   };
 
-  const saveCreatorSceneScript = (sceneId: number) => {
+  const saveCreatorSceneScript = (
+    sceneId: number,
+    draftOverride?: CreatorSceneScriptDraft,
+  ) => {
     const existingScene = scenes.find((scene) => scene.id === sceneId);
-    const draft = sceneScriptDrafts[sceneId];
+    const draft = draftOverride || sceneScriptDrafts[sceneId];
 
     if (!existingScene || !draft) {
       setError(
@@ -10417,7 +10803,7 @@ export default function CreatePage() {
           ? "The editable scene script could not be found."
           : "Düzenlenebilir sahne metni bulunamadı.",
       );
-      return;
+      return false;
     }
 
     const narration = normalizeCreatorScriptText(draft.narration);
@@ -10429,7 +10815,7 @@ export default function CreatePage() {
           ? "Narration or dialogue is required."
           : "Anlatım veya diyalog metni gerekli.",
       );
-      return;
+      return false;
     }
 
     const assessment = assessCreatorSceneScriptDraft({
@@ -10562,6 +10948,380 @@ export default function CreatePage() {
             ? "Script saved. Timing and visual beats are render-safe."
             : "Metin kaydedildi. Süre ve görsel akış render için güvenli.",
     );
+    return true;
+  };
+
+  const updateCreatorDirectorActionState = (
+    messageId: string,
+    actionId: string,
+    patch: Partial<CreatorDirectorAction>,
+  ) => {
+    setCreatorDirectorMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              actions: message.actions?.map((action) =>
+                action.id === actionId ? { ...action, ...patch } : action,
+              ),
+            }
+          : message,
+      ),
+    );
+  };
+
+  const dismissCreatorDirectorAction = (
+    messageId: string,
+    actionId: string,
+  ) => {
+    updateCreatorDirectorActionState(messageId, actionId, {
+      status: "dismissed",
+      error: "",
+    });
+    if (
+      creatorDirectorPendingAction?.messageId === messageId &&
+      creatorDirectorPendingAction.actionId === actionId
+    ) {
+      setCreatorDirectorPendingAction(null);
+      setCreatorDirectorActionConfirmed(false);
+    }
+  };
+
+  const getCreatorDirectorActionSceneIds = (
+    action: CreatorDirectorAction,
+  ): number[] => {
+    const requestedIds: number[] = action.payload.sceneIds.length > 0
+      ? action.payload.sceneIds
+      : action.payload.sceneId
+        ? [action.payload.sceneId]
+        : creatorSelectedSceneIds;
+    const availableIds = new Set<number>(scenes.map((scene) => scene.id));
+    const normalizedIds = requestedIds
+      .map((value) => Number(value))
+      .filter(
+        (sceneId): sceneId is number =>
+          Number.isFinite(sceneId) && availableIds.has(sceneId),
+      );
+
+    return Array.from(new Set<number>(normalizedIds));
+  };
+
+  const runCreatorDirectorVideoGeneration = async (sceneIds: number[]) => {
+    const targetScenes = scenes.filter((scene) => sceneIds.includes(scene.id));
+
+    if (targetScenes.length === 0) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "The selected video scenes are no longer available."
+          : "Seçilen video sahneleri artık mevcut değil.",
+      );
+    }
+
+    const invalidScene = targetScenes.find(
+      (scene) => scene.renderMode !== "video" || !scene.image,
+    );
+    if (invalidScene) {
+      throw new Error(
+        uiLanguage === "en"
+          ? `Scene ${invalidScene.id} must use Video output and have a ready image first.`
+          : `Sahne ${invalidScene.id} önce Video çıktısını kullanmalı ve hazır bir görsele sahip olmalı.`,
+      );
+    }
+
+    for (const scene of targetScenes) {
+      const started = await handleGenerateVideo(scene.id);
+      if (!started) {
+        throw new Error(
+          uiLanguage === "en"
+            ? `Video generation could not be started for Scene ${scene.id}.`
+            : `Sahne ${scene.id} için video üretimi başlatılamadı.`,
+        );
+      }
+    }
+  };
+
+  const applyCreatorDirectorAction = async (
+    messageId: string,
+    action: CreatorDirectorAction,
+    confirmed = false,
+  ) => {
+    if (
+      creatorDirectorActionBusyId ||
+      action.status === "running" ||
+      action.status === "applied" ||
+      action.status === "dismissed"
+    ) {
+      return;
+    }
+
+    if (action.requiresExplicitConfirmation && !confirmed) {
+      setCreatorDirectorPendingAction({ messageId, actionId: action.id });
+      setCreatorDirectorActionConfirmed(false);
+      return;
+    }
+
+    setCreatorDirectorActionBusyId(action.id);
+    updateCreatorDirectorActionState(messageId, action.id, {
+      status: "running",
+      error: "",
+    });
+    setCreatorDirectorError("");
+    setError("");
+
+    try {
+      if (action.type === "update_brief_topic") {
+        if (creatorWorkspaceStep !== 1 || !action.payload.topic) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This brief change is no longer valid in the current stage."
+              : "Bu brief değişikliği mevcut aşamada artık geçerli değil.",
+          );
+        }
+        pushCreatorUndoSnapshot(
+          uiLanguage === "en" ? "Apply Director brief change" : "Director brief değişikliğini uygula",
+        );
+        setInput(action.payload.topic);
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Creator Director brief change applied."
+            : "Creator Director brief değişikliği uygulandı.",
+        );
+      } else if (action.type === "update_strategy_hook") {
+        if (creatorWorkspaceStep !== 2 || !action.payload.hook) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This strategy change is no longer valid in the current stage."
+              : "Bu strateji değişikliği mevcut aşamada artık geçerli değil.",
+          );
+        }
+        pushCreatorUndoSnapshot(
+          uiLanguage === "en" ? "Apply Director hook change" : "Director açılış değişikliğini uygula",
+        );
+        setCreatorSelectedHookPattern(action.payload.hook);
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Creator Director opening direction applied."
+            : "Creator Director açılış yönü uygulandı.",
+        );
+      } else if (action.type === "update_scene_script") {
+        if (creatorWorkspaceStep !== 3 || !action.payload.sceneId) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This scene change is no longer valid in the current stage."
+              : "Bu sahne değişikliği mevcut aşamada artık geçerli değil.",
+          );
+        }
+        const currentScene = scenes.find((scene) => scene.id === action.payload.sceneId);
+        if (!currentScene) {
+          throw new Error(
+            uiLanguage === "en" ? "The target scene was not found." : "Hedef sahne bulunamadı.",
+          );
+        }
+        const saved = saveCreatorSceneScript(action.payload.sceneId, {
+          narration: action.payload.narration ?? currentScene.narration,
+          dialogue: action.payload.dialogue ?? currentScene.dialogue,
+        });
+        if (!saved) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "The proposed scene script could not be applied."
+              : "Önerilen sahne metni uygulanamadı.",
+          );
+        }
+      } else if (action.type === "set_scene_output") {
+        if (creatorWorkspaceStep !== 3 || !action.payload.renderMode) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This scene-output change is no longer valid."
+              : "Bu sahne çıktı değişikliği artık geçerli değil.",
+          );
+        }
+        const sceneIds = getCreatorDirectorActionSceneIds(action);
+        if (sceneIds.length === 0) {
+          throw new Error(
+            uiLanguage === "en" ? "No valid scenes were found." : "Geçerli sahne bulunamadı.",
+          );
+        }
+        if (
+          action.payload.renderMode === "video" &&
+          creatorQualityMode !== "pro" &&
+          creatorQualityMode !== "cinematic"
+        ) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Video output requires Pro or Cinematic Production Quality."
+              : "Video çıktısı Pro veya Cinematic Production Quality gerektiriyor.",
+          );
+        }
+        setCreatorScenesRenderMode(sceneIds, action.payload.renderMode);
+      } else if (action.type === "update_thumbnail_copy") {
+        if (creatorWorkspaceStep !== 4) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Thumbnail copy can only be changed in Publish & Export."
+              : "Thumbnail metni yalnızca Yayınla ve Dışa Aktar aşamasında değiştirilebilir.",
+          );
+        }
+        if (!action.payload.thumbnailHeadline && !action.payload.thumbnailSubHeadline) {
+          throw new Error(
+            uiLanguage === "en" ? "No thumbnail copy was proposed." : "Thumbnail metni önerilmedi.",
+          );
+        }
+        pushCreatorUndoSnapshot(
+          uiLanguage === "en" ? "Apply Director thumbnail copy" : "Director thumbnail metnini uygula",
+        );
+        setCreatorThumbnailStudio((prev) => ({
+          ...prev,
+          headline: action.payload.thumbnailHeadline ?? prev.headline,
+          subHeadline: action.payload.thumbnailSubHeadline ?? prev.subHeadline,
+        }));
+        setYoutubeThumbnailResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                headline: action.payload.thumbnailHeadline ?? prev.headline,
+                subHeadline: action.payload.thumbnailSubHeadline ?? prev.subHeadline,
+                design: {
+                  ...creatorThumbnailStudio,
+                  headline: action.payload.thumbnailHeadline ?? creatorThumbnailStudio.headline,
+                  subHeadline:
+                    action.payload.thumbnailSubHeadline ?? creatorThumbnailStudio.subHeadline,
+                },
+              }
+            : prev,
+        );
+        setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Creator Director thumbnail copy applied."
+            : "Creator Director thumbnail metni uygulandı.",
+        );
+      } else if (action.type === "select_thumbnail_scene") {
+        if (creatorWorkspaceStep !== 4 || !action.payload.thumbnailSceneId) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This thumbnail selection is no longer valid."
+              : "Bu thumbnail seçimi artık geçerli değil.",
+          );
+        }
+        const scene = scenes.find((item) => item.id === action.payload.thumbnailSceneId);
+        if (!scene?.image) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "The proposed scene no longer has a ready image."
+              : "Önerilen sahnede artık hazır görsel bulunmuyor.",
+          );
+        }
+        pushCreatorUndoSnapshot(
+          uiLanguage === "en" ? "Apply Director thumbnail selection" : "Director thumbnail seçimini uygula",
+        );
+        handleSelectSceneAsYoutubeThumbnail(scene);
+      } else if (action.type === "generate_selected_visuals") {
+        if (creatorWorkspaceStep !== 3) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Visual generation is only available in Production."
+              : "Görsel üretimi yalnızca Üretim aşamasında kullanılabilir.",
+          );
+        }
+        const sceneIds = getCreatorDirectorActionSceneIds(action);
+        if (sceneIds.length === 0) {
+          throw new Error(
+            uiLanguage === "en" ? "No valid scenes were selected." : "Geçerli sahne seçilmedi.",
+          );
+        }
+        setCreatorSelectedSceneIds(sceneIds);
+        const generated = await generateSelectedSceneVisuals(sceneIds);
+        if (!generated) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "The selected visuals could not be completed."
+              : "Seçili görseller tamamlanamadı.",
+          );
+        }
+      } else if (action.type === "generate_selected_voice") {
+        if (creatorWorkspaceStep !== 3) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Voice generation is only available in Production."
+              : "Ses üretimi yalnızca Üretim aşamasında kullanılabilir.",
+          );
+        }
+        const sceneIds = getCreatorDirectorActionSceneIds(action);
+        if (sceneIds.length === 0) {
+          throw new Error(
+            uiLanguage === "en" ? "No valid scenes were selected." : "Geçerli sahne seçilmedi.",
+          );
+        }
+        setCreatorSelectedSceneIds(sceneIds);
+        const generated = await prepareSelectedSceneAudio(sceneIds);
+        if (!generated) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "The selected voice tracks could not be completed."
+              : "Seçili seslendirmeler tamamlanamadı.",
+          );
+        }
+      } else if (action.type === "generate_selected_videos") {
+        if (creatorWorkspaceStep !== 3) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Video generation is only available in Production."
+              : "Video üretimi yalnızca Üretim aşamasında kullanılabilir.",
+          );
+        }
+        const sceneIds = getCreatorDirectorActionSceneIds(action);
+        await runCreatorDirectorVideoGeneration(sceneIds);
+      } else if (action.type === "export_creator_package") {
+        if (creatorWorkspaceStep !== 4 || !creatorReleaseReady) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Complete all release checks before exporting the Creator Package."
+              : "Creator Paketi dışa aktarılmadan önce tüm yayın kontrollerini tamamla.",
+          );
+        }
+        const downloaded = await handleDownloadCreatorPackage();
+        if (!downloaded) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "Creator Package export could not be completed."
+              : "Creator Paketi dışa aktarımı tamamlanamadı.",
+          );
+        }
+      }
+
+      updateCreatorDirectorActionState(messageId, action.id, {
+        status: "applied",
+        error: "",
+      });
+      void emitCreatorTelemetry("director_action_applied", {
+        actionType: action.type,
+        impact: action.impact,
+        requiresConfirmation: action.requiresExplicitConfirmation,
+        affectedSceneCount: getCreatorDirectorActionSceneIds(action).length,
+      });
+    } catch (actionError) {
+      const message =
+        actionError instanceof Error
+          ? actionError.message
+          : uiLanguage === "en"
+            ? "The proposed action could not be completed."
+            : "Önerilen aksiyon tamamlanamadı.";
+      updateCreatorDirectorActionState(messageId, action.id, {
+        status: "error",
+        error: message,
+      });
+      setCreatorDirectorError(message);
+      void emitCreatorTelemetry("director_action_failed", {
+        actionType: action.type,
+        impact: action.impact,
+        errorCategory: actionError instanceof Error ? actionError.name : "unknown",
+      });
+    } finally {
+      setCreatorDirectorActionBusyId("");
+      setCreatorDirectorPendingAction(null);
+      setCreatorDirectorActionConfirmed(false);
+    }
   };
 
   const autoFitCreatorSceneScript = async (sceneId: number) => {
@@ -11900,8 +12660,25 @@ export default function CreatePage() {
     }, targetStep && targetStep !== creatorWorkspaceStep ? 90 : 30);
   };
 
-  const navigateFromCreatorDirector = (targetId: string) => {
+  const restoreCreatorDrawerFocus = () => {
+    const focusTarget = creatorDrawerReturnFocusRef.current;
+    window.requestAnimationFrame(() => focusTarget?.focus());
+  };
+
+  const closeCreatorDirector = (restoreFocus = true) => {
     setCreatorDirectorOpen(false);
+    setCreatorDirectorPendingAction(null);
+    setCreatorDirectorActionConfirmed(false);
+    if (restoreFocus) restoreCreatorDrawerFocus();
+  };
+
+  const closeCreatorProjectsDrawer = (restoreFocus = true) => {
+    setCreatorProjectsDrawerOpen(false);
+    if (restoreFocus) restoreCreatorDrawerFocus();
+  };
+
+  const navigateFromCreatorDirector = (targetId: string) => {
+    closeCreatorDirector();
     window.setTimeout(() => scrollCreatorWorkspaceTo(targetId), 40);
   };
 
@@ -12356,20 +13133,72 @@ export default function CreatePage() {
       return;
     }
 
+    const activeDialog = creatorDirectorOpen
+      ? creatorDirectorDialogRef.current
+      : creatorProjectsDialogRef.current;
+
+    if (!activeDialog) return;
+
     const previousOverflow = document.body.style.overflow;
+    const focusableSelector = [
+      "button:not([disabled])",
+      "a[href]",
+      "input:not([disabled])",
+      "textarea:not([disabled])",
+      "select:not([disabled])",
+      "summary",
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+    const getFocusableElements = () =>
+      Array.from(activeDialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) =>
+          !element.hasAttribute("hidden") &&
+          element.getAttribute("aria-hidden") !== "true" &&
+          element.getClientRects().length > 0,
+      );
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const initialTarget = creatorDirectorOpen
+        ? creatorDirectorInputRef.current || getFocusableElements()[0]
+        : getFocusableElements()[0];
+      (initialTarget || activeDialog).focus();
+    });
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (creatorDirectorOpen) closeCreatorDirector();
+        else closeCreatorProjectsDrawer();
         return;
       }
 
-      setCreatorProjectsDrawerOpen(false);
-      setCreatorDirectorOpen(false);
+      if (event.key !== "Tab") return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        activeDialog.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && (activeElement === firstElement || !activeDialog.contains(activeElement))) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
     };
 
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -12386,7 +13215,12 @@ export default function CreatePage() {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [creatorDirectorLoading, creatorDirectorMessages, creatorDirectorOpen]);
+  }, [
+    creatorDirectorLoading,
+    creatorDirectorMessages,
+    creatorDirectorOpen,
+    creatorDirectorPendingAction,
+  ]);
 
   const creatorDirectorContextLabel = creatorWorkspaceStep === 1
     ? "Brief"
@@ -12582,6 +13416,108 @@ export default function CreatePage() {
       complete: !!exportedMovieUrl,
     },
   ];
+
+  useEffect(() => {
+    if (
+      !isCreatorLabFlow ||
+      authLoading ||
+      roleLoading ||
+      creatorOpsStatus.status !== "idle" ||
+      !creatorProjectsDrawerOpen
+    ) {
+      return;
+    }
+
+    void refreshCreatorOpsStatus();
+  }, [
+    isCreatorLabFlow,
+    authLoading,
+    roleLoading,
+    creatorProjectsDrawerOpen,
+    creatorOpsStatus.status,
+  ]);
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || authLoading || roleLoading) return;
+
+    const stageName =
+      creatorWorkspaceStep === 1
+        ? "brief"
+        : creatorWorkspaceStep === 2
+          ? "strategy"
+          : creatorWorkspaceStep === 3
+            ? "production"
+            : "publish";
+    const projectScope = currentProjectId ? "saved" : "draft";
+    const projectTelemetryKey = currentProjectId || "draft";
+    const commonMetadata = {
+      stageName,
+      projectScope,
+      qualityMode: creatorQualityMode,
+      format: creatorFormat,
+      sceneCount: scenes.length,
+      readinessPercent: creatorReadinessPercent,
+      targetPlatformCount: creatorTargetPlatforms.length,
+    };
+
+    const events: Array<{
+      name: CreatorTelemetryEventName;
+      ready: boolean;
+      key: string;
+    }> = [
+      {
+        name: "workspace_opened",
+        ready: true,
+        key: `${projectTelemetryKey}:workspace`,
+      },
+      {
+        name: "stage_viewed",
+        ready: true,
+        key: `${projectTelemetryKey}:stage:${creatorWorkspaceStep}`,
+      },
+      {
+        name: "brief_ready",
+        ready: creatorBriefComplete,
+        key: `${projectTelemetryKey}:brief-ready`,
+      },
+      {
+        name: "strategy_ready",
+        ready: creatorStrategyComplete,
+        key: `${projectTelemetryKey}:strategy-ready`,
+      },
+      {
+        name: "production_ready",
+        ready: creatorProductionComplete,
+        key: `${projectTelemetryKey}:production-ready`,
+      },
+      {
+        name: "package_exported",
+        ready: creatorPublishComplete,
+        key: `${projectTelemetryKey}:package-exported`,
+      },
+    ];
+
+    events.forEach((event) => {
+      if (!event.ready || creatorTelemetrySentRef.current.has(event.key)) return;
+      creatorTelemetrySentRef.current.add(event.key);
+      void emitCreatorTelemetry(event.name, commonMetadata);
+    });
+  }, [
+    isCreatorLabFlow,
+    authLoading,
+    roleLoading,
+    creatorWorkspaceStep,
+    currentProjectId,
+    creatorQualityMode,
+    creatorFormat,
+    scenes.length,
+    creatorReadinessPercent,
+    creatorTargetPlatforms.length,
+    creatorBriefComplete,
+    creatorStrategyComplete,
+    creatorProductionComplete,
+    creatorPublishComplete,
+  ]);
 
   if (authLoading) {
     return <div style={{ padding: 40 }}>{ui.loading}</div>;
@@ -13150,6 +14086,250 @@ export default function CreatePage() {
 .creatorlab-director-message.is-loading p {
   color: var(--cl-muted) !important;
   font-style: italic;
+}
+
+.creatorlab-director-action-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.creatorlab-director-action-card {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  background: #ffffff;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(14, 32, 58, 0.05);
+}
+
+.creatorlab-director-action-card.is-applied {
+  border-color: #b8d8c6;
+  background: #fbfffc;
+}
+
+.creatorlab-director-action-card.is-error {
+  border-color: #efc4bf;
+  background: #fffdfc;
+}
+
+.creatorlab-director-action-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.creatorlab-director-action-heading > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.creatorlab-director-action-heading small {
+  color: var(--cl-soft);
+  font-size: 0.58rem;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.creatorlab-director-action-heading strong {
+  color: var(--cl-text-strong);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.creatorlab-director-action-heading > span {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  font-size: 0.56rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.creatorlab-director-action-heading > span.is-none {
+  color: #276749;
+  background: #f0fff4;
+  border-color: #c6e7d3;
+}
+
+.creatorlab-director-action-heading > span.is-credit_variable {
+  color: #8a5a12;
+  background: #fff9eb;
+  border-color: #ecd8a7;
+}
+
+.creatorlab-director-action-heading > span.is-release {
+  color: #5a46a3;
+  background: #f7f4ff;
+  border-color: #d8d0f2;
+}
+
+.creatorlab-director-message .creatorlab-director-action-description {
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--cl-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-size: 0.68rem !important;
+  line-height: 1.45;
+}
+
+.creatorlab-director-change-list {
+  display: grid;
+  gap: 6px;
+}
+
+.creatorlab-director-change-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 3px 7px;
+  align-items: start;
+  padding: 8px;
+  background: #f7f9fc;
+  border: 1px solid var(--cl-border);
+  border-radius: 9px;
+}
+
+.creatorlab-director-change-list strong {
+  grid-column: 1 / -1;
+  color: var(--cl-text-strong);
+  font-size: 0.62rem;
+}
+
+.creatorlab-director-change-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--cl-muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.creatorlab-director-change-list span:last-child {
+  color: var(--cl-text-strong);
+  font-weight: 680;
+}
+
+.creatorlab-director-change-list i {
+  color: var(--cl-soft);
+  font-size: 0.65rem;
+  font-style: normal;
+}
+
+.creatorlab-director-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.creatorlab-director-action-buttons button,
+.creatorlab-director-action-status button {
+  min-height: 31px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  font-size: 0.62rem;
+  font-weight: 760;
+}
+
+.creatorlab-director-action-secondary {
+  color: var(--cl-muted);
+  background: #ffffff;
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-director-action-primary {
+  color: #ffffff;
+  background: var(--cl-accent);
+  border: 1px solid var(--cl-accent);
+}
+
+.creatorlab-director-action-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.creatorlab-director-confirmation {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  background: #fff9eb;
+  border: 1px solid #ecd8a7;
+  border-radius: 9px;
+}
+
+.creatorlab-director-confirmation > strong {
+  color: #71460d;
+  font-size: 0.68rem;
+}
+
+.creatorlab-director-message .creatorlab-director-confirmation > p {
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #7a633b !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-size: 0.62rem !important;
+  line-height: 1.45;
+}
+
+.creatorlab-director-confirmation label {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  color: #5e4b2d;
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.creatorlab-director-confirmation input {
+  margin-top: 2px;
+}
+
+.creatorlab-director-action-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 0.63rem;
+  font-weight: 720;
+}
+
+.creatorlab-director-action-status.is-running {
+  color: var(--cl-muted);
+  background: #f7f9fc;
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-director-action-status.is-applied {
+  color: #276749;
+  background: #f0fff4;
+  border: 1px solid #c6e7d3;
+}
+
+.creatorlab-director-action-status button {
+  color: #276749;
+  background: #ffffff;
+  border: 1px solid #b8d8c6;
+}
+
+.creatorlab-director-action-error {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  color: #9b2c2c;
+  background: #fff4f2;
+  border: 1px solid #f2c9c4;
+  border-radius: 8px;
+  font-size: 0.63rem;
+  line-height: 1.4;
 }
 
 .creatorlab-director-prompt-chips {
@@ -19928,6 +21108,258 @@ export default function CreatePage() {
   }
 }
 
+
+/* CreatorLab UX-P6 — responsive drawers, accessible interaction and control tokens */
+.creatorlab-product-frame {
+  --cl-control-height: 44px;
+  --cl-control-height-compact: 38px;
+  --cl-radius-control: 10px;
+  --cl-radius-panel: 16px;
+  --cl-focus-color: rgba(23, 105, 224, 0.34);
+}
+
+.creatorlab-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.creatorlab-dialog-title {
+  margin: 0;
+  color: var(--cl-text-strong);
+  font-family: var(--cl-font-ui);
+  font-size: 0.82rem;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.creatorlab-drawer-panel,
+.creatorlab-project-drawer {
+  overscroll-behavior: contain;
+}
+
+.creatorlab-drawer-panel:focus,
+.creatorlab-project-drawer:focus {
+  outline: none;
+}
+
+.creatorlab-drawer-close,
+.creatorlab-topbar-tool-button,
+.creatorlab-director-mode-tabs button,
+.creatorlab-director-prompt-chips button,
+.creatorlab-director-composer button,
+.creatorlab-project-hub-actions button,
+.creatorlab-project-row-actions button,
+.creatorlab-project-row-actions a {
+  min-height: var(--cl-control-height) !important;
+}
+
+.creatorlab-drawer-close {
+  width: var(--cl-control-height) !important;
+  height: var(--cl-control-height) !important;
+}
+
+.creatorlab-director-chat[role="log"] {
+  scroll-padding-block: 12px;
+}
+
+.creatorlab-director-message[role="article"] {
+  scroll-margin-block: 12px;
+}
+
+.creatorlab-director-message[role="article"]:focus-within {
+  box-shadow: 0 0 0 2px var(--cl-focus-color) !important;
+}
+
+.creatorlab-director-composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -2px;
+  color: var(--cl-soft);
+  font-size: 0.61rem;
+  line-height: 1.35;
+}
+
+.creatorlab-director-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.creatorlab-project-row-track[role="progressbar"] {
+  position: relative;
+}
+
+@media (max-width: 899px) {
+  .creatorlab-overlay-layer {
+    align-items: stretch;
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel {
+    position: relative;
+    display: block;
+    order: initial;
+    width: min(480px, 100vw);
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 20px;
+    overflow-y: auto;
+    border-top: 0;
+    border-left: 1px solid var(--cl-border);
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-heading {
+    top: -20px;
+  }
+
+  .creatorlab-topbar-tool-button {
+    width: var(--cl-control-height);
+    min-width: var(--cl-control-height);
+  }
+
+  .creatorlab-director-chat {
+    max-height: min(45dvh, 440px);
+  }
+}
+
+@media (max-width: 599px) {
+  .creatorlab-overlay-layer {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding-top: max(28px, env(safe-area-inset-top));
+    background: rgba(14, 32, 58, 0.34);
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel,
+  .creatorlab-project-drawer {
+    width: 100%;
+    max-width: none;
+    height: min(94dvh, 900px);
+    max-height: 94dvh;
+    padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+    border: 1px solid var(--cl-border);
+    border-bottom: 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -18px 44px rgba(14, 32, 58, 0.18) !important;
+    animation-name: creatorlab-sheet-enter;
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel .creatorlab-ai-heading {
+    top: -16px;
+    margin-inline: -2px;
+    padding-top: 8px;
+  }
+
+  .creatorlab-project-drawer .creatorlab-project-hub-header {
+    top: -16px;
+    margin: -16px -14px 0;
+    padding: 14px 14px 12px;
+  }
+
+  .creatorlab-director-context-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creatorlab-director-context-bar small {
+    grid-column: 1;
+    grid-row: auto;
+    width: fit-content;
+  }
+
+  .creatorlab-director-chat {
+    min-height: 170px;
+    max-height: min(39dvh, 380px);
+  }
+
+  .creatorlab-director-prompt-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .creatorlab-director-prompt-chips button {
+    flex: 0 0 auto;
+    max-width: 82vw;
+    scroll-snap-align: start;
+  }
+
+  .creatorlab-director-composer {
+    position: sticky;
+    bottom: calc(-16px - env(safe-area-inset-bottom));
+    z-index: 5;
+    margin-inline: -4px;
+    padding: 10px 4px calc(16px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(255, 253, 249, 0.84), #fffdf9 20%);
+  }
+
+  .creatorlab-director-composer-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .creatorlab-director-composer-actions > button {
+    flex: 1;
+  }
+
+  .creatorlab-project-hub-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .creatorlab-project-hub-actions .creatorlab-drawer-close {
+    width: var(--cl-control-height) !important;
+  }
+
+  .creatorlab-step-copy span {
+    display: none;
+  }
+
+  .creatorlab-workflow-step {
+    min-height: 54px;
+  }
+}
+
+@keyframes creatorlab-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (pointer: coarse) {
+  .creatorlab-product-frame :where(button, a, input, textarea, select, summary) {
+    min-height: var(--cl-control-height);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .creatorlab-product-frame {
+    --cl-border: #aaa49a;
+    --cl-border-strong: #777169;
+    --cl-muted: #485264;
+    --cl-soft: #566071;
+  }
+
+  .creatorlab-product-frame :where(button, a, input, textarea, select, summary):focus-visible {
+    outline-color: var(--cl-accent) !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .creatorlab-product-frame *,
   .creatorlab-product-frame *::before,
@@ -20053,29 +21485,37 @@ export default function CreatePage() {
                 </button>
               </div>
               <button
+                ref={creatorProjectsTriggerRef}
                 type="button"
                 className="creatorlab-topbar-tool-button"
-                onClick={() => {
-                  setCreatorDirectorOpen(false);
+                onClick={(event) => {
+                  creatorDrawerReturnFocusRef.current = event.currentTarget;
+                  closeCreatorDirector(false);
                   setCreatorProjectsDrawerOpen(true);
                   setCreatorProjectsHidden(false);
                   void fetchProjects();
                 }}
                 aria-haspopup="dialog"
                 aria-expanded={creatorProjectsDrawerOpen}
+                aria-controls="creatorlab-projects-readiness"
+                aria-label={uiLanguage === "en" ? "Open projects and readiness" : "Projeler ve hazırlık alanını aç"}
               >
                 <CreatorWorkspaceIcon name="package" />
                 <span>{uiLanguage === "en" ? "Projects" : "Projeler"}</span>
               </button>
               <button
+                ref={creatorDirectorTriggerRef}
                 type="button"
                 className={`creatorlab-topbar-tool-button is-director ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""}`}
-                onClick={() => {
-                  setCreatorProjectsDrawerOpen(false);
+                onClick={(event) => {
+                  creatorDrawerReturnFocusRef.current = event.currentTarget;
+                  closeCreatorProjectsDrawer(false);
                   setCreatorDirectorOpen(true);
                 }}
                 aria-haspopup="dialog"
                 aria-expanded={creatorDirectorOpen}
+                aria-controls="creatorlab-director-dialog"
+                aria-label={uiLanguage === "en" ? "Open Creator Director" : "Creator Director'ı aç"}
               >
                 <CreatorWorkspaceIcon name="ideas" />
                 <span>{uiLanguage === "en" ? "Director" : "Director"}</span>
@@ -20131,27 +21571,33 @@ export default function CreatePage() {
             role="presentation"
             onMouseDown={(event) => {
               if (event.currentTarget === event.target) {
-                setCreatorDirectorOpen(false);
+                closeCreatorDirector();
               }
             }}
           >
             <aside
+              id="creatorlab-director-dialog"
+              ref={creatorDirectorDialogRef}
               className="creatorlab-ai-workspace creatorlab-drawer-panel"
               role="dialog"
               aria-modal="true"
-              aria-label={uiLanguage === "en" ? "Creator Director" : "Creator Director"}
+              aria-labelledby="creatorlab-director-title"
+              aria-describedby="creatorlab-director-safety-note"
+              tabIndex={-1}
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="creatorlab-ai-heading">
                 <span className="creatorlab-ai-spark" aria-hidden="true">✦</span>
                 <div>
-                  <p>{uiLanguage === "en" ? "Creator Director" : "Creator Director"}</p>
+                  <h2 id="creatorlab-director-title" className="creatorlab-dialog-title">
+                    {uiLanguage === "en" ? "Creator Director" : "Creator Director"}
+                  </h2>
                   <span>{creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title}</span>
                 </div>
                 <button
                   type="button"
                   className="creatorlab-drawer-close"
-                  onClick={() => setCreatorDirectorOpen(false)}
+                  onClick={() => closeCreatorDirector()}
                   aria-label={uiLanguage === "en" ? "Close Creator Director" : "Creator Director'ı kapat"}
                 >
                   ×
@@ -20174,34 +21620,66 @@ export default function CreatePage() {
                 aria-label={uiLanguage === "en" ? "Creator Director mode" : "Creator Director modu"}
               >
                 <button
+                  id="creatorlab-director-tab-project"
                   type="button"
                   role="tab"
                   aria-selected={creatorDirectorMode === "project"}
+                  aria-controls="creatorlab-director-chat"
+                  tabIndex={creatorDirectorMode === "project" ? 0 : -1}
                   className={creatorDirectorMode === "project" ? "is-active" : ""}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowRight") {
+                      event.preventDefault();
+                      document.getElementById("creatorlab-director-tab-help")?.focus();
+                    }
+                  }}
                   onClick={() => {
                     setCreatorDirectorMode("project");
                     setCreatorDirectorMessages([]);
                     setCreatorDirectorError("");
+                    setCreatorDirectorPendingAction(null);
+                    setCreatorDirectorActionConfirmed(false);
                   }}
                 >
                   {uiLanguage === "en" ? "Project" : "Proje"}
                 </button>
                 <button
+                  id="creatorlab-director-tab-help"
                   type="button"
                   role="tab"
                   aria-selected={creatorDirectorMode === "help"}
+                  aria-controls="creatorlab-director-chat"
+                  tabIndex={creatorDirectorMode === "help" ? 0 : -1}
                   className={creatorDirectorMode === "help" ? "is-active" : ""}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowLeft") {
+                      event.preventDefault();
+                      document.getElementById("creatorlab-director-tab-project")?.focus();
+                    }
+                  }}
                   onClick={() => {
                     setCreatorDirectorMode("help");
                     setCreatorDirectorMessages([]);
                     setCreatorDirectorError("");
+                    setCreatorDirectorPendingAction(null);
+                    setCreatorDirectorActionConfirmed(false);
                   }}
                 >
                   {uiLanguage === "en" ? "Help" : "Yardım"}
                 </button>
               </div>
 
-              <div className="creatorlab-director-chat" aria-live="polite">
+              <div
+                id="creatorlab-director-chat"
+                className="creatorlab-director-chat"
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions text"
+                aria-busy={creatorDirectorLoading}
+                aria-labelledby={creatorDirectorMode === "project"
+                  ? "creatorlab-director-tab-project"
+                  : "creatorlab-director-tab-help"}
+              >
                 {creatorDirectorMessages.length === 0 ? (
                   <div className="creatorlab-director-empty">
                     <span aria-hidden="true">✦</span>
@@ -20225,6 +21703,10 @@ export default function CreatePage() {
                     <div
                       key={message.id}
                       className={`creatorlab-director-message is-${message.role}`}
+                      role="article"
+                      aria-label={message.role === "assistant"
+                        ? (uiLanguage === "en" ? "Creator Director response" : "Creator Director yanıtı")
+                        : (uiLanguage === "en" ? "Your message" : "Mesajın")}
                     >
                       <span>
                         {message.role === "assistant"
@@ -20232,11 +21714,214 @@ export default function CreatePage() {
                           : uiLanguage === "en" ? "You" : "Sen"}
                       </span>
                       <p>{message.content}</p>
+                      {message.role === "assistant" &&
+                        message.actions &&
+                        message.actions.some((action) => action.status !== "dismissed") && (
+                          <div className="creatorlab-director-action-list">
+                            {message.actions
+                              .filter((action) => action.status !== "dismissed")
+                              .map((action) => {
+                                const confirmationOpen =
+                                  creatorDirectorPendingAction?.messageId === message.id &&
+                                  creatorDirectorPendingAction.actionId === action.id;
+                                const impactLabel =
+                                  action.impact === "credit_variable"
+                                    ? uiLanguage === "en"
+                                      ? "Variable credit impact"
+                                      : "Değişken kredi etkisi"
+                                    : action.impact === "release"
+                                      ? uiLanguage === "en"
+                                        ? "Release action"
+                                        : "Yayın aksiyonu"
+                                      : uiLanguage === "en"
+                                        ? "No paid media"
+                                        : "Ücretli medya yok";
+
+                                return (
+                                  <div
+                                    key={action.id}
+                                    className={`creatorlab-director-action-card is-${action.status}`}
+                                  >
+                                    <div className="creatorlab-director-action-heading">
+                                      <div>
+                                        <small>{uiLanguage === "en" ? "Change preview" : "Değişiklik önizlemesi"}</small>
+                                        <strong>{action.title}</strong>
+                                      </div>
+                                      <span className={`is-${action.impact}`}>
+                                        {impactLabel}
+                                      </span>
+                                    </div>
+
+                                    {action.description && (
+                                      <p className="creatorlab-director-action-description">
+                                        {action.description}
+                                      </p>
+                                    )}
+
+                                    {action.changes.length > 0 && (
+                                      <div className="creatorlab-director-change-list">
+                                        {action.changes.map((change, changeIndex) => (
+                                          <div key={`${action.id}-change-${changeIndex}`}>
+                                            <strong>{change.label}</strong>
+                                            <span>{change.before}</span>
+                                            <i aria-hidden="true">→</i>
+                                            <span>{change.after}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {action.status === "pending" && !confirmationOpen && (
+                                      <div className="creatorlab-director-action-buttons">
+                                        <button
+                                          type="button"
+                                          className="creatorlab-director-action-secondary"
+                                          onClick={() => dismissCreatorDirectorAction(message.id, action.id)}
+                                          disabled={Boolean(creatorDirectorActionBusyId)}
+                                        >
+                                          {uiLanguage === "en" ? "Dismiss" : "Kapat"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="creatorlab-director-action-primary"
+                                          onClick={() => void applyCreatorDirectorAction(message.id, action)}
+                                          disabled={Boolean(creatorDirectorActionBusyId)}
+                                        >
+                                          {action.requiresExplicitConfirmation
+                                            ? uiLanguage === "en" ? "Review & confirm" : "İncele ve onayla"
+                                            : uiLanguage === "en" ? "Apply change" : "Değişikliği uygula"}
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {action.status === "pending" && confirmationOpen && (
+                                      <div className="creatorlab-director-confirmation">
+                                        <strong>
+                                          {action.impact === "credit_variable"
+                                            ? uiLanguage === "en"
+                                              ? "This action can call paid media APIs."
+                                              : "Bu aksiyon ücretli medya API'lerini çağırabilir."
+                                            : uiLanguage === "en"
+                                              ? "This will export the current release package."
+                                              : "Bu işlem mevcut yayın paketini dışa aktaracak."}
+                                        </strong>
+                                        <p>
+                                          {action.impact === "credit_variable"
+                                            ? uiLanguage === "en"
+                                              ? "Final credit usage is variable and will be recorded by the production workflow. Generated provider cost cannot be undone."
+                                              : "Nihai kredi kullanımı değişkendir ve üretim akışı tarafından kaydedilecektir. Oluşan sağlayıcı maliyeti geri alınamaz."
+                                            : uiLanguage === "en"
+                                              ? "CreatorLab will recheck release readiness before downloading the package."
+                                              : "CreatorLab paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
+                                        </p>
+                                        <label>
+                                          <input
+                                            type="checkbox"
+                                            checked={creatorDirectorActionConfirmed}
+                                            onChange={(event) =>
+                                              setCreatorDirectorActionConfirmed(event.target.checked)
+                                            }
+                                          />
+                                          <span>
+                                            {uiLanguage === "en"
+                                              ? "I understand and approve this action."
+                                              : "Bu aksiyonu anlıyor ve onaylıyorum."}
+                                          </span>
+                                        </label>
+                                        <div className="creatorlab-director-action-buttons">
+                                          <button
+                                            type="button"
+                                            className="creatorlab-director-action-secondary"
+                                            onClick={() => {
+                                              setCreatorDirectorPendingAction(null);
+                                              setCreatorDirectorActionConfirmed(false);
+                                            }}
+                                          >
+                                            {uiLanguage === "en" ? "Cancel" : "Vazgeç"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="creatorlab-director-action-primary"
+                                            disabled={!creatorDirectorActionConfirmed || Boolean(creatorDirectorActionBusyId)}
+                                            onClick={() =>
+                                              void applyCreatorDirectorAction(message.id, action, true)
+                                            }
+                                          >
+                                            {uiLanguage === "en" ? "Confirm & run" : "Onayla ve çalıştır"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {action.status === "running" && (
+                                      <div className="creatorlab-director-action-status is-running">
+                                        {uiLanguage === "en" ? "Applying approved action…" : "Onaylanan aksiyon uygulanıyor…"}
+                                      </div>
+                                    )}
+
+                                    {action.status === "applied" && (
+                                      <div className="creatorlab-director-action-status is-applied">
+                                        <span>{uiLanguage === "en" ? "Applied" : "Uygulandı"}</span>
+                                        {action.impact === "none" && creatorUndoStack.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              undoLastCreatorChange();
+                                              updateCreatorDirectorActionState(message.id, action.id, {
+                                                status: "pending",
+                                                error: "",
+                                              });
+                                            }}
+                                          >
+                                            {uiLanguage === "en" ? "Undo latest change" : "Son değişikliği geri al"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {action.status === "error" && (
+                                      <div className="creatorlab-director-action-error" role="alert">
+                                        <span>{action.error || (uiLanguage === "en" ? "Action failed." : "Aksiyon başarısız oldu.")}</span>
+                                        <div className="creatorlab-director-action-buttons">
+                                          <button
+                                            type="button"
+                                            className="creatorlab-director-action-secondary"
+                                            onClick={() => dismissCreatorDirectorAction(message.id, action.id)}
+                                          >
+                                            {uiLanguage === "en" ? "Dismiss" : "Kapat"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="creatorlab-director-action-primary"
+                                            onClick={() => {
+                                              updateCreatorDirectorActionState(message.id, action.id, {
+                                                status: "pending",
+                                                error: "",
+                                              });
+                                              if (action.requiresExplicitConfirmation) {
+                                                setCreatorDirectorPendingAction({
+                                                  messageId: message.id,
+                                                  actionId: action.id,
+                                                });
+                                                setCreatorDirectorActionConfirmed(false);
+                                              }
+                                            }}
+                                          >
+                                            {uiLanguage === "en" ? "Try again" : "Tekrar dene"}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
                     </div>
                   ))
                 )}
                 {creatorDirectorLoading && (
-                  <div className="creatorlab-director-message is-assistant is-loading">
+                  <div className="creatorlab-director-message is-assistant is-loading" role="status">
                     <span>Director</span>
                     <p>
                       {uiLanguage === "en"
@@ -20245,7 +21930,7 @@ export default function CreatePage() {
                     </p>
                   </div>
                 )}
-                <div ref={creatorDirectorMessagesEndRef} />
+                <div ref={creatorDirectorMessagesEndRef} aria-hidden="true" />
               </div>
 
               <div
@@ -20272,12 +21957,19 @@ export default function CreatePage() {
 
               <form
                 className="creatorlab-director-composer"
+                aria-label={uiLanguage === "en" ? "Message Creator Director" : "Creator Director'a mesaj gönder"}
                 onSubmit={(event) => {
                   event.preventDefault();
                   void sendCreatorDirectorMessage();
                 }}
               >
+                <label className="creatorlab-visually-hidden" htmlFor="creatorlab-director-input">
+                  {uiLanguage === "en" ? "Message Creator Director" : "Creator Director'a mesaj"}
+                </label>
                 <textarea
+                  id="creatorlab-director-input"
+                  ref={creatorDirectorInputRef}
+                  aria-describedby="creatorlab-director-input-help"
                   value={creatorDirectorInput}
                   onChange={(event) => setCreatorDirectorInput(event.target.value)}
                   maxLength={2000}
@@ -20292,19 +21984,29 @@ export default function CreatePage() {
                         : "CreatorLab'in nasıl kullanılacağını sor…"
                   }
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
                       event.preventDefault();
                       void sendCreatorDirectorMessage();
                     }
                   }}
                 />
-                <div>
+                <div id="creatorlab-director-input-help" className="creatorlab-director-composer-meta">
+                  <span>{uiLanguage === "en" ? "Enter to send · Shift+Enter for a new line" : "Enter gönderir · Shift+Enter yeni satır açar"}</span>
+                  <span>{creatorDirectorInput.length}/2000</span>
+                </div>
+                <div className="creatorlab-director-composer-actions">
                   <button
                     type="button"
                     className="creatorlab-director-clear"
                     onClick={() => {
                       setCreatorDirectorMessages([]);
                       setCreatorDirectorError("");
+                      setCreatorDirectorPendingAction(null);
+                      setCreatorDirectorActionConfirmed(false);
                     }}
                     disabled={creatorDirectorMessages.length === 0 || creatorDirectorLoading}
                   >
@@ -20322,10 +22024,10 @@ export default function CreatePage() {
                 </div>
               </form>
 
-              <p className="creatorlab-director-safety-note">
+              <p id="creatorlab-director-safety-note" className="creatorlab-director-safety-note">
                 {uiLanguage === "en"
-                  ? "Director gives guidance only in this sprint. Paid media and project changes still require your action in the workspace."
-                  : "Director bu sprintte yalnızca yönlendirme yapar. Ücretli medya ve proje değişiklikleri çalışma alanında senin aksiyonunu gerektirir."}
+                  ? "Director can stage reversible project changes for approval. Paid media and release actions always require a second explicit confirmation."
+                  : "Director geri alınabilir proje değişikliklerini onayına sunabilir. Ücretli medya ve yayın aksiyonları her zaman ikinci bir açık onay gerektirir."}
               </p>
 
               <details className="creatorlab-director-status-details">
@@ -20792,22 +22494,24 @@ export default function CreatePage() {
               role="presentation"
               onMouseDown={(event) => {
                 if (event.currentTarget === event.target) {
-                  setCreatorProjectsDrawerOpen(false);
+                  closeCreatorProjectsDrawer();
                 }
               }}
             >
               <section
                 id="creatorlab-projects-readiness"
+                ref={creatorProjectsDialogRef}
                 className="creatorlab-project-hub creatorlab-project-drawer"
                 role="dialog"
                 aria-modal="true"
-                aria-label={uiLanguage === "en" ? "Projects and readiness" : "Projeler ve hazırlık"}
+                aria-labelledby="creatorlab-projects-title"
+                tabIndex={-1}
                 onMouseDown={(event) => event.stopPropagation()}
               >
             <div className="creatorlab-project-hub-header">
               <div className="creatorlab-project-hub-heading">
                 <p className="creatorlab-project-hub-kicker">{uiLanguage === "en" ? "Projects & readiness" : "Projeler ve hazırlık"}</p>
-                <h2>{uiLanguage === "en" ? "Continue without losing context" : "Bağlamı kaybetmeden devam et"}</h2>
+                <h2 id="creatorlab-projects-title">{uiLanguage === "en" ? "Continue without losing context" : "Bağlamı kaybetmeden devam et"}</h2>
                 <p>
                   {uiLanguage === "en"
                     ? "The current project stays visible; recent projects open only when you need them."
@@ -20833,7 +22537,7 @@ export default function CreatePage() {
                 <button
                   type="button"
                   className="creatorlab-drawer-close"
-                  onClick={() => setCreatorProjectsDrawerOpen(false)}
+                  onClick={() => closeCreatorProjectsDrawer()}
                   aria-label={uiLanguage === "en" ? "Close projects" : "Projeleri kapat"}
                 >
                   ×
@@ -20893,6 +22597,92 @@ export default function CreatePage() {
               </div>
             </div>
 
+            <details className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold text-slate-800">
+                <span>{uiLanguage === "en" ? "Operational readiness" : "Operasyon hazırlığı"}</span>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs ${
+                    creatorOpsStatus.status === "ready"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : creatorOpsStatus.status === "degraded"
+                        ? "bg-amber-50 text-amber-700"
+                        : creatorOpsStatus.status === "checking"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-rose-50 text-rose-700"
+                  }`}
+                >
+                  {creatorOpsStatus.status === "ready"
+                    ? uiLanguage === "en" ? "Ready" : "Hazır"
+                    : creatorOpsStatus.status === "degraded"
+                      ? uiLanguage === "en" ? "Degraded" : "Kısmi hazır"
+                      : creatorOpsStatus.status === "checking"
+                        ? uiLanguage === "en" ? "Checking" : "Kontrol ediliyor"
+                        : creatorOpsStatus.status === "idle"
+                          ? uiLanguage === "en" ? "Not checked" : "Kontrol edilmedi"
+                          : uiLanguage === "en" ? "Action needed" : "Aksiyon gerekli"}
+                </span>
+              </summary>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {([
+                  ["database", uiLanguage === "en" ? "Project data" : "Proje verisi"],
+                  ["ai", uiLanguage === "en" ? "AI workspace" : "AI çalışma alanı"],
+                  ["voice", uiLanguage === "en" ? "Voice production" : "Ses üretimi"],
+                  ["video", uiLanguage === "en" ? "Premium video" : "Premium video"],
+                ] as Array<[CreatorOpsServiceKey, string]>).map(([serviceKey, label]) => (
+                  <div
+                    key={serviceKey}
+                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm"
+                  >
+                    <span>{label}</span>
+                    <strong
+                      className={
+                        creatorOpsStatus.services[serviceKey]
+                          ? "text-emerald-700"
+                          : "text-amber-700"
+                      }
+                    >
+                      {creatorOpsStatus.services[serviceKey]
+                        ? uiLanguage === "en" ? "Configured" : "Tanımlı"
+                        : uiLanguage === "en" ? "Review" : "Kontrol et"}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+
+              {(creatorOpsStatus.message || creatorOpsStatus.checkedAt) && (
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  {creatorOpsStatus.message}
+                  {creatorOpsStatus.checkedAt
+                    ? ` · ${new Date(creatorOpsStatus.checkedAt).toLocaleString(
+                        uiLanguage === "en" ? "en-US" : "tr-TR",
+                      )}`
+                    : ""}
+                  {creatorOpsStatus.release ? ` · ${creatorOpsStatus.release}` : ""}
+                </p>
+              )}
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-slate-500">
+                  {creatorTelemetryLastEvent
+                    ? `${uiLanguage === "en" ? "Last product signal" : "Son ürün sinyali"}: ${creatorTelemetryLastEvent}`
+                    : uiLanguage === "en"
+                      ? "No product signal sent in this session yet."
+                      : "Bu oturumda henüz ürün sinyali gönderilmedi."}
+                </span>
+                <button
+                  type="button"
+                  className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  onClick={() => void refreshCreatorOpsStatus()}
+                  disabled={creatorOpsStatus.status === "checking"}
+                >
+                  {creatorOpsStatus.status === "checking"
+                    ? uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…"
+                    : uiLanguage === "en" ? "Run check" : "Kontrolü çalıştır"}
+                </button>
+              </div>
+            </details>
+
             {!creatorProjectsHidden && (
               <div id="creatorlab-project-library" className="creatorlab-project-library">
                 <div className="creatorlab-project-library-summary">
@@ -20948,7 +22738,14 @@ export default function CreatePage() {
                               </span>
                               <span>{snapshot.progress}%</span>
                             </div>
-                            <div className="creatorlab-project-row-track" aria-hidden="true">
+                            <div
+                              className="creatorlab-project-row-track"
+                              role="progressbar"
+                              aria-label={`${project.title || ui.untitledProject} ${uiLanguage === "en" ? "readiness" : "hazırlık"}`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={snapshot.progress}
+                            >
                               <span style={{ width: `${snapshot.progress}%` }} />
                             </div>
                             <span className="creatorlab-project-row-signals">
@@ -20959,7 +22756,7 @@ export default function CreatePage() {
                           <div className="creatorlab-project-row-actions">
                             <button
                               type="button"
-                              onClick={() => { setCreatorProjectsDrawerOpen(false); void loadProjectById(project.id); }}
+                              onClick={() => { closeCreatorProjectsDrawer(); void loadProjectById(project.id); }}
                               disabled={isLoadingProject}
                             >
                               {isLoadingProject
@@ -22881,7 +24678,7 @@ export default function CreatePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={generateSelectedSceneVisuals}
+                          onClick={() => void generateSelectedSceneVisuals()}
                           disabled={creatorSelectedSceneIds.length === 0 || isBatchRendering || creatorMediaPreflightLoading}
                           className="min-h-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:opacity-40"
                         >
@@ -22891,7 +24688,7 @@ export default function CreatePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={prepareSelectedSceneAudio}
+                          onClick={() => void prepareSelectedSceneAudio()}
                           disabled={creatorSelectedSceneIds.length === 0 || isPreparingAudio || creatorMediaPreflightLoading}
                           className="min-h-10 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 disabled:opacity-40"
                         >

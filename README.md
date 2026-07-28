@@ -1,36 +1,46 @@
-# VELTO
+# Velto FOUNDATION-P1 — AUTH + Credit Ledger Foundation
 
-VELTO is now a focused AI content creation platform with two active product paths:
+Bu ZIP, mevcut `kemalduru79/velto-app` ana dalı incelenerek hazırlanmıştır. Dosyalar repo köküne aynı klasör yapısıyla kopyalanmalıdır.
 
-1. **Storyverse** — child-safe AI story and content creation for ages 8-18.
-2. **CreatorLab** — professional AI-powered social media content creation for 18+ creators.
+## Kurulum sırası
 
-All legacy experimental flows and future lab placeholders have been removed from the active project structure.
+1. ZIP içindeki dosyaları repo köküne kopyalayın.
+2. Supabase SQL Editor veya migration pipeline üzerinden şu migration'ı çalıştırın:
+   - `supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql`
+3. Supabase Authentication URL Configuration içinde aşağıdaki redirect URL'lerini ekleyin:
+   - `https://<domain>/login`
+   - `https://<domain>/reset-password`
+   - local test için `http://localhost:3000/login`
+   - local test için `http://localhost:3000/reset-password`
+4. Mevcut environment variable'ların bulunduğunu doğrulayın:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+5. `npm run build` çalıştırın.
 
-## Active routes
+## Kredi testi
 
-- `/` — focused two-product dashboard
-- `/dashboard` — same focused dashboard surface
-- `/create?flow=storyverse` — Storyverse production workspace
-- `/create?flow=creator_lab` — CreatorLab production workspace
-- `/episode/[projectId]` — project episode view
-- `/episode/public/[shareId]` — public shared project view
-- `/login` and `/signup` — authentication routes
+Yeni hesaplar 0 krediyle açılır. Test kullanıcısına SQL Editor üzerinden kredi tanımlamak için:
 
-## Product direction
-
-### Storyverse
-
-Storyverse remains the child-safe creative experience layer. The product direction is to support safe story, scene, image, voice, video and exportable content creation while enforcing strict content safety boundaries.
-
-### CreatorLab
-
-CreatorLab becomes the professional creator product. The target model is a credit-based content engine with provider-cost-aware pricing, AI image/video quality options, voice generation, thumbnail/caption/script support and future customer usage/credit management.
-
-## Development
-
-```bash
-npm run dev
-npm run build
-npm run lint
+```sql
+select public.velto_credit_grant(
+  '<USER_UUID>'::uuid,
+  100,
+  'foundation-p1-test',
+  'grant',
+  '{"reason":"manual test credit"}'::jsonb
+);
 ```
+
+Client oturumunun access token'ı ile:
+
+- `GET /api/credits` — bakiye
+- `POST /api/credits` `{ "action": "reserve", ... }`
+- `POST /api/credits` `{ "action": "settle", ... }`
+- `POST /api/credits` `{ "action": "release", ... }`
+
+çağrıları yapılabilir.
+
+## Önemli sınır
+
+Bu ilk teslim, AUTH-P1'i tamamlar ve FIN-P1'in ledger/engine temelini kurar. Medya endpoint'lerinin reserve–settle–release akışına bağlanması bir sonraki mikro-sprinttir.
