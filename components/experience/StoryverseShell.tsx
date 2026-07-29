@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 
 type Props = {
   children: ReactNode;
@@ -12,6 +13,9 @@ export default function StoryverseShell({ children }: Props) {
       <div className="pointer-events-none absolute -left-36 top-24 h-[32rem] w-[32rem] rounded-full bg-teal-300/[0.10] blur-3xl" />
       <div className="pointer-events-none absolute -right-40 top-48 h-[34rem] w-[34rem] rounded-full bg-indigo-500/[0.13] blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 left-1/2 h-80 w-[52rem] -translate-x-1/2 rounded-full bg-amber-300/[0.06] blur-3xl" />
+      <div className="fixed right-3 top-3 z-[140] md:right-6 md:top-5">
+        <ProductTopNavigation tone="dark" active="storyverse" />
+      </div>
       <div className="relative z-10">{children}</div>
     </div>
   );

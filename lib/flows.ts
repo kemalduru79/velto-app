@@ -34,8 +34,8 @@ export const experienceFlows: ExperienceFlow[] = [
   },
   {
     key: "creator_lab",
-    title: "CreatorLab",
-    shortTitle: "CreatorLab",
+    title: "Velto Studio",
+    shortTitle: "Velto Studio",
     subtitle: "AI-powered social content operating system",
     description:
       "A professional production engine for 18+ creators that turns an idea into scripts, hooks, thumbnails, voice-over, image/video scenes and publish-ready packages.",
@@ -44,7 +44,7 @@ export const experienceFlows: ExperienceFlow[] = [
     zones: ["AI"],
     outputs: ["Long-form", "Shorts/Reels", "Thumbnail", "Metadata"],
     status: "active",
-    ctaLabel: "Open CreatorLab",
+    ctaLabel: "Open Velto Studio",
     accent: "rose",
   },
 ];

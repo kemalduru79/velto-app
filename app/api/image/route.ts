@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import OpenAI, { toFile } from "openai";
+import { getImageProvider, getProviderPublicMessage } from "@/lib/providers";
+import type { ImageProviderReferenceInput } from "@/lib/providers/image";
 import {
   getCreatorVisualRoute,
   type CreatorImageUseCase,
@@ -27,11 +28,6 @@ type VisualBible = {
 };
 
 type ImageProductProfile = "storyverse" | "creatorlab";
-
-type ImageApiResponse = {
-  data?: Array<{ b64_json?: string | null }>;
-  usage?: unknown;
-};
 
 type SceneContinuityContext = {
   sceneId?: number;
@@ -105,16 +101,6 @@ function normalizeCharactersForPrompt(
   }
 
   return normalizedCharacters;
-}
-
-function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error("OPENAI_API_KEY is missing");
-  }
-
-  return new OpenAI({ apiKey });
 }
 
 function buildCharacterBlock(
@@ -269,9 +255,11 @@ async function referenceSourceToFile(source: string, index: number) {
     }
 
     const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "png";
-    return toFile(buffer, `creator-reference-${index + 1}.${extension}`, {
-      type: mimeType,
-    });
+    return {
+      data: buffer,
+      filename: `creator-reference-${index + 1}.${extension}`,
+      contentType: mimeType,
+    } satisfies ImageProviderReferenceInput;
   }
 
   const url = new URL(trimmed);
@@ -317,9 +305,11 @@ async function referenceSourceToFile(source: string, index: number) {
   }
 
   const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "png";
-  return toFile(buffer, `creator-reference-${index + 1}.${extension}`, {
-    type: mimeType,
-  });
+  return {
+    data: buffer,
+    filename: `creator-reference-${index + 1}.${extension}`,
+    contentType: mimeType,
+  } satisfies ImageProviderReferenceInput;
 }
 
 async function loadReferenceImageFiles(
@@ -327,7 +317,7 @@ async function loadReferenceImageFiles(
   limit: number,
 ) {
   if (!limit || !Array.isArray(characters)) {
-    return { files: [] as Awaited<ReturnType<typeof toFile>>[], warnings: [] as string[] };
+    return { files: [] as ImageProviderReferenceInput[], warnings: [] as string[] };
   }
 
   const sources = Array.from(
@@ -337,7 +327,7 @@ async function loadReferenceImageFiles(
         .filter((value): value is string => Boolean(value)),
     ),
   ).slice(0, limit);
-  const files: Awaited<ReturnType<typeof toFile>>[] = [];
+  const files: ImageProviderReferenceInput[] = [];
   const warnings: string[] = [];
 
   for (let index = 0; index < sources.length; index += 1) {
@@ -543,7 +533,7 @@ Output target:
 ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-safe Storyverse frame"}, ${creatorVisualRoute?.targetAspectRatio || "Storyverse scene composition"}, coherent cast or faceless visual universe, clear focal idea, polished lighting, stable continuity.
 `;
 
-    const client = getOpenAIClient();
+    const imageProvider = getImageProvider();
     const model = creatorVisualRoute?.imageModel || "gpt-image-1";
     const size =
       creatorVisualRoute?.imageSize ||
@@ -557,42 +547,18 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
           )
         : { files: [], warnings: [] };
 
-    let image: ImageApiResponse;
-    let referenceInputApplied = false;
-
-    if (referenceFiles.length > 0 && model.startsWith("gpt-image-2")) {
-      image = (await client.images.edit({
-        model,
-        image: referenceFiles,
-        prompt: imagePrompt,
-        size,
-        quality,
-        input_fidelity: "high",
-        stream: false,
-      } as any)) as unknown as ImageApiResponse;
-      referenceInputApplied = true;
-    } else {
-      image = (await client.images.generate({
-        model,
-        prompt: imagePrompt,
-        size,
-        quality,
-        stream: false,
-      } as any)) as unknown as ImageApiResponse;
-    }
-
-    const base64 = image.data?.[0]?.b64_json;
-
-    if (!base64) {
-      return NextResponse.json(
-        { error: "Görsel üretilemedi." },
-        { status: 500 },
-      );
-    }
+    const image = await imageProvider.generate({
+      prompt: imagePrompt,
+      model,
+      size,
+      quality,
+      referenceImages: referenceFiles,
+      referenceFidelity: "high",
+    });
 
     return NextResponse.json({
-      image: `data:image/png;base64,${base64}`,
-      usage: (image as any).usage || null,
+      image: `data:image/png;base64,${image.base64}`,
+      usage: image.usage || null,
       visualRoute: creatorVisualRoute
         ? {
             qualityMode: creatorVisualRoute.qualityMode,
@@ -603,7 +569,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
             model: creatorVisualRoute.imageModel,
             quality: creatorVisualRoute.imageQuality,
             size: creatorVisualRoute.imageSize,
-            referenceInputApplied,
+            referenceInputApplied: image.referenceInputApplied,
             referenceInputCount: referenceFiles.length,
             referenceWarnings,
           }
@@ -617,13 +583,13 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
   } catch (error) {
     console.error("image error:", error);
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Görsel oluşturulurken hata oluştu.";
-
     return NextResponse.json(
-      { error: message || "Görsel oluşturulurken hata oluştu." },
+      {
+        error: getProviderPublicMessage(
+          error,
+          "Görsel oluşturulurken hata oluştu.",
+        ),
+      },
       { status: 500 },
     );
   }

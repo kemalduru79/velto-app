@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import {
   getCreatorRoutedVoiceSettings,
   getCreatorVoiceRoute,
 } from "@/lib/creator/voiceRouting";
+import { getProviderPublicMessage, getVoiceProvider } from "@/lib/providers";
+import { getPersistenceServices } from "@/lib/persistence";
+import {
+  getCreditErrorResponse,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
 
 export const runtime = "nodejs";
 
@@ -12,22 +20,6 @@ type DialogueLine = {
   text: string;
   voiceId?: string;
 };
-
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
 
 function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
@@ -79,24 +71,6 @@ function buildDialogueText(lines: DialogueLine[]) {
     .join("\n");
 }
 
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number
-) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function getNumericSetting(
   value: unknown,
   fallback: number,
@@ -138,6 +112,8 @@ function getCharacterVoiceSettings(
 }
 
 export async function POST(req: NextRequest) {
+  let reservation: MeteredOperationReservation | null = null;
+
   try {
     const body = await req.json();
 
@@ -158,11 +134,12 @@ export async function POST(req: NextRequest) {
 
     const language = body?.language === "en" ? "en" : "tr";
     const isCreatorLab = body?.productProfile === "creatorlab";
+    const voiceProvider = getVoiceProvider();
 
     const modelId =
       typeof body?.modelId === "string" && body.modelId.trim()
         ? body.modelId.trim()
-        : "eleven_multilingual_v2";
+        : voiceProvider.getDefaultModelId();
 
     if (!lines.length) {
       return NextResponse.json(
@@ -180,23 +157,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-
-    if (!apiKey) {
-      throw new Error("ELEVENLABS_API_KEY is missing");
-    }
-
-    const defaultCharacterVoiceId =
-      language === "en"
-        ? process.env.ELEVENLABS_EN_CHARACTER_VOICE_ID
-        : process.env.ELEVENLABS_TR_CHARACTER_VOICE_ID;
-
-    const narratorVoiceId =
-      language === "en"
-        ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
-        : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID;
-
-    const legacyFallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
+    const defaultCharacterVoiceId = voiceProvider.getDefaultVoiceId(
+      language,
+      "character",
+    );
+    const narratorVoiceId = voiceProvider.getDefaultVoiceId(
+      language,
+      "narrator",
+    );
 
     const firstLineVoiceId =
       lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
@@ -205,8 +173,7 @@ export async function POST(req: NextRequest) {
       firstLineVoiceId?.trim() &&
       firstLineVoiceId?.trim() !== narratorVoiceId?.trim()
         ? firstLineVoiceId.trim()
-        : defaultCharacterVoiceId?.trim() ||
-          legacyFallbackVoiceId?.trim();
+        : defaultCharacterVoiceId?.trim();
 
     if (!finalVoiceId) {
       throw new Error(
@@ -256,58 +223,43 @@ export async function POST(req: NextRequest) {
         })
       : getCharacterVoiceSettings(language, body);
 
-    const elevenRes = await fetchWithTimeout(
-      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: fullText,
-          model_id: modelId,
-          voice_settings: {
-            stability: voiceSettings.stability,
-            similarity_boost: voiceSettings.similarityBoost,
-            style: voiceSettings.style,
-            speed: voiceSettings.speed,
-            use_speaker_boost: true,
-          },
-        }),
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_dialogue_voice",
+      qualityMode: body?.qualityMode,
+      provider: voiceProvider.key,
+      referenceId: `${projectKey}:scene-${sceneId}:dialogue`,
+      metadata: {
+        productProfile: isCreatorLab ? "creatorlab" : "storyverse",
+        projectKey,
+        sceneId,
+        role: "dialogue",
       },
-      30000
-    );
+      billable: isCreatorLab,
+    });
 
-    if (!elevenRes.ok) {
-      const errorText = await elevenRes.text().catch(() => "");
-      console.error("voice provider dialogue error:", errorText);
-      throw new Error("Voice provider rejected dialogue generation");
-    }
+    const voiceResult = await voiceProvider.synthesize({
+      text: fullText,
+      voiceId: finalVoiceId,
+      modelId,
+      settings: voiceSettings,
+      outputFormat: "mp3_44100_128",
+      timeoutMs: 30_000,
+    });
+    const outputBuffer = voiceResult.audio;
 
-    const arrayBuffer = await elevenRes.arrayBuffer();
-    const outputBuffer = Buffer.from(arrayBuffer);
-
-    const supabase = getSupabaseAdmin();
+    const { objectStorage } = getPersistenceServices();
 
     const safeProjectKey = safeName(projectKey);
     const safeSceneId = safeName(sceneId);
     const filePath = `${safeProjectKey}/scene-${safeSceneId}-dialogue-${Date.now()}.mp3`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("dialogue-audio")
-      .upload(filePath, outputBuffer, {
-        contentType: "audio/mpeg",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("dialogue-audio")
-      .getPublicUrl(filePath);
+    const storedAudio = await objectStorage.uploadPublic({
+      bucket: "dialogue-audio",
+      path: filePath,
+      body: outputBuffer,
+      contentType: voiceResult.contentType,
+      upsert: false,
+    });
 
     const clientSettingsKey =
       typeof body?.clientSettingsKey === "string" && body.clientSettingsKey.trim()
@@ -326,16 +278,28 @@ export async function POST(req: NextRequest) {
         creatorVoiceRoute?.routeKey || "storyverse",
       ].join("-");
 
+    const chargedCredits = reservation?.reservedCredits || 0;
+    const creditResult = reservation
+      ? await settleMeteredOperation(reservation, {
+          providerRequestId: voiceResult.requestId,
+          metadata: { audioPath: storedAudio.path },
+        })
+      : null;
+    reservation = null;
+
     return NextResponse.json({
       ok: true,
-      audioUrl: publicData.publicUrl,
-      audioPath: filePath,
+      audioUrl: storedAudio.publicUrl,
+      audioPath: storedAudio.path,
       sourceText,
       cleanedText: fullText,
       language,
       voiceId: finalVoiceId,
       voiceSettings,
       settingsKey,
+      credits: creditResult
+        ? { chargedCredits, account: creditResult.account }
+        : { chargedCredits: 0 },
       voiceRoute: creatorVoiceRoute
         ? {
             strategy: creatorVoiceRoute.voiceStrategy,
@@ -350,12 +314,24 @@ export async function POST(req: NextRequest) {
         : null,
     });
   } catch (error: unknown) {
+    if (reservation) {
+      await releaseMeteredOperation(reservation, "dialogue_voice_generation_failed", {
+        route: "store-dialogue-audio",
+      });
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("store-dialogue-audio error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: "Diyalog sesi üretimi tamamlanamadı.",
+        error: getProviderPublicMessage(
+          error,
+          "Diyalog sesi üretimi tamamlanamadı.",
+        ),
       },
       { status: 500 }
     );

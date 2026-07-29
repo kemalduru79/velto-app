@@ -39,6 +39,48 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function isInvalidRefreshTokenError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const value = error as { code?: unknown; message?: unknown };
+  const code = String(value.code || "").toLowerCase();
+  const message = String(value.message || "").toLowerCase();
+
+  return (
+    code === "refresh_token_not_found" ||
+    code === "refresh_token_already_used" ||
+    message.includes("invalid refresh token") ||
+    message.includes("refresh token not found") ||
+    message.includes("refresh token already used")
+  );
+}
+
+function removeStoredSupabaseSession() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseUrl) return;
+
+    const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
+    if (projectRef) {
+      window.localStorage.removeItem(`sb-${projectRef}-auth-token`);
+    }
+  } catch {
+    // Invalid environment data should not prevent the app from treating the session as signed out.
+  }
+}
+
+async function clearInvalidLocalSession() {
+  removeStoredSupabaseSession();
+
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // The stale token is already unusable. The next successful sign-in replaces it.
+  }
+}
+
 export class SupabaseAuthAdapter implements AuthService {
   async signIn(email: string, password: string): Promise<AuthSession> {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -79,9 +121,9 @@ export class SupabaseAuthAdapter implements AuthService {
   }
 
   async signOut(): Promise<void> {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
 
-    if (error) {
+    if (error && !isInvalidRefreshTokenError(error)) {
       throw new Error(error.message || "Oturum kapatılamadı.");
     }
   }
@@ -109,6 +151,11 @@ export class SupabaseAuthAdapter implements AuthService {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearInvalidLocalSession();
+        return null;
+      }
+
       throw new Error(getErrorMessage(error, "Oturum bilgisi alınamadı."));
     }
 
@@ -119,6 +166,9 @@ export class SupabaseAuthAdapter implements AuthService {
     const { data, error } = await supabase.auth.getUser();
 
     if (error) {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearInvalidLocalSession();
+      }
       return null;
     }
 

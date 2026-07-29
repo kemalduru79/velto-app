@@ -39,11 +39,14 @@ import FocusedWorldWorkspace from "@/components/create/FocusedWorldWorkspace";
 import { WorldProvider } from "@/components/create/WorldContext";
 import StoryverseShell from "@/components/experience/StoryverseShell";
 import CreatorLabShell from "@/components/experience/CreatorLabShell";
+import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
+import UserAccountMenu from "@/components/auth/UserAccountMenu";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 import {
   getCreatorMediaRoute,
+  getCreatorVideoBlockSceneIds,
   isCreatorMediaActionAllowed,
   type CreatorMediaAction,
   type CreatorQualityMode,
@@ -1250,7 +1253,7 @@ const UI_TEXT = {
     studioRouteMapDesc: "Bu ekran artık sadece üretim paneli değil; Experience Lab ve hızlı içerik üretimi için ortak akış merkezi.",
     nextSurface: "Sonraki Katman",
     quickContentMode: "Hızlı İçerik Modu",
-    quickContentModeDesc: "Creator Lab fikir, senaryo, thumbnail, metadata ve yayına hazır paket üretimine odaklanır.",
+    quickContentModeDesc: "Velto Studio fikir, senaryo, thumbnail, metadata ve yayına hazır paket üretimine odaklanır.",
     quickItem1: "Tek prompt ile bölüm üretimi",
     quickItem2: "Seri formatı + export hazır akış",
     quickItem3: "Experience Lab içerikleriyle ortak evren",
@@ -1407,7 +1410,7 @@ const UI_TEXT = {
     videoFormat: "Üretim Formatı",
     analyzeContentOpportunity: "İçerik Fırsatını Analiz Et",
     analyzingContentOpportunity: "İçerik fırsatı analiz ediliyor...",
-    creatorTopicLabel: "Content Creator Lab hangi konu veya video fikrini analiz etsin?",
+    creatorTopicLabel: "Velto Studio hangi konu veya video fikrini analiz etsin?",
     creatorTopicPlaceholder: "Örn: LinkedIn’de AI trendleri nasıl anlatılmalı? veya YouTube için güçlü bir faceless video fikri öner",
     mentorAnalysisTitle: "Mentor Analizi",
     audienceInsight: "Audience Insight",
@@ -1470,9 +1473,9 @@ const UI_TEXT = {
     generatingFullYoutubePackage: "Full package hazırlanıyor...",
     fullYoutubePackageReady: "Full YouTube package hazır ✅",
     productionBridgeTitle: "Üretime Devam Et",
-    productionBridgeDesc: "Creator Lab paketi hazır. Önce paketi düzenlenebilir üretim sahnelerine dönüştür; görsel, ses, video ve export adımları ayrı kontrol edilir.",
+    productionBridgeDesc: "Velto Studio paketi hazır. Önce paketi düzenlenebilir üretim sahnelerine dönüştür; görsel, ses, video ve export adımları ayrı kontrol edilir.",
     productionBridgeButton: "🎬 Production Stage Oluştur",
-    productionBridgeReady: "Creator Lab paketi hazır. Henüz düzenlenebilir üretim sahnesi oluşturulmadı.",
+    productionBridgeReady: "Velto Studio paketi hazır. Henüz düzenlenebilir üretim sahnesi oluşturulmadı.",
     productionBridgeCostNote: "Not: Bu adım yalnızca metin tabanlı sahne yapısını oluşturur; görsel, ses, video veya export kredi kullanımı başlatmaz.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Birden fazla video fikrini hızlıca analiz eder. Bu aşamada video veya thumbnail üretmez; sadece seçilebilir fikir kartları oluşturur.",
@@ -1491,7 +1494,7 @@ const UI_TEXT = {
     generateSelectedBulk: "🚀 Seçilenleri Üret",
     generatingSelectedBulk: "Seçilenler üretiliyor...",
     selectedBulkCount: "Seçili fikir",
-    productionPackageNote: "Bu paket hazırlandıktan sonra CreatorLab akışı sahne, görsel, ses, video, thumbnail ve metadata üretimine devam eder.",
+    productionPackageNote: "Bu paket hazırlandıktan sonra Velto Studio akışı sahne, görsel, ses, video, thumbnail ve metadata üretimine devam eder.",
     refineScenes: "Sahneleri AI ile Geliştir",
     refiningScenes: "Sahneler geliştiriliyor...",
     refinedScenesReady: "Sahneler AI ile geliştirildi ✅",
@@ -1628,7 +1631,7 @@ const UI_TEXT = {
     freezeRiskDesc: "Scenes that may need smoother story timing.",
     quickModePrep: "Fast Creator Mode",
     activePlan: "Active plan",
-    quickModePrepDesc: "Creator Lab stays focused on ideas, scripts, thumbnails, creator details and ready-to-share packages.",
+    quickModePrepDesc: "Velto Studio stays focused on ideas, scripts, thumbnails, creator details and ready-to-share packages.",
     initialDesign: "Initial Design",
     initialDesignHint: "Review and correct the setup information. If everything looks right, generate the scenes next.",
     storyTitle: "Story Title",
@@ -1744,7 +1747,7 @@ const UI_TEXT = {
     videoFormat: "Production Format",
     analyzeContentOpportunity: "Analyze Content Opportunity",
     analyzingContentOpportunity: "Analyzing content opportunity...",
-    creatorTopicLabel: "What topic or video idea should Content Creator Lab analyze?",
+    creatorTopicLabel: "What topic or video idea should Velto Studio analyze?",
     creatorTopicPlaceholder: "Example: How should AI trends be explained on LinkedIn, or suggest a strong faceless YouTube video idea",
     mentorAnalysisTitle: "Mentor Analysis",
     audienceInsight: "Audience Insight",
@@ -1807,9 +1810,9 @@ const UI_TEXT = {
     generatingFullYoutubePackage: "Preparing full package...",
     fullYoutubePackageReady: "Full YouTube package is ready ✅",
     productionBridgeTitle: "Continue to Production",
-    productionBridgeDesc: "The Creator Lab package is ready. Convert it into editable production scenes first; image, voice, video and export actions remain separate.",
+    productionBridgeDesc: "The Velto Studio production package is ready. Convert it into editable production scenes first; image, voice, video and export actions remain separate.",
     productionBridgeButton: "🎬 Create Production Stage",
-    productionBridgeReady: "Creator Lab package is ready. No editable production scenes have been created yet.",
+    productionBridgeReady: "Velto Studio package is ready. No editable production scenes have been created yet.",
     productionBridgeCostNote: "Note: This step creates a text-only scene structure; it does not start image, voice, video or export credit usage.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Quickly turns multiple video ideas into simple idea cards you can choose from.",
@@ -1828,7 +1831,7 @@ const UI_TEXT = {
     generateSelectedBulk: "🚀 Generate Selected",
     generatingSelectedBulk: "Generating selected...",
     selectedBulkCount: "Selected ideas",
-    productionPackageNote: "After this package is prepared, CreatorLab continues into scenes, visuals, audio, video, thumbnail and metadata production.",
+    productionPackageNote: "After this package is prepared, Velto Studio continues into scenes, visuals, audio, video, thumbnail and metadata production.",
     refineScenes: "Refine Scenes with AI",
     refiningScenes: "Refining scenes...",
     refinedScenesReady: "Scenes refined with AI ✅",
@@ -2524,7 +2527,7 @@ function CreatorTimelinePreviewPanel({
             Audio-first continuity plan
           </h3>
           <p className="mt-2 max-w-3xl leading-6 text-slate-300">
-            CreatorLab now checks narration timing before final rendering and decides whether each scene should keep the generated clip, slow it down, add image-motion/B-roll, or split the scene.
+            Velto Studio now checks narration timing before final rendering and decides whether each scene should keep the generated clip, slow it down, add image-motion/B-roll, or split the scene.
           </p>
         </div>
 
@@ -3085,6 +3088,7 @@ export default function CreatePage() {
   const [sceneInstructions, setSceneInstructions] = useState<Record<number, string>>({});
   const [sceneScriptDrafts, setSceneScriptDrafts] = useState<Record<number, CreatorSceneScriptDraft>>({});
   const [creatorSceneInspectorTabs, setCreatorSceneInspectorTabs] = useState<Record<number, CreatorSceneInspectorTab>>({});
+  const [creatorVisualDirectionLoadingId, setCreatorVisualDirectionLoadingId] = useState<number | null>(null);
   const [creatorSelectedSceneIds, setCreatorSelectedSceneIds] = useState<number[]>([]);
   const [creatorAssetHistoryOpen, setCreatorAssetHistoryOpen] = useState<Record<number, boolean>>({});
   const [creatorAssetCompareSelection, setCreatorAssetCompareSelection] = useState<Record<number, string[]>>({});
@@ -3170,7 +3174,7 @@ export default function CreatePage() {
         }),
       });
     } catch (telemetryError) {
-      console.warn("CreatorLab telemetry delivery failed:", telemetryError);
+      console.warn("Velto Studio telemetry delivery failed:", telemetryError);
     }
   };
 
@@ -3210,8 +3214,8 @@ export default function CreatePage() {
         throw new Error(
           data?.error ||
             (uiLanguage === "en"
-              ? "CreatorLab operational status could not be checked."
-              : "CreatorLab operasyon durumu kontrol edilemedi."),
+              ? "Velto Studio operational status could not be checked."
+              : "Velto Studio operasyon durumu kontrol edilemedi."),
         );
       }
 
@@ -3242,8 +3246,8 @@ export default function CreatePage() {
           opsError instanceof Error
             ? opsError.message
             : uiLanguage === "en"
-              ? "CreatorLab operational status could not be checked."
-              : "CreatorLab operasyon durumu kontrol edilemedi.",
+              ? "Velto Studio operational status could not be checked."
+              : "Velto Studio operasyon durumu kontrol edilemedi.",
       }));
     }
   };
@@ -3626,7 +3630,7 @@ export default function CreatePage() {
   );
   const selectedFlowProjectTitle =
     activeFlowKey === "creator_lab"
-      ? "Creator Lab Projects"
+      ? "Velto Studio Projects"
       : activeFlowKey === "storyverse"
         ? "Storyverse Projects"
         : `${localizedSelectedFlow.shortTitle || localizedSelectedFlow.title} Projects`;
@@ -3716,7 +3720,7 @@ export default function CreatePage() {
     const projectFlowType = project?.flow_type || "storyverse";
 
     if (projectFlowType === "creator_lab") {
-      return "Creator Lab";
+      return "Velto Studio";
     }
 
 
@@ -3764,6 +3768,16 @@ export default function CreatePage() {
     return session.access_token;
   };
 
+  const notifyCreditAccountChanged = (credits?: { account?: unknown } | null) => {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(
+      new CustomEvent("velto:credits-changed", {
+        detail: { account: credits?.account || null },
+      }),
+    );
+  };
+
 
   const buildCreatorDirectorContext = () => {
     const selectedScene =
@@ -3772,7 +3786,7 @@ export default function CreatePage() {
         : null;
 
     return {
-      product: "CreatorLab",
+      product: "Velto Studio",
       interfaceLanguage: uiLanguage,
       activeStage: creatorWorkspaceStep,
       project: {
@@ -4030,21 +4044,20 @@ export default function CreatePage() {
   };
 
   const getSceneExportSource = (scene: Scene): "video" | "image" | "none" => {
-    if (scene.renderMode === "image") {
+    const effectiveOutputMode = isCreatorLabFlow
+      ? getCreatorEffectiveSceneOutputMode(scene)
+      : scene.renderMode;
+
+    if (effectiveOutputMode === "image") {
       return scene.image ? "image" : "none";
     }
 
-    if (scene.renderMode === "video") {
+    if (effectiveOutputMode === "video") {
       return scene.videoUrl && scene.videoStatus === "done" ? "video" : "none";
     }
 
-    // CreatorLab requires an explicit per-scene output choice. Older projects
-    // that were saved with Auto remain unselected until the user chooses Image
-    // or Video. Storyverse keeps its historical fallback behavior.
-    if (isCreatorLabFlow) {
-      return "none";
-    }
-
+    // Storyverse keeps its historical media fallback behavior. CreatorLab
+    // always resolves Auto through Production Quality before export.
     if (scene.videoUrl && scene.videoStatus === "done") {
       return "video";
     }
@@ -4943,10 +4956,14 @@ export default function CreatePage() {
       );
     }
 
+    const accessToken = await getAccessTokenOrThrow();
+    const voiceRequestKey = `creator-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
     const res = await fetch("/api/store-audio", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": voiceRequestKey,
       },
       body: JSON.stringify({
         text: scene.narration,
@@ -4993,6 +5010,8 @@ export default function CreatePage() {
       data.audioSourceText,
       data.settingsKey || currentSettingsKey,
     );
+
+    notifyCreditAccountChanged(data?.credits);
 
     const refreshedTiming = await refreshSceneTiming(scene.id, {
       audioUrl: data.audioUrl,
@@ -5144,10 +5163,14 @@ export default function CreatePage() {
       );
     }
 
+    const accessToken = await getAccessTokenOrThrow();
+    const dialogueVoiceRequestKey = `creator-dialogue-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
     const res = await fetch("/api/store-dialogue-audio", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": dialogueVoiceRequestKey,
       },
       body: JSON.stringify({
         lines,
@@ -5177,6 +5200,8 @@ export default function CreatePage() {
     if (!res.ok || !data.ok || !data.audioUrl) {
       throw new Error(data?.error || "Diyalog sesi üretilemedi.");
     }
+
+    notifyCreditAccountChanged(data?.credits);
 
     setScenes((prev) =>
       prev.map((item) =>
@@ -5716,11 +5741,14 @@ export default function CreatePage() {
       return false;
     }
 
-    if (isCreatorLabFlow && scene.renderMode !== "video") {
+    if (
+      isCreatorLabFlow &&
+      getCreatorEffectiveSceneOutputMode(scene) !== "video"
+    ) {
       setError(
         uiLanguage === "en"
-          ? "Select Video as this scene's output before starting video generation."
-          : "Video üretimini başlatmadan önce bu sahnenin çıktısını Video olarak seç.",
+          ? "The current Production Quality routes this scene to Image. Use Pro or Cinematic, or set a Video override in Advanced Mode."
+          : "Mevcut Üretim Kalitesi bu sahneyi Görsel rotasına yönlendiriyor. Pro veya Cinematic kullan ya da Gelişmiş Mod'da Video override seç.",
       );
       return false;
     }
@@ -5755,13 +5783,19 @@ export default function CreatePage() {
     );
 
     try {
+      const accessToken = await getAccessTokenOrThrow();
+      const videoRequestKey = `creator-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
       const res = await fetch(getVideoApiEndpoint(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          "x-idempotency-key": videoRequestKey,
         },
         body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+          projectId: currentProjectId || undefined,
+          sceneId: scene.id,
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
           imageUrl: scene.image,
@@ -5786,8 +5820,8 @@ export default function CreatePage() {
             ? "Cinematic generation started with the primary video service because the premium service is not configured yet."
             : "Premium servis henüz yapılandırılmadığı için sinematik üretim ana video servisiyle başlatıldı."
           : uiLanguage === "en"
-            ? "Video generation started. CreatorLab will update this scene when the motion block is ready."
-            : "Video üretimi başlatıldı. Hareketli blok hazır olduğunda CreatorLab bu sahneyi güncelleyecek.",
+            ? "Video generation started. Velto Studio will update this scene when the motion block is ready."
+            : "Video üretimi başlatıldı. Hareketli blok hazır olduğunda Velto Studio bu sahneyi güncelleyecek.",
       );
 
       setScenes((prev) =>
@@ -5803,6 +5837,9 @@ export default function CreatePage() {
         )
       );
 
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("velto:credits-changed"));
+      }
       pollVideoStatus(sceneId, data.taskId);
       return true;
     } catch (e: any) {
@@ -5954,13 +5991,19 @@ export default function CreatePage() {
       )
     );
 
+    const accessToken = await getAccessTokenOrThrow();
+    const videoRequestKey = `creator-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
     const res = await fetch(getVideoApiEndpoint(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": videoRequestKey,
       },
       body: JSON.stringify({
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+        projectId: currentProjectId || undefined,
+        sceneId: scene.id,
         qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
         imageUrl: scene.image,
@@ -5991,6 +6034,8 @@ export default function CreatePage() {
           : item
       )
     );
+
+    notifyCreditAccountChanged(data?.credits);
 
     const videoUrl = await waitForRunwayVideoAndStore(scene, data.taskId);
 
@@ -7270,16 +7315,6 @@ export default function CreatePage() {
       return;
     }
 
-    if (creatorUnselectedSceneCount > 0) {
-      setError(
-        uiLanguage === "en"
-          ? "Choose Image or Video for every scene before continuing production."
-          : "Üretime devam etmeden önce her sahne için Görsel veya Video seç.",
-      );
-      scrollCreatorWorkspaceTo("creatorlab-production-storyboard");
-      return;
-    }
-
     if (creatorVideoSelectionBlockedByQuality) {
       setError(
         uiLanguage === "en"
@@ -7999,7 +8034,7 @@ export default function CreatePage() {
         baseCredits: 3,
         sceneCredits: 1,
         durationCredits: 1,
-        videoRatio: 0.25,
+        videoRatio: 0,
         mediaPathEn: "Mostly images, voice and light motion",
         mediaPathTr: "Ağırlıklı görsel, ses ve hafif hareket",
         timelineGateEn: "Timeline should be reviewed before asset generation.",
@@ -8087,10 +8122,48 @@ export default function CreatePage() {
       : "Bu medya aksiyonu seçilen üretim kalitesinde kullanılamaz.";
   };
 
-  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) =>
-    sourceScenes
+  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
+    const explicitVideoSceneIds = sourceScenes
       .filter((scene) => scene.renderMode === "video")
       .map((scene) => scene.id);
+
+    if (!isCreatorLabFlow) {
+      return explicitVideoSceneIds;
+    }
+
+    // Manual Video overrides remain visible even when the active quality mode
+    // cannot execute them, so the existing quality gate can guide the user.
+    if (!isCreatorMediaActionAllowed(creatorMediaRoute, "ai_video_blocks")) {
+      return explicitVideoSceneIds;
+    }
+
+    return getCreatorVideoBlockSceneIds({
+      route: creatorMediaRoute,
+      sceneIds: sourceScenes.map((scene) => scene.id),
+      timelinePlan: getCreatorActiveTimelinePlan(),
+      forceVideoSceneIds: explicitVideoSceneIds,
+      forceImageSceneIds: sourceScenes
+        .filter((scene) => scene.renderMode === "image")
+        .map((scene) => scene.id),
+    });
+  };
+
+  const getCreatorEffectiveSceneOutputMode = (
+    scene: Scene,
+    sourceScenes: Scene[] = scenes,
+  ): "image" | "video" => {
+    if (scene.renderMode === "image" || scene.renderMode === "video") {
+      return scene.renderMode;
+    }
+
+    if (!isCreatorLabFlow) {
+      return scene.videoUrl && scene.videoStatus === "done" ? "video" : "image";
+    }
+
+    return getCreatorRoutedVideoSceneIds(sourceScenes).includes(scene.id)
+      ? "video"
+      : "image";
+  };
 
   const getCreatorTimelineMediaGate = () => {
     if (!isCreatorLabFlow || scenes.length === 0) {
@@ -8111,8 +8184,8 @@ export default function CreatePage() {
         title: uiLanguage === "en" ? "Automatic media preflight" : "Otomatik medya ön kontrolü",
         message:
           uiLanguage === "en"
-            ? "CreatorLab will run the timing and continuity preflight automatically when media production starts."
-            : "CreatorLab, medya üretimi başladığında zamanlama ve süreklilik ön kontrolünü otomatik çalıştıracak.",
+            ? "Velto Studio will run the timing and continuity preflight automatically when media production starts."
+            : "Velto Studio, medya üretimi başladığında zamanlama ve süreklilik ön kontrolünü otomatik çalıştıracak.",
         action: uiLanguage === "en" ? "Automatic" : "Otomatik",
       };
     }
@@ -8124,8 +8197,8 @@ export default function CreatePage() {
         title: uiLanguage === "en" ? "Timing risk will be managed automatically" : "Zamanlama riski otomatik yönetilecek",
         message:
           uiLanguage === "en"
-            ? "Media production can continue. CreatorLab keeps the timing risk in the background and rechecks it before final export."
-            : "Medya üretimi devam edebilir. CreatorLab zamanlama riskini arka planda tutar ve final export öncesinde yeniden kontrol eder.",
+            ? "Media production can continue. Velto Studio keeps the timing risk in the background and rechecks it before final export."
+            : "Medya üretimi devam edebilir. Velto Studio zamanlama riskini arka planda tutar ve final export öncesinde yeniden kontrol eder.",
         action: uiLanguage === "en" ? "Automatic" : "Otomatik",
       };
     }
@@ -8149,8 +8222,8 @@ export default function CreatePage() {
   const getCreatorTimelineGateError = () =>
     creatorTimelineMediaGate.message ||
     (uiLanguage === "en"
-      ? "Run and approve the CreatorLab timeline before using media credits."
-      : "Medya kredisi kullanmadan önce CreatorLab timeline kontrolünü çalıştır ve onayla.");
+      ? "Run and approve the Velto Studio timeline before using media credits."
+      : "Medya kredisi kullanmadan önce Velto Studio timeline kontrolünü çalıştır ve onayla.");
 
   const getCreatorMediaActionError = (
     action: CreatorMediaAction = "paid_media",
@@ -8191,8 +8264,8 @@ export default function CreatePage() {
       if (!res.ok || !data?.ok) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Video preflight could not confirm the provider. CreatorLab will verify it through the production request."
-            : "Video ön kontrolü sağlayıcıyı doğrulayamadı. CreatorLab üretim isteği üzerinden doğrudan doğrulayacak.",
+            ? "Video preflight could not confirm the provider. Velto Studio will verify it through the production request."
+            : "Video ön kontrolü sağlayıcıyı doğrulayamadı. Velto Studio üretim isteği üzerinden doğrudan doğrulayacak.",
         );
         return true;
       }
@@ -8200,14 +8273,14 @@ export default function CreatePage() {
       if (data?.fallbackUsed) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Premium video is not configured yet. CreatorLab will use the primary video service for this cinematic test."
-            : "Premium video servisi henüz yapılandırılmamış. CreatorLab bu sinematik testte ana video servisini kullanacak.",
+            ? "Premium video is not configured yet. Velto Studio will use the primary video service for this cinematic test."
+            : "Premium video servisi henüz yapılandırılmamış. Velto Studio bu sinematik testte ana video servisini kullanacak.",
         );
       } else if (!data?.canGenerate && data?.reason) {
         setSaveMessage(
           uiLanguage === "en"
-            ? `${data.reason} CreatorLab will verify the provider once more when the production request starts.`
-            : `${data.reason} CreatorLab üretim isteği başladığında sağlayıcıyı bir kez daha doğrulayacak.`,
+            ? `${data.reason} Velto Studio will verify the provider once more when the production request starts.`
+            : `${data.reason} Velto Studio üretim isteği başladığında sağlayıcıyı bir kez daha doğrulayacak.`,
         );
       }
 
@@ -8216,8 +8289,8 @@ export default function CreatePage() {
       console.error("video service health check error:", healthError);
       setSaveMessage(
         uiLanguage === "en"
-          ? "Video service preflight could not be read. CreatorLab will try the production request directly."
-          : "Video servisi ön kontrolü okunamadı. CreatorLab üretim isteğini doğrudan deneyecek.",
+          ? "Video service preflight could not be read. Velto Studio will try the production request directly."
+          : "Video servisi ön kontrolü okunamadı. Velto Studio üretim isteğini doğrudan deneyecek.",
       );
       return true;
     }
@@ -8568,14 +8641,14 @@ export default function CreatePage() {
   ) =>
     sourceScenes.map((scene, index) => ({
       id: scene.id || index + 1,
-      text: scene.text || scene.narration || `CreatorLab scene ${index + 1}`,
+      text: scene.text || scene.narration || `Velto Studio scene ${index + 1}`,
       narration: scene.narration || "",
       dialogue: scene.dialogue || "",
       visualPrompt:
         scene.visualPrompt ||
         scene.motionHint ||
         scene.cameraDirection ||
-        `Professional CreatorLab visual beat ${index + 1}`,
+        `Professional Velto Studio visual beat ${index + 1}`,
       cameraDirection: scene.cameraDirection || "Clean editorial shot with readable composition.",
       motionHint: scene.motionHint || "controlled editorial motion",
     }));
@@ -8656,7 +8729,7 @@ export default function CreatePage() {
 
     try {
       const nextPlan = await fetchCreatorTimelinePreviewPlan(
-        input.trim() || creatorProductionPackage?.title || "CreatorLab video",
+        input.trim() || creatorProductionPackage?.title || "Velto Studio video",
         creatorMentorResult,
         scenes,
       );
@@ -8745,7 +8818,7 @@ export default function CreatePage() {
 
     try {
       const initialPlan = await fetchCreatorTimelinePreviewPlan(
-        input.trim() || creatorProductionPackage?.title || "CreatorLab video",
+        input.trim() || creatorProductionPackage?.title || "Velto Studio video",
         creatorMentorResult,
         sourceScenes,
       );
@@ -8757,7 +8830,7 @@ export default function CreatePage() {
       const nextPlan =
         optimizedScenes !== sourceScenes
           ? await fetchCreatorTimelinePreviewPlan(
-              input.trim() || creatorProductionPackage?.title || "CreatorLab video",
+              input.trim() || creatorProductionPackage?.title || "Velto Studio video",
               creatorMentorResult,
               optimizedScenes,
             )
@@ -9248,8 +9321,8 @@ export default function CreatePage() {
     if (!topic) {
       setError(
         uiLanguage === "en"
-          ? "Please enter a CreatorLab topic before previewing the timeline."
-          : "Timeline önizlemesi için önce CreatorLab konusu gir."
+          ? "Please enter a Velto Studio topic before previewing the timeline."
+          : "Timeline önizlemesi için önce Velto Studio konusu gir."
       );
       return;
     }
@@ -10742,6 +10815,129 @@ export default function CreatePage() {
     }
   };
 
+  const editCreatorSceneVisualDirectionWithAI = async (scene: Scene) => {
+    if (!isCreatorLabFlow || creatorVisualDirectionLoadingId !== null) return;
+
+    setCreatorVisualDirectionLoadingId(scene.id);
+    setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "visual" }));
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      const sceneDuration = Math.max(
+        3,
+        Number(
+          scene.targetDurationSec ||
+            scene.timing?.plannedSceneDuration ||
+            scene.timing?.targetSceneDuration ||
+            8,
+        ),
+      );
+      const response = await fetch("/api/creator-refine-scenes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          topic: input,
+          country: getCreatorCountryLabel(),
+          ageGroup: creatorAgeGroup,
+          contentType: getCreatorContentTypeLabel(),
+          format: getCreatorFormatLabel(),
+          durationSec: sceneDuration,
+          sceneCount: 1,
+          qualityMode: creatorQualityMode,
+          language,
+          productionPackage: creatorProductionPackage,
+          scenes: [scene],
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      const refinedScene = Array.isArray(data?.scenes) ? data.scenes[0] : null;
+
+      if (!response.ok || !refinedScene) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Visual direction could not be improved."
+              : "Görsel yön geliştirilemedi."),
+        );
+      }
+
+      const nextDirection = {
+        cameraDirection:
+          typeof refinedScene.cameraDirection === "string"
+            ? refinedScene.cameraDirection.trim()
+            : scene.cameraDirection || "",
+        emotion:
+          typeof refinedScene.emotion === "string"
+            ? refinedScene.emotion.trim()
+            : scene.emotion || "",
+        motionHint:
+          typeof refinedScene.motionHint === "string"
+            ? refinedScene.motionHint.trim()
+            : scene.motionHint || "",
+        visualPrompt:
+          typeof refinedScene.visualPrompt === "string"
+            ? refinedScene.visualPrompt.trim()
+            : scene.visualPrompt || "",
+      };
+
+      pushCreatorUndoSnapshot(
+        uiLanguage === "en"
+          ? `Improve scene ${scene.id} visual direction`
+          : `Sahne ${scene.id} görsel yönünü geliştir`,
+      );
+      clearVideoPollForScene(scene.id);
+      setExportedMovieUrl("");
+      setExportMovieResult(null);
+      setExportSignature("");
+      setCreatorTimelinePreviewPlan(null);
+      setCreatorEditPlan(null);
+
+      const applyDirection = <T extends Scene | CreatorProductionScene,>(item: T): T =>
+        item.id === scene.id
+          ? ({
+              ...item,
+              ...nextDirection,
+              image: "",
+              videoUrl: "",
+              videoStatus: "idle",
+              videoJobId: "",
+              videoDurationSeconds: 0,
+            } as T)
+          : item;
+
+      setScenes((prev) => prev.map(applyDirection));
+      setCreatorProductionPackage((prev) =>
+        prev
+          ? { ...prev, scenes: (prev.scenes || []).map(applyDirection) }
+          : prev,
+      );
+      setRefinedCreatorScenes((prev) =>
+        Array.isArray(prev) ? prev.map(applyDirection) : prev,
+      );
+
+      setSaveMessage(
+        uiLanguage === "en"
+          ? `Scene ${scene.id} visual direction was improved. Regenerate the visual to apply it.`
+          : `Sahne ${scene.id} görsel yönü geliştirildi. Uygulamak için görseli yeniden üret.`,
+      );
+    } catch (directionError) {
+      setError(
+        directionError instanceof Error
+          ? directionError.message
+          : uiLanguage === "en"
+            ? "Visual direction could not be improved."
+            : "Görsel yön geliştirilemedi.",
+      );
+    } finally {
+      setCreatorVisualDirectionLoadingId(null);
+    }
+  };
+
   const openCreatorSceneEditor = (scene: Scene) => {
     setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "script" }));
     setEditingSceneId(scene.id);
@@ -11018,13 +11214,14 @@ export default function CreatePage() {
     }
 
     const invalidScene = targetScenes.find(
-      (scene) => scene.renderMode !== "video" || !scene.image,
+      (scene) =>
+        getCreatorEffectiveSceneOutputMode(scene) !== "video" || !scene.image,
     );
     if (invalidScene) {
       throw new Error(
         uiLanguage === "en"
-          ? `Scene ${invalidScene.id} must use Video output and have a ready image first.`
-          : `Sahne ${invalidScene.id} önce Video çıktısını kullanmalı ve hazır bir görsele sahip olmalı.`,
+          ? `Scene ${invalidScene.id} is not on the current motion route or does not have a ready image.`
+          : `Sahne ${invalidScene.id} mevcut hareket rotasında değil veya hazır bir görsele sahip değil.`,
       );
     }
 
@@ -11358,7 +11555,7 @@ export default function CreatePage() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          topic: input.trim() || title || creatorProductionPackage?.title || "CreatorLab video",
+          topic: input.trim() || title || creatorProductionPackage?.title || "Velto Studio video",
           contentType: getCreatorContentTypeLabel(),
           format: creatorFormat,
           language,
@@ -12463,9 +12660,6 @@ export default function CreatePage() {
   const creatorSelectedMissingVoiceCount = scenes.filter(
     (scene) => creatorSelectedSceneIdSet.has(scene.id) && !getSceneVoiceStatus(scene),
   ).length;
-  const creatorUnselectedSceneCount = scenes.filter(
-    (scene) => scene.renderMode !== "image" && scene.renderMode !== "video",
-  ).length;
   const creatorRoutedMotionSceneIds = getCreatorRoutedVideoSceneIds(scenes);
   const creatorRoutedMotionSceneIdSet = new Set(creatorRoutedMotionSceneIds);
   const creatorMotionRequired = creatorRoutedMotionSceneIds.length > 0;
@@ -12489,20 +12683,7 @@ export default function CreatePage() {
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
   const creatorTimelineNeedsAttention = scenes.length > 0 && !creatorTimelineMediaGate.approved;
-  const creatorNextProductionAction = creatorUnselectedSceneCount > 0
-    ? {
-        title:
-          uiLanguage === "en"
-            ? "Choose Image or Video for every scene"
-            : "Her sahne için Görsel veya Video seç",
-        description:
-          uiLanguage === "en"
-            ? `${creatorUnselectedSceneCount} scene(s) still need an explicit output choice. CreatorLab will not decide this automatically or spend video credits without your selection.`
-            : `${creatorUnselectedSceneCount} sahne için açık bir çıktı seçimi gerekiyor. CreatorLab bu kararı otomatik vermeyecek ve seçimin olmadan video kredisi kullanmayacak.`,
-        buttonLabel:
-          uiLanguage === "en" ? "Review Scene Choices" : "Sahne Seçimlerini Kontrol Et",
-      }
-    : creatorVideoSelectionBlockedByQuality
+  const creatorNextProductionAction = creatorVideoSelectionBlockedByQuality
       ? {
           title:
             uiLanguage === "en"
@@ -12535,8 +12716,8 @@ export default function CreatePage() {
               : "Eksik sahne görsellerini üret",
           description:
             uiLanguage === "en"
-              ? "CreatorLab will create only the missing visuals and keep provider routing in the background."
-              : "CreatorLab yalnızca eksik görselleri oluşturacak ve sağlayıcı yönlendirmesini arka planda tutacak.",
+              ? "Velto Studio will create only the missing visuals and keep provider routing in the background."
+              : "Velto Studio yalnızca eksik görselleri oluşturacak ve sağlayıcı yönlendirmesini arka planda tutacak.",
           buttonLabel:
             uiLanguage === "en"
               ? "Continue · Generate Visuals"
@@ -13310,7 +13491,7 @@ export default function CreatePage() {
             : !creatorVisualsComplete
               ? {
                   title: uiLanguage === "en" ? "Generate the missing visuals" : "Eksik görselleri üret",
-                  description: uiLanguage === "en" ? "CreatorLab will keep visual routing decisions internal." : "CreatorLab görsel yönlendirme kararlarını sistem içinde tutar.",
+                  description: uiLanguage === "en" ? "Velto Studio will keep visual routing decisions internal." : "Velto Studio görsel yönlendirme kararlarını sistem içinde tutar.",
                   label: uiLanguage === "en" ? "Go to visual generation" : "Görsel üretimine git",
                   targetId: "creatorlab-production-action",
                 }
@@ -13561,7 +13742,7 @@ export default function CreatePage() {
   --cl-font-ui: Arial, Helvetica, sans-serif;
   --cl-shadow-card: 0 8px 24px rgba(19, 36, 62, 0.055);
 }
-/* CreatorLab UX-R2 — product workspace shell
+/* Velto Studio UX-R2 — product workspace shell
    The shell establishes the persistent workflow, project readiness and contextual AI areas.
    Existing product functions remain in the center canvas and are migrated step by step. */
 .creatorlab-product-frame {
@@ -13597,8 +13778,9 @@ export default function CreatePage() {
   z-index: 60;
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(360px, auto) minmax(190px, 1fr);
+  grid-template-columns: minmax(360px, 1fr) minmax(340px, 420px) max-content;
   align-items: center;
+  column-gap: 24px;
   min-height: 82px;
   padding: 12px 22px;
   background: rgba(255, 253, 249, 0.97);
@@ -13652,8 +13834,9 @@ export default function CreatePage() {
   display: grid;
   grid-template-columns: auto minmax(120px, 190px) auto auto;
   align-items: center;
-  justify-content: center;
+  justify-content: stretch;
   gap: 12px;
+  min-width: 0;
 }
 
 .creatorlab-readiness-copy {
@@ -13729,7 +13912,13 @@ export default function CreatePage() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: max-content;
+}
+
+.creatorlab-account-menu {
+  flex: 0 0 auto;
 }
 
 .creatorlab-language-toggle {
@@ -14747,7 +14936,7 @@ export default function CreatePage() {
   line-height: 1.5;
 }
 
-/* CreatorLab UX-R6 — contextual AI workspace */
+/* Velto Studio UX-R6 — contextual AI workspace */
 .creatorlab-ai-workspace {
   scrollbar-width: thin;
   scrollbar-color: var(--cl-border-strong) transparent;
@@ -14953,7 +15142,7 @@ export default function CreatePage() {
   scroll-margin-top: 104px;
 }
 
-/* CreatorLab UX-R3 — focused Brief experience */
+/* Velto Studio UX-R3 — focused Brief experience */
 .creatorlab-project-access {
   display: grid;
   gap: 0;
@@ -15564,7 +15753,7 @@ export default function CreatePage() {
 }
 
 
-/* CreatorLab UX-R4 — decision-focused Strategy experience */
+/* Velto Studio UX-R4 — decision-focused Strategy experience */
 .creatorlab-strategy-experience {
   display: grid;
   gap: 18px;
@@ -16430,7 +16619,7 @@ export default function CreatePage() {
 
 
 
-/* CreatorLab UX-P0B — focused brief and resilient local draft autosave */
+/* Velto Studio UX-P0B — focused brief and resilient local draft autosave */
 .creatorlab-save-state {
   display: inline-flex;
   align-items: center;
@@ -17857,7 +18046,7 @@ export default function CreatePage() {
   }
 }
 
-/* CreatorLab UX-R8 — Publish Experience */
+/* Velto Studio UX-R8 — Publish Experience */
 .creatorlab-publish-experience {
   display: grid;
   gap: 16px;
@@ -18735,7 +18924,7 @@ export default function CreatePage() {
   }
 }
 
-/* CreatorLab UX-P4 — Thumbnail Studio, channel targets and release validation */
+/* Velto Studio UX-P4 — Thumbnail Studio, channel targets and release validation */
 .creatorlab-platform-choice-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -19127,7 +19316,7 @@ export default function CreatePage() {
   }
 }
 
-/* CreatorLab UX-R7 — Cast & Brand secondary production area */
+/* Velto Studio UX-R7 — Cast & Brand secondary production area */
 .creatorlab-production-identity-panel > summary {
   min-height: 68px;
   padding: 12px 16px;
@@ -19857,7 +20046,7 @@ export default function CreatePage() {
   }
 }
 
-/* CreatorLab UX-R9 — projects and readiness */
+/* Velto Studio UX-R9 — projects and readiness */
 .creatorlab-project-hub {
   display: grid;
   gap: 14px;
@@ -20389,6 +20578,27 @@ export default function CreatePage() {
   margin-block: 0 !important;
 }
 
+@media (max-width: 1599px) and (min-width: 900px) {
+  .creatorlab-workspace-topbar {
+    grid-template-columns: minmax(260px, 1fr) max-content;
+    row-gap: 10px;
+  }
+
+  .creatorlab-readiness-block {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: auto minmax(160px, 1fr) auto auto;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid var(--cl-divider);
+  }
+
+  .creatorlab-topbar-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
 @media (max-width: 1379px) {
   .creatorlab-product-frame {
     grid-template-columns: 224px minmax(0, 1fr);
@@ -20399,7 +20609,7 @@ export default function CreatePage() {
   }
 
   .creatorlab-workspace-topbar {
-    grid-template-columns: minmax(220px, 1fr) minmax(330px, auto) minmax(150px, 1fr);
+    grid-template-columns: minmax(220px, 1fr) max-content;
     padding-inline: 18px;
   }
 }
@@ -20411,7 +20621,7 @@ export default function CreatePage() {
 
   .creatorlab-workspace-topbar {
     grid-column: 1 / -1;
-    grid-template-columns: minmax(230px, 1fr) minmax(300px, auto) auto;
+    grid-template-columns: minmax(230px, 1fr) max-content;
   }
 
   .creatorlab-workflow-rail {
@@ -20474,6 +20684,16 @@ export default function CreatePage() {
     right: -5px;
     min-width: 17px;
     height: 17px;
+  }
+
+  .creatorlab-account-menu > button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 5px !important;
+  }
+
+  .creatorlab-account-menu > button > span:nth-child(n + 2) {
+    display: none;
   }
 
   .creatorlab-workflow-rail {
@@ -20556,7 +20776,7 @@ export default function CreatePage() {
 }
 
 
-/* CreatorLab UX-R10 — responsive, state, accessibility and final product polish */
+/* Velto Studio UX-R10 — responsive, state, accessibility and final product polish */
 .creatorlab-product-frame {
   color-scheme: light;
   isolation: isolate;
@@ -20809,7 +21029,7 @@ export default function CreatePage() {
 }
 
 
-/* CreatorLab UX-P1 — strategy decision experience */
+/* Velto Studio UX-P1 — strategy decision experience */
 .creatorlab-strategy-recommendation {
   transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
@@ -21109,7 +21329,7 @@ export default function CreatePage() {
 }
 
 
-/* CreatorLab UX-P6 — responsive drawers, accessible interaction and control tokens */
+/* Velto Studio UX-P6 — responsive drawers, accessible interaction and control tokens */
 .creatorlab-product-frame {
   --cl-control-height: 44px;
   --cl-control-height-compact: 38px;
@@ -21417,9 +21637,9 @@ export default function CreatePage() {
         {isCreatorLabFlow && (
           <header className="creatorlab-workspace-topbar">
             <div className="creatorlab-brand-block">
-              <div className="creatorlab-brand-mark" aria-hidden="true">CL</div>
+              <div className="creatorlab-brand-mark" aria-hidden="true">VS</div>
               <div className="min-w-0">
-                <div className="creatorlab-brand-name">CreatorLab</div>
+                <div className="creatorlab-brand-name">Velto Studio</div>
                 <p className="creatorlab-project-name" title={creatorRawProjectTitle}>
                   {creatorProjectDisplayTitle}
                 </p>
@@ -21468,6 +21688,12 @@ export default function CreatePage() {
             </div>
 
             <div className="creatorlab-topbar-actions">
+              <ProductTopNavigation
+                tone="light"
+                active="studio"
+                variant="creatorlab"
+                showAccount={false}
+              />
               <div className="creatorlab-language-toggle" aria-label={uiLanguage === "en" ? "Interface language" : "Arayüz dili"}>
                 <button
                   type="button"
@@ -21525,6 +21751,10 @@ export default function CreatePage() {
                   </small>
                 )}
               </button>
+              <UserAccountMenu
+                tone="light"
+                className="creatorlab-account-menu"
+              />
             </div>
           </header>
         )}
@@ -21532,7 +21762,7 @@ export default function CreatePage() {
         {isCreatorLabFlow && (
           <aside className="creatorlab-workflow-rail" aria-label={uiLanguage === "en" ? "Project workflow" : "Proje akışı"}>
             <p className="creatorlab-rail-kicker">{uiLanguage === "en" ? "Project workflow" : "Proje akışı"}</p>
-            <nav className="creatorlab-step-list" aria-label={uiLanguage === "en" ? "CreatorLab workflow steps" : "CreatorLab iş akışı adımları"}>
+            <nav className="creatorlab-step-list" aria-label={uiLanguage === "en" ? "Velto Studio workflow steps" : "Velto Studio iş akışı adımları"}>
               {creatorWorkflowSteps.map((step) => {
                 const isActive = creatorWorkspaceStep === step.id;
                 return (
@@ -21686,7 +21916,7 @@ export default function CreatePage() {
                     <strong>
                       {creatorDirectorMode === "project"
                         ? uiLanguage === "en" ? "Ask about this project" : "Bu proje hakkında sor"
-                        : uiLanguage === "en" ? "Ask how CreatorLab works" : "CreatorLab kullanımını sor"}
+                        : uiLanguage === "en" ? "Ask how Velto Studio works" : "Velto Studio kullanımını sor"}
                     </strong>
                     <p>
                       {creatorDirectorMode === "project"
@@ -21811,8 +22041,8 @@ export default function CreatePage() {
                                               ? "Final credit usage is variable and will be recorded by the production workflow. Generated provider cost cannot be undone."
                                               : "Nihai kredi kullanımı değişkendir ve üretim akışı tarafından kaydedilecektir. Oluşan sağlayıcı maliyeti geri alınamaz."
                                             : uiLanguage === "en"
-                                              ? "CreatorLab will recheck release readiness before downloading the package."
-                                              : "CreatorLab paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
+                                              ? "Velto Studio will recheck release readiness before downloading the package."
+                                              : "Velto Studio paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
                                         </p>
                                         <label>
                                           <input
@@ -21980,8 +22210,8 @@ export default function CreatePage() {
                         ? "Ask about the brief, a scene, production or release…"
                         : "Brief, sahne, üretim veya yayın hakkında sor…"
                       : uiLanguage === "en"
-                        ? "Ask how to use CreatorLab…"
-                        : "CreatorLab'in nasıl kullanılacağını sor…"
+                        ? "Ask how to use Velto Studio…"
+                        : "Velto Studio’nun nasıl kullanılacağını sor…"
                   }
                   onKeyDown={(event) => {
                     if (
@@ -22686,7 +22916,7 @@ export default function CreatePage() {
             {!creatorProjectsHidden && (
               <div id="creatorlab-project-library" className="creatorlab-project-library">
                 <div className="creatorlab-project-library-summary">
-                  <strong>{uiLanguage === "en" ? "Recent CreatorLab projects" : "Son CreatorLab projeleri"}</strong>
+                  <strong>{uiLanguage === "en" ? "Recent Velto Studio projects" : "Son Velto Studio projeleri"}</strong>
                   <span>
                     {creatorProjectRecords.length} {uiLanguage === "en" ? "saved projects" : "kayıtlı proje"}
                   </span>
@@ -22697,8 +22927,8 @@ export default function CreatePage() {
                 ) : creatorProjectRecords.length === 0 ? (
                   <div className="creatorlab-project-empty">
                     {uiLanguage === "en"
-                      ? "No CreatorLab project has been saved yet. Your first saved production will appear here."
-                      : "Henüz kayıtlı CreatorLab projesi yok. İlk kaydedilen üretimin burada görünecek."}
+                      ? "No Velto Studio project has been saved yet. Your first saved production will appear here."
+                      : "Henüz kayıtlı Velto Studio projesi yok. İlk kaydedilen üretimin burada görünecek."}
                   </div>
                 ) : (
                   <div className="creatorlab-project-list">
@@ -22713,7 +22943,7 @@ export default function CreatePage() {
                             {previewImage ? (
                               <img src={previewImage} alt="" />
                             ) : (
-                              <span aria-hidden="true">CL</span>
+                              <span aria-hidden="true">VS</span>
                             )}
                           </div>
 
@@ -22856,8 +23086,8 @@ export default function CreatePage() {
                   <h1>{uiLanguage === "en" ? "Project Brief" : "Proje Brief'i"}</h1>
                   <p>
                     {uiLanguage === "en"
-                      ? "Define the idea and essential production choices. CreatorLab will use this brief to validate the opportunity before media credits are spent."
-                      : "Fikri ve temel üretim tercihlerini tanımla. CreatorLab, medya kredileri kullanılmadan önce içerik fırsatını bu brief üzerinden doğrular."}
+                      ? "Define the idea and essential production choices. Velto Studio will use this brief to validate the opportunity before media credits are spent."
+                      : "Fikri ve temel üretim tercihlerini tanımla. Velto Studio, medya kredileri kullanılmadan önce içerik fırsatını bu brief üzerinden doğrular."}
                   </p>
                 </div>
                 <span className="creatorlab-brief-step-badge">{uiLanguage === "en" ? "Draft stage" : "Taslak aşaması"}</span>
@@ -22921,8 +23151,8 @@ export default function CreatePage() {
                   <h3>{uiLanguage === "en" ? "Define the output, not the engine" : "Motoru değil, çıktıyı tanımla"}</h3>
                   <span>
                     {uiLanguage === "en"
-                      ? "CreatorLab keeps technical provider choices internal and asks only for decisions that shape the result."
-                      : "CreatorLab teknik sağlayıcı seçimlerini sistem içinde tutar ve yalnızca sonucu şekillendiren kararları sorar."}
+                      ? "Velto Studio keeps technical provider choices internal and asks only for decisions that shape the result."
+                      : "Velto Studio teknik sağlayıcı seçimlerini sistem içinde tutar ve yalnızca sonucu şekillendiren kararları sorar."}
                   </span>
                 </div>
                 {creatorBriefDraftRestored && (
@@ -23205,7 +23435,7 @@ export default function CreatePage() {
                   <strong>{uiLanguage === "en" ? "Ready to validate the idea?" : "Fikri doğrulamaya hazır mısın?"}</strong>
                   <p>
                     {input.trim()
-                      ? uiLanguage === "en" ? "CreatorLab will analyze the opportunity and prepare the Strategy workspace." : "CreatorLab içerik fırsatını analiz edip Strateji çalışma alanını hazırlayacak."
+                      ? uiLanguage === "en" ? "Velto Studio will analyze the opportunity and prepare the Strategy workspace." : "Velto Studio içerik fırsatını analiz edip Strateji çalışma alanını hazırlayacak."
                       : uiLanguage === "en" ? "Enter a topic or video idea to continue." : "Devam etmek için bir konu veya video fikri gir."}
                   </p>
                 </div>
@@ -23799,8 +24029,8 @@ export default function CreatePage() {
                 <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
                 <p>
                   {uiLanguage === "en"
-                    ? `CreatorLab will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build an editable scene plan. No paid media is generated yet.`
-                    : `CreatorLab, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak düzenlenebilir sahne planını oluşturacak. Henüz ücretli medya üretilmez.`}
+                    ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build an editable scene plan. No paid media is generated yet.`
+                    : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak düzenlenebilir sahne planını oluşturacak. Henüz ücretli medya üretilmez.`}
                 </p>
               </div>
               <button
@@ -23827,8 +24057,8 @@ export default function CreatePage() {
                 <h1>{uiLanguage === "en" ? "Production" : "Üretim"}</h1>
                 <p>
                   {uiLanguage === "en"
-                    ? "Turn the approved plan into visuals, voice-over and a safe final video. CreatorLab keeps the technical routing in the background and shows only the next useful action."
-                    : "Onaylanan planı görsellere, seslendirmeye ve güvenli bir final videoya dönüştür. CreatorLab teknik yönlendirmeyi arka planda tutar ve yalnızca sıradaki yararlı aksiyonu gösterir."}
+                    ? "Turn the approved plan into visuals, voice-over and a safe final video. Velto Studio keeps the technical routing in the background and shows only the next useful action."
+                    : "Onaylanan planı görsellere, seslendirmeye ve güvenli bir final videoya dönüştür. Velto Studio teknik yönlendirmeyi arka planda tutar ve yalnızca sıradaki yararlı aksiyonu gösterir."}
                 </p>
               </div>
               <span className="creatorlab-production-stage-badge">
@@ -24105,7 +24335,7 @@ export default function CreatePage() {
                         }}
                         placeholder={uiLanguage === "en" ? "Optional saved voice reference" : "Opsiyonel kayıtlı ses referansı"}
                       />
-                      <small>{uiLanguage === "en" ? "Leave empty to let CreatorLab use the default production voice." : "CreatorLab'in varsayılan üretim sesini kullanması için boş bırak."}</small>
+                      <small>{uiLanguage === "en" ? "Leave empty to let Velto Studio use the default production voice." : "Velto Studio’nun varsayılan üretim sesini kullanması için boş bırak."}</small>
                     </label>
                     <label>
                       <span>{uiLanguage === "en" ? "Voice performance mode" : "Ses performans modu"}</span>
@@ -24589,15 +24819,16 @@ export default function CreatePage() {
                               TARGET_SCENE_DURATION_SECONDS,
                           ),
                         );
+                        const effectiveOutputMode =
+                          getCreatorEffectiveSceneOutputMode(scene);
                         const sceneHasWarning =
                           scene.scriptHealth?.status === "too_long" ||
-                          scene.videoStatus === "error" ||
-                          !scene.renderMode;
+                          (effectiveOutputMode === "video" && scene.videoStatus === "error");
                         const sceneReady =
                           Boolean(scene.image) &&
                           getSceneVoiceStatus(scene) &&
-                          (scene.renderMode === "image" ||
-                            (scene.renderMode === "video" && scene.videoStatus === "done"));
+                          (effectiveOutputMode === "image" ||
+                            (effectiveOutputMode === "video" && scene.videoStatus === "done"));
                         const selected = creatorSelectedSceneIdSet.has(scene.id);
 
                         return (
@@ -24632,11 +24863,9 @@ export default function CreatePage() {
                               />
                             </div>
                             <span className="mt-2 block text-[11px] font-semibold text-slate-700">
-                              {targetDurationSec.toFixed(0)}s · {scene.renderMode === "video"
+                              {targetDurationSec.toFixed(0)}s · {effectiveOutputMode === "video"
                                 ? uiLanguage === "en" ? "Video" : "Video"
-                                : scene.renderMode === "image"
-                                  ? uiLanguage === "en" ? "Image" : "Görsel"
-                                  : uiLanguage === "en" ? "Choose" : "Seç"}
+                                : uiLanguage === "en" ? "Image" : "Görsel"}
                             </span>
                             <span className="mt-1 block truncate text-[10px] text-slate-500">
                               {sceneReady
@@ -24710,7 +24939,8 @@ export default function CreatePage() {
                         Boolean(scene.videoUrl) &&
                         scene.videoStatus === "done";
                       const motionFailed = motionRouted && scene.videoStatus === "error";
-                      const sceneOutputMode = scene.renderMode;
+                      const sceneOutputMode =
+                        getCreatorEffectiveSceneOutputMode(scene);
                       const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
                         narration: scene.narration || "",
                         dialogue: scene.dialogue || "",
@@ -25370,8 +25600,8 @@ export default function CreatePage() {
                                     </span>
                                     <p className="mt-1 text-xs leading-5 text-slate-500">
                                       {uiLanguage === "en"
-                                        ? "Choose explicitly. CreatorLab will not decide between a still image and a generated video block."
-                                        : "Açıkça seçim yap. CreatorLab sabit görsel ile üretilen video bloğu arasında otomatik karar vermeyecek."}
+                                        ? "Choose explicitly. Velto Studio will not decide between a still image and a generated video block."
+                                        : "Açıkça seçim yap. Velto Studio sabit görsel ile üretilen video bloğu arasında otomatik karar vermeyecek."}
                                     </p>
                                     <div className="mt-3 grid grid-cols-2 gap-2">
                                       <button
@@ -25431,13 +25661,17 @@ export default function CreatePage() {
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "script" }));
-                                        openCreatorSceneEditor(scene);
-                                      }}
-                                      className="mt-4 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                      onClick={() => void editCreatorSceneVisualDirectionWithAI(scene)}
+                                      disabled={creatorVisualDirectionLoadingId !== null}
+                                      className="mt-4 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                      {uiLanguage === "en" ? "Edit direction with AI" : "Yönü AI ile düzenle"}
+                                      {creatorVisualDirectionLoadingId === scene.id
+                                        ? uiLanguage === "en"
+                                          ? "Improving direction..."
+                                          : "Görsel yön geliştiriliyor..."
+                                        : uiLanguage === "en"
+                                          ? "Edit direction with AI"
+                                          : "Yönü AI ile düzenle"}
                                     </button>
                                   </div>
                                 </aside>
@@ -25539,8 +25773,8 @@ export default function CreatePage() {
                                       </strong>
                                       <p className="mt-1 text-xs leading-5 text-slate-500">
                                         {uiLanguage === "en"
-                                          ? "CreatorLab checks the actual narrator and dialogue duration before final rendering."
-                                          : "CreatorLab final render öncesinde gerçek anlatıcı ve diyalog süresini kontrol eder."}
+                                          ? "Velto Studio checks the actual narrator and dialogue duration before final rendering."
+                                          : "Velto Studio final render öncesinde gerçek anlatıcı ve diyalog süresini kontrol eder."}
                                       </p>
                                     </div>
                                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
@@ -26575,7 +26809,7 @@ export default function CreatePage() {
             {isCreatorLabFlow && (
               <div className="rounded-[28px] border border-rose-300/20 bg-slate-950/55 p-5 shadow-[0_16px_44px_rgba(15,23,42,0.28)]">
                 <p className="text-xs uppercase tracking-[0.25em] text-rose-200/80">
-                  {uiLanguage === "en" ? "CreatorLab Scene Review" : "CreatorLab Sahne İnceleme"}
+                  {uiLanguage === "en" ? "Velto Studio Scene Review" : "Velto Studio Sahne İnceleme"}
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">
                   {uiLanguage === "en" ? "Review scenes before asset generation" : "Medya üretiminden önce sahneleri kontrol et"}
@@ -26640,8 +26874,8 @@ export default function CreatePage() {
                       </p>
                       <p className="mt-1 text-xs leading-5 text-slate-600">
                         {uiLanguage === "en"
-                          ? "Use Continue Production above. CreatorLab selects visuals, voice, motion and final-video actions in the correct order."
-                          : "Yukarıdaki Üretime Devam Et aksiyonunu kullan. CreatorLab görsel, ses, hareket ve final-video işlemlerini doğru sırada seçer."}
+                          ? "Use Continue Production above. Velto Studio selects visuals, voice, motion and final-video actions in the correct order."
+                          : "Yukarıdaki Üretime Devam Et aksiyonunu kullan. Velto Studio görsel, ses, hareket ve final-video işlemlerini doğru sırada seçer."}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -27412,7 +27646,7 @@ export default function CreatePage() {
                           }}
                           className="rounded-md border border-orange-200/24 bg-[radial-gradient(circle_at_10%_6%,#ffe0f2_0%,transparent_30%),radial-gradient(circle_at_90%_10%,#d9f5ff_0%,transparent_32%),radial-gradient(circle_at_48%_92%,#fff0bd_0%,transparent_36%),linear-gradient(180deg,#fffaf4_0%,#f8fbff_46%,#f4fff8_100%)] px-2 py-1 text-xs text-slate-900"
                         >
-                          <option value="" disabled>{uiLanguage === "en" ? "Choose" : "Seç"}</option>
+                          <option value="">{uiLanguage === "en" ? "Auto · Production Quality" : "Otomatik · Üretim Kalitesi"}</option>
                           <option value="video">Video</option>
                           <option value="image">Image</option>
                         </select>
@@ -27424,14 +27658,20 @@ export default function CreatePage() {
                         disabled={
                           scene.videoStatus === "processing" ||
                           !scene.image ||
-                          creatorMediaPreflightLoading
+                          creatorMediaPreflightLoading ||
+                          (isCreatorLabFlow &&
+                            getCreatorEffectiveSceneOutputMode(scene) !== "video")
                         }
                         title={
                           !scene.image
                             ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
                             : isCreatorActionBlocked("ai_video_blocks")
                               ? getCreatorMediaRoutingError("ai_video_blocks")
-                              : (uiLanguage === "en" ? "Create an AI motion block from this visual." : "Bu görselden AI hareketli video bloğu üret.")
+                              : isCreatorLabFlow && getCreatorEffectiveSceneOutputMode(scene) !== "video"
+                                ? (uiLanguage === "en"
+                                    ? "Production Quality routes this scene to Image."
+                                    : "Üretim Kalitesi bu sahneyi Görsel rotasına yönlendiriyor.")
+                                : (uiLanguage === "en" ? "Create an AI motion block from this visual." : "Bu görselden AI hareketli video bloğu üret.")
                         }
                         className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
                       >

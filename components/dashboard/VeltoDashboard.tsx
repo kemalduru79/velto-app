@@ -32,7 +32,7 @@ const productMeta = {
     },
   },
   creator_lab: {
-    mark: "CL",
+    mark: "VS",
     eyebrow: {
       tr: "18+ · Profesyonel creator studio",
       en: "18+ · Professional creator studio",
@@ -101,8 +101,8 @@ export default function VeltoDashboard() {
               </h1>
               <p className="mt-4 max-w-3xl text-base font-medium leading-7 text-white/68">
                 {isEnglish
-                  ? "Storyverse is a safe creative world for young users. CreatorLab is a professional production engine for 18+ creators. The platform is now focused, cleaner and easier to scale."
-                  : "Storyverse genç kullanıcılar için güvenli bir yaratıcı dünya. CreatorLab ise 18+ creator’lar için profesyonel üretim motoru. Platform artık daha odaklı, daha temiz ve ölçeklenebilir."}
+                  ? "Storyverse is a safe creative world for young users. Velto Studio is a professional production engine for 18+ creators. The platform is now focused, cleaner and easier to scale."
+                  : "Storyverse genç kullanıcılar için güvenli bir yaratıcı dünya. Velto Studio ise 18+ creator’lar için profesyonel üretim motoru. Platform artık daha odaklı, daha temiz ve ölçeklenebilir."}
               </p>
             </div>
 

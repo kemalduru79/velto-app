@@ -130,6 +130,16 @@ export function isCreatorMediaActionAllowed(
   return route.actions[action];
 }
 
+function normalizeSceneIds(sceneIds: number[]) {
+  return Array.from(
+    new Set(
+      sceneIds
+        .map((sceneId) => Number(sceneId))
+        .filter((sceneId) => Number.isFinite(sceneId) && sceneId > 0),
+    ),
+  );
+}
+
 function getDistributedSceneIds(sceneIds: number[], targetCount: number) {
   if (targetCount <= 0 || sceneIds.length === 0) {
     return [];
@@ -151,31 +161,54 @@ function getDistributedSceneIds(sceneIds: number[], targetCount: number) {
   return Array.from(new Set(distributedIds));
 }
 
+/**
+ * Selects the scenes that should receive paid AI motion while preserving the
+ * simple Production Quality UX. Explicit Image/Video choices are treated as
+ * advanced overrides; every remaining scene is routed automatically.
+ */
 export function getCreatorVideoBlockSceneIds({
   route,
   sceneIds,
   timelinePlan,
+  forceVideoSceneIds = [],
+  forceImageSceneIds = [],
 }: {
   route: CreatorMediaRoute;
   sceneIds: number[];
   timelinePlan?: TimelineSyncPlan | null;
+  forceVideoSceneIds?: number[];
+  forceImageSceneIds?: number[];
 }) {
-  const normalizedSceneIds = Array.from(
-    new Set(
-      sceneIds
-        .map((sceneId) => Number(sceneId))
-        .filter((sceneId) => Number.isFinite(sceneId) && sceneId > 0),
-    ),
-  );
+  const normalizedSceneIds = normalizeSceneIds(sceneIds);
 
   if (!route.actions.ai_video_blocks || normalizedSceneIds.length === 0) {
     return [];
   }
 
-  const targetCount = Math.min(
-    normalizedSceneIds.length,
-    Math.max(1, Math.round(normalizedSceneIds.length * route.videoBlockRatio)),
+  const sceneIdSet = new Set(normalizedSceneIds);
+  const forcedImageSet = new Set(
+    normalizeSceneIds(forceImageSceneIds).filter((sceneId) => sceneIdSet.has(sceneId)),
   );
+  const forcedVideoIds = normalizeSceneIds(forceVideoSceneIds).filter(
+    (sceneId) => sceneIdSet.has(sceneId) && !forcedImageSet.has(sceneId),
+  );
+  const candidateSceneIds = normalizedSceneIds.filter(
+    (sceneId) => !forcedImageSet.has(sceneId),
+  );
+
+  if (candidateSceneIds.length === 0) {
+    return [];
+  }
+
+  const ratioTargetCount = Math.max(
+    1,
+    Math.round(normalizedSceneIds.length * route.videoBlockRatio),
+  );
+  const targetCount = Math.min(
+    candidateSceneIds.length,
+    Math.max(forcedVideoIds.length, ratioTargetCount),
+  );
+
   const timelinePriorityIds = (timelinePlan?.scenes || [])
     .filter(
       (scene) =>
@@ -183,13 +216,23 @@ export function getCreatorVideoBlockSceneIds({
         scene.visualAction === "split_scene",
     )
     .map((scene) => Number(scene.id))
-    .filter((sceneId) => normalizedSceneIds.includes(sceneId));
+    .filter(
+      (sceneId) =>
+        candidateSceneIds.includes(sceneId) && !forcedImageSet.has(sceneId),
+    );
+
+  const firstCandidateSceneId = candidateSceneIds[0];
+  const distributedIds = getDistributedSceneIds(
+    candidateSceneIds,
+    targetCount,
+  );
   const prioritizedIds = Array.from(
     new Set([
-      normalizedSceneIds[0],
+      ...forcedVideoIds,
+      firstCandidateSceneId,
       ...timelinePriorityIds,
-      ...getDistributedSceneIds(normalizedSceneIds, targetCount),
-      ...normalizedSceneIds,
+      ...distributedIds,
+      ...candidateSceneIds,
     ]),
   );
 
