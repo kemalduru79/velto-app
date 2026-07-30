@@ -423,6 +423,7 @@ type Scene = {
   videoUrl?: string;
   videoStatus?: "idle" | "processing" | "done" | "error";
   videoJobId?: string;
+  videoQueueJobId?: string;
   videoDurationSeconds?: number;
   timing?: SceneTiming;
   intelligence?: SceneIntelligence;
@@ -5471,6 +5472,179 @@ export default function CreatePage() {
     videoPollIntervalsRef.current[sceneId] = intervalId;
   };
 
+  const enqueueVideoReconcileJob = async ({
+    sceneId,
+    taskId,
+    accessToken,
+  }: {
+    sceneId: number;
+    taskId: string;
+    accessToken: string;
+  }) => {
+    const idempotencyKey = [
+      "video-reconcile",
+      currentProjectId || draftProjectKeyRef.current,
+      sceneId,
+      taskId,
+    ].join(":");
+    const response = await fetch("/api/jobs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        jobType: "video_reconcile",
+        projectId: currentProjectId || undefined,
+        idempotencyKey,
+        priority: 200,
+        maxAttempts: 120,
+        payload: {
+          taskId,
+          sceneId,
+          projectId: getProjectKey(),
+        },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data?.ok || !data?.job?.id) {
+      throw new Error(data?.error || "Video takip işi kuyruğa alınamadı.");
+    }
+
+    return String(data.job.id);
+  };
+
+  const storeCompletedVideo = async ({
+    sceneId,
+    videoUrl,
+  }: {
+    sceneId: number;
+    videoUrl: string;
+  }) => {
+    const storeRes = await fetch("/api/store-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        videoUrl,
+        sceneId,
+        projectId: getProjectKey(),
+      }),
+    });
+    const storeData = await storeRes.json().catch(() => ({}));
+
+    if (!storeRes.ok || !storeData?.ok || !storeData?.videoUrl) {
+      throw new Error(storeData?.error || "Video kaydedilemedi.");
+    }
+
+    return String(storeData.videoUrl);
+  };
+
+  const pollVideoQueueJob = (
+    sceneId: number,
+    providerTaskId: string,
+    queueJobId: string,
+  ) => {
+    clearVideoPollForScene(sceneId);
+    let attempts = 0;
+    const maxAttempts = 140;
+
+    const intervalId = setInterval(async () => {
+      attempts += 1;
+
+      if (attempts > maxAttempts) {
+        clearVideoPollForScene(sceneId);
+        setScenes((prev) =>
+          prev.map((scene) =>
+            scene.id === sceneId ? { ...scene, videoStatus: "error" } : scene,
+          ),
+        );
+        setError(
+          uiLanguage === "en"
+            ? "Video tracking timed out. The durable job remains available in the queue for operational review."
+            : "Video takibi zaman aşımına uğradı. Kalıcı iş kaydı operasyonel kontrol için kuyrukta tutuluyor.",
+        );
+        return;
+      }
+
+      try {
+        const accessToken = await getAccessTokenOrThrow();
+        const response = await fetch(`/api/jobs/${encodeURIComponent(queueJobId)}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+          },
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data?.ok || !data?.job) {
+          throw new Error(data?.error || "Video takip işi okunamadı.");
+        }
+
+        const jobStatus = String(data.job.status || "").toLowerCase();
+
+        if (jobStatus === "succeeded") {
+          clearVideoPollForScene(sceneId);
+          const providerVideoUrl = String(data.job.result?.videoUrl || "");
+          if (!providerVideoUrl) {
+            throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
+          }
+
+          const storedVideoUrl = await storeCompletedVideo({
+            sceneId,
+            videoUrl: providerVideoUrl,
+          });
+
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? {
+                    ...scene,
+                    videoStatus: "done",
+                    videoUrl: storedVideoUrl,
+                    videoJobId: providerTaskId,
+                    videoQueueJobId: queueJobId,
+                  }
+                : scene,
+            ),
+          );
+          setSaveMessage(ui.videoReadySaved);
+          return;
+        }
+
+        if (jobStatus === "failed" || jobStatus === "cancelled") {
+          clearVideoPollForScene(sceneId);
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? {
+                    ...scene,
+                    videoStatus: "error",
+                    videoJobId: providerTaskId,
+                    videoQueueJobId: queueJobId,
+                  }
+                : scene,
+            ),
+          );
+          setError(
+            data.job.errorMessage ||
+              (uiLanguage === "en"
+                ? "Video generation failed in the background worker."
+                : "Video üretimi arka plan worker işleminde başarısız oldu."),
+          );
+        }
+      } catch (error: any) {
+        console.error("pollVideoQueueJob error:", error);
+      }
+    }, 3000);
+
+    videoPollIntervalsRef.current[sceneId] = intervalId;
+  };
+
+
   const getCreatorCinematicVideoInputs = (scene: Scene) => {
     if (!isCreatorLabFlow || creatorQualityMode !== "cinematic") {
       return {};
@@ -5824,12 +5998,26 @@ export default function CreatePage() {
             : "Video üretimi başlatıldı. Hareketli blok hazır olduğunda Velto Studio bu sahneyi güncelleyecek.",
       );
 
+      let videoQueueJobId = "";
+      if (isCreatorLabFlow) {
+        try {
+          videoQueueJobId = await enqueueVideoReconcileJob({
+            sceneId,
+            taskId: data.taskId,
+            accessToken,
+          });
+        } catch (queueError) {
+          console.warn("Video queue fallback activated:", queueError);
+        }
+      }
+
       setScenes((prev) =>
         prev.map((s) =>
           s.id === sceneId
             ? {
                 ...s,
                 videoJobId: data.taskId,
+                videoQueueJobId: videoQueueJobId || undefined,
                 videoStatus: "processing",
                 videoDurationSeconds: Number(data.duration) || 0,
               }
@@ -5840,7 +6028,11 @@ export default function CreatePage() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("velto:credits-changed"));
       }
-      pollVideoStatus(sceneId, data.taskId);
+      if (isCreatorLabFlow && videoQueueJobId) {
+        pollVideoQueueJob(sceneId, data.taskId, videoQueueJobId);
+      } else {
+        pollVideoStatus(sceneId, data.taskId);
+      }
       return true;
     } catch (e: any) {
       console.error("handleGenerateVideo error:", e);
@@ -5968,6 +6160,93 @@ export default function CreatePage() {
     throw new Error("Video üretimi zaman aşımına uğradı.");
   };
 
+  const waitForQueuedVideoAndStore = async (scene: Scene, taskId: string) => {
+    const accessToken = await getAccessTokenOrThrow();
+    let queueJobId = "";
+
+    try {
+      queueJobId = await enqueueVideoReconcileJob({
+        sceneId: scene.id,
+        taskId,
+        accessToken,
+      });
+    } catch (queueError) {
+      console.warn("Batch video queue fallback activated:", queueError);
+      return {
+        videoUrl: await waitForRunwayVideoAndStore(scene, taskId),
+        videoQueueJobId: "",
+      };
+    }
+
+    setScenes((prev) =>
+      prev.map((item) =>
+        item.id === scene.id
+          ? {
+              ...item,
+              videoJobId: taskId,
+              videoQueueJobId: queueJobId,
+              videoStatus: "processing",
+            }
+          : item,
+      ),
+    );
+
+    const maxAttempts = 140;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (batchRenderCancelRef.current) {
+        throw new Error("Batch render durduruldu.");
+      }
+
+      const response = await fetch(`/api/jobs/${encodeURIComponent(queueJobId)}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.ok || !data?.job) {
+        throw new Error(data?.error || "Video takip işi okunamadı.");
+      }
+
+      const jobStatus = String(data.job.status || "").toLowerCase();
+      if (jobStatus === "succeeded") {
+        const providerVideoUrl = String(data.job.result?.videoUrl || "");
+        if (!providerVideoUrl) {
+          throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
+        }
+
+        return {
+          videoUrl: await storeCompletedVideo({
+            sceneId: scene.id,
+            videoUrl: providerVideoUrl,
+          }),
+          videoQueueJobId: queueJobId,
+        };
+      }
+
+      if (jobStatus === "failed" || jobStatus === "cancelled") {
+        throw new Error(
+          data.job.errorMessage ||
+            (uiLanguage === "en"
+              ? "Video generation failed in the background worker."
+              : "Video üretimi arka plan worker işleminde başarısız oldu."),
+        );
+      }
+
+      await wait(3000);
+    }
+
+    throw new Error(
+      uiLanguage === "en"
+        ? "Video background job timed out."
+        : "Video arka plan işi zaman aşımına uğradı.",
+    );
+  };
+
+
   const generateSceneVideoAndWait = async (scene: Scene) => {
     if (!scene.image) {
       throw new Error("Video için önce sahne görseli hazırlanmalı.");
@@ -6037,7 +6316,13 @@ export default function CreatePage() {
 
     notifyCreditAccountChanged(data?.credits);
 
-    const videoUrl = await waitForRunwayVideoAndStore(scene, data.taskId);
+    const queuedVideo = isCreatorLabFlow
+      ? await waitForQueuedVideoAndStore(scene, data.taskId)
+      : {
+          videoUrl: await waitForRunwayVideoAndStore(scene, data.taskId),
+          videoQueueJobId: "",
+        };
+    const videoUrl = queuedVideo.videoUrl;
 
     setScenes((prev) =>
       prev.map((item) =>
@@ -6047,6 +6332,7 @@ export default function CreatePage() {
               videoStatus: "done",
               videoUrl,
               videoJobId: data.taskId,
+              videoQueueJobId: queuedVideo.videoQueueJobId || undefined,
               videoDurationSeconds: Number(data.duration) || 0,
             }
           : item
@@ -12292,10 +12578,14 @@ export default function CreatePage() {
         scene.videoJobId &&
         !videoPollIntervalsRef.current[scene.id]
       ) {
-        pollVideoStatus(scene.id, scene.videoJobId);
+        if (isCreatorLabFlow && scene.videoQueueJobId) {
+          pollVideoQueueJob(scene.id, scene.videoJobId, scene.videoQueueJobId);
+        } else {
+          pollVideoStatus(scene.id, scene.videoJobId);
+        }
       }
     });
-  }, [scenes]);
+  }, [scenes, isCreatorLabFlow]);
 
   useEffect(() => {
     if (skipAutosaveRef.current) {
@@ -24973,6 +25263,11 @@ export default function CreatePage() {
                                 : uiLanguage === "en" ? "Pacing balanced" : "Tempo dengeli";
                       const isEditingScene = editingSceneId === scene.id;
                       const activeSceneInspectorTab = creatorSceneInspectorTabs[scene.id] || "script";
+                      const sceneProductionReadyCount = [
+                        sceneDraftHealth.status === "ready",
+                        visualReady,
+                        voiceReady,
+                      ].filter(Boolean).length;
                       const hasDialogue = Boolean(scene.dialogue?.trim());
                       const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
                       const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
@@ -25080,50 +25375,148 @@ export default function CreatePage() {
                               </div>
                             )}
 
-                            <div
-                              className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1"
-                              role="tablist"
-                              aria-label={uiLanguage === "en" ? `Scene ${scene.id} inspector` : `Sahne ${scene.id} denetleyicisi`}
-                            >
-                              {([
-                                { id: "script" as const, label: uiLanguage === "en" ? "Script" : "Metin", ready: sceneDraftHealth.status === "ready" },
-                                { id: "visual" as const, label: uiLanguage === "en" ? "Visual" : "Görsel", ready: visualReady },
-                                { id: "audio" as const, label: uiLanguage === "en" ? "Audio" : "Ses", ready: voiceReady },
-                              ]).map((tab) => (
+                            <div className="scene-production-navigator sticky top-4 z-20 mb-5">
+                              <div className="scene-production-navigator__header">
+                                <div className="min-w-0">
+                                  <span className="scene-production-navigator__eyebrow">
+                                    {uiLanguage === "en" ? "Scene production" : "Sahne üretimi"}
+                                  </span>
+                                  <p className="scene-production-navigator__description">
+                                    {uiLanguage === "en"
+                                      ? "Move between script, visual and audio without leaving the scene."
+                                      : "Sahneden ayrılmadan metin, görsel ve ses arasında ilerle."}
+                                  </p>
+                                </div>
+                                <span className="scene-production-navigator__progress">
+                                  {sceneProductionReadyCount}/3 {uiLanguage === "en" ? "ready" : "hazır"}
+                                </span>
+                              </div>
+
+                              <div
+                                className="scene-production-navigator__tabs"
+                                role="tablist"
+                                aria-label={uiLanguage === "en" ? `Scene ${scene.id} production navigator` : `Sahne ${scene.id} üretim navigasyonu`}
+                              >
                                 <button
-                                  key={`scene-${scene.id}-tab-${tab.id}`}
-                                  id={`scene-${scene.id}-${tab.id}-tab`}
+                                  key={`scene-${scene.id}-tab-script`}
+                                  id={`scene-${scene.id}-script-tab`}
                                   type="button"
                                   role="tab"
-                                  aria-selected={activeSceneInspectorTab === tab.id}
-                                  aria-controls={`scene-${scene.id}-${tab.id}-panel`}
+                                  aria-selected={activeSceneInspectorTab === "script"}
+                                  aria-controls={`scene-${scene.id}-script-panel`}
+                                  data-production-step="script"
+                                  data-state={
+                                    activeSceneInspectorTab === "script"
+                                      ? "active"
+                                      : sceneDraftHealth.status === "ready"
+                                        ? "ready"
+                                        : "pending"
+                                  }
                                   onClick={() =>
                                     setCreatorSceneInspectorTabs((prev) => ({
                                       ...prev,
-                                      [scene.id]: tab.id,
+                                      [scene.id]: "script",
                                     }))
                                   }
-                                  className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                    activeSceneInspectorTab === tab.id
-                                      ? "bg-slate-950 text-white shadow-sm"
-                                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-                                  }`}
+                                  className="scene-production-tab"
                                 >
-                                  <span>{tab.label}</span>
-                                  <span
-                                    className={`h-1.5 w-1.5 rounded-full ${
-                                      tab.ready
-                                        ? activeSceneInspectorTab === tab.id
-                                          ? "bg-emerald-300"
-                                          : "bg-emerald-500"
-                                        : activeSceneInspectorTab === tab.id
-                                          ? "bg-slate-400"
-                                          : "bg-slate-300"
-                                    }`}
-                                    aria-hidden="true"
-                                  />
+                                  <span className="scene-production-tab__icon" aria-hidden="true">
+                                    {sceneDraftHealth.status === "ready" ? "✓" : "1"}
+                                  </span>
+                                  <span className="scene-production-tab__content">
+                                    <strong className="scene-production-tab__title">
+                                      {uiLanguage === "en" ? "Script" : "Metin"}
+                                    </strong>
+                                    <span className="scene-production-tab__subtitle">
+                                      {uiLanguage === "en" ? "Review & edit" : "Kontrol et ve düzenle"}
+                                    </span>
+                                  </span>
                                 </button>
-                              ))}
+
+                                <button
+                                  key={`scene-${scene.id}-tab-visual`}
+                                  id={`scene-${scene.id}-visual-tab`}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={activeSceneInspectorTab === "visual"}
+                                  aria-controls={`scene-${scene.id}-visual-panel`}
+                                  data-production-step="visual"
+                                  data-state={
+                                    activeSceneInspectorTab === "visual"
+                                      ? "active"
+                                      : visualReady
+                                        ? "ready"
+                                        : "pending"
+                                  }
+                                  onClick={() =>
+                                    setCreatorSceneInspectorTabs((prev) => ({
+                                      ...prev,
+                                      [scene.id]: "visual",
+                                    }))
+                                  }
+                                  className="scene-production-tab"
+                                >
+                                  <span className="scene-production-tab__icon" aria-hidden="true">
+                                    {visualReady ? "✓" : "2"}
+                                  </span>
+                                  <span className="scene-production-tab__content">
+                                    <strong className="scene-production-tab__title">
+                                      {uiLanguage === "en" ? "Visual" : "Görsel"}
+                                    </strong>
+                                    <span className="scene-production-tab__subtitle">
+                                      {visualReady
+                                        ? uiLanguage === "en"
+                                          ? "Visual ready"
+                                          : "Görsel hazır"
+                                        : uiLanguage === "en"
+                                          ? "Create visual"
+                                          : "Görsel oluştur"}
+                                    </span>
+                                  </span>
+                                </button>
+
+                                <button
+                                  key={`scene-${scene.id}-tab-audio`}
+                                  id={`scene-${scene.id}-audio-tab`}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={activeSceneInspectorTab === "audio"}
+                                  aria-controls={`scene-${scene.id}-audio-panel`}
+                                  data-production-step="audio"
+                                  data-state={
+                                    activeSceneInspectorTab === "audio"
+                                      ? "active"
+                                      : voiceReady
+                                        ? "ready"
+                                        : "pending"
+                                  }
+                                  onClick={() =>
+                                    setCreatorSceneInspectorTabs((prev) => ({
+                                      ...prev,
+                                      [scene.id]: "audio",
+                                    }))
+                                  }
+                                  className="scene-production-tab"
+                                >
+                                  <span className="scene-production-tab__icon" aria-hidden="true">
+                                    {voiceReady ? "✓" : "3"}
+                                  </span>
+                                  <span className="scene-production-tab__content">
+                                    <strong className="scene-production-tab__title">
+                                      {uiLanguage === "en" ? "Audio" : "Ses"}
+                                    </strong>
+                                    <span className="scene-production-tab__subtitle">
+                                      {voiceReady
+                                        ? uiLanguage === "en"
+                                          ? "Audio ready"
+                                          : "Ses hazır"
+                                        : uiLanguage === "en"
+                                          ? "Create audio"
+                                          : "Ses oluştur"}
+                                    </span>
+                                  </span>
+                                </button>
+                              </div>
                             </div>
 
                             {activeSceneInspectorTab === "script" && (
