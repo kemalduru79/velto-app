@@ -59,6 +59,23 @@ export async function reserveMeteredOperation(
     metadata: input.metadata,
   });
 
+  // FIN-P1C — an idempotency replay must never dispatch the provider again.
+  // The current API does not persist full response bodies, so a duplicate is
+  // rejected safely rather than risking a second provider charge.
+  if (result.idempotencyReplay) {
+    if (result.reservation.status === "reserved") {
+      throw new CreditEngineError(
+        "Aynı üretim isteği zaten işleniyor. Lütfen mevcut işlemin sonucunu bekleyin.",
+        "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+      );
+    }
+
+    throw new CreditEngineError(
+      "Bu üretim isteği daha önce işlendi. Yeni bir üretim için işlemi yeniden başlatın.",
+      "IDEMPOTENCY_REQUEST_REPLAYED",
+    );
+  }
+
   return {
     userId: principal.id,
     reservationId: result.reservation.id,
@@ -66,6 +83,19 @@ export async function reserveMeteredOperation(
     reservedCredits: credits,
     accountAfterReserve: result.account,
   };
+}
+
+export async function markMeteredOperationProviderDispatch(
+  reservation: MeteredOperationReservation,
+  providerRequestId: string,
+  metadata?: Record<string, unknown>,
+) {
+  return creditEngine.markProviderDispatch({
+    userId: reservation.userId,
+    reservationId: reservation.reservationId,
+    providerRequestId,
+    metadata,
+  });
 }
 
 export async function settleMeteredOperation(
@@ -118,7 +148,10 @@ export function getCreditErrorResponse(error: unknown) {
         ? 402
         : error.code === "RESERVATION_NOT_FOUND"
           ? 404
-          : error.code === "INVALID_RESERVATION_STATE"
+          : error.code === "INVALID_RESERVATION_STATE" ||
+              error.code === "IDEMPOTENCY_KEY_CONFLICT" ||
+              error.code === "IDEMPOTENCY_REQUEST_IN_PROGRESS" ||
+              error.code === "IDEMPOTENCY_REQUEST_REPLAYED"
             ? 409
             : error.code === "INVALID_INPUT"
               ? 400

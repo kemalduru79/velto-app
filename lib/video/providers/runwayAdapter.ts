@@ -7,6 +7,7 @@ import type {
   VideoProvider,
   VideoProviderCreateInput,
   VideoProviderTask,
+  VideoProviderCancelResult,
 } from "./types";
 
 type RunwayVideoModel = "gen4_turbo" | "gen4.5" | "seedance2";
@@ -182,6 +183,53 @@ export class RunwayVideoProvider implements VideoProvider {
   async retrieveTask(nativeTaskId: string) {
     const task = await getClient().tasks.retrieve(nativeTaskId);
     return normalizeTask(task);
+  }
+
+
+  async cancelTask(nativeTaskId: string): Promise<VideoProviderCancelResult> {
+    if (!/^[a-z0-9._\-]+$/i.test(nativeTaskId)) {
+      throw new Error("Primary video task identifier is invalid.");
+    }
+
+    const current = await this.retrieveTask(nativeTaskId);
+    const currentStatus = current.status.toUpperCase();
+
+    if (["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(currentStatus)) {
+      return {
+        supported: true,
+        accepted: currentStatus === "CANCELED" || currentStatus === "CANCELLED",
+        status: currentStatus,
+        terminal: true,
+        message:
+          currentStatus === "SUCCEEDED"
+            ? "The video task already completed and can no longer be cancelled."
+            : undefined,
+      };
+    }
+
+    const response = await fetch(
+      `https://api.dev.runwayml.com/v1/tasks/${encodeURIComponent(nativeTaskId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${getApiKey()}`,
+          "X-Runway-Version": "2024-11-06",
+        },
+      },
+    );
+
+    if (!response.ok && response.status !== 404) {
+      const payload = await response.text().catch(() => "");
+      console.error("Primary video cancellation failed:", response.status, payload.slice(0, 300));
+      throw new Error("The primary video service could not cancel this task.");
+    }
+
+    return {
+      supported: true,
+      accepted: true,
+      status: "CANCELED",
+      terminal: true,
+    };
   }
 
   async downloadOutput(outputUrl: string) {

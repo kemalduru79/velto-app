@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:creator-smoke": "node scripts/creator-smoke-test.mjs"
+    "test:creator-smoke": "node scripts/creator-smoke-test.mjs",
+    "fin:reconcile": "node --env-file=.env.local scripts/fin-p1c-reconcile.mjs",
+    "test:fin-p1c": "node scripts/fin-p1c-smoke-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",

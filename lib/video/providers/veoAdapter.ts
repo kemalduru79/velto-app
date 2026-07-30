@@ -2,6 +2,7 @@ import type {
   VideoProvider,
   VideoProviderCreateInput,
   VideoProviderTask,
+  VideoProviderCancelResult,
 } from "./types";
 
 const API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -308,6 +309,34 @@ export class VeoVideoProvider implements VideoProvider {
         (isDone && !videoUrl
           ? "Premium video generation completed without a downloadable output."
           : null),
+    };
+  }
+
+
+  async cancelTask(nativeTaskId: string): Promise<VideoProviderCancelResult> {
+    const current = await this.retrieveTask(nativeTaskId);
+    const currentStatus = current.status.toUpperCase();
+
+    if (["SUCCEEDED", "FAILED", "CANCELED", "CANCELLED"].includes(currentStatus)) {
+      return {
+        supported: false,
+        accepted: currentStatus === "CANCELED" || currentStatus === "CANCELLED",
+        status: currentStatus,
+        terminal: true,
+        message:
+          currentStatus === "SUCCEEDED"
+            ? "The premium video task already completed and can no longer be cancelled."
+            : undefined,
+      };
+    }
+
+    return {
+      supported: false,
+      accepted: false,
+      status: currentStatus || "PENDING",
+      terminal: false,
+      message:
+        "The active premium video API does not expose a verified cancellation operation for this task type.",
     };
   }
 

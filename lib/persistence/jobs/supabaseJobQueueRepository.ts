@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
+  CancelVeltoJobInput,
   EnqueueVeltoJobInput,
   JobQueueRepository,
   VeltoJobRecord,
@@ -53,6 +54,28 @@ function mapJob(row: JobRow): VeltoJobRecord {
 }
 
 export class SupabaseJobQueueRepository implements JobQueueRepository {
+  async cancelForUser(input: CancelVeltoJobInput): Promise<VeltoJobRecord> {
+    const client = createServerSupabaseClient();
+    const { data, error } = await client.rpc("velto_job_cancel", {
+      p_job_id: input.jobId,
+      p_user_id: input.userId,
+      p_reason: input.reason || "user_requested",
+      p_result: input.result || {},
+    });
+
+    if (error) {
+      throw new Error(`Job could not be cancelled: ${error.message}`);
+    }
+
+    const row = firstRow(data);
+
+    if (!row) {
+      throw new Error("Job cancellation did not return a job record.");
+    }
+
+    return mapJob(row);
+  }
+
   async enqueue(input: EnqueueVeltoJobInput): Promise<VeltoJobRecord> {
     const client = createServerSupabaseClient();
     const { data, error } = await client.rpc("velto_job_enqueue", {

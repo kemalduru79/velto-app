@@ -31,6 +31,14 @@ export type VideoProviderTask = {
   failureMessage: string | null;
 };
 
+export type VideoProviderCancelResult = {
+  supported: boolean;
+  accepted: boolean;
+  status: string;
+  terminal: boolean;
+  message?: string;
+};
+
 export interface VideoProvider {
   readonly key: VideoProviderKey;
   readonly tier: VideoProviderTier;
@@ -42,6 +50,7 @@ export interface VideoProvider {
   ): VideoProviderDurationPolicy;
   createTask(input: VideoProviderCreateInput): Promise<VideoProviderTask>;
   retrieveTask(nativeTaskId: string): Promise<VideoProviderTask>;
+  cancelTask(nativeTaskId: string): Promise<VideoProviderCancelResult>;
   downloadOutput(outputUrl: string): Promise<Response>;
 }
 

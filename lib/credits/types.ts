@@ -24,6 +24,7 @@ export type CreditReservation = {
   settledCredits: number;
   status: CreditReservationStatus;
   idempotencyKey: string;
+  providerRequestId?: string;
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
@@ -49,6 +50,13 @@ export type SettleCreditsInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type MarkProviderDispatchInput = {
+  userId: string;
+  reservationId: string;
+  providerRequestId: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type ReleaseCreditsInput = {
   userId: string;
   reservationId: string;
@@ -59,11 +67,15 @@ export type ReleaseCreditsInput = {
 export type CreditMutationResult = {
   account: CreditAccount;
   reservation: CreditReservation;
+  idempotencyReplay: boolean;
 };
 
 export interface CreditRepository {
   getAccount(userId: string): Promise<CreditAccount>;
   reserve(input: ReserveCreditsInput): Promise<CreditMutationResult>;
   settle(input: SettleCreditsInput): Promise<CreditMutationResult>;
+  markProviderDispatch(
+    input: MarkProviderDispatchInput,
+  ): Promise<CreditMutationResult>;
   release(input: ReleaseCreditsInput): Promise<CreditMutationResult>;
 }

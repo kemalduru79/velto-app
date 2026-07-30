@@ -6,6 +6,7 @@ export type {
   CreditRepository,
   CreditReservation,
   CreditReservationStatus,
+  MarkProviderDispatchInput,
   ReleaseCreditsInput,
   ReserveCreditsInput,
   SettleCreditsInput,

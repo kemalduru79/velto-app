@@ -1,6 +1,7 @@
 import type {
   CreditMutationResult,
   CreditRepository,
+  MarkProviderDispatchInput,
   ReleaseCreditsInput,
   ReserveCreditsInput,
   SettleCreditsInput,
@@ -14,6 +15,9 @@ export class CreditEngineError extends Error {
       | "INSUFFICIENT_CREDITS"
       | "RESERVATION_NOT_FOUND"
       | "INVALID_RESERVATION_STATE"
+      | "IDEMPOTENCY_KEY_CONFLICT"
+      | "IDEMPOTENCY_REQUEST_IN_PROGRESS"
+      | "IDEMPOTENCY_REQUEST_REPLAYED"
       | "CREDIT_OPERATION_FAILED",
   ) {
     super(message);
@@ -32,11 +36,18 @@ function asPositiveInteger(value: number, field: string) {
   return value;
 }
 
-function requireText(value: string, field: string) {
+function requireText(value: string, field: string, maxLength = 240) {
   const normalized = value.trim();
 
   if (!normalized) {
     throw new CreditEngineError(`${field} zorunludur.`, "INVALID_INPUT");
+  }
+
+  if (normalized.length > maxLength) {
+    throw new CreditEngineError(
+      `${field} en fazla ${maxLength} karakter olabilir.`,
+      "INVALID_INPUT",
+    );
   }
 
   return normalized;
@@ -54,7 +65,7 @@ export class CreditEngine {
       ...input,
       userId: requireText(input.userId, "userId"),
       credits: asPositiveInteger(input.credits, "credits"),
-      operationType: requireText(input.operationType, "operationType"),
+      operationType: requireText(input.operationType, "operationType", 120),
       idempotencyKey: requireText(input.idempotencyKey, "idempotencyKey"),
       provider: input.provider?.trim() || undefined,
       referenceId: input.referenceId?.trim() || undefined,
@@ -68,6 +79,20 @@ export class CreditEngine {
       reservationId: requireText(input.reservationId, "reservationId"),
       finalCredits: asPositiveInteger(input.finalCredits, "finalCredits"),
       providerRequestId: input.providerRequestId?.trim() || undefined,
+    });
+  }
+
+  markProviderDispatch(
+    input: MarkProviderDispatchInput,
+  ): Promise<CreditMutationResult> {
+    return this.repository.markProviderDispatch({
+      ...input,
+      userId: requireText(input.userId, "userId"),
+      reservationId: requireText(input.reservationId, "reservationId"),
+      providerRequestId: requireText(
+        input.providerRequestId,
+        "providerRequestId",
+      ),
     });
   }
 

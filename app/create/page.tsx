@@ -177,6 +177,30 @@ type CreatorOpsStatus = {
   message: string;
 };
 
+type VideoDispatchCountdown = {
+  scope: "scene" | "batch";
+  sceneId: number | null;
+  sceneCount: number;
+  secondsRemaining: number;
+  totalSeconds: number;
+};
+
+// VELTO_CANCEL_P1_2 — image generation uses the same pre-dispatch undo
+// boundary as video generation. No provider request or Velto image credit is
+// used until the countdown reaches zero.
+type ImageDispatchCountdown = {
+  scope: "scene" | "batch" | "thumbnail";
+  sceneId: number | null;
+  sceneCount: number;
+  secondsRemaining: number;
+  totalSeconds: number;
+};
+
+const SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS = 5;
+const BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS = 7;
+const SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS = 5;
+const BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS = 7;
+
 const CREATOR_DIRECTOR_ACTION_TYPES = new Set<CreatorDirectorActionType>([
   "update_brief_topic",
   "update_strategy_hook",
@@ -448,6 +472,7 @@ type BatchRenderItem = {
     | "video"
     | "save"
     | "complete"
+    | "cancelled"
     | "error";
   message?: string;
   updatedAt: string;
@@ -531,23 +556,34 @@ type CreatorPublishPlatform =
 type CreatorThumbnailVariant = "subject" | "conflict" | "symbol";
 type CreatorThumbnailTextPosition = "top" | "center" | "bottom";
 type CreatorThumbnailFont = "bold_sans" | "editorial" | "condensed";
+type CreatorThumbnailTextAlign = "left" | "center" | "right";
 type CreatorReleaseConfirmationKey =
   | "videoReviewed"
   | "claimsVerified"
   | "rightsConfirmed"
   | "thumbnailApproved";
 
+// VELTO_THUMBNAIL_FIX_P3_2_7
 type CreatorThumbnailStudioState = {
   variant: CreatorThumbnailVariant;
   headline: string;
   subHeadline: string;
   accentColor: string;
-  textColor: string;
+  headlineColor: string;
+  subHeadlineColor: string;
+  showHeadline: boolean;
+  showSubHeadline: boolean;
+  /** Legacy field retained only for migration of previously saved designs. */
+  textColor?: string;
   textPosition: CreatorThumbnailTextPosition;
   font: CreatorThumbnailFont;
   focalX: number;
   focalY: number;
   safeZone: boolean;
+  headlineScale: number;
+  textAlign: CreatorThumbnailTextAlign;
+  textStroke: boolean;
+  textShadow: boolean;
 };
 
 type CreatorDurationPreset =
@@ -697,6 +733,20 @@ type YoutubeThumbnailResult = {
   sourceImageUrl?: string;
   design?: CreatorThumbnailStudioState;
 };
+
+type CreatorThumbnailHistoryItem = {
+  id: string;
+  createdAt: number;
+  label: string;
+  result: YoutubeThumbnailResult;
+};
+
+type CreatorThumbnailRefinementPreset =
+  | "focus"
+  | "contrast"
+  | "title_space"
+  | "cinematic"
+  | "simplify_background";
 
 type SceneOptimizationResult = {
   sceneId: number;
@@ -947,13 +997,36 @@ const CREATOR_THUMBNAIL_STUDIO_DEFAULTS: CreatorThumbnailStudioState = {
   headline: "",
   subHeadline: "",
   accentColor: "#1769e0",
-  textColor: "#ffffff",
+  headlineColor: "#ffffff",
+  subHeadlineColor: "#ffffff",
+  showHeadline: true,
+  showSubHeadline: true,
   textPosition: "bottom",
   font: "bold_sans",
   focalX: 50,
   focalY: 50,
   safeZone: true,
+  headlineScale: 100,
+  textAlign: "left",
+  textStroke: false,
+  textShadow: true,
 };
+
+function normalizeCreatorThumbnailStudioState(
+  design?: Partial<CreatorThumbnailStudioState> | null,
+): CreatorThumbnailStudioState {
+  const legacyTextColor = design?.textColor;
+  const normalized = {
+    ...CREATOR_THUMBNAIL_STUDIO_DEFAULTS,
+    ...(design || {}),
+    headlineColor: design?.headlineColor || legacyTextColor || CREATOR_THUMBNAIL_STUDIO_DEFAULTS.headlineColor,
+    subHeadlineColor: design?.subHeadlineColor || legacyTextColor || CREATOR_THUMBNAIL_STUDIO_DEFAULTS.subHeadlineColor,
+    showHeadline: design?.showHeadline ?? true,
+    showSubHeadline: design?.showSubHeadline ?? true,
+  };
+  delete normalized.textColor;
+  return normalized;
+}
 
 function getDefaultCreatorTargetPlatforms(format: CreatorFormat): CreatorPublishPlatform[] {
   return format === "youtube_video"
@@ -2918,7 +2991,11 @@ function formatCreatorAssetTimestamp(value: string, language: "tr" | "en") {
   }).format(date);
 }
 
-export default function CreatePage() {
+type CreateWorkspaceProps = {
+  onStartNewProject: () => void;
+};
+
+function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
   const selectedFlow = getFlowByKey(selectedFlowKey);
@@ -3051,6 +3128,13 @@ export default function CreatePage() {
   const [creatorThumbnailStudio, setCreatorThumbnailStudio] =
     useState<CreatorThumbnailStudioState>(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
   const [creatorThumbnailChooserOpen, setCreatorThumbnailChooserOpen] = useState(false);
+  const [creatorThumbnailHistory, setCreatorThumbnailHistory] =
+    useState<CreatorThumbnailHistoryItem[]>([]);
+  const [creatorThumbnailRefining, setCreatorThumbnailRefining] =
+    useState<CreatorThumbnailRefinementPreset | null>(null);
+  const [creatorThumbnailSavedDesign, setCreatorThumbnailSavedDesign] =
+    useState<CreatorThumbnailStudioState>(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
+  const [creatorThumbnailSaving, setCreatorThumbnailSaving] = useState(false);
   const [creatorReleaseConfirmations, setCreatorReleaseConfirmations] = useState<
     Record<CreatorReleaseConfirmationKey, boolean>
   >(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
@@ -3114,6 +3198,24 @@ export default function CreatePage() {
   const [batchRenderItems, setBatchRenderItems] = useState<BatchRenderItem[]>([]);
   const [batchRenderStartedAt, setBatchRenderStartedAt] = useState<string>("");
   const [retryingSceneId, setRetryingSceneId] = useState<number | null>(null);
+  // VELTO_CANCEL_P1 — provider-confirmed video job cancellation
+  const [cancellingVideoSceneId, setCancellingVideoSceneId] = useState<number | null>(null);
+  // VELTO_CANCEL_P1_1 — pre-dispatch undo window. No provider request and no
+  // Velto credit settlement occurs until this countdown reaches zero.
+  const [videoDispatchCountdown, setVideoDispatchCountdown] =
+    useState<VideoDispatchCountdown | null>(null);
+  const videoDispatchCountdownRef = useRef<VideoDispatchCountdown | null>(null);
+  const videoDispatchCountdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoDispatchCountdownResolveRef =
+    useRef<((proceed: boolean) => void) | null>(null);
+  const [imageDispatchCountdown, setImageDispatchCountdown] =
+    useState<ImageDispatchCountdown | null>(null);
+  const imageDispatchCountdownRef = useRef<ImageDispatchCountdown | null>(null);
+  const imageDispatchCountdownTimerRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+  const imageDispatchCountdownResolveRef =
+    useRef<((proceed: boolean) => void) | null>(null);
   const batchRenderCancelRef = useRef(false);
 
   const [playingSceneId, setPlayingSceneId] = useState<number | null>(null);
@@ -3128,6 +3230,23 @@ export default function CreatePage() {
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
   const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
   const [exportSignature, setExportSignature] = useState("");
+
+  useEffect(() => {
+    return () => {
+      if (videoDispatchCountdownTimerRef.current) {
+        clearInterval(videoDispatchCountdownTimerRef.current);
+      }
+      videoDispatchCountdownResolveRef.current?.(false);
+      videoDispatchCountdownResolveRef.current = null;
+      videoDispatchCountdownRef.current = null;
+      if (imageDispatchCountdownTimerRef.current) {
+        clearInterval(imageDispatchCountdownTimerRef.current);
+      }
+      imageDispatchCountdownResolveRef.current?.(false);
+      imageDispatchCountdownResolveRef.current = null;
+      imageDispatchCountdownRef.current = null;
+    };
+  }, []);
 
   const getCreatorTelemetrySessionId = () => {
     if (typeof window === "undefined") return "server";
@@ -3332,6 +3451,40 @@ export default function CreatePage() {
     setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
     setCreatorPackageDownloaded(false);
   }, [youtubeThumbnailResult?.imageUrl, creatorThumbnailStudio.headline, creatorThumbnailStudio.subHeadline]);
+
+  const creatorThumbnailHasUnsavedChanges =
+    JSON.stringify(creatorThumbnailStudio) !== JSON.stringify(creatorThumbnailSavedDesign);
+
+  useEffect(() => {
+    if (!youtubeThumbnailResult?.imageUrl) return;
+    setCreatorThumbnailSavedDesign({ ...creatorThumbnailStudio });
+  // A newly selected or generated source becomes the initial saved design.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [youtubeThumbnailResult?.imageUrl]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("velto:creator-thumbnail-history");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) setCreatorThumbnailHistory(parsed.slice(0, 10));
+    } catch (historyError) {
+      console.warn("Thumbnail history could not be restored.", historyError);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "velto:creator-thumbnail-history",
+        JSON.stringify(creatorThumbnailHistory.slice(0, 10)),
+      );
+    } catch (historyError) {
+      console.warn("Thumbnail history could not be saved.", historyError);
+    }
+  }, [creatorThumbnailHistory]);
 
   useEffect(() => {
     setCreatorReleaseConfirmations((prev) => ({ ...prev, claimsVerified: false }));
@@ -4651,6 +4804,7 @@ export default function CreatePage() {
     setYoutubeThumbnailResult(null);
     setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms("short_form"));
     setCreatorThumbnailStudio(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
+    setCreatorThumbnailSavedDesign(CREATOR_THUMBNAIL_STUDIO_DEFAULTS);
     setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
     setSceneOptimizationResult([]);
     setSceneOptimizationSummary(null);
@@ -4802,10 +4956,23 @@ export default function CreatePage() {
       isThumbnail?: boolean;
       premiumVisualMode?: boolean;
       imageUseCase?: "scene" | "thumbnail" | "hook";
+      skipDispatchCountdown?: boolean;
     }
   ) => {
     if (!canRunCreatorMediaAction("visuals")) {
       throw new Error(getCreatorMediaActionError());
+    }
+
+    if (isCreatorLabFlow && !options?.skipDispatchCountdown) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "scene",
+        sceneId: scene.id,
+        sceneCount: 1,
+        seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) {
+        throw new Error("VELTO_IMAGE_DISPATCH_CANCELLED");
+      }
     }
 
     const safeScene = getSafeSceneForImagePrompt(scene);
@@ -4823,15 +4990,27 @@ export default function CreatePage() {
         ].filter(Boolean).join("\n\n")
       : safeScene.text;
 
+    const accessToken = await getAccessTokenOrThrow();
+    const imageRequestKey = [
+      "creator-image",
+      getProjectKey(),
+      scene.id,
+      imageUseCase,
+      Date.now(),
+    ].join(":");
     const imageRes = await fetch("/api/image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": imageRequestKey,
       },
       body: JSON.stringify({
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
         qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
+        projectId: getProjectKey(),
+        sceneId: scene.id,
         title: isCreatorLabFlow ? "" : limitForImagePrompt(title, 160),
         sceneText: creatorTextFreeSceneText,
         cameraDirection: safeScene.cameraDirection,
@@ -4854,6 +5033,8 @@ export default function CreatePage() {
     if (!imageRes.ok) {
       throw new Error(imageData.error || "Görsel üretilemedi.");
     }
+
+    notifyCreditAccountChanged(imageData?.credits);
 
     const rawImage = imageData.image as string;
 
@@ -5588,6 +5769,9 @@ export default function CreatePage() {
 
         if (jobStatus === "succeeded") {
           clearVideoPollForScene(sceneId);
+          notifyCreditAccountChanged({
+            account: data.job.result?.creditAccount || null,
+          });
           const providerVideoUrl = String(data.job.result?.videoUrl || "");
           if (!providerVideoUrl) {
             throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
@@ -5615,8 +5799,36 @@ export default function CreatePage() {
           return;
         }
 
-        if (jobStatus === "failed" || jobStatus === "cancelled") {
+        if (jobStatus === "cancelled") {
           clearVideoPollForScene(sceneId);
+          notifyCreditAccountChanged({
+            account: data.job.result?.creditAccount || null,
+          });
+          setScenes((prev) =>
+            prev.map((scene) =>
+              scene.id === sceneId
+                ? {
+                    ...scene,
+                    videoStatus: "idle",
+                    videoUrl: "",
+                    videoJobId: "",
+                    videoQueueJobId: "",
+                  }
+                : scene,
+            ),
+          );
+          setError("");
+          setSaveMessage(
+            uiLanguage === "en"
+              ? "Video production cancelled."
+              : "Video üretimi iptal edildi.",
+          );
+          return;
+        }
+
+        if (jobStatus === "failed") {
+          clearVideoPollForScene(sceneId);
+          notifyCreditAccountChanged();
           setScenes((prev) =>
             prev.map((scene) =>
               scene.id === sceneId
@@ -5907,7 +6119,208 @@ export default function CreatePage() {
     }, 40);
   };
 
-  const handleGenerateVideo = async (sceneId: number) => {
+  const finishVideoDispatchCountdown = (proceed: boolean) => {
+    if (videoDispatchCountdownTimerRef.current) {
+      clearInterval(videoDispatchCountdownTimerRef.current);
+      videoDispatchCountdownTimerRef.current = null;
+    }
+
+    const resolve = videoDispatchCountdownResolveRef.current;
+    videoDispatchCountdownResolveRef.current = null;
+    videoDispatchCountdownRef.current = null;
+    setVideoDispatchCountdown(null);
+    resolve?.(proceed);
+  };
+
+  const cancelPendingVideoDispatch = () => {
+    const pending = videoDispatchCountdownRef.current;
+    if (!pending) return;
+
+    finishVideoDispatchCountdown(false);
+    setError("");
+    setSaveMessage(
+      pending.scope === "batch"
+        ? uiLanguage === "en"
+          ? "Batch video start cancelled before provider dispatch. No Velto video credit was used."
+          : "Toplu video başlangıcı servise gönderilmeden iptal edildi. Velto video kredisi kullanılmadı."
+        : uiLanguage === "en"
+          ? "Video start cancelled before provider dispatch. No Velto video credit was used."
+          : "Video başlangıcı servise gönderilmeden iptal edildi. Velto video kredisi kullanılmadı.",
+    );
+  };
+
+  const startVideoDispatchCountdown = ({
+    scope,
+    sceneId = null,
+    sceneCount = 1,
+    seconds,
+  }: {
+    scope: "scene" | "batch";
+    sceneId?: number | null;
+    sceneCount?: number;
+    seconds: number;
+  }) => {
+    if (videoDispatchCountdownRef.current || imageDispatchCountdownRef.current) {
+      setError(
+        uiLanguage === "en"
+          ? "Another media start countdown is already active."
+          : "Başka bir medya başlatma geri sayımı zaten aktif.",
+      );
+      return Promise.resolve(false);
+    }
+
+    const initialCountdown: VideoDispatchCountdown = {
+      scope,
+      sceneId,
+      sceneCount: Math.max(1, sceneCount),
+      secondsRemaining: seconds,
+      totalSeconds: seconds,
+    };
+
+    videoDispatchCountdownRef.current = initialCountdown;
+    setVideoDispatchCountdown(initialCountdown);
+    setError("");
+    setSaveMessage(
+      scope === "batch"
+        ? uiLanguage === "en"
+          ? `Batch video production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto video charges.`
+          : `Toplu video üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto video maliyetini önlemek için şimdi iptal et.`
+        : uiLanguage === "en"
+          ? `Video production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto video charges.`
+          : `Video üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto video maliyetini önlemek için şimdi iptal et.`,
+    );
+
+    return new Promise<boolean>((resolve) => {
+      videoDispatchCountdownResolveRef.current = resolve;
+      videoDispatchCountdownTimerRef.current = setInterval(() => {
+        const current = videoDispatchCountdownRef.current;
+        if (!current) return;
+
+        const secondsRemaining = current.secondsRemaining - 1;
+        if (secondsRemaining <= 0) {
+          setSaveMessage(
+            uiLanguage === "en"
+              ? "Countdown completed. Sending the provider request and charging Velto video credits."
+              : "Geri sayım tamamlandı. Servis talebi gönderiliyor ve Velto video kredisi tüketiliyor.",
+          );
+          finishVideoDispatchCountdown(true);
+          return;
+        }
+
+        const nextCountdown = { ...current, secondsRemaining };
+        videoDispatchCountdownRef.current = nextCountdown;
+        setVideoDispatchCountdown(nextCountdown);
+      }, 1000);
+    });
+  };
+
+  const finishImageDispatchCountdown = (proceed: boolean) => {
+    if (imageDispatchCountdownTimerRef.current) {
+      clearInterval(imageDispatchCountdownTimerRef.current);
+      imageDispatchCountdownTimerRef.current = null;
+    }
+
+    const resolve = imageDispatchCountdownResolveRef.current;
+    imageDispatchCountdownResolveRef.current = null;
+    imageDispatchCountdownRef.current = null;
+    setImageDispatchCountdown(null);
+    resolve?.(proceed);
+  };
+
+  const cancelPendingImageDispatch = () => {
+    const pending = imageDispatchCountdownRef.current;
+    if (!pending) return;
+
+    finishImageDispatchCountdown(false);
+    setError("");
+    setSaveMessage(
+      pending.scope === "batch"
+        ? uiLanguage === "en"
+          ? "Batch image start cancelled before provider dispatch. No Velto image credit was used."
+          : "Toplu görsel başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı."
+        : pending.scope === "thumbnail"
+          ? uiLanguage === "en"
+            ? "AI thumbnail start cancelled before provider dispatch. No Velto image credit was used."
+            : "AI thumbnail başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı."
+          : uiLanguage === "en"
+            ? "Image start cancelled before provider dispatch. No Velto image credit was used."
+            : "Görsel başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı.",
+    );
+  };
+
+  const startImageDispatchCountdown = ({
+    scope,
+    sceneId = null,
+    sceneCount = 1,
+    seconds,
+  }: {
+    scope: "scene" | "batch" | "thumbnail";
+    sceneId?: number | null;
+    sceneCount?: number;
+    seconds: number;
+  }) => {
+    if (imageDispatchCountdownRef.current || videoDispatchCountdownRef.current) {
+      setError(
+        uiLanguage === "en"
+          ? "Another media start countdown is already active."
+          : "Başka bir medya başlatma geri sayımı zaten aktif.",
+      );
+      return Promise.resolve(false);
+    }
+
+    const initialCountdown: ImageDispatchCountdown = {
+      scope,
+      sceneId,
+      sceneCount: Math.max(1, sceneCount),
+      secondsRemaining: seconds,
+      totalSeconds: seconds,
+    };
+
+    imageDispatchCountdownRef.current = initialCountdown;
+    setImageDispatchCountdown(initialCountdown);
+    setError("");
+    setSaveMessage(
+      scope === "batch"
+        ? uiLanguage === "en"
+          ? `Batch image production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
+          : `Toplu görsel üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`
+        : scope === "thumbnail"
+          ? uiLanguage === "en"
+            ? `AI thumbnail generation will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
+            : `AI thumbnail üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`
+          : uiLanguage === "en"
+            ? `Image production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
+            : `Görsel üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`,
+    );
+
+    return new Promise<boolean>((resolve) => {
+      imageDispatchCountdownResolveRef.current = resolve;
+      imageDispatchCountdownTimerRef.current = setInterval(() => {
+        const current = imageDispatchCountdownRef.current;
+        if (!current) return;
+
+        const secondsRemaining = current.secondsRemaining - 1;
+        if (secondsRemaining <= 0) {
+          setSaveMessage(
+            uiLanguage === "en"
+              ? "Countdown completed. Sending the provider request and starting Velto image billing."
+              : "Geri sayım tamamlandı. Servis talebi gönderiliyor ve Velto görsel ücretlendirmesi başlıyor.",
+          );
+          finishImageDispatchCountdown(true);
+          return;
+        }
+
+        const nextCountdown = { ...current, secondsRemaining };
+        imageDispatchCountdownRef.current = nextCountdown;
+        setImageDispatchCountdown(nextCountdown);
+      }, 1000);
+    });
+  };
+
+  const handleGenerateVideo = async (
+    sceneId: number,
+    options: { skipDispatchCountdown?: boolean } = {},
+  ) => {
     const scene = scenes.find((s) => s.id === sceneId);
 
     if (!scene) {
@@ -5934,6 +6347,16 @@ export default function CreatePage() {
     if (!scene.image) {
       setError("Önce sahne görseli hazır olmalı.");
       return false;
+    }
+
+    if (!options.skipDispatchCountdown) {
+      const proceed = await startVideoDispatchCountdown({
+        scope: "scene",
+        sceneId: scene.id,
+        sceneCount: 1,
+        seconds: SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return false;
     }
 
     clearVideoPollForScene(sceneId);
@@ -5998,17 +6421,16 @@ export default function CreatePage() {
             : "Video üretimi başlatıldı. Hareketli blok hazır olduğunda Velto Studio bu sahneyi güncelleyecek.",
       );
 
-      let videoQueueJobId = "";
-      if (isCreatorLabFlow) {
-        try {
-          videoQueueJobId = await enqueueVideoReconcileJob({
-            sceneId,
-            taskId: data.taskId,
-            accessToken,
-          });
-        } catch (queueError) {
-          console.warn("Video queue fallback activated:", queueError);
-        }
+      const videoQueueJobId = isCreatorLabFlow
+        ? String(data.queueJobId || "")
+        : "";
+
+      if (isCreatorLabFlow && !videoQueueJobId) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "Video tracking job could not be created."
+            : "Video takip işi oluşturulamadı.",
+        );
       }
 
       setScenes((prev) =>
@@ -6025,9 +6447,8 @@ export default function CreatePage() {
         )
       );
 
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("velto:credits-changed"));
-      }
+      notifyCreditAccountChanged(data?.credits);
+
       if (isCreatorLabFlow && videoQueueJobId) {
         pollVideoQueueJob(sceneId, data.taskId, videoQueueJobId);
       } else {
@@ -6160,22 +6581,19 @@ export default function CreatePage() {
     throw new Error("Video üretimi zaman aşımına uğradı.");
   };
 
-  const waitForQueuedVideoAndStore = async (scene: Scene, taskId: string) => {
+  const waitForQueuedVideoAndStore = async (
+    scene: Scene,
+    taskId: string,
+    queueJobId: string,
+  ) => {
     const accessToken = await getAccessTokenOrThrow();
-    let queueJobId = "";
 
-    try {
-      queueJobId = await enqueueVideoReconcileJob({
-        sceneId: scene.id,
-        taskId,
-        accessToken,
-      });
-    } catch (queueError) {
-      console.warn("Batch video queue fallback activated:", queueError);
-      return {
-        videoUrl: await waitForRunwayVideoAndStore(scene, taskId),
-        videoQueueJobId: "",
-      };
+    if (!queueJobId) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Video tracking job could not be created."
+          : "Video takip işi oluşturulamadı.",
+      );
     }
 
     setScenes((prev) =>
@@ -6213,6 +6631,9 @@ export default function CreatePage() {
 
       const jobStatus = String(data.job.status || "").toLowerCase();
       if (jobStatus === "succeeded") {
+        notifyCreditAccountChanged({
+          account: data.job.result?.creditAccount || null,
+        });
         const providerVideoUrl = String(data.job.result?.videoUrl || "");
         if (!providerVideoUrl) {
           throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
@@ -6227,7 +6648,15 @@ export default function CreatePage() {
         };
       }
 
-      if (jobStatus === "failed" || jobStatus === "cancelled") {
+      if (jobStatus === "cancelled") {
+        notifyCreditAccountChanged({
+          account: data.job.result?.creditAccount || null,
+        });
+        throw new Error("VELTO_VIDEO_CANCELLED");
+      }
+
+      if (jobStatus === "failed") {
+        notifyCreditAccountChanged();
         throw new Error(
           data.job.errorMessage ||
             (uiLanguage === "en"
@@ -6317,7 +6746,11 @@ export default function CreatePage() {
     notifyCreditAccountChanged(data?.credits);
 
     const queuedVideo = isCreatorLabFlow
-      ? await waitForQueuedVideoAndStore(scene, data.taskId)
+      ? await waitForQueuedVideoAndStore(
+          scene,
+          data.taskId,
+          String(data.queueJobId || ""),
+        )
       : {
           videoUrl: await waitForRunwayVideoAndStore(scene, data.taskId),
           videoQueueJobId: "",
@@ -6342,14 +6775,140 @@ export default function CreatePage() {
     return {
       videoUrl,
       videoJobId: data.taskId as string,
+      videoQueueJobId: queuedVideo.videoQueueJobId || "",
       videoDurationSeconds: Number(data.duration) || 0,
     };
   };
 
-  const stopBatchRender = () => {
+  const requestCancelSceneVideo = async (
+    scene: Scene,
+    options: { confirm?: boolean; silent?: boolean } = {},
+  ) => {
+    const queueJobId = scene.videoQueueJobId?.trim() || "";
+
+    if (!queueJobId) {
+      if (!options.silent) {
+        setError(
+          uiLanguage === "en"
+            ? "This video does not have a cancellable background job."
+            : "Bu video için iptal edilebilir bir arka plan işi bulunmuyor.",
+        );
+      }
+      return false;
+    }
+
+    if (options.confirm !== false) {
+      const confirmed = window.confirm(
+        uiLanguage === "en"
+          ? "Stop this video production? The provider request has already been dispatched, so the Velto video credit will not be refunded."
+          : "Bu video üretimi durdurulsun mu? Servis talebi zaten gönderildiği için Velto video kredisi iade edilmez.",
+      );
+      if (!confirmed) return false;
+    }
+
+    setCancellingVideoSceneId(scene.id);
+    if (!options.silent) {
+      setError("");
+      setSaveMessage("");
+    }
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      const response = await fetch(`/api/jobs/${encodeURIComponent(queueJobId)}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(
+          data?.error ||
+            (uiLanguage === "en"
+              ? "Video production could not be cancelled."
+              : "Video üretimi iptal edilemedi."),
+        );
+      }
+
+      clearVideoPollForScene(scene.id);
+      notifyCreditAccountChanged({ account: data?.credits?.account || null });
+      setScenes((prev) =>
+        prev.map((item) =>
+          item.id === scene.id
+            ? {
+                ...item,
+                videoStatus: "idle",
+                videoUrl: "",
+                videoJobId: "",
+                videoQueueJobId: "",
+                videoDurationSeconds: undefined,
+              }
+            : item,
+        ),
+      );
+      updateBatchRenderItem(scene.id, {
+        status: "skipped",
+        step: "cancelled",
+        message:
+          uiLanguage === "en"
+            ? "Video production cancelled."
+            : "Video üretimi iptal edildi.",
+      });
+
+      if (!options.silent) {
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Video production stopped. The provider request was already dispatched, so the Velto video credit was not refunded."
+            : "Video üretimi durduruldu. Servis talebi daha önce gönderildiği için Velto video kredisi iade edilmedi.",
+        );
+      }
+
+      return true;
+    } catch (cancelError: any) {
+      if (!options.silent) {
+        setError(
+          cancelError?.message ||
+            (uiLanguage === "en"
+              ? "Video production could not be cancelled."
+              : "Video üretimi iptal edilemedi."),
+        );
+      }
+      return false;
+    } finally {
+      setCancellingVideoSceneId((current) =>
+        current === scene.id ? null : current,
+      );
+    }
+  };
+
+  const stopBatchRender = async () => {
     batchRenderCancelRef.current = true;
     setIsBatchRendering(false);
-    setSaveMessage(uiLanguage === "en" ? "Batch render stop requested." : "Batch render durdurma isteği alındı.");
+
+    const activeVideoScenes = scenes.filter(
+      (scene) =>
+        scene.videoStatus === "processing" && Boolean(scene.videoQueueJobId),
+    );
+
+    if (activeVideoScenes.length > 0) {
+      await Promise.allSettled(
+        activeVideoScenes.map((scene) =>
+          requestCancelSceneVideo(scene, { confirm: false, silent: true }),
+        ),
+      );
+    }
+
+    setSaveMessage(
+      activeVideoScenes.length > 0
+        ? uiLanguage === "en"
+          ? "Batch render stopped. Active provider tasks were asked to stop; dispatched video credits are not refunded."
+          : "Toplu üretim durduruldu. Aktif servis görevleri için durdurma istendi; gönderilmiş video kredileri iade edilmez."
+        : uiLanguage === "en"
+          ? "Batch render stop requested."
+          : "Batch render durdurma isteği alındı.",
+    );
   };
 
   const generateAllSceneVisuals = async () => {
@@ -6365,6 +6924,16 @@ export default function CreatePage() {
 
     if (!(await prepareCreatorMediaAction("visuals"))) {
       return;
+    }
+
+    const pendingImageSceneCount = scenes.filter((scene) => !scene.image).length;
+    if (isCreatorLabFlow && pendingImageSceneCount > 0) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "batch",
+        sceneCount: pendingImageSceneCount,
+        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
     }
 
     setError("");
@@ -6400,7 +6969,7 @@ export default function CreatePage() {
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene);
+            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
             scene = {
               ...scene,
               image: nextImage,
@@ -6488,6 +7057,15 @@ export default function CreatePage() {
       return false;
     }
 
+    if (isCreatorLabFlow && targetScenes.length > 0) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "batch",
+        sceneCount: targetScenes.length,
+        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return false;
+    }
+
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
@@ -6527,7 +7105,7 @@ export default function CreatePage() {
 
         try {
           setRedrawLoadingId(scene.id);
-          const nextImage = await generateSceneImage(scene);
+          const nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
           const nextScene = {
             ...scene,
             image: nextImage,
@@ -6621,6 +7199,26 @@ export default function CreatePage() {
       return;
     }
 
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const routedVideoSceneIds = isCreatorLabFlow
+      ? getCreatorRoutedVideoSceneIds(workingScenes)
+      : workingScenes.map((scene) => scene.id);
+    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
+    const pendingVideoSceneCount = workingScenes.filter(
+      (scene) =>
+        routedVideoSceneIdSet.has(scene.id) &&
+        (!scene.videoUrl || scene.videoStatus !== "done"),
+    ).length;
+
+    if (pendingVideoSceneCount > 0) {
+      const proceed = await startVideoDispatchCountdown({
+        scope: "batch",
+        sceneCount: pendingVideoSceneCount,
+        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    }
+
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
@@ -6632,11 +7230,6 @@ export default function CreatePage() {
     suspendAutosaveRef.current = true;
     resetBatchRenderItems(scenes);
 
-    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
-    const routedVideoSceneIds = isCreatorLabFlow
-      ? getCreatorRoutedVideoSceneIds(workingScenes)
-      : workingScenes.map((scene) => scene.id);
-    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
     let hasFailure = false;
 
     try {
@@ -6673,6 +7266,7 @@ export default function CreatePage() {
               videoUrl: videoResult.videoUrl,
               videoStatus: "done",
               videoJobId: videoResult.videoJobId,
+              videoQueueJobId: videoResult.videoQueueJobId || undefined,
               videoDurationSeconds: videoResult.videoDurationSeconds,
             };
             workingScenes[index] = scene;
@@ -6687,20 +7281,30 @@ export default function CreatePage() {
             message: uiLanguage === "en" ? "AI video block ready." : "AI video block hazır.",
           });
         } catch (sceneError: any) {
-          hasFailure = true;
+          const wasCancelled =
+            batchRenderCancelRef.current || sceneError?.message === "VELTO_VIDEO_CANCELLED";
+          hasFailure = hasFailure || !wasCancelled;
           console.error("ai video block generation error:", scene.id, sceneError);
 
           workingScenes[index] = {
             ...workingScenes[index],
-            videoStatus: workingScenes[index].videoStatus === "processing" ? "error" : workingScenes[index].videoStatus,
+            videoStatus: wasCancelled
+              ? "idle"
+              : workingScenes[index].videoStatus === "processing"
+                ? "error"
+                : workingScenes[index].videoStatus,
+            videoJobId: wasCancelled ? "" : workingScenes[index].videoJobId,
+            videoQueueJobId: wasCancelled ? "" : workingScenes[index].videoQueueJobId,
           };
 
           setScenes([...workingScenes]);
 
           updateBatchRenderItem(scene.id, {
-            status: "failed",
-            step: "video",
-            message: sceneError?.message || (uiLanguage === "en" ? "AI video block failed." : "AI video block üretimi başarısız oldu."),
+            status: wasCancelled ? "skipped" : "failed",
+            step: wasCancelled ? "cancelled" : "video",
+            message: wasCancelled
+              ? uiLanguage === "en" ? "Video production cancelled." : "Video üretimi iptal edildi."
+              : sceneError?.message || (uiLanguage === "en" ? "AI video block failed." : "AI video block üretimi başarısız oldu."),
           });
 
           try {
@@ -6745,6 +7349,36 @@ export default function CreatePage() {
       return;
     }
 
+    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const routedVideoSceneIds = isCreatorLabFlow
+      ? getCreatorRoutedVideoSceneIds(workingScenes)
+      : workingScenes.map((scene) => scene.id);
+    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
+    const pendingVideoSceneCount = workingScenes.filter(
+      (scene) =>
+        routedVideoSceneIdSet.has(scene.id) &&
+        (!scene.videoUrl || scene.videoStatus !== "done"),
+    ).length;
+    const pendingImageSceneCount = workingScenes.filter((scene) => !scene.image).length;
+
+    if (pendingVideoSceneCount > 0) {
+      // The existing batch undo window gates the complete production run, so
+      // no image or video provider call starts before the countdown reaches zero.
+      const proceed = await startVideoDispatchCountdown({
+        scope: "batch",
+        sceneCount: pendingVideoSceneCount,
+        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    } else if (isCreatorLabFlow && pendingImageSceneCount > 0) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "batch",
+        sceneCount: pendingImageSceneCount,
+        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    }
+
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
@@ -6756,11 +7390,6 @@ export default function CreatePage() {
     suspendAutosaveRef.current = true;
     resetBatchRenderItems(scenes);
 
-    const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
-    const routedVideoSceneIds = isCreatorLabFlow
-      ? getCreatorRoutedVideoSceneIds(workingScenes)
-      : workingScenes.map((scene) => scene.id);
-    const routedVideoSceneIdSet = new Set(routedVideoSceneIds);
     let hasFailure = false;
 
     try {
@@ -6782,7 +7411,7 @@ export default function CreatePage() {
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene);
+            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
             scene = {
               ...scene,
               image: nextImage,
@@ -6847,6 +7476,7 @@ export default function CreatePage() {
               videoUrl: videoResult.videoUrl,
               videoStatus: "done",
               videoJobId: videoResult.videoJobId,
+              videoQueueJobId: videoResult.videoQueueJobId || undefined,
               videoDurationSeconds: videoResult.videoDurationSeconds,
             };
             workingScenes[index] = scene;
@@ -6876,20 +7506,30 @@ export default function CreatePage() {
             message: uiLanguage === "en" ? "Scene ready." : "Sahne hazır.",
           });
         } catch (sceneError: any) {
-          hasFailure = true;
+          const wasCancelled =
+            batchRenderCancelRef.current || sceneError?.message === "VELTO_VIDEO_CANCELLED";
+          hasFailure = hasFailure || !wasCancelled;
           console.error("batch scene error:", scene.id, sceneError);
 
           workingScenes[index] = {
             ...workingScenes[index],
-            videoStatus: workingScenes[index].videoStatus === "processing" ? "error" : workingScenes[index].videoStatus,
+            videoStatus: wasCancelled
+              ? "idle"
+              : workingScenes[index].videoStatus === "processing"
+                ? "error"
+                : workingScenes[index].videoStatus,
+            videoJobId: wasCancelled ? "" : workingScenes[index].videoJobId,
+            videoQueueJobId: wasCancelled ? "" : workingScenes[index].videoQueueJobId,
           };
 
           setScenes([...workingScenes]);
 
           updateBatchRenderItem(scene.id, {
-            status: "failed",
-            step: "error",
-            message: sceneError?.message || "Sahne üretimi başarısız oldu.",
+            status: wasCancelled ? "skipped" : "failed",
+            step: wasCancelled ? "cancelled" : "error",
+            message: wasCancelled
+              ? uiLanguage === "en" ? "Production cancelled." : "Üretim iptal edildi."
+              : sceneError?.message || "Sahne üretimi başarısız oldu.",
           });
 
           try {
@@ -6948,6 +7588,34 @@ export default function CreatePage() {
       return;
     }
 
+    const retryRoutedVideoSceneIdSet = new Set(
+      isCreatorLabFlow
+        ? getCreatorRoutedVideoSceneIds(scenes)
+        : scenes.map((scene) => scene.id),
+    );
+    const retryVideoSceneCount = uniqueSceneIds.filter((sceneId) =>
+      retryRoutedVideoSceneIdSet.has(sceneId),
+    ).length;
+    const retryImageSceneCount = uniqueSceneIds.filter((sceneId) =>
+      !scenes.find((scene) => scene.id === sceneId)?.image,
+    ).length;
+
+    if (retryVideoSceneCount > 0) {
+      const proceed = await startVideoDispatchCountdown({
+        scope: "batch",
+        sceneCount: retryVideoSceneCount,
+        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    } else if (isCreatorLabFlow && retryImageSceneCount > 0) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "batch",
+        sceneCount: retryImageSceneCount,
+        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    }
+
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
@@ -6994,7 +7662,7 @@ export default function CreatePage() {
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene);
+            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
             scene = {
               ...scene,
               image: nextImage,
@@ -7058,6 +7726,7 @@ export default function CreatePage() {
               videoUrl: videoResult.videoUrl,
               videoStatus: "done",
               videoJobId: videoResult.videoJobId,
+              videoQueueJobId: videoResult.videoQueueJobId || undefined,
               videoDurationSeconds: videoResult.videoDurationSeconds,
             };
             workingScenes[index] = scene;
@@ -7244,7 +7913,7 @@ export default function CreatePage() {
       return;
     }
 
-    if (!exportApiBase) {
+    if (!isCreatorLabFlow && !exportApiBase) {
       setError("Export servisi URL'i tanımlı değil. Vercel ortam değişkenlerinde NEXT_PUBLIC_EXPORT_API_URL eklenmeli.");
       return;
     }
@@ -7268,12 +7937,31 @@ export default function CreatePage() {
     setExportSignature("");
 
     try {
-      const res = await fetch(`${exportApiBase}/export-movie`, {
+      const exportAccessToken = isCreatorLabFlow
+        ? await getAccessTokenOrThrow()
+        : "";
+      const exportEndpoint = isCreatorLabFlow
+        ? "/api/creator-export"
+        : `${exportApiBase}/export-movie`;
+      const exportRequestKey = [
+        "creator-export",
+        getProjectKey(),
+        Date.now(),
+      ].join(":");
+      const res = await fetch(exportEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(isCreatorLabFlow
+            ? {
+                Authorization: `Bearer ${exportAccessToken}`,
+                "x-idempotency-key": exportRequestKey,
+              }
+            : {}),
         },
         body: JSON.stringify({
+          productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+          qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           title,
           projectId: getProjectKey(),
           exportMode: "mixed",
@@ -7332,6 +8020,12 @@ export default function CreatePage() {
 
       if (!res.ok || !data.ok || !data.movieUrl) {
         throw new Error(data?.error || "Film export işlemi başarısız oldu.");
+      }
+
+      if (isCreatorLabFlow) {
+        notifyCreditAccountChanged({
+          account: data.creditAccount || null,
+        });
       }
 
       const nextExportResult: ExportMovieResult = {
@@ -7969,9 +8663,7 @@ export default function CreatePage() {
       setYoutubeMetadataResult(project.youtube_metadata || null);
       setYoutubeThumbnailResult(project.youtube_thumbnail || null);
       setCreatorThumbnailStudio(
-        project.youtube_thumbnail?.design
-          ? { ...CREATOR_THUMBNAIL_STUDIO_DEFAULTS, ...project.youtube_thumbnail.design }
-          : CREATOR_THUMBNAIL_STUDIO_DEFAULTS,
+        normalizeCreatorThumbnailStudioState(project.youtube_thumbnail?.design),
       );
       setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
       setSceneOptimizationResult(
@@ -9931,7 +10623,8 @@ export default function CreatePage() {
         textPosition: "bottom",
         font: "bold_sans",
         accentColor: "#1769e0",
-        textColor: "#ffffff",
+        headlineColor: "#ffffff",
+        subHeadlineColor: "#ffffff",
         focalX: 50,
         focalY: 45,
       },
@@ -9940,7 +10633,8 @@ export default function CreatePage() {
         textPosition: "center",
         font: "condensed",
         accentColor: "#f59e0b",
-        textColor: "#ffffff",
+        headlineColor: "#ffffff",
+        subHeadlineColor: "#ffffff",
         focalX: 50,
         focalY: 50,
       },
@@ -9949,7 +10643,8 @@ export default function CreatePage() {
         textPosition: "top",
         font: "editorial",
         accentColor: "#7c3aed",
-        textColor: "#ffffff",
+        headlineColor: "#ffffff",
+        subHeadlineColor: "#ffffff",
         focalX: 50,
         focalY: 58,
       },
@@ -9981,6 +10676,7 @@ export default function CreatePage() {
     lineHeight: number,
     x: number,
     startY: number,
+    strokeText = false,
   ) => {
     const words = text.trim().split(/\s+/).filter(Boolean);
     const lines: string[] = [];
@@ -9998,8 +10694,44 @@ export default function CreatePage() {
     }
 
     if (current && lines.length < maxLines) lines.push(current);
-    lines.forEach((line, index) => context.fillText(line, x, startY + index * lineHeight));
+    lines.forEach((line, index) => {
+      const y = startY + index * lineHeight;
+      if (strokeText) context.strokeText(line, x, y);
+      context.fillText(line, x, y);
+    });
     return lines.length;
+  };
+
+  const handleSaveCreatorThumbnail = async () => {
+    if (!creatorPublishThumbnailUrl) {
+      setError(uiLanguage === "en" ? "Select a thumbnail source first." : "Önce bir thumbnail kaynağı seç.");
+      return;
+    }
+
+    setCreatorThumbnailSaving(true);
+    setError("");
+    try {
+      setCreatorThumbnailSavedDesign({ ...creatorThumbnailStudio });
+      setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: true }));
+      setCreatorPackageDownloaded(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          "velto:creator-thumbnail-saved-design",
+          JSON.stringify({ design: creatorThumbnailStudio, imageUrl: creatorPublishThumbnailUrl }),
+        );
+      }
+      await persistProjectSnapshot(scenes);
+      setSaveMessage(uiLanguage === "en" ? "Thumbnail saved to the project." : "Thumbnail projeye kaydedildi.");
+    } catch (saveError: any) {
+      setError(saveError?.message || (uiLanguage === "en" ? "Thumbnail could not be saved." : "Thumbnail kaydedilemedi."));
+    } finally {
+      setCreatorThumbnailSaving(false);
+    }
+  };
+
+  const handleRevertCreatorThumbnail = () => {
+    setCreatorThumbnailStudio({ ...creatorThumbnailSavedDesign });
+    setSaveMessage(uiLanguage === "en" ? "Unsaved thumbnail edits reverted." : "Kaydedilmemiş thumbnail düzenlemeleri geri alındı.");
   };
 
   const renderCreatorThumbnailDataUrl = async (sourceUrl: string) => {
@@ -10035,7 +10767,9 @@ export default function CreatePage() {
 
     const padding = Math.round(canvas.width * 0.07);
     const contentWidth = canvas.width - padding * 2;
-    const headlineSize = Math.round(canvas.width * (isWide ? 0.064 : 0.086));
+    const headlineSize = Math.round(
+      canvas.width * (isWide ? 0.064 : 0.086) * (creatorThumbnailStudio.headlineScale / 100),
+    );
     const subSize = Math.round(headlineSize * 0.42);
     const fontFamily = creatorThumbnailStudio.font === "editorial"
       ? "Georgia, serif"
@@ -10050,22 +10784,37 @@ export default function CreatePage() {
         : Math.round(canvas.height * 0.72);
 
     context.textBaseline = "top";
-    context.fillStyle = creatorThumbnailStudio.textColor;
-    context.shadowColor = "rgba(0,0,0,.55)";
-    context.shadowBlur = Math.round(canvas.width * 0.01);
-    context.font = `${weight} ${headlineSize}px ${fontFamily}`;
-    const headlineLines = drawCreatorThumbnailText(
-      context,
-      creatorThumbnailStudio.headline || creatorPublishTitle,
-      contentWidth,
-      3,
-      Math.round(headlineSize * 1.02),
-      padding,
-      blockY,
-    );
+    context.textAlign = creatorThumbnailStudio.textAlign;
+    context.shadowColor = creatorThumbnailStudio.textShadow ? "rgba(0,0,0,.72)" : "transparent";
+    context.shadowBlur = creatorThumbnailStudio.textShadow ? Math.round(canvas.width * 0.012) : 0;
+    context.lineJoin = "round";
+    context.strokeStyle = "rgba(0,0,0,.88)";
+    context.lineWidth = creatorThumbnailStudio.textStroke ? Math.max(3, Math.round(canvas.width * 0.0045)) : 0;
+    const textAnchorX = creatorThumbnailStudio.textAlign === "center"
+      ? canvas.width / 2
+      : creatorThumbnailStudio.textAlign === "right"
+        ? canvas.width - padding
+        : padding;
+    let headlineLines = 0;
+    const headline = creatorThumbnailStudio.headline.trim();
+    if (creatorThumbnailStudio.showHeadline && headline) {
+      context.fillStyle = creatorThumbnailStudio.headlineColor;
+      context.font = `${weight} ${headlineSize}px ${fontFamily}`;
+      headlineLines = drawCreatorThumbnailText(
+        context,
+        headline,
+        contentWidth,
+        3,
+        Math.round(headlineSize * 1.02),
+        textAnchorX,
+        blockY,
+        creatorThumbnailStudio.textStroke,
+      );
+    }
 
     const subHeadline = creatorThumbnailStudio.subHeadline.trim();
-    if (subHeadline) {
+    if (creatorThumbnailStudio.showSubHeadline && subHeadline) {
+      context.fillStyle = creatorThumbnailStudio.subHeadlineColor;
       context.font = `700 ${subSize}px Arial, Helvetica, sans-serif`;
       context.globalAlpha = 0.94;
       drawCreatorThumbnailText(
@@ -10074,8 +10823,9 @@ export default function CreatePage() {
         contentWidth,
         2,
         Math.round(subSize * 1.15),
-        padding,
-        blockY + headlineLines * Math.round(headlineSize * 1.02) + Math.round(subSize * 0.7),
+        textAnchorX,
+        blockY + headlineLines * Math.round(headlineSize * 1.02) + (headlineLines ? Math.round(subSize * 0.7) : 0),
+        creatorThumbnailStudio.textStroke,
       );
       context.globalAlpha = 1;
     }
@@ -10347,7 +11097,7 @@ export default function CreatePage() {
     return `${words || "HOW"}?!`.toUpperCase();
   };
 
-  const buildPremiumThumbnailPrompt = () => {
+  const buildPremiumThumbnailPrompt = (refinementInstruction?: string) => {
     const packageTitle = creatorProductionPackage?.title || title || input || "YouTube video";
     const packageHook = creatorProductionPackage?.hook || youtubeMetadataResult?.audiencePromise || "";
     const thumbnailIdea = creatorProductionPackage?.thumbnailIdea || "";
@@ -10372,27 +11122,39 @@ export default function CreatePage() {
       "Leave clean empty space for a short headline overlay that will be added outside the image-generation step.",
       "STRICT TEXT-FREE OUTPUT: Do not render any words, letters, numbers, captions, subtitles, labels, logos, watermarks, signage, interface elements, or typography anywhere in the thumbnail image.",
       "Avoid multi-line text, subtitles, poster layout, labels, arrows, clutter, tiny details, scary imagery, or confusing composition.",
+      refinementInstruction ? `REFINEMENT DIRECTION: ${refinementInstruction}` : "",
     ]
       .filter(Boolean)
       .join("\n");
   };
 
-  const generatePremiumYoutubeThumbnailImage = async () => {
+  const generatePremiumYoutubeThumbnailImage = async (refinementInstruction?: string) => {
     if (!canRunCreatorMediaAction("visuals")) {
       throw new Error(getCreatorMediaActionError());
     }
 
-    const thumbnailPrompt = buildPremiumThumbnailPrompt();
+    const thumbnailPrompt = buildPremiumThumbnailPrompt(refinementInstruction);
+    const accessToken = await getAccessTokenOrThrow();
+    const imageRequestKey = [
+      "creator-image",
+      getProjectKey(),
+      "thumbnail",
+      Date.now(),
+    ].join(":");
 
     const imageRes = await fetch("/api/image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "x-idempotency-key": imageRequestKey,
       },
       body: JSON.stringify({
         productProfile: "creatorlab",
         qualityMode: creatorQualityMode,
         creatorFormat,
+        projectId: getProjectKey(),
+        sceneId: "thumbnail",
         title: "",
         sceneText: limitForImagePrompt(thumbnailPrompt, 1200),
         cameraDirection:
@@ -10413,6 +11175,8 @@ export default function CreatePage() {
     if (!imageRes.ok || !imageData?.image) {
       throw new Error(imageData?.error || "Premium thumbnail görseli üretilemedi.");
     }
+
+    notifyCreditAccountChanged(imageData?.credits);
 
     const storeRes = await fetch("/api/store-image", {
       method: "POST",
@@ -10545,6 +11309,134 @@ export default function CreatePage() {
     } catch (e: any) {
       console.error("handleGenerateYoutubeThumbnail error:", e);
       setError(e?.message || "Thumbnail seçilemedi.");
+    } finally {
+      setYoutubeThumbnailLoading(false);
+    }
+  };
+
+  const addCreatorThumbnailToHistory = (result: YoutubeThumbnailResult, label: string) => {
+    const nextItem: CreatorThumbnailHistoryItem = {
+      id: `thumbnail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: Date.now(),
+      label,
+      result: cloneCreatorHistoryValue(result),
+    };
+    setCreatorThumbnailHistory((current) => [
+      nextItem,
+      ...current.filter((item) => item.result.imageUrl !== result.imageUrl),
+    ].slice(0, 10));
+  };
+
+  const selectCreatorThumbnailHistoryItem = (item: CreatorThumbnailHistoryItem) => {
+    const restoredResult = cloneCreatorHistoryValue(item.result);
+    setYoutubeThumbnailResult(restoredResult);
+    setCreatorThumbnailStudio((prev) =>
+      normalizeCreatorThumbnailStudioState({
+        ...prev,
+        ...(restoredResult.design || {}),
+        headline: restoredResult.headline || restoredResult.design?.headline || prev.headline,
+        subHeadline: restoredResult.subHeadline || restoredResult.design?.subHeadline || prev.subHeadline,
+      }),
+    );
+    setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
+    setSaveMessage(uiLanguage === "en"
+      ? "Previous thumbnail restored without using credits ✅"
+      : "Önceki thumbnail kredi kullanılmadan geri yüklendi ✅");
+  };
+
+  const getThumbnailRefinementInstruction = (preset: CreatorThumbnailRefinementPreset) => {
+    const instructions: Record<CreatorThumbnailRefinementPreset, string> = {
+      focus: "Strengthen the primary human face or focal subject. Make the emotional focus unmistakable and mobile-readable.",
+      contrast: "Increase subject-background separation, tonal contrast, and visual impact while preserving a premium natural look.",
+      title_space: "Simplify one side of the composition and create generous clean negative space for a short title overlay.",
+      cinematic: "Make the lighting, depth, framing, and atmosphere more cinematic without adding clutter or visible text.",
+      simplify_background: "Remove distracting secondary elements and simplify the background so the main subject dominates instantly.",
+    };
+    return instructions[preset];
+  };
+
+  const handleRefinePremiumYoutubeThumbnail = async (preset: CreatorThumbnailRefinementPreset) => {
+    if (!creatorProductionPackage) return;
+    const proceed = await startImageDispatchCountdown({
+      scope: "thumbnail",
+      sceneCount: 1,
+      seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+    });
+    if (!proceed) return;
+    setCreatorThumbnailRefining(preset);
+    setYoutubeThumbnailLoading(true);
+    setError("");
+    setSaveMessage("");
+    try {
+      const generatedThumbnail = await generatePremiumYoutubeThumbnailImage(
+        getThumbnailRefinementInstruction(preset),
+      );
+      const nextResult: YoutubeThumbnailResult = {
+        imageUrl: generatedThumbnail.imageUrl,
+        prompt: generatedThumbnail.prompt,
+        headline: creatorThumbnailStudio.headline || generatedThumbnail.headline,
+        subHeadline: creatorThumbnailStudio.subHeadline || generatedThumbnail.subHeadline,
+      };
+      setYoutubeThumbnailResult(nextResult);
+      addCreatorThumbnailToHistory(nextResult, uiLanguage === "en" ? "AI refinement" : "AI iyileştirme");
+      setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
+      setSaveMessage(uiLanguage === "en"
+        ? "A refined thumbnail variation was generated ✅"
+        : "İyileştirilmiş thumbnail varyasyonu üretildi ✅");
+    } catch (e: any) {
+      console.error("handleRefinePremiumYoutubeThumbnail error:", e);
+      setError(e?.message || (uiLanguage === "en" ? "Thumbnail refinement failed." : "Thumbnail iyileştirmesi başarısız oldu."));
+    } finally {
+      setCreatorThumbnailRefining(null);
+      setYoutubeThumbnailLoading(false);
+    }
+  };
+
+  const handleGeneratePremiumYoutubeThumbnail = async () => {
+    if (!creatorProductionPackage) {
+      setError(
+        uiLanguage === "en"
+          ? "Create a production package first."
+          : "Önce üretim paketini oluşturmalısın."
+      );
+      return;
+    }
+
+    const proceed = await startImageDispatchCountdown({
+      scope: "thumbnail",
+      sceneCount: 1,
+      seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+    });
+    if (!proceed) return;
+
+    setYoutubeThumbnailLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const generatedThumbnail = await generatePremiumYoutubeThumbnailImage();
+      const nextResult: YoutubeThumbnailResult = {
+        imageUrl: generatedThumbnail.imageUrl,
+        prompt: generatedThumbnail.prompt,
+        headline: generatedThumbnail.headline,
+        subHeadline: generatedThumbnail.subHeadline,
+      };
+      setYoutubeThumbnailResult(nextResult);
+      addCreatorThumbnailToHistory(nextResult, "Premium AI thumbnail");
+      setCreatorThumbnailStudio((prev) => ({
+        ...prev,
+        headline: prev.headline.trim() ? prev.headline : generatedThumbnail.headline,
+        subHeadline: prev.subHeadline.trim() ? prev.subHeadline : generatedThumbnail.subHeadline,
+      }));
+      setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
+      setSaveMessage(
+        uiLanguage === "en"
+          ? "Premium AI thumbnail generated ✅"
+          : "Premium AI thumbnail üretildi ✅"
+      );
+    } catch (e: any) {
+      console.error("handleGeneratePremiumYoutubeThumbnail error:", e);
+      setError(e?.message || (uiLanguage === "en" ? "Premium thumbnail could not be generated." : "Premium thumbnail üretilemedi."));
     } finally {
       setYoutubeThumbnailLoading(false);
     }
@@ -11059,6 +11951,16 @@ export default function CreatePage() {
       return;
     }
 
+    if (isCreatorLabFlow) {
+      const proceed = await startImageDispatchCountdown({
+        scope: "scene",
+        sceneId: scene.id,
+        sceneCount: 1,
+        seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) return;
+    }
+
     setRedrawLoadingId(scene.id);
     setError("");
 
@@ -11089,13 +11991,15 @@ export default function CreatePage() {
         )
       );
 
-      const image = await generateSceneImage(scene);
+      const image = await generateSceneImage(scene, { skipDispatchCountdown: true });
 
       setScenes((prev) =>
         prev.map((item) => (item.id === scene.id ? { ...item, image } : item))
       );
-    } catch {
-      setError("Sahne görseli yeniden oluşturulurken bir hata oluştu.");
+    } catch (imageError: any) {
+      if (imageError?.message !== "VELTO_IMAGE_DISPATCH_CANCELLED") {
+        setError("Sahne görseli yeniden oluşturulurken bir hata oluştu.");
+      }
     } finally {
       setRedrawLoadingId(null);
     }
@@ -11511,8 +12415,26 @@ export default function CreatePage() {
       );
     }
 
+    const usesBatchCountdown = targetScenes.length > 1;
+    if (usesBatchCountdown) {
+      const proceed = await startVideoDispatchCountdown({
+        scope: "batch",
+        sceneCount: targetScenes.length,
+        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceed) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "Video generation was cancelled before provider dispatch."
+            : "Video üretimi servise gönderilmeden iptal edildi.",
+        );
+      }
+    }
+
     for (const scene of targetScenes) {
-      const started = await handleGenerateVideo(scene.id);
+      const started = await handleGenerateVideo(scene.id, {
+        skipDispatchCountdown: usesBatchCountdown,
+      });
       if (!started) {
         throw new Error(
           uiLanguage === "en"
@@ -19383,7 +20305,7 @@ export default function CreatePage() {
 
 .creatorlab-thumbnail-studio-copy strong {
   max-width: 18ch;
-  font-size: clamp(1.55rem, 4vw, 3rem);
+  font-size: calc(clamp(1.55rem, 4vw, 3rem) * var(--thumbnail-headline-scale, 1));
   line-height: 0.96;
   letter-spacing: -0.045em;
 }
@@ -19479,6 +20401,56 @@ export default function CreatePage() {
   background: #fff;
   border: 1px solid var(--cl-border);
   border-radius: 9px;
+}
+
+.creatorlab-thumbnail-typography-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+}
+
+.creatorlab-thumbnail-control-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--cl-muted);
+  font-size: 0.61rem;
+  font-weight: 720;
+}
+
+.creatorlab-thumbnail-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.creatorlab-thumbnail-color-palette button {
+  width: 27px;
+  height: 27px;
+  border: 2px solid rgba(148, 163, 184, 0.42);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.65);
+}
+
+.creatorlab-thumbnail-color-palette button.is-selected {
+  outline: 2px solid var(--cl-accent);
+  outline-offset: 2px;
+}
+
+.creatorlab-thumbnail-effect-toggles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 680px) {
+  .creatorlab-thumbnail-typography-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 .creatorlab-thumbnail-focal-controls input {
@@ -21983,6 +22955,26 @@ export default function CreatePage() {
                 active="studio"
                 variant="creatorlab"
                 showAccount={false}
+                onStudioClick={() => {
+                  const hasWorkspaceProgress = Boolean(
+                    input.trim() ||
+                    title.trim() ||
+                    creatorProductionPackage ||
+                    scenes.length > 0 ||
+                    youtubeThumbnailResult
+                  );
+
+                  if (hasWorkspaceProgress) {
+                    const confirmed = window.confirm(
+                      uiLanguage === "en"
+                        ? "Start a new project? Unsaved workspace changes will be cleared. Your previously saved project will remain available."
+                        : "Yeni bir proje başlatılsın mı? Kaydedilmemiş çalışma alanı değişiklikleri temizlenecek. Daha önce kaydedilmiş projen erişilebilir kalacak."
+                    );
+                    if (!confirmed) return;
+                  }
+
+                  onStartNewProject();
+                }}
               />
               <div className="creatorlab-language-toggle" aria-label={uiLanguage === "en" ? "Interface language" : "Arayüz dili"}>
                 <button
@@ -25197,13 +26189,34 @@ export default function CreatePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void generateSelectedSceneVisuals()}
-                          disabled={creatorSelectedSceneIds.length === 0 || isBatchRendering || creatorMediaPreflightLoading}
-                          className="min-h-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:opacity-40"
+                          onClick={() => {
+                            if (imageDispatchCountdown?.scope === "batch") {
+                              cancelPendingImageDispatch();
+                            } else {
+                              void generateSelectedSceneVisuals();
+                            }
+                          }}
+                          disabled={
+                            imageDispatchCountdown?.scope !== "batch" &&
+                            (creatorSelectedSceneIds.length === 0 ||
+                              isBatchRendering ||
+                              creatorMediaPreflightLoading ||
+                              Boolean(imageDispatchCountdown) ||
+                              Boolean(videoDispatchCountdown))
+                          }
+                          className={`min-h-10 rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-40 ${
+                            imageDispatchCountdown?.scope === "batch"
+                              ? "border-rose-300 bg-rose-50 text-rose-700"
+                              : "border-violet-200 bg-violet-50 text-violet-800"
+                          }`}
                         >
-                          {isBatchRendering
-                            ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
-                            : uiLanguage === "en" ? "Generate missing visuals" : "Eksik görselleri üret"}
+                          {imageDispatchCountdown?.scope === "batch"
+                            ? uiLanguage === "en"
+                              ? `Cancel image start · ${imageDispatchCountdown.secondsRemaining}s`
+                              : `Görsel başlangıcını iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
+                            : isBatchRendering
+                              ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
+                              : uiLanguage === "en" ? "Generate missing visuals" : "Eksik görselleri üret"}
                         </button>
                         <button
                           type="button"
@@ -25263,6 +26276,12 @@ export default function CreatePage() {
                                 : uiLanguage === "en" ? "Pacing balanced" : "Tempo dengeli";
                       const isEditingScene = editingSceneId === scene.id;
                       const activeSceneInspectorTab = creatorSceneInspectorTabs[scene.id] || "script";
+                      const sceneVideoDispatchCountdownActive =
+                        videoDispatchCountdown?.scope === "scene" &&
+                        videoDispatchCountdown.sceneId === scene.id;
+                      const sceneImageDispatchCountdownActive =
+                        imageDispatchCountdown?.scope === "scene" &&
+                        imageDispatchCountdown.sceneId === scene.id;
                       const sceneProductionReadyCount = [
                         sceneDraftHealth.status === "ready",
                         visualReady,
@@ -25775,53 +26794,134 @@ export default function CreatePage() {
                                   </div>
 
                                   {sceneOutputMode === "image" ? (
+                                    <div className="space-y-2">
                                     <button
                                       type="button"
-                                      onClick={() => redrawSceneImage(scene)}
-                                      disabled={redrawLoadingId === scene.id}
-                                      className="min-h-11 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-50"
-                                    >
-                                      {redrawLoadingId === scene.id
-                                        ? uiLanguage === "en" ? "Generating image..." : "Görsel üretiliyor..."
-                                        : scene.image
-                                          ? uiLanguage === "en" ? "Regenerate Image" : "Görseli Yeniden Üret"
-                                          : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"}
-                                    </button>
-                                  ) : sceneOutputMode === "video" ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleGenerateVideo(scene.id)}
+                                      onClick={() => {
+                                        if (sceneImageDispatchCountdownActive) {
+                                          cancelPendingImageDispatch();
+                                        } else {
+                                          void redrawSceneImage(scene);
+                                        }
+                                      }}
                                       disabled={
-                                        scene.videoStatus === "processing" ||
-                                        !scene.image ||
-                                        creatorMediaPreflightLoading ||
-                                        creatorVideoSelectionBlockedByQuality
+                                        !sceneImageDispatchCountdownActive &&
+                                        (redrawLoadingId === scene.id ||
+                                          Boolean(imageDispatchCountdown) ||
+                                          Boolean(videoDispatchCountdown))
                                       }
                                       title={
-                                        !scene.image
-                                          ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
-                                          : creatorVideoSelectionBlockedByQuality
-                                            ? getCreatorMediaRoutingError("ai_video_blocks")
-                                            : uiLanguage === "en" ? "Generate a video block from this scene image." : "Bu sahne görselinden video bloğu üret."
+                                        sceneImageDispatchCountdownActive
+                                          ? uiLanguage === "en"
+                                            ? "Cancel before provider dispatch. No image credit has been used yet."
+                                            : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
+                                          : uiLanguage === "en"
+                                            ? "Generate or regenerate this scene image."
+                                            : "Bu sahne görselini üret veya yeniden üret."
                                       }
-                                      className="min-h-11 w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50"
+                                      className={`min-h-11 w-full rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50 ${
+                                        sceneImageDispatchCountdownActive
+                                          ? "border-rose-300 bg-rose-50 text-rose-700"
+                                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                      }`}
                                     >
-                                      {creatorMediaPreflightLoading
-                                        ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
-                                        : scene.videoStatus === "processing"
-                                          ? ui.videoCreating
-                                          : creatorVideoSelectionBlockedByQuality
-                                            ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                            : scene.videoUrl && scene.videoStatus === "done"
-                                              ? uiLanguage === "en" ? "Regenerate Video" : "Videoyu Yeniden Üret"
-                                              : ui.convertToVideo}
+                                      {sceneImageDispatchCountdownActive
+                                        ? uiLanguage === "en"
+                                          ? `Cancel start · ${imageDispatchCountdown?.secondsRemaining}s`
+                                          : `Başlatmayı iptal et · ${imageDispatchCountdown?.secondsRemaining} sn`
+                                        : redrawLoadingId === scene.id
+                                          ? uiLanguage === "en" ? "Generating image..." : "Görsel üretiliyor..."
+                                          : scene.image
+                                            ? uiLanguage === "en" ? "Regenerate Image" : "Görseli Yeniden Üret"
+                                            : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"}
                                     </button>
+                                    {sceneImageDispatchCountdownActive && (
+                                      <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
+                                        {uiLanguage === "en"
+                                          ? "No provider request or Velto image credit yet. Dispatch and billing begin at zero."
+                                          : "Henüz servis talebi veya Velto görsel kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
+                                      </span>
+                                    )}
+                                    </div>
+                                  ) : sceneOutputMode === "video" ? (
+                                    <div className="space-y-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (sceneVideoDispatchCountdownActive) {
+                                            cancelPendingVideoDispatch();
+                                          } else {
+                                            void handleGenerateVideo(scene.id);
+                                          }
+                                        }}
+                                        disabled={
+                                          !sceneVideoDispatchCountdownActive &&
+                                          (scene.videoStatus === "processing" ||
+                                            !scene.image ||
+                                            creatorMediaPreflightLoading ||
+                                            creatorVideoSelectionBlockedByQuality ||
+                                            Boolean(videoDispatchCountdown) ||
+                                            Boolean(imageDispatchCountdown))
+                                        }
+                                        title={
+                                          sceneVideoDispatchCountdownActive
+                                            ? uiLanguage === "en"
+                                              ? "Cancel before provider dispatch. No video credit has been used yet."
+                                              : "Servise gönderilmeden iptal et. Henüz video kredisi kullanılmadı."
+                                            : !scene.image
+                                              ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
+                                              : creatorVideoSelectionBlockedByQuality
+                                                ? getCreatorMediaRoutingError("ai_video_blocks")
+                                                : uiLanguage === "en" ? "Generate a video block from this scene image." : "Bu sahne görselinden video bloğu üret."
+                                        }
+                                        className={`min-h-11 w-full rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50 ${
+                                          sceneVideoDispatchCountdownActive
+                                            ? "border-rose-300 bg-rose-50 text-rose-700"
+                                            : "border-blue-200 bg-blue-50 text-blue-800"
+                                        }`}
+                                      >
+                                        {sceneVideoDispatchCountdownActive
+                                          ? uiLanguage === "en"
+                                            ? `Cancel start · ${videoDispatchCountdown?.secondsRemaining}s`
+                                            : `Başlatmayı iptal et · ${videoDispatchCountdown?.secondsRemaining} sn`
+                                          : creatorMediaPreflightLoading
+                                            ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
+                                            : scene.videoStatus === "processing"
+                                              ? ui.videoCreating
+                                              : creatorVideoSelectionBlockedByQuality
+                                                ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
+                                                : scene.videoUrl && scene.videoStatus === "done"
+                                                  ? uiLanguage === "en" ? "Regenerate Video" : "Videoyu Yeniden Üret"
+                                                  : ui.convertToVideo}
+                                      </button>
+                                      {sceneVideoDispatchCountdownActive && (
+                                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
+                                          {uiLanguage === "en"
+                                            ? "No provider request or Velto video credit has been used yet. At zero, both dispatch and billing begin."
+                                            : "Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme birlikte başlar."}
+                                        </p>
+                                      )}
+                                    </div>
                                   ) : (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800">
                                       {uiLanguage === "en"
                                         ? "Choose Image or Video to unlock manual generation."
                                         : "Manuel üretimi açmak için Görsel veya Video seç."}
                                     </div>
+                                  )}
+
+                                  {scene.videoStatus === "processing" && scene.videoQueueJobId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void requestCancelSceneVideo(scene)}
+                                      disabled={cancellingVideoSceneId === scene.id}
+                                      title={uiLanguage === "en" ? "Stop the provider task. Dispatched video credit is not refunded." : "Servis görevini durdur. Gönderilmiş video kredisi iade edilmez."}
+                                      className="min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {cancellingVideoSceneId === scene.id
+                                        ? uiLanguage === "en" ? "Cancelling video..." : "Video iptal ediliyor..."
+                                        : uiLanguage === "en" ? "Stop video · no refund" : "Videoyu durdur · iade yok"}
+                                    </button>
                                   )}
 
                                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -26340,6 +27440,40 @@ export default function CreatePage() {
                         ? "Let AI select the best scene"
                         : "En iyi sahneyi AI seçsin"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={
+                      imageDispatchCountdown?.scope === "thumbnail"
+                        ? cancelPendingImageDispatch
+                        : handleGeneratePremiumYoutubeThumbnail
+                    }
+                    disabled={
+                      imageDispatchCountdown?.scope !== "thumbnail" &&
+                      (youtubeThumbnailLoading ||
+                        !creatorProductionPackage ||
+                        Boolean(imageDispatchCountdown) ||
+                        Boolean(videoDispatchCountdown))
+                    }
+                    title={
+                      imageDispatchCountdown?.scope === "thumbnail"
+                        ? uiLanguage === "en"
+                          ? "Cancel before provider dispatch. No image credit has been used yet."
+                          : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
+                        : uiLanguage === "en"
+                          ? "Uses image-generation credits based on the selected quality tier"
+                          : "Seçili kalite seviyesine göre görsel üretim kredisi kullanır"
+                    }
+                  >
+                    {imageDispatchCountdown?.scope === "thumbnail"
+                      ? uiLanguage === "en"
+                        ? `Cancel AI thumbnail · ${imageDispatchCountdown.secondsRemaining}s`
+                        : `AI thumbnail'ı iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
+                      : youtubeThumbnailLoading
+                        ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
+                        : uiLanguage === "en"
+                          ? "Generate new AI thumbnail · Credits apply"
+                          : "Yeni AI thumbnail üret · Kredi kullanır"}
+                  </button>
                 </div>
               </div>
             )}
@@ -26398,7 +27532,10 @@ export default function CreatePage() {
                   </small>
                 </summary>
 
-                <div className={`creatorlab-thumbnail-studio-preview ${creatorFormat === "youtube_video" ? "is-wide" : "is-vertical"} is-${creatorThumbnailStudio.textPosition} font-${creatorThumbnailStudio.font}`}>
+                <div
+                  className={`creatorlab-thumbnail-studio-preview ${creatorFormat === "youtube_video" ? "is-wide" : "is-vertical"} is-${creatorThumbnailStudio.textPosition} font-${creatorThumbnailStudio.font}`}
+                  style={{ "--thumbnail-headline-scale": creatorThumbnailStudio.headlineScale / 100 } as React.CSSProperties}
+                >
                   {creatorPublishThumbnailUrl ? (
                     <>
                       <img
@@ -26413,10 +27550,32 @@ export default function CreatePage() {
                       />
                       <div
                         className="creatorlab-thumbnail-studio-copy"
-                        style={{ color: creatorThumbnailStudio.textColor }}
+                        style={{
+                          textAlign: creatorThumbnailStudio.textAlign,
+                          textShadow: creatorThumbnailStudio.textShadow ? "0 3px 18px rgba(0, 0, 0, 0.72)" : "none",
+                          WebkitTextStroke: creatorThumbnailStudio.textStroke ? "1.5px rgba(0,0,0,.9)" : "0 transparent",
+                        } as React.CSSProperties}
                       >
-                        <strong>{creatorThumbnailStudio.headline || creatorPublishTitle}</strong>
-                        {creatorThumbnailStudio.subHeadline && <span>{creatorThumbnailStudio.subHeadline}</span>}
+                        {creatorThumbnailStudio.showHeadline && creatorThumbnailStudio.headline.trim() && (
+                          <strong
+                            style={{
+                              color: creatorThumbnailStudio.headlineColor,
+                              WebkitTextFillColor: creatorThumbnailStudio.headlineColor,
+                            }}
+                          >
+                            {creatorThumbnailStudio.headline}
+                          </strong>
+                        )}
+                        {creatorThumbnailStudio.showSubHeadline && creatorThumbnailStudio.subHeadline.trim() && (
+                          <span
+                            style={{
+                              color: creatorThumbnailStudio.subHeadlineColor,
+                              WebkitTextFillColor: creatorThumbnailStudio.subHeadlineColor,
+                            }}
+                          >
+                            {creatorThumbnailStudio.subHeadline}
+                          </span>
+                        )}
                       </div>
                       {creatorThumbnailStudio.safeZone && <div className="creatorlab-thumbnail-safe-zone" aria-hidden="true" />}
                     </>
@@ -26444,28 +27603,67 @@ export default function CreatePage() {
 
                 <div className="creatorlab-thumbnail-studio-controls">
                   <label>
-                    <span>{uiLanguage === "en" ? "Headline" : "Başlık"}</span>
+                    <span className="flex items-center justify-between gap-3">
+                      <span>{uiLanguage === "en" ? "Headline" : "Başlık"}</span>
+                      <span className="creatorlab-thumbnail-safe-toggle">
+                        <input
+                          type="checkbox"
+                          checked={creatorThumbnailStudio.showHeadline}
+                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, showHeadline: event.target.checked }))}
+                        />
+                        <span>{uiLanguage === "en" ? "Show" : "Göster"}</span>
+                      </span>
+                    </span>
                     <input
                       value={creatorThumbnailStudio.headline}
                       maxLength={80}
+                      disabled={!creatorThumbnailStudio.showHeadline}
                       onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headline: event.target.value }))}
                       placeholder={creatorPublishTitle}
                     />
                   </label>
                   <label>
-                    <span>{uiLanguage === "en" ? "Sub-headline" : "Alt başlık"}</span>
+                    <span className="flex items-center justify-between gap-3">
+                      <span>{uiLanguage === "en" ? "Sub-headline" : "Alt başlık"}</span>
+                      <span className="creatorlab-thumbnail-safe-toggle">
+                        <input
+                          type="checkbox"
+                          checked={creatorThumbnailStudio.showSubHeadline}
+                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, showSubHeadline: event.target.checked }))}
+                        />
+                        <span>{uiLanguage === "en" ? "Show" : "Göster"}</span>
+                      </span>
+                    </span>
                     <input
                       value={creatorThumbnailStudio.subHeadline}
                       maxLength={110}
+                      disabled={!creatorThumbnailStudio.showSubHeadline}
                       onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadline: event.target.value }))}
                       placeholder={creatorPublishHook}
                     />
                   </label>
+                  <div className="creatorlab-thumbnail-focal-controls">
+                    <label>
+                      <span>
+                        {uiLanguage === "en" ? "Headline size" : "Başlık boyutu"} · {creatorThumbnailStudio.headlineScale}%
+                      </span>
+                      <input
+                        type="range"
+                        min="55"
+                        max="125"
+                        step="5"
+                        value={creatorThumbnailStudio.headlineScale}
+                        disabled={!creatorThumbnailStudio.showHeadline}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineScale: Number(event.target.value) }))}
+                      />
+                    </label>
+                  </div>
                   <div className="creatorlab-thumbnail-control-grid">
                     <label>
                       <span>{uiLanguage === "en" ? "Font" : "Yazı tipi"}</span>
                       <select
                         value={creatorThumbnailStudio.font}
+                        disabled={!creatorThumbnailStudio.showHeadline}
                         onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, font: event.target.value as CreatorThumbnailFont }))}
                       >
                         <option value="bold_sans">Bold Sans</option>
@@ -26493,13 +27691,126 @@ export default function CreatePage() {
                       />
                     </label>
                     <label className="creatorlab-thumbnail-color-control">
-                      <span>{uiLanguage === "en" ? "Text" : "Metin"}</span>
+                      <span>{uiLanguage === "en" ? "Headline color" : "Başlık rengi"}</span>
                       <input
                         type="color"
-                        value={creatorThumbnailStudio.textColor}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textColor: event.target.value }))}
+                        value={creatorThumbnailStudio.headlineColor}
+                        disabled={!creatorThumbnailStudio.showHeadline}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: event.target.value }))}
                       />
                     </label>
+                    <label className="creatorlab-thumbnail-color-control">
+                      <span>{uiLanguage === "en" ? "Sub-headline color" : "Alt başlık rengi"}</span>
+                      <input
+                        type="color"
+                        value={creatorThumbnailStudio.subHeadlineColor}
+                        disabled={!creatorThumbnailStudio.showSubHeadline}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: event.target.value }))}
+                      />
+                    </label>
+                  </div>
+                  <div className="creatorlab-thumbnail-typography-panel">
+                    <div>
+                      <span className="creatorlab-thumbnail-control-label">{uiLanguage === "en" ? "Headline color presets" : "Başlık hazır renkleri"}</span>
+                      <div className="creatorlab-thumbnail-color-palette">
+                        {["#ffffff", "#f8e71c", "#ff6b35", "#ff3b30", "#35c759", "#32ade6", "#5856d6", "#111827"].map((color) => (
+                          <button
+                            key={`headline-${color}`}
+                            type="button"
+                            disabled={!creatorThumbnailStudio.showHeadline}
+                            className={creatorThumbnailStudio.headlineColor.toLowerCase() === color ? "is-selected" : ""}
+                            style={{ backgroundColor: color }}
+                            aria-label={`${uiLanguage === "en" ? "Use headline color" : "Başlık rengini kullan"} ${color}`}
+                            onClick={() => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: color }))}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <label>
+                      <span>{uiLanguage === "en" ? "Headline HEX" : "Başlık HEX"}</span>
+                      <input
+                        value={creatorThumbnailStudio.headlineColor}
+                        maxLength={7}
+                        disabled={!creatorThumbnailStudio.showHeadline}
+                        onChange={(event) => {
+                          const value = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
+                          if (/^#[0-9a-fA-F]{0,6}$/.test(value)) {
+                            setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: value }));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!/^#[0-9a-fA-F]{6}$/.test(creatorThumbnailStudio.headlineColor)) {
+                            setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: "#ffffff" }));
+                          }
+                        }}
+                        placeholder="#ffffff"
+                      />
+                    </label>
+                    <div>
+                      <span className="creatorlab-thumbnail-control-label">{uiLanguage === "en" ? "Sub-headline color presets" : "Alt başlık hazır renkleri"}</span>
+                      <div className="creatorlab-thumbnail-color-palette">
+                        {["#ffffff", "#f8e71c", "#ff6b35", "#ff3b30", "#35c759", "#32ade6", "#5856d6", "#111827"].map((color) => (
+                          <button
+                            key={`subheadline-${color}`}
+                            type="button"
+                            disabled={!creatorThumbnailStudio.showSubHeadline}
+                            className={creatorThumbnailStudio.subHeadlineColor.toLowerCase() === color ? "is-selected" : ""}
+                            style={{ backgroundColor: color }}
+                            aria-label={`${uiLanguage === "en" ? "Use sub-headline color" : "Alt başlık rengini kullan"} ${color}`}
+                            onClick={() => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: color }))}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <label>
+                      <span>{uiLanguage === "en" ? "Sub-headline HEX" : "Alt başlık HEX"}</span>
+                      <input
+                        value={creatorThumbnailStudio.subHeadlineColor}
+                        maxLength={7}
+                        disabled={!creatorThumbnailStudio.showSubHeadline}
+                        onChange={(event) => {
+                          const value = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
+                          if (/^#[0-9a-fA-F]{0,6}$/.test(value)) {
+                            setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: value }));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!/^#[0-9a-fA-F]{6}$/.test(creatorThumbnailStudio.subHeadlineColor)) {
+                            setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: "#ffffff" }));
+                          }
+                        }}
+                        placeholder="#ffffff"
+                      />
+                    </label>
+                    <label>
+                      <span>{uiLanguage === "en" ? "Alignment" : "Hizalama"}</span>
+                      <select
+                        value={creatorThumbnailStudio.textAlign}
+                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textAlign: event.target.value as CreatorThumbnailTextAlign }))}
+                      >
+                        <option value="left">{uiLanguage === "en" ? "Left" : "Sol"}</option>
+                        <option value="center">{uiLanguage === "en" ? "Center" : "Orta"}</option>
+                        <option value="right">{uiLanguage === "en" ? "Right" : "Sağ"}</option>
+                      </select>
+                    </label>
+                    <div className="creatorlab-thumbnail-effect-toggles">
+                      <label className="creatorlab-thumbnail-safe-toggle">
+                        <input
+                          type="checkbox"
+                          checked={creatorThumbnailStudio.textStroke}
+                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textStroke: event.target.checked }))}
+                        />
+                        <span>{uiLanguage === "en" ? "Text outline" : "Yazı konturu"}</span>
+                      </label>
+                      <label className="creatorlab-thumbnail-safe-toggle">
+                        <input
+                          type="checkbox"
+                          checked={creatorThumbnailStudio.textShadow}
+                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textShadow: event.target.checked }))}
+                        />
+                        <span>{uiLanguage === "en" ? "Text shadow" : "Yazı gölgesi"}</span>
+                      </label>
+                    </div>
                   </div>
                   <div className="creatorlab-thumbnail-focal-controls">
                     <label>
@@ -26527,6 +27838,62 @@ export default function CreatePage() {
                   </label>
                 </div>
 
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div>
+                    <strong className="block text-sm text-slate-950">
+                      {creatorThumbnailHasUnsavedChanges
+                        ? uiLanguage === "en" ? "Unsaved thumbnail edits" : "Kaydedilmemiş thumbnail düzenlemeleri"
+                        : uiLanguage === "en" ? "Thumbnail saved" : "Thumbnail kaydedildi"}
+                    </strong>
+                    <span className="text-xs text-slate-500">
+                      {uiLanguage === "en" ? "Saving does not use credits." : "Kaydetme işlemi kredi kullanmaz."}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="creatorlab-publish-secondary-button"
+                      onClick={handleRevertCreatorThumbnail}
+                      disabled={!creatorThumbnailHasUnsavedChanges || creatorThumbnailSaving}
+                    >
+                      {uiLanguage === "en" ? "Revert" : "Geri al"}
+                    </button>
+                    <button
+                      type="button"
+                      className="creatorlab-publish-primary-button border-2 border-blue-700 bg-blue-700 px-5 py-3 font-bold text-white shadow-lg transition hover:bg-blue-800 disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none"
+                      style={{ minWidth: "190px", borderRadius: "12px" }}
+                      onClick={handleSaveCreatorThumbnail}
+                      disabled={!creatorPublishThumbnailUrl || !creatorThumbnailHasUnsavedChanges || creatorThumbnailSaving}
+                    >
+                      {creatorThumbnailSaving
+                        ? uiLanguage === "en" ? "Saving..." : "Kaydediliyor..."
+                        : uiLanguage === "en" ? "Save thumbnail" : "Thumbnail'ı kaydet"}
+                    </button>
+                  </div>
+                </div>
+
+                {imageDispatchCountdown?.scope === "thumbnail" && (
+                  <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900" aria-live="assertive">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <strong className="text-sm">
+                          {uiLanguage === "en"
+                            ? `AI thumbnail dispatch starts in ${imageDispatchCountdown.secondsRemaining} seconds`
+                            : `AI thumbnail gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
+                        </strong>
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          {uiLanguage === "en"
+                            ? "No provider request or Velto image credit has been used yet. At zero, dispatch and billing begin."
+                            : "Henüz servis talebi gönderilmedi ve Velto görsel kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar."}
+                        </p>
+                      </div>
+                      <button type="button" onClick={cancelPendingImageDispatch} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700">
+                        {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="creatorlab-publish-thumbnail-actions">
                   <button
                     type="button"
@@ -26540,7 +27907,73 @@ export default function CreatePage() {
                         ? uiLanguage === "en" ? "Select best scene again" : "En iyi sahneyi yeniden seç"
                         : uiLanguage === "en" ? "Select best scene" : "En iyi sahneyi seç"}
                   </button>
+                  <button
+                    type="button"
+                    className="creatorlab-publish-secondary-button"
+                    onClick={
+                      imageDispatchCountdown?.scope === "thumbnail"
+                        ? cancelPendingImageDispatch
+                        : handleGeneratePremiumYoutubeThumbnail
+                    }
+                    disabled={
+                      imageDispatchCountdown?.scope !== "thumbnail" &&
+                      (youtubeThumbnailLoading ||
+                        !creatorProductionPackage ||
+                        Boolean(imageDispatchCountdown) ||
+                        Boolean(videoDispatchCountdown))
+                    }
+                  >
+                    {imageDispatchCountdown?.scope === "thumbnail"
+                      ? uiLanguage === "en"
+                        ? `Cancel AI thumbnail · ${imageDispatchCountdown.secondsRemaining}s`
+                        : `AI thumbnail'ı iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
+                      : youtubeThumbnailLoading
+                        ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
+                        : uiLanguage === "en"
+                          ? "Generate new AI thumbnail · Credits apply"
+                          : "Yeni AI thumbnail üret · Kredi kullanır"}
+                  </button>
                 </div>
+
+                {creatorPublishThumbnailUrl && (
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <strong className="text-sm text-slate-950">{uiLanguage === "en" ? "AI quick refinements" : "AI hızlı iyileştirmeler"}</strong>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each refinement generates a new variation and uses the applicable image credits." : "Her iyileştirme yeni bir varyasyon üretir ve geçerli görsel kredisini kullanır."}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {([
+                        ["focus", uiLanguage === "en" ? "Strengthen focus" : "Odağı güçlendir"],
+                        ["contrast", uiLanguage === "en" ? "More contrast" : "Kontrastı artır"],
+                        ["title_space", uiLanguage === "en" ? "Create title space" : "Başlık alanı aç"],
+                        ["cinematic", uiLanguage === "en" ? "More cinematic" : "Daha sinematik"],
+                        ["simplify_background", uiLanguage === "en" ? "Simplify background" : "Arka planı sadeleştir"],
+                      ] as Array<[CreatorThumbnailRefinementPreset, string]>).map(([preset, label]) => (
+                        <button key={preset} type="button" className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => handleRefinePremiumYoutubeThumbnail(preset)} disabled={youtubeThumbnailLoading || Boolean(imageDispatchCountdown) || Boolean(videoDispatchCountdown)}>
+                          {creatorThumbnailRefining === preset ? (uiLanguage === "en" ? "Generating..." : "Üretiliyor...") : label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {creatorThumbnailHistory.length > 0 && (
+                  <div className="mt-5">
+                    <div className="flex items-end justify-between gap-4">
+                      <div>
+                        <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Thumbnail history" : "Thumbnail geçmişi"}</strong>
+                        <span className="text-xs text-slate-500">{uiLanguage === "en" ? "Restore any of the last 10 AI variations without using credits." : "Son 10 AI varyasyonundan birini kredi kullanmadan geri yükle."}</span>
+                      </div>
+                      <button type="button" className="text-xs font-semibold text-slate-500 hover:text-slate-950" onClick={() => setCreatorThumbnailHistory([])}>{uiLanguage === "en" ? "Clear" : "Temizle"}</button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      {creatorThumbnailHistory.map((item) => (
+                        <button key={item.id} type="button" className={`overflow-hidden rounded-xl border bg-white text-left transition hover:-translate-y-0.5 hover:shadow-sm ${creatorPublishThumbnailUrl === item.result.imageUrl ? "border-slate-950 ring-1 ring-slate-950" : "border-slate-200"}`} onClick={() => selectCreatorThumbnailHistoryItem(item)}>
+                          <img src={item.result.imageUrl} alt={item.label} className="aspect-video w-full object-cover" />
+                          <span className="block truncate px-2 py-2 text-[10px] font-semibold text-slate-600">{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </details>
             </div>
 
@@ -26712,35 +28145,6 @@ export default function CreatePage() {
                 </section>
               </div>
             </article>
-
-            <details className="creatorlab-publish-detail-panel">
-              <summary>
-                <span>{uiLanguage === "en" ? "Publishing alternatives and package contents" : "Yayın alternatifleri ve paket içeriği"}</span>
-                <span>{uiLanguage === "en" ? "Secondary" : "İkincil"}</span>
-              </summary>
-              <div className="creatorlab-publish-detail-body">
-                {(youtubeMetadataResult?.titleOptions?.length ?? 0) > 0 && (
-                  <div className="creatorlab-publish-title-options">
-                    <h3>{uiLanguage === "en" ? "Alternative titles" : "Alternatif başlıklar"}</h3>
-                    <ul>
-                      {(youtubeMetadataResult?.titleOptions ?? []).map((item, index) => (
-                        <li key={`creatorlab-publish-title-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {(youtubeMetadataResult?.chapters?.length ?? 0) > 0 && (
-                  <div className="creatorlab-publish-chapters">
-                    <h3>Chapters</h3>
-                    <ol>
-                      {(youtubeMetadataResult?.chapters ?? []).map((item, index) => (
-                        <li key={`creatorlab-publish-chapter-${index}`}>{item}</li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-              </div>
-            </details>
 
             <article className="creatorlab-publish-package-card">
               <div className="creatorlab-publish-card-heading">
@@ -27543,17 +28947,43 @@ export default function CreatePage() {
                   </button>
 
                   <button
-                    onClick={isBatchRendering ? stopBatchRender : startBatchRender}
-                    disabled={
-                      isPreparingAudio ||
-                      isExportingMovie ||
-                      playingDialogueSceneId !== null ||
-                      (loadingAudioSceneId !== null && !isBatchRendering) ||
-                      (!isBatchRendering && isCreatorMediaGenerationBlocked)
+                    onClick={
+                      videoDispatchCountdown?.scope === "batch"
+                        ? cancelPendingVideoDispatch
+                        : imageDispatchCountdown?.scope === "batch"
+                          ? cancelPendingImageDispatch
+                          : isBatchRendering
+                            ? stopBatchRender
+                            : startBatchRender
                     }
-                    className="rounded-2xl bg-cyan-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
+                    disabled={
+                      videoDispatchCountdown?.scope !== "batch" &&
+                      imageDispatchCountdown?.scope !== "batch" &&
+                      (isPreparingAudio ||
+                        isExportingMovie ||
+                        playingDialogueSceneId !== null ||
+                        Boolean(videoDispatchCountdown) ||
+                        Boolean(imageDispatchCountdown) ||
+                        (loadingAudioSceneId !== null && !isBatchRendering) ||
+                        (!isBatchRendering && isCreatorMediaGenerationBlocked))
+                    }
+                    className={`rounded-2xl px-6 py-3 font-semibold transition hover:scale-105 disabled:opacity-50 ${
+                      videoDispatchCountdown?.scope === "batch" || imageDispatchCountdown?.scope === "batch"
+                        ? "border border-rose-300 bg-rose-50 text-rose-700"
+                        : "bg-cyan-600 text-slate-900"
+                    }`}
                   >
-                    {isBatchRendering ? getBatchLabel("cancel") : getBatchLabel("start")}
+                    {videoDispatchCountdown?.scope === "batch"
+                      ? uiLanguage === "en"
+                        ? `Cancel batch start · ${videoDispatchCountdown.secondsRemaining}s`
+                        : `Toplu başlangıcı iptal et · ${videoDispatchCountdown.secondsRemaining} sn`
+                      : imageDispatchCountdown?.scope === "batch"
+                        ? uiLanguage === "en"
+                          ? `Cancel image start · ${imageDispatchCountdown.secondsRemaining}s`
+                          : `Görsel başlangıcını iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
+                        : isBatchRendering
+                          ? getBatchLabel("cancel")
+                          : getBatchLabel("start")}
                   </button>
 
                   {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
@@ -27568,6 +28998,58 @@ export default function CreatePage() {
                 </div>
               )}
             </div>
+
+            {imageDispatchCountdown?.scope === "batch" && (
+              <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm" aria-live="assertive">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <strong className="text-sm">
+                      {uiLanguage === "en"
+                        ? `Image dispatch starts in ${imageDispatchCountdown.secondsRemaining} seconds`
+                        : `Görsel gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
+                    </strong>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">
+                      {uiLanguage === "en"
+                        ? `${imageDispatchCountdown.sceneCount} image task(s) are pending. No provider request or Velto image credit has been used yet. At zero, dispatch and billing begin.`
+                        : `${imageDispatchCountdown.sceneCount} görsel görevi bekliyor. Henüz servis talebi gönderilmedi ve Velto görsel kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar.`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelPendingImageDispatch}
+                    className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
+                  >
+                    {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {videoDispatchCountdown?.scope === "batch" && (
+              <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm" aria-live="assertive">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <strong className="text-sm">
+                      {uiLanguage === "en"
+                        ? `Video dispatch starts in ${videoDispatchCountdown.secondsRemaining} seconds`
+                        : `Video gönderimi ${videoDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
+                    </strong>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">
+                      {uiLanguage === "en"
+                        ? `${videoDispatchCountdown.sceneCount} video task(s) are pending. No provider request or Velto video credit has been used yet. At zero, dispatch and billing begin.`
+                        : `${videoDispatchCountdown.sceneCount} video görevi bekliyor. Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar.`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelPendingVideoDispatch}
+                    className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
+                  >
+                    {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {(batchRenderItems.length > 0 || isBatchRendering) && (
               <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-5 space-y-4">
@@ -27766,6 +29248,12 @@ export default function CreatePage() {
                 const totalAudio = scene.timing?.totalAudioDuration || 0;
                 const productionScore =
                   [hasImage, narrationReady, dialogueReady, hasVideo].filter(Boolean).length;
+                const sceneVideoDispatchCountdownActive =
+                  videoDispatchCountdown?.scope === "scene" &&
+                  videoDispatchCountdown.sceneId === scene.id;
+                const sceneImageDispatchCountdownActive =
+                  imageDispatchCountdown?.scope === "scene" &&
+                  imageDispatchCountdown.sceneId === scene.id;
                 const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
                   narration: scene.narration || "",
                   dialogue: scene.dialogue || "",
@@ -28047,35 +29535,78 @@ export default function CreatePage() {
 
                       <button
                         type="button"
-                        onClick={() => handleGenerateVideo(scene.id)}
+                        onClick={() => {
+                          if (sceneVideoDispatchCountdownActive) {
+                            cancelPendingVideoDispatch();
+                          } else {
+                            void handleGenerateVideo(scene.id);
+                          }
+                        }}
                         disabled={
-                          scene.videoStatus === "processing" ||
-                          !scene.image ||
-                          creatorMediaPreflightLoading ||
-                          (isCreatorLabFlow &&
-                            getCreatorEffectiveSceneOutputMode(scene) !== "video")
+                          !sceneVideoDispatchCountdownActive &&
+                          (scene.videoStatus === "processing" ||
+                            !scene.image ||
+                            creatorMediaPreflightLoading ||
+                            Boolean(videoDispatchCountdown) ||
+                            Boolean(imageDispatchCountdown) ||
+                            (isCreatorLabFlow &&
+                              getCreatorEffectiveSceneOutputMode(scene) !== "video"))
                         }
                         title={
-                          !scene.image
-                            ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
-                            : isCreatorActionBlocked("ai_video_blocks")
-                              ? getCreatorMediaRoutingError("ai_video_blocks")
-                              : isCreatorLabFlow && getCreatorEffectiveSceneOutputMode(scene) !== "video"
-                                ? (uiLanguage === "en"
-                                    ? "Production Quality routes this scene to Image."
-                                    : "Üretim Kalitesi bu sahneyi Görsel rotasına yönlendiriyor.")
-                                : (uiLanguage === "en" ? "Create an AI motion block from this visual." : "Bu görselden AI hareketli video bloğu üret.")
+                          sceneVideoDispatchCountdownActive
+                            ? uiLanguage === "en"
+                              ? "Cancel before provider dispatch. No video credit has been used yet."
+                              : "Servise gönderilmeden iptal et. Henüz video kredisi kullanılmadı."
+                            : !scene.image
+                              ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
+                              : isCreatorActionBlocked("ai_video_blocks")
+                                ? getCreatorMediaRoutingError("ai_video_blocks")
+                                : isCreatorLabFlow && getCreatorEffectiveSceneOutputMode(scene) !== "video"
+                                  ? (uiLanguage === "en"
+                                      ? "Production Quality routes this scene to Image."
+                                      : "Üretim Kalitesi bu sahneyi Görsel rotasına yönlendiriyor.")
+                                  : (uiLanguage === "en" ? "Create an AI motion block from this visual." : "Bu görselden AI hareketli video bloğu üret.")
                         }
-                        className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm text-blue-100 disabled:opacity-50"
+                        className={`rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50 ${
+                          sceneVideoDispatchCountdownActive
+                            ? "border-rose-300 bg-rose-50 text-rose-700"
+                            : "border-blue-400/40 bg-blue-500/10 text-blue-100"
+                        }`}
                       >
-                        {creatorMediaPreflightLoading
-                          ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
-                          : scene.videoStatus === "processing"
-                            ? ui.videoCreating
-                            : isCreatorActionBlocked("ai_video_blocks")
-                              ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                              : ui.convertToVideo}
+                        {sceneVideoDispatchCountdownActive
+                          ? uiLanguage === "en"
+                            ? `Cancel start · ${videoDispatchCountdown?.secondsRemaining}s`
+                            : `Başlatmayı iptal et · ${videoDispatchCountdown?.secondsRemaining} sn`
+                          : creatorMediaPreflightLoading
+                            ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
+                            : scene.videoStatus === "processing"
+                              ? ui.videoCreating
+                              : isCreatorActionBlocked("ai_video_blocks")
+                                ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
+                                : ui.convertToVideo}
                       </button>
+
+                      {sceneVideoDispatchCountdownActive && (
+                        <span className="basis-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
+                          {uiLanguage === "en"
+                            ? "No provider request or Velto video credit yet. Dispatch and billing begin at zero."
+                            : "Henüz servis talebi veya Velto video kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
+                        </span>
+                      )}
+
+                      {scene.videoStatus === "processing" && scene.videoQueueJobId && (
+                        <button
+                          type="button"
+                          onClick={() => void requestCancelSceneVideo(scene)}
+                          disabled={cancellingVideoSceneId === scene.id}
+                          title={uiLanguage === "en" ? "Stop the provider task. Dispatched video credit is not refunded." : "Servis görevini durdur. Gönderilmiş video kredisi iade edilmez."}
+                          className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {cancellingVideoSceneId === scene.id
+                            ? uiLanguage === "en" ? "Cancelling..." : "İptal ediliyor..."
+                            : uiLanguage === "en" ? "Stop video · no refund" : "Videoyu durdur · iade yok"}
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -28105,16 +29636,39 @@ export default function CreatePage() {
 
                       <button
                         type="button"
-                        onClick={() => redrawSceneImage(scene)}
-                        disabled={redrawLoadingId === scene.id}
-                        title={
-                          isCreatorActionBlocked("visuals") || isCreatorMediaGenerationBlocked
-                            ? getCreatorMediaActionError("visuals")
-                            : (uiLanguage === "en" ? "Regenerate this scene visual." : "Bu sahne görselini yeniden üret.")
+                        onClick={() => {
+                          if (sceneImageDispatchCountdownActive) {
+                            cancelPendingImageDispatch();
+                          } else {
+                            void redrawSceneImage(scene);
+                          }
+                        }}
+                        disabled={
+                          !sceneImageDispatchCountdownActive &&
+                          (redrawLoadingId === scene.id ||
+                            Boolean(imageDispatchCountdown) ||
+                            Boolean(videoDispatchCountdown))
                         }
-                        className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm disabled:opacity-50"
+                        title={
+                          sceneImageDispatchCountdownActive
+                            ? uiLanguage === "en"
+                              ? "Cancel before provider dispatch. No image credit has been used yet."
+                              : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
+                            : isCreatorActionBlocked("visuals") || isCreatorMediaGenerationBlocked
+                              ? getCreatorMediaActionError("visuals")
+                              : (uiLanguage === "en" ? "Regenerate this scene visual." : "Bu sahne görselini yeniden üret.")
+                        }
+                        className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-50 ${
+                          sceneImageDispatchCountdownActive
+                            ? "border-rose-300 bg-rose-50 text-rose-700"
+                            : "border-orange-200/26"
+                        }`}
                       >
-                        {redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}
+                        {sceneImageDispatchCountdownActive
+                          ? uiLanguage === "en"
+                            ? `Cancel start · ${imageDispatchCountdown?.secondsRemaining}s`
+                            : `Başlatmayı iptal et · ${imageDispatchCountdown?.secondsRemaining} sn`
+                          : redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}
                       </button>
                     </div>
 
@@ -28647,5 +30201,20 @@ export default function CreatePage() {
         </main>
       </ActiveProductShell>
     </WorldProvider>
+  );
+}
+
+
+export default function CreatePage() {
+  const [workspaceSession, setWorkspaceSession] = useState(0);
+
+  return (
+    <CreateWorkspace
+      key={workspaceSession}
+      onStartNewProject={() => {
+        window.history.replaceState(null, "", "/create?flow=creator_lab");
+        setWorkspaceSession((current) => current + 1);
+      }}
+    />
   );
 }

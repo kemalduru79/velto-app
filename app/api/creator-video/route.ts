@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  getCreditErrorResponse,
+  markMeteredOperationProviderDispatch,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
+import { getPersistenceServices } from "@/lib/persistence";
+import {
   getCreatorMediaRoute,
   isCreatorMediaActionAllowed,
   normalizeCreatorQualityMode,
@@ -124,6 +133,11 @@ function publicError(error: unknown) {
 }
 
 export async function POST(req: NextRequest) {
+  let reservation: MeteredOperationReservation | null = null;
+  let providerTaskAccepted = false;
+  let providerTaskId = "";
+  let providerKey = "";
+
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const qualityMode = normalizeCreatorQualityMode(
@@ -169,6 +183,25 @@ export async function POST(req: NextRequest) {
       body.duration,
       qualityMode,
     );
+
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_video",
+      qualityMode,
+      provider: selection.provider.key,
+      referenceId: `${typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : "draft"}:scene-${body.sceneId ?? "unknown"}:video`,
+      metadata: {
+        productProfile: "creatorlab",
+        projectId:
+          typeof body.projectId === "string" && body.projectId.trim()
+            ? body.projectId.trim()
+            : null,
+        sceneId: body.sceneId ?? null,
+        durationSec: durationPolicy.durationSec,
+        engineTier: selection.selectedTier,
+      },
+      billable: true,
+    });
+
     const useCinematicContinuity = qualityMode === "cinematic";
     const lastFrameUrl = useCinematicContinuity
       ? optionalImageUrl(body.lastFrameUrl)
@@ -206,19 +239,146 @@ export async function POST(req: NextRequest) {
       throw new Error("Video service did not return a task identifier.");
     }
 
+    // VELTO_CANCEL_P1_1 — once the provider accepts the task, cost exposure
+    // exists. From this point forward the Velto reservation must be settled,
+    // not released merely because the user later stops the task.
+    providerTaskAccepted = true;
+    providerTaskId = task.nativeTaskId;
+    providerKey = selection.provider.key;
+
+    // FIN-P1C — persist the provider-dispatch boundary before queue creation.
+    // If the queue or immediate settlement path fails, reconciliation can still
+    // identify this reservation as billable and settle it exactly once.
+    if (reservation) {
+      try {
+        await markMeteredOperationProviderDispatch(
+          reservation,
+          task.nativeTaskId,
+          {
+            route: "creator-video",
+            billingMoment: "provider_dispatch",
+            provider: selection.provider.key,
+            providerTaskAcceptedAt: new Date().toISOString(),
+          },
+        );
+      } catch (dispatchMarkerError) {
+        // Do not hide an accepted provider task from the user merely because
+        // the marker write was temporarily unavailable. The queue payload and
+        // immediate settlement path provide two additional reconciliation paths.
+        console.error(
+          "creator-video provider-dispatch marker failed:",
+          dispatchMarkerError,
+        );
+      }
+    }
+
+    const publicTaskId = createVideoJobToken(
+      selection.provider.key,
+      task.nativeTaskId,
+    );
+    const requestKey =
+      req.headers.get("x-idempotency-key")?.trim() ||
+      `creator-video:${publicTaskId}`;
+    const queueJob = await getPersistenceServices().jobQueue.enqueue({
+      userId: reservation?.userId || null,
+      projectId:
+        typeof body.projectId === "string" && body.projectId.trim()
+          ? body.projectId.trim()
+          : null,
+      jobType: "video_reconcile",
+      priority: 200,
+      maxAttempts: 120,
+      idempotencyKey: `video-reconcile:${requestKey}`,
+      payload: {
+        taskId: publicTaskId,
+        nativeTaskId: task.nativeTaskId,
+        sceneId: body.sceneId ?? null,
+        projectId:
+          typeof body.projectId === "string" && body.projectId.trim()
+            ? body.projectId.trim()
+            : null,
+        qualityMode,
+        provider: selection.provider.key,
+        creditReservationId: reservation?.reservationId || null,
+        reservedCredits: reservation?.reservedCredits || 0,
+        creditSettlementMode: "provider_dispatch",
+      },
+    });
+
+    const chargedCredits = reservation?.reservedCredits || 0;
+    let creditAccount = reservation?.accountAfterReserve || null;
+    let settlementPending = false;
+
+    if (reservation) {
+      try {
+        const settlement = await settleMeteredOperation(reservation, {
+          providerRequestId: task.nativeTaskId,
+          metadata: {
+            route: "creator-video",
+            billingMoment: "provider_dispatch",
+            queueJobId: queueJob.id,
+            provider: selection.provider.key,
+          },
+        });
+        creditAccount = settlement.account;
+      } catch (settlementError) {
+        // The provider task and reconciliation job already exist. Keep the
+        // reservation attached to the job; the worker repeats the idempotent
+        // settlement before its first provider-status check.
+        settlementPending = true;
+        console.error("creator-video dispatch credit settlement deferred:", settlementError);
+      }
+    }
+
+    reservation = null;
+
     return NextResponse.json({
       ok: true,
-      taskId: createVideoJobToken(
-        selection.provider.key,
-        task.nativeTaskId,
-      ),
+      taskId: publicTaskId,
+      queueJobId: queueJob.id,
       status: task.status || "PENDING",
       duration: durationPolicy.durationSec,
       durationPolicy,
       engineTier: selection.selectedTier,
       premiumFallbackUsed: selection.usedFallback,
+      credits: creditAccount
+        ? {
+            chargedCredits,
+            reservedCredits: settlementPending ? chargedCredits : 0,
+            settlementPending,
+            account: creditAccount,
+          }
+        : { chargedCredits: 0, reservedCredits: 0, settlementPending: false },
     });
   } catch (error: unknown) {
+    if (reservation) {
+      if (providerTaskAccepted) {
+        // A provider task was accepted, therefore provider cost may already
+        // exist. Do not release the reservation. Settle best-effort so Velto
+        // billing follows the provider dispatch boundary.
+        try {
+          await settleMeteredOperation(reservation, {
+            providerRequestId: providerTaskId || undefined,
+            metadata: {
+              route: "creator-video",
+              billingMoment: "provider_dispatch",
+              provider: providerKey || null,
+              startupError: error instanceof Error ? error.message : "unknown",
+            },
+          });
+        } catch (settlementError) {
+          console.error("creator-video accepted-task settlement failed:", settlementError);
+        }
+      } else {
+        await releaseMeteredOperation(reservation, "video_generation_start_failed", {
+          route: "creator-video",
+        });
+      }
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("creator-video create error:", error);
 
     return NextResponse.json(

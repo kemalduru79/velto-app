@@ -20,7 +20,12 @@ function statusForError(error: unknown) {
     if (error.code === "INVALID_INPUT") return 400;
     if (error.code === "INSUFFICIENT_CREDITS") return 402;
     if (error.code === "RESERVATION_NOT_FOUND") return 404;
-    if (error.code === "INVALID_RESERVATION_STATE") return 409;
+    if (
+      error.code === "INVALID_RESERVATION_STATE" ||
+      error.code === "IDEMPOTENCY_KEY_CONFLICT" ||
+      error.code === "IDEMPOTENCY_REQUEST_IN_PROGRESS" ||
+      error.code === "IDEMPOTENCY_REQUEST_REPLAYED"
+    ) return 409;
   }
 
   return 500;

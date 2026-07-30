@@ -14,6 +14,7 @@ type Props = {
   className?: string;
   showAccount?: boolean;
   variant?: Variant;
+  onStudioClick?: () => void;
 };
 
 function GridIcon() {
@@ -63,6 +64,7 @@ export default function ProductTopNavigation({
   className = "",
   showAccount = true,
   variant = "floating",
+  onStudioClick,
 }: Props) {
   const { language } = useLanguage();
   const isDark = tone === "dark";
@@ -83,15 +85,29 @@ export default function ProductTopNavigation({
           <GridIcon />
           <span>{productsLabel}</span>
         </Link>
-        <Link
-          href="/create?flow=creator_lab"
-          className="creatorlab-topbar-tool-button"
-          aria-current={active === "studio" ? "page" : undefined}
-        >
-          <StudioIcon />
-          <span className="hidden 2xl:inline">{studioLabel}</span>
-          <span className="2xl:hidden">Studio</span>
-        </Link>
+        {onStudioClick ? (
+          <button
+            type="button"
+            onClick={onStudioClick}
+            className="creatorlab-topbar-tool-button"
+            aria-current={active === "studio" ? "page" : undefined}
+            aria-label={language === "en" ? "Start a new Velto Studio project" : "Yeni bir Velto Studio projesi başlat"}
+          >
+            <StudioIcon />
+            <span className="hidden 2xl:inline">{studioLabel}</span>
+            <span className="2xl:hidden">Studio</span>
+          </button>
+        ) : (
+          <Link
+            href="/create?flow=creator_lab"
+            className="creatorlab-topbar-tool-button"
+            aria-current={active === "studio" ? "page" : undefined}
+          >
+            <StudioIcon />
+            <span className="hidden 2xl:inline">{studioLabel}</span>
+            <span className="2xl:hidden">Studio</span>
+          </Link>
+        )}
         {showAccount && <UserAccountMenu tone={tone} />}
       </nav>
     );

@@ -5,6 +5,7 @@ import type {
   CreditMutationResult,
   CreditRepository,
   CreditReservation,
+  MarkProviderDispatchInput,
   ReleaseCreditsInput,
   ReserveCreditsInput,
   SettleCreditsInput,
@@ -30,10 +31,12 @@ type CreditRpcPayload = {
     settled_credits: number;
     status: CreditReservation["status"];
     idempotency_key: string;
+    provider_request_id: string | null;
     expires_at: string;
     created_at: string;
     updated_at: string;
   };
+  idempotency_replay?: boolean;
 };
 
 function mapAccount(account: CreditRpcPayload["account"]): CreditAccount {
@@ -61,6 +64,7 @@ function mapReservation(
     settledCredits: Number(reservation.settled_credits),
     status: reservation.status,
     idempotencyKey: reservation.idempotency_key,
+    providerRequestId: reservation.provider_request_id || undefined,
     expiresAt: reservation.expires_at,
     createdAt: reservation.created_at,
     updatedAt: reservation.updated_at,
@@ -71,6 +75,7 @@ function mapMutation(payload: CreditRpcPayload): CreditMutationResult {
   return {
     account: mapAccount(payload.account),
     reservation: mapReservation(payload.reservation),
+    idempotencyReplay: payload.idempotency_replay === true,
   };
 }
 
@@ -86,6 +91,13 @@ function mapDatabaseError(message: string): CreditEngineError {
     return new CreditEngineError(
       "Kredi rezervasyonu bulunamadı.",
       "RESERVATION_NOT_FOUND",
+    );
+  }
+
+  if (message.includes("IDEMPOTENCY_KEY_CONFLICT")) {
+    return new CreditEngineError(
+      "Aynı işlem anahtarı farklı bir kredi isteği için kullanılamaz.",
+      "IDEMPOTENCY_KEY_CONFLICT",
     );
   }
 
@@ -146,6 +158,27 @@ export class SupabaseCreditRepository implements CreditRepository {
       p_provider_request_id: input.providerRequestId || null,
       p_metadata: input.metadata || {},
     });
+
+    if (error || !data) {
+      throw mapDatabaseError(error?.message || "CREDIT_OPERATION_FAILED");
+    }
+
+    return mapMutation(data as CreditRpcPayload);
+  }
+
+  async markProviderDispatch(
+    input: MarkProviderDispatchInput,
+  ): Promise<CreditMutationResult> {
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase.rpc(
+      "velto_credit_mark_provider_dispatch",
+      {
+        p_user_id: input.userId,
+        p_reservation_id: input.reservationId,
+        p_provider_request_id: input.providerRequestId,
+        p_metadata: input.metadata || {},
+      },
+    );
 
     if (error || !data) {
       throw mapDatabaseError(error?.message || "CREDIT_OPERATION_FAILED");

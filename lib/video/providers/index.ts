@@ -6,6 +6,7 @@ export {
 } from "./providerRegistry";
 export type {
   VideoProvider,
+  VideoProviderCancelResult,
   VideoProviderCapabilities,
   VideoProviderCreateInput,
   VideoProviderDurationPolicy,

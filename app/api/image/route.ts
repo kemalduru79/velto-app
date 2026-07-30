@@ -1,4 +1,11 @@
 import { NextResponse } from "next/server";
+import {
+  getCreditErrorResponse,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
 import { getImageProvider, getProviderPublicMessage } from "@/lib/providers";
 import type { ImageProviderReferenceInput } from "@/lib/providers/image";
 import {
@@ -346,6 +353,8 @@ async function loadReferenceImageFiles(
 }
 
 export async function POST(req: Request) {
+  let reservation: MeteredOperationReservation | null = null;
+
   try {
     const {
       title,
@@ -364,6 +373,8 @@ export async function POST(req: Request) {
       qualityMode,
       creatorFormat,
       continuityContext,
+      projectId,
+      sceneId,
     }: {
       title?: string;
       sceneText?: string;
@@ -381,6 +392,8 @@ export async function POST(req: Request) {
       qualityMode?: unknown;
       creatorFormat?: unknown;
       continuityContext?: SceneContinuityContext | null;
+      projectId?: string;
+      sceneId?: string | number;
     } = await req.json();
 
     if (!sceneText || !sceneText.trim()) {
@@ -534,6 +547,21 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
 `;
 
     const imageProvider = getImageProvider();
+
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_image",
+      qualityMode,
+      provider: imageProvider.key,
+      referenceId: `${projectId || "draft"}:${normalizedImageUseCase}:${sceneId ?? "unknown"}`,
+      metadata: {
+        productProfile: normalizedProductProfile,
+        projectId: projectId || null,
+        sceneId: sceneId ?? null,
+        imageUseCase: normalizedImageUseCase,
+      },
+      billable: isCreatorLab,
+    });
+
     const model = creatorVisualRoute?.imageModel || "gpt-image-1";
     const size =
       creatorVisualRoute?.imageSize ||
@@ -556,9 +584,27 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
       referenceFidelity: "high",
     });
 
+    const chargedCredits = reservation?.reservedCredits || 0;
+    const creditResult = reservation
+      ? await settleMeteredOperation(reservation, {
+          providerRequestId: image.requestId,
+          metadata: {
+            model,
+            size,
+            quality,
+            imageUseCase: normalizedImageUseCase,
+            referenceInputApplied: image.referenceInputApplied,
+          },
+        })
+      : null;
+    reservation = null;
+
     return NextResponse.json({
       image: `data:image/png;base64,${image.base64}`,
       usage: image.usage || null,
+      credits: creditResult
+        ? { chargedCredits, account: creditResult.account }
+        : { chargedCredits: 0 },
       visualRoute: creatorVisualRoute
         ? {
             qualityMode: creatorVisualRoute.qualityMode,
@@ -581,6 +627,15 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
           },
     });
   } catch (error) {
+    if (reservation) {
+      await releaseMeteredOperation(reservation, "image_generation_failed", {
+        route: "image",
+      });
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("image error:", error);
 
     return NextResponse.json(
