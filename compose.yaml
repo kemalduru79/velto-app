@@ -4,6 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
@@ -30,3 +31,21 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: production
+      VELTO_INTERNAL_BASE_URL: "http://velto:3000"
+      VELTO_QUEUE_POLL_MS: "2000"
+      VELTO_QUEUE_LEASE_SECONDS: "60"
+    init: true
+    restart: unless-stopped
+    depends_on:
+      velto:
+        condition: service_healthy

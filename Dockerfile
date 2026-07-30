@@ -19,6 +19,14 @@ COPY . .
 RUN mkdir -p public
 RUN npm run build
 
+FROM deps AS worker
+ENV NODE_ENV=production
+ENV VELTO_QUEUE_POLL_MS=2000
+ENV VELTO_QUEUE_LEASE_SECONDS=60
+COPY scripts/scale-worker.mjs ./scripts/scale-worker.mjs
+USER node
+CMD ["node", "scripts/scale-worker.mjs"]
+
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
