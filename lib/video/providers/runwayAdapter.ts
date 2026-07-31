@@ -1,6 +1,7 @@
 import RunwayML from "@runwayml/sdk";
+import { createLogger } from "@/lib/observability";
 import {
-  normalizeRunwayClipDuration,
+  normalizeVideoClipDuration,
   normalizeVideoQualityTier,
 } from "../timelineSync";
 import type {
@@ -164,7 +165,7 @@ export class RunwayVideoProvider implements VideoProvider {
   }
 
   normalizeDuration(requestedDuration: unknown, qualityMode: unknown) {
-    return normalizeRunwayClipDuration(
+    return normalizeVideoClipDuration(
       requestedDuration,
       normalizeVideoQualityTier(qualityMode, "standard"),
     );
@@ -219,8 +220,12 @@ export class RunwayVideoProvider implements VideoProvider {
     );
 
     if (!response.ok && response.status !== 404) {
-      const payload = await response.text().catch(() => "");
-      console.error("Primary video cancellation failed:", response.status, payload.slice(0, 300));
+      await response.text().catch(() => "");
+      createLogger({ operation: "provider.video.cancel" }).error(
+        "Primary video cancellation failed.",
+        undefined,
+        { httpStatus: response.status },
+      );
       throw new Error("The primary video service could not cancel this task.");
     }
 

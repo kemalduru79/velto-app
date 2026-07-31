@@ -1,4 +1,10 @@
+import {
+  createLogger,
+  getObservabilityContext,
+  withObservedApiRoute,
+} from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
+import { getMediaProviderFacade } from "@/lib/providers";
 import {
   getCreditErrorResponse,
   markMeteredOperationProviderDispatch,
@@ -15,9 +21,7 @@ import {
 } from "../../../lib/creator/mediaRouting";
 import {
   createVideoJobToken,
-  getVideoProvider,
   parseVideoJobToken,
-  selectCreatorVideoProvider,
 } from "../../../lib/video/providers";
 
 export const runtime = "nodejs";
@@ -95,26 +99,17 @@ function buildPrompt(body: Record<string, unknown>) {
 function publicError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
-  const safeMessages = [
-    "Primary video service is not configured.",
-    "Premium video service is not configured.",
-    "This production mode does not use AI video blocks.",
-    "Video service did not return a task identifier.",
-    "Premium video input image could not be downloaded.",
-    "Premium video input image exceeds the 20 MB limit.",
-    "Premium video service rejected the generation request.",
-  ];
 
-  if (safeMessages.includes(message)) {
+  if (message === "This production mode does not use AI video blocks.") {
     return message;
   }
 
-  if (/401|unauthorized|invalid api|authentication|api key/.test(normalized)) {
-    return "The primary video service rejected the configured API key.";
+  if (/not configured|401|unauthorized|invalid api|authentication|api key/.test(normalized)) {
+    return "The video production service is not configured for this environment.";
   }
 
   if (/402|payment|billing|credit|quota|insufficient/.test(normalized)) {
-    return "The video production service has insufficient credits or quota for this request.";
+    return "The video production service has insufficient capacity for this request.";
   }
 
   if (/image|download|asset|url|fetch/.test(normalized)) {
@@ -122,7 +117,7 @@ function publicError(error: unknown) {
   }
 
   if (/duration|ratio|resolution|unsupported|invalid parameter/.test(normalized)) {
-    return "The selected video settings are not supported by the active production service.";
+    return "The selected video settings are not supported by the active production route.";
   }
 
   if (/timeout|timed out|network|connection/.test(normalized)) {
@@ -132,7 +127,7 @@ function publicError(error: unknown) {
   return "The CreatorLab video service could not start this motion task.";
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
   let providerTaskAccepted = false;
   let providerTaskId = "";
@@ -169,14 +164,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const selection = selectCreatorVideoProvider(mediaRoute);
+    const selection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
 
-    if (!selection.provider.isAvailable()) {
-      throw new Error(
-        selection.selectedTier === "premium"
-          ? "Premium video service is not configured."
-          : "Primary video service is not configured.",
-      );
+    if (!selection.available) {
+      throw new Error("Video production service is not configured.");
     }
 
     const durationPolicy = selection.provider.normalizeDuration(
@@ -265,8 +256,8 @@ export async function POST(req: NextRequest) {
         // Do not hide an accepted provider task from the user merely because
         // the marker write was temporarily unavailable. The queue payload and
         // immediate settlement path provide two additional reconciliation paths.
-        console.error(
-          "creator-video provider-dispatch marker failed:",
+        createLogger({ operation: "creator-video.dispatch-marker" }).error(
+          "Provider dispatch marker failed.",
           dispatchMarkerError,
         );
       }
@@ -302,6 +293,7 @@ export async function POST(req: NextRequest) {
         creditReservationId: reservation?.reservationId || null,
         reservedCredits: reservation?.reservedCredits || 0,
         creditSettlementMode: "provider_dispatch",
+        traceId: getObservabilityContext().traceId || null,
       },
     });
 
@@ -326,7 +318,10 @@ export async function POST(req: NextRequest) {
         // reservation attached to the job; the worker repeats the idempotent
         // settlement before its first provider-status check.
         settlementPending = true;
-        console.error("creator-video dispatch credit settlement deferred:", settlementError);
+        createLogger({ operation: "creator-video.credit-settlement" }).error(
+          "Dispatch credit settlement was deferred.",
+          settlementError,
+        );
       }
     }
 
@@ -367,7 +362,10 @@ export async function POST(req: NextRequest) {
             },
           });
         } catch (settlementError) {
-          console.error("creator-video accepted-task settlement failed:", settlementError);
+          createLogger({ operation: "creator-video.credit-settlement" }).error(
+            "Accepted-task credit settlement failed.",
+            settlementError,
+          );
         }
       } else {
         await releaseMeteredOperation(reservation, "video_generation_start_failed", {
@@ -379,7 +377,10 @@ export async function POST(req: NextRequest) {
     const creditErrorResponse = getCreditErrorResponse(error);
     if (creditErrorResponse) return creditErrorResponse;
 
-    console.error("creator-video create error:", error);
+    createLogger({ operation: "creator-video.create" }).error(
+      "Creator video creation failed.",
+      error,
+    );
 
     return NextResponse.json(
       { ok: false, error: publicError(error) },
@@ -388,7 +389,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const taskId = searchParams.get("taskId");
@@ -413,7 +414,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const provider = getVideoProvider(providerJob.providerKey);
+    const provider = getMediaProviderFacade().getVideoByKey(providerJob.providerKey);
     const task = await provider.retrieveTask(providerJob.nativeTaskId);
 
     if (searchParams.get("download") === "1") {
@@ -462,7 +463,10 @@ export async function GET(req: NextRequest) {
       videoUrl,
     });
   } catch (error: unknown) {
-    console.error("creator-video status error:", error);
+    createLogger({ operation: "creator-video.status" }).error(
+      "Creator video status failed.",
+      error,
+    );
 
     return NextResponse.json(
       { ok: false, error: publicError(error) },
@@ -470,3 +474,6 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.creator-video.create", postHandler);
+export const GET = withObservedApiRoute("api.creator-video.status", getHandler);

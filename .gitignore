@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.container.example
 
 # vercel
 .vercel
@@ -43,3 +44,13 @@ next-env.d.ts
 # nested dependencies
 **/node_modules/
 .velto-patch-backups/
+# Local sprint installers and repair artifacts
+velto_sprint_*/
+velto_sprint_*.zip
+cont_p1_repair_snapshot*.txt
+**/*.3k-smart-routing-v3-backup
+**/*.3l-smart-visuals-v2.bak
+**/*.cont-p1r-*.bak
+**/*.cont-p1r-*-backup
+**/*.voice-p1c-backup
+**/*.voice-p1c-final-backup

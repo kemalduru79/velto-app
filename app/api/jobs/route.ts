@@ -1,3 +1,8 @@
+import {
+  createLogger,
+  getObservabilityContext,
+  withObservedApiRoute,
+} from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
 import {
   authenticateRequest,
@@ -44,7 +49,10 @@ function errorResponse(error: unknown) {
     );
   }
 
-  console.error("jobs api error:", error);
+  createLogger({ operation: "jobs.api" }).error(
+    "Jobs API request failed.",
+    error,
+  );
 
   return NextResponse.json(
     {
@@ -55,7 +63,7 @@ function errorResponse(error: unknown) {
   );
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   try {
     const principal = await authenticateRequest(req);
     const body = (await req.json().catch(() => null)) as
@@ -115,7 +123,10 @@ export async function POST(req: NextRequest) {
       projectId:
         typeof body?.projectId === "string" ? body.projectId.trim() : null,
       jobType,
-      payload,
+      payload: {
+        ...payload,
+        traceId: getObservabilityContext().traceId || null,
+      },
       priority,
       maxAttempts,
       idempotencyKey,
@@ -135,7 +146,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   try {
     const principal = await authenticateRequest(req);
     const requestedLimit = Number(req.nextUrl.searchParams.get("limit") || 20);
@@ -159,3 +170,6 @@ export async function GET(req: NextRequest) {
     return errorResponse(error);
   }
 }
+
+export const POST = withObservedApiRoute("api.jobs.enqueue", postHandler);
+export const GET = withObservedApiRoute("api.jobs.list", getHandler);

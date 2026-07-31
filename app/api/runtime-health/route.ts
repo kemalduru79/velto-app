@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const mode = normalizeRuntimeHealthMode(
     req.nextUrl.searchParams.get("mode"),
   );
-  const health = getRuntimeHealth(mode);
+  const health = await getRuntimeHealth(mode);
 
   return NextResponse.json(health, {
     status: health.ok ? 200 : 503,

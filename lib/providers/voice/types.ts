@@ -1,3 +1,8 @@
+import type {
+  CreatorVoiceLibrarySource,
+  CreatorVoiceLibraryVoice,
+} from "@/lib/creator/voiceLibrary";
+
 export type VoiceProviderKey = "elevenlabs";
 export type VoiceProviderTier = "primary";
 export type VoiceLanguage = "tr" | "en";
@@ -25,11 +30,37 @@ export type VoiceProviderResult = {
   requestId?: string;
 };
 
+export type VoiceLibraryQuery = {
+  source: CreatorVoiceLibrarySource;
+  search?: string;
+  language?: string;
+  gender?: string;
+  age?: string;
+  accent?: string;
+  useCase?: string;
+  pageSize?: number;
+  pageToken?: string;
+};
+
+export type VoiceLibraryResult = {
+  voices: CreatorVoiceLibraryVoice[];
+  hasMore: boolean;
+  nextPageToken?: string;
+};
+
+export type AddSharedVoiceInput = {
+  publicOwnerId: string;
+  voiceId: string;
+  name: string;
+};
+
 export interface VoiceProvider {
   readonly key: VoiceProviderKey;
   readonly tier: VoiceProviderTier;
   isAvailable(): boolean;
   getDefaultModelId(): string;
   getDefaultVoiceId(language: VoiceLanguage, role: VoiceRole): string | null;
+  listVoices(input: VoiceLibraryQuery): Promise<VoiceLibraryResult>;
+  addSharedVoice(input: AddSharedVoiceInput): Promise<{ voiceId: string }>;
   synthesize(input: VoiceProviderSynthesisInput): Promise<VoiceProviderResult>;
 }

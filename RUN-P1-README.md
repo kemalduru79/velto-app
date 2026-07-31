@@ -1,80 +1,77 @@
 # RUN-P1 — Containerization and Stateless Runtime
 
-Bu paket Velto Studio'yu Next.js standalone container olarak çalıştırır.
+Velto Studio, Next.js standalone web container ve ayrı queue worker container'ı olarak çalışır.
 
 ## Kapsam
 
 - Multi-stage production Docker image
-- Non-root runtime user
-- Next.js standalone output
-- Public liveness and readiness endpoint
+- Web ve worker için ayrı runtime target'ları
+- Non-root process
+- Read-only application filesystem
+- Ephemeral `/tmp` ve Next.js runtime cache
+- Startup environment validation
+- Public liveness ve readiness endpoint'leri
 - Container health check
-- Runtime secrets kept outside the image
-- Local Docker Compose test
-- Stateless runtime declaration
+- Graceful `SIGTERM` shutdown
+- Runtime secrets'in image dışında tutulması
+- Scale-out'u engelleyen sabit container adı kullanılmaması
 
-## Uygulama
+## Lokal doğrulama
 
-Proje kökünde:
+Statik RUN-P1 kontrolü:
 
 ```bash
-unzip -o velto-run-p1-container-runtime.zip -d .
+npm run test:run-p1
+```
 
+Normal build:
+
+```bash
 rm -rf .next
 npm run build
 ```
 
-Normal local çalışma:
+## Container doğrulama
+
+Docker Desktop açıkken:
 
 ```bash
-npm run dev -- --port 3000
-```
-
-Container testi için Docker Desktop açık olmalıdır:
-
-```bash
-docker compose --env-file .env.local up --build
+npm run container:config
+npm run container:up
 ```
 
 Ayrı terminalde:
 
 ```bash
-node scripts/run-p1-smoke-test.mjs
+npm run test:run-p1:runtime
 ```
 
-Container'ı durdurmak için:
+Kapatma:
 
 ```bash
-docker compose down
+npm run container:down
 ```
 
-## Health endpointleri
+## Environment
 
-Liveness:
+`.env.container.example` dosyasını referans al. Gerçek secret değerlerini repository'ye commit etme. Mevcut lokal kullanımda Docker Compose `.env.local` dosyasını okur.
 
-```text
-GET /api/runtime-health?mode=live
-```
+## Health endpoint'leri
 
-Uygulama process'inin çalıştığını doğrular ve provider çağrısı yapmaz.
+- `GET /api/runtime-health?mode=live`: process liveness
+- `GET /api/runtime-health?mode=ready`: core environment ve writable temporary filesystem kontrolü
 
-Readiness:
+Health response secret değerlerini döndürmez.
 
-```text
-GET /api/runtime-health?mode=ready
-```
+## Stateless runtime sözleşmesi
 
-Aşağıdaki temel runtime ayarlarının varlığını doğrular:
-
-- Supabase URL
-- Supabase anon key
-- Supabase service-role key
-- OpenAI API key
-
-Secret değerleri response içine yazılmaz.
+- Kalıcı proje, kredi, job ve medya verisi repository/storage adapter'larında tutulur.
+- Geçici işleme dosyaları yalnızca `/tmp` altında oluşturulur.
+- Container root filesystem read-only çalışabilir.
+- Web container yeniden oluşturulduğunda kullanıcı verisi kaybolmaz.
 
 ## Sınırlar
 
-- Bu sprint queue/worker kurmaz; bu SCALE-P1 kapsamıdır.
-- Container içinde kalıcı veri tutulmaz. Kalıcı medya ve kayıtlar repository/storage adapter üzerinden dış sistemlerde kalmalıdır.
-- Client-side `NEXT_PUBLIC_*` değerleri build sırasında Docker build arg olarak verilir. Diğer secret'lar yalnızca runtime environment olarak aktarılır.
+- Queue iş modelinin genişletilmesi SCALE-P1 kapsamındadır.
+- Azure deploy tanımı AZR-P1 kapsamındadır.
+- Provider secret'ları yalnızca ilgili yetenek etkinleştirildiğinde zorunludur.

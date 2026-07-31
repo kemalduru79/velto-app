@@ -86,6 +86,8 @@ export type TimelineSyncPlan = {
       | "image_motion"
       | "standard_clip"
       | "premium_clip";
+    aiVideoUsage: "none" | "limited" | "selective" | "premium";
+    /** @deprecated Use aiVideoUsage. Kept for persisted-plan compatibility. */
     runwayUsage: "none" | "limited" | "selective" | "premium";
     voiceStrategy: "none" | "economy_tts" | "professional_voice";
   };
@@ -148,7 +150,7 @@ function normalizePositiveNumber(
   return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
 
-export function normalizeRunwayClipDuration(
+export function normalizeVideoClipDuration(
   requestedDuration: unknown,
   qualityTier: VideoQualityTier = "standard",
 ) {
@@ -182,6 +184,9 @@ export function normalizeRunwayClipDuration(
   };
 }
 
+/** @deprecated Use normalizeVideoClipDuration. */
+export const normalizeRunwayClipDuration = normalizeVideoClipDuration;
+
 function getRoutePolicy(
   product: VideoProductProfile,
   qualityTier: VideoQualityTier,
@@ -192,6 +197,7 @@ function getRoutePolicy(
       creatorLabCreditProfile: "draft",
       defaultVisualStrategy:
         qualityTier === "lite" ? "image_motion" : "standard_clip",
+      aiVideoUsage: "limited",
       runwayUsage: "limited",
       voiceStrategy: "economy_tts",
     };
@@ -202,6 +208,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "draft",
       defaultVisualStrategy: "none",
+      aiVideoUsage: "none",
       runwayUsage: "none",
       voiceStrategy: "none",
     };
@@ -212,6 +219,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "cinematic",
       defaultVisualStrategy: "premium_clip",
+      aiVideoUsage: "premium",
       runwayUsage: "premium",
       voiceStrategy: "professional_voice",
     };
@@ -222,6 +230,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "pro",
       defaultVisualStrategy: "premium_clip",
+      aiVideoUsage: "selective",
       runwayUsage: "selective",
       voiceStrategy: "professional_voice",
     };
@@ -232,6 +241,7 @@ function getRoutePolicy(
     creatorLabCreditProfile: qualityTier === "lite" ? "draft" : "standard",
     defaultVisualStrategy:
       qualityTier === "lite" ? "image_motion" : "standard_clip",
+    aiVideoUsage: qualityTier === "lite" ? "limited" : "selective",
     runwayUsage: qualityTier === "lite" ? "limited" : "selective",
     voiceStrategy:
       qualityTier === "lite" ? "economy_tts" : "professional_voice",
@@ -543,7 +553,7 @@ export function createTimelineSyncPlan({
   );
   const maxSpeechRatio = product === "creatorlab" ? 0.82 : 0.72;
   const routePolicy = getRoutePolicy(product, qualityTier);
-  const recommendedClipSeconds = normalizeRunwayClipDuration(
+  const recommendedClipSeconds = normalizeVideoClipDuration(
     plannedSceneDurationSeconds,
     qualityTier,
   ).durationSec;
@@ -572,7 +582,7 @@ export function createTimelineSyncPlan({
         : null;
     const targetVisualSeconds =
       durationMatch?.targetDurationSec || plannedSceneDurationSeconds;
-    const sceneRecommendedClipSeconds = normalizeRunwayClipDuration(
+    const sceneRecommendedClipSeconds = normalizeVideoClipDuration(
       targetVisualSeconds,
       qualityTier,
     ).durationSec;

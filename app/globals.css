@@ -1580,3 +1580,33 @@ select {
   }
 }
 
+/* VOICE-P1C CHANGE VOICE START */
+.creatorlab-voice-change-button {
+  background-color: #e8f5f1 !important;
+  border-color: #b7ddd2 !important;
+  color: #2f6f62 !important;
+  box-shadow: 0 1px 2px rgba(47, 111, 98, 0.06);
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.creatorlab-voice-change-button:hover:not(:disabled) {
+  background-color: #ddf0ea !important;
+  border-color: #9dcfc1 !important;
+  color: #245c52 !important;
+  box-shadow: 0 3px 10px rgba(47, 111, 98, 0.10);
+}
+
+.creatorlab-voice-change-button:focus-visible {
+  outline: 3px solid rgba(47, 111, 98, 0.18);
+  outline-offset: 2px;
+}
+
+.creatorlab-voice-change-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+/* VOICE-P1C CHANGE VOICE END */

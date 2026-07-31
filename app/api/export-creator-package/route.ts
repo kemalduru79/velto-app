@@ -288,11 +288,15 @@ function getSceneDuration(
         (item: Record<string, any>) => Number(item?.id) === Number(scene?.id ?? index + 1),
       )
     : null;
+  // VELTO_VOICE_P1C: measured exact timing must win over the original
+  // production budget so captions/package metadata match final render timing.
   const candidates = [
-    scene?.timing?.plannedSceneDuration,
     scene?.timing?.targetSceneDuration,
-    scene?.videoDurationSeconds,
+    scene?.durationSec,
+    timelineScene?.durationMatch?.targetDurationSec,
     timelineScene?.targetVisualSeconds,
+    scene?.timing?.plannedSceneDuration,
+    scene?.videoDurationSeconds,
     productionPackage?.targetSceneDurationSec,
   ];
 

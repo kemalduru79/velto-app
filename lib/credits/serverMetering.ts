@@ -11,6 +11,7 @@ import {
   type MeteredOperationType,
 } from "./operationPolicy";
 import type { CreditAccount } from "./types";
+import { createLogger, observeCreditMutation } from "@/lib/observability";
 
 const creditEngine = new CreditEngine(
   getPersistenceServices().creditRepository,
@@ -49,7 +50,10 @@ export async function reserveMeteredOperation(
     request.headers.get("x-idempotency-key")?.trim() ||
     `${input.operationType}:${randomUUID()}`;
 
-  const result = await creditEngine.reserve({
+  const result = await observeCreditMutation(
+    "reserve",
+    input.operationType,
+    () => creditEngine.reserve({
     userId: principal.id,
     credits,
     operationType: input.operationType,
@@ -57,7 +61,8 @@ export async function reserveMeteredOperation(
     provider: input.provider,
     referenceId: input.referenceId,
     metadata: input.metadata,
-  });
+  }),
+  );
 
   // FIN-P1C — an idempotency replay must never dispatch the provider again.
   // The current API does not persist full response bodies, so a duplicate is
@@ -90,12 +95,17 @@ export async function markMeteredOperationProviderDispatch(
   providerRequestId: string,
   metadata?: Record<string, unknown>,
 ) {
-  return creditEngine.markProviderDispatch({
-    userId: reservation.userId,
-    reservationId: reservation.reservationId,
-    providerRequestId,
-    metadata,
-  });
+  return observeCreditMutation(
+    "dispatch",
+    reservation.operationType,
+    () =>
+      creditEngine.markProviderDispatch({
+        userId: reservation.userId,
+        reservationId: reservation.reservationId,
+        providerRequestId,
+        metadata,
+      }),
+  );
 }
 
 export async function settleMeteredOperation(
@@ -106,14 +116,19 @@ export async function settleMeteredOperation(
     metadata?: Record<string, unknown>;
   },
 ) {
-  return creditEngine.settle({
-    userId: reservation.userId,
-    reservationId: reservation.reservationId,
-    finalCredits: reservation.reservedCredits,
-    providerCostUsd: input?.providerCostUsd,
-    providerRequestId: input?.providerRequestId,
-    metadata: input?.metadata,
-  });
+  return observeCreditMutation(
+    "settle",
+    reservation.operationType,
+    () =>
+      creditEngine.settle({
+        userId: reservation.userId,
+        reservationId: reservation.reservationId,
+        finalCredits: reservation.reservedCredits,
+        providerCostUsd: input?.providerCostUsd,
+        providerRequestId: input?.providerRequestId,
+        metadata: input?.metadata,
+      }),
+  );
 }
 
 export async function releaseMeteredOperation(
@@ -122,14 +137,23 @@ export async function releaseMeteredOperation(
   metadata?: Record<string, unknown>,
 ) {
   try {
-    return await creditEngine.release({
-      userId: reservation.userId,
-      reservationId: reservation.reservationId,
-      reason,
-      metadata,
-    });
+    return await observeCreditMutation(
+      "release",
+      reservation.operationType,
+      () =>
+        creditEngine.release({
+          userId: reservation.userId,
+          reservationId: reservation.reservationId,
+          reason,
+          metadata,
+        }),
+    );
   } catch (releaseError) {
-    console.error("credit reservation release error:", releaseError);
+    createLogger({ operation: "credit.release" }).error(
+      "Credit reservation release failed.",
+      releaseError,
+      { operationType: reservation.operationType },
+    );
     return null;
   }
 }

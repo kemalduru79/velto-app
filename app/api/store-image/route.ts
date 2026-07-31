@@ -1,58 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getPersistenceServices } from "@/lib/persistence";
 
 export const runtime = "nodejs";
-
-function buildEnvDebug() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  return {
-    SUPABASE_URL: {
-      exists: typeof supabaseUrl === "string",
-      nonEmpty: !!supabaseUrl?.trim(),
-      length: supabaseUrl?.length || 0,
-      preview: supabaseUrl ? `${supabaseUrl.slice(0, 18)}...` : "",
-    },
-    NEXT_PUBLIC_SUPABASE_URL: {
-      exists: typeof publicSupabaseUrl === "string",
-      nonEmpty: !!publicSupabaseUrl?.trim(),
-      length: publicSupabaseUrl?.length || 0,
-      preview: publicSupabaseUrl ? `${publicSupabaseUrl.slice(0, 18)}...` : "",
-    },
-    SUPABASE_SERVICE_ROLE_KEY: {
-      exists: typeof serviceRoleKey === "string",
-      nonEmpty: !!serviceRoleKey?.trim(),
-      length: serviceRoleKey?.length || 0,
-      preview: serviceRoleKey ? `${serviceRoleKey.slice(0, 10)}...` : "",
-    },
-  };
-}
-
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    const envDebug = buildEnvDebug();
-    throw new Error(
-      `SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing | debug=${JSON.stringify(
-        envDebug
-      )}`
-    );
-  }
-
-  if (!serviceRoleKey) {
-    const envDebug = buildEnvDebug();
-    throw new Error(
-      `SUPABASE_SERVICE_ROLE_KEY is missing | debug=${JSON.stringify(envDebug)}`
-    );
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
 
 function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
@@ -61,56 +10,41 @@ function safeName(value: string) {
 function parseDataUri(dataUri: string) {
   const match = dataUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
 
-  if (!match) {
-    throw new Error("Invalid image data URI");
-  }
+  if (!match) throw new Error("Invalid image data URI");
 
   const mimeType = match[1];
-  const base64Data = match[2];
-  const buffer = Buffer.from(base64Data, "base64");
-
+  const buffer = Buffer.from(match[2], "base64");
   let extension = "png";
-  if (mimeType.includes("jpeg")) extension = "jpg";
-  if (mimeType.includes("jpg")) extension = "jpg";
+
+  if (mimeType.includes("jpeg") || mimeType.includes("jpg")) extension = "jpg";
   if (mimeType.includes("webp")) extension = "webp";
 
-  return {
-    mimeType,
-    extension,
-    buffer,
-  };
+  return { mimeType, extension, buffer };
 }
 
 async function downloadRemoteFile(url: string) {
-  const res = await fetch(url);
+  const response = await fetch(url);
 
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => "");
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
     throw new Error(errorText || "Remote image download failed");
   }
 
-  const contentType = res.headers.get("content-type") || "image/png";
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
+  const mimeType = response.headers.get("content-type") || "image/png";
+  const buffer = Buffer.from(await response.arrayBuffer());
   let extension = "png";
-  if (contentType.includes("jpeg")) extension = "jpg";
-  if (contentType.includes("jpg")) extension = "jpg";
-  if (contentType.includes("webp")) extension = "webp";
 
-  return {
-    mimeType: contentType,
-    extension,
-    buffer,
-  };
+  if (mimeType.includes("jpeg") || mimeType.includes("jpg")) extension = "jpg";
+  if (mimeType.includes("webp")) extension = "webp";
+
+  return { mimeType, extension, buffer };
 }
 
+// VELTO_PORT_P2 — media routes use ObjectStorageRepository only.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
-    const image =
-      typeof body?.image === "string" ? body.image.trim() : "";
+    const image = typeof body?.image === "string" ? body.image.trim() : "";
     const projectId =
       typeof body?.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -123,63 +57,50 @@ export async function POST(req: NextRequest) {
     if (!image) {
       return NextResponse.json(
         { ok: false, error: "image is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    let fileData:
-      | { mimeType: string; extension: string; buffer: Buffer }
-      | undefined;
+    const fileData = image.startsWith("data:image/")
+      ? parseDataUri(image)
+      : image.startsWith("https://")
+        ? await downloadRemoteFile(image)
+        : null;
 
-    if (image.startsWith("data:image/")) {
-      fileData = parseDataUri(image);
-    } else if (image.startsWith("https://")) {
-      fileData = await downloadRemoteFile(image);
-    } else {
+    if (!fileData) {
       return NextResponse.json(
         {
           ok: false,
           error: "image must be a data URI or a public HTTPS URL",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const supabase = getSupabaseAdmin();
-
-    const safeProjectId = safeName(projectId);
-    const safeSceneId = safeName(sceneId);
-    const filePath = `${safeProjectId}/scene-${safeSceneId}-${Date.now()}.${fileData.extension}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(filePath, fileData.buffer, {
+    const filePath = `${safeName(projectId)}/scene-${safeName(sceneId)}-${Date.now()}.${fileData.extension}`;
+    const storedImage =
+      await getPersistenceServices().objectStorage.uploadPublic({
+        bucket: "images",
+        path: filePath,
+        body: fileData.buffer,
         contentType: fileData.mimeType,
         upsert: false,
       });
 
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("images")
-      .getPublicUrl(filePath);
-
     return NextResponse.json({
       ok: true,
-      imageUrl: publicData.publicUrl,
-      path: filePath,
+      imageUrl: storedImage.publicUrl,
+      path: storedImage.path,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("store-image error:", error);
-
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Image could not be stored",
+        error:
+          error instanceof Error ? error.message : "Image could not be stored",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

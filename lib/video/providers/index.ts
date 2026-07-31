@@ -3,6 +3,7 @@ export {
   getVideoProvider,
   parseVideoJobToken,
   selectCreatorVideoProvider,
+  selectPrimaryVideoProvider,
 } from "./providerRegistry";
 export type {
   VideoProvider,
@@ -10,6 +11,7 @@ export type {
   VideoProviderCapabilities,
   VideoProviderCreateInput,
   VideoProviderDurationPolicy,
+  VideoProviderFallbackReason,
   VideoProviderKey,
   VideoProviderSelection,
   VideoProviderTask,

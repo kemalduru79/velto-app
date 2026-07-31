@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { incrementCounter, setGauge } from "@/lib/observability";
 import type {
   CancelVeltoJobInput,
   EnqueueVeltoJobInput,
@@ -6,6 +7,7 @@ import type {
   VeltoJobRecord,
   VeltoJobStatus,
   VeltoJobType,
+  VeltoQueueHealth,
 } from "./types";
 
 type JobRow = Record<string, unknown>;
@@ -53,6 +55,31 @@ function mapJob(row: JobRow): VeltoJobRecord {
   };
 }
 
+function mapQueueHealth(value: unknown): VeltoQueueHealth {
+  const row = asRecord(value);
+  const nullableNumber = (field: string) => {
+    const candidate = row[field];
+    return candidate == null ? null : Number(candidate);
+  };
+
+  return {
+    checkedAt:
+      typeof row.checkedAt === "string"
+        ? row.checkedAt
+        : new Date().toISOString(),
+    queued: Number(row.queued || 0),
+    running: Number(row.running || 0),
+    succeededLastHour: Number(row.succeededLastHour || 0),
+    failedLastHour: Number(row.failedLastHour || 0),
+    cancelledLastHour: Number(row.cancelledLastHour || 0),
+    oldestQueuedSeconds: nullableNumber("oldestQueuedSeconds"),
+    expiredLeases: Number(row.expiredLeases || 0),
+    activeWorkers: Number(row.activeWorkers || 0),
+    staleWorkers: Number(row.staleWorkers || 0),
+    healthy: Boolean(row.healthy),
+  };
+}
+
 export class SupabaseJobQueueRepository implements JobQueueRepository {
   async cancelForUser(input: CancelVeltoJobInput): Promise<VeltoJobRecord> {
     const client = createServerSupabaseClient();
@@ -73,7 +100,12 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
       throw new Error("Job cancellation did not return a job record.");
     }
 
-    return mapJob(row);
+    const job = mapJob(row);
+    incrementCounter("velto_queue_events_total", 1, {
+      event: "cancelled",
+      jobType: job.jobType,
+    });
+    return job;
   }
 
   async enqueue(input: EnqueueVeltoJobInput): Promise<VeltoJobRecord> {
@@ -99,7 +131,32 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
       throw new Error("Job queue did not return a job record.");
     }
 
-    return mapJob(row);
+    const job = mapJob(row);
+    incrementCounter("velto_queue_events_total", 1, {
+      event: "enqueued",
+      jobType: job.jobType,
+    });
+    return job;
+  }
+
+  async getHealth(workerStaleSeconds = 90): Promise<VeltoQueueHealth> {
+    const client = createServerSupabaseClient();
+    const safeStaleSeconds = Math.max(15, Math.min(Math.round(workerStaleSeconds), 3600));
+    const { data, error } = await client.rpc("velto_job_queue_health", {
+      p_worker_stale_seconds: safeStaleSeconds,
+    });
+
+    if (error) {
+      throw new Error(`Queue health could not be read: ${error.message}`);
+    }
+
+    const health = mapQueueHealth(data);
+    setGauge("velto_queue_backlog", health.queued, { state: "queued" });
+    setGauge("velto_queue_backlog", health.running, { state: "running" });
+    setGauge("velto_workers_active", health.activeWorkers);
+    setGauge("velto_workers_stale", health.staleWorkers);
+    setGauge("velto_queue_expired_leases", health.expiredLeases);
+    return health;
   }
 
   async getForUser(

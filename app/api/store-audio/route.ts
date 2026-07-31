@@ -1,9 +1,14 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getCreatorRoutedVoiceSettings,
   getCreatorVoiceRoute,
 } from "@/lib/creator/voiceRouting";
-import { getProviderPublicMessage, getVoiceProvider } from "@/lib/providers";
+import { getMediaProviderFacade, getProviderPublicMessage } from "@/lib/providers";
+import {
+  getCreatorVoiceProfileServerSelection,
+  resolveCreatorVoiceProfileVoiceId,
+} from "@/lib/providers/voice/voiceProfileResolver";
 import { getPersistenceServices } from "@/lib/persistence";
 import {
   getCreditErrorResponse,
@@ -101,7 +106,7 @@ function getNarratorVoiceSettings(
   };
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
 
   try {
@@ -131,15 +136,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const voiceProvider = getVoiceProvider();
-    const voiceId =
+    const voiceProvider = getMediaProviderFacade().voice();
+    const selectedVoiceProfile = getCreatorVoiceProfileServerSelection(
+      narratorSettings?.voiceProfileId,
+    );
+    const explicitVoiceId =
       typeof narratorSettings.voiceId === "string" &&
       narratorSettings.voiceId.trim()
         ? narratorSettings.voiceId.trim()
-        : voiceProvider.getDefaultVoiceId(language, "narrator");
+        : "";
+    const voiceId =
+      explicitVoiceId ||
+      resolveCreatorVoiceProfileVoiceId({
+        profileId: selectedVoiceProfile.id,
+        language,
+        role: "narrator",
+      }) ||
+      voiceProvider.getDefaultVoiceId(language, "narrator");
 
     if (!voiceId) {
-      throw new Error("Narrator voiceId missing");
+      throw new Error("Narrator voice is not configured");
     }
 
     const modelId =
@@ -184,12 +200,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const voiceSettingsInput =
+      narratorSettings?.advancedTuning === true
+        ? { ...selectedVoiceProfile.settings, ...narratorSettings }
+        : selectedVoiceProfile.settings;
     const voiceSettings = creatorVoiceRoute
       ? getCreatorRoutedVoiceSettings({
           route: creatorVoiceRoute,
-          settings: narratorSettings,
+          settings: voiceSettingsInput,
         })
-      : getNarratorVoiceSettings(language, narratorSettings);
+      : getNarratorVoiceSettings(language, voiceSettingsInput);
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_voice",
@@ -201,6 +221,7 @@ export async function POST(req: NextRequest) {
         projectKey,
         sceneId,
         role: "narrator",
+        voiceProfileId: selectedVoiceProfile.id,
       },
       billable: isCreatorLab,
     });
@@ -236,6 +257,7 @@ export async function POST(req: NextRequest) {
     const settingsKey =
       clientSettingsKey ||
       [
+        selectedVoiceProfile.id,
         voiceId,
         modelId,
         voiceSettings.stability,
@@ -264,6 +286,7 @@ export async function POST(req: NextRequest) {
       originalText: rawText,
       language,
       voiceId,
+      voiceProfileId: selectedVoiceProfile.id,
       voiceSettings,
       settingsKey,
       credits: creditResult
@@ -306,3 +329,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.store-audio", postHandler);

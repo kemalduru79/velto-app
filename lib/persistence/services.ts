@@ -1,26 +1,23 @@
-import { SupabaseCreditRepository } from "@/lib/credits/supabaseCreditRepository";
-import type { CreditRepository } from "@/lib/credits/types";
-import { SupabaseJobQueueRepository } from "./jobs";
-import type { JobQueueRepository } from "./jobs";
-import { SupabaseObjectStorageRepository } from "./storage";
-import type { ObjectStorageRepository } from "./storage";
-
-export type PersistenceServices = {
-  creditRepository: CreditRepository;
-  objectStorage: ObjectStorageRepository;
-  jobQueue: JobQueueRepository;
-};
+import { createPersistenceServices } from "./factory";
+import type { PersistenceServices } from "./types";
 
 let persistenceServices: PersistenceServices | null = null;
 
 export function getPersistenceServices(): PersistenceServices {
   if (!persistenceServices) {
-    persistenceServices = {
-      creditRepository: new SupabaseCreditRepository(),
-      objectStorage: new SupabaseObjectStorageRepository(),
-      jobQueue: new SupabaseJobQueueRepository(),
-    };
+    persistenceServices = createPersistenceServices();
   }
 
   return persistenceServices;
+}
+
+/** Test-only override for adapter contract tests. Do not call from routes. */
+export function setPersistenceServicesForTest(
+  services: PersistenceServices | null,
+) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Persistence services cannot be overridden in production.");
+  }
+
+  persistenceServices = services;
 }

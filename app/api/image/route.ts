@@ -1,3 +1,4 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextResponse } from "next/server";
 import {
   getCreditErrorResponse,
@@ -6,12 +7,19 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
-import { getImageProvider, getProviderPublicMessage } from "@/lib/providers";
+import { getMediaProviderFacade, getProviderPublicMessage } from "@/lib/providers";
 import type { ImageProviderReferenceInput } from "@/lib/providers/image";
 import {
   getCreatorVisualRoute,
   type CreatorImageUseCase,
 } from "../../../lib/creator/visualRouting";
+import {
+  buildCreatorSmartVisualPlan,
+  selectCreatorSceneCharacters,
+} from "../../../lib/creator/smartVisuals";
+
+// 3L SMART VISUALS V2
+// CONT-P1R SELECTIVE CONTINUITY
 
 export const runtime = "nodejs";
 
@@ -35,6 +43,11 @@ type VisualBible = {
 };
 
 type ImageProductProfile = "storyverse" | "creatorlab";
+
+type CreatorResolvedContinuityMode =
+  | "independent"
+  | "consistent"
+  | "previous";
 
 type SceneContinuityContext = {
   sceneId?: number;
@@ -163,6 +176,7 @@ ${isStoryverseJoe ? "- Joe was explicitly provided for Storyverse, so preserve J
 function buildVisualBlock(
   visualBible: VisualBible | null | undefined,
   productProfile: ImageProductProfile,
+  continuityMode: CreatorResolvedContinuityMode = "consistent",
 ) {
   const isCreatorLab = productProfile === "creatorlab";
   const defaultStyle = isCreatorLab
@@ -174,21 +188,42 @@ function buildVisualBlock(
   const defaultCamera = isCreatorLab
     ? "professional creator framing with a clear focal subject, editorial depth, mobile readability, and deliberate negative space"
     : "cinematic family animation framing, clear subject separation, readable facial expression, strong depth, professional composition";
-  const defaultConsistencyRules = isCreatorLab
-    ? "preserve the same cast identity, brand language, lighting logic, palette, realism level, lens language, and editorial universe across every scene"
-    : "same character face, same hair, same outfit, same age appearance, same proportions, and same family-animation universe across scenes";
+  const defaultConsistencyRules =
+    isCreatorLab && continuityMode === "independent"
+      ? "preserve only the requested brand, style, palette and production quality inside this scene; do not inherit a person, location, prop, metaphor or world state from another scene"
+      : isCreatorLab
+        ? "preserve the same cast identity, brand language, lighting logic, palette, realism level, lens language, and editorial universe across linked scenes"
+        : "same character face, same hair, same outfit, same age appearance, same proportions, and same family-animation universe across scenes";
+  const consistencyRules =
+    isCreatorLab && continuityMode === "independent"
+      ? defaultConsistencyRules
+      : visualBible?.consistencyRules || defaultConsistencyRules;
 
   return `
 Style: ${visualBible?.style || defaultStyle}
 Palette: ${visualBible?.palette || defaultPalette}
 Camera: ${visualBible?.camera || defaultCamera}
-Consistency rules: ${visualBible?.consistencyRules || defaultConsistencyRules}
+Consistency rules: ${consistencyRules}
 `;
 }
 
-function buildContinuityBlock(context?: SceneContinuityContext | null) {
+function buildContinuityBlock(
+  context: SceneContinuityContext | null | undefined,
+  continuityMode: CreatorResolvedContinuityMode,
+) {
+  if (continuityMode === "independent") {
+    return [
+      "INDEPENDENT SCENE:",
+      "- Do not inherit a person, location, prop, product state, metaphor, weather, time of day, or camera handoff from another scene.",
+      "- Use only the people and world details explicitly required by this scene.",
+      "- Preserve project-level brand, quality, format, palette and style only where they do not force narrative continuity.",
+    ].join("\n");
+  }
+
   if (!context) {
-    return "No adjacent-scene context supplied. Follow the visual bible and cast lock as the canonical continuity source.";
+    return continuityMode === "previous"
+      ? "Continue the immediately previous scene. No previous-scene context was supplied, so use only the explicit scene and cast references without inventing a new recurring world."
+      : "Keep recurring characters and the shared visual world consistent. No adjacent-scene context was supplied; use the visual bible and selected cast as the canonical source.";
   }
 
   const describeScene = (
@@ -211,8 +246,12 @@ function buildContinuityBlock(context?: SceneContinuityContext | null) {
   return [
     `Timeline position: scene ${context.sceneId || "?"} of ${context.sceneCount || "?"}`,
     describeScene("Previous scene", context.previousScene),
-    describeScene("Next scene", context.nextScene),
-    "Keep a deliberate visual handoff from the previous beat and leave a natural composition/motion handoff into the next beat.",
+    continuityMode === "consistent"
+      ? describeScene("Next scene", context.nextScene)
+      : "Next scene: not used for direct continuation",
+    continuityMode === "previous"
+      ? "Continue directly from the previous scene. Preserve its active character, location, lighting, time, prop state, screen direction, and camera handoff unless this scene explicitly changes them."
+      : "Keep recurring characters and the shared world recognizable, while allowing the shot, location or metaphor to change when the current scene explicitly requires it.",
   ].join("\n");
 }
 
@@ -352,7 +391,7 @@ async function loadReferenceImageFiles(
   return { files, warnings };
 }
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   let reservation: MeteredOperationReservation | null = null;
 
   try {
@@ -372,6 +411,7 @@ export async function POST(req: Request) {
       productProfile,
       qualityMode,
       creatorFormat,
+      continuityMode,
       continuityContext,
       projectId,
       sceneId,
@@ -391,6 +431,7 @@ export async function POST(req: Request) {
       productProfile?: ImageProductProfile;
       qualityMode?: unknown;
       creatorFormat?: unknown;
+      continuityMode?: CreatorResolvedContinuityMode;
       continuityContext?: SceneContinuityContext | null;
       projectId?: string;
       sceneId?: string | number;
@@ -406,6 +447,12 @@ export async function POST(req: Request) {
     const normalizedProductProfile: ImageProductProfile =
       productProfile === "creatorlab" ? "creatorlab" : "storyverse";
     const isCreatorLab = normalizedProductProfile === "creatorlab";
+    const normalizedContinuityMode: CreatorResolvedContinuityMode =
+      !isCreatorLab
+        ? "consistent"
+        : continuityMode === "consistent" || continuityMode === "previous"
+          ? continuityMode
+          : "independent";
     const normalizedImageUseCase: CreatorImageUseCase =
       imageUseCase ||
       (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
@@ -416,6 +463,45 @@ export async function POST(req: Request) {
           imageUseCase: normalizedImageUseCase,
         })
       : null;
+
+    const creatorSmartVisualPlan =
+      isCreatorLab && creatorVisualRoute
+        ? buildCreatorSmartVisualPlan({
+            title,
+            sceneText: sceneText.trim(),
+            cameraDirection,
+            emotion,
+            motionHint,
+            characters,
+            visualBible,
+            qualityMode: creatorVisualRoute.qualityMode,
+            format: creatorVisualRoute.format,
+            imageUseCase: normalizedImageUseCase,
+            visualRoute: creatorVisualRoute,
+            sceneIndex:
+              typeof continuityContext?.sceneId === "number"
+                ? Math.max(0, continuityContext.sceneId - 1)
+                : undefined,
+            sceneCount: continuityContext?.sceneCount,
+            hasPreviousScene:
+              normalizedContinuityMode !== "independent" &&
+              Boolean(continuityContext?.previousScene),
+            hasNextScene:
+              normalizedContinuityMode === "consistent" &&
+              Boolean(continuityContext?.nextScene),
+          })
+        : null;
+
+    const smartSelectedCharacters = creatorSmartVisualPlan
+      ? selectCreatorSceneCharacters(characters, creatorSmartVisualPlan)
+      : characters;
+    const effectiveCharacters =
+      isCreatorLab &&
+      normalizedContinuityMode !== "independent" &&
+      (!smartSelectedCharacters || smartSelectedCharacters.length === 0) &&
+      characters?.length
+        ? [characters[0]]
+        : smartSelectedCharacters;
 
     if (creatorVisualRoute && !creatorVisualRoute.generationAllowed) {
       return NextResponse.json(
@@ -428,15 +514,16 @@ export async function POST(req: Request) {
     }
 
     const characterBlock = buildCharacterBlock(
-      characters,
+      effectiveCharacters,
       Boolean(useDefaultGuideCharacter),
       normalizedProductProfile,
     );
     const visualBlock = buildVisualBlock(
       visualBible,
       normalizedProductProfile,
+      normalizedContinuityMode,
     );
-    const continuityBlock = buildContinuityBlock(continuityContext);
+    const continuityBlock = buildContinuityBlock(continuityContext, normalizedContinuityMode);
     const shouldUsePremiumVisuals = isCreatorLab
       ? creatorVisualRoute?.qualityMode === "pro" ||
         creatorVisualRoute?.qualityMode === "cinematic" ||
@@ -501,14 +588,45 @@ Negative guidance:
 - no muddy lighting, blurry face, distorted hands, distorted eyes, or broken anatomy
 `;
 
+    const continuityInstructions =
+      normalizedContinuityMode === "independent"
+        ? [
+            "INDEPENDENT SCENE OVERRIDE:",
+            "- Do not carry a recurring person, location, prop, product state, metaphor, background, weather, time of day, or screen direction from another scene unless this scene explicitly names it.",
+            "- Do not force Character Cast members into this scene. Use only the effective cast selected from the current scene text.",
+            "- Preserve format, production quality and broad brand/style direction, but allow deliberate visual variety.",
+          ].join("\n")
+        : normalizedContinuityMode === "previous"
+          ? [
+              "DIRECT CONTINUATION:",
+              "- Continue the immediately previous scene as the next shot in the same sequence.",
+              "- Preserve active character identity, wardrobe, location, time, lighting, prop state, screen direction, lens logic and motion handoff.",
+              "- Change only what the current scene explicitly advances.",
+            ].join("\n")
+          : [
+              "SHARED CHARACTER AND WORLD:",
+              "- Preserve recurring character identity, wardrobe, key products, world rules, palette, lighting logic, realism level and brand language across linked scenes.",
+              "- Do not force the exact same shot or background when the current scene explicitly requests a new location, B-roll or metaphor.",
+            ].join("\n");
+
     const imagePrompt = `
-Create one polished still frame from the SAME coherent production universe.
+${normalizedContinuityMode === "independent"
+  ? "Create one polished standalone still frame for this scene."
+  : "Create one polished still frame from the SAME coherent production universe."}
 
 Production title:
 ${title || (isCreatorLab ? "Untitled Creator Production" : "Untitled Story")}
 
 Product context:
 ${productInstructions}
+
+${
+  creatorSmartVisualPlan
+    ? `Smart Visuals direction:
+${creatorSmartVisualPlan.promptBlock}
+`
+    : ""
+}
 
 Visual bible:
 ${visualBlock}
@@ -532,21 +650,18 @@ Adjacent-scene continuity:
 ${continuityBlock}
 
 High-priority continuity instructions:
-- preserve the visual bible as the single art-direction source across all scenes
-- preserve every user-defined cast member's identity, face, age impression, outfit, accessory, visual role, and behavior
-- if a character reference image is attached, treat it as canonical and do not reinterpret that identity
-- preserve palette, lighting logic, lens/camera language, texture level, realism level, brand cues, and editorial rhythm
-- keep the number and role of recurring people, products, props, and key objects stable
-- prioritize continuity over novelty while making this scene advance the visual story
+${continuityInstructions}
+- if a selected character reference image is attached, treat it as canonical for that selected character
 - strongly follow the requested camera direction and express motion as a frame that can transition naturally into animation
 ${shouldUsePremiumVisuals ? "- use premium production detail and stronger depth without adding clutter" : "- keep the frame controlled, readable, consistent, and credit-efficient"}
 ${negativeGuidance}
+${creatorSmartVisualPlan?.negativeGuidance || ""}
 
 Output target:
-${isCreatorLab ? "professional publish-ready creator asset" : "premium child-safe Storyverse frame"}, ${creatorVisualRoute?.targetAspectRatio || "Storyverse scene composition"}, coherent cast or faceless visual universe, clear focal idea, polished lighting, stable continuity.
+${isCreatorLab ? "professional publish-ready creator asset" : "premium child-safe Storyverse frame"}, ${creatorVisualRoute?.targetAspectRatio || "Storyverse scene composition"}, clear focal idea, polished lighting, ${normalizedContinuityMode === "independent" ? "intentional scene-level variety" : "stable selected continuity"}.
 `;
 
-    const imageProvider = getImageProvider();
+    const imageProvider = getMediaProviderFacade().image();
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_image",
@@ -570,7 +685,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
     const { files: referenceFiles, warnings: referenceWarnings } =
       isCreatorLab && creatorVisualRoute
         ? await loadReferenceImageFiles(
-            characters,
+            effectiveCharacters,
             creatorVisualRoute.referenceImageLimit,
           )
         : { files: [], warnings: [] };
@@ -612,6 +727,19 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
             targetAspectRatio: creatorVisualRoute.targetAspectRatio,
             frameRole: creatorVisualRoute.frameRole,
             continuityStrength: creatorVisualRoute.continuityStrength,
+            resolvedContinuityMode: normalizedContinuityMode,
+            smartVisuals: creatorSmartVisualPlan
+              ? {
+                  version: creatorSmartVisualPlan.version,
+                  archetype: creatorSmartVisualPlan.archetype,
+                  castPolicy: creatorSmartVisualPlan.castPolicy,
+                  selectedCharacterNames:
+                    creatorSmartVisualPlan.selectedCharacterNames,
+                  firstFrameRole: creatorSmartVisualPlan.firstFrameRole,
+                  referenceFrameKey:
+                    creatorSmartVisualPlan.referenceFrameKey,
+                }
+              : undefined,
             model: creatorVisualRoute.imageModel,
             quality: creatorVisualRoute.imageQuality,
             size: creatorVisualRoute.imageSize,
@@ -649,3 +777,5 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.image.generate", postHandler);

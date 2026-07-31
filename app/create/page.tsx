@@ -45,13 +45,44 @@ import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 import {
+  CREATOR_QUALITY_MODE_OPTIONS,
   getCreatorMediaRoute,
   getCreatorVideoBlockSceneIds,
   isCreatorMediaActionAllowed,
   type CreatorMediaAction,
   type CreatorQualityMode,
 } from "@/lib/creator/mediaRouting";
+import {
+  CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
+  normalizeCreatorSceneContinuityMode,
+  normalizeCreatorVisualContinuitySettings,
+  resolveCreatorVisualContinuityMode,
+  type CreatorProjectContinuityMode,
+  type CreatorSceneContinuityMode,
+  type CreatorVisualContinuitySettings,
+} from "@/lib/creator/visualContinuity";
+
+// CONT-P1R + 3L COMPLETION
 import { getCreatorVoiceRoute } from "@/lib/creator/voiceRouting";
+import {
+  CREATOR_VOICE_SELECTIONS,
+  getCreatorVoiceSelection,
+  getCreatorVoiceSelectionLabel,
+  normalizeCreatorVoiceSelectionId,
+  type CreatorVoiceSelectionId,
+} from "@/lib/creator/voiceProfiles";
+import { getOperationCreditCost } from "@/lib/credits/operationPolicy";
+import {
+  CREATOR_VOICE_FAVORITES_STORAGE_KEY,
+  CREATOR_VOICE_RECENTS_STORAGE_KEY,
+  getVoiceLibraryDisplayMeta,
+  normalizeVoiceLibrarySelection,
+  toVoiceLibrarySelection,
+  uniqueVoiceLibraryItems,
+  type CreatorVoiceLibrarySelection,
+  type CreatorVoiceLibrarySource,
+  type CreatorVoiceLibraryVoice,
+} from "@/lib/creator/voiceLibrary";
 import {
   creatorBriefRequestsDialogue,
   normalizeCreatorAdultCharacters,
@@ -336,6 +367,8 @@ function CreatorWorkspaceIcon({ name }: { name: CreatorWorkspaceIconName }) {
   );
 }
 
+// VELTO_VOICE_P1C
+
 type CreatorEditPlanPriority = "render_safe" | "review" | "edit_required";
 
 type CreatorEditPlanItem = {
@@ -364,6 +397,9 @@ type SceneTiming = {
   needsFreezeFrame: boolean;
   durationMatchStatus?: AudioDurationMatchStatus;
   plannedSceneDuration?: number;
+  durationDelta?: number;
+  speechTailBuffer?: number;
+  exactTimingLocked?: boolean;
   unnecessaryExtensionRemoved?: number;
   splitRecommended?: boolean;
   recommendedSplitCount?: number;
@@ -414,6 +450,15 @@ type CreatorSceneScriptDraft = {
 
 type CreatorSceneInspectorTab = "script" | "visual" | "audio";
 
+type CreatorVoicePickerTarget =
+  | { scope: "project_narrator" }
+  | { scope: "project_dialogue" }
+  | { scope: "scene_narrator"; sceneId: number }
+  | { scope: "scene_dialogue"; sceneId: number }
+  | { scope: "character"; characterIndex: number };
+
+type CreatorVoiceLibraryTab = "available" | "shared" | "favorites" | "recent";
+
 type CreatorSceneAssetKind = "image" | "video";
 
 type CreatorSceneAssetVersion = {
@@ -427,6 +472,8 @@ type CreatorSceneAssetVersion = {
 
 type Scene = {
   renderMode?: "video" | "image";
+  projectContinuityMode?: CreatorProjectContinuityMode;
+  continuityMode?: CreatorSceneContinuityMode;
   id: number;
   text: string;
   narration: string;
@@ -444,6 +491,10 @@ type Scene = {
   dialogueAudioPath?: string;
   dialogueAudioSourceText?: string;
   dialogueAudioSettingsKey?: string;
+  narratorVoiceProfileId?: CreatorVoiceSelectionId;
+  dialogueVoiceProfileId?: CreatorVoiceSelectionId;
+  narratorVoiceSelection?: CreatorVoiceLibrarySelection;
+  dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
   videoUrl?: string;
   videoStatus?: "idle" | "processing" | "done" | "error";
   videoJobId?: string;
@@ -487,6 +538,8 @@ type Character = {
   personality: string;
   referenceImage?: string;
   voiceId?: string;
+  voiceProfileId?: CreatorVoiceSelectionId;
+  voiceSelection?: CreatorVoiceLibrarySelection;
 };
 
 type VisualBible = {
@@ -505,6 +558,12 @@ type StorySetup = {
 
 type NarratorSettings = {
   voiceId?: string;
+  voiceSelection?: CreatorVoiceLibrarySelection;
+  dialogueVoiceId?: string;
+  dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
+  voiceProfileId?: CreatorVoiceSelectionId;
+  dialogueVoiceProfileId?: CreatorVoiceSelectionId;
+  advancedTuning?: boolean;
   modelId: string;
   stability: number;
   similarityBoost: number;
@@ -682,6 +741,20 @@ type CreatorProductionPackage = {
   qualityMode?: CreatorQualityMode;
   timelineSyncPlan?: TimelineSyncPlan;
   targetPlatforms?: CreatorPublishPlatform[];
+  voicePreferences?: {
+    narratorProfileId: CreatorVoiceSelectionId;
+    dialogueProfileId: CreatorVoiceSelectionId;
+    voiceId?: string;
+    voiceSelection?: CreatorVoiceLibrarySelection;
+    dialogueVoiceId?: string;
+    dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
+    modelId?: string;
+    stability?: number;
+    similarityBoost?: number;
+    style?: number;
+    speed?: number;
+    advancedTuning?: boolean;
+  };
   scriptPlan?: {
     version: string;
     durationSec: number;
@@ -1056,54 +1129,6 @@ function sameCreatorPlatformSelection(
   return left.length === right.length && left.every((item) => right.includes(item));
 }
 
-const CREATOR_QUALITY_MODE_OPTIONS: Array<{
-  value: CreatorQualityMode;
-  labelEn: string;
-  labelTr: string;
-  guidanceEn: string;
-  guidanceTr: string;
-  creditTierEn: string;
-  creditTierTr: string;
-}> = [
-  {
-    value: "draft",
-    labelEn: "Draft",
-    labelTr: "Taslak",
-    guidanceEn: "Strategy, hook, script outline and metadata planning only. No media generation.",
-    guidanceTr: "Strateji, hook, script taslağı ve metadata planlama. Medya üretimi yok.",
-    creditTierEn: "Lowest credit use",
-    creditTierTr: "En düşük kredi kullanımı",
-  },
-  {
-    value: "standard",
-    labelEn: "Standard",
-    labelTr: "Standart",
-    guidanceEn: "Next-generation medium-quality visuals and balanced voice production for efficient social packages.",
-    guidanceTr: "Verimli sosyal medya paketleri için yeni nesil orta kalite görseller ve dengeli ses üretimi.",
-    creditTierEn: "Balanced credit use",
-    creditTierTr: "Dengeli kredi kullanımı",
-  },
-  {
-    value: "pro",
-    labelEn: "Pro",
-    labelTr: "Pro",
-    guidanceEn: "High-fidelity professional visuals, realistic adult human rendering and reference-aware character consistency.",
-    guidanceTr: "Yüksek doğrulukta profesyonel görseller, gerçekçi yetişkin insan üretimi ve referans destekli karakter tutarlılığı.",
-    creditTierEn: "Higher credit use",
-    creditTierTr: "Daha yüksek kredi kullanımı",
-  },
-  {
-    value: "cinematic",
-    labelEn: "Cinematic",
-    labelTr: "Sinematik",
-    guidanceEn: "Maximum-fidelity visual masters, stronger multi-reference continuity and premium production routing.",
-    guidanceTr: "Maksimum doğrulukta ana görseller, daha güçlü çoklu referans sürekliliği ve premium üretim yönlendirmesi.",
-    creditTierEn: "Maximum credit use",
-    creditTierTr: "Maksimum kredi kullanımı",
-  },
-];
-
-
 const emptyVisualBible: VisualBible = {
   style: "",
   palette: "",
@@ -1113,6 +1138,12 @@ const emptyVisualBible: VisualBible = {
 
 const defaultNarratorSettings: NarratorSettings = {
   voiceId: "",
+  voiceSelection: undefined,
+  dialogueVoiceId: "",
+  dialogueVoiceSelection: undefined,
+  voiceProfileId: "velto_balanced",
+  dialogueVoiceProfileId: "velto_warm",
+  advancedTuning: false,
   modelId: "eleven_multilingual_v2",
   stability: 0.32,
   similarityBoost: 0.8,
@@ -1129,6 +1160,8 @@ const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[
   const normalizedCharacters = safeCharacters.map((character) => ({
     ...character,
     voiceId: character.voiceId || "",
+    voiceSelection: normalizeVoiceLibrarySelection(character.voiceSelection),
+    voiceProfileId: normalizeCreatorVoiceSelectionId(character.voiceProfileId, "velto_warm"),
   }));
 
   if (normalizedCharacters.some(isDefaultGuideCharacter)) {
@@ -1143,6 +1176,8 @@ const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[
     accessory: DEFAULT_CHARACTER.accessory,
     personality: DEFAULT_CHARACTER.personality,
     voiceId: "",
+    voiceSelection: undefined,
+    voiceProfileId: "velto_warm",
   };
 
   return [defaultGuideCharacter, ...normalizedCharacters];
@@ -1155,6 +1190,8 @@ const normalizeCreatorLabCharacters = (incomingCharacters?: Character[]): Charac
       ? incomingCharacters.map((character) => ({
           ...character,
           voiceId: character.voiceId || "",
+          voiceSelection: normalizeVoiceLibrarySelection(character.voiceSelection),
+          voiceProfileId: normalizeCreatorVoiceSelectionId(character.voiceProfileId, "velto_warm"),
         }))
       : [],
   ) as Character[];
@@ -1393,8 +1430,8 @@ const UI_TEXT = {
     outfitPlaceholder: "Kıyafet",
     accessoryPlaceholder: "Aksesuar",
     personalityPlaceholder: "Karakter enerjisi / kişiliği",
-    characterVoicePlaceholder: "Karakter voiceId (ElevenLabs)",
-    characterVoiceHint: "Diyaloglarda karakter sesi için buraya ElevenLabs voiceId girebilirsin. Boş bırakılırsa sistem varsayılan sesle devam eder.",
+    characterVoicePlaceholder: "Karakter ses referansı",
+    characterVoiceHint: "Diyaloglarda kullanılacak kayıtlı ses referansını buraya girebilirsin. Boş bırakılırsa sistem varsayılan sesle devam eder.",
     preparingReferenceImage: "Referans görsel hazırlanıyor...",
     generateReferenceImage: "Referans Görsel Üret",
     referenceImageAlt: "referans görseli",
@@ -1730,8 +1767,8 @@ const UI_TEXT = {
     outfitPlaceholder: "Outfit",
     accessoryPlaceholder: "Accessory",
     personalityPlaceholder: "Character energy / personality",
-    characterVoicePlaceholder: "Character voiceId (ElevenLabs)",
-    characterVoiceHint: "You can enter an ElevenLabs voiceId here for character dialogue. If left empty, the system will continue with the default voice.",
+    characterVoicePlaceholder: "Character voice reference",
+    characterVoiceHint: "You can enter a saved voice reference for character dialogue. If left empty, the system will continue with the default voice.",
     preparingReferenceImage: "Preparing reference image...",
     generateReferenceImage: "Generate Reference Image",
     referenceImageAlt: "reference image",
@@ -2015,14 +2052,13 @@ const buildSceneTiming = (
         targetSceneDuration - CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
       ).toFixed(2),
     );
-    const freezeDuration = Math.max(
-      0,
-      Number(
-        (
-          targetSceneDuration - durationMatch.plannedDurationSec
-        ).toFixed(2),
-      ),
-    );
+    // VELTO_VOICE_P1C: exact timing is based on measured audio, not the
+    // original scene budget. A shorter voice track shortens the scene instead
+    // of creating a silent/frozen tail. A longer track extends the scene.
+    const durationDelta = Number(durationMatch.durationDeltaSec.toFixed(2));
+    const freezeDuration = Math.max(0, durationDelta);
+    const exactTimingLocked =
+      totalAudioDuration > 0 && durationMatch.status !== "unmeasured";
 
     return {
       narrationDuration: safeNarration,
@@ -2034,6 +2070,9 @@ const buildSceneTiming = (
       needsFreezeFrame: freezeDuration > FREEZE_TOLERANCE_SECONDS,
       durationMatchStatus: durationMatch.status,
       plannedSceneDuration: durationMatch.plannedDurationSec,
+      durationDelta,
+      speechTailBuffer: durationMatch.tailBufferSec,
+      exactTimingLocked,
       unnecessaryExtensionRemoved:
         durationMatch.unnecessaryExtensionRemovedSec,
       splitRecommended: durationMatch.splitRecommended,
@@ -2882,7 +2921,13 @@ function rebuildCreatorVisualBlockPlan({
         [
           scene.visualPrompt || scene.text,
           purpose,
-          "Preserve subject identity, visual universe, lighting logic, and editorial continuity.",
+          scene.continuityMode === "previous"
+            ? "Continue directly from the previous scene while preserving the required subject, location, lighting, and camera handoff."
+            : scene.continuityMode === "consistent" ||
+                (scene.continuityMode === "project" &&
+                  scene.projectContinuityMode === "consistent")
+              ? "Preserve subject identity, visual universe, lighting logic, and editorial continuity."
+              : "Treat this as an independent B-roll or narrative beat. Do not carry a person, location, prop, or metaphor from another scene unless this scene explicitly requests it.",
         ]
           .filter(Boolean)
           .join(". "),
@@ -3074,6 +3119,16 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorVideoDurationSec>(60);
   const [creatorQualityMode, setCreatorQualityMode] =
     useState<CreatorQualityMode>("standard");
+  const [
+    creatorProjectContinuityMode,
+    setCreatorProjectContinuityMode,
+  ] = useState<CreatorProjectContinuityMode>("independent");
+  const [
+    creatorSceneContinuityModes,
+    setCreatorSceneContinuityModes,
+  ] = useState<Record<string, CreatorSceneContinuityMode>>({});
+  const [creatorContinuityHydrated, setCreatorContinuityHydrated] =
+    useState(false);
   const [creatorProfile, setCreatorProfile] =
     useState<CreatorProfile>(EMPTY_CREATOR_PROFILE);
   const [creatorProfileLoaded, setCreatorProfileLoaded] = useState(false);
@@ -3528,6 +3583,25 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(
     defaultNarratorSettings
   );
+  // VELTO_VOICE_P1B — embedded provider voice discovery without manual IDs.
+  const [voiceLibraryTarget, setVoiceLibraryTarget] = useState<CreatorVoicePickerTarget | null>(null);
+  const [voiceLibraryTab, setVoiceLibraryTab] = useState<CreatorVoiceLibraryTab>("available");
+  const [voiceLibraryVoices, setVoiceLibraryVoices] = useState<CreatorVoiceLibraryVoice[]>([]);
+  const [voiceLibraryFavorites, setVoiceLibraryFavorites] = useState<CreatorVoiceLibrarySelection[]>([]);
+  const [voiceLibraryRecents, setVoiceLibraryRecents] = useState<CreatorVoiceLibrarySelection[]>([]);
+  const [voiceLibrarySearch, setVoiceLibrarySearch] = useState("");
+  const [voiceLibraryLanguage, setVoiceLibraryLanguage] = useState("");
+  const [voiceLibraryGender, setVoiceLibraryGender] = useState("");
+  const [voiceLibraryAge, setVoiceLibraryAge] = useState("");
+  const [voiceLibraryAccent, setVoiceLibraryAccent] = useState("");
+  const [voiceLibraryUseCase, setVoiceLibraryUseCase] = useState("");
+  const [voiceLibraryLoading, setVoiceLibraryLoading] = useState(false);
+  const [voiceLibraryApplyingId, setVoiceLibraryApplyingId] = useState("");
+  const [voiceLibraryPlayingId, setVoiceLibraryPlayingId] = useState("");
+  const [voiceLibraryError, setVoiceLibraryError] = useState("");
+  const [voiceLibraryHasMore, setVoiceLibraryHasMore] = useState(false);
+  const [voiceLibraryNextPageToken, setVoiceLibraryNextPageToken] = useState("");
+  const [voiceLibraryStorageReady, setVoiceLibraryStorageReady] = useState(false);
 
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatorBriefDraftTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -3537,11 +3611,169 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const suspendAutosaveRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceLibraryAudioRef = useRef<HTMLAudioElement | null>(null);
   const storyPlaybackTokenRef = useRef(0);
   const dialoguePlaybackTokenRef = useRef(0);
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const favoriteValues = JSON.parse(
+        window.localStorage.getItem(CREATOR_VOICE_FAVORITES_STORAGE_KEY) || "[]",
+      );
+      const recentValues = JSON.parse(
+        window.localStorage.getItem(CREATOR_VOICE_RECENTS_STORAGE_KEY) || "[]",
+      );
+      setVoiceLibraryFavorites(
+        uniqueVoiceLibraryItems(
+          Array.isArray(favoriteValues)
+            ? favoriteValues
+                .map(normalizeVoiceLibrarySelection)
+                .filter((item): item is CreatorVoiceLibrarySelection => Boolean(item))
+            : [],
+          50,
+        ),
+      );
+      setVoiceLibraryRecents(
+        uniqueVoiceLibraryItems(
+          Array.isArray(recentValues)
+            ? recentValues
+                .map(normalizeVoiceLibrarySelection)
+                .filter((item): item is CreatorVoiceLibrarySelection => Boolean(item))
+            : [],
+          20,
+        ),
+      );
+    } catch (storageError) {
+      console.warn("Voice library preferences could not be restored.", storageError);
+    } finally {
+      setVoiceLibraryStorageReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!voiceLibraryStorageReady || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      CREATOR_VOICE_FAVORITES_STORAGE_KEY,
+      JSON.stringify(voiceLibraryFavorites),
+    );
+  }, [voiceLibraryFavorites, voiceLibraryStorageReady]);
+
+  useEffect(() => {
+    if (!voiceLibraryStorageReady || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      CREATOR_VOICE_RECENTS_STORAGE_KEY,
+      JSON.stringify(voiceLibraryRecents),
+    );
+  }, [voiceLibraryRecents, voiceLibraryStorageReady]);
+
+  useEffect(() => {
+    return () => {
+      if (voiceLibraryAudioRef.current) {
+        voiceLibraryAudioRef.current.pause();
+        voiceLibraryAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const getCreatorVisualContinuitySnapshot = (): CreatorVisualContinuitySettings => ({
+    projectMode: creatorProjectContinuityMode,
+    sceneModes: creatorSceneContinuityModes,
+  });
+
+  const attachCreatorVisualContinuity = <T,>(packageValue: T): T => {
+    if (!packageValue || typeof packageValue !== "object") {
+      return packageValue;
+    }
+
+    return {
+      ...(packageValue as Record<string, unknown>),
+      visualContinuity: getCreatorVisualContinuitySnapshot(),
+    } as T;
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const stored = window.localStorage.getItem(
+        CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
+      );
+      const settings = normalizeCreatorVisualContinuitySettings(
+        stored ? JSON.parse(stored) : null,
+      );
+      setCreatorProjectContinuityMode(settings.projectMode);
+      setCreatorSceneContinuityModes(settings.sceneModes);
+    } catch {
+      setCreatorProjectContinuityMode("independent");
+      setCreatorSceneContinuityModes({});
+    } finally {
+      setCreatorContinuityHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      !creatorContinuityHydrated ||
+      !isCreatorLabFlow ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
+      JSON.stringify(getCreatorVisualContinuitySnapshot()),
+    );
+  }, [
+    creatorContinuityHydrated,
+    creatorProjectContinuityMode,
+    creatorSceneContinuityModes,
+    isCreatorLabFlow,
+  ]);
+
+  useEffect(() => {
+    if (
+      !creatorContinuityHydrated ||
+      !isCreatorLabFlow ||
+      scenes.length === 0
+    ) {
+      return;
+    }
+
+    setScenes((currentScenes) => {
+      let changed = false;
+      const nextScenes = currentScenes.map((scene) => {
+        const continuityMode =
+          creatorSceneContinuityModes[String(scene.id)] || "project";
+
+        if (
+          scene.projectContinuityMode === creatorProjectContinuityMode &&
+          scene.continuityMode === continuityMode
+        ) {
+          return scene;
+        }
+
+        changed = true;
+        return {
+          ...scene,
+          projectContinuityMode: creatorProjectContinuityMode,
+          continuityMode,
+        };
+      });
+
+      return changed ? nextScenes : currentScenes;
+    });
+  }, [
+    creatorContinuityHydrated,
+    creatorProjectContinuityMode,
+    creatorSceneContinuityModes,
+    isCreatorLabFlow,
+    scenes.length,
+  ]);
 
   const getActiveMaxSpeechRatio = () => {
     return activeFlowKey === "creator_lab"
@@ -4651,6 +4883,500 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     });
   };
 
+  const getEffectiveNarratorVoiceProfileId = (scene?: Scene) =>
+    normalizeCreatorVoiceSelectionId(
+      scene?.narratorVoiceProfileId || narratorSettings.voiceProfileId,
+      "velto_balanced",
+    );
+
+  const getEffectiveDialogueVoiceProfileId = (scene?: Scene) => {
+    const matchingCharacter = scene?.dialogue
+      ? characters.find((character) =>
+          Boolean(character.name?.trim()) &&
+          scene.dialogue.toLocaleLowerCase("tr-TR").includes(
+            character.name.trim().toLocaleLowerCase("tr-TR"),
+          ),
+        )
+      : null;
+
+    return normalizeCreatorVoiceSelectionId(
+      scene?.dialogueVoiceProfileId ||
+        matchingCharacter?.voiceProfileId ||
+        narratorSettings.dialogueVoiceProfileId,
+      "velto_warm",
+    );
+  };
+
+  const getMatchingDialogueCharacter = (scene?: Scene) =>
+    scene?.dialogue
+      ? characters.find((character) =>
+          Boolean(character.name?.trim()) &&
+          scene.dialogue.toLocaleLowerCase("tr-TR").includes(
+            character.name.trim().toLocaleLowerCase("tr-TR"),
+          ),
+        )
+      : undefined;
+
+  const getEffectiveNarratorVoiceSelection = (scene?: Scene) =>
+    normalizeVoiceLibrarySelection(
+      scene?.narratorVoiceSelection || narratorSettings.voiceSelection,
+    );
+
+  const getEffectiveNarratorVoiceId = (scene?: Scene) =>
+    getEffectiveNarratorVoiceSelection(scene)?.voiceId ||
+    narratorSettings.voiceId?.trim() ||
+    "";
+
+  const getEffectiveDialogueVoiceSelection = (scene?: Scene) => {
+    const matchingCharacter = getMatchingDialogueCharacter(scene);
+    return normalizeVoiceLibrarySelection(
+      scene?.dialogueVoiceSelection ||
+        matchingCharacter?.voiceSelection ||
+        narratorSettings.dialogueVoiceSelection,
+    );
+  };
+
+  const getEffectiveDialogueVoiceId = (scene?: Scene) => {
+    const matchingCharacter = getMatchingDialogueCharacter(scene);
+    return (
+      getEffectiveDialogueVoiceSelection(scene)?.voiceId ||
+      matchingCharacter?.voiceId?.trim() ||
+      narratorSettings.dialogueVoiceId?.trim() ||
+      ""
+    );
+  };
+
+  const getVoiceLibraryTargetSelection = () => {
+    if (!voiceLibraryTarget) return undefined;
+    if (voiceLibraryTarget.scope === "project_narrator") {
+      return normalizeVoiceLibrarySelection(narratorSettings.voiceSelection);
+    }
+    if (voiceLibraryTarget.scope === "project_dialogue") {
+      return normalizeVoiceLibrarySelection(narratorSettings.dialogueVoiceSelection);
+    }
+    if (voiceLibraryTarget.scope === "scene_narrator") {
+      return normalizeVoiceLibrarySelection(
+        scenes.find((scene) => scene.id === voiceLibraryTarget.sceneId)
+          ?.narratorVoiceSelection,
+      );
+    }
+    if (voiceLibraryTarget.scope === "scene_dialogue") {
+      return normalizeVoiceLibrarySelection(
+        scenes.find((scene) => scene.id === voiceLibraryTarget.sceneId)
+          ?.dialogueVoiceSelection,
+      );
+    }
+    return normalizeVoiceLibrarySelection(
+      characters[voiceLibraryTarget.characterIndex]?.voiceSelection,
+    );
+  };
+
+  const getVoiceLibraryTargetLabel = () => {
+    if (!voiceLibraryTarget) return "";
+    const labels = {
+      project_narrator: uiLanguage === "en" ? "Project narrator" : "Proje anlatıcısı",
+      project_dialogue: uiLanguage === "en" ? "Project dialogue" : "Proje diyaloğu",
+      scene_narrator: uiLanguage === "en" ? "Scene narrator" : "Sahne anlatıcısı",
+      scene_dialogue: uiLanguage === "en" ? "Scene dialogue" : "Sahne diyaloğu",
+      character: uiLanguage === "en" ? "Character voice" : "Karakter sesi",
+    } as const;
+    return labels[voiceLibraryTarget.scope];
+  };
+
+  const getVoiceLibraryDisplayedVoices = () => {
+    const source =
+      voiceLibraryTab === "favorites"
+        ? voiceLibraryFavorites
+        : voiceLibraryTab === "recent"
+          ? voiceLibraryRecents
+          : voiceLibraryVoices;
+    const search = voiceLibrarySearch.trim().toLocaleLowerCase("en-US");
+    return source.filter((voice) => {
+      const haystack = [
+        voice.name,
+        voice.description,
+        voice.language,
+        voice.locale,
+        voice.accent,
+        voice.gender,
+        voice.age,
+        voice.useCase,
+        voice.descriptive,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("en-US");
+      const matchesSearch = !search || haystack.includes(search);
+      const matchesLanguage =
+        !voiceLibraryLanguage ||
+        !voice.language ||
+        `${voice.language} ${voice.locale || ""}`
+          .toLocaleLowerCase("en-US")
+          .includes(voiceLibraryLanguage.toLocaleLowerCase("en-US"));
+      const matchesGender =
+        !voiceLibraryGender ||
+        !voice.gender ||
+        voice.gender.toLocaleLowerCase("en-US").includes(
+          voiceLibraryGender.toLocaleLowerCase("en-US"),
+        );
+      const matchesAge =
+        !voiceLibraryAge ||
+        !voice.age ||
+        voice.age.toLocaleLowerCase("en-US").includes(
+          voiceLibraryAge.toLocaleLowerCase("en-US"),
+        );
+      const matchesAccent =
+        !voiceLibraryAccent ||
+        !voice.accent ||
+        voice.accent.toLocaleLowerCase("en-US").includes(
+          voiceLibraryAccent.toLocaleLowerCase("en-US"),
+        );
+      const matchesUseCase =
+        !voiceLibraryUseCase ||
+        !voice.useCase ||
+        voice.useCase.toLocaleLowerCase("en-US").includes(
+          voiceLibraryUseCase.toLocaleLowerCase("en-US"),
+        );
+      return (
+        matchesSearch &&
+        matchesLanguage &&
+        matchesGender &&
+        matchesAge &&
+        matchesAccent &&
+        matchesUseCase
+      );
+    });
+  };
+
+  const loadCreatorVoiceLibrary = async (
+    source: CreatorVoiceLibrarySource,
+    append = false,
+    pageToken = "",
+    overrides?: { language?: string },
+  ) => {
+    setVoiceLibraryLoading(true);
+    setVoiceLibraryError("");
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      const params = new URLSearchParams({
+        source,
+        pageSize: "24",
+      });
+      if (voiceLibrarySearch.trim()) params.set("search", voiceLibrarySearch.trim());
+      const requestedLanguage = overrides?.language ?? voiceLibraryLanguage;
+      if (requestedLanguage.trim()) params.set("language", requestedLanguage.trim());
+      if (voiceLibraryGender.trim()) params.set("gender", voiceLibraryGender.trim());
+      if (voiceLibraryAge.trim()) params.set("age", voiceLibraryAge.trim());
+      if (voiceLibraryAccent.trim()) params.set("accent", voiceLibraryAccent.trim());
+      if (voiceLibraryUseCase.trim()) params.set("useCase", voiceLibraryUseCase.trim());
+      if (pageToken) params.set("pageToken", pageToken);
+
+      const response = await fetch(`/api/voice-library?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "Voice library could not be loaded.");
+      }
+      const incoming = Array.isArray(data.voices) ? data.voices : [];
+      setVoiceLibraryVoices((current) =>
+        uniqueVoiceLibraryItems(
+          append ? [...current, ...incoming] : incoming,
+          100,
+        ),
+      );
+      setVoiceLibraryHasMore(data.hasMore === true);
+      setVoiceLibraryNextPageToken(
+        typeof data.nextPageToken === "string" ? data.nextPageToken : "",
+      );
+    } catch (libraryError) {
+      setVoiceLibraryError(
+        libraryError instanceof Error
+          ? libraryError.message
+          : uiLanguage === "en"
+            ? "Voice library could not be loaded."
+            : "Ses kütüphanesi yüklenemedi.",
+      );
+    } finally {
+      setVoiceLibraryLoading(false);
+    }
+  };
+
+  const openCreatorVoiceLibrary = (target: CreatorVoicePickerTarget) => {
+    setVoiceLibraryTarget(target);
+    setVoiceLibraryTab("available");
+    setVoiceLibrarySearch("");
+    setVoiceLibraryLanguage(language);
+    setVoiceLibraryGender("");
+    setVoiceLibraryAge("");
+    setVoiceLibraryAccent("");
+    setVoiceLibraryUseCase("");
+    setVoiceLibraryVoices([]);
+    setVoiceLibraryError("");
+    setVoiceLibraryHasMore(false);
+    setVoiceLibraryNextPageToken("");
+    window.setTimeout(() => {
+      void loadCreatorVoiceLibrary("available", false, "", { language });
+    }, 0);
+  };
+
+  const closeCreatorVoiceLibrary = () => {
+    if (voiceLibraryAudioRef.current) {
+      voiceLibraryAudioRef.current.pause();
+      voiceLibraryAudioRef.current = null;
+    }
+    setVoiceLibraryPlayingId("");
+    setVoiceLibraryTarget(null);
+  };
+
+  const previewCreatorVoice = (voice: CreatorVoiceLibraryVoice) => {
+    if (!voice.previewUrl) return;
+    if (voiceLibraryAudioRef.current) {
+      voiceLibraryAudioRef.current.pause();
+      voiceLibraryAudioRef.current = null;
+    }
+    if (voiceLibraryPlayingId === voice.voiceId) {
+      setVoiceLibraryPlayingId("");
+      return;
+    }
+    const audio = new Audio(voice.previewUrl);
+    voiceLibraryAudioRef.current = audio;
+    setVoiceLibraryPlayingId(voice.voiceId);
+    audio.onended = () => {
+      setVoiceLibraryPlayingId("");
+      voiceLibraryAudioRef.current = null;
+    };
+    audio.onerror = () => {
+      setVoiceLibraryPlayingId("");
+      voiceLibraryAudioRef.current = null;
+      setVoiceLibraryError(
+        uiLanguage === "en"
+          ? "This voice preview could not be played."
+          : "Bu ses önizlemesi oynatılamadı.",
+      );
+    };
+    void audio.play();
+  };
+
+  const toggleCreatorVoiceFavorite = (voice: CreatorVoiceLibraryVoice) => {
+    const exists = voiceLibraryFavorites.some((item) => item.voiceId === voice.voiceId);
+    setVoiceLibraryFavorites((current) =>
+      exists
+        ? current.filter((item) => item.voiceId !== voice.voiceId)
+        : uniqueVoiceLibraryItems([toVoiceLibrarySelection(voice), ...current], 50),
+    );
+  };
+
+  const applyCreatorVoiceLibrarySelection = async (
+    selectedVoice: CreatorVoiceLibraryVoice,
+  ) => {
+    if (!voiceLibraryTarget) return;
+    setVoiceLibraryApplyingId(selectedVoice.voiceId);
+    setVoiceLibraryError("");
+    try {
+      let voice = selectedVoice;
+      if (voice.source === "shared") {
+        if (!voice.publicOwnerId) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "This shared voice is missing its owner reference."
+              : "Bu paylaşılan sesin sahip referansı eksik.",
+          );
+        }
+        const accessToken = await getAccessTokenOrThrow();
+        const response = await fetch("/api/voice-library", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            action: "add_shared",
+            publicOwnerId: voice.publicOwnerId,
+            voiceId: voice.voiceId,
+            name: voice.name,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "Voice could not be added.");
+        }
+        voice = { ...voice, voiceId: data.voiceId || voice.voiceId };
+      }
+
+      const selection = toVoiceLibrarySelection(voice);
+      stopDialoguePlayback();
+      stopStoryPlayback();
+
+      if (voiceLibraryTarget.scope === "project_narrator") {
+        setNarratorSettings((current) => ({
+          ...current,
+          voiceId: selection.voiceId,
+          voiceSelection: selection,
+        }));
+        clearAllSceneAudioData();
+      } else if (voiceLibraryTarget.scope === "project_dialogue") {
+        setNarratorSettings((current) => ({
+          ...current,
+          dialogueVoiceId: selection.voiceId,
+          dialogueVoiceSelection: selection,
+        }));
+        clearAllSceneDialogueAudioData();
+      } else if (voiceLibraryTarget.scope === "scene_narrator") {
+        setScenes((currentScenes) =>
+          currentScenes.map((scene) =>
+            scene.id === voiceLibraryTarget.sceneId
+              ? {
+                  ...scene,
+                  narratorVoiceSelection: selection,
+                  audioUrl: "",
+                  audioPath: "",
+                  audioSourceText: "",
+                  audioSettingsKey: "",
+                  timing: buildSceneTimingForCurrentFlow(
+                    0,
+                    scene.timing?.dialogueDuration || 0,
+                    scene,
+                  ),
+                }
+              : scene,
+          ),
+        );
+      } else if (voiceLibraryTarget.scope === "scene_dialogue") {
+        setScenes((currentScenes) =>
+          currentScenes.map((scene) =>
+            scene.id === voiceLibraryTarget.sceneId
+              ? {
+                  ...scene,
+                  dialogueVoiceSelection: selection,
+                  dialogueAudioUrl: "",
+                  dialogueAudioPath: "",
+                  dialogueAudioSourceText: "",
+                  dialogueAudioSettingsKey: "",
+                  timing: buildSceneTimingForCurrentFlow(
+                    scene.timing?.narrationDuration || 0,
+                    0,
+                    scene,
+                  ),
+                }
+              : scene,
+          ),
+        );
+      } else {
+        updateCharacter(voiceLibraryTarget.characterIndex, "voiceId", selection.voiceId);
+        updateCharacter(voiceLibraryTarget.characterIndex, "voiceSelection", selection);
+        clearAllSceneDialogueAudioData();
+      }
+
+      clearAllSceneTimingData();
+      setVoiceLibraryRecents((current) =>
+        uniqueVoiceLibraryItems([selection, ...current], 20),
+      );
+      closeCreatorVoiceLibrary();
+    } catch (selectionError) {
+      setVoiceLibraryError(
+        selectionError instanceof Error
+          ? selectionError.message
+          : uiLanguage === "en"
+            ? "Voice could not be selected."
+            : "Ses seçilemedi.",
+      );
+    } finally {
+      setVoiceLibraryApplyingId("");
+    }
+  };
+
+  const clearCreatorVoiceLibrarySelection = () => {
+    if (!voiceLibraryTarget) return;
+    if (voiceLibraryTarget.scope === "project_narrator") {
+      setNarratorSettings((current) => ({
+        ...current,
+        voiceId: "",
+        voiceSelection: undefined,
+      }));
+      clearAllSceneAudioData();
+    } else if (voiceLibraryTarget.scope === "project_dialogue") {
+      setNarratorSettings((current) => ({
+        ...current,
+        dialogueVoiceId: "",
+        dialogueVoiceSelection: undefined,
+      }));
+      clearAllSceneDialogueAudioData();
+    } else if (voiceLibraryTarget.scope === "scene_narrator") {
+      setScenes((current) =>
+        current.map((scene) =>
+          scene.id === voiceLibraryTarget.sceneId
+            ? { ...scene, narratorVoiceSelection: undefined, audioUrl: "", audioPath: "", audioSourceText: "", audioSettingsKey: "" }
+            : scene,
+        ),
+      );
+    } else if (voiceLibraryTarget.scope === "scene_dialogue") {
+      setScenes((current) =>
+        current.map((scene) =>
+          scene.id === voiceLibraryTarget.sceneId
+            ? { ...scene, dialogueVoiceSelection: undefined, dialogueAudioUrl: "", dialogueAudioPath: "", dialogueAudioSourceText: "", dialogueAudioSettingsKey: "" }
+            : scene,
+        ),
+      );
+    } else {
+      updateCharacter(voiceLibraryTarget.characterIndex, "voiceId", "");
+      updateCharacter(voiceLibraryTarget.characterIndex, "voiceSelection", undefined);
+      clearAllSceneDialogueAudioData();
+    }
+    clearAllSceneTimingData();
+    closeCreatorVoiceLibrary();
+  };
+
+  const getCreatorVoiceCreditEstimate = (targetScenes: Scene[]) => {
+    const narrationTracks = targetScenes.filter(
+      (scene) => scene.narration?.trim() && !getSceneAudioStatus(scene),
+    ).length;
+    const dialogueTracks = targetScenes.filter(
+      (scene) => scene.dialogue?.trim() && !getSceneDialogueAudioStatus(scene),
+    ).length;
+    const narrationCredits =
+      narrationTracks * getOperationCreditCost("creator_voice", creatorQualityMode);
+    const dialogueCredits =
+      dialogueTracks * getOperationCreditCost("creator_dialogue_voice", creatorQualityMode);
+
+    return {
+      narrationTracks,
+      dialogueTracks,
+      totalTracks: narrationTracks + dialogueTracks,
+      totalCredits: narrationCredits + dialogueCredits,
+    };
+  };
+
+  const applyCreatorVoiceProfile = (
+    profileId: CreatorVoiceSelectionId,
+    role: "narrator" | "dialogue",
+  ) => {
+    const profile = getCreatorVoiceSelection(profileId);
+    stopDialoguePlayback();
+    stopStoryPlayback();
+    setNarratorSettings((current) =>
+      role === "narrator"
+        ? {
+            ...current,
+            voiceProfileId: profile.id,
+            advancedTuning: false,
+            ...profile.settings,
+          }
+        : {
+            ...current,
+            dialogueVoiceProfileId: profile.id,
+          },
+    );
+
+    if (role === "narrator") {
+      clearAllSceneAudioData();
+    } else {
+      clearAllSceneDialogueAudioData();
+    }
+    clearAllSceneTimingData();
+  };
+
   const getNarratorSettingsKey = (
     settings: NarratorSettings,
     routeKey = "",
@@ -4669,17 +5395,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const getSceneAudioStatus = (scene: Scene) => {
+    const effectiveVoiceId = getEffectiveNarratorVoiceId(scene);
     const voiceRoute = getCreatorSceneVoiceContext({
       scene,
       role: "narrator",
       text: scene.narration,
       companionText: scene.dialogue,
-      hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
+      hasExplicitVoiceId: Boolean(effectiveVoiceId),
       voiceProfile: getCreatorNarratorProfileHint(),
     });
+    const effectiveVoiceProfileId = getEffectiveNarratorVoiceProfileId(scene);
     const currentSettingsKey = getNarratorSettingsKey(
-      narratorSettings,
+      { ...narratorSettings, voiceId: effectiveVoiceId },
       voiceRoute?.routeKey,
+      `${effectiveVoiceProfileId}:${effectiveVoiceId || "profile-default"}`,
     );
 
     return !!(
@@ -4695,10 +5424,15 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       return true;
     }
 
+    const effectiveVoiceProfileId = getEffectiveDialogueVoiceProfileId(scene);
+    const effectiveVoiceId = getEffectiveDialogueVoiceId(scene);
+
     return !!(
       scene.dialogueAudioUrl &&
       scene.dialogueAudioSourceText &&
-      scene.dialogueAudioSourceText === scene.dialogue
+      scene.dialogueAudioSourceText === scene.dialogue &&
+      scene.dialogueAudioSettingsKey?.includes(effectiveVoiceProfileId) &&
+      scene.dialogueAudioSettingsKey?.includes(effectiveVoiceId || "profile-default")
     );
   };
 
@@ -4919,7 +5653,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     };
   };
 
-  const getSafeCreatorContinuityContext = (sceneId: number) => {
+  const getSafeCreatorContinuityContext = (
+    sceneId: number,
+    continuityMode: "independent" | "consistent" | "previous",
+  ) => {
+    if (continuityMode === "independent") {
+      return null;
+    }
+
     const sceneIndex = scenes.findIndex((scene) => scene.id === sceneId);
 
     if (sceneIndex < 0) {
@@ -4945,11 +5686,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       sceneId,
       sceneCount: scenes.length,
       previousScene: toContinuityScene(scenes[sceneIndex - 1]),
-      nextScene: toContinuityScene(scenes[sceneIndex + 1]),
+      nextScene:
+        continuityMode === "consistent"
+          ? toContinuityScene(scenes[sceneIndex + 1])
+          : null,
     };
   };
 
-  const generateSceneImage = async (
+const generateSceneImage = async (
     scene: Pick<Scene, "id" | "text" | "cameraDirection" | "emotion" | "motionHint">,
     options?: {
       isHookScene?: boolean;
@@ -4983,6 +5727,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     );
     const imageUseCase =
       options?.imageUseCase || (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
+    const resolvedContinuityMode = isCreatorLabFlow
+      ? getCreatorResolvedContinuityMode(scene as Scene)
+      : "consistent";
     const creatorTextFreeSceneText = isCreatorLabFlow
       ? [
           safeScene.text,
@@ -5009,6 +5756,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
         qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
+        continuityMode: isCreatorLabFlow
+          ? resolvedContinuityMode
+          : undefined,
         projectId: getProjectKey(),
         sceneId: scene.id,
         title: isCreatorLabFlow ? "" : limitForImagePrompt(title, 160),
@@ -5023,7 +5773,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         premiumVisualMode,
         imageUseCase,
         continuityContext: isCreatorLabFlow
-          ? getSafeCreatorContinuityContext(scene.id)
+          ? getSafeCreatorContinuityContext(scene.id, resolvedContinuityMode)
           : undefined,
       }),
     });
@@ -5104,17 +5854,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const getSceneAudioUrl = async (scene: Scene) => {
     const voiceProfile = getCreatorNarratorProfileHint();
+    const effectiveVoiceId = getEffectiveNarratorVoiceId(scene);
     const voiceRoute = getCreatorSceneVoiceContext({
       scene,
       role: "narrator",
       text: scene.narration,
       companionText: scene.dialogue,
-      hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
+      hasExplicitVoiceId: Boolean(effectiveVoiceId),
       voiceProfile,
     });
+    const effectiveVoiceProfileId = getEffectiveNarratorVoiceProfileId(scene);
     const currentSettingsKey = getNarratorSettingsKey(
-      narratorSettings,
+      { ...narratorSettings, voiceId: effectiveVoiceId },
       voiceRoute?.routeKey,
+      `${effectiveVoiceProfileId}:${effectiveVoiceId || "profile-default"}`,
     );
 
     if (
@@ -5151,7 +5904,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         text: scene.narration,
         sceneId: scene.id,
         projectKey: getProjectKey(),
-        narratorSettings,
+        narratorSettings: {
+          ...narratorSettings,
+          voiceId: effectiveVoiceId,
+          voiceSelection: getEffectiveNarratorVoiceSelection(scene),
+          voiceProfileId: getEffectiveNarratorVoiceProfileId(scene),
+        },
         language,
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
         qualityMode: creatorQualityMode,
@@ -5307,15 +6065,19 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       throw new Error("Bu sahnede diyalog üretilecek içerik bulunamadı.");
     }
 
-    const voiceIdentityKey = lines
-      .map((line) => `${line.speaker}:${line.voiceId || "fallback"}`)
-      .join("|");
+    const dialogueVoiceProfileId = getEffectiveDialogueVoiceProfileId(scene);
+    const effectiveDialogueVoiceId = getEffectiveDialogueVoiceId(scene);
+    const voiceIdentityKey = [
+      dialogueVoiceProfileId,
+      effectiveDialogueVoiceId || "profile-default",
+      ...lines.map((line) => `${line.speaker}:${line.voiceId || "fallback"}`),
+    ].join("|");
     const voiceRoute = getCreatorSceneVoiceContext({
       scene,
       role: "dialogue",
       text: lines.map((line) => line.text).join(" "),
       companionText: scene.narration,
-      hasExplicitVoiceId: lines.some((line) => Boolean(line.voiceId)),
+      hasExplicitVoiceId: Boolean(effectiveDialogueVoiceId) || lines.some((line) => Boolean(line.voiceId)),
       voiceProfile: voiceIdentityKey,
     });
     const currentSettingsKey = getNarratorSettingsKey(
@@ -5356,6 +6118,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       },
       body: JSON.stringify({
         lines,
+        voiceId: effectiveDialogueVoiceId,
+        voiceSelection: getEffectiveDialogueVoiceSelection(scene),
         sceneId: scene.id,
         projectKey: getProjectKey(),
         sourceText: scene.dialogue,
@@ -5372,6 +6136,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         sceneIndex: scenes.findIndex((item) => item.id === scene.id),
         sceneCount: scenes.length,
         voiceProfile: voiceIdentityKey,
+        voiceProfileId: dialogueVoiceProfileId,
+        advancedVoiceTuning: narratorSettings.advancedTuning === true,
         companionText: scene.narration,
         clientSettingsKey: currentSettingsKey,
       }),
@@ -6414,8 +7180,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       setSaveMessage(
         data?.premiumFallbackUsed
           ? uiLanguage === "en"
-            ? "Cinematic generation started with the primary video service because the premium service is not configured yet."
-            : "Premium servis henüz yapılandırılmadığı için sinematik üretim ana video servisiyle başlatıldı."
+            ? "Cinematic production started with the standard motion route because the highest-quality motion route is not available in this environment."
+            : "En yüksek kaliteli hareket rotası kullanılamadığı için sinematik üretim standart hareket rotasıyla başlatıldı."
           : uiLanguage === "en"
             ? "Video generation started. Velto Studio will update this scene when the motion block is ready."
             : "Video üretimi başlatıldı. Hareketli blok hazır olduğunda Velto Studio bu sahneyi güncelleyecek.",
@@ -6504,7 +7270,26 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         characters,
         visualBible,
         scenes: snapshotScenes,
-        creatorProductionPackage,
+        creatorProductionPackage: creatorProductionPackage
+          ? {
+              ...creatorProductionPackage,
+              visualContinuity: getCreatorVisualContinuitySnapshot(),
+            voicePreferences: {
+                narratorProfileId: getEffectiveNarratorVoiceProfileId(),
+                dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
+                voiceId: narratorSettings.voiceId || "",
+                voiceSelection: narratorSettings.voiceSelection,
+                dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
+                dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
+                modelId: narratorSettings.modelId,
+                stability: narratorSettings.stability,
+                similarityBoost: narratorSettings.similarityBoost,
+                style: narratorSettings.style,
+                speed: narratorSettings.speed,
+                advancedTuning: narratorSettings.advancedTuning === true,
+              },
+            }
+          : null,
         youtubeMetadataResult,
         youtubeThumbnailResult,
         sceneOptimizationResult,
@@ -8063,7 +8848,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
             characters,
             visualBible,
             scenes,
-            creatorProductionPackage,
+            creatorProductionPackage: attachCreatorVisualContinuity(creatorProductionPackage),
             youtubeMetadataResult,
             youtubeThumbnailResult,
             sceneOptimizationResult,
@@ -8461,7 +9246,26 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         characters,
         visualBible,
         scenes,
-        creatorProductionPackage,
+        creatorProductionPackage: creatorProductionPackage
+          ? {
+              ...creatorProductionPackage,
+              visualContinuity: getCreatorVisualContinuitySnapshot(),
+            voicePreferences: {
+                narratorProfileId: getEffectiveNarratorVoiceProfileId(),
+                dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
+                voiceId: narratorSettings.voiceId || "",
+                voiceSelection: narratorSettings.voiceSelection,
+                dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
+                dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
+                modelId: narratorSettings.modelId,
+                stability: narratorSettings.stability,
+                similarityBoost: narratorSettings.similarityBoost,
+                style: narratorSettings.style,
+                speed: narratorSettings.speed,
+                advancedTuning: narratorSettings.advancedTuning === true,
+              },
+            }
+          : null,
         youtubeMetadataResult,
         youtubeThumbnailResult,
         sceneOptimizationResult,
@@ -8613,6 +9417,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
               dialogueAudioPath: scene.dialogueAudioPath || "",
               dialogueAudioSourceText: scene.dialogueAudioSourceText || "",
               dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey || "",
+              narratorVoiceProfileId: scene.narratorVoiceProfileId
+                ? normalizeCreatorVoiceSelectionId(scene.narratorVoiceProfileId)
+                : undefined,
+              dialogueVoiceProfileId: scene.dialogueVoiceProfileId
+                ? normalizeCreatorVoiceSelectionId(scene.dialogueVoiceProfileId, "velto_warm")
+                : undefined,
+              narratorVoiceSelection: normalizeVoiceLibrarySelection(scene.narratorVoiceSelection),
+              dialogueVoiceSelection: normalizeVoiceLibrarySelection(scene.dialogueVoiceSelection),
               videoUrl: scene.videoUrl || "",
               videoStatus: scene.videoStatus || "idle",
               videoJobId: scene.videoJobId || "",
@@ -8633,6 +9445,41 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
       setCreatorMentorResult(project.creator_mentor_result || null);
 
+      const savedVisualContinuity =
+        savedCreatorPackage && typeof savedCreatorPackage === "object"
+          ? (savedCreatorPackage as Record<string, unknown>).visualContinuity
+          : null;
+      const loadedSceneContinuityModes = Object.fromEntries(
+        (loadedProjectScenes as Scene[])
+          .filter((scene) => Boolean(scene.continuityMode))
+          .map((scene) => [
+            String(scene.id),
+            normalizeCreatorSceneContinuityMode(scene.continuityMode),
+          ]),
+      );
+      const savedContinuityRecord =
+        savedVisualContinuity && typeof savedVisualContinuity === "object"
+          ? (savedVisualContinuity as Record<string, unknown>)
+          : {};
+      const loadedContinuitySettings =
+        normalizeCreatorVisualContinuitySettings({
+          ...savedContinuityRecord,
+          projectMode:
+            savedContinuityRecord.projectMode ||
+            loadedProjectScenes[0]?.projectContinuityMode ||
+            "independent",
+          sceneModes: {
+            ...(savedContinuityRecord.sceneModes &&
+            typeof savedContinuityRecord.sceneModes === "object"
+              ? savedContinuityRecord.sceneModes as Record<string, unknown>
+              : {}),
+            ...loadedSceneContinuityModes,
+          },
+        });
+      setCreatorProjectContinuityMode(loadedContinuitySettings.projectMode);
+      setCreatorSceneContinuityModes(loadedContinuitySettings.sceneModes);
+      setCreatorContinuityHydrated(true);
+
       const savedQualityMode = normalizedSavedCreatorPackage?.qualityMode;
       if (
         savedQualityMode === "draft" ||
@@ -8649,6 +9496,61 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       ) {
         setCreatorVideoDurationSec(savedCreatorPackage.durationSec);
         setCreatorCustomDurationSec(savedCreatorPackage.durationSec);
+      }
+
+      const savedVoicePreferences = normalizedSavedCreatorPackage?.voicePreferences;
+      if (savedVoicePreferences) {
+        const narratorProfileId = normalizeCreatorVoiceSelectionId(
+          savedVoicePreferences.narratorProfileId,
+          "velto_balanced",
+        );
+        const dialogueProfileId = normalizeCreatorVoiceSelectionId(
+          savedVoicePreferences.dialogueProfileId,
+          "velto_warm",
+        );
+        const narratorProfile = getCreatorVoiceSelection(narratorProfileId);
+        setNarratorSettings((current) => ({
+          ...current,
+          ...narratorProfile.settings,
+          voiceProfileId: narratorProfileId,
+          dialogueVoiceProfileId: dialogueProfileId,
+          voiceId:
+            typeof savedVoicePreferences.voiceId === "string"
+              ? savedVoicePreferences.voiceId
+              : "",
+          voiceSelection: normalizeVoiceLibrarySelection(savedVoicePreferences.voiceSelection),
+          dialogueVoiceId:
+            typeof savedVoicePreferences.dialogueVoiceId === "string"
+              ? savedVoicePreferences.dialogueVoiceId
+              : "",
+          dialogueVoiceSelection: normalizeVoiceLibrarySelection(
+            savedVoicePreferences.dialogueVoiceSelection,
+          ),
+          modelId:
+            typeof savedVoicePreferences.modelId === "string" &&
+            savedVoicePreferences.modelId.trim()
+              ? savedVoicePreferences.modelId
+              : current.modelId,
+          stability:
+            typeof savedVoicePreferences.stability === "number"
+              ? savedVoicePreferences.stability
+              : narratorProfile.settings.stability,
+          similarityBoost:
+            typeof savedVoicePreferences.similarityBoost === "number"
+              ? savedVoicePreferences.similarityBoost
+              : narratorProfile.settings.similarityBoost,
+          style:
+            typeof savedVoicePreferences.style === "number"
+              ? savedVoicePreferences.style
+              : narratorProfile.settings.style,
+          speed:
+            typeof savedVoicePreferences.speed === "number"
+              ? savedVoicePreferences.speed
+              : narratorProfile.settings.speed,
+          advancedTuning: savedVoicePreferences.advancedTuning === true,
+        }));
+      } else {
+        setNarratorSettings(defaultNarratorSettings);
       }
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
@@ -8697,6 +9599,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
             ? project.characters.map((character: Character) => ({
                 ...character,
                 voiceId: character.voiceId || "",
+                voiceSelection: normalizeVoiceLibrarySelection(character.voiceSelection),
+                voiceProfileId: normalizeCreatorVoiceSelectionId(
+                  character.voiceProfileId,
+                  "velto_warm",
+                ),
               }))
             : [],
         visualBible: project.visual_bible || emptyVisualBible,
@@ -9100,7 +10007,125 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       : "Bu medya aksiyonu seçilen üretim kalitesinde kullanılamaz.";
   };
 
-  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
+  // 3K SMART MEDIA ROUTING V3 HELPERS START
+  const getCreatorSceneContinuityMode = (
+    scene: Pick<Scene, "id" | "continuityMode">,
+  ): CreatorSceneContinuityMode =>
+    normalizeCreatorSceneContinuityMode(
+      creatorSceneContinuityModes[String(scene.id)] ||
+        scene.continuityMode ||
+        "project",
+    );
+
+  const getCreatorResolvedContinuityMode = (
+    scene: Pick<Scene, "id" | "continuityMode">,
+  ): "independent" | "consistent" | "previous" =>
+    resolveCreatorVisualContinuityMode({
+      projectMode: creatorProjectContinuityMode,
+      sceneMode: getCreatorSceneContinuityMode(scene),
+      isFirstScene: scenes.findIndex((item) => item.id === scene.id) <= 0,
+    });
+
+  const updateCreatorSceneContinuityMode = (
+    sceneId: number,
+    mode: CreatorSceneContinuityMode,
+  ) => {
+    const sceneIndex = scenes.findIndex((scene) => scene.id === sceneId);
+    const normalizedMode =
+      sceneIndex <= 0 && mode === "previous"
+        ? "independent"
+        : normalizeCreatorSceneContinuityMode(mode);
+
+    setCreatorSceneContinuityModes((current) => ({
+      ...current,
+      [String(sceneId)]: normalizedMode,
+    }));
+
+    setSaveMessage(
+      uiLanguage === "en"
+        ? "Scene continuity updated. It will apply to the next visual generation."
+        : "Sahne devamlılığı güncellendi. Bir sonraki görsel üretiminde uygulanacak.",
+    );
+  };
+
+  const getCreatorSceneRequestedOutputMode = (
+    scene: Scene,
+  ): "auto" | "image" | "video" => {
+    const sceneWithRouting = scene as Scene & {
+      renderMode?: string;
+      creatorRenderMode?: string;
+      outputMode?: string;
+      mediaMode?: string;
+    };
+    const rawMode = String(
+      sceneWithRouting.renderMode ||
+        sceneWithRouting.creatorRenderMode ||
+        sceneWithRouting.outputMode ||
+        sceneWithRouting.mediaMode ||
+        "auto",
+    ).toLowerCase();
+
+    if (rawMode === "video") return "video";
+    if (rawMode === "image" || rawMode === "visual") return "image";
+    return "auto";
+  };
+
+  const getCreatorSmartMediaScore = (
+    scene: Scene,
+    sceneIndex: number,
+    sceneCount: number,
+    legacySelected: boolean,
+  ) => {
+    const requestedMode = getCreatorSceneRequestedOutputMode(scene);
+    if (requestedMode === "video") return 1000;
+    if (requestedMode === "image") return -1000;
+
+    const continuityMode = getCreatorResolvedContinuityMode(scene);
+    const searchableText = [
+      scene.text,
+      scene.narration,
+      scene.dialogue,
+      scene.motionHint,
+      scene.cameraDirection,
+      scene.emotion,
+      scene.visualPrompt,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const strongMotionMatches =
+      searchableText.match(
+        /\b(run|running|jump|jumping|chase|racing|dance|dancing|fight|fighting|explode|explosion|fly|flying|spin|spinning|crash|sprint|zoom|tracking shot|dolly|orbit|handheld|koş|koşuyor|zıpla|kovala|yarış|dans|dövüş|patla|uç|çarpış)\b/g,
+      )?.length || 0;
+    const softMotionMatches =
+      searchableText.match(
+        /\b(move|moving|walk|walking|turn|turning|reveal|transition|push in|pull out|pan|tilt|drift|gesture|approach|enter|exit|hareket|yürü|dönüş|geçiş|yaklaş|giriş|çıkış)\b/g,
+      )?.length || 0;
+
+    let score = 0;
+    score += Math.min(3.6, strongMotionMatches * 0.9);
+    score += Math.min(1.8, softMotionMatches * 0.35);
+    score += legacySelected ? 1.25 : 0;
+    score += continuityMode === "previous" ? 0.8 : 0;
+    score += continuityMode === "consistent" ? 0.35 : 0;
+    score += scene.dialogue?.trim() ? 0.25 : 0;
+    score += scene.image ? 0.15 : 0;
+    score += sceneIndex === 0 ? 0.45 : 0;
+    score += sceneIndex === sceneCount - 1 ? 0.2 : 0;
+
+    const plannedDuration = Number(
+      scene.timing?.plannedSceneDuration ||
+        scene.timing?.targetSceneDuration ||
+        0,
+    );
+    score += plannedDuration >= 5 ? 0.25 : 0;
+
+    return score;
+  };
+  // 3K SMART MEDIA ROUTING V3 HELPERS END
+
+const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     const explicitVideoSceneIds = sourceScenes
       .filter((scene) => scene.renderMode === "video")
       .map((scene) => scene.id);
@@ -9125,6 +10150,53 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         .map((scene) => scene.id),
     });
   };
+
+  // 3K SMART MEDIA ROUTING V3 ROUTER START
+  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
+    const legacyIds = getCreatorLegacyRoutedVideoSceneIds(sourceScenes);
+
+    if (
+      !isCreatorLabFlow ||
+      sourceScenes.length === 0 ||
+      legacyIds.length === 0 ||
+      creatorQualityMode === "draft" ||
+      creatorQualityMode === "standard"
+    ) {
+      return legacyIds;
+    }
+
+    const legacySet = new Set(legacyIds.map((sceneId) => Number(sceneId)));
+    const targetVideoCount = Math.min(sourceScenes.length, legacyIds.length);
+
+    const rankedScenes = sourceScenes
+      .map((scene, sceneIndex) => ({
+        sceneId: scene.id,
+        requestedMode: getCreatorSceneRequestedOutputMode(scene),
+        score: getCreatorSmartMediaScore(
+          scene,
+          sceneIndex,
+          sourceScenes.length,
+          legacySet.has(Number(scene.id)),
+        ),
+        sceneIndex,
+      }))
+      .filter((item) => item.requestedMode !== "image")
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.sceneIndex - right.sceneIndex;
+      });
+
+    const selectedIds = new Set(
+      rankedScenes
+        .slice(0, targetVideoCount)
+        .map((item) => Number(item.sceneId)),
+    );
+
+    return sourceScenes
+      .filter((scene) => selectedIds.has(Number(scene.id)))
+      .map((scene) => scene.id);
+  };
+  // 3K SMART MEDIA ROUTING V3 ROUTER END
 
   const getCreatorEffectiveSceneOutputMode = (
     scene: Scene,
@@ -9242,8 +10314,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       if (!res.ok || !data?.ok) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Video preflight could not confirm the provider. Velto Studio will verify it through the production request."
-            : "Video ön kontrolü sağlayıcıyı doğrulayamadı. Velto Studio üretim isteği üzerinden doğrudan doğrulayacak.",
+            ? "Video preflight could not confirm the production service. Velto Studio will verify it through the production request."
+            : "Video ön kontrolü üretim servisini doğrulayamadı. Velto Studio üretim isteği üzerinden doğrudan doğrulayacak.",
         );
         return true;
       }
@@ -9251,14 +10323,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       if (data?.fallbackUsed) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Premium video is not configured yet. Velto Studio will use the primary video service for this cinematic test."
-            : "Premium video servisi henüz yapılandırılmamış. Velto Studio bu sinematik testte ana video servisini kullanacak.",
+            ? "The highest-quality motion route is not available in this environment. Velto Studio will use the standard motion route for this cinematic test."
+            : "En yüksek kaliteli hareket rotası bu ortamda kullanılamıyor. Velto Studio bu sinematik testte standart hareket rotasını kullanacak.",
         );
       } else if (!data?.canGenerate && data?.reason) {
         setSaveMessage(
           uiLanguage === "en"
-            ? `${data.reason} Velto Studio will verify the provider once more when the production request starts.`
-            : `${data.reason} Velto Studio üretim isteği başladığında sağlayıcıyı bir kez daha doğrulayacak.`,
+            ? `${data.reason} Velto Studio will verify the production route once more when the production request starts.`
+            : `${data.reason} Velto Studio üretim isteği başladığında üretim rotasını bir kez daha doğrulayacak.`,
         );
       }
 
@@ -10177,7 +11249,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           visualBible: nextVisualBible,
           scenes: [],
           creatorMentorResult: nextMentorResult,
-          creatorProductionPackage: nextPackage,
+          creatorProductionPackage: attachCreatorVisualContinuity(nextPackage),
           youtubeMetadataResult: nextMetadata,
           youtubeThumbnailResult: nextThumbnail,
           sceneOptimizationResult: nextOptimizationResult,
@@ -11661,10 +12733,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
   };
 
-  const updateCharacter = (
+  const updateCharacter = <K extends keyof Character,>(
     index: number,
-    field: keyof Character,
-    value: string
+    field: K,
+    value: Character[K]
   ) => {
     setCharacters((prev) =>
       prev.map((character, i) =>
@@ -11685,6 +12757,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         personality: "",
         referenceImage: "",
         voiceId: "",
+        voiceSelection: undefined,
+        voiceProfileId: "velto_warm",
       },
     ]);
   };
@@ -13545,7 +14619,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         clearTimeout(autosaveTimerRef.current);
       }
     };
-  }, [title, input, storySetup, characters, visualBible, scenes]);
+  }, [title, input, storySetup, characters, visualBible, scenes, narratorSettings]);
 
   useEffect(() => {
     return () => {
@@ -14750,7 +15824,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       visualBible?.camera?.trim() ||
       visualBible?.consistencyRules?.trim(),
   );
-  const creatorVoiceDirectionConfigured = Boolean(narratorSettings.voiceId?.trim());
+  const creatorVoiceDirectionConfigured = Boolean(
+    narratorSettings.voiceId?.trim() ||
+      getEffectiveNarratorVoiceProfileId() !== "velto_balanced" ||
+      getEffectiveDialogueVoiceProfileId() !== "velto_warm",
+  );
   const creatorCastBrandConfiguredCount = [
     creatorBrandConfigured,
     creatorVisualDirectionConfigured,
@@ -22038,6 +23116,75 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 }
 
 
+/* VELTO_VOICE_P1C — visible secondary voice selection and exact-timing hierarchy */
+.creatorlab-voice-selection-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.creatorlab-voice-change-button {
+  min-height: 42px;
+  width: 100%;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 10px;
+  background: #ffffff !important;
+  color: #334155 !important;
+  box-shadow: none !important;
+  padding: 9px 14px;
+  font-size: 0.75rem;
+  font-weight: 750;
+  white-space: nowrap;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.creatorlab-voice-change-button:hover:not(:disabled) {
+  border-color: #1769e0 !important;
+  background: #eff6ff !important;
+  color: #1769e0 !important;
+}
+
+.creatorlab-voice-generate-button {
+  border: 1px solid #1769e0 !important;
+  background: #1769e0 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(23, 105, 224, 0.18) !important;
+}
+
+.creatorlab-voice-generate-button:hover:not(:disabled) {
+  border-color: #155ec7 !important;
+  background: #155ec7 !important;
+}
+
+.creatorlab-voice-listen-button {
+  border: 1px solid #bbf7d0 !important;
+  background: #f0fdf4 !important;
+  color: #047857 !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-voice-listen-button:hover:not(:disabled) {
+  border-color: #34d399 !important;
+  background: #ecfdf5 !important;
+}
+
+@media (min-width: 640px) {
+  .creatorlab-voice-selection-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .creatorlab-voice-change-button {
+    width: auto;
+    min-width: 132px;
+  }
+}
+
 /* Velto Studio UX-R10 — responsive, state, accessibility and final product polish */
 .creatorlab-product-frame {
   color-scheme: light;
@@ -25306,6 +26453,53 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
               </ol>
             </section>
 
+            <section className="mb-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
+                  {uiLanguage === "en" ? "Visual continuity" : "Görsel devamlılık"}
+                </span>
+                <h3 className="mt-2 text-lg font-semibold text-slate-950">
+                  {uiLanguage === "en"
+                    ? "Do these scenes share recurring characters or the same visual world?"
+                    : "Bu sahnelerde tekrar eden karakterler veya ortak bir görsel evren var mı?"}
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  {uiLanguage === "en"
+                    ? "Choose the simplest project rule. You can still override any scene later."
+                    : "En basit proje kuralını seç. Her sahneyi daha sonra ayrı ayrı değiştirebilirsin."}
+                </p>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setCreatorProjectContinuityMode("independent")}
+                  aria-pressed={creatorProjectContinuityMode === "independent"}
+                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "independent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                >
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "No · Generate independently" : "Hayır · Bağımsız üret"}</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Default. Each scene may use a different person, location or metaphor." : "Varsayılan. Her sahne farklı kişi, mekân veya metafor kullanabilir."}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreatorProjectContinuityMode("consistent")}
+                  aria-pressed={creatorProjectContinuityMode === "consistent"}
+                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "consistent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                >
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Yes · Keep characters and world" : "Evet · Karakter ve evreni koru"}</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Reuse the recurring cast, visual world and handoff logic." : "Tekrar eden kadroyu, görsel evreni ve sahne geçişlerini korur."}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreatorProjectContinuityMode("selective")}
+                  aria-pressed={creatorProjectContinuityMode === "selective"}
+                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "selective" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                >
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Some scenes · Choose individually" : "Bazı sahneler · Tek tek seç"}</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Scenes stay independent unless you explicitly link them." : "Sen açıkça bağlamadıkça sahneler bağımsız kalır."}</span>
+                </button>
+              </div>
+            </section>
+
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
                 <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
@@ -25445,7 +26639,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                         setCreatorNoCastMode("faceless");
                         stopDialoguePlayback();
                         stopStoryPlayback();
-                        setNarratorSettings((current) => ({ ...current, voiceId: "" }));
+                        setNarratorSettings((current) => ({ ...current, voiceId: "", voiceSelection: undefined }));
                         clearAllSceneAudioData();
                         clearAllSceneDialogueAudioData();
                         clearAllSceneTimingData();
@@ -25598,49 +26792,192 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                       <p>{uiLanguage === "en" ? "The main workflow shows readiness only. Fine tuning stays here as an optional production control." : "Ana akış yalnızca hazırlık durumunu gösterir. İnce ayarlar opsiyonel üretim kontrolü olarak burada kalır."}</p>
                     </div>
                     <span className="creatorlab-cast-brand-current-mode">
-                      {creatorVoiceDirectionConfigured ? (uiLanguage === "en" ? "Voice selected" : "Ses seçildi") : (uiLanguage === "en" ? "Default voice" : "Varsayılan ses")}
+                      {getCreatorVoiceSelectionLabel(
+                        getEffectiveNarratorVoiceProfileId(),
+                        uiLanguage === "en" ? "en" : "tr",
+                      )}
                     </span>
                   </div>
 
                   <div className="creatorlab-voice-direction-grid">
                     <label>
-                      <span>{uiLanguage === "en" ? "Saved voice reference" : "Kayıtlı ses referansı"}</span>
-                      <input
-                        value={narratorSettings.voiceId || ""}
-                        onChange={(event) => {
-                          stopDialoguePlayback();
-                          stopStoryPlayback();
-                          setNarratorSettings((current) => ({ ...current, voiceId: event.target.value }));
-                          clearAllSceneAudioData();
-                          clearAllSceneDialogueAudioData();
-                          clearAllSceneTimingData();
-                        }}
-                        placeholder={uiLanguage === "en" ? "Optional saved voice reference" : "Opsiyonel kayıtlı ses referansı"}
-                      />
-                      <small>{uiLanguage === "en" ? "Leave empty to let Velto Studio use the default production voice." : "Velto Studio’nun varsayılan üretim sesini kullanması için boş bırak."}</small>
+                      <span>{uiLanguage === "en" ? "Narrator delivery style" : "Anlatıcı ifade stili"}</span>
+                      <select
+                        value={getEffectiveNarratorVoiceProfileId()}
+                        onChange={(event) =>
+                          applyCreatorVoiceProfile(
+                            event.target.value as CreatorVoiceSelectionId,
+                            "narrator",
+                          )
+                        }
+                      >
+                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
+                          <option key={`narrator-${profile.id}`} value={profile.id}>
+                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        {uiLanguage === "en"
+                          ? getCreatorVoiceSelection(getEffectiveNarratorVoiceProfileId()).descriptionEn
+                          : getCreatorVoiceSelection(getEffectiveNarratorVoiceProfileId()).descriptionTr}
+                      </small>
                     </label>
                     <label>
-                      <span>{uiLanguage === "en" ? "Voice performance mode" : "Ses performans modu"}</span>
+                      <span>{uiLanguage === "en" ? "Dialogue delivery style" : "Diyalog ifade stili"}</span>
                       <select
-                        value={narratorSettings.modelId}
-                        onChange={(event) => {
-                          stopDialoguePlayback();
-                          stopStoryPlayback();
-                          setNarratorSettings((current) => ({ ...current, modelId: event.target.value }));
-                          clearAllSceneAudioData();
-                          clearAllSceneDialogueAudioData();
-                          clearAllSceneTimingData();
-                        }}
+                        value={getEffectiveDialogueVoiceProfileId()}
+                        onChange={(event) =>
+                          applyCreatorVoiceProfile(
+                            event.target.value as CreatorVoiceSelectionId,
+                            "dialogue",
+                          )
+                        }
                       >
-                        <option value="eleven_multilingual_v2">{uiLanguage === "en" ? "Natural multilingual" : "Doğal çok dilli"}</option>
-                        <option value="eleven_flash_v2_5">{uiLanguage === "en" ? "Fast preview" : "Hızlı önizleme"}</option>
+                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
+                          <option key={`dialogue-${profile.id}`} value={profile.id}>
+                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
+                          </option>
+                        ))}
                       </select>
-                      <small>{uiLanguage === "en" ? "Provider and model decisions remain internal." : "Provider ve model kararları sistem içinde kalır."}</small>
+                      <small>
+                        {uiLanguage === "en"
+                          ? getCreatorVoiceSelection(getEffectiveDialogueVoiceProfileId()).descriptionEn
+                          : getCreatorVoiceSelection(getEffectiveDialogueVoiceProfileId()).descriptionTr}
+                      </small>
                     </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Project narrator voice" : "Proje anlatıcı sesi"}
+                          </span>
+                          <strong className="mt-2 block text-sm text-slate-950">
+                            {narratorSettings.voiceSelection?.name ||
+                              (uiLanguage === "en" ? "Velto default voice" : "Velto varsayılan sesi")}
+                          </strong>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {narratorSettings.voiceSelection
+                              ? getVoiceLibraryDisplayMeta(narratorSettings.voiceSelection) ||
+                                (uiLanguage === "en" ? "Selected from the voice library" : "Ses kütüphanesinden seçildi")
+                              : uiLanguage === "en"
+                                ? "Use the default or browse real voices by language, gender, accent and style."
+                                : "Varsayılanı kullan veya gerçek sesleri dil, cinsiyet, aksan ve stile göre keşfet."}
+                          </p>
+                        </div>
+                        {narratorSettings.voiceSelection && (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                            {uiLanguage === "en" ? "Selected" : "Seçildi"}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openCreatorVoiceLibrary({ scope: "project_narrator" })}
+                        className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                      >
+                        {uiLanguage === "en" ? "Browse narrator voices" : "Anlatıcı seslerini keşfet"}
+                      </button>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {uiLanguage === "en" ? "Project dialogue voice" : "Proje diyalog sesi"}
+                          </span>
+                          <strong className="mt-2 block text-sm text-slate-950">
+                            {narratorSettings.dialogueVoiceSelection?.name ||
+                              (uiLanguage === "en" ? "Velto default dialogue voice" : "Velto varsayılan diyalog sesi")}
+                          </strong>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {narratorSettings.dialogueVoiceSelection
+                              ? getVoiceLibraryDisplayMeta(narratorSettings.dialogueVoiceSelection) ||
+                                (uiLanguage === "en" ? "Selected from the voice library" : "Ses kütüphanesinden seçildi")
+                              : uiLanguage === "en"
+                                ? "Characters can inherit this voice or use their own selection."
+                                : "Karakterler bu sesi devralabilir veya kendi sesini kullanabilir."}
+                          </p>
+                        </div>
+                        {narratorSettings.dialogueVoiceSelection && (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                            {uiLanguage === "en" ? "Selected" : "Seçildi"}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openCreatorVoiceLibrary({ scope: "project_dialogue" })}
+                        className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+                      >
+                        {uiLanguage === "en" ? "Browse dialogue voices" : "Diyalog seslerini keşfet"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>
+                        {uiLanguage === "en" ? "Voice credit estimate" : "Ses kredi tahmini"}
+                      </strong>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-violet-800">
+                        {getCreatorVoiceCreditEstimate(scenes).totalCredits} {uiLanguage === "en" ? "credits" : "kredi"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-violet-800">
+                      {uiLanguage === "en"
+                        ? `${getCreatorVoiceCreditEstimate(scenes).totalTracks} missing voice track(s). Credits are charged only when generation starts.`
+                        : `${getCreatorVoiceCreditEstimate(scenes).totalTracks} eksik ses kaydı var. Kredi yalnızca üretim başladığında kullanılır.`}
+                    </p>
                   </div>
 
                   <details className="creatorlab-cast-brand-nested-details">
                     <summary>{uiLanguage === "en" ? "Advanced voice tuning" : "Gelişmiş ses ayarları"}</summary>
+                    <div className="creatorlab-voice-direction-grid">
+                      <label>
+                        <span>{uiLanguage === "en" ? "Custom voice reference" : "Özel ses referansı"}</span>
+                        <input
+                          value={narratorSettings.voiceId || ""}
+                          onChange={(event) => {
+                            stopDialoguePlayback();
+                            stopStoryPlayback();
+                            setNarratorSettings((current) => ({
+                              ...current,
+                              voiceId: event.target.value,
+                            }));
+                            clearAllSceneAudioData();
+                            clearAllSceneDialogueAudioData();
+                            clearAllSceneTimingData();
+                          }}
+                          placeholder={uiLanguage === "en" ? "Optional saved voice reference" : "Opsiyonel kayıtlı ses referansı"}
+                        />
+                        <small>{uiLanguage === "en" ? "Optional. Leave empty to use the selected Velto voice." : "Opsiyoneldir. Seçili Velto sesini kullanmak için boş bırak."}</small>
+                      </label>
+                      <label>
+                        <span>{uiLanguage === "en" ? "Performance mode" : "Performans modu"}</span>
+                        <select
+                          value={narratorSettings.modelId}
+                          onChange={(event) => {
+                            stopDialoguePlayback();
+                            stopStoryPlayback();
+                            setNarratorSettings((current) => ({
+                              ...current,
+                              modelId: event.target.value,
+                            }));
+                            clearAllSceneAudioData();
+                            clearAllSceneDialogueAudioData();
+                            clearAllSceneTimingData();
+                          }}
+                        >
+                          <option value="eleven_multilingual_v2">{uiLanguage === "en" ? "Natural multilingual" : "Doğal çok dilli"}</option>
+                          <option value="eleven_flash_v2_5">{uiLanguage === "en" ? "Fast preview" : "Hızlı önizleme"}</option>
+                        </select>
+                        <small>{uiLanguage === "en" ? "Provider details remain internal." : "Provider ayrıntıları sistem içinde kalır."}</small>
+                      </label>
+                    </div>
                     <div className="creatorlab-voice-tuning-grid">
                       <label>
                         <span>{uiLanguage === "en" ? "Stability" : "Stabilite"} · {narratorSettings.stability.toFixed(2)}</span>
@@ -25653,7 +26990,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                           onChange={(event) => {
                             stopDialoguePlayback();
                             stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, stability: Number(event.target.value) }));
+                            setNarratorSettings((current) => ({ ...current, stability: Number(event.target.value), advancedTuning: true }));
                             clearAllSceneAudioData();
                             clearAllSceneDialogueAudioData();
                             clearAllSceneTimingData();
@@ -25671,7 +27008,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                           onChange={(event) => {
                             stopDialoguePlayback();
                             stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, similarityBoost: Number(event.target.value) }));
+                            setNarratorSettings((current) => ({ ...current, similarityBoost: Number(event.target.value), advancedTuning: true }));
                             clearAllSceneAudioData();
                             clearAllSceneDialogueAudioData();
                             clearAllSceneTimingData();
@@ -25689,7 +27026,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                           onChange={(event) => {
                             stopDialoguePlayback();
                             stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, style: Number(event.target.value) }));
+                            setNarratorSettings((current) => ({ ...current, style: Number(event.target.value), advancedTuning: true }));
                             clearAllSceneAudioData();
                             clearAllSceneDialogueAudioData();
                             clearAllSceneTimingData();
@@ -25707,7 +27044,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                           onChange={(event) => {
                             stopDialoguePlayback();
                             stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, speed: Number(event.target.value) }));
+                            setNarratorSettings((current) => ({ ...current, speed: Number(event.target.value), advancedTuning: true }));
                             clearAllSceneAudioData();
                             clearAllSceneDialogueAudioData();
                             clearAllSceneTimingData();
@@ -25805,9 +27142,52 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                   <input value={character.accessory || ""} onChange={(event) => updateCharacter(index, "accessory", event.target.value)} placeholder={ui.accessoryPlaceholder} />
                                 </label>
                                 <label>
-                                  <span>{uiLanguage === "en" ? "Character voice reference" : "Karakter ses referansı"}</span>
-                                  <input value={character.voiceId || ""} onChange={(event) => updateCharacter(index, "voiceId", event.target.value)} placeholder={uiLanguage === "en" ? "Optional saved voice reference" : "Opsiyonel kayıtlı ses referansı"} />
+                                  <span>{uiLanguage === "en" ? "Character delivery style" : "Karakter ifade stili"}</span>
+                                  <select
+                                    value={normalizeCreatorVoiceSelectionId(character.voiceProfileId, "velto_warm")}
+                                    onChange={(event) => {
+                                      updateCharacter(
+                                        index,
+                                        "voiceProfileId",
+                                        normalizeCreatorVoiceSelectionId(
+                                          event.target.value,
+                                          "velto_warm",
+                                        ),
+                                      );
+                                      clearAllSceneDialogueAudioData();
+                                      clearAllSceneTimingData();
+                                    }}
+                                  >
+                                    {CREATOR_VOICE_SELECTIONS.map((profile) => (
+                                      <option key={`character-${index}-${profile.id}`} value={profile.id}>
+                                        {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </label>
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    {uiLanguage === "en" ? "Actual character voice" : "Gerçek karakter sesi"}
+                                  </span>
+                                  <strong className="mt-2 block text-sm text-slate-950">
+                                    {character.voiceSelection?.name ||
+                                      (uiLanguage === "en" ? "Project dialogue default" : "Proje diyalog varsayılanı")}
+                                  </strong>
+                                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                                    {character.voiceSelection
+                                      ? getVoiceLibraryDisplayMeta(character.voiceSelection)
+                                      : uiLanguage === "en"
+                                        ? "Choose a real voice without copying a voice ID."
+                                        : "Voice ID kopyalamadan gerçek bir ses seç."}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => openCreatorVoiceLibrary({ scope: "character", characterIndex: index })}
+                                    className="mt-3 min-h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                  >
+                                    {uiLanguage === "en" ? "Choose character voice" : "Karakter sesi seç"}
+                                  </button>
+                                </div>
                               </div>
                             </details>
 
@@ -26254,16 +27634,39 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                         language,
                         qualityMode: creatorQualityMode,
                       });
-                      const targetDurationSec = Math.max(
+                      const measuredAudioDurationSec = Number(
+                        scene.timing?.totalAudioDuration || 0,
+                      );
+                      const exactTimingLocked = Boolean(
+                        scene.timing?.exactTimingLocked ||
+                          (measuredAudioDurationSec > 0 &&
+                            scene.timing?.durationMatchStatus !== "unmeasured"),
+                      );
+                      const plannedDurationSec = Math.max(
                         3,
                         Number(
-                          scene.targetDurationSec ||
+                          scene.timing?.plannedSceneDuration ||
+                            scene.targetDurationSec ||
                             scene.scriptHealth?.targetDurationSec ||
-                            scene.timing?.plannedSceneDuration ||
-                            scene.timing?.targetSceneDuration ||
                             sceneDraftHealth.targetDurationSec,
                         ),
                       );
+                      const targetDurationSec = Math.max(
+                        3,
+                        Number(
+                          exactTimingLocked
+                            ? scene.timing?.targetSceneDuration
+                            : plannedDurationSec,
+                        ),
+                      );
+                      const timingDeltaSec = exactTimingLocked
+                        ? Number(
+                            (
+                              scene.timing?.durationDelta ??
+                              targetDurationSec - plannedDurationSec
+                            ).toFixed(1),
+                          )
+                        : 0;
                       const simpleGuidance =
                         sceneDraftHealth.status === "too_long"
                           ? uiLanguage === "en" ? "Narration may be long" : "Anlatım uzun olabilir"
@@ -26292,6 +27695,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                       const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
                       const narrationDurationSec = Number(scene.timing?.narrationDuration || 0);
                       const dialogueDurationSec = Number(scene.timing?.dialogueDuration || 0);
+                      const effectiveNarratorVoiceProfileId =
+                        getEffectiveNarratorVoiceProfileId(scene);
+                      const effectiveDialogueVoiceProfileId =
+                        getEffectiveDialogueVoiceProfileId(scene);
+                      const sceneVoiceCreditEstimate =
+                        getCreatorVoiceCreditEstimate([scene]);
+                      const sceneNarratorVoiceRoute = getCreatorSceneVoiceContext({
+                        scene,
+                        role: "narrator",
+                        text: scene.narration,
+                        companionText: scene.dialogue,
+                        hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
+                        voiceProfile: getCreatorNarratorProfileHint(),
+                      });
                       const sceneAssetHistory = [...(scene.assetHistory || [])].reverse();
                       const sceneComparedAssetIds = creatorAssetCompareSelection[scene.id] || [];
                       const sceneComparedAssets = sceneComparedAssetIds
@@ -26393,6 +27810,33 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                 </div>
                               </div>
                             )}
+
+                            {/* Scene continuity control */}
+                            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{uiLanguage === "en" ? "Scene continuity" : "Sahne devamlılığı"}</span>
+                                <p className="mt-1 text-xs leading-5 text-slate-500">
+                                  {getCreatorResolvedContinuityMode(scene) === "previous"
+                                    ? uiLanguage === "en" ? "Directly continues the previous scene." : "Önceki sahnenin doğrudan devamıdır."
+                                    : getCreatorResolvedContinuityMode(scene) === "consistent"
+                                      ? uiLanguage === "en" ? "Keeps the recurring character and visual world." : "Tekrar eden karakteri ve görsel evreni korur."
+                                      : uiLanguage === "en" ? "Generated as an independent visual beat." : "Bağımsız bir görsel anlatım olarak üretilir."}
+                                </p>
+                              </div>
+                              <label className="min-w-0 md:w-[280px]">
+                                <span className="sr-only">{uiLanguage === "en" ? "Scene continuity mode" : "Sahne devamlılık modu"}</span>
+                                <select
+                                  value={getCreatorSceneContinuityMode(scene)}
+                                  onChange={(event) => updateCreatorSceneContinuityMode(scene.id, event.target.value as CreatorSceneContinuityMode)}
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                >
+                                  <option value="project">{uiLanguage === "en" ? "Use project default" : "Proje varsayılanını kullan"}</option>
+                                  <option value="independent">{uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne"}</option>
+                                  <option value="consistent">{uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"}</option>
+                                  <option value="previous" disabled={index === 0}>{uiLanguage === "en" ? "Continue previous scene" : "Önceki sahneyi devam ettir"}</option>
+                                </select>
+                              </label>
+                            </div>
 
                             <div className="scene-production-navigator sticky top-4 z-20 mb-5">
                               <div className="scene-production-navigator__header">
@@ -27179,6 +28623,207 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                 className="space-y-4"
                               >
                                 <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
+                                  <label className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+                                      {uiLanguage === "en" ? "Narrator delivery for this scene" : "Bu sahnenin anlatıcı ifade stili"}
+                                    </span>
+                                    <select
+                                      className="mt-2 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-950"
+                                      value={scene.narratorVoiceProfileId || ""}
+                                      onChange={(event) => {
+                                        const nextProfileId = event.target.value
+                                          ? normalizeCreatorVoiceSelectionId(event.target.value)
+                                          : undefined;
+                                        setScenes((currentScenes) =>
+                                          currentScenes.map((item) =>
+                                            item.id === scene.id
+                                              ? {
+                                                  ...item,
+                                                  narratorVoiceProfileId: nextProfileId,
+                                                  audioUrl: "",
+                                                  audioPath: "",
+                                                  audioSourceText: "",
+                                                  audioSettingsKey: "",
+                                                  timing: buildSceneTimingForCurrentFlow(
+                                                    0,
+                                                    item.timing?.dialogueDuration || 0,
+                                                    item,
+                                                  ),
+                                                }
+                                              : item,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <option value="">
+                                        {uiLanguage === "en"
+                                          ? `Project default · ${getCreatorVoiceSelectionLabel(
+                                              getEffectiveNarratorVoiceProfileId(),
+                                              "en",
+                                            )}`
+                                          : `Proje varsayılanı · ${getCreatorVoiceSelectionLabel(
+                                              getEffectiveNarratorVoiceProfileId(),
+                                              "tr",
+                                            )}`}
+                                      </option>
+                                      {CREATOR_VOICE_SELECTIONS.map((profile) => (
+                                        <option key={`scene-${scene.id}-narrator-${profile.id}`} value={profile.id}>
+                                          {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <small className="mt-2 block text-xs leading-5 text-violet-800">
+                                      {uiLanguage === "en"
+                                        ? getCreatorVoiceSelection(effectiveNarratorVoiceProfileId).descriptionEn
+                                        : getCreatorVoiceSelection(effectiveNarratorVoiceProfileId).descriptionTr}
+                                    </small>
+                                  </label>
+
+                                  {hasDialogue && (
+                                    <label className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-700">
+                                        {uiLanguage === "en" ? "Dialogue delivery for this scene" : "Bu sahnenin diyalog ifade stili"}
+                                      </span>
+                                      <select
+                                        className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-950"
+                                        value={scene.dialogueVoiceProfileId || ""}
+                                        onChange={(event) => {
+                                          const nextProfileId = event.target.value
+                                            ? normalizeCreatorVoiceSelectionId(event.target.value, "velto_warm")
+                                            : undefined;
+                                          setScenes((currentScenes) =>
+                                            currentScenes.map((item) =>
+                                              item.id === scene.id
+                                                ? {
+                                                    ...item,
+                                                    dialogueVoiceProfileId: nextProfileId,
+                                                    dialogueAudioUrl: "",
+                                                    dialogueAudioPath: "",
+                                                    dialogueAudioSourceText: "",
+                                                    dialogueAudioSettingsKey: "",
+                                                    timing: buildSceneTimingForCurrentFlow(
+                                                      item.timing?.narrationDuration || 0,
+                                                      0,
+                                                      item,
+                                                    ),
+                                                  }
+                                                : item,
+                                            ),
+                                          );
+                                        }}
+                                      >
+                                        <option value="">
+                                          {uiLanguage === "en"
+                                            ? `Project or cast default · ${getCreatorVoiceSelectionLabel(
+                                                effectiveDialogueVoiceProfileId,
+                                                "en",
+                                              )}`
+                                            : `Proje veya kadro varsayılanı · ${getCreatorVoiceSelectionLabel(
+                                                effectiveDialogueVoiceProfileId,
+                                                "tr",
+                                              )}`}
+                                        </option>
+                                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
+                                          <option key={`scene-${scene.id}-dialogue-${profile.id}`} value={profile.id}>
+                                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <small className="mt-2 block text-xs leading-5 text-rose-800">
+                                        {uiLanguage === "en"
+                                          ? getCreatorVoiceSelection(effectiveDialogueVoiceProfileId).descriptionEn
+                                          : getCreatorVoiceSelection(effectiveDialogueVoiceProfileId).descriptionTr}
+                                      </small>
+                                    </label>
+                                  )}
+                                </div>
+
+                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
+                                  <div className="creatorlab-voice-selection-card rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="min-w-0">
+                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        {uiLanguage === "en" ? "Actual narrator voice" : "Gerçek anlatıcı sesi"}
+                                      </span>
+                                      <strong className="mt-2 block text-sm text-slate-950">
+                                        {getEffectiveNarratorVoiceSelection(scene)?.name ||
+                                          (uiLanguage === "en" ? "Project / Velto default" : "Proje / Velto varsayılanı")}
+                                      </strong>
+                                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                                        {getEffectiveNarratorVoiceSelection(scene)
+                                          ? getVoiceLibraryDisplayMeta(getEffectiveNarratorVoiceSelection(scene))
+                                          : uiLanguage === "en"
+                                            ? "This scene inherits the project narrator voice."
+                                            : "Bu sahne proje anlatıcı sesini devralır."}
+                                      </p>
+                                      <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                                        {uiLanguage === "en"
+                                          ? "Preview and choose another voice without leaving Velto Studio."
+                                          : "Velto Studio'dan ayrılmadan başka bir sesi dinle ve seç."}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => openCreatorVoiceLibrary({ scope: "scene_narrator", sceneId: scene.id })}
+                                      className="creatorlab-voice-change-button"
+                                      ref={(node) => {
+                                        if (!node) return;
+                                        node.style.setProperty("background-color", "#E8F5F1", "important");
+                                        node.style.setProperty("border-color", "#B7DDD2", "important");
+                                        node.style.setProperty("color", "#2F6F62", "important");
+                                      }}
+                                      onMouseEnter={(event) => {
+                                        event.currentTarget.style.setProperty("background-color", "#DDF0EA", "important");
+                                        event.currentTarget.style.setProperty("border-color", "#9DCFC1", "important");
+                                      }}
+                                      onMouseLeave={(event) => {
+                                        event.currentTarget.style.setProperty("background-color", "#E8F5F1", "important");
+                                        event.currentTarget.style.setProperty("border-color", "#B7DDD2", "important");
+                                      }}
+                                    >
+                                      {uiLanguage === "en" ? "Change voice" : "Sesi değiştir"}
+                                    </button>
+                                  </div>
+
+                                  {hasDialogue && (
+                                    <div className="creatorlab-voice-selection-card rounded-2xl border border-slate-200 bg-white p-4">
+                                      <div className="min-w-0">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                          {uiLanguage === "en" ? "Actual dialogue voice" : "Gerçek diyalog sesi"}
+                                        </span>
+                                        <strong className="mt-2 block text-sm text-slate-950">
+                                          {getEffectiveDialogueVoiceSelection(scene)?.name ||
+                                            (uiLanguage === "en" ? "Character / project default" : "Karakter / proje varsayılanı")}
+                                        </strong>
+                                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                                          {getEffectiveDialogueVoiceSelection(scene)
+                                            ? getVoiceLibraryDisplayMeta(getEffectiveDialogueVoiceSelection(scene))
+                                            : uiLanguage === "en"
+                                              ? "This scene inherits the matching character or project voice."
+                                              : "Bu sahne eşleşen karakter veya proje sesini devralır."}
+                                        </p>
+                                        <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                                          {uiLanguage === "en"
+                                            ? "Preview and choose another voice without leaving Velto Studio."
+                                            : "Velto Studio'dan ayrılmadan başka bir sesi dinle ve seç."}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openCreatorVoiceLibrary({ scope: "scene_dialogue", sceneId: scene.id })}
+                                        className="creatorlab-voice-change-button"
+                                        style={{
+                                          backgroundColor: "#E8F5F1",
+                                          borderColor: "#B7DDD2",
+                                          color: "#2F6F62",
+                                        }}
+                                      >
+                                        {uiLanguage === "en" ? "Change voice" : "Sesi değiştir"}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
                                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
@@ -27207,13 +28852,21 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                         isPreparingAudio ||
                                         playingDialogueSceneId !== null
                                       }
-                                      className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                                      className={`mt-4 min-h-11 w-full rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
+                                        narrationReady
+                                          ? "creatorlab-voice-listen-button"
+                                          : "creatorlab-voice-generate-button"
+                                      }`}
                                     >
                                       {loadingAudioSceneId === scene.id
                                         ? uiLanguage === "en" ? "Preparing narrator..." : "Anlatıcı hazırlanıyor..."
                                         : playingSceneId === scene.id
                                           ? uiLanguage === "en" ? "Stop narrator" : "Anlatıcıyı durdur"
-                                          : uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"}
+                                          : narrationReady
+                                            ? uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"
+                                            : uiLanguage === "en"
+                                              ? `Generate narrator · ${getOperationCreditCost("creator_voice", creatorQualityMode)} credits`
+                                              : `Anlatıcı üret · ${getOperationCreditCost("creator_voice", creatorQualityMode)} kredi`}
                                     </button>
                                   </div>
 
@@ -27241,13 +28894,21 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                           isPreparingAudio ||
                                           isPlayingStory
                                         }
-                                        className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-45"
+                                        className={`mt-4 min-h-11 w-full rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
+                                          dialogueReady
+                                            ? "creatorlab-voice-listen-button"
+                                            : "creatorlab-voice-generate-button"
+                                        }`}
                                       >
                                         {loadingDialogueSceneId === scene.id
                                           ? uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor..."
                                           : playingDialogueSceneId === scene.id
                                             ? uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu durdur"
-                                            : uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"}
+                                            : dialogueReady
+                                              ? uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"
+                                              : uiLanguage === "en"
+                                                ? `Generate dialogue · ${getOperationCreditCost("creator_dialogue_voice", creatorQualityMode)} credits`
+                                                : `Diyalog üret · ${getOperationCreditCost("creator_dialogue_voice", creatorQualityMode)} kredi`}
                                       </button>
                                     </div>
                                   )}
@@ -27260,18 +28921,30 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                         {uiLanguage === "en" ? "Audio timing" : "Ses zamanlaması"}
                                       </span>
                                       <strong className="mt-2 block text-sm text-slate-950">
-                                        {(narrationDurationSec + dialogueDurationSec) > 0
-                                          ? `${(narrationDurationSec + dialogueDurationSec).toFixed(1)}s / ${targetDurationSec.toFixed(1)}s`
-                                          : uiLanguage === "en" ? "Audio duration will appear after generation." : "Ses süresi üretim sonrasında görünecek."}
+                                        {exactTimingLocked
+                                          ? uiLanguage === "en"
+                                            ? `${measuredAudioDurationSec.toFixed(1)}s measured audio · ${targetDurationSec.toFixed(1)}s exact scene`
+                                            : `${measuredAudioDurationSec.toFixed(1)} sn ölçülen ses · ${targetDurationSec.toFixed(1)} sn kesin sahne`
+                                          : uiLanguage === "en"
+                                            ? `${sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s estimated speech · ${plannedDurationSec.toFixed(1)}s planned scene`
+                                            : `${sceneDraftHealth.estimatedSpeechSec.toFixed(1)} sn tahmini konuşma · ${plannedDurationSec.toFixed(1)} sn planlanan sahne`}
                                       </strong>
                                       <p className="mt-1 text-xs leading-5 text-slate-500">
-                                        {uiLanguage === "en"
-                                          ? "Velto Studio checks the actual narrator and dialogue duration before final rendering."
-                                          : "Velto Studio final render öncesinde gerçek anlatıcı ve diyalog süresini kontrol eder."}
+                                        {exactTimingLocked
+                                          ? uiLanguage === "en"
+                                            ? `Final timing is locked to measured audio plus a ${Number(scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)}s safe tail. Preview and export use this same duration.`
+                                            : `Final süre, ölçülen sese ${Number(scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)} sn güvenli bitiş payı eklenerek sabitlendi. Önizleme ve export aynı süreyi kullanır.`
+                                          : uiLanguage === "en"
+                                            ? "Generate the missing voice track to measure audio and lock the exact scene duration."
+                                            : "Sesi ölçmek ve kesin sahne süresini sabitlemek için eksik ses kaydını üret."}
                                       </p>
                                     </div>
                                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                      {voiceReady ? uiLanguage === "en" ? "Audio ready" : "Ses hazır" : uiLanguage === "en" ? "Generation needed" : "Üretim gerekli"}
+                                      {exactTimingLocked
+                                        ? uiLanguage === "en" ? "Exact timing" : "Kesin süre"
+                                        : voiceReady
+                                          ? uiLanguage === "en" ? "Audio ready" : "Ses hazır"
+                                          : uiLanguage === "en" ? "Generation needed" : "Üretim gerekli"}
                                     </span>
                                   </div>
                                   {!hasDialogue && (
@@ -27281,6 +28954,59 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                                         : "Bu sahne yalnızca anlatıcı içerdiği için diyalog kontrolleri bilinçli olarak gizlendi."}
                                     </p>
                                   )}
+
+                                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                                    <div className={`rounded-xl px-3 py-3 text-xs leading-5 ${
+                                      scene.timing?.splitRecommended ||
+                                      scene.timing?.durationMatchStatus === "unsafe" ||
+                                      sceneNarratorVoiceRoute?.timingStatus === "blocked"
+                                        ? "bg-rose-50 text-rose-800"
+                                        : sceneNarratorVoiceRoute?.timingStatus === "tight"
+                                          ? "bg-amber-50 text-amber-800"
+                                          : "bg-emerald-50 text-emerald-800"
+                                    }`}>
+                                      <strong className="block">
+                                        {uiLanguage === "en" ? "Speech-cut protection" : "Konuşma kesilme koruması"}
+                                      </strong>
+                                      <span>
+                                        {scene.timing?.splitRecommended
+                                          ? uiLanguage === "en"
+                                            ? `Split into ${scene.timing.recommendedSplitCount || 2} scenes is recommended after measuring the real audio.`
+                                            : `Gerçek ses ölçümüne göre ${scene.timing.recommendedSplitCount || 2} sahneye bölme öneriliyor.`
+                                          : sceneNarratorVoiceRoute?.timingStatus === "blocked"
+                                            ? uiLanguage === "en"
+                                              ? "The estimated speech exceeds this scene. Generation can continue, but the timeline will extend or recommend a split."
+                                              : "Tahmini konuşma bu sahneyi aşıyor. Üretim devam edebilir; timeline uzatılır veya sahne bölme önerilir."
+                                            : sceneNarratorVoiceRoute?.timingStatus === "tight"
+                                              ? uiLanguage === "en"
+                                                ? "Speech is close to the safe limit. Smart pacing and measured audio duration will be applied."
+                                                : "Konuşma güvenli sınıra yakın. Akıllı tempo ve ölçülen gerçek ses süresi uygulanır."
+                                              : exactTimingLocked && timingDeltaSec < -0.35
+                                                ? uiLanguage === "en"
+                                                  ? `Scene shortened by ${Math.abs(timingDeltaSec).toFixed(1)}s. The silent/frozen tail is removed.`
+                                                  : `Sahne ${Math.abs(timingDeltaSec).toFixed(1)} sn kısaltıldı. Sessiz/donuk kuyruk kaldırıldı.`
+                                                : exactTimingLocked && timingDeltaSec > 0.35
+                                                  ? uiLanguage === "en"
+                                                    ? `Scene extended by ${timingDeltaSec.toFixed(1)}s so speech finishes without being cut.`
+                                                    : `Konuşmanın kesilmemesi için sahne ${timingDeltaSec.toFixed(1)} sn uzatıldı.`
+                                                  : exactTimingLocked
+                                                    ? uiLanguage === "en"
+                                                      ? "Measured audio and scene duration are exactly aligned."
+                                                      : "Ölçülen ses ve sahne süresi tam olarak eşleşiyor."
+                                                    : uiLanguage === "en"
+                                                      ? "The script fits the planned window. Exact timing will be locked after voice generation."
+                                                      : "Metin planlanan aralığa uyuyor. Kesin süre ses üretiminden sonra sabitlenecek."}
+                                      </span>
+                                    </div>
+                                    <div className="rounded-xl bg-violet-50 px-3 py-3 text-xs leading-5 text-violet-800">
+                                      <strong className="block">
+                                        {uiLanguage === "en" ? "Estimated generation cost" : "Tahmini üretim maliyeti"}
+                                      </strong>
+                                      <span>
+                                        {sceneVoiceCreditEstimate.totalCredits} {uiLanguage === "en" ? "credits" : "kredi"} · {sceneVoiceCreditEstimate.totalTracks} {uiLanguage === "en" ? "missing track(s)" : "eksik ses kaydı"}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -28273,7 +29999,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       <label className="block text-sm text-slate-600">Narrator Voice ID</label>
       <input
         className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-        placeholder="ElevenLabs narrator voiceId"
+        placeholder={uiLanguage === "en" ? "Optional narrator voice reference" : "Opsiyonel anlatıcı ses referansı"}
         value={narratorSettings.voiceId || ""}
         onChange={(e) => {
           stopDialoguePlayback();
@@ -29838,7 +31564,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
                     </div>
                   </div>
 
-                    
+
                 <div className="mt-3 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-xs text-slate-600">
                   <div className="flex flex-wrap gap-3">
                     <span>🎯 {ui.target}: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} {ui.secondShort}</span>
@@ -30199,6 +31925,281 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
               </div>
 </div>
         </main>
+
+        {voiceLibraryTarget && (
+          <div
+            className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+            role="dialog"
+            aria-modal="true"
+            aria-label={uiLanguage === "en" ? "Voice library" : "Ses kütüphanesi"}
+          >
+            <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl sm:rounded-[28px]">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-700">
+                    {getVoiceLibraryTargetLabel()}
+                  </span>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">
+                    {uiLanguage === "en" ? "Choose a voice in Velto Studio" : "Velto Studio içinde ses seç"}
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {uiLanguage === "en"
+                      ? "Search, filter and preview ElevenLabs voices without copying a voice ID. Preview playback does not use Velto credits."
+                      : "Voice ID kopyalamadan ElevenLabs seslerini ara, filtrele ve önizle. Önizleme Velto kredisi kullanmaz."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCreatorVoiceLibrary}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-lg text-slate-600 hover:bg-slate-50"
+                  aria-label={uiLanguage === "en" ? "Close voice library" : "Ses kütüphanesini kapat"}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ["available", uiLanguage === "en" ? "My & default voices" : "Seslerim ve varsayılanlar"],
+                    ["shared", uiLanguage === "en" ? "Explore library" : "Kütüphaneyi keşfet"],
+                    ["favorites", uiLanguage === "en" ? "Favorites" : "Favoriler"],
+                    ["recent", uiLanguage === "en" ? "Recent" : "Son kullanılanlar"],
+                  ] as Array<[CreatorVoiceLibraryTab, string]>).map(([tab, label]) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => {
+                        setVoiceLibraryTab(tab);
+                        setVoiceLibraryError("");
+                        if (tab === "available" || tab === "shared") {
+                          setVoiceLibraryVoices([]);
+                          setVoiceLibraryHasMore(false);
+                          setVoiceLibraryNextPageToken("");
+                          void loadCreatorVoiceLibrary(tab);
+                        }
+                      }}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                        voiceLibraryTab === tab
+                          ? "border-violet-600 bg-violet-600 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+                  <input
+                    value={voiceLibrarySearch}
+                    onChange={(event) => setVoiceLibrarySearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && (voiceLibraryTab === "available" || voiceLibraryTab === "shared")) {
+                        void loadCreatorVoiceLibrary(voiceLibraryTab);
+                      }
+                    }}
+                    placeholder={uiLanguage === "en" ? "Search name or style" : "Ad veya stil ara"}
+                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-950 sm:col-span-2"
+                  />
+                  <select
+                    value={voiceLibraryLanguage}
+                    onChange={(event) => setVoiceLibraryLanguage(event.target.value)}
+                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  >
+                    <option value="">{uiLanguage === "en" ? "All languages" : "Tüm diller"}</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="en">English</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="it">Italiano</option>
+                  </select>
+                  <select
+                    value={voiceLibraryGender}
+                    onChange={(event) => setVoiceLibraryGender(event.target.value)}
+                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  >
+                    <option value="">{uiLanguage === "en" ? "All genders" : "Tüm cinsiyetler"}</option>
+                    <option value="female">{uiLanguage === "en" ? "Female" : "Kadın"}</option>
+                    <option value="male">{uiLanguage === "en" ? "Male" : "Erkek"}</option>
+                    <option value="neutral">{uiLanguage === "en" ? "Neutral" : "Nötr"}</option>
+                  </select>
+                  <select
+                    value={voiceLibraryAge}
+                    onChange={(event) => setVoiceLibraryAge(event.target.value)}
+                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  >
+                    <option value="">{uiLanguage === "en" ? "All ages" : "Tüm yaşlar"}</option>
+                    <option value="young">{uiLanguage === "en" ? "Young" : "Genç"}</option>
+                    <option value="middle">{uiLanguage === "en" ? "Middle aged" : "Orta yaş"}</option>
+                    <option value="old">{uiLanguage === "en" ? "Mature" : "Olgun"}</option>
+                  </select>
+                  <input
+                    value={voiceLibraryAccent}
+                    onChange={(event) => setVoiceLibraryAccent(event.target.value)}
+                    placeholder={uiLanguage === "en" ? "Accent" : "Aksan"}
+                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-950"
+                  />
+                  <select
+                    value={voiceLibraryUseCase}
+                    onChange={(event) => setVoiceLibraryUseCase(event.target.value)}
+                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                  >
+                    <option value="">{uiLanguage === "en" ? "All styles" : "Tüm stiller"}</option>
+                    <option value="narration">{uiLanguage === "en" ? "Narration" : "Anlatım"}</option>
+                    <option value="conversational">{uiLanguage === "en" ? "Conversational" : "Sohbet"}</option>
+                    <option value="characters">{uiLanguage === "en" ? "Characters" : "Karakter"}</option>
+                    <option value="advertisement">{uiLanguage === "en" ? "Commercial" : "Reklam"}</option>
+                    <option value="educational">{uiLanguage === "en" ? "Educational" : "Eğitim"}</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (voiceLibraryTab === "available" || voiceLibraryTab === "shared") {
+                        void loadCreatorVoiceLibrary(voiceLibraryTab);
+                      }
+                    }}
+                    className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    disabled={voiceLibraryLoading || voiceLibraryTab === "favorites" || voiceLibraryTab === "recent"}
+                  >
+                    {voiceLibraryLoading
+                      ? uiLanguage === "en" ? "Loading..." : "Yükleniyor..."
+                      : uiLanguage === "en" ? "Apply filters" : "Filtreleri uygula"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto px-5 py-5 sm:px-6">
+                {getVoiceLibraryTargetSelection() && (
+                  <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                        {uiLanguage === "en" ? "Current selection" : "Mevcut seçim"}
+                      </span>
+                      <strong className="mt-1 block text-sm text-emerald-950">
+                        {getVoiceLibraryTargetSelection()?.name}
+                      </strong>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        {getVoiceLibraryDisplayMeta(getVoiceLibraryTargetSelection())}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearCreatorVoiceLibrarySelection}
+                      className="min-h-10 rounded-xl border border-emerald-300 bg-white px-4 text-xs font-semibold text-emerald-800"
+                    >
+                      {uiLanguage === "en" ? "Use inherited default" : "Devralınan varsayılanı kullan"}
+                    </button>
+                  </div>
+                )}
+
+                {voiceLibraryError && (
+                  <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                    {voiceLibraryError}
+                  </div>
+                )}
+
+                {voiceLibraryLoading && getVoiceLibraryDisplayedVoices().length === 0 ? (
+                  <div className="grid min-h-56 place-items-center text-sm text-slate-500">
+                    {uiLanguage === "en" ? "Loading voices..." : "Sesler yükleniyor..."}
+                  </div>
+                ) : getVoiceLibraryDisplayedVoices().length === 0 ? (
+                  <div className="grid min-h-56 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                    <div>
+                      <strong className="text-sm text-slate-800">
+                        {uiLanguage === "en" ? "No matching voices" : "Eşleşen ses bulunamadı"}
+                      </strong>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        {uiLanguage === "en"
+                          ? "Try fewer filters or explore the shared voice library."
+                          : "Daha az filtre kullan veya paylaşılan ses kütüphanesini keşfet."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {getVoiceLibraryDisplayedVoices().map((voice) => {
+                      const isFavorite = voiceLibraryFavorites.some((item) => item.voiceId === voice.voiceId);
+                      return (
+                        <article key={`${voice.source}-${voice.voiceId}`} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <strong className="block truncate text-sm text-slate-950">{voice.name}</strong>
+                              <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">
+                                {voice.description || voice.descriptive ||
+                                  (uiLanguage === "en" ? "ElevenLabs voice" : "ElevenLabs sesi")}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleCreatorVoiceFavorite(voice)}
+                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border text-base ${
+                                isFavorite
+                                  ? "border-amber-300 bg-amber-50 text-amber-600"
+                                  : "border-slate-200 bg-white text-slate-400"
+                              }`}
+                              aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
+                            >
+                              {isFavorite ? "★" : "☆"}
+                            </button>
+                          </div>
+
+                          <div className="mt-3 flex min-h-12 flex-wrap content-start gap-1.5">
+                            {[voice.language || voice.locale, voice.accent, voice.gender, voice.age, voice.useCase]
+                              .filter(Boolean)
+                              .slice(0, 5)
+                              .map((item) => (
+                                <span key={`${voice.voiceId}-${item}`} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                                  {item}
+                                </span>
+                              ))}
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => previewCreatorVoice(voice)}
+                              disabled={!voice.previewUrl}
+                              className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                            >
+                              {voiceLibraryPlayingId === voice.voiceId
+                                ? uiLanguage === "en" ? "Stop preview" : "Önizlemeyi durdur"
+                                : uiLanguage === "en" ? "Preview" : "Önizle"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void applyCreatorVoiceLibrarySelection(voice)}
+                              disabled={Boolean(voiceLibraryApplyingId)}
+                              className="min-h-10 rounded-xl bg-violet-600 px-3 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                              {voiceLibraryApplyingId === voice.voiceId
+                                ? uiLanguage === "en" ? "Selecting..." : "Seçiliyor..."
+                                : uiLanguage === "en" ? "Use voice" : "Sesi kullan"}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {voiceLibraryHasMore && (voiceLibraryTab === "available" || voiceLibraryTab === "shared") && (
+                  <button
+                    type="button"
+                    onClick={() => void loadCreatorVoiceLibrary(voiceLibraryTab, true, voiceLibraryNextPageToken)}
+                    disabled={voiceLibraryLoading}
+                    className="mx-auto mt-5 block min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    {voiceLibraryLoading
+                      ? uiLanguage === "en" ? "Loading..." : "Yükleniyor..."
+                      : uiLanguage === "en" ? "Load more voices" : "Daha fazla ses yükle"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </ActiveProductShell>
     </WorldProvider>
   );

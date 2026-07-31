@@ -1,9 +1,14 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getCreatorRoutedVoiceSettings,
   getCreatorVoiceRoute,
 } from "@/lib/creator/voiceRouting";
-import { getProviderPublicMessage, getVoiceProvider } from "@/lib/providers";
+import { getMediaProviderFacade, getProviderPublicMessage } from "@/lib/providers";
+import {
+  getCreatorVoiceProfileServerSelection,
+  resolveCreatorVoiceProfileVoiceId,
+} from "@/lib/providers/voice/voiceProfileResolver";
 import { getPersistenceServices } from "@/lib/persistence";
 import {
   getCreditErrorResponse,
@@ -111,7 +116,7 @@ function getCharacterVoiceSettings(
   };
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
 
   try {
@@ -134,7 +139,7 @@ export async function POST(req: NextRequest) {
 
     const language = body?.language === "en" ? "en" : "tr";
     const isCreatorLab = body?.productProfile === "creatorlab";
-    const voiceProvider = getVoiceProvider();
+    const voiceProvider = getMediaProviderFacade().voice();
 
     const modelId =
       typeof body?.modelId === "string" && body.modelId.trim()
@@ -157,6 +162,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const selectedVoiceProfile = getCreatorVoiceProfileServerSelection(
+      body?.voiceProfileId,
+    );
     const defaultCharacterVoiceId = voiceProvider.getDefaultVoiceId(
       language,
       "character",
@@ -166,18 +174,27 @@ export async function POST(req: NextRequest) {
       "narrator",
     );
 
+    const explicitBodyVoiceId =
+      typeof body?.voiceId === "string" ? body.voiceId.trim() : "";
     const firstLineVoiceId =
       lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
 
     const finalVoiceId =
-      firstLineVoiceId?.trim() &&
+      explicitBodyVoiceId ||
+      (firstLineVoiceId?.trim() &&
       firstLineVoiceId?.trim() !== narratorVoiceId?.trim()
         ? firstLineVoiceId.trim()
-        : defaultCharacterVoiceId?.trim();
+        : "") ||
+      resolveCreatorVoiceProfileVoiceId({
+        profileId: selectedVoiceProfile.id,
+        language,
+        role: "character",
+      }) ||
+      defaultCharacterVoiceId?.trim();
 
     if (!finalVoiceId) {
       throw new Error(
-        "No character voiceId provided. Set character voiceId or ELEVENLABS_TR_CHARACTER_VOICE_ID / ELEVENLABS_EN_CHARACTER_VOICE_ID."
+        "No character voice is configured for the selected Velto voice profile."
       );
     }
 
@@ -193,7 +210,7 @@ export async function POST(req: NextRequest) {
           sceneIndex: body?.sceneIndex,
           sceneCount: body?.sceneCount,
           voiceProfile: body?.voiceProfile,
-          hasExplicitVoiceId: Boolean(firstLineVoiceId),
+          hasExplicitVoiceId: Boolean(explicitBodyVoiceId || firstLineVoiceId),
         })
       : null;
 
@@ -216,12 +233,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const voiceSettingsInput =
+      body?.advancedVoiceTuning === true
+        ? { ...selectedVoiceProfile.settings, ...body }
+        : selectedVoiceProfile.settings;
     const voiceSettings = creatorVoiceRoute
       ? getCreatorRoutedVoiceSettings({
           route: creatorVoiceRoute,
-          settings: body,
+          settings: voiceSettingsInput,
         })
-      : getCharacterVoiceSettings(language, body);
+      : getCharacterVoiceSettings(language, voiceSettingsInput);
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_dialogue_voice",
@@ -233,6 +254,7 @@ export async function POST(req: NextRequest) {
         projectKey,
         sceneId,
         role: "dialogue",
+        voiceProfileId: selectedVoiceProfile.id,
       },
       billable: isCreatorLab,
     });
@@ -268,6 +290,7 @@ export async function POST(req: NextRequest) {
     const settingsKey =
       clientSettingsKey ||
       [
+        selectedVoiceProfile.id,
         finalVoiceId,
         modelId,
         voiceSettings.stability,
@@ -295,6 +318,7 @@ export async function POST(req: NextRequest) {
       cleanedText: fullText,
       language,
       voiceId: finalVoiceId,
+      voiceProfileId: selectedVoiceProfile.id,
       voiceSettings,
       settingsKey,
       credits: creditResult
@@ -337,3 +361,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.store-dialogue-audio", postHandler);

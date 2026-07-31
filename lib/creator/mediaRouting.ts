@@ -6,6 +6,59 @@ export type CreatorQualityMode =
   | "pro"
   | "cinematic";
 
+export type CreatorQualityModeOption = {
+  value: CreatorQualityMode;
+  labelEn: string;
+  labelTr: string;
+  guidanceEn: string;
+  guidanceTr: string;
+  creditTierEn: string;
+  creditTierTr: string;
+};
+
+/**
+ * Public quality choices. These are intentionally outcome-based; provider and
+ * model identities remain internal to the routing layer.
+ */
+export const CREATOR_QUALITY_MODE_OPTIONS: readonly CreatorQualityModeOption[] = [
+  {
+    value: "draft",
+    labelEn: "Draft",
+    labelTr: "Taslak",
+    guidanceEn: "Strategy, hook, script outline and metadata planning only. No media generation.",
+    guidanceTr: "Strateji, hook, script taslağı ve metadata planlama. Medya üretimi yok.",
+    creditTierEn: "Lowest credit use",
+    creditTierTr: "En düşük kredi kullanımı",
+  },
+  {
+    value: "standard",
+    labelEn: "Standard",
+    labelTr: "Standart",
+    guidanceEn: "Next-generation medium-quality visuals and balanced voice production for efficient social packages.",
+    guidanceTr: "Verimli sosyal medya paketleri için yeni nesil orta kalite görseller ve dengeli ses üretimi.",
+    creditTierEn: "Balanced credit use",
+    creditTierTr: "Dengeli kredi kullanımı",
+  },
+  {
+    value: "pro",
+    labelEn: "Pro",
+    labelTr: "Pro",
+    guidanceEn: "High-fidelity professional visuals, realistic adult human rendering and reference-aware character consistency.",
+    guidanceTr: "Yüksek doğrulukta profesyonel görseller, gerçekçi yetişkin insan üretimi ve referans destekli karakter tutarlılığı.",
+    creditTierEn: "Higher credit use",
+    creditTierTr: "Daha yüksek kredi kullanımı",
+  },
+  {
+    value: "cinematic",
+    labelEn: "Cinematic",
+    labelTr: "Sinematik",
+    guidanceEn: "Maximum-fidelity visual masters, stronger multi-reference continuity and premium production routing.",
+    guidanceTr: "Maksimum doğrulukta ana görseller, daha güçlü çoklu referans sürekliliği ve premium üretim yönlendirmesi.",
+    creditTierEn: "Maximum credit use",
+    creditTierTr: "Maksimum kredi kullanımı",
+  },
+] as const;
+
 export type CreatorMediaAction =
   | "paid_media"
   | "visuals"

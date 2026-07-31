@@ -54,9 +54,13 @@ export interface VideoProvider {
   downloadOutput(outputUrl: string): Promise<Response>;
 }
 
+export type VideoProviderFallbackReason = "premium_unavailable" | null;
+
 export type VideoProviderSelection = {
   provider: VideoProvider;
   requestedTier: VideoProviderTier;
   selectedTier: VideoProviderTier;
   usedFallback: boolean;
+  available: boolean;
+  fallbackReason: VideoProviderFallbackReason;
 };

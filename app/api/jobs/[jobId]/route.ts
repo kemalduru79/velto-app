@@ -1,3 +1,4 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
 import {
   authenticateRequest,
@@ -54,7 +55,7 @@ function routeError(error: unknown, fallback: string) {
   );
 }
 
-export async function GET(
+async function getHandler(
   req: NextRequest,
   context: { params: Promise<{ jobId: string }> },
 ) {
@@ -82,7 +83,7 @@ export async function GET(
   }
 }
 
-export async function DELETE(
+async function deleteHandler(
   req: NextRequest,
   context: { params: Promise<{ jobId: string }> },
 ) {
@@ -273,3 +274,6 @@ export async function DELETE(
     return routeError(error, "Job cancellation failed.");
   }
 }
+
+export const GET = withObservedApiRoute("api.jobs.read", getHandler);
+export const DELETE = withObservedApiRoute("api.jobs.cancel", deleteHandler);

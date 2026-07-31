@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import { getPersistenceServices } from "@/lib/persistence";
+
+export const runtime = "nodejs";
 
 export async function GET(
-  req: Request,
-  context: { params: Promise<{ shareId: string }> }
+  _req: Request,
+  context: { params: Promise<{ shareId: string }> },
 ) {
   try {
     const { shareId } = await context.params;
@@ -12,30 +14,24 @@ export async function GET(
       return NextResponse.json({ error: "shareId zorunlu." }, { status: 400 });
     }
 
-    const supabase = createServerSupabaseClient();
+    const project =
+      await getPersistenceServices().projectRepository.getPublicByShareId(
+        shareId,
+      );
 
-    const { data, error } = await supabase
-      .from("velto_projects")
-      .select(
-        "id, title, input_prompt, story_premise, language, visual_bible, characters, scenes, share_id, is_public, published_at, created_at, updated_at, exported_movie_url, exported_movie_result, export_signature"
-      )
-      .eq("share_id", shareId)
-      .eq("is_public", true)
-      .single();
-
-    if (error || !data) {
+    if (!project) {
       return NextResponse.json(
         { error: "Public episode bulunamadı ya da paylaşım kapalı." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
-    return NextResponse.json({ success: true, project: data });
-
-  } catch {
+    return NextResponse.json({ success: true, project });
+  } catch (error) {
+    console.error("public-project error:", error);
     return NextResponse.json(
       { error: "Public episode yüklenirken hata oluştu." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

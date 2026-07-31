@@ -1,96 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getCreatorMediaRoute,
+  normalizeCreatorQualityMode,
+} from "@/lib/creator/mediaRouting";
+import { getMediaProviderFacade } from "@/lib/providers";
 
 export const runtime = "nodejs";
 
-type CreatorQualityMode = "draft" | "standard" | "pro" | "cinematic";
-
-function normalizeQualityMode(value: string | null): CreatorQualityMode {
-  if (
-    value === "draft" ||
-    value === "standard" ||
-    value === "pro" ||
-    value === "cinematic"
-  ) {
-    return value;
-  }
-
-  return "standard";
-}
-
 export async function GET(req: NextRequest) {
-  const qualityMode = normalizeQualityMode(
+  const qualityMode = normalizeCreatorQualityMode(
     new URL(req.url).searchParams.get("qualityMode"),
+    "standard",
   );
-  const primaryConfigured = Boolean(
-    process.env.RUNWAY_API_KEY?.trim() ||
-      process.env.RUNWAYML_API_SECRET?.trim(),
-  );
-  const premiumConfigured = Boolean(
-    process.env.VEO_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim(),
-  );
+  const route = getCreatorMediaRoute(qualityMode);
 
-  if (qualityMode === "draft") {
+  if (!route.actions.ai_video_blocks) {
     return NextResponse.json({
       ok: true,
       canGenerate: false,
       qualityMode,
-      selectedProvider: null,
+      serviceTier: null,
       fallbackUsed: false,
       reason:
-        "Draft is a text-only planning mode. Select Pro or Cinematic for AI motion generation.",
+        qualityMode === "draft"
+          ? "Draft is a text-only planning mode. Select Pro or Cinematic for AI motion generation."
+          : "Standard uses still visuals, voice-over and light image motion. Select Pro or Cinematic to convert scene images into AI video blocks.",
     });
   }
 
-  if (qualityMode === "standard") {
-    return NextResponse.json({
-      ok: true,
-      canGenerate: false,
-      qualityMode,
-      selectedProvider: null,
-      fallbackUsed: false,
-      reason:
-        "Standard uses still visuals, voice-over and light image motion. Select Pro or Cinematic to convert scene images into AI video blocks.",
-    });
+  const health = getMediaProviderFacade().getCreatorVideoHealth(route);
+
+  if (!health.canGenerate) {
+    return NextResponse.json(
+      {
+        ok: true,
+        canGenerate: false,
+        qualityMode,
+        serviceTier: null,
+        fallbackUsed: false,
+        reason: "The motion generation service is not configured for this environment.",
+      },
+      { status: 503 },
+    );
   }
 
-  if (qualityMode === "cinematic" && premiumConfigured) {
-    return NextResponse.json({
-      ok: true,
-      canGenerate: true,
-      qualityMode,
-      selectedProvider: "premium",
-      fallbackUsed: false,
-      primaryConfigured,
-      premiumConfigured,
-    });
-  }
-
-  if (primaryConfigured) {
-    return NextResponse.json({
-      ok: true,
-      canGenerate: true,
-      qualityMode,
-      selectedProvider: "primary",
-      fallbackUsed: qualityMode === "cinematic" && !premiumConfigured,
-      primaryConfigured,
-      premiumConfigured,
-    });
-  }
-
-  return NextResponse.json(
-    {
-      ok: true,
-      canGenerate: false,
-      qualityMode,
-      selectedProvider: null,
-      fallbackUsed: false,
-      primaryConfigured,
-      premiumConfigured,
-      reason:
-        qualityMode === "cinematic"
-          ? "Neither the premium nor the primary video production service is configured."
-          : "The primary video production service is not configured.",
-    },
-    { status: 503 },
-  );
+  return NextResponse.json({
+    ok: true,
+    canGenerate: true,
+    qualityMode,
+    serviceTier: health.activeTier,
+    fallbackUsed: health.fallbackUsed,
+    routingStatus: health.reasonCode,
+  });
 }

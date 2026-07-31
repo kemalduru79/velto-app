@@ -1,6 +1,7 @@
 import os from "node:os";
 import { createClient } from "@supabase/supabase-js";
 
+// VELTO_SCALE_P1 — durable multi-worker queue runtime.
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -16,6 +17,30 @@ const leaseSeconds = clampNumber(
   60,
   15,
   900,
+);
+const jobHeartbeatMs = clampNumber(
+  process.env.VELTO_QUEUE_HEARTBEAT_MS,
+  Math.max(5000, Math.floor((leaseSeconds * 1000) / 3)),
+  3000,
+  Math.max(5000, leaseSeconds * 500),
+);
+const workerHeartbeatMs = clampNumber(
+  process.env.VELTO_WORKER_HEARTBEAT_MS,
+  15000,
+  5000,
+  60000,
+);
+const retryBaseSeconds = clampNumber(
+  process.env.VELTO_QUEUE_RETRY_BASE_SECONDS,
+  5,
+  1,
+  300,
+);
+const retryMaxSeconds = clampNumber(
+  process.env.VELTO_QUEUE_RETRY_MAX_SECONDS,
+  300,
+  retryBaseSeconds,
+  3600,
 );
 const finReconcileIntervalMs = clampNumber(
   process.env.VELTO_FIN_RECONCILE_INTERVAL_MS,
@@ -50,9 +75,12 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   },
 });
 
-// VELTO_CANCEL_P1 — prevent cancelled jobs from settling credits
 let stopping = false;
+let activeJobId = null;
+let activeTraceId = null;
 let lastFinReconcileAt = 0;
+let lastWorkerHeartbeatAt = 0;
+let wakeSleep = null;
 
 function clampNumber(value, fallback, min, max) {
   const parsed = Number(value);
@@ -65,7 +93,18 @@ function clampNumber(value, fallback, min, max) {
 }
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      wakeSleep = null;
+      resolve();
+    }, ms);
+
+    wakeSleep = () => {
+      clearTimeout(timer);
+      wakeSleep = null;
+      resolve();
+    };
+  });
 }
 
 function firstRow(value) {
@@ -76,16 +115,64 @@ function firstRow(value) {
   return value && typeof value === "object" ? value : null;
 }
 
+const sensitiveKey = /(?:authorization|cookie|password|secret|token|api[-_]?key|service[-_]?role|base64|prompt|script|transcript|content)/i;
+
+function sanitize(value, depth = 0) {
+  if (depth > 5) return "[max-depth]";
+  if (value == null || typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const cleaned = value
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+      .replace(/\b(?:sk|rk|pk|key)-[A-Za-z0-9_-]{16,}\b/g, "[REDACTED]");
+    return cleaned.length > 500 ? `${cleaned.slice(0, 500)}…[truncated]` : cleaned;
+  }
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => sanitize(item, depth + 1));
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        sensitiveKey.test(key) ? "[REDACTED]" : sanitize(nested, depth + 1),
+      ]),
+    );
+  }
+  return String(value);
+}
+
 function log(level, message, metadata = {}) {
   console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level,
-      service: "velto-worker",
-      workerId,
-      message,
-      ...metadata,
-    }),
+    JSON.stringify(
+      sanitize({
+        type: "velto_log",
+        version: 1,
+        timestamp: new Date().toISOString(),
+        level,
+        service: "velto-worker",
+        release: process.env.VELTO_RELEASE || "local",
+        workerId,
+        traceId: activeTraceId,
+        message,
+        ...metadata,
+      }),
+    ),
+  );
+}
+
+function metric(name, value = 1, labels = {}) {
+  console.log(
+    JSON.stringify(
+      sanitize({
+        type: "velto_metric",
+        version: 1,
+        timestamp: new Date().toISOString(),
+        service: "velto-worker",
+        release: process.env.VELTO_RELEASE || "local",
+        workerId,
+        traceId: activeTraceId,
+        name,
+        value,
+        labels,
+      }),
+    ),
   );
 }
 
@@ -97,6 +184,47 @@ async function rpc(name, args) {
   }
 
   return firstRow(data);
+}
+
+function retryDelayForAttempt(attempt, baseSeconds = retryBaseSeconds) {
+  const safeAttempt = Math.max(1, Number(attempt || 1));
+  const exponential = baseSeconds * 2 ** Math.min(safeAttempt - 1, 12);
+  return Math.max(1, Math.min(Math.round(exponential), retryMaxSeconds));
+}
+
+async function heartbeatWorker(status, jobId = null, metadata = {}) {
+  const result = await rpc("velto_worker_heartbeat", {
+    p_worker_id: workerId,
+    p_hostname: os.hostname(),
+    p_process_id: process.pid,
+    p_status: status,
+    p_active_job_id: jobId,
+    p_metadata: {
+      pollMs,
+      leaseSeconds,
+      jobHeartbeatMs,
+      version: "SCALE-P1",
+      ...metadata,
+    },
+  });
+  lastWorkerHeartbeatAt = Date.now();
+  return result;
+}
+
+async function stopWorker(metadata = {}) {
+  try {
+    await rpc("velto_worker_stop", {
+      p_worker_id: workerId,
+      p_metadata: {
+        stoppedAt: new Date().toISOString(),
+        ...metadata,
+      },
+    });
+  } catch (error) {
+    log("warn", "Worker stop state could not be persisted.", {
+      error: error instanceof Error ? error.message : "Unknown stop error.",
+    });
+  }
 }
 
 async function reconcileFinancialState() {
@@ -114,7 +242,10 @@ async function reconcileFinancialState() {
   ].some((field) => Number(result?.[field] || 0) > 0);
 
   if (changed) {
+    metric("velto_credit_reconciliation_runs_total", 1, { outcome: "changed" });
     log("info", "FIN-P1C reconciliation completed.", { reconciliation: result });
+  } else {
+    metric("velto_credit_reconciliation_runs_total", 1, { outcome: "no_change" });
   }
 
   return result;
@@ -125,6 +256,58 @@ async function claimJob() {
     p_worker_id: workerId,
     p_lease_seconds: leaseSeconds,
   });
+}
+
+async function heartbeatJob(jobId) {
+  return rpc("velto_job_heartbeat", {
+    p_job_id: jobId,
+    p_worker_id: workerId,
+    p_lease_seconds: leaseSeconds,
+  });
+}
+
+function startLeaseHeartbeat(job) {
+  let stopped = false;
+  let heartbeatInFlight = false;
+  let leaseLost = false;
+
+  const tick = async () => {
+    if (stopped || heartbeatInFlight) {
+      return;
+    }
+
+    heartbeatInFlight = true;
+
+    try {
+      await heartbeatJob(job.id);
+      await heartbeatWorker(stopping ? "stopping" : "busy", job.id, {
+        attempt: job.attempts,
+        jobType: job.job_type,
+      });
+    } catch (error) {
+      leaseLost = true;
+      log("error", "Job lease heartbeat failed.", {
+        jobId: job.id,
+        error: error instanceof Error ? error.message : "Unknown heartbeat error.",
+      });
+    } finally {
+      heartbeatInFlight = false;
+    }
+  };
+
+  const timer = setInterval(() => {
+    void tick();
+  }, jobHeartbeatMs);
+
+  return {
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+    },
+    leaseWasLost() {
+      return leaseLost;
+    },
+  };
 }
 
 async function getJobStatus(jobId) {
@@ -167,15 +350,20 @@ async function failJob(
   errorCode,
   errorMessage,
   retryable = true,
-  retryDelaySeconds = 15,
+  retryDelaySeconds = null,
 ) {
+  const delay =
+    retryDelaySeconds == null
+      ? retryDelayForAttempt(job.attempts)
+      : Math.max(1, Math.min(Math.round(retryDelaySeconds), 3600));
+
   return rpc("velto_job_fail", {
     p_job_id: job.id,
     p_worker_id: workerId,
     p_error_code: errorCode,
     p_error_message: errorMessage,
     p_retryable: retryable,
-    p_retry_delay_seconds: retryDelaySeconds,
+    p_retry_delay_seconds: delay,
   });
 }
 
@@ -244,10 +432,17 @@ async function releaseJobCredit(job, reason, metadata = {}) {
 }
 
 async function handleRuntimeProbe(job) {
+  const delayMs = clampNumber(job.payload?.delayMs, 0, 0, 5000);
+
+  if (delayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
   await completeJob(job, {
     handledBy: workerId,
     hostname: os.hostname(),
     pid: process.pid,
+    delayMs,
     completedAt: new Date().toISOString(),
   });
 }
@@ -269,9 +464,6 @@ async function handleVideoReconcile(job) {
     return;
   }
 
-  // VELTO_CANCEL_P1_1 — settle on provider dispatch, not on successful
-  // completion. The RPC is idempotent, so this also closes any settlement that
-  // the request path had to defer after the provider task was accepted.
   const dispatchCreditAccount = await settleJobCredit(job, {
     jobId: job.id,
     taskId,
@@ -295,11 +487,9 @@ async function handleVideoReconcile(job) {
         ? body.error
         : `Video status endpoint returned ${response.status}.`;
     const retryable = response.status >= 500 || response.status === 429;
+    const retryBase = response.status === 429 ? 15 : retryBaseSeconds;
 
-    const isFinalAttempt =
-      !retryable || Number(job.attempts || 0) >= Number(job.max_attempts || 0);
-
-    if (isFinalAttempt) {
+    if (!retryable || Number(job.attempts || 0) >= Number(job.max_attempts || 0)) {
       log("warn", "Terminal provider-status failure kept as charged after dispatch.", {
         jobId: job.id,
         taskId,
@@ -312,7 +502,7 @@ async function handleVideoReconcile(job) {
       retryable ? "VIDEO_STATUS_TEMPORARY_FAILURE" : "VIDEO_STATUS_REJECTED",
       message,
       retryable,
-      15,
+      retryable ? retryDelayForAttempt(job.attempts, retryBase) : null,
     );
     return;
   }
@@ -321,20 +511,22 @@ async function handleVideoReconcile(job) {
 
   if (["SUCCEEDED", "COMPLETED", "READY"].includes(status)) {
     if (await cancellationWon(job.id)) {
-      log("info", "Cancelled job ignored before credit settlement.", {
+      log("info", "Cancelled job ignored before completion.", {
         jobId: job.id,
         taskId,
       });
       return;
     }
 
-    const creditAccount = dispatchCreditAccount || await settleJobCredit(job, {
-      jobId: job.id,
-      taskId,
-      status,
-      billingMoment: "provider_dispatch",
-      videoUrlCreated: Boolean(body?.videoUrl),
-    });
+    const creditAccount =
+      dispatchCreditAccount ||
+      (await settleJobCredit(job, {
+        jobId: job.id,
+        taskId,
+        status,
+        billingMoment: "provider_dispatch",
+        videoUrlCreated: Boolean(body?.videoUrl),
+      }));
 
     await completeJob(job, {
       taskId,
@@ -392,6 +584,23 @@ async function handleVideoReconcile(job) {
 }
 
 async function processJob(job) {
+  const cycleStartedAt = Date.now();
+  let cycleOutcome = "completed";
+  activeJobId = job.id;
+  activeTraceId =
+    typeof job.payload?.traceId === "string" && /^[a-zA-Z0-9._:-]{8,128}$/.test(job.payload.traceId)
+      ? job.payload.traceId
+      : crypto.randomUUID();
+  metric("velto_worker_job_cycles_total", 1, {
+    event: "started",
+    jobType: job.job_type,
+  });
+  await heartbeatWorker(stopping ? "stopping" : "busy", job.id, {
+    attempt: job.attempts,
+    jobType: job.job_type,
+  });
+  const leaseHeartbeat = startLeaseHeartbeat(job);
+
   log("info", "Job claimed.", {
     jobId: job.id,
     jobType: job.job_type,
@@ -418,6 +627,7 @@ async function processJob(job) {
       jobType: job.job_type,
     });
   } catch (error) {
+    cycleOutcome = "error";
     const message =
       error instanceof Error ? error.message : "Unknown worker error.";
 
@@ -425,7 +635,15 @@ async function processJob(job) {
       jobId: job.id,
       jobType: job.job_type,
       error: message,
+      leaseLost: leaseHeartbeat.leaseWasLost(),
     });
+
+    if (leaseHeartbeat.leaseWasLost()) {
+      log("warn", "Failure persistence skipped because this worker lost the lease.", {
+        jobId: job.id,
+      });
+      return;
+    }
 
     try {
       if (await cancellationWon(job.id)) {
@@ -440,7 +658,6 @@ async function processJob(job) {
         "WORKER_HANDLER_ERROR",
         message,
         true,
-        15,
       );
 
       if (failedJob?.status === "failed" && job.job_type !== "video_reconcile") {
@@ -458,7 +675,10 @@ async function processJob(job) {
                 : "Unknown credit release error.",
           });
         }
-      } else if (failedJob?.status === "failed" && job.job_type === "video_reconcile") {
+      } else if (
+        failedJob?.status === "failed" &&
+        job.job_type === "video_reconcile"
+      ) {
         log("warn", "Video reconcile failure kept charged after provider dispatch.", {
           jobId: job.id,
           handlerError: message,
@@ -473,62 +693,122 @@ async function processJob(job) {
             : "Unknown queue persistence error.",
       });
     }
+  } finally {
+    leaseHeartbeat.stop();
+    metric("velto_worker_job_duration_ms", Date.now() - cycleStartedAt, {
+      jobType: job.job_type,
+      outcome: cycleOutcome,
+    });
+    metric("velto_worker_job_cycles_total", 1, {
+      event: cycleOutcome,
+      jobType: job.job_type,
+    });
+    activeJobId = null;
+
+    try {
+      await heartbeatWorker(stopping ? "stopping" : "idle", null);
+    } catch (error) {
+      metric("velto_worker_errors_total", 1, { area: "idle_heartbeat" });
+      log("warn", "Worker idle heartbeat failed.", {
+        error: error instanceof Error ? error.message : "Unknown heartbeat error.",
+      });
+    } finally {
+      activeTraceId = null;
+    }
   }
 }
 
 async function main() {
+  await heartbeatWorker("starting", null, {
+    startedAt: new Date().toISOString(),
+  });
+
   log("info", "Worker started.", {
     pollMs,
     leaseSeconds,
+    jobHeartbeatMs,
+    workerHeartbeatMs,
+    retryBaseSeconds,
+    retryMaxSeconds,
     internalBaseUrl,
     finReconcileIntervalMs,
     finReconcileBatchLimit,
     finStaleJobMinutes,
   });
 
-  while (!stopping) {
-    const now = Date.now();
+  await heartbeatWorker("idle");
 
-    if (now - lastFinReconcileAt >= finReconcileIntervalMs) {
-      // Set the timestamp before the call so a temporary database failure does
-      // not create a tight retry loop that starves normal queue processing.
-      lastFinReconcileAt = now;
+  try {
+    while (!stopping) {
+      const now = Date.now();
+
+      if (now - lastWorkerHeartbeatAt >= workerHeartbeatMs) {
+        try {
+          await heartbeatWorker("idle");
+        } catch (error) {
+          metric("velto_worker_errors_total", 1, { area: "registry_heartbeat" });
+          log("error", "Worker registry heartbeat failed.", {
+            error:
+              error instanceof Error ? error.message : "Unknown heartbeat error.",
+          });
+        }
+      }
+
+      if (now - lastFinReconcileAt >= finReconcileIntervalMs) {
+        lastFinReconcileAt = now;
+
+        try {
+          await reconcileFinancialState();
+        } catch (error) {
+          metric("velto_worker_errors_total", 1, { area: "credit_reconciliation" });
+          log("error", "FIN-P1C reconciliation failed.", {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Unknown reconciliation error.",
+          });
+        }
+      }
 
       try {
-        await reconcileFinancialState();
+        const job = await claimJob();
+
+        if (job) {
+          await processJob(job);
+          continue;
+        }
       } catch (error) {
-        log("error", "FIN-P1C reconciliation failed.", {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unknown reconciliation error.",
+        metric("velto_worker_errors_total", 1, { area: "queue_poll" });
+        log("error", "Queue polling failed.", {
+          error: error instanceof Error ? error.message : "Unknown queue error.",
         });
       }
+
+      await sleep(pollMs);
     }
-
-    try {
-      const job = await claimJob();
-
-      if (job) {
-        await processJob(job);
-        continue;
-      }
-    } catch (error) {
-      log("error", "Queue polling failed.", {
-        error: error instanceof Error ? error.message : "Unknown queue error.",
-      });
-    }
-
-    await sleep(pollMs);
+  } finally {
+    await stopWorker({ activeJobId });
+    log("info", "Worker stopped.");
   }
-
-  log("info", "Worker stopped.");
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
+    if (stopping) {
+      return;
+    }
+
     stopping = true;
-    log("info", `Received ${signal}; finishing current cycle.`);
+    wakeSleep?.();
+    log("info", `Received ${signal}; no new jobs will be claimed.`, {
+      activeJobId,
+    });
+
+    void heartbeatWorker("stopping", activeJobId, { signal }).catch((error) => {
+      log("warn", "Stopping heartbeat could not be persisted.", {
+        error: error instanceof Error ? error.message : "Unknown heartbeat error.",
+      });
+    });
   });
 }
 

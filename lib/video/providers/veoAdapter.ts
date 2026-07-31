@@ -1,3 +1,4 @@
+import { createLogger } from "@/lib/observability";
 import type {
   VideoProvider,
   VideoProviderCreateInput,
@@ -161,7 +162,11 @@ async function requestJson(url: string, init: RequestInit) {
   if (!response.ok) {
     const apiError = asRecord(asRecord(payload).error);
     const apiStatus = optionalString(apiError.status) || `HTTP_${response.status}`;
-    console.error("Premium video API request failed:", apiStatus);
+    createLogger({ operation: "provider.video.request" }).error(
+      "Premium video API request failed.",
+      undefined,
+      { apiStatus },
+    );
     throw new Error("Premium video service rejected the generation request.");
   }
 

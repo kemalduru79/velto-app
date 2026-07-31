@@ -6,4 +6,5 @@ export type {
   VeltoJobRecord,
   VeltoJobStatus,
   VeltoJobType,
+  VeltoQueueHealth,
 } from "./types";

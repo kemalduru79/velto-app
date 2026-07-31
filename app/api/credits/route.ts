@@ -1,17 +1,17 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextResponse } from "next/server";
 import {
   authenticateRequest,
   AuthenticationError,
 } from "@/lib/auth/server";
-import {
-  CreditEngine,
-  CreditEngineError,
-  SupabaseCreditRepository,
-} from "@/lib/credits";
+import { CreditEngine, CreditEngineError } from "@/lib/credits";
+import { getPersistenceServices } from "@/lib/persistence";
 
 export const runtime = "nodejs";
 
-const creditEngine = new CreditEngine(new SupabaseCreditRepository());
+const creditEngine = new CreditEngine(
+  getPersistenceServices().creditRepository,
+);
 
 function statusForError(error: unknown) {
   if (error instanceof AuthenticationError) return 401;
@@ -41,7 +41,7 @@ function errorResponse(error: unknown) {
   );
 }
 
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   try {
     const principal = await authenticateRequest(request);
     const account = await creditEngine.getAccount(principal.id);
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   try {
     const principal = await authenticateRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
@@ -122,3 +122,6 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withObservedApiRoute("api.credits.read", getHandler);
+export const POST = withObservedApiRoute("api.credits.mutate", postHandler);

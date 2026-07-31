@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "../../../../lib/supabase/server";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
+import { getPersistenceServices } from "@/lib/persistence";
+
+export const runtime = "nodejs";
 
 export async function GET(
   req: Request,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ projectId: string }> },
 ) {
   try {
     const { projectId } = await context.params;
@@ -12,43 +18,29 @@ export async function GET(
       return NextResponse.json({ error: "projectId zorunlu" }, { status: 400 });
     }
 
-    const supabase = createServerSupabaseClient();
+    const principal = await authenticateRequest(req);
+    const project = await getPersistenceServices().projectRepository.getForOwner(
+      projectId,
+      principal.id,
+    );
 
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.replace("Bearer ", "").trim()
-      : "";
-
-    if (!token) {
-      return NextResponse.json({ error: "Yetkisiz istek." }, { status: 401 });
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(token);
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
-    }
-
-    const { data, error } = await supabase
-      .from("velto_projects")
-      .select("*")
-      .eq("id", projectId)
-      .eq("owner_user_id", user.id)
-      .single();
-
-    if (error || !data) {
+    if (!project) {
       return NextResponse.json(
         { error: "Proje bulunamadı ya da erişim yetkin yok." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
-    return NextResponse.json({ success: true, project: data });
+    return NextResponse.json({ success: true, project });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
+    }
 
-  } catch {
-    return NextResponse.json({ error: "Yükleme sırasında hata oluştu" }, { status: 500 });
+    console.error("load-project error:", error);
+    return NextResponse.json(
+      { error: "Yükleme sırasında hata oluştu" },
+      { status: 500 },
+    );
   }
 }

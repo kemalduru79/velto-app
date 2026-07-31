@@ -30,6 +30,20 @@ export type VeltoJobRecord = {
   updatedAt: string;
 };
 
+export type VeltoQueueHealth = {
+  checkedAt: string;
+  queued: number;
+  running: number;
+  succeededLastHour: number;
+  failedLastHour: number;
+  cancelledLastHour: number;
+  oldestQueuedSeconds: number | null;
+  expiredLeases: number;
+  activeWorkers: number;
+  staleWorkers: number;
+  healthy: boolean;
+};
+
 export type CancelVeltoJobInput = {
   jobId: string;
   userId: string;
@@ -53,4 +67,5 @@ export interface JobQueueRepository {
   cancelForUser(input: CancelVeltoJobInput): Promise<VeltoJobRecord>;
   getForUser(jobId: string, userId: string): Promise<VeltoJobRecord | null>;
   listForUser(userId: string, limit?: number): Promise<VeltoJobRecord[]>;
+  getHealth(workerStaleSeconds?: number): Promise<VeltoQueueHealth>;
 }

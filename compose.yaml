@@ -1,6 +1,5 @@
 services:
   velto:
-    container_name: velto-studio
     build:
       context: .
       dockerfile: Dockerfile
@@ -15,9 +14,21 @@ services:
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
       TMPDIR: "/tmp"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      VELTO_DATABASE_DRIVER: "${VELTO_DATABASE_DRIVER:-supabase}"
+      VELTO_STORAGE_DRIVER: "${VELTO_STORAGE_DRIVER:-supabase}"
     ports:
       - "3000:3000"
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
     restart: unless-stopped
     healthcheck:
       test:
@@ -41,10 +52,20 @@ services:
       - .env.local
     environment:
       NODE_ENV: production
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
       VELTO_INTERNAL_BASE_URL: "http://velto:3000"
       VELTO_QUEUE_POLL_MS: "2000"
       VELTO_QUEUE_LEASE_SECONDS: "60"
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 90s
     restart: unless-stopped
     depends_on:
       velto:
