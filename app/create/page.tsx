@@ -113,6 +113,18 @@ import {
 } from "@/lib/creator/creatorProfile";
 import { createCreatorProjectReadiness } from "@/lib/creator/projectReadiness";
 import {
+  createCreatorArtifactHistory,
+  createCreatorProjectExportReadiness,
+  createCreatorProjectLifecycleSnapshot,
+  createCreatorPublishArtifactSignature,
+  EMPTY_CREATOR_ARTIFACT_HISTORY,
+  parseCreatorProjectLifecycleSnapshot,
+  type CreatorArtifactHistory,
+  type CreatorProjectExportReadinessReport,
+  type CreatorProjectLifecycleSnapshot,
+  type CreatorProjectLifecycleStatus,
+} from "@/lib/creator/projectExportReadiness";
+import {
   createFlowContinuityAudit,
   type FlowContinuityAuditReport,
 } from "@/lib/video/flowContinuityAudit";
@@ -590,6 +602,7 @@ type ExportMovieResult = {
   sizeBytes?: number;
   durationSeconds?: number;
   sceneCount?: number;
+  projectLifecycle?: CreatorProjectLifecycleSnapshot;
 };
 
 type ChildProfile = {
@@ -3202,6 +3215,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   >(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
   const [isDownloadingCreatorPackage, setIsDownloadingCreatorPackage] = useState(false);
   const [creatorPackageDownloaded, setCreatorPackageDownloaded] = useState(false);
+  const [creatorPackageSignature, setCreatorPackageSignature] = useState("");
+  const [creatorArtifactHistory, setCreatorArtifactHistory] =
+    useState<CreatorArtifactHistory>({
+      ...EMPTY_CREATOR_ARTIFACT_HISTORY,
+    });
   const [sceneOptimizationResult, setSceneOptimizationResult] = useState<
     SceneOptimizationResult[]
   >([]);
@@ -3450,8 +3468,37 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   useEffect(() => {
-    setCreatorPackageDownloaded(false);
-  }, [exportedMovieUrl, youtubeMetadataResult, youtubeThumbnailResult]);
+    if (!creatorPackageDownloaded || !creatorPackageSignature) {
+      return;
+    }
+
+    const currentSignature = createCreatorPublishArtifactSignature({
+      finalVideoSignature: exportSignature || buildExportSignature(title, scenes),
+      metadata: youtubeMetadataResult,
+      thumbnail: youtubeThumbnailResult,
+      thumbnailDesign: creatorThumbnailStudio,
+      targetPlatforms: creatorTargetPlatforms,
+      creatorFormat,
+      qualityMode: creatorQualityMode,
+    });
+
+    if (currentSignature !== creatorPackageSignature) {
+      setCreatorPackageDownloaded(false);
+    }
+  }, [
+    creatorFormat,
+    creatorPackageDownloaded,
+    creatorPackageSignature,
+    creatorProductionPackage,
+    creatorQualityMode,
+    creatorTargetPlatforms,
+    creatorThumbnailStudio,
+    exportSignature,
+    scenes,
+    title,
+    youtubeMetadataResult,
+    youtubeThumbnailResult,
+  ]);
 
   useEffect(() => {
     const availableSceneIds = new Set(scenes.map((scene) => scene.id));
@@ -3521,12 +3568,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   useEffect(() => {
     setCreatorReleaseConfirmations((prev) => ({ ...prev, videoReviewed: false }));
-    setCreatorPackageDownloaded(false);
   }, [exportedMovieUrl, exportMovieResult?.movieUrl, exportMovieResult?.downloadUrl]);
 
   useEffect(() => {
     setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
-    setCreatorPackageDownloaded(false);
   }, [youtubeThumbnailResult?.imageUrl, creatorThumbnailStudio.headline, creatorThumbnailStudio.subHeadline]);
 
   const creatorThumbnailHasUnsavedChanges =
@@ -3565,7 +3610,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   useEffect(() => {
     setCreatorReleaseConfirmations((prev) => ({ ...prev, claimsVerified: false }));
-    setCreatorPackageDownloaded(false);
   }, [youtubeMetadataResult?.recommendedTitle, youtubeMetadataResult?.description]);
 
   useEffect(() => {
@@ -3595,7 +3639,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         ? { ...prev, targetPlatforms: creatorTargetPlatforms }
         : prev,
     );
-    setCreatorPackageDownloaded(false);
   }, [creatorTargetPlatforms]);
 
   const [shareUrl, setShareUrl] = useState("");
@@ -4071,29 +4114,60 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       Boolean(scene?.image || (scene?.videoUrl && scene?.videoStatus === "done")),
     ).length;
     const voiceReadyCount = projectScenes.filter((scene: any) => {
-      const hasNarration = Boolean(scene?.audioUrl);
-      const hasDialogue = Boolean(String(scene?.dialogue || "").trim());
-      const dialogueReady = !hasDialogue || Boolean(scene?.dialogueAudioUrl);
-      return hasNarration && dialogueReady;
+      const narrationReady =
+        !String(scene?.narration || "").trim() || Boolean(scene?.audioUrl);
+      const dialogueReady =
+        !String(scene?.dialogue || "").trim() ||
+        Boolean(scene?.dialogueAudioUrl);
+
+      return narrationReady && dialogueReady;
     }).length;
+    const lifecycle = parseCreatorProjectLifecycleSnapshot(
+      project?.exported_movie_result?.projectLifecycle,
+    );
+
+    if (lifecycle) {
+      return {
+        totalScenes: lifecycle.totalScenes || totalScenes,
+        visualReadyCount: lifecycle.visualReadyCount,
+        voiceReadyCount: lifecycle.voiceReadyCount,
+        exported: lifecycle.status === "exported",
+        status: lifecycle.status,
+        progress: lifecycle.progress,
+      };
+    }
+
     const exported = Boolean(project?.exported_movie_url);
     const assetsReady =
       totalScenes > 0 &&
       visualReadyCount >= totalScenes &&
       voiceReadyCount >= totalScenes;
-    const status: "draft" | "ready" | "exported" = exported
-      ? "exported"
+    const status: CreatorProjectLifecycleStatus = exported
+      ? "final_video_ready"
       : assetsReady
-        ? "ready"
-        : "draft";
+        ? "production_ready"
+        : totalScenes > 0
+          ? "production_in_progress"
+          : "draft";
     const baseProgress = project?.title || project?.input_prompt ? 15 : 0;
-    const planProgress = project?.creator_production_package || totalScenes > 0 ? 20 : 0;
-    const visualProgress = totalScenes > 0 ? (visualReadyCount / totalScenes) * 25 : 0;
-    const voiceProgress = totalScenes > 0 ? (voiceReadyCount / totalScenes) * 25 : 0;
+    const planProgress = totalScenes > 0 ? 20 : 0;
+    const visualProgress =
+      totalScenes > 0 ? (visualReadyCount / totalScenes) * 25 : 0;
+    const voiceProgress =
+      totalScenes > 0 ? (voiceReadyCount / totalScenes) * 25 : 0;
     const exportProgress = exported ? 15 : 0;
     const progress = exported
-      ? 100
-      : Math.min(95, Math.round(baseProgress + planProgress + visualProgress + voiceProgress + exportProgress));
+      ? 78
+      : Math.min(
+          62,
+          Math.round(
+            baseProgress +
+              planProgress +
+              visualProgress +
+              voiceProgress +
+              exportProgress,
+          ),
+        );
 
     return {
       totalScenes,
@@ -4598,6 +4672,186 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
 
     return exportSignature === getCurrentExportSignature();
+  };
+
+  // 3U PROJECT & EXPORT READINESS
+  const buildCreatorPublishSignature = ({
+    sourceScenes = scenes,
+    finalVideoSignature,
+    metadata = youtubeMetadataResult,
+    thumbnail = youtubeThumbnailResult,
+    thumbnailDesign = creatorThumbnailStudio,
+    targetPlatforms = creatorTargetPlatforms,
+  }: {
+    sourceScenes?: Scene[];
+    finalVideoSignature?: string;
+    metadata?: YoutubeMetadataResult | null;
+    thumbnail?: YoutubeThumbnailResult | null;
+    thumbnailDesign?: CreatorThumbnailStudioState;
+    targetPlatforms?: CreatorPublishPlatform[];
+  } = {}) =>
+    createCreatorPublishArtifactSignature({
+      finalVideoSignature:
+        finalVideoSignature ||
+        (hasReusableExport()
+          ? exportSignature
+          : buildExportSignature(title, sourceScenes)),
+      metadata,
+      thumbnail,
+      thumbnailDesign,
+      targetPlatforms,
+      creatorFormat,
+      qualityMode: creatorQualityMode,
+    });
+
+  const getCreatorPublishReadyForLifecycle = () => {
+    const hasCaptionSource = scenes.some((scene) =>
+      Boolean(
+        scene.narration?.trim() ||
+          scene.dialogue?.trim() ||
+          scene.text?.trim(),
+      ),
+    );
+    const confirmationsReady = Object.values(
+      creatorReleaseConfirmations,
+    ).every(Boolean);
+
+    return Boolean(
+      hasReusableExport() &&
+        creatorProductionPackage &&
+        youtubeThumbnailResult?.imageUrl &&
+        youtubeMetadataResult &&
+        hasCaptionSource &&
+        creatorTargetPlatforms.length > 0 &&
+        confirmationsReady,
+    );
+  };
+
+  const buildCreatorProjectLifecycleReport = ({
+    sourceScenes = scenes,
+    finalVideoUrl = exportedMovieUrl,
+    storedFinalVideoSignature = exportSignature,
+    storedPublishPackageSignature = creatorPackageSignature,
+    packageDownloaded = creatorPackageDownloaded,
+    artifactHistory = creatorArtifactHistory,
+    publishReady = getCreatorPublishReadyForLifecycle(),
+    currentPublishSignature: currentPublishSignatureOverride,
+  }: {
+    sourceScenes?: Scene[];
+    finalVideoUrl?: string;
+    storedFinalVideoSignature?: string;
+    storedPublishPackageSignature?: string;
+    packageDownloaded?: boolean;
+    artifactHistory?: CreatorArtifactHistory;
+    publishReady?: boolean;
+    currentPublishSignature?: string;
+  } = {}): CreatorProjectExportReadinessReport => {
+    const visualReadyCount = sourceScenes.filter(
+      (scene) =>
+        Boolean(scene.image) ||
+        Boolean(scene.videoUrl && scene.videoStatus === "done"),
+    ).length;
+    const voiceReadyCount = sourceScenes.filter((scene) => {
+      const narrationReady =
+        !scene.narration?.trim() || Boolean(scene.audioUrl);
+      const dialogueReady =
+        !scene.dialogue?.trim() || Boolean(scene.dialogueAudioUrl);
+
+      return narrationReady && dialogueReady;
+    }).length;
+    const currentFinalVideoSignature = buildExportSignature(
+      title,
+      sourceScenes,
+    );
+    const finalVideoCurrent =
+      Boolean(finalVideoUrl) &&
+      Boolean(storedFinalVideoSignature) &&
+      storedFinalVideoSignature === currentFinalVideoSignature;
+    const currentPublishSignature =
+      currentPublishSignatureOverride ||
+      buildCreatorPublishSignature({
+        sourceScenes,
+        finalVideoSignature: finalVideoCurrent
+          ? storedFinalVideoSignature
+          : currentFinalVideoSignature,
+      });
+
+    return createCreatorProjectExportReadiness({
+      hasProductionStage: Boolean(
+        creatorProductionPackage || sourceScenes.length > 0,
+      ),
+      totalScenes: sourceScenes.length,
+      visualReadyCount,
+      voiceReadyCount,
+      hasFinalVideo: Boolean(finalVideoUrl),
+      currentExportSignature: currentFinalVideoSignature,
+      storedExportSignature: storedFinalVideoSignature,
+      publishReady,
+      packageDownloaded,
+      currentPublishSignature,
+      storedPublishSignature: storedPublishPackageSignature,
+      artifactHistory,
+    });
+  };
+
+  const buildCreatorPersistedExportResult = ({
+    sourceScenes = scenes,
+    finalVideoUrl = hasReusableExport() ? exportedMovieUrl : "",
+    finalVideoResult = hasReusableExport() ? exportMovieResult : null,
+    storedFinalVideoSignature = hasReusableExport()
+      ? exportSignature
+      : "",
+    storedPublishPackageSignature = creatorPackageSignature,
+    packageDownloaded = creatorPackageDownloaded,
+    artifactHistory = creatorArtifactHistory,
+    publishReady = getCreatorPublishReadyForLifecycle(),
+    currentPublishSignature,
+  }: {
+    sourceScenes?: Scene[];
+    finalVideoUrl?: string;
+    finalVideoResult?: ExportMovieResult | null;
+    storedFinalVideoSignature?: string;
+    storedPublishPackageSignature?: string;
+    packageDownloaded?: boolean;
+    artifactHistory?: CreatorArtifactHistory;
+    publishReady?: boolean;
+    currentPublishSignature?: string;
+  } = {}) => {
+    const report = buildCreatorProjectLifecycleReport({
+      sourceScenes,
+      finalVideoUrl,
+      storedFinalVideoSignature,
+      storedPublishPackageSignature,
+      packageDownloaded,
+      artifactHistory,
+      publishReady,
+      currentPublishSignature,
+    });
+    const nextHistory = createCreatorArtifactHistory(report);
+    const projectLifecycle = createCreatorProjectLifecycleSnapshot({
+      report,
+      artifactHistory: {
+        hadFinalVideo:
+          artifactHistory.hadFinalVideo || nextHistory.hadFinalVideo,
+        finalVideoSignature:
+          nextHistory.finalVideoSignature ||
+          artifactHistory.finalVideoSignature,
+        hadPublishPackage:
+          artifactHistory.hadPublishPackage ||
+          nextHistory.hadPublishPackage,
+        publishPackageSignature:
+          nextHistory.publishPackageSignature ||
+          artifactHistory.publishPackageSignature,
+        packageDownloaded: report.publishPackage.current,
+      },
+    });
+
+    return {
+      ...(report.finalVideo.current && finalVideoResult
+        ? finalVideoResult
+        : {}),
+      projectLifecycle,
+    };
   };
 
   const handleDownloadVideo = async () => {
@@ -7262,76 +7516,18 @@ const generateSceneImage = async (
     }
   };
 
-  const persistProjectSnapshot = async (snapshotScenes: Scene[]) => {
-    if (!title || snapshotScenes.length === 0) {
-      return;
-    }
-
-    if (!selectedChildId && !isCreatorLabFlow) {
-      throw new Error("Lütfen önce bir çocuk seç.");
-    }
-
-    const accessToken = await getAccessTokenOrThrow();
-
-    const res = await fetch("/api/save-project", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        projectId: currentProjectId || undefined,
-        childId: getProjectChildId(),
-        title,
-        inputPrompt: input,
-        flowKey: activeFlowKey,
-        flowTitle: selectedFlow.title,
-        flowType: activeFlowKey || "storyverse",
-        language,
-        storyPremise: storySetup?.storyPremise || "",
-        characters,
-        visualBible,
-        scenes: snapshotScenes,
-        creatorProductionPackage: creatorProductionPackage
-          ? {
-              ...creatorProductionPackage,
-              visualContinuity: getCreatorVisualContinuitySnapshot(),
-            voicePreferences: {
-                narratorProfileId: getEffectiveNarratorVoiceProfileId(),
-                dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
-                voiceId: narratorSettings.voiceId || "",
-                voiceSelection: narratorSettings.voiceSelection,
-                dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
-                dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
-                modelId: narratorSettings.modelId,
-                stability: narratorSettings.stability,
-                similarityBoost: narratorSettings.similarityBoost,
-                style: narratorSettings.style,
-                speed: narratorSettings.speed,
-                advancedTuning: narratorSettings.advancedTuning === true,
-              },
-            }
-          : null,
-        youtubeMetadataResult,
-        youtubeThumbnailResult,
-        sceneOptimizationResult,
-        sceneOptimizationSummary,
-        exportedMovieUrl: null,
-        exportedMovieResult: null,
-        exportSignature: null,
-      }),
+  const persistProjectSnapshot = async (
+    snapshotScenes: Scene[],
+    {
+      invalidateFinalVideo = true,
+    }: {
+      invalidateFinalVideo?: boolean;
+    } = {},
+  ) => {
+    await persistProject(false, {
+      sourceScenes: snapshotScenes,
+      forceInvalidateFinalVideo: invalidateFinalVideo,
     });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Kaydedilemedi.");
-    }
-
-    if (data?.project?.id) {
-      setCurrentProjectId(data.project.id);
-      setLoadProjectId(data.project.id);
-    }
   };
 
   const waitForRunwayVideoAndStore = async (scene: Scene, taskId: string) => {
@@ -8610,12 +8806,33 @@ const generateSceneImage = async (
   };
 
 
-  const handleResetExport = () => {
+  const handleResetExport = async () => {
+    const resetArtifactHistory: CreatorArtifactHistory = {
+      ...EMPTY_CREATOR_ARTIFACT_HISTORY,
+    };
+
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
     setExportMovieResult(null);
     setExportSignature("");
+    setCreatorPackageDownloaded(false);
+    setCreatorPackageSignature("");
+    setCreatorArtifactHistory(resetArtifactHistory);
+
+    try {
+      await persistProject(false, {
+        forceInvalidateFinalVideo: true,
+        storedPublishPackageSignature: "",
+        packageDownloaded: false,
+        artifactHistory: resetArtifactHistory,
+        publishReady: false,
+        currentPublishSignature: "",
+      });
+    } catch (resetSaveError) {
+      console.error("export reset save error:", resetSaveError);
+    }
+
     setSaveMessage(uiLanguage === "en" ? "Export reset ✅" : "Export sıfırlandı ✅");
   };
 
@@ -8892,50 +9109,29 @@ const generateSceneImage = async (
         sceneCount: data.sceneCount || exportScenes.length,
       };
 
+      const nextArtifactHistory: CreatorArtifactHistory = {
+        ...creatorArtifactHistory,
+        hadFinalVideo: true,
+        finalVideoSignature: currentSignature,
+        packageDownloaded: false,
+      };
+
       setExportedMovieUrl(nextExportResult.movieUrl);
       setExportMovieResult(nextExportResult);
       setExportSignature(currentSignature);
+      setCreatorPackageDownloaded(false);
+      setCreatorArtifactHistory(nextArtifactHistory);
 
       try {
-        const accessToken = await getAccessTokenOrThrow();
-
-        const saveRes = await fetch("/api/save-project", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            projectId: currentProjectId || undefined,
-            childId: getProjectChildId(),
-            title,
-            inputPrompt: input,
-            flowKey: activeFlowKey,
-            flowTitle: selectedFlow.title,
-            flowType: activeFlowKey || "storyverse",
-            language,
-            storyPremise: storySetup?.storyPremise || "",
-            characters,
-            visualBible,
-            scenes,
-            creatorProductionPackage: attachCreatorVisualContinuity(creatorProductionPackage),
-            youtubeMetadataResult,
-            youtubeThumbnailResult,
-            sceneOptimizationResult,
-            sceneOptimizationSummary,
-            exportedMovieUrl: nextExportResult.movieUrl,
-            exportedMovieResult: nextExportResult,
-            exportSignature: currentSignature,
-          }),
+        await persistProject(false, {
+          finalVideoUrl: nextExportResult.movieUrl,
+          finalVideoResult: nextExportResult,
+          storedFinalVideoSignature: currentSignature,
+          storedPublishPackageSignature: creatorPackageSignature,
+          packageDownloaded: false,
+          artifactHistory: nextArtifactHistory,
+          publishReady: false,
         });
-
-        const saveData = await saveRes.json();
-
-        if (saveRes.ok && saveData?.project?.id) {
-          setCurrentProjectId(saveData.project.id);
-          setLoadProjectId(saveData.project.id);
-          await fetchProjects();
-        }
       } catch (saveError) {
         console.error("export cache save error:", saveError);
       }
@@ -9285,8 +9481,26 @@ const generateSceneImage = async (
     }
   };
 
-  const persistProject = async (showManualMessage = false) => {
-    if (!title || scenes.length === 0) {
+  const persistProject = async (
+    showManualMessage = false,
+    lifecycleOverrides: {
+      sourceScenes?: Scene[];
+      finalVideoUrl?: string;
+      finalVideoResult?: ExportMovieResult | null;
+      storedFinalVideoSignature?: string;
+      packageDownloaded?: boolean;
+      storedPublishPackageSignature?: string;
+      artifactHistory?: CreatorArtifactHistory;
+      publishReady?: boolean;
+      currentPublishSignature?: string;
+      youtubeMetadata?: YoutubeMetadataResult | null;
+      youtubeThumbnail?: YoutubeThumbnailResult | null;
+      forceInvalidateFinalVideo?: boolean;
+    } = {},
+  ) => {
+    const sourceScenes = lifecycleOverrides.sourceScenes || scenes;
+
+    if (!title || sourceScenes.length === 0) {
       return;
     }
 
@@ -9296,6 +9510,78 @@ const generateSceneImage = async (
     }
 
     const accessToken = await getAccessTokenOrThrow();
+    const forceInvalidateFinalVideo =
+      lifecycleOverrides.forceInvalidateFinalVideo === true;
+    const candidateFinalVideoUrl = forceInvalidateFinalVideo
+      ? ""
+      : lifecycleOverrides.finalVideoUrl ??
+        (hasReusableExport() ? exportedMovieUrl : "");
+    const candidateFinalVideoResult = forceInvalidateFinalVideo
+      ? null
+      : lifecycleOverrides.finalVideoResult ??
+        (hasReusableExport() ? exportMovieResult : null);
+    const candidateFinalVideoSignature = forceInvalidateFinalVideo
+      ? ""
+      : lifecycleOverrides.storedFinalVideoSignature ??
+        (hasReusableExport() ? exportSignature : "");
+    const currentSourceSignature = buildExportSignature(title, sourceScenes);
+    const finalVideoCurrent =
+      Boolean(candidateFinalVideoUrl) &&
+      Boolean(candidateFinalVideoSignature) &&
+      candidateFinalVideoSignature === currentSourceSignature;
+    const lifecycleArtifactHistory: CreatorArtifactHistory = {
+      ...(lifecycleOverrides.artifactHistory ??
+        creatorArtifactHistory),
+      hadFinalVideo:
+        (lifecycleOverrides.artifactHistory ??
+          creatorArtifactHistory).hadFinalVideo ||
+        Boolean(exportedMovieUrl || exportSignature),
+      finalVideoSignature:
+        (lifecycleOverrides.artifactHistory ??
+          creatorArtifactHistory).finalVideoSignature ||
+        exportSignature ||
+        "",
+      hadPublishPackage:
+        (lifecycleOverrides.artifactHistory ??
+          creatorArtifactHistory).hadPublishPackage ||
+        Boolean(creatorPackageSignature),
+      publishPackageSignature:
+        (lifecycleOverrides.artifactHistory ??
+          creatorArtifactHistory).publishPackageSignature ||
+        creatorPackageSignature ||
+        "",
+      packageDownloaded:
+        lifecycleOverrides.packageDownloaded ??
+        creatorPackageDownloaded,
+    };
+    const persistedCreatorExportResult = isCreatorLabFlow
+      ? buildCreatorPersistedExportResult({
+          sourceScenes,
+          finalVideoUrl: finalVideoCurrent
+            ? candidateFinalVideoUrl
+            : "",
+          finalVideoResult: finalVideoCurrent
+            ? candidateFinalVideoResult
+            : null,
+          storedFinalVideoSignature: finalVideoCurrent
+            ? candidateFinalVideoSignature
+            : "",
+          storedPublishPackageSignature:
+            lifecycleOverrides.storedPublishPackageSignature ??
+            creatorPackageSignature,
+          packageDownloaded:
+            lifecycleOverrides.packageDownloaded ??
+            creatorPackageDownloaded,
+          artifactHistory: lifecycleArtifactHistory,
+          publishReady:
+            lifecycleOverrides.publishReady ??
+            false,
+          currentPublishSignature:
+            lifecycleOverrides.currentPublishSignature,
+        })
+      : finalVideoCurrent
+        ? candidateFinalVideoResult
+        : null;
 
     const res = await fetch("/api/save-project", {
       method: "POST",
@@ -9315,12 +9601,12 @@ const generateSceneImage = async (
         storyPremise: storySetup?.storyPremise || "",
         characters,
         visualBible,
-        scenes,
+        scenes: sourceScenes,
         creatorProductionPackage: creatorProductionPackage
           ? {
               ...creatorProductionPackage,
               visualContinuity: getCreatorVisualContinuitySnapshot(),
-            voicePreferences: {
+              voicePreferences: {
                 narratorProfileId: getEffectiveNarratorVoiceProfileId(),
                 dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
                 voiceId: narratorSettings.voiceId || "",
@@ -9336,13 +9622,21 @@ const generateSceneImage = async (
               },
             }
           : null,
-        youtubeMetadataResult,
-        youtubeThumbnailResult,
+        youtubeMetadataResult:
+          lifecycleOverrides.youtubeMetadata ??
+          youtubeMetadataResult,
+        youtubeThumbnailResult:
+          lifecycleOverrides.youtubeThumbnail ??
+          youtubeThumbnailResult,
         sceneOptimizationResult,
         sceneOptimizationSummary,
-        exportedMovieUrl: hasReusableExport() ? exportedMovieUrl : null,
-        exportedMovieResult: hasReusableExport() ? exportMovieResult : null,
-        exportSignature: hasReusableExport() ? exportSignature : null,
+        exportedMovieUrl: finalVideoCurrent
+          ? candidateFinalVideoUrl
+          : null,
+        exportedMovieResult: persistedCreatorExportResult,
+        exportSignature: finalVideoCurrent
+          ? candidateFinalVideoSignature
+          : null,
       }),
     });
 
@@ -9509,9 +9803,57 @@ const generateSceneImage = async (
           : []
       );
 
-      setExportedMovieUrl(project.exported_movie_url || "");
-      setExportMovieResult(project.exported_movie_result || null);
-      setExportSignature(project.export_signature || "");
+      const savedExportResultRecord =
+        project.exported_movie_result &&
+        typeof project.exported_movie_result === "object" &&
+        !Array.isArray(project.exported_movie_result)
+          ? (project.exported_movie_result as Record<string, unknown>)
+          : null;
+      const savedLifecycle = parseCreatorProjectLifecycleSnapshot(
+        savedExportResultRecord?.projectLifecycle,
+      );
+      const savedExportedMovieUrl =
+        typeof project.exported_movie_url === "string"
+          ? project.exported_movie_url
+          : "";
+      const savedExportMovieResult =
+        savedExportedMovieUrl &&
+        savedExportResultRecord &&
+        typeof savedExportResultRecord.movieUrl === "string"
+          ? (savedExportResultRecord as unknown as ExportMovieResult)
+          : null;
+      const loadedArtifactHistory: CreatorArtifactHistory =
+        isCreatorProject
+          ? savedLifecycle?.artifactHistory || {
+              hadFinalVideo: Boolean(
+                savedExportedMovieUrl || project.export_signature,
+              ),
+              finalVideoSignature:
+                typeof project.export_signature === "string"
+                  ? project.export_signature
+                  : "",
+              hadPublishPackage: false,
+              publishPackageSignature: "",
+              packageDownloaded: false,
+            }
+          : {
+              ...EMPTY_CREATOR_ARTIFACT_HISTORY,
+            };
+
+      setExportedMovieUrl(savedExportedMovieUrl);
+      setExportMovieResult(savedExportMovieResult);
+      setExportSignature(
+        typeof project.export_signature === "string"
+          ? project.export_signature
+          : "",
+      );
+      setCreatorArtifactHistory(loadedArtifactHistory);
+      setCreatorPackageSignature(
+        loadedArtifactHistory.publishPackageSignature,
+      );
+      setCreatorPackageDownloaded(
+        loadedArtifactHistory.packageDownloaded,
+      );
 
       setCreatorMentorResult(project.creator_mentor_result || null);
 
@@ -11862,7 +12204,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           JSON.stringify({ design: creatorThumbnailStudio, imageUrl: creatorPublishThumbnailUrl }),
         );
       }
-      await persistProjectSnapshot(scenes);
+      await persistProjectSnapshot(scenes, {
+        invalidateFinalVideo: false,
+      });
       setSaveMessage(uiLanguage === "en" ? "Thumbnail saved to the project." : "Thumbnail projeye kaydedildi.");
     } catch (saveError: any) {
       setError(saveError?.message || (uiLanguage === "en" ? "Thumbnail could not be saved." : "Thumbnail kaydedilemedi."));
@@ -12106,6 +12450,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           "",
         design: creatorThumbnailStudio,
       };
+      const nextCreatorPackageSignature = buildCreatorPublishSignature({
+        metadata: metadataForExport,
+        thumbnail: youtubeThumbnailResult,
+        thumbnailDesign: creatorThumbnailStudio,
+        targetPlatforms: creatorTargetPlatforms,
+      });
 
       const res = await fetch("/api/export-creator-package", {
         method: "POST",
@@ -12169,7 +12519,42 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
 
+      const nextArtifactHistory: CreatorArtifactHistory = {
+        ...creatorArtifactHistory,
+        hadFinalVideo: true,
+        finalVideoSignature:
+          exportSignature || buildExportSignature(title, scenes),
+        hadPublishPackage: true,
+        publishPackageSignature: nextCreatorPackageSignature,
+        packageDownloaded: true,
+      };
+
+      setCreatorPackageSignature(nextCreatorPackageSignature);
       setCreatorPackageDownloaded(true);
+      setCreatorArtifactHistory(nextArtifactHistory);
+
+      try {
+        await persistProject(false, {
+          storedPublishPackageSignature: nextCreatorPackageSignature,
+          packageDownloaded: true,
+          artifactHistory: nextArtifactHistory,
+          publishReady: true,
+          currentPublishSignature: nextCreatorPackageSignature,
+          youtubeMetadata: metadataForExport,
+          youtubeThumbnail: youtubeThumbnailResult
+            ? {
+                ...youtubeThumbnailResult,
+                design: creatorThumbnailStudio,
+              }
+            : null,
+        });
+      } catch (lifecycleSaveError) {
+        console.error(
+          "creator package lifecycle save error:",
+          lifecycleSaveError,
+        );
+      }
+
       void emitCreatorTelemetry("export_succeeded", {
         qualityMode: creatorQualityMode,
         format: creatorFormat,
@@ -14700,7 +15085,23 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         clearTimeout(autosaveTimerRef.current);
       }
     };
-  }, [title, input, storySetup, characters, visualBible, scenes, narratorSettings]);
+  }, [
+    title,
+    input,
+    storySetup,
+    characters,
+    visualBible,
+    scenes,
+    narratorSettings,
+    creatorProductionPackage,
+    youtubeMetadataResult,
+    youtubeThumbnailResult,
+    creatorThumbnailStudio,
+    creatorTargetPlatforms,
+    creatorPackageDownloaded,
+    creatorPackageSignature,
+    creatorArtifactHistory,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -14764,10 +15165,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         totalScenes: scenes.length,
         visualReadyCount: visualAssetReadyCount,
         voiceReadyCount: audioReadyCount,
-        finalVideoReady: creatorFinalVideoReadiness?.status === "ready",
+        finalVideoReady: Boolean(exportedMovieUrl && hasReusableExport()),
         hasExportedVideo: Boolean(exportedMovieUrl && hasReusableExport()),
         qualityMode: creatorQualityMode,
       })
+    : null;
+  const creatorProjectLifecycle = isCreatorLabFlow
+    ? buildCreatorProjectLifecycleReport()
     : null;
   const creatorIntelligenceReport: CreatorIntelligenceReport | null =
     isCreatorLabFlow && (creatorProductionPackage || creatorMentorResult)
@@ -14793,7 +15197,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const creatorBriefComplete = Boolean(input.trim() || creatorMentorResult);
   const creatorStrategyComplete = Boolean(creatorProductionPackage);
   const creatorProductionComplete = Boolean(exportedMovieUrl && hasReusableExport());
-  const creatorPublishComplete = creatorPackageDownloaded;
+  const creatorPublishComplete =
+    creatorProjectLifecycle?.status === "exported";
   const creatorProgressStep: 1 | 2 | 3 | 4 = creatorProductionComplete || creatorPublishComplete
     ? 4
     : creatorProductionPackage || scenes.length > 0
@@ -14806,22 +15211,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     !isCreatorLabFlow ||
     creatorWorkspaceStep === 1 ||
     (creatorWorkspaceStep === 2 && creatorBriefEditorOpen);
-  const creatorAssetProgress = creatorProjectReadiness?.totalScenes
-    ? ((creatorProjectReadiness.visualReadyCount + creatorProjectReadiness.voiceReadyCount) /
-        (creatorProjectReadiness.totalScenes * 2)) * 30
-    : 0;
-  const creatorReadinessPercent = creatorPublishComplete
-    ? 100
-    : Math.min(
-        95,
-        Math.round(
-          (creatorBriefComplete ? 20 : input.trim() ? 10 : 0) +
-            (creatorMentorResult ? 15 : 0) +
-            (creatorStrategyComplete ? 15 : 0) +
-            creatorAssetProgress +
-            (creatorProductionComplete ? 15 : 0),
-        ),
-      );
+  const creatorReadinessPercent =
+    creatorProjectLifecycle?.progress || 0;
   const creatorRawProjectTitle =
     creatorProductionPackage?.title || title || input.trim() ||
     (uiLanguage === "en" ? "Untitled creator project" : "İsimsiz içerik projesi");
@@ -14829,11 +15220,48 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     creatorRawProjectTitle.length > 62
       ? `${creatorRawProjectTitle.slice(0, 59).trim()}…`
       : creatorRawProjectTitle;
-  const creatorReadinessLabel = creatorPublishComplete
-    ? uiLanguage === "en" ? "Exported" : "Dışa aktarıldı"
-    : creatorProductionComplete
-      ? uiLanguage === "en" ? "Ready" : "Hazır"
-      : uiLanguage === "en" ? "Draft" : "Taslak";
+  const creatorProjectStatusLabel = (
+    status: CreatorProjectLifecycleStatus,
+  ) => {
+    if (status === "exported") {
+      return uiLanguage === "en" ? "Exported" : "Dışa aktarıldı";
+    }
+    if (status === "export_outdated") {
+      return uiLanguage === "en" ? "Export outdated" : "Export güncel değil";
+    }
+    if (status === "publish_ready") {
+      return uiLanguage === "en" ? "Publish ready" : "Yayına hazır";
+    }
+    if (status === "final_video_ready") {
+      return uiLanguage === "en" ? "Final video ready" : "Final video hazır";
+    }
+    if (status === "production_ready") {
+      return uiLanguage === "en" ? "Production ready" : "Üretime hazır";
+    }
+    if (status === "production_in_progress") {
+      return uiLanguage === "en" ? "In production" : "Üretimde";
+    }
+
+    return uiLanguage === "en" ? "Draft" : "Taslak";
+  };
+  const getCreatorLifecycleTone = (
+    status: CreatorProjectLifecycleStatus,
+  ) =>
+    status === "exported"
+      ? "exported"
+      : status === "export_outdated"
+        ? "outdated"
+        : status === "production_in_progress"
+          ? "in-progress"
+          : status === "draft"
+            ? "draft"
+            : "ready";
+  const creatorReadinessLabel = creatorProjectStatusLabel(
+    creatorProjectLifecycle?.status || "draft",
+  );
+  const creatorLifecycleTone = getCreatorLifecycleTone(
+    creatorProjectLifecycle?.status || "draft",
+  );
   const creatorProjectRecords = isCreatorLabFlow
     ? [...filteredProjects].sort((left, right) => {
         const leftTime = new Date(left?.updated_at || left?.created_at || 0).getTime();
@@ -14847,12 +15275,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const creatorCurrentProjectUpdatedLabel = formatCreatorProjectUpdatedAt(
     currentCreatorProjectRecord?.updated_at || currentCreatorProjectRecord?.created_at,
   );
-  const creatorProjectStatusLabel = (status: "draft" | "ready" | "exported") =>
-    status === "exported"
-      ? uiLanguage === "en" ? "Exported" : "Dışa aktarıldı"
-      : status === "ready"
-        ? uiLanguage === "en" ? "Ready" : "Hazır"
-        : uiLanguage === "en" ? "Draft" : "Taslak";
   const creatorMentorAudienceInsights = Array.isArray(creatorMentorResult?.audienceInsight)
     ? creatorMentorResult.audienceInsight
     : [];
@@ -16294,6 +16716,18 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   color: var(--cl-accent);
   background: var(--cl-accent-soft);
   border-color: var(--cl-accent-border);
+}
+
+.creatorlab-status-pill.is-in-progress {
+  color: #8a5a12;
+  background: #fff7df;
+  border-color: #ead39a;
+}
+
+.creatorlab-status-pill.is-outdated {
+  color: #a23a3a;
+  background: #fff0f0;
+  border-color: #edc1c1;
 }
 
 .creatorlab-topbar-actions {
@@ -22649,6 +23083,18 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   border-color: var(--cl-accent-border);
 }
 
+.creatorlab-project-status.is-in-progress {
+  color: #8a5a12;
+  background: #fff7df;
+  border-color: #ead39a;
+}
+
+.creatorlab-project-status.is-outdated {
+  color: #a23a3a;
+  background: #fff0f0;
+  border-color: #edc1c1;
+}
+
 .creatorlab-current-readiness {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -24189,7 +24635,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <span style={{ width: `${creatorReadinessPercent}%` }} />
               </div>
               <span className="creatorlab-readiness-value">{creatorReadinessPercent}%</span>
-              <span className={`creatorlab-status-pill is-${creatorProjectReadiness?.status || "draft"}`}>
+              <span className={`creatorlab-status-pill is-${creatorLifecycleTone}`}>
                 {creatorReadinessLabel}
               </span>
             </div>
@@ -25315,7 +25761,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </small>
               </div>
 
-              <span className={`creatorlab-project-status is-${creatorProjectReadiness?.status || "draft"}`}>
+              <span className={`creatorlab-project-status is-${creatorLifecycleTone}`}>
                 {creatorReadinessLabel}
               </span>
 
@@ -25491,7 +25937,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
                           <div className="creatorlab-project-row-readiness">
                             <div className="creatorlab-project-row-status-line">
-                              <span className={`creatorlab-project-status is-${snapshot.status}`}>
+                              <span className={`creatorlab-project-status is-${getCreatorLifecycleTone(snapshot.status)}`}>
                                 {creatorProjectStatusLabel(snapshot.status)}
                               </span>
                               <span>{snapshot.progress}%</span>

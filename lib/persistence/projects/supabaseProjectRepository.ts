@@ -8,7 +8,7 @@ import type {
 } from "./types";
 
 const PROJECT_LIST_FIELDS =
-  "id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url";
+  "id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url, exported_movie_result, export_signature";
 const PUBLIC_PROJECT_FIELDS =
   "id, title, input_prompt, story_premise, language, visual_bible, characters, scenes, share_id, is_public, published_at, created_at, updated_at, exported_movie_url, exported_movie_result, export_signature";
 

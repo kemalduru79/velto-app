@@ -27,7 +27,8 @@
     "test:voice-p1b": "node scripts/voice-p1b-smoke-test.mjs",
     "test:voice-p1c": "node scripts/voice-p1c-smoke-test.mjs",
     "test:3q": "node scripts/3q-final-production-gate-smoke-test.mjs",
-    "test:3r": "node scripts/3r-publish-ready-package-smoke-test.mjs"
+    "test:3r": "node scripts/3r-publish-ready-package-smoke-test.mjs",
+    "test:3u": "node scripts/3u-project-export-readiness-smoke-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",
