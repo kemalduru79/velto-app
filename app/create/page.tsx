@@ -94,6 +94,12 @@ import {
   createCreatorFinalVideoReadiness,
   type CreatorFinalVideoReadinessReport,
 } from "@/lib/creator/finalVideoReadiness";
+// 3Q FINAL PRODUCTION GATE
+import {
+  createCreatorFinalProductionGate,
+  type CreatorExportServiceGateStatus,
+  type CreatorFinalProductionGateReport,
+} from "@/lib/creator/finalProductionGate";
 import {
   createCreatorIntelligence,
   type CreatorIntelligenceReport,
@@ -198,7 +204,7 @@ type CreatorTelemetryEventName =
   | "export_succeeded"
   | "export_failed";
 
-type CreatorOpsServiceKey = "database" | "ai" | "voice" | "video";
+type CreatorOpsServiceKey = "database" | "ai" | "voice" | "video" | "export";
 type CreatorOpsStatus = {
   status: "idle" | "checking" | "ready" | "degraded" | "blocked" | "error";
   checkedAt: string;
@@ -3089,6 +3095,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       ai: false,
       voice: false,
       video: false,
+      export: false,
     },
     message: "",
   });
@@ -3353,8 +3360,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
   };
 
-  const refreshCreatorOpsStatus = async () => {
-    if (!isCreatorLabFlow) return;
+  const refreshCreatorOpsStatus = async (): Promise<CreatorOpsStatus | null> => {
+    if (!isCreatorLabFlow) return null;
 
     setCreatorOpsStatus((previous) => ({
       ...previous,
@@ -3394,7 +3401,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         );
       }
 
-      setCreatorOpsStatus({
+      const nextStatus: CreatorOpsStatus = {
         status:
           data.status === "ready" ||
           data.status === "degraded" ||
@@ -3409,21 +3416,36 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           ai: Boolean(data.services?.ai),
           voice: Boolean(data.services?.voice),
           video: Boolean(data.services?.video),
+          export: Boolean(data.services?.export),
         },
         message: typeof data.message === "string" ? data.message : "",
-      });
+      };
+
+      setCreatorOpsStatus(nextStatus);
+      return nextStatus;
     } catch (opsError) {
-      setCreatorOpsStatus((previous) => ({
-        ...previous,
+      const nextStatus: CreatorOpsStatus = {
         status: "error",
         checkedAt: new Date().toISOString(),
+        release: "",
+        requestId: "",
+        services: {
+          database: false,
+          ai: false,
+          voice: false,
+          video: false,
+          export: false,
+        },
         message:
           opsError instanceof Error
             ? opsError.message
             : uiLanguage === "en"
               ? "Velto Studio operational status could not be checked."
               : "Velto Studio operasyon durumu kontrol edilemedi.",
-      }));
+      };
+
+      setCreatorOpsStatus(nextStatus);
+      return nextStatus;
     }
   };
 
@@ -8645,6 +8667,36 @@ const generateSceneImage = async (
       : "Timeline, görseller, seslendirme ve akış hazır.";
   };
 
+  const getCreatorFinalProductionGateMessage = (
+    gate: CreatorFinalProductionGateReport,
+  ) => {
+    if (gate.status === "checking") {
+      return uiLanguage === "en"
+        ? "Final production service must be checked before export."
+        : "Export öncesinde final üretim servisi kontrol edilmeli.";
+    }
+
+    if (gate.checks.exportService === "blocked") {
+      return uiLanguage === "en"
+        ? "Final video service is unavailable or not on the required continuity release. No export credit was used."
+        : "Final video servisi kullanılamıyor veya gerekli devamlılık sürümünde değil. Export kredisi kullanılmadı.";
+    }
+
+    if (gate.status === "blocked") {
+      return getCreatorFinalVideoReadinessMessage(creatorFinalVideoReadiness!);
+    }
+
+    if (gate.status === "review") {
+      return uiLanguage === "en"
+        ? "Production checks passed. Timing warnings will require confirmation."
+        : "Üretim kontrolleri geçti. Süre uyarıları için onay istenecek.";
+    }
+
+    return uiLanguage === "en"
+      ? "Timeline, assets, continuity and final video service are ready."
+      : "Timeline, varlıklar, devamlılık ve final video servisi hazır.";
+  };
+
   const handleExportMovie = async (forceRebuild = false) => {
     const currentSignature = buildExportSignature(title, scenes);
 
@@ -8681,6 +8733,24 @@ const generateSceneImage = async (
       if (!readiness.canStartFinalVideo) {
         setSaveMessage("");
         setError(getCreatorFinalVideoReadinessMessage(readiness));
+        return;
+      }
+
+      const operationalStatus = await refreshCreatorOpsStatus();
+      const exportServiceStatus: CreatorExportServiceGateStatus =
+        operationalStatus?.services.export
+          ? "ready"
+          : operationalStatus?.status === "checking"
+            ? "checking"
+            : "unavailable";
+      const finalProductionGate = createCreatorFinalProductionGate({
+        readiness,
+        exportServiceStatus,
+      });
+
+      if (!finalProductionGate.canStartFinalVideo) {
+        setSaveMessage("");
+        setError(getCreatorFinalProductionGateMessage(finalProductionGate));
         return;
       }
     }
@@ -11931,6 +12001,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         ageGroup: creatorAgeGroup,
         contentType: creatorContentType,
         creatorFormat,
+        targetPlatforms: creatorTargetPlatforms,
         videoDurationSec: creatorVideoDurationSec,
         patternSummary: youtubePatternSummary,
       }),
@@ -12066,7 +12137,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Creator package indirilemedi.");
+        const missingRequirements = Array.isArray(
+          data?.publishReadyReport?.missingRequirementCodes,
+        )
+          ? data.publishReadyReport.missingRequirementCodes.join(", ")
+          : "";
+
+        throw new Error(
+          missingRequirements
+            ? `${data?.error || "Creator package indirilemedi."} Missing: ${missingRequirements}.`
+            : data?.error || "Creator package indirilemedi.",
+        );
       }
 
       const packageWarningCount = Number(
@@ -14659,6 +14740,23 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     : null;
   const creatorFinalVideoReadinessMessage = creatorFinalVideoReadiness
     ? getCreatorFinalVideoReadinessMessage(creatorFinalVideoReadiness)
+    : "";
+  const creatorExportServiceGateStatus: CreatorExportServiceGateStatus =
+    creatorOpsStatus.status === "checking"
+      ? "checking"
+      : creatorOpsStatus.status === "idle"
+        ? "unchecked"
+        : creatorOpsStatus.services.export
+          ? "ready"
+          : "unavailable";
+  const creatorFinalProductionGate = creatorFinalVideoReadiness
+    ? createCreatorFinalProductionGate({
+        readiness: creatorFinalVideoReadiness,
+        exportServiceStatus: creatorExportServiceGateStatus,
+      })
+    : null;
+  const creatorFinalProductionGateMessage = creatorFinalProductionGate
+    ? getCreatorFinalProductionGateMessage(creatorFinalProductionGate)
     : "";
   const creatorProjectReadiness = isCreatorLabFlow
     ? createCreatorProjectReadiness({
@@ -25288,6 +25386,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   ["ai", uiLanguage === "en" ? "AI workspace" : "AI çalışma alanı"],
                   ["voice", uiLanguage === "en" ? "Voice production" : "Ses üretimi"],
                   ["video", uiLanguage === "en" ? "Premium video" : "Premium video"],
+                  ["export", uiLanguage === "en" ? "Final video service" : "Final video servisi"],
                 ] as Array<[CreatorOpsServiceKey, string]>).map(([serviceKey, label]) => (
                   <div
                     key={serviceKey}
@@ -30433,7 +30532,80 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     </p>
                   )}
 
+                  {creatorFinalProductionGate && (
+                    <div
+                      className={`mt-4 rounded-3xl border p-4 ${
+                        creatorFinalProductionGate.status === "ready"
+                          ? "border-emerald-300/50 bg-emerald-50/90"
+                          : creatorFinalProductionGate.status === "review"
+                            ? "border-amber-300/50 bg-amber-50/90"
+                            : creatorFinalProductionGate.status === "checking"
+                              ? "border-blue-300/50 bg-blue-50/90"
+                              : "border-rose-300/50 bg-rose-50/90"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                            3Q · {uiLanguage === "en" ? "Final Production Gate" : "Final Üretim Kontrolü"}
+                          </p>
+                          <h4 className="mt-2 text-sm font-semibold text-slate-950">
+                            {creatorFinalProductionGate.status === "ready"
+                              ? uiLanguage === "en" ? "Ready to create the final video" : "Final video üretimine hazır"
+                              : creatorFinalProductionGate.status === "review"
+                                ? uiLanguage === "en" ? "Ready with confirmation" : "Onay ile hazır"
+                                : creatorFinalProductionGate.status === "checking"
+                                  ? uiLanguage === "en" ? "Production service check required" : "Üretim servisi kontrolü gerekli"
+                                  : uiLanguage === "en" ? "Final production is blocked" : "Final üretim engellendi"}
+                          </h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            {creatorFinalProductionGateMessage}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void refreshCreatorOpsStatus()}
+                          disabled={creatorOpsStatus.status === "checking"}
+                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                        >
+                          {creatorOpsStatus.status === "checking"
+                            ? uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…"
+                            : uiLanguage === "en" ? "Check again" : "Tekrar kontrol et"}
+                        </button>
+                      </div>
 
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        {([
+                          ["Timeline", creatorFinalProductionGate.checks.timeline],
+                          [uiLanguage === "en" ? "Visuals" : "Görseller", creatorFinalProductionGate.checks.visuals],
+                          [uiLanguage === "en" ? "Voice" : "Ses", creatorFinalProductionGate.checks.voiceOver],
+                          [uiLanguage === "en" ? "Continuity" : "Devamlılık", creatorFinalProductionGate.checks.continuity],
+                          [uiLanguage === "en" ? "Final service" : "Final servis", creatorFinalProductionGate.checks.exportService],
+                        ] as Array<[string, string]>).map(([label, status]) => (
+                          <div key={label} className="rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-center">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                            <p className={`mt-1 text-xs font-semibold ${
+                              status === "ready"
+                                ? "text-emerald-700"
+                                : status === "review"
+                                  ? "text-amber-700"
+                                  : status === "checking"
+                                    ? "text-blue-700"
+                                    : "text-rose-700"
+                            }`}>
+                              {status === "ready"
+                                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                                : status === "review"
+                                  ? uiLanguage === "en" ? "Review" : "Kontrol"
+                                  : status === "checking"
+                                    ? uiLanguage === "en" ? "Checking" : "Kontrol"
+                                    : uiLanguage === "en" ? "Blocked" : "Engelli"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {flowContinuityAudit && (
                     <div

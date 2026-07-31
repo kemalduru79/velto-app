@@ -54,6 +54,12 @@ export async function POST(req: Request) {
       : "youtube_video";
     const videoDurationSec = Number(body?.videoDurationSec || productionPackage?.durationSec || 60);
     const patternSummary = body?.patternSummary || null;
+    const targetPlatforms = normalizeStringArray(
+      body?.targetPlatforms,
+      creatorFormat === "short_form"
+        ? ["youtube_shorts", "instagram_reels", "tiktok"]
+        : ["youtube"],
+    );
 
     const scenes = Array.isArray(productionPackage?.scenes)
       ? productionPackage.scenes.slice(0, 12).map((scene: any) => ({
@@ -65,7 +71,7 @@ export async function POST(req: Request) {
       : [];
 
     const prompt = `
-You are a YouTube packaging strategist for child-safe educational / story-based videos.
+You are a senior publishing strategist for professional 18+ creators.
 
 Generate metadata for a YouTube video.
 
@@ -93,8 +99,11 @@ Rules:
 - Target market: ${targetMarket}.
 - Content type: ${contentType}.
 - Target format: ${creatorFormat === "short_form" ? "Shorts / Reels / TikTok" : "YouTube video"}.
+- Selected publishing platforms: ${targetPlatforms.join(", ") || "not specified"}.
 - Video duration target: ${videoDurationSec} seconds.
 - Professional, audience-appropriate, clear and publish-ready.
+- Do not assume a child audience, recurring child character, kids-science framing, or educational-story tone unless the production package explicitly requires it.
+- Tailor the copy to the selected platforms while keeping one coherent core message.
 - Avoid clickbait that overpromises.
 - Titles should be YouTube-friendly, curiosity-led, and under 65 characters when possible.
 - Generate one recommended title that is the safest publish-ready option, not merely the most dramatic option.

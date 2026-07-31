@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { createCreatorPublishReadyPackageReport } from "@/lib/creator/publishReadyPackage";
+
+// 3R PUBLISH-READY PACKAGE
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -411,6 +414,27 @@ function createProductionSummary(input: {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const publishReadyReport = createCreatorPublishReadyPackageReport({
+      productionPackage: body?.productionPackage,
+      videoUrl: body?.videoUrl,
+      thumbnail: body?.thumbnail,
+      metadata: body?.metadata,
+      scenes: body?.scenes,
+      targetPlatforms: body?.targetPlatforms,
+      releaseChecklist: body?.releaseChecklist,
+    });
+
+    if (!publishReadyReport.canExport) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Creator Package is not publish-ready.",
+          publishReadyReport,
+        },
+        { status: 409 },
+      );
+    }
+
     const productionPackage = safeObject(body?.productionPackage);
     const metadata = safeObject(body?.metadata);
     const thumbnail = safeObject(body?.thumbnail);
@@ -698,7 +722,8 @@ export async function POST(req: Request) {
     });
 
     const manifest = {
-      version: "ux-p4-creator-release-v2",
+      version: "3R-publish-ready-v1",
+      publishReadyReport,
       generatedAt: new Date().toISOString(),
       projectTitle: title,
       publishingTitle: recommendedTitle,
@@ -726,6 +751,8 @@ export async function POST(req: Request) {
         "Content-Disposition": `attachment; filename="${safeTitle}.zip"`,
         "Cache-Control": "no-store",
         "X-Velto-Package-Warnings": String(warnings.length),
+        "X-Velto-Publish-Ready": "true",
+        "X-Velto-Package-Version": "3R",
       },
     });
   } catch (error) {
