@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 import { experienceFlows } from "@/lib/flows";
 import { useLanguage } from "@/lib/useLanguage";
 import { dashboardMessages } from "@/lib/i18n/dashboard";
@@ -71,22 +72,25 @@ export default function VeltoDashboard() {
             <span className="text-sm font-black tracking-[0.18em] text-white/85">VELTO</span>
           </Link>
 
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.07] p-1 text-xs text-white/70 shadow-[0_16px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-            <span className="hidden px-3 font-bold sm:inline">{t.languageSwitch.label}</span>
-            <button
-              type="button"
-              onClick={() => setLanguage("tr")}
-              className={`rounded-full px-3 py-2 font-black transition ${language === "tr" ? "bg-white text-slate-950" : "hover:bg-white/10 hover:text-white"}`}
-            >
-              TR
-            </button>
-            <button
-              type="button"
-              onClick={() => setLanguage("en")}
-              className={`rounded-full px-3 py-2 font-black transition ${language === "en" ? "bg-white text-slate-950" : "hover:bg-white/10 hover:text-white"}`}
-            >
-              EN
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ProductTopNavigation tone="dark" active="products" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.07] p-1 text-xs text-white/70 shadow-[0_16px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+              <span className="hidden px-3 font-bold sm:inline">{t.languageSwitch.label}</span>
+              <button
+                type="button"
+                onClick={() => setLanguage("tr")}
+                className={`rounded-full px-3 py-2 font-black transition ${language === "tr" ? "bg-white text-slate-950" : "hover:bg-white/10 hover:text-white"}`}
+              >
+                TR
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage("en")}
+                className={`rounded-full px-3 py-2 font-black transition ${language === "en" ? "bg-white text-slate-950" : "hover:bg-white/10 hover:text-white"}`}
+              >
+                EN
+              </button>
+            </div>
           </div>
         </div>
 

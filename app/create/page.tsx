@@ -124,6 +124,16 @@ import {
   type CreatorProjectLifecycleSnapshot,
   type CreatorProjectLifecycleStatus,
 } from "@/lib/creator/projectExportReadiness";
+// DIRECTOR-P1 VELTO COPILOT
+// DIRECTOR-P1R FLOATING VELTO COPILOT
+// REPORT-P1 PROJECT PERFORMANCE REPORT
+import {
+  appendCreatorProjectPerformanceHistory,
+  createCreatorProjectPerformanceReport,
+  createCreatorProjectPerformanceReportHtml,
+  parseCreatorProjectPerformanceHistory,
+  type CreatorProjectPerformanceHistoryEntry,
+} from "@/lib/creator/projectPerformanceReport";
 import {
   createFlowContinuityAudit,
   type FlowContinuityAuditReport,
@@ -154,7 +164,8 @@ type CreatorDirectorActionType =
   | "generate_selected_visuals"
   | "generate_selected_voice"
   | "generate_selected_videos"
-  | "export_creator_package";
+  | "export_creator_package"
+  | "navigate_workspace_stage";
 type CreatorDirectorActionImpact = "none" | "credit_variable" | "release";
 type CreatorDirectorActionStatus =
   | "pending"
@@ -173,6 +184,7 @@ type CreatorDirectorActionPayload = {
   thumbnailHeadline: string | null;
   thumbnailSubHeadline: string | null;
   thumbnailSceneId: number | null;
+  workspaceStage: 1 | 2 | 3 | 4 | null;
 };
 type CreatorDirectorAction = {
   id: string;
@@ -196,6 +208,12 @@ type CreatorDirectorMessage = {
   content: string;
   createdAt: string;
   actions?: CreatorDirectorAction[];
+  intent?:
+    | "studio_help"
+    | "creative_direction"
+    | "project_status"
+    | "workflow_guidance";
+  followUps?: string[];
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -261,6 +279,7 @@ const CREATOR_DIRECTOR_ACTION_TYPES = new Set<CreatorDirectorActionType>([
   "generate_selected_voice",
   "generate_selected_videos",
   "export_creator_package",
+  "navigate_workspace_stage",
 ]);
 
 function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[] {
@@ -289,7 +308,7 @@ function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[
       return {
         id: String(item.id || `director-action-${Date.now()}-${index}`),
         type: item.type as CreatorDirectorActionType,
-        title: String(item.title || "Creator Director action").trim().slice(0, 120),
+        title: String(item.title || "Velto Copilot action").trim().slice(0, 120),
         description: String(item.description || "").trim().slice(0, 420),
         impact,
         requiresExplicitConfirmation: Boolean(item.requiresExplicitConfirmation),
@@ -322,10 +341,97 @@ function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[
             Number.isFinite(Number(payload.thumbnailSceneId))
               ? Number(payload.thumbnailSceneId)
               : null,
+          workspaceStage:
+            [1, 2, 3, 4].includes(Number(payload.workspaceStage))
+              ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4)
+              : null,
         },
         status: "pending" as const,
       };
     });
+}
+
+const CREATOR_COPILOT_STORAGE_PREFIX = "velto:creator-copilot:v1";
+
+function getCreatorCopilotStorageKey(
+  projectKey: string,
+  mode: CreatorDirectorMode,
+) {
+  const safeProjectKey = String(projectKey || "draft")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, 160);
+
+  return `${CREATOR_COPILOT_STORAGE_PREFIX}:${safeProjectKey}:${mode}`;
+}
+
+function parseCreatorCopilotMessages(value: string | null) {
+  if (!value) return [] as CreatorDirectorMessage[];
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .slice(-30)
+      .map((item) =>
+        item && typeof item === "object"
+          ? (item as Record<string, any>)
+          : {},
+      )
+      .filter(
+        (item) =>
+          (item.role === "user" || item.role === "assistant") &&
+          typeof item.content === "string" &&
+          Boolean(item.content.trim()),
+      )
+      .map((item, index) => ({
+        id: String(item.id || `copilot-restored-${Date.now()}-${index}`),
+        role: item.role as "user" | "assistant",
+        content: String(item.content).trim().slice(0, 5000),
+        createdAt:
+          typeof item.createdAt === "string"
+            ? item.createdAt
+            : new Date().toISOString(),
+        actions: normalizeCreatorDirectorActions(item.actions).map((action) => ({
+          ...action,
+          status:
+            action.status === "running" ? ("pending" as const) : action.status,
+        })),
+        intent: [
+          "studio_help",
+          "creative_direction",
+          "project_status",
+          "workflow_guidance",
+        ].includes(String(item.intent))
+          ? item.intent
+          : undefined,
+        followUps: Array.isArray(item.followUps)
+          ? Array.from(
+              new Set<string>(
+                item.followUps
+                  .map((followUp: unknown) =>
+                    typeof followUp === "string"
+                      ? followUp.trim().slice(0, 180)
+                      : "",
+                  )
+                  .filter(
+                    (followUp): followUp is string => Boolean(followUp),
+                  ),
+              ),
+            ).slice(0, 3)
+          : [],
+        usage:
+          item.usage && typeof item.usage === "object"
+            ? item.usage
+            : null,
+      })) as CreatorDirectorMessage[];
+  } catch {
+    return [];
+  }
 }
 
 function CreatorWorkspaceIcon({ name }: { name: CreatorWorkspaceIconName }) {
@@ -603,6 +709,7 @@ type ExportMovieResult = {
   durationSeconds?: number;
   sceneCount?: number;
   projectLifecycle?: CreatorProjectLifecycleSnapshot;
+  projectPerformanceHistory?: CreatorProjectPerformanceHistoryEntry[];
 };
 
 type ChildProfile = {
@@ -3095,6 +3202,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const creatorDirectorInputRef = useRef<HTMLTextAreaElement | null>(null);
   const creatorProjectsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const creatorDirectorTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const creatorCopilotStorageReadyRef = useRef(false);
+  const creatorCopilotPreviousProjectKeyRef = useRef("");
   const creatorDrawerReturnFocusRef = useRef<HTMLElement | null>(null);
   const creatorTelemetrySentRef = useRef<Set<string>>(new Set());
   const [creatorTelemetryLastEvent, setCreatorTelemetryLastEvent] = useState("");
@@ -3220,6 +3329,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorArtifactHistory>({
       ...EMPTY_CREATOR_ARTIFACT_HISTORY,
     });
+  const [creatorPerformanceHistory, setCreatorPerformanceHistory] = useState<
+    CreatorProjectPerformanceHistoryEntry[]
+  >([]);
   const [sceneOptimizationResult, setSceneOptimizationResult] = useState<
     SceneOptimizationResult[]
   >([]);
@@ -4331,6 +4443,103 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         creatorConfirmations: creatorReleaseConfirmations,
         packageDownloaded: creatorPackageDownloaded,
       },
+      workflow: {
+        currentStage: creatorWorkspaceStep,
+        currentStageLabel:
+          creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title || null,
+        currentStageStatus: creatorWorkspaceStageStatus,
+        currentStageProgress: creatorWorkspaceStageProgress,
+        availableStages: ([1, 2, 3, 4] as const).filter((stage) =>
+          creatorCanOpenWorkspaceStep(stage),
+        ),
+      },
+      readiness: {
+        lifecycleStatus: creatorProjectLifecycle?.status || "draft",
+        lifecycleProgress: creatorProjectLifecycle?.progress || 0,
+        nextAction: creatorProjectLifecycle?.nextAction || null,
+        finalVideoStatus: creatorFinalVideoReadiness?.status || null,
+        finalGateStatus: creatorFinalProductionGate?.status || null,
+        finalGateMessage: creatorFinalProductionGateMessage || null,
+        continuityStatus: exportFlowValidation?.status || null,
+        blockingSceneIds: exportFlowValidation?.blockingSceneIds || [],
+        reviewSceneIds: exportFlowValidation?.reviewSceneIds || [],
+        missingVisualSceneIds:
+          creatorFinalVideoReadiness?.missingVisualSceneIds || [],
+        missingVoiceSceneIds:
+          creatorFinalVideoReadiness?.missingVoiceSceneIds || [],
+      },
+      reporting: {
+        readinessScore:
+          creatorProjectPerformanceReport?.performanceScore || null,
+        strengths:
+          creatorProjectPerformanceReport?.findings?.strengths || [],
+        warnings: [
+          ...(creatorProjectPerformanceReport?.findings?.warnings || []),
+          ...(creatorProjectPerformanceReport?.findings?.blockers || []),
+        ],
+        nextActions:
+          creatorProjectPerformanceReport?.nextActions || [],
+      },
+      studioGuide: {
+        stages: [
+          {
+            stage: 1,
+            name: "Brief",
+            purpose:
+              "Define the topic, audience, format, duration, language and production quality.",
+            keyControls: [
+              "project brief",
+              "audience",
+              "format",
+              "duration",
+              "production quality",
+              "analyze opportunity",
+            ],
+          },
+          {
+            stage: 2,
+            name: "Strategy",
+            purpose:
+              "Review content directions, select the strongest hook and approve the production direction.",
+            keyControls: [
+              "content directions",
+              "hook selection",
+              "recommended title",
+              "production plan",
+              "create production stage",
+            ],
+          },
+          {
+            stage: 3,
+            name: "Production",
+            purpose:
+              "Edit scenes, choose image or video output, create media assets and validate timeline readiness.",
+            keyControls: [
+              "scene selection",
+              "scene script",
+              "output mode",
+              "generate visuals",
+              "generate voice",
+              "generate video",
+              "timeline check",
+              "create final video",
+            ],
+          },
+          {
+            stage: 4,
+            name: "Publish & Export",
+            purpose:
+              "Review final video, thumbnail, publishing metadata, release confirmations and Creator Package.",
+            keyControls: [
+              "final video",
+              "thumbnail studio",
+              "publishing metadata",
+              "release confirmations",
+              "Creator Package",
+            ],
+          },
+        ],
+      },
       safety: {
         paidMediaRequiresExplicitConfirmation: true,
         releaseRequiresExplicitConfirmation: true,
@@ -4347,6 +4556,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           "generate_selected_voice",
           "generate_selected_videos",
           "export_creator_package",
+          "navigate_workspace_stage",
         ],
       },
     };
@@ -4365,7 +4575,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       content: message,
       createdAt: new Date().toISOString(),
     };
-    const history = creatorDirectorMessages.slice(-8).map((item) => ({
+    const history = creatorDirectorMessages.slice(-16).map((item) => ({
       role: item.role,
       content: item.content,
     }));
@@ -4385,7 +4595,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         },
         body: JSON.stringify({
           mode: creatorDirectorMode,
-          language: uiLanguage,
+          language: "auto",
+          interfaceLanguage: uiLanguage,
           message,
           history,
           context: buildCreatorDirectorContext(),
@@ -4397,8 +4608,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         throw new Error(
           data?.error ||
             (uiLanguage === "en"
-              ? "Creator Director is unavailable."
-              : "Creator Director kullanılamıyor."),
+              ? "Velto Copilot is unavailable."
+              : "Velto Copilot kullanılamıyor."),
         );
       }
 
@@ -4408,14 +4619,35 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         content: String(data?.answer || "").trim(),
         createdAt: new Date().toISOString(),
         actions: normalizeCreatorDirectorActions(data?.actions),
+        intent: [
+          "studio_help",
+          "creative_direction",
+          "project_status",
+          "workflow_guidance",
+        ].includes(String(data?.intent))
+          ? data.intent
+          : undefined,
+        followUps: Array.isArray(data?.followUps)
+          ? Array.from(
+              new Set<string>(
+                data.followUps
+                  .map((item: unknown) =>
+                    typeof item === "string"
+                      ? item.trim().slice(0, 180)
+                      : "",
+                  )
+                  .filter((item: string) => item.length > 0),
+              ),
+            ).slice(0, 3)
+          : [],
         usage: data?.usage || null,
       };
 
       if (!assistantMessage.content) {
         throw new Error(
           uiLanguage === "en"
-            ? "Creator Director returned an empty response."
-            : "Creator Director boş yanıt döndürdü.",
+            ? "Velto Copilot returned an empty response."
+            : "Velto Copilot boş yanıt döndürdü.",
         );
       }
 
@@ -4425,8 +4657,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         directorError instanceof Error
           ? directorError.message
           : uiLanguage === "en"
-            ? "Creator Director is temporarily unavailable."
-            : "Creator Director geçici olarak kullanılamıyor.",
+            ? "Velto Copilot is temporarily unavailable."
+            : "Velto Copilot geçici olarak kullanılamıyor.",
       );
     } finally {
       setCreatorDirectorLoading(false);
@@ -4851,6 +5083,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         ? finalVideoResult
         : {}),
       projectLifecycle,
+      projectPerformanceHistory: creatorPerformanceHistory,
     };
   };
 
@@ -5844,10 +6077,18 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setExportedMovieUrl("");
     setExportMovieResult(null);
     setExportSignature("");
+    setCreatorPerformanceHistory([]);
     setShareUrl("");
     setShareCopied(false);
     setNarratorSettings(defaultNarratorSettings);
     draftProjectKeyRef.current = `draft-${crypto.randomUUID()}`;
+    creatorCopilotPreviousProjectKeyRef.current = "";
+    creatorCopilotStorageReadyRef.current = false;
+    setCreatorDirectorMessages([]);
+    setCreatorDirectorInput("");
+    setCreatorDirectorError("");
+    setCreatorDirectorPendingAction(null);
+    setCreatorDirectorActionConfirmed(false);
   };
 
   const getProjectKey = () => {
@@ -9812,6 +10053,9 @@ const generateSceneImage = async (
       const savedLifecycle = parseCreatorProjectLifecycleSnapshot(
         savedExportResultRecord?.projectLifecycle,
       );
+      const savedPerformanceHistory = parseCreatorProjectPerformanceHistory(
+        savedExportResultRecord?.projectPerformanceHistory,
+      );
       const savedExportedMovieUrl =
         typeof project.exported_movie_url === "string"
           ? project.exported_movie_url
@@ -9848,6 +10092,7 @@ const generateSceneImage = async (
           : "",
       );
       setCreatorArtifactHistory(loadedArtifactHistory);
+      setCreatorPerformanceHistory(savedPerformanceHistory);
       setCreatorPackageSignature(
         loadedArtifactHistory.publishPackageSignature,
       );
@@ -12391,6 +12636,46 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     }
   };
 
+  const handleDownloadProjectPerformanceReport = () => {
+    if (!creatorProjectPerformanceReport) {
+      setError(
+        uiLanguage === "en"
+          ? "Project performance report is not ready yet."
+          : "Proje performans raporu henüz hazır değil.",
+      );
+      return;
+    }
+
+    const html = createCreatorProjectPerformanceReportHtml(
+      creatorProjectPerformanceReport,
+    );
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const blobUrl = window.URL.createObjectURL(blob);
+    const safeTitle = (
+      creatorProjectPerformanceReport.project.title ||
+      "velto-project-report"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    const link = document.createElement("a");
+
+    link.href = blobUrl;
+    link.download = `${safeTitle || "velto-project"}-performance-report.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+
+    setError("");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? "Project performance report downloaded."
+        : "Proje performans raporu indirildi.",
+    );
+  };
+
   const handleDownloadCreatorPackage = async () => {
     if (!creatorProductionPackage) {
       setError(
@@ -12468,6 +12753,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           productionPackage: creatorProductionPackage,
           metadata: metadataForExport,
           creatorIntelligence: creatorIntelligenceReport,
+          performanceReport: creatorProjectPerformanceReport,
           thumbnail: thumbnailForExport,
           scenes,
           timelineSyncPlan: creatorProductionPackage?.timelineSyncPlan,
@@ -13916,6 +14202,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const getCreatorDirectorActionSceneIds = (
     action: CreatorDirectorAction,
   ): number[] => {
+    if (action.type === "navigate_workspace_stage") {
+      return [];
+    }
+
     const requestedIds: number[] = action.payload.sceneIds.length > 0
       ? action.payload.sceneIds
       : action.payload.sceneId
@@ -14014,7 +14304,24 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     setError("");
 
     try {
-      if (action.type === "update_brief_topic") {
+      if (action.type === "navigate_workspace_stage") {
+        const targetStage = action.payload.workspaceStage;
+
+        if (!targetStage || !creatorCanOpenWorkspaceStep(targetStage)) {
+          throw new Error(
+            uiLanguage === "en"
+              ? "The suggested workspace stage is not available yet."
+              : "Önerilen çalışma alanı aşaması henüz kullanılamıyor.",
+          );
+        }
+
+        navigateCreatorWorkspaceStep(targetStage);
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Velto Copilot opened the suggested stage."
+            : "Velto Copilot önerilen aşamayı açtı.",
+        );
+      } else if (action.type === "update_brief_topic") {
         if (creatorWorkspaceStep !== 1 || !action.payload.topic) {
           throw new Error(
             uiLanguage === "en"
@@ -14023,13 +14330,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           );
         }
         pushCreatorUndoSnapshot(
-          uiLanguage === "en" ? "Apply Director brief change" : "Director brief değişikliğini uygula",
+          uiLanguage === "en" ? "Apply Copilot brief change" : "Copilot brief değişikliğini uygula",
         );
         setInput(action.payload.topic);
         setSaveMessage(
           uiLanguage === "en"
-            ? "Creator Director brief change applied."
-            : "Creator Director brief değişikliği uygulandı.",
+            ? "Velto Copilot brief change applied."
+            : "Velto Copilot brief değişikliği uygulandı.",
         );
       } else if (action.type === "update_strategy_hook") {
         if (creatorWorkspaceStep !== 2 || !action.payload.hook) {
@@ -14040,13 +14347,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           );
         }
         pushCreatorUndoSnapshot(
-          uiLanguage === "en" ? "Apply Director hook change" : "Director açılış değişikliğini uygula",
+          uiLanguage === "en" ? "Apply Copilot hook change" : "Copilot açılış değişikliğini uygula",
         );
         setCreatorSelectedHookPattern(action.payload.hook);
         setSaveMessage(
           uiLanguage === "en"
-            ? "Creator Director opening direction applied."
-            : "Creator Director açılış yönü uygulandı.",
+            ? "Velto Copilot opening direction applied."
+            : "Velto Copilot açılış yönü uygulandı.",
         );
       } else if (action.type === "update_scene_script") {
         if (creatorWorkspaceStep !== 3 || !action.payload.sceneId) {
@@ -14113,7 +14420,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           );
         }
         pushCreatorUndoSnapshot(
-          uiLanguage === "en" ? "Apply Director thumbnail copy" : "Director thumbnail metnini uygula",
+          uiLanguage === "en" ? "Apply Copilot thumbnail copy" : "Copilot thumbnail metnini uygula",
         );
         setCreatorThumbnailStudio((prev) => ({
           ...prev,
@@ -14138,8 +14445,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
         setSaveMessage(
           uiLanguage === "en"
-            ? "Creator Director thumbnail copy applied."
-            : "Creator Director thumbnail metni uygulandı.",
+            ? "Velto Copilot thumbnail copy applied."
+            : "Velto Copilot thumbnail metni uygulandı.",
         );
       } else if (action.type === "select_thumbnail_scene") {
         if (creatorWorkspaceStep !== 4 || !action.payload.thumbnailSceneId) {
@@ -14158,7 +14465,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           );
         }
         pushCreatorUndoSnapshot(
-          uiLanguage === "en" ? "Apply Director thumbnail selection" : "Director thumbnail seçimini uygula",
+          uiLanguage === "en" ? "Apply Copilot thumbnail selection" : "Copilot thumbnail seçimini uygula",
         );
         handleSelectSceneAsYoutubeThumbnail(scene);
       } else if (action.type === "generate_selected_visuals") {
@@ -15101,6 +15408,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     creatorPackageDownloaded,
     creatorPackageSignature,
     creatorArtifactHistory,
+    creatorPerformanceHistory,
   ]);
 
   useEffect(() => {
@@ -15368,6 +15676,19 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     : youtubeResearchVideos.length > 0
       ? uiLanguage === "en" ? "Evidence available" : "Pazar kanıtı mevcut"
       : uiLanguage === "en" ? "Research optional" : "Araştırma isteğe bağlı";
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || !creatorProjectLifecycle) {
+      return;
+    }
+
+    setCreatorPerformanceHistory((currentHistory) =>
+      appendCreatorProjectPerformanceHistory({
+        history: currentHistory,
+        status: creatorProjectLifecycle.status,
+      }),
+    );
+  }, [isCreatorLabFlow, creatorProjectLifecycle?.status]);
 
   useEffect(() => {
     if (!creatorMentorResult) {
@@ -15838,11 +16159,48 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       ready: Boolean(youtubeMetadataResult),
     },
     {
+      name: uiLanguage === "en" ? "Project performance report" : "Proje performans raporu",
+      file: "project-performance-report.html + .json",
+      ready: Boolean(creatorProductionPackage && scenes.length),
+    },
+    {
       name: uiLanguage === "en" ? "Editable project data" : "Düzenlenebilir proje verisi",
       file: "production package + scenes + metadata",
       ready: Boolean(creatorProductionPackage && scenes.length),
     },
   ];
+  const creatorProjectPerformanceReport = isCreatorLabFlow
+    ? createCreatorProjectPerformanceReport({
+        locale: uiLanguage === "en" ? "en" : "tr",
+        title: creatorRawProjectTitle,
+        projectId: getProjectKey(),
+        qualityMode: creatorQualityMode,
+        format: creatorFormat,
+        targetPlatforms: creatorTargetPlatforms,
+        scenes,
+        lifecycle: creatorProjectLifecycle,
+        lifecycleHistory: creatorPerformanceHistory,
+        timelineApproved: creatorTimelineMediaGate.approved,
+        continuity: flowContinuityAudit,
+        finalGate: creatorFinalProductionGate,
+        publish: {
+          finalVideoReady: Boolean(creatorPublishVideoUrl),
+          thumbnailReady: Boolean(creatorPublishThumbnailUrl),
+          metadataReady: Boolean(youtubeMetadataResult),
+          captionsReady: creatorPublishCaptionReady,
+          systemChecksReady: creatorPublishSystemChecks.filter(
+            (item) => item.ready,
+          ).length,
+          systemChecksTotal: creatorPublishSystemChecks.length,
+          confirmationsReady: creatorReleaseConfirmationItems.filter(
+            (item) => creatorReleaseConfirmations[item.key],
+          ).length,
+          confirmationsTotal: creatorReleaseConfirmationItems.length,
+          packageDownloaded: creatorPublishComplete,
+        },
+        intelligence: creatorIntelligenceReport,
+      })
+    : null;
 
   const creatorWorkspaceStageProgress = creatorWorkspaceStep === 1
     ? creatorBriefSignalPercent
@@ -16116,13 +16474,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const creatorDirectorAttentionCount = creatorWorkspaceCards.filter((card) => card.attention).length;
 
   useEffect(() => {
-    if (!isCreatorLabFlow || (!creatorProjectsDrawerOpen && !creatorDirectorOpen)) {
+    if (!isCreatorLabFlow || !creatorProjectsDrawerOpen) {
       return;
     }
 
-    const activeDialog = creatorDirectorOpen
-      ? creatorDirectorDialogRef.current
-      : creatorProjectsDialogRef.current;
+    const activeDialog = creatorProjectsDialogRef.current;
 
     if (!activeDialog) return;
 
@@ -16145,17 +16501,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       );
 
     const focusFrame = window.requestAnimationFrame(() => {
-      const initialTarget = creatorDirectorOpen
-        ? creatorDirectorInputRef.current || getFocusableElements()[0]
-        : getFocusableElements()[0];
+      const initialTarget = getFocusableElements()[0];
       (initialTarget || activeDialog).focus();
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (creatorDirectorOpen) closeCreatorDirector();
-        else closeCreatorProjectsDrawer();
+        closeCreatorProjectsDrawer();
         return;
       }
 
@@ -16172,7 +16525,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       const lastElement = focusableElements[focusableElements.length - 1];
       const activeElement = document.activeElement;
 
-      if (event.shiftKey && (activeElement === firstElement || !activeDialog.contains(activeElement))) {
+      if (
+        event.shiftKey &&
+        (activeElement === firstElement || !activeDialog.contains(activeElement))
+      ) {
         event.preventDefault();
         lastElement.focus();
       } else if (!event.shiftKey && activeElement === lastElement) {
@@ -16189,7 +16545,111 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [creatorDirectorOpen, creatorProjectsDrawerOpen, isCreatorLabFlow]);
+  }, [creatorProjectsDrawerOpen, isCreatorLabFlow]);
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || !creatorDirectorOpen) {
+      return;
+    }
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      creatorDirectorInputRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCreatorDirector();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [creatorDirectorOpen, isCreatorLabFlow]);
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || typeof window === "undefined") {
+      return;
+    }
+
+    creatorCopilotStorageReadyRef.current = false;
+    const nextProjectKey = getProjectKey();
+    const previousProjectKey =
+      creatorCopilotPreviousProjectKeyRef.current;
+
+    if (
+      previousProjectKey &&
+      previousProjectKey !== nextProjectKey
+    ) {
+      (["project", "help"] as CreatorDirectorMode[]).forEach((mode) => {
+        const previousStorageKey = getCreatorCopilotStorageKey(
+          previousProjectKey,
+          mode,
+        );
+        const nextStorageKey = getCreatorCopilotStorageKey(
+          nextProjectKey,
+          mode,
+        );
+
+        if (
+          !window.localStorage.getItem(nextStorageKey) &&
+          window.localStorage.getItem(previousStorageKey)
+        ) {
+          window.localStorage.setItem(
+            nextStorageKey,
+            window.localStorage.getItem(previousStorageKey) || "[]",
+          );
+        }
+      });
+    }
+
+    creatorCopilotPreviousProjectKeyRef.current = nextProjectKey;
+    const storageKey = getCreatorCopilotStorageKey(
+      nextProjectKey,
+      creatorDirectorMode,
+    );
+    const restored = parseCreatorCopilotMessages(
+      window.localStorage.getItem(storageKey),
+    );
+
+    setCreatorDirectorMessages(restored);
+    setCreatorDirectorPendingAction(null);
+    setCreatorDirectorActionConfirmed(false);
+    setCreatorDirectorError("");
+
+    const frame = window.requestAnimationFrame(() => {
+      creatorCopilotStorageReadyRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [creatorDirectorMode, currentProjectId, isCreatorLabFlow]);
+
+  useEffect(() => {
+    if (
+      !isCreatorLabFlow ||
+      typeof window === "undefined" ||
+      !creatorCopilotStorageReadyRef.current
+    ) {
+      return;
+    }
+
+    const storageKey = getCreatorCopilotStorageKey(
+      getProjectKey(),
+      creatorDirectorMode,
+    );
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(creatorDirectorMessages.slice(-30)),
+    );
+  }, [
+    creatorDirectorMessages,
+    creatorDirectorMode,
+    currentProjectId,
+    isCreatorLabFlow,
+  ]);
 
   useEffect(() => {
     if (!creatorDirectorOpen) return;
@@ -17030,15 +17490,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   text-align: center;
 }
 
-.creatorlab-director-empty > span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  color: #ffffff;
-  background: var(--cl-accent);
-  border-radius: 50%;
-}
 
 .creatorlab-director-empty strong {
   color: var(--cl-text-strong);
@@ -17343,6 +17794,29 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   line-height: 1.4;
 }
 
+.creatorlab-copilot-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.creatorlab-copilot-followups button {
+  min-height: 30px;
+  padding: 6px 9px;
+  color: var(--cl-accent);
+  background: #ffffff;
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.creatorlab-copilot-followups button:disabled {
+  opacity: 0.55;
+}
+
 .creatorlab-director-prompt-chips {
   display: flex;
   gap: 7px;
@@ -17440,18 +17914,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   line-height: 1.45;
 }
 
-.creatorlab-director-status-details {
-  margin-top: 12px;
-  border-top: 1px solid var(--cl-divider);
-}
-
-.creatorlab-director-status-details > summary {
-  padding: 12px 2px;
-  color: var(--cl-muted);
-  cursor: pointer;
-  font-size: 0.7rem;
-  font-weight: 760;
-}
 
 .creatorlab-rail-kicker {
   margin: 0 0 22px;
@@ -24543,6 +25005,298 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* DIRECTOR-P1R FLOATING VELTO COPILOT */
+.creatorlab-copilot-floating-layer {
+  position: fixed;
+  right: 22px;
+  bottom: 94px;
+  z-index: 118;
+  width: min(430px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  max-height: calc(100dvh - 126px);
+  padding: 18px;
+  overflow-y: auto;
+  pointer-events: auto;
+  background: rgba(255, 253, 249, 0.985);
+  border: 1px solid rgba(125, 112, 97, 0.22);
+  border-radius: 20px;
+  box-shadow:
+    0 30px 80px rgba(18, 32, 54, 0.24),
+    0 8px 28px rgba(18, 32, 54, 0.12) !important;
+  animation: creatorlab-copilot-pop 190ms cubic-bezier(0.2, 0.82, 0.24, 1);
+}
+
+@keyframes creatorlab-copilot-pop {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel
+  .creatorlab-ai-heading {
+  top: -18px;
+  margin: -2px -2px 0;
+  padding: 8px 2px 12px;
+  background: rgba(255, 253, 249, 0.97);
+  border-bottom: 1px solid var(--cl-divider);
+  backdrop-filter: blur(14px);
+}
+
+/* DIRECTOR-P1R2 VELTO BRAND IDENTITY */
+.creatorlab-copilot-header-brand,
+.creatorlab-copilot-launcher-brand {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.34), transparent 28%),
+    linear-gradient(145deg, #7356ff 0%, #4c35d9 56%, #32239f 100%);
+  border-radius: 50%;
+  font-family: var(--cl-font-display);
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  text-transform: uppercase;
+}
+
+.creatorlab-copilot-header-brand {
+  width: 42px;
+  height: 42px;
+  border: 2px solid #ffffff;
+  box-shadow:
+    0 0 0 2px rgba(98, 73, 255, 0.18),
+    0 6px 16px rgba(63, 46, 144, 0.18);
+  font-size: 0.78rem;
+}
+
+.creatorlab-copilot-header-brand i,
+.creatorlab-copilot-launcher-brand i {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 10px;
+  height: 10px;
+  background: #26b878;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+}
+
+
+
+
+.creatorlab-copilot-launcher {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  padding: 4px !important;
+  cursor: pointer;
+  background:
+    linear-gradient(145deg, rgba(115, 86, 255, 0.98), rgba(71, 50, 219, 0.98))
+    !important;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+  border-radius: 50% !important;
+  box-shadow:
+    0 16px 34px rgba(73, 54, 191, 0.32),
+    0 0 0 5px rgba(104, 78, 255, 0.12) !important;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.creatorlab-copilot-launcher::before {
+  position: absolute;
+  right: calc(100% + 10px);
+  padding: 8px 11px;
+  color: #ffffff;
+  content: "Velto Copilot";
+  background: rgba(23, 32, 51, 0.94);
+  border-radius: 9px;
+  box-shadow: 0 8px 20px rgba(23, 32, 51, 0.16);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(6px);
+  pointer-events: none;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.creatorlab-copilot-launcher:hover::before,
+.creatorlab-copilot-launcher:focus-visible::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.creatorlab-copilot-launcher:hover,
+.creatorlab-copilot-launcher:focus-visible {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    0 20px 40px rgba(73, 54, 191, 0.38),
+    0 0 0 7px rgba(104, 78, 255, 0.13) !important;
+}
+
+.creatorlab-copilot-launcher.is-open {
+  box-shadow:
+    0 14px 30px rgba(73, 54, 191, 0.34),
+    0 0 0 7px rgba(104, 78, 255, 0.18) !important;
+}
+
+.creatorlab-copilot-launcher-brand {
+  width: 56px;
+  height: 56px;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  font-size: 1rem;
+}
+
+.creatorlab-copilot-launcher-brand i {
+  width: 12px;
+  height: 12px;
+}
+
+.creatorlab-copilot-launcher small {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: grid;
+  place-items: center;
+  min-width: 23px;
+  height: 23px;
+  padding: 0 6px;
+  color: #ffffff;
+  background: #e54d65;
+  border: 3px solid #fffdf9;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 850;
+}
+
+
+.creatorlab-copilot-panel .creatorlab-director-chat {
+  max-height: min(43dvh, 430px);
+  background: linear-gradient(180deg, #f7f7fb, #faf9f6);
+}
+
+/* DIRECTOR-P1R3 COPILOT LAYOUT CLEANUP */
+.creatorlab-copilot-panel .creatorlab-director-empty {
+  min-height: 180px;
+  padding: 28px 22px;
+}
+
+.creatorlab-copilot-panel .creatorlab-director-empty strong {
+  max-width: 320px;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.creatorlab-copilot-panel .creatorlab-director-empty p {
+  max-width: 330px;
+}
+
+.creatorlab-copilot-panel .creatorlab-director-composer {
+  position: sticky;
+  bottom: -18px;
+  z-index: 7;
+  margin: 10px -2px -2px;
+  padding: 10px;
+  background: rgba(255, 253, 249, 0.97);
+  backdrop-filter: blur(14px);
+}
+
+@media (max-width: 899px) {
+  .creatorlab-copilot-floating-layer {
+    right: 16px;
+    bottom: 88px;
+    width: min(430px, calc(100vw - 32px));
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 112px);
+    padding: 16px;
+    border: 1px solid rgba(125, 112, 97, 0.22);
+    border-radius: 18px;
+  }
+
+  .creatorlab-copilot-launcher {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+@media (max-width: 599px) {
+  .creatorlab-copilot-floating-layer {
+    right: 10px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+    width: 100%;
+    height: auto;
+    max-height: min(78dvh, 760px);
+    padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
+    border: 1px solid rgba(125, 112, 97, 0.22);
+    border-radius: 20px;
+    box-shadow: 0 24px 70px rgba(18, 32, 54, 0.28) !important;
+    animation-name: creatorlab-copilot-pop;
+  }
+
+  .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel
+    .creatorlab-ai-heading {
+    top: -14px;
+    padding-top: 8px;
+  }
+
+  .creatorlab-copilot-panel .creatorlab-director-chat {
+    min-height: 180px;
+    max-height: min(38dvh, 350px);
+  }
+
+  .creatorlab-copilot-panel .creatorlab-director-composer {
+    bottom: calc(-14px - env(safe-area-inset-bottom));
+    margin-bottom: calc(-4px - env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-copilot-launcher {
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: 60px;
+    height: 60px;
+  }
+
+  .creatorlab-copilot-launcher-brand {
+    width: 50px;
+    height: 50px;
+  }
+
+  .creatorlab-copilot-launcher::before {
+    display: none;
+  }
+}
+
           `}</style>
         )}
         <WorldFocusRouter />
@@ -24621,13 +25375,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
             <div className="creatorlab-readiness-block">
               <div className="creatorlab-readiness-copy">
-                <span>{uiLanguage === "en" ? "Project readiness" : "Proje hazırlığı"}</span>
+                <span>{uiLanguage === "en" ? "Current Project Status" : "Mevcut Proje Durumu"}</span>
                 <strong>{creatorReadinessLabel}</strong>
               </div>
               <div
                 className="creatorlab-readiness-track"
                 role="progressbar"
-                aria-label={uiLanguage === "en" ? "Project readiness" : "Proje hazırlığı"}
+                aria-label={uiLanguage === "en" ? "Current Project Status" : "Mevcut Proje Durumu"}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={creatorReadinessPercent}
@@ -24702,28 +25456,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <CreatorWorkspaceIcon name="package" />
                 <span>{uiLanguage === "en" ? "Projects" : "Projeler"}</span>
               </button>
-              <button
-                ref={creatorDirectorTriggerRef}
-                type="button"
-                className={`creatorlab-topbar-tool-button is-director ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""}`}
-                onClick={(event) => {
-                  creatorDrawerReturnFocusRef.current = event.currentTarget;
-                  closeCreatorProjectsDrawer(false);
-                  setCreatorDirectorOpen(true);
-                }}
-                aria-haspopup="dialog"
-                aria-expanded={creatorDirectorOpen}
-                aria-controls="creatorlab-director-dialog"
-                aria-label={uiLanguage === "en" ? "Open Creator Director" : "Creator Director'ı aç"}
-              >
-                <CreatorWorkspaceIcon name="ideas" />
-                <span>{uiLanguage === "en" ? "Director" : "Director"}</span>
-                {creatorDirectorAttentionCount > 0 && (
-                  <small aria-label={`${creatorDirectorAttentionCount} ${uiLanguage === "en" ? "suggestions need attention" : "öneri dikkat gerektiriyor"}`}>
-                    {creatorDirectorAttentionCount}
-                  </small>
-                )}
-              </button>
               <UserAccountMenu
                 tone="light"
                 className="creatorlab-account-menu"
@@ -24769,31 +25501,25 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         )}
 
         {isCreatorLabFlow && creatorDirectorOpen && (
-          <div
-            className="creatorlab-overlay-layer"
-            role="presentation"
-            onMouseDown={(event) => {
-              if (event.currentTarget === event.target) {
-                closeCreatorDirector();
-              }
-            }}
-          >
+          <div className="creatorlab-copilot-floating-layer">
             <aside
               id="creatorlab-director-dialog"
               ref={creatorDirectorDialogRef}
-              className="creatorlab-ai-workspace creatorlab-drawer-panel"
+              className="creatorlab-ai-workspace creatorlab-drawer-panel creatorlab-copilot-panel"
               role="dialog"
-              aria-modal="true"
+              aria-modal="false"
               aria-labelledby="creatorlab-director-title"
               aria-describedby="creatorlab-director-safety-note"
               tabIndex={-1}
-              onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="creatorlab-ai-heading">
-                <span className="creatorlab-ai-spark" aria-hidden="true">✦</span>
+                <span className="creatorlab-copilot-header-brand" aria-hidden="true">
+                  <b>VS</b>
+                  <i />
+                </span>
                 <div>
                   <h2 id="creatorlab-director-title" className="creatorlab-dialog-title">
-                    {uiLanguage === "en" ? "Creator Director" : "Creator Director"}
+                    {uiLanguage === "en" ? "Velto Copilot" : "Velto Copilot"}
                   </h2>
                   <span>{creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title}</span>
                 </div>
@@ -24801,7 +25527,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   type="button"
                   className="creatorlab-drawer-close"
                   onClick={() => closeCreatorDirector()}
-                  aria-label={uiLanguage === "en" ? "Close Creator Director" : "Creator Director'ı kapat"}
+                  aria-label={uiLanguage === "en" ? "Close Velto Copilot" : "Velto Copilot'ı kapat"}
                 >
                   ×
                 </button>
@@ -24812,15 +25538,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <strong>{creatorDirectorContextLabel}</strong>
                 <small>
                   {creatorDirectorMode === "project"
-                    ? uiLanguage === "en" ? "Project aware" : "Projeyi anlıyor"
-                    : uiLanguage === "en" ? "Product help" : "Ürün desteği"}
+                    ? uiLanguage === "en" ? "Creative context" : "Yaratıcı bağlam"
+                    : uiLanguage === "en" ? "Studio guidance" : "Studio rehberi"}
                 </small>
               </div>
 
               <div
                 className="creatorlab-director-mode-tabs"
                 role="tablist"
-                aria-label={uiLanguage === "en" ? "Creator Director mode" : "Creator Director modu"}
+                aria-label={uiLanguage === "en" ? "Velto Copilot mode" : "Velto Copilot modu"}
               >
                 <button
                   id="creatorlab-director-tab-project"
@@ -24838,13 +25564,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   }}
                   onClick={() => {
                     setCreatorDirectorMode("project");
-                    setCreatorDirectorMessages([]);
-                    setCreatorDirectorError("");
                     setCreatorDirectorPendingAction(null);
                     setCreatorDirectorActionConfirmed(false);
                   }}
                 >
-                  {uiLanguage === "en" ? "Project" : "Proje"}
+                  {uiLanguage === "en" ? "Creative Director" : "Creative Director"}
                 </button>
                 <button
                   id="creatorlab-director-tab-help"
@@ -24862,13 +25586,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   }}
                   onClick={() => {
                     setCreatorDirectorMode("help");
-                    setCreatorDirectorMessages([]);
-                    setCreatorDirectorError("");
                     setCreatorDirectorPendingAction(null);
                     setCreatorDirectorActionConfirmed(false);
                   }}
                 >
-                  {uiLanguage === "en" ? "Help" : "Yardım"}
+                  {uiLanguage === "en" ? "Studio Help" : "Studio Yardımı"}
                 </button>
               </div>
 
@@ -24885,17 +25607,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               >
                 {creatorDirectorMessages.length === 0 ? (
                   <div className="creatorlab-director-empty">
-                    <span aria-hidden="true">✦</span>
                     <strong>
                       {creatorDirectorMode === "project"
-                        ? uiLanguage === "en" ? "Ask about this project" : "Bu proje hakkında sor"
-                        : uiLanguage === "en" ? "Ask how Velto Studio works" : "Velto Studio kullanımını sor"}
+                        ? uiLanguage === "en" ? "Ask your Creative Director" : "Creative Director’a sor"
+                        : uiLanguage === "en" ? "Ask Velto Studio Help" : "Velto Studio Yardımı’na sor"}
                     </strong>
                     <p>
                       {creatorDirectorMode === "project"
                         ? uiLanguage === "en"
-                          ? "The Director can read the current brief, selected strategy, scene readiness and release blockers."
-                          : "Director mevcut brief'i, seçilen stratejiyi, sahne hazırlığını ve yayın engellerini okuyabilir."
+                          ? "Your Creative Director understands the current brief, strategy, scenes, readiness and release blockers."
+                          : "Creative Director mevcut brief'i, stratejiyi, sahneleri, hazırlık durumunu ve yayın engellerini anlar."
                         : uiLanguage === "en"
                           ? "Get concise guidance about controls, workflow stages, quality levels and export requirements."
                           : "Kontroller, iş akışı, kalite seviyeleri ve dışa aktarım koşulları hakkında kısa destek al."}
@@ -24908,12 +25629,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       className={`creatorlab-director-message is-${message.role}`}
                       role="article"
                       aria-label={message.role === "assistant"
-                        ? (uiLanguage === "en" ? "Creator Director response" : "Creator Director yanıtı")
+                        ? (uiLanguage === "en" ? "Velto Copilot response" : "Velto Copilot yanıtı")
                         : (uiLanguage === "en" ? "Your message" : "Mesajın")}
                     >
                       <span>
                         {message.role === "assistant"
-                          ? "Director"
+                          ? "Velto Copilot"
                           : uiLanguage === "en" ? "You" : "Sen"}
                       </span>
                       <p>{message.content}</p>
@@ -25065,7 +25786,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                     {action.status === "applied" && (
                                       <div className="creatorlab-director-action-status is-applied">
                                         <span>{uiLanguage === "en" ? "Applied" : "Uygulandı"}</span>
-                                        {action.impact === "none" && creatorUndoStack.length > 0 && (
+                                        {action.impact === "none" &&
+                                          action.type !== "navigate_workspace_stage" &&
+                                          creatorUndoStack.length > 0 && (
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -25120,16 +25843,41 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               })}
                           </div>
                         )}
+                      {message.role === "assistant" &&
+                        message.followUps &&
+                        message.followUps.length > 0 && (
+                          <div
+                            className="creatorlab-copilot-followups"
+                            aria-label={
+                              uiLanguage === "en"
+                                ? "Suggested follow-up questions"
+                                : "Önerilen devam soruları"
+                            }
+                          >
+                            {message.followUps.map((followUp) => (
+                              <button
+                                key={`${message.id}-${followUp}`}
+                                type="button"
+                                disabled={creatorDirectorLoading}
+                                onClick={() =>
+                                  void sendCreatorDirectorMessage(followUp)
+                                }
+                              >
+                                {followUp}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                     </div>
                   ))
                 )}
                 {creatorDirectorLoading && (
                   <div className="creatorlab-director-message is-assistant is-loading" role="status">
-                    <span>Director</span>
+                    <span>Velto Copilot</span>
                     <p>
                       {uiLanguage === "en"
-                        ? "Reviewing the current context…"
-                        : "Mevcut bağlamı inceliyor…"}
+                        ? "Reviewing the current project and stage…"
+                        : "Mevcut proje ve aşamayı inceliyor…"}
                     </p>
                   </div>
                 )}
@@ -25160,14 +25908,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
               <form
                 className="creatorlab-director-composer"
-                aria-label={uiLanguage === "en" ? "Message Creator Director" : "Creator Director'a mesaj gönder"}
+                aria-label={uiLanguage === "en" ? "Message Velto Copilot" : "Velto Copilot'a mesaj gönder"}
                 onSubmit={(event) => {
                   event.preventDefault();
                   void sendCreatorDirectorMessage();
                 }}
               >
                 <label className="creatorlab-visually-hidden" htmlFor="creatorlab-director-input">
-                  {uiLanguage === "en" ? "Message Creator Director" : "Creator Director'a mesaj"}
+                  {uiLanguage === "en" ? "Message Velto Copilot" : "Velto Copilot'a mesaj"}
                 </label>
                 <textarea
                   id="creatorlab-director-input"
@@ -25180,8 +25928,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   placeholder={
                     creatorDirectorMode === "project"
                       ? uiLanguage === "en"
-                        ? "Ask about the brief, a scene, production or release…"
-                        : "Brief, sahne, üretim veya yayın hakkında sor…"
+                        ? "Ask for direction on the brief, strategy, scenes, production or release…"
+                        : "Brief, strateji, sahneler, üretim veya yayın için yönlendirme iste…"
                       : uiLanguage === "en"
                         ? "Ask how to use Velto Studio…"
                         : "Velto Studio’nun nasıl kullanılacağını sor…"
@@ -25210,6 +25958,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       setCreatorDirectorError("");
                       setCreatorDirectorPendingAction(null);
                       setCreatorDirectorActionConfirmed(false);
+
+                      if (typeof window !== "undefined") {
+                        window.localStorage.removeItem(
+                          getCreatorCopilotStorageKey(
+                            getProjectKey(),
+                            creatorDirectorMode,
+                          ),
+                        );
+                      }
                     }}
                     disabled={creatorDirectorMessages.length === 0 || creatorDirectorLoading}
                   >
@@ -25229,100 +25986,62 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
               <p id="creatorlab-director-safety-note" className="creatorlab-director-safety-note">
                 {uiLanguage === "en"
-                  ? "Director can stage reversible project changes for approval. Paid media and release actions always require a second explicit confirmation."
-                  : "Director geri alınabilir proje değişikliklerini onayına sunabilir. Ücretli medya ve yayın aksiyonları her zaman ikinci bir açık onay gerektirir."}
+                  ? "Velto Copilot can stage reversible project changes for approval. Paid media and release actions always require a second explicit confirmation."
+                  : "Velto Copilot geri alınabilir proje değişikliklerini onayına sunabilir. Ücretli medya ve yayın aksiyonları her zaman ikinci bir açık onay gerektirir."}
               </p>
 
-              <details className="creatorlab-director-status-details">
-                <summary>
-                  {uiLanguage === "en"
-                    ? "Workspace status and next action"
-                    : "Çalışma alanı durumu ve sonraki aksiyon"}
-                </summary>
-                <div className="creatorlab-ai-stage-summary">
-                  <div className="creatorlab-ai-stage-summary-copy">
-                    <span>{uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}</span>
-                    <strong>{creatorWorkspaceStageStatus}</strong>
-                  </div>
-                  <div
-                    className="creatorlab-ai-stage-progress"
-                    role="progressbar"
-                    aria-label={uiLanguage === "en" ? "Stage readiness" : "Aşama hazırlığı"}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={creatorWorkspaceStageProgress}
-                  >
-                    <span style={{ width: `${creatorWorkspaceStageProgress}%` }} />
-                  </div>
-                  <small>{creatorWorkspaceStageProgress}%</small>
-                </div>
-
-                <div className="creatorlab-ai-card-list">
-                  {creatorWorkspaceCards.map((card) => (
-                    <button
-                      key={card.title}
-                      type="button"
-                      className={`creatorlab-ai-card ${card.attention ? "is-attention" : ""}`}
-                      onClick={() => navigateFromCreatorDirector(card.targetId)}
-                      aria-label={`${card.title}: ${card.status}`}
-                    >
-                      <div className={`creatorlab-ai-icon is-${card.tone}`}>
-                        <CreatorWorkspaceIcon name={card.icon} />
-                      </div>
-                      <div className="creatorlab-ai-card-copy">
-                        <div className="creatorlab-ai-card-title-row">
-                          <strong>{card.title}</strong>
-                          <span className="creatorlab-ai-card-status">{card.status}</span>
-                        </div>
-                        <p>{card.description}</p>
-                        {card.metric && (
-                          <span className="creatorlab-ai-card-metric">{card.metric}</span>
-                        )}
-                        {typeof card.progress === "number" && (
-                          <div className="creatorlab-ai-card-progress" aria-hidden="true">
-                            <span
-                              style={{
-                                width: `${Math.max(0, Math.min(100, card.progress))}%`,
-                              }}
-                            />
-                          </div>
-                        )}
-                        <span className="creatorlab-ai-card-link">
-                          {uiLanguage === "en"
-                            ? "View in workspace"
-                            : "Çalışma alanında görüntüle"}{" "}
-                          →
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="creatorlab-stage-guidance">
-                  <div className="creatorlab-stage-guidance-icon">
-                    <CreatorWorkspaceIcon name="safety" />
-                  </div>
-                  <div>
-                    <span className="creatorlab-stage-guidance-kicker">
-                      {uiLanguage === "en" ? "Next best action" : "Sıradaki en iyi aksiyon"}
-                    </span>
-                    <strong>{creatorWorkspaceNextAction.title}</strong>
-                    <p>{creatorWorkspaceNextAction.description}</p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigateFromCreatorDirector(creatorWorkspaceNextAction.targetId)
-                      }
-                    >
-                      {creatorWorkspaceNextAction.label}
-                    </button>
-                  </div>
-                </div>
-                <p className="creatorlab-ai-guidance-note">{creatorWorkspaceGuidance}</p>
-              </details>
             </aside>
           </div>
         )}
+
+        {isCreatorLabFlow && (
+          <button
+            ref={creatorDirectorTriggerRef}
+            type="button"
+            className={`creatorlab-copilot-launcher ${creatorDirectorOpen ? "is-open" : ""} ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""}`}
+            onClick={(event) => {
+              creatorDrawerReturnFocusRef.current = event.currentTarget;
+              closeCreatorProjectsDrawer(false);
+
+              if (creatorDirectorOpen) {
+                closeCreatorDirector(false);
+              } else {
+                setCreatorDirectorOpen(true);
+              }
+            }}
+            aria-haspopup="dialog"
+            aria-expanded={creatorDirectorOpen}
+            aria-controls="creatorlab-director-dialog"
+            aria-label={
+              creatorDirectorOpen
+                ? uiLanguage === "en"
+                  ? "Close Velto Copilot"
+                  : "Velto Copilot'ı kapat"
+                : uiLanguage === "en"
+                  ? "Open Velto Copilot"
+                  : "Velto Copilot'ı aç"
+            }
+            title="Velto Copilot"
+          >
+            <span className="creatorlab-copilot-launcher-brand" aria-hidden="true">
+              <b>VS</b>
+              <i />
+            </span>
+            <span className="creatorlab-visually-hidden">Velto Copilot</span>
+            {creatorDirectorAttentionCount > 0 && (
+              <small
+                aria-label={`${creatorDirectorAttentionCount} ${
+                  uiLanguage === "en"
+                    ? "suggestions need attention"
+                    : "öneri dikkat gerektiriyor"
+                }`}
+              >
+                {creatorDirectorAttentionCount}
+              </small>
+            )}
+          </button>
+        )}
+
                 <div
                   id={isCreatorLabFlow ? "creatorlab-main-workspace" : undefined}
                   tabIndex={isCreatorLabFlow ? -1 : undefined}
@@ -25713,7 +26432,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               >
             <div className="creatorlab-project-hub-header">
               <div className="creatorlab-project-hub-heading">
-                <p className="creatorlab-project-hub-kicker">{uiLanguage === "en" ? "Projects & readiness" : "Projeler ve hazırlık"}</p>
+                <p className="creatorlab-project-hub-kicker">{uiLanguage === "en" ? "Projects & status" : "Projeler ve durum"}</p>
                 <h2 id="creatorlab-projects-title">{uiLanguage === "en" ? "Continue without losing context" : "Bağlamı kaybetmeden devam et"}</h2>
                 <p>
                   {uiLanguage === "en"
@@ -25765,7 +26484,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 {creatorReadinessLabel}
               </span>
 
-              <div className="creatorlab-current-readiness" aria-label={uiLanguage === "en" ? "Current project readiness" : "Mevcut proje hazırlığı"}>
+              <div className="creatorlab-current-readiness" aria-label={uiLanguage === "en" ? "Current Project Status" : "Mevcut Proje Durumu"}>
                 {[
                   {
                     label: uiLanguage === "en" ? "Visuals" : "Görseller",
@@ -30416,6 +31135,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </section>
               </div>
             </article>
+
+            {/* REPORT-P1R CENTRAL REPORTING CENTER
+                Project reporting is intentionally available from /reports,
+                independent from the active production workspace. */}
 
             <article className="creatorlab-publish-package-card">
               <div className="creatorlab-publish-card-heading">

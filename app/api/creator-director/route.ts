@@ -1,3 +1,4 @@
+// DIRECTOR-P1 VELTO COPILOT
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
@@ -5,9 +6,9 @@ import { createServerSupabaseClient } from "../../../lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_MESSAGE_LENGTH = 2_000;
-const MAX_HISTORY_MESSAGES = 8;
-const MAX_CONTEXT_LENGTH = 24_000;
+const MAX_MESSAGE_LENGTH = 4_000;
+const MAX_HISTORY_MESSAGES = 16;
+const MAX_CONTEXT_LENGTH = 36_000;
 const MAX_ACTION_TEXT_LENGTH = 1_200;
 
 type DirectorMode = "help" | "project";
@@ -26,7 +27,8 @@ type DirectorActionType =
   | "generate_selected_visuals"
   | "generate_selected_voice"
   | "generate_selected_videos"
-  | "export_creator_package";
+  | "export_creator_package"
+  | "navigate_workspace_stage";
 
 type DirectorActionPayload = {
   topic: string | null;
@@ -39,6 +41,7 @@ type DirectorActionPayload = {
   thumbnailHeadline: string | null;
   thumbnailSubHeadline: string | null;
   thumbnailSceneId: number | null;
+  workspaceStage: 1 | 2 | 3 | 4 | null;
 };
 
 type GeneratedDirectorAction = {
@@ -61,6 +64,7 @@ const DIRECTOR_ACTION_TYPES = new Set<DirectorActionType>([
   "generate_selected_voice",
   "generate_selected_videos",
   "export_creator_package",
+  "navigate_workspace_stage",
 ]);
 
 const PAID_ACTION_TYPES = new Set<DirectorActionType>([
@@ -161,6 +165,10 @@ function buildCompactContext(context: DirectorContext, sceneLimit: number) {
   const strategy = safeObject(context.strategy);
   const production = safeObject(context.production);
   const publish = safeObject(context.publish);
+  const workflow = safeObject(context.workflow);
+  const readiness = safeObject(context.readiness);
+  const reporting = safeObject(context.reporting);
+  const studioGuide = safeObject(context.studioGuide);
   const safety = safeObject(context.safety);
   const rawScenes = Array.isArray(production.scenes) ? production.scenes : [];
   const selectedScene = Object.keys(safeObject(production.selectedScene)).length
@@ -207,6 +215,58 @@ function buildCompactContext(context: DirectorContext, sceneLimit: number) {
       metadataReady: Boolean(publish.metadataReady),
       creatorConfirmations: safeObject(publish.creatorConfirmations),
       packageDownloaded: Boolean(publish.packageDownloaded),
+    },
+    workflow: {
+      currentStage: safeNumber(workflow.currentStage),
+      currentStageLabel: safeNullableText(workflow.currentStageLabel, 120),
+      currentStageStatus: safeNullableText(workflow.currentStageStatus, 240),
+      currentStageProgress: safeNumber(workflow.currentStageProgress),
+      availableStages: safeNumberArray(workflow.availableStages)
+        .filter((stage) => stage >= 1 && stage <= 4),
+    },
+    readiness: {
+      lifecycleStatus: safeNullableText(readiness.lifecycleStatus, 80),
+      lifecycleProgress: safeNumber(readiness.lifecycleProgress),
+      nextAction: safeNullableText(readiness.nextAction, 120),
+      finalVideoStatus: safeNullableText(readiness.finalVideoStatus, 100),
+      finalGateStatus: safeNullableText(readiness.finalGateStatus, 100),
+      finalGateMessage: safeNullableText(readiness.finalGateMessage, 500),
+      continuityStatus: safeNullableText(readiness.continuityStatus, 100),
+      blockingSceneIds: safeNumberArray(readiness.blockingSceneIds),
+      reviewSceneIds: safeNumberArray(readiness.reviewSceneIds),
+      missingVisualSceneIds: safeNumberArray(readiness.missingVisualSceneIds),
+      missingVoiceSceneIds: safeNumberArray(readiness.missingVoiceSceneIds),
+    },
+    reporting: {
+      readinessScore: safeNumber(reporting.readinessScore),
+      strengths: Array.isArray(reporting.strengths)
+        ? reporting.strengths.slice(0, 6).map((item: unknown) => safeText(item, 180)).filter(Boolean)
+        : [],
+      warnings: Array.isArray(reporting.warnings)
+        ? reporting.warnings.slice(0, 6).map((item: unknown) => safeText(item, 220)).filter(Boolean)
+        : [],
+      nextActions: Array.isArray(reporting.nextActions)
+        ? reporting.nextActions.slice(0, 6).map((item: unknown) => safeText(item, 220)).filter(Boolean)
+        : [],
+    },
+    studioGuide: {
+      stages: Array.isArray(studioGuide.stages)
+        ? studioGuide.stages.slice(0, 4).map((item: unknown) => {
+            const stage = safeObject(item);
+
+            return {
+              stage: safeNumber(stage.stage),
+              name: safeNullableText(stage.name, 80),
+              purpose: safeNullableText(stage.purpose, 360),
+              keyControls: Array.isArray(stage.keyControls)
+                ? stage.keyControls
+                    .slice(0, 12)
+                    .map((control: unknown) => safeText(control, 100))
+                    .filter(Boolean)
+                : [],
+            };
+          })
+        : [],
     },
     safety: {
       paidMediaRequiresExplicitConfirmation: Boolean(
@@ -293,10 +353,15 @@ function normalizeActionPayload(value: unknown): DirectorActionPayload {
     thumbnailHeadline: safeNullableText(payload.thumbnailHeadline, 160),
     thumbnailSubHeadline: safeNullableText(payload.thumbnailSubHeadline, 240),
     thumbnailSceneId: safeNumber(payload.thumbnailSceneId),
+    workspaceStage:
+      [1, 2, 3, 4].includes(Number(payload.workspaceStage))
+        ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4)
+        : null,
   };
 }
 
 function actionAllowedInStage(type: DirectorActionType, activeStage: number) {
+  if (type === "navigate_workspace_stage") return true;
   if (type === "update_brief_topic") return activeStage === 1;
   if (type === "update_strategy_hook") return activeStage === 2;
   if (
@@ -329,6 +394,21 @@ function buildActionChanges(
   const selectedIds = safeNumberArray(context?.production?.selectedSceneIds);
   const sceneIds = payload.sceneIds.length ? payload.sceneIds : selectedIds;
   const scene = getContextScene(context, payload.sceneId);
+
+  if (type === "navigate_workspace_stage") {
+    const stageLabels: Record<number, string> = {
+      1: "Brief",
+      2: "Strategy",
+      3: "Production",
+      4: "Publish & Export",
+    };
+
+    return [{
+      label: "Workspace",
+      before: stageLabels[Number(context.activeStage)] || "Current stage",
+      after: stageLabels[Number(payload.workspaceStage)] || "Requested stage",
+    }];
+  }
 
   if (type === "update_brief_topic") {
     return [{ label: "Topic", before: safeText(project.topic, 300) || "—", after: payload.topic || "—" }];
@@ -417,13 +497,17 @@ function sanitizeGeneratedActions(
   context: DirectorContext,
   mode: DirectorMode,
 ) {
-  if (mode !== "project" || !Array.isArray(value)) return [];
+  if (!Array.isArray(value)) return [];
 
   const activeStage = Number(context.activeStage || 0);
   const allowedSceneIds = getAllowedSceneIds(context);
   const selectedSceneIds = safeNumberArray(context?.production?.selectedSceneIds)
     .filter((sceneId) => allowedSceneIds.has(sceneId));
   const qualityLevel = safeText(context?.project?.qualityLevel, 40);
+  const availableStages = new Set(
+    safeNumberArray(context?.workflow?.availableStages)
+      .filter((stage) => stage >= 1 && stage <= 4),
+  );
 
   return value
     .slice(0, 2)
@@ -446,7 +530,18 @@ function sanitizeGeneratedActions(
       } satisfies GeneratedDirectorAction;
     })
     .filter((action) => {
+      if (mode === "help" && action.type !== "navigate_workspace_stage") {
+        return false;
+      }
+
       if (!actionAllowedInStage(action.type, activeStage)) return false;
+
+      if (action.type === "navigate_workspace_stage") {
+        return Boolean(
+          action.payload.workspaceStage &&
+          availableStages.has(action.payload.workspaceStage),
+        );
+      }
 
       if (action.type === "update_brief_topic") return Boolean(action.payload.topic);
       if (action.type === "update_strategy_hook") return Boolean(action.payload.hook);
@@ -509,6 +604,20 @@ const DIRECTOR_RESPONSE_SCHEMA = {
   additionalProperties: false,
   properties: {
     answer: { type: "string" },
+    intent: {
+      type: "string",
+      enum: [
+        "studio_help",
+        "creative_direction",
+        "project_status",
+        "workflow_guidance",
+      ],
+    },
+    followUps: {
+      type: "array",
+      maxItems: 3,
+      items: { type: "string" },
+    },
     actions: {
       type: "array",
       items: {
@@ -540,6 +649,12 @@ const DIRECTOR_RESPONSE_SCHEMA = {
               thumbnailHeadline: { type: ["string", "null"] },
               thumbnailSubHeadline: { type: ["string", "null"] },
               thumbnailSceneId: { type: ["number", "null"] },
+              workspaceStage: {
+                anyOf: [
+                  { type: "number", enum: [1, 2, 3, 4] },
+                  { type: "null" },
+                ],
+              },
             },
             required: [
               "topic",
@@ -552,6 +667,7 @@ const DIRECTOR_RESPONSE_SCHEMA = {
               "thumbnailHeadline",
               "thumbnailSubHeadline",
               "thumbnailSceneId",
+              "workspaceStage",
             ],
           },
         },
@@ -559,7 +675,7 @@ const DIRECTOR_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["answer", "actions"],
+  required: ["answer", "intent", "followUps", "actions"],
 } as const;
 
 export async function POST(req: Request) {
@@ -585,7 +701,8 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const message = safeText(body?.message, MAX_MESSAGE_LENGTH);
-    const language = body?.language === "en" ? "en" : "tr";
+    const interfaceLanguage =
+      body?.interfaceLanguage === "en" ? "en" : "tr";
     const mode = safeMode(body?.mode);
     const history = sanitizeHistory(body?.history);
     const { context, serialized: contextText } = sanitizeContext(body?.context);
@@ -598,19 +715,27 @@ export async function POST(req: Request) {
     const model = process.env.OPENAI_CREATOR_DIRECTOR_MODEL || "gpt-5-mini";
     const modeInstruction =
       mode === "help"
-        ? "Answer as a product-use specialist. Explain how to use CreatorLab, where a control is located, why an action may be unavailable, and what the quality or export options mean. Return no project actions in Help mode."
-        : "Answer as a project-aware creative director. Use the supplied brief, selected strategy, scenes, production status, selected scene, publishing state, and validation blockers. Give a specific recommendation for this project rather than generic content advice.";
+        ? "Act as Velto Studio Help. Explain how to use the current workspace, where controls are located, why an action may be unavailable, and what quality, readiness, reporting or export options mean. You may propose only a safe workspace-navigation action."
+        : "Act as the Creative Director inside Velto Copilot. Use the supplied brief, selected strategy, scenes, production status, selected scene, lifecycle, publishing state, report signals and validation blockers. Give creative recommendations only when the user asks for advice, review or direction; otherwise answer the direct question without unsolicited critique.";
 
     const instructions = `
-You are Creator Director inside VELTO CreatorLab, a professional creator-production workspace for adults.
+You are Velto Copilot inside VELTO CreatorLab, a professional creator-production workspace for adults.
 ${modeInstruction}
 
+Language rules:
+- Reply in the language used in the CURRENT USER MESSAGE.
+- If the user explicitly requests another language, use that language.
+- If the message is mixed-language, use the dominant language.
+- The interface language is ${interfaceLanguage === "en" ? "English" : "Turkish"}; use it only as a fallback when the message language is unclear.
+- You support multilingual conversations and may continue in a language different from the interface.
+
 Operating rules:
-- Reply in ${language === "en" ? "English" : "Turkish"}.
 - Keep the answer concise, actionable and easy to scan.
+- Start with the direct answer. For creative reviews, state the strongest recommendation, why it matters, and the next practical step.
 - You may propose at most two structured actions, but never claim that an action has already happened.
 - A structured action is only a preview. The user must approve it in the interface before CreatorLab applies or runs anything.
 - Only use action types from the supplied schema and only when the current stage and context make the action reliable.
+- Use navigate_workspace_stage when a user asks where to go or what to do next and the target stage is available.
 - Safe text or selection changes may be proposed when they materially improve the project.
 - Paid-media actions may be proposed only when the user explicitly asks to generate or run that media action.
 - Export may be proposed only when the user explicitly asks to export or download the Creator Package.
@@ -642,7 +767,7 @@ ${message}
       model,
       instructions,
       input,
-      max_output_tokens: 1_000,
+      max_output_tokens: 1_500,
       store: false,
       text: {
         format: {
@@ -658,7 +783,7 @@ ${message}
 
     if (!rawOutput) {
       return NextResponse.json(
-        { error: "Creator Director yanıt oluşturamadı." },
+        { error: "Velto Copilot yanıt oluşturamadı." },
         { status: 502 },
       );
     }
@@ -667,23 +792,50 @@ ${message}
     try {
       parsed = JSON.parse(rawOutput);
     } catch {
-      parsed = { answer: rawOutput, actions: [] };
+      parsed = {
+        answer: rawOutput,
+        intent: mode === "help" ? "studio_help" : "creative_direction",
+        followUps: [],
+        actions: [],
+      };
     }
 
     const answer = safeText(parsed.answer, 5_000);
     if (!answer) {
       return NextResponse.json(
-        { error: "Creator Director boş yanıt döndürdü." },
+        { error: "Velto Copilot boş yanıt döndürdü." },
         { status: 502 },
       );
     }
 
     const actions = sanitizeGeneratedActions(parsed.actions, context, mode);
+    const intent = [
+      "studio_help",
+      "creative_direction",
+      "project_status",
+      "workflow_guidance",
+    ].includes(String(parsed.intent))
+      ? String(parsed.intent)
+      : mode === "help"
+        ? "studio_help"
+        : "creative_direction";
+    const followUps = Array.isArray(parsed.followUps)
+      ? Array.from(
+          new Set(
+            parsed.followUps
+              .map((item: unknown) => safeText(item, 180))
+              .filter(Boolean),
+          ),
+        ).slice(0, 3)
+      : [];
 
     return NextResponse.json({
       answer,
       actions,
+      intent,
+      followUps,
       mode,
+      responseLanguage: "auto",
       usage: response.usage
         ? {
             inputTokens: response.usage.input_tokens,
@@ -699,7 +851,7 @@ ${message}
       {
         error:
           (error instanceof Error ? error.message : "") ||
-          "Creator Director geçici olarak kullanılamıyor.",
+          "Velto Copilot geçici olarak kullanılamıyor.",
       },
       { status: 500 },
     );

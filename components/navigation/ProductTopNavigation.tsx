@@ -5,7 +5,7 @@ import UserAccountMenu from "@/components/auth/UserAccountMenu";
 import { useLanguage } from "@/lib/useLanguage";
 
 type Tone = "light" | "dark";
-type ActiveSurface = "products" | "studio" | "storyverse";
+type ActiveSurface = "products" | "studio" | "storyverse" | "reports";
 type Variant = "floating" | "creatorlab";
 
 type Props = {
@@ -58,6 +58,27 @@ function StudioIcon() {
   );
 }
 
+function ReportsIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 19V9" />
+      <path d="M12 19V5" />
+      <path d="M19 19v-7" />
+      <path d="M3 19h18" />
+    </svg>
+  );
+}
+
 export default function ProductTopNavigation({
   tone = "light",
   active,
@@ -70,6 +91,7 @@ export default function ProductTopNavigation({
   const isDark = tone === "dark";
   const productsLabel = language === "en" ? "Products" : "Ürünler";
   const studioLabel = "Velto Studio";
+  const reportsLabel = language === "en" ? "Reports" : "Raporlar";
 
   if (variant === "creatorlab") {
     return (
@@ -108,6 +130,14 @@ export default function ProductTopNavigation({
             <span className="2xl:hidden">Studio</span>
           </Link>
         )}
+        <Link
+          href="/reports"
+          className="creatorlab-topbar-tool-button"
+          aria-current={active === "reports" ? "page" : undefined}
+        >
+          <ReportsIcon />
+          <span>{reportsLabel}</span>
+        </Link>
         {showAccount && <UserAccountMenu tone={tone} />}
       </nav>
     );
@@ -151,6 +181,13 @@ export default function ProductTopNavigation({
         >
           <span className="sm:hidden">Studio</span>
           <span className="hidden sm:inline">{studioLabel}</span>
+        </Link>
+        <Link
+          href="/reports"
+          className={linkClass(active === "reports")}
+          aria-current={active === "reports" ? "page" : undefined}
+        >
+          {reportsLabel}
         </Link>
       </div>
 

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createCreatorPublishReadyPackageReport } from "@/lib/creator/publishReadyPackage";
+import {
+  createCreatorProjectPerformanceReportHtml,
+  isCreatorProjectPerformanceReport,
+} from "@/lib/creator/projectPerformanceReport";
 
 // 3R PUBLISH-READY PACKAGE
 
@@ -439,6 +443,11 @@ export async function POST(req: Request) {
     const metadata = safeObject(body?.metadata);
     const thumbnail = safeObject(body?.thumbnail);
     const creatorIntelligence = safeObject(body?.creatorIntelligence);
+    const performanceReport = isCreatorProjectPerformanceReport(
+      body?.performanceReport,
+    )
+      ? body.performanceReport
+      : null;
     const thumbnailDesign = safeObject(body?.thumbnailDesign || thumbnail?.design);
     const releaseChecklist = safeObject(body?.releaseChecklist);
     const targetPlatforms = safeArray(body?.targetPlatforms);
@@ -675,6 +684,25 @@ export async function POST(req: Request) {
       });
     }
 
+    if (performanceReport) {
+      entries.push(
+        {
+          name: "project/project-performance-report.json",
+          data: Buffer.from(
+            JSON.stringify(performanceReport, null, 2),
+            "utf8",
+          ),
+        },
+        {
+          name: "project/project-performance-report.html",
+          data: Buffer.from(
+            createCreatorProjectPerformanceReportHtml(performanceReport),
+            "utf8",
+          ),
+        },
+      );
+    }
+
     if (Object.keys(timelineSyncPlan).length) {
       entries.push({
         name: "project/timeline-sync-plan.json",
@@ -712,6 +740,11 @@ export async function POST(req: Request) {
       "Publishing copy is under /publishing.",
       "Captions are under /captions in SRT and VTT formats.",
       "Editable production data is under /project.",
+      ...(performanceReport
+        ? [
+            "Project performance report is included as JSON and printable HTML under /project.",
+          ]
+        : []),
       warnings.length ? "" : "Package completed without asset warnings.",
       ...warnings.map((warning) => `Warning: ${warning}`),
     ].join("\n");
@@ -733,6 +766,7 @@ export async function POST(req: Request) {
       captionFormats: ["srt", "vtt"],
       targetPlatforms,
       releaseReady: Boolean(releaseChecklist?.readyToExport),
+      performanceReportVersion: performanceReport?.version || null,
       warnings,
       files: entries.map((entry) => entry.name),
     };
@@ -753,6 +787,7 @@ export async function POST(req: Request) {
         "X-Velto-Package-Warnings": String(warnings.length),
         "X-Velto-Publish-Ready": "true",
         "X-Velto-Package-Version": "3R",
+        "X-Velto-Report-Version": performanceReport?.version || "none",
       },
     });
   } catch (error) {
