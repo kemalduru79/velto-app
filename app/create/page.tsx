@@ -11823,6 +11823,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           package: nextPackage,
@@ -12578,10 +12579,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       );
     }
 
+    const accessToken = await getAccessTokenOrThrow();
+
     const res = await fetch("/api/creator-youtube-metadata", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         package: creatorProductionPackage,

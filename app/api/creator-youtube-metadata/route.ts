@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 
@@ -41,6 +45,7 @@ function parseJsonObject(text: string) {
 
 export async function POST(req: Request) {
   try {
+    await authenticateRequest(req);
     const client = getOpenAIClient();
     const body = await req.json();
 
@@ -173,6 +178,13 @@ ${JSON.stringify(patternSummary, null, 2)}
 
     return NextResponse.json({ ok: true, metadata });
   } catch (error: any) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+
     console.error("creator-youtube-metadata error:", error);
 
     return NextResponse.json(

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -261,6 +265,7 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
 
 export async function POST(req: Request) {
   try {
+    await authenticateRequest(req);
     const client = getOpenAIClient();
     const body = await req.json().catch(() => null);
 
@@ -405,6 +410,13 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
       raw: process.env.NODE_ENV === "development" ? rawText : undefined,
     });
   } catch (error: any) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+
     console.error("creator-mentor error:", error);
 
     return NextResponse.json(

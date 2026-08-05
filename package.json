@@ -35,7 +35,8 @@
     "test:director-p1": "node scripts/director-p1-smoke-test.mjs",
     "test:director-p1r": "node scripts/director-p1r-floating-copilot-smoke-test.mjs",
     "test:director-p1r2": "node scripts/director-p1r2-brand-identity-smoke-test.mjs",
-    "test:director-p1r3": "node scripts/director-p1r3-layout-cleanup-smoke-test.mjs"
+    "test:director-p1r3": "node scripts/director-p1r3-layout-cleanup-smoke-test.mjs",
+    "test:beta-sec-p1a": "node scripts/beta-sec-p1a-smoke-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",
