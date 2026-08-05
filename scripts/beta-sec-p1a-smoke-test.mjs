@@ -25,14 +25,11 @@ const protectedRoutes = [
 
 for (const file of protectedRoutes) {
   const content = requireText(file, [
-    'from "@/lib/auth/server"',
-    "authenticateRequest(req)",
-    "error instanceof AuthenticationError",
-    "status: 401",
-    'error: "Authentication required."',
+    'from "@/lib/security/creatorApiBoundary"',
+    "enforceCreatorApiBoundary",
   ]);
 
-  const authIndex = content.indexOf("await authenticateRequest(req)");
+  const authIndex = content.indexOf("await enforceCreatorApiBoundary");
   const providerIndex = content.indexOf("getOpenAIClient()", content.indexOf("export async function POST"));
   const bodyIndex = content.indexOf("req.json", content.indexOf("export async function POST"));
 
@@ -44,6 +41,14 @@ for (const file of protectedRoutes) {
     throw new Error(`${file} must authenticate before reading the request body.`);
   }
 }
+
+requireText("lib/security/creatorApiBoundary.ts", [
+  'from "@/lib/auth/server"',
+  "await authenticateRequest(request)",
+  "error instanceof AuthenticationError",
+  "401,",
+  '"Authentication required."',
+]);
 
 const createPage = read("app/create/page.tsx");
 const metadataRoute = 'fetch("/api/creator-youtube-metadata"';
