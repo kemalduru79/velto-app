@@ -32,12 +32,23 @@ function statusForError(error: unknown) {
 }
 
 function errorResponse(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Kredi işlemi tamamlanamadı.";
+  if (error instanceof AuthenticationError) {
+    return NextResponse.json(
+      { ok: false, error: "Authentication required." },
+      { status: 401 },
+    );
+  }
+
+  if (error instanceof CreditEngineError) {
+    return NextResponse.json(
+      { ok: false, error: "Credit account could not be loaded." },
+      { status: statusForError(error) },
+    );
+  }
 
   return NextResponse.json(
-    { ok: false, error: message },
-    { status: statusForError(error) },
+    { ok: false, error: "Credit account could not be loaded." },
+    { status: 500 },
   );
 }
 
@@ -52,75 +63,14 @@ async function getHandler(request: Request) {
   }
 }
 
-async function postHandler(request: Request) {
-  try {
-    const principal = await authenticateRequest(request);
-    const body = (await request.json()) as Record<string, unknown>;
-    const action = String(body.action || "").trim();
-
-    if (action === "reserve") {
-      const result = await creditEngine.reserve({
-        userId: principal.id,
-        credits: Number(body.credits),
-        operationType: String(body.operationType || ""),
-        idempotencyKey: String(body.idempotencyKey || ""),
-        provider: typeof body.provider === "string" ? body.provider : undefined,
-        referenceId:
-          typeof body.referenceId === "string" ? body.referenceId : undefined,
-        metadata:
-          body.metadata && typeof body.metadata === "object"
-            ? (body.metadata as Record<string, unknown>)
-            : undefined,
-        expiresAt:
-          typeof body.expiresAt === "string" ? body.expiresAt : undefined,
-      });
-
-      return NextResponse.json({ ok: true, action, ...result });
-    }
-
-    if (action === "settle") {
-      const result = await creditEngine.settle({
-        userId: principal.id,
-        reservationId: String(body.reservationId || ""),
-        finalCredits: Number(body.finalCredits),
-        providerCostUsd:
-          body.providerCostUsd === undefined
-            ? undefined
-            : Number(body.providerCostUsd),
-        providerRequestId:
-          typeof body.providerRequestId === "string"
-            ? body.providerRequestId
-            : undefined,
-        metadata:
-          body.metadata && typeof body.metadata === "object"
-            ? (body.metadata as Record<string, unknown>)
-            : undefined,
-      });
-
-      return NextResponse.json({ ok: true, action, ...result });
-    }
-
-    if (action === "release") {
-      const result = await creditEngine.release({
-        userId: principal.id,
-        reservationId: String(body.reservationId || ""),
-        reason: String(body.reason || ""),
-        metadata:
-          body.metadata && typeof body.metadata === "object"
-            ? (body.metadata as Record<string, unknown>)
-            : undefined,
-      });
-
-      return NextResponse.json({ ok: true, action, ...result });
-    }
-
-    return NextResponse.json(
-      { ok: false, error: "Desteklenmeyen kredi işlemi." },
-      { status: 400 },
-    );
-  } catch (error) {
-    return errorResponse(error);
-  }
+async function postHandler() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Credit mutations are not available through this endpoint.",
+    },
+    { status: 405, headers: { Allow: "GET" } },
+  );
 }
 
 export const GET = withObservedApiRoute("api.credits.read", getHandler);
