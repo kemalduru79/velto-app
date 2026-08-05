@@ -4,6 +4,10 @@ import {
   AuthenticationError,
   type AuthenticatedPrincipal,
 } from "@/lib/auth/server";
+import {
+  CREATOR_IMAGE_REQUEST_BODY_BYTES,
+  CREATOR_VIDEO_REQUEST_BODY_BYTES,
+} from "@/lib/security/creatorMediaStoragePolicy";
 
 export const CREATOR_API_POLICIES = {
   "creator-mentor": {
@@ -19,6 +23,16 @@ export const CREATOR_API_POLICIES = {
   "creator-thumbnail": {
     maxBodyBytes: 128 * 1024,
     rateLimit: 4,
+    windowMs: 60_000,
+  },
+  "creator-store-image": {
+    maxBodyBytes: CREATOR_IMAGE_REQUEST_BODY_BYTES,
+    rateLimit: 20,
+    windowMs: 60_000,
+  },
+  "creator-store-video": {
+    maxBodyBytes: CREATOR_VIDEO_REQUEST_BODY_BYTES,
+    rateLimit: 6,
     windowMs: 60_000,
   },
 } as const;

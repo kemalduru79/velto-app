@@ -6305,17 +6305,23 @@ const generateSceneImage = async (
 
     const rawImage = imageData.image as string;
 
-    const storeRes = await fetch("/api/store-image", {
+    const storeRes = await fetch(
+      isCreatorLabFlow ? "/api/creator-store-image" : "/api/store-image",
+      {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(isCreatorLabFlow
+          ? { Authorization: `Bearer ${accessToken}` }
+          : {}),
       },
       body: JSON.stringify({
         image: rawImage,
         sceneId: scene.id,
         projectId: getProjectKey(),
       }),
-    });
+      },
+    );
 
     const storeData = await storeRes.json();
 
@@ -6861,17 +6867,26 @@ const generateSceneImage = async (
             throw new Error("AI video çıktısı alınamadı.");
           }
 
-          const storeRes = await fetch("/api/store-video", {
+          const storeAccessToken = isCreatorLabFlow
+            ? await getAccessTokenOrThrow()
+            : "";
+          const storeRes = await fetch(
+            isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+            {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              ...(isCreatorLabFlow
+                ? { Authorization: `Bearer ${storeAccessToken}` }
+                : {}),
             },
             body: JSON.stringify({
               videoUrl: data.videoUrl,
               sceneId,
               projectId: getProjectKey(),
             }),
-          });
+            },
+          );
 
           const storeData = await storeRes.json();
 
@@ -6987,17 +7002,26 @@ const generateSceneImage = async (
     sceneId: number;
     videoUrl: string;
   }) => {
-    const storeRes = await fetch("/api/store-video", {
+    const storeAccessToken = isCreatorLabFlow
+      ? await getAccessTokenOrThrow()
+      : "";
+    const storeRes = await fetch(
+      isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+      {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(isCreatorLabFlow
+          ? { Authorization: `Bearer ${storeAccessToken}` }
+          : {}),
       },
       body: JSON.stringify({
         videoUrl,
         sceneId,
         projectId: getProjectKey(),
       }),
-    });
+      },
+    );
     const storeData = await storeRes.json().catch(() => ({}));
 
     if (!storeRes.ok || !storeData?.ok || !storeData?.videoUrl) {
@@ -7794,17 +7818,26 @@ const generateSceneImage = async (
           throw new Error("AI video çıktısı alınamadı.");
         }
 
-        const storeRes = await fetch("/api/store-video", {
+        const storeAccessToken = isCreatorLabFlow
+          ? await getAccessTokenOrThrow()
+          : "";
+        const storeRes = await fetch(
+          isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+          {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(isCreatorLabFlow
+              ? { Authorization: `Bearer ${storeAccessToken}` }
+              : {}),
           },
           body: JSON.stringify({
             videoUrl: data.videoUrl,
             sceneId: scene.id,
             projectId: getProjectKey(),
           }),
-        });
+          },
+        );
 
         const storeData = await storeRes.json();
 
@@ -13006,10 +13039,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
     notifyCreditAccountChanged(imageData?.credits);
 
-    const storeRes = await fetch("/api/store-image", {
+    const storeRes = await fetch("/api/creator-store-image", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         image: imageData.image,
