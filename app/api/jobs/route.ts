@@ -11,16 +11,16 @@ import {
 import { getPersistenceServices } from "@/lib/persistence";
 import type {
   VeltoJobRecord,
-  VeltoJobType,
 } from "@/lib/persistence/jobs";
+import {
+  parseBoundedJobRequestJson,
+  validateJobProjectPolicy,
+} from "@/lib/security/jobProjectOwnershipBoundary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SUPPORTED_JOB_TYPES = new Set<VeltoJobType>([
-  "runtime_probe",
-  "video_reconcile",
-]);
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 function publicJob(job: VeltoJobRecord) {
   return {
@@ -57,7 +57,7 @@ function errorResponse(error: unknown) {
   return NextResponse.json(
     {
       ok: false,
-      error: error instanceof Error ? error.message : "Job request failed.",
+      error: "Job request failed.",
     },
     { status: 500 },
   );
@@ -66,17 +66,22 @@ function errorResponse(error: unknown) {
 async function postHandler(req: NextRequest) {
   try {
     const principal = await authenticateRequest(req);
-    const body = (await req.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-    const jobType = body?.jobType as VeltoJobType;
-
-    if (!SUPPORTED_JOB_TYPES.has(jobType)) {
+    const parsed = await parseBoundedJobRequestJson(req);
+    if (!parsed.ok) {
       return NextResponse.json(
-        { ok: false, error: "Unsupported job type." },
-        { status: 400 },
+        { ok: false, error: parsed.message },
+        { status: parsed.status, headers: NO_STORE_HEADERS },
       );
     }
+    const { body } = parsed;
+    const policy = validateJobProjectPolicy(body);
+    if (!policy.ok) {
+      return NextResponse.json(
+        { ok: false, error: policy.message },
+        { status: policy.status, headers: NO_STORE_HEADERS },
+      );
+    }
+    const { jobType } = policy;
 
     const payload =
       body?.payload &&
@@ -91,7 +96,7 @@ async function postHandler(req: NextRequest) {
     ) {
       return NextResponse.json(
         { ok: false, error: "video_reconcile requires payload.taskId." },
-        { status: 400 },
+        { status: 400, headers: NO_STORE_HEADERS },
       );
     }
 
@@ -118,10 +123,25 @@ async function postHandler(req: NextRequest) {
       ),
     );
 
-    const job = await getPersistenceServices().jobQueue.enqueue({
+    const services = getPersistenceServices();
+    let canonicalProjectId: string | null = null;
+    if (jobType === "video_reconcile") {
+      const ownedProject = await services.projectRepository.getForOwner(
+        policy.projectId,
+        principal.id,
+      );
+      if (!ownedProject) {
+        return NextResponse.json(
+          { ok: false, error: "Project was not found." },
+          { status: 404, headers: NO_STORE_HEADERS },
+        );
+      }
+      canonicalProjectId = ownedProject.id;
+    }
+
+    const job = await services.jobQueue.enqueue({
       userId: principal.id,
-      projectId:
-        typeof body?.projectId === "string" ? body.projectId.trim() : null,
+      projectId: canonicalProjectId,
       jobType,
       payload: {
         ...payload,
@@ -136,9 +156,7 @@ async function postHandler(req: NextRequest) {
       { ok: true, job: publicJob(job) },
       {
         status: job.status === "succeeded" ? 200 : 202,
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       },
     );
   } catch (error) {

@@ -130,7 +130,7 @@ const protectedHashes = {
   "lib/security/creatorApiBoundary.ts": "c6eed64a7408cad1d6cfc5ae5d39c670f0f76728b4f303487f003b99d8196217",
   "lib/security/creatorMediaStoragePolicy.ts": "ff7524414d45ae630a81fca7751d84226a11139916b3df40e34d0c0d800c16e9",
   "lib/security/safeRemoteMediaFetch.ts": "f85004c90e8d3fc24c1a18d017ba09e39b6327328171f9b3e6d251d7a84b417e",
-  "lib/persistence/projects/supabaseProjectRepository.ts": "4b3e8dfe90f42c00d1fe092d5bd9328689ee6e7e19dcafe553cf9c00d38de2b6",
+  "lib/persistence/projects/supabaseProjectRepository.ts": "83cb306a51c31bc3d7ff40d29e757e5cdb760f0218cdf6aa31d07974f9ebdb87",
   "lib/persistence/storage/supabaseObjectStorageRepository.ts": "4b73fa9e2a939fb210a85274ef1b91445369dadfbb93cd1484880915dfbd1e5c",
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
