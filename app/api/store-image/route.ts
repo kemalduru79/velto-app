@@ -1,58 +1,23 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getPersistenceServices } from "@/lib/persistence";
+import { enforceLegacyMediaBoundary } from "@/lib/security/legacyMediaStorageBoundary";
+import { MAX_CREATOR_IMAGE_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
+import {
+  decodeImageDataUrl,
+  safeRemoteMediaFetch,
+  SafeMediaError,
+} from "@/lib/security/safeRemoteMediaFetch";
 
 export const runtime = "nodejs";
-
-function safeName(value: string) {
-  return value.replace(/[^a-zA-Z0-9-_]/g, "_");
-}
-
-function parseDataUri(dataUri: string) {
-  const match = dataUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-
-  if (!match) throw new Error("Invalid image data URI");
-
-  const mimeType = match[1];
-  const buffer = Buffer.from(match[2], "base64");
-  let extension = "png";
-
-  if (mimeType.includes("jpeg") || mimeType.includes("jpg")) extension = "jpg";
-  if (mimeType.includes("webp")) extension = "webp";
-
-  return { mimeType, extension, buffer };
-}
-
-async function downloadRemoteFile(url: string) {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(errorText || "Remote image download failed");
-  }
-
-  const mimeType = response.headers.get("content-type") || "image/png";
-  const buffer = Buffer.from(await response.arrayBuffer());
-  let extension = "png";
-
-  if (mimeType.includes("jpeg") || mimeType.includes("jpg")) extension = "jpg";
-  if (mimeType.includes("webp")) extension = "webp";
-
-  return { mimeType, extension, buffer };
-}
 
 // VELTO_PORT_P2 — media routes use ObjectStorageRepository only.
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const boundary = await enforceLegacyMediaBoundary<Record<string, unknown>>(req, "store-image");
+    if (!boundary.ok) return boundary.response;
+    const body = boundary.body;
     const image = typeof body?.image === "string" ? body.image.trim() : "";
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp-project";
-    const sceneId =
-      typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
-        ? String(body.sceneId)
-        : "unknown";
 
     if (!image) {
       return NextResponse.json(
@@ -61,10 +26,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fileData = image.startsWith("data:image/")
-      ? parseDataUri(image)
+    const fileData = image.startsWith("data:")
+      ? decodeImageDataUrl(image, MAX_CREATOR_IMAGE_BYTES)
       : image.startsWith("https://")
-        ? await downloadRemoteFile(image)
+        ? await safeRemoteMediaFetch({ rawUrl: image, kind: "image", maxBytes: MAX_CREATOR_IMAGE_BYTES })
         : null;
 
     if (!fileData) {
@@ -77,7 +42,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const filePath = `${safeName(projectId)}/scene-${safeName(sceneId)}-${Date.now()}.${fileData.extension}`;
+    const filePath = `storyverse/${boundary.user.id}/image/${randomUUID()}.${fileData.extension}`;
     const storedImage =
       await getPersistenceServices().objectStorage.uploadPublic({
         bucket: "images",
@@ -93,12 +58,14 @@ export async function POST(req: NextRequest) {
       path: storedImage.path,
     });
   } catch (error) {
-    console.error("store-image error:", error);
+    if (error instanceof SafeMediaError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    console.error("store-image failed");
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error ? error.message : "Image could not be stored",
+        error: "Image could not be stored",
       },
       { status: 500 },
     );

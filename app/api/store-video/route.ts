@@ -1,25 +1,19 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getPersistenceServices } from "@/lib/persistence";
+import { enforceLegacyMediaBoundary } from "@/lib/security/legacyMediaStorageBoundary";
+import { MAX_CREATOR_VIDEO_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
+import { safeRemoteMediaFetch, SafeMediaError } from "@/lib/security/safeRemoteMediaFetch";
 
 export const runtime = "nodejs";
 
-function safeName(value: string) {
-  return value.replace(/[^a-zA-Z0-9-_]/g, "_");
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const boundary = await enforceLegacyMediaBoundary<Record<string, unknown>>(req, "store-video");
+    if (!boundary.ok) return boundary.response;
+    const body = boundary.body;
     const videoUrl =
       typeof body?.videoUrl === "string" ? body.videoUrl.trim() : "";
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp";
-    const sceneId =
-      typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
-        ? String(body.sceneId)
-        : "unknown";
 
     if (!videoUrl) {
       return NextResponse.json(
@@ -28,26 +22,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const videoResponse = await fetch(videoUrl);
-
-    if (!videoResponse.ok) {
-      const errorText = await videoResponse.text().catch(() => "");
-      return NextResponse.json(
-        { ok: false, error: errorText || "Video indirilemedi" },
-        { status: 500 },
-      );
-    }
-
-    const contentType =
-      videoResponse.headers.get("content-type") || "video/mp4";
-    const buffer = Buffer.from(await videoResponse.arrayBuffer());
-    const filePath = `${safeName(projectId)}/scene-${safeName(sceneId)}-${Date.now()}.mp4`;
+    const media = await safeRemoteMediaFetch({
+      rawUrl: videoUrl,
+      kind: "video",
+      maxBytes: MAX_CREATOR_VIDEO_BYTES,
+    });
+    const filePath = `storyverse/${boundary.user.id}/video/${randomUUID()}.${media.extension}`;
     const storedVideo =
       await getPersistenceServices().objectStorage.uploadPublic({
         bucket: "videos",
         path: filePath,
-        body: buffer,
-        contentType,
+        body: media.buffer,
+        contentType: media.mimeType,
         upsert: false,
       });
 
@@ -57,11 +43,14 @@ export async function POST(req: NextRequest) {
       path: storedVideo.path,
     });
   } catch (error) {
-    console.error("store-video error:", error);
+    if (error instanceof SafeMediaError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    console.error("store-video failed");
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Video kaydedilemedi",
+        error: "Video could not be stored",
       },
       { status: 500 },
     );

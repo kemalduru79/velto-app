@@ -6311,9 +6311,7 @@ const generateSceneImage = async (
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(isCreatorLabFlow
-          ? { Authorization: `Bearer ${accessToken}` }
-          : {}),
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         image: rawImage,
@@ -6867,18 +6865,14 @@ const generateSceneImage = async (
             throw new Error("AI video çıktısı alınamadı.");
           }
 
-          const storeAccessToken = isCreatorLabFlow
-            ? await getAccessTokenOrThrow()
-            : "";
+          const storeAccessToken = await getAccessTokenOrThrow();
           const storeRes = await fetch(
             isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
             {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              ...(isCreatorLabFlow
-                ? { Authorization: `Bearer ${storeAccessToken}` }
-                : {}),
+              Authorization: `Bearer ${storeAccessToken}`,
             },
             body: JSON.stringify({
               videoUrl: data.videoUrl,
@@ -7002,18 +6996,14 @@ const generateSceneImage = async (
     sceneId: number;
     videoUrl: string;
   }) => {
-    const storeAccessToken = isCreatorLabFlow
-      ? await getAccessTokenOrThrow()
-      : "";
+    const storeAccessToken = await getAccessTokenOrThrow();
     const storeRes = await fetch(
       isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
       {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(isCreatorLabFlow
-          ? { Authorization: `Bearer ${storeAccessToken}` }
-          : {}),
+        Authorization: `Bearer ${storeAccessToken}`,
       },
       body: JSON.stringify({
         videoUrl,
@@ -7818,18 +7808,14 @@ const generateSceneImage = async (
           throw new Error("AI video çıktısı alınamadı.");
         }
 
-        const storeAccessToken = isCreatorLabFlow
-          ? await getAccessTokenOrThrow()
-          : "";
+        const storeAccessToken = await getAccessTokenOrThrow();
         const storeRes = await fetch(
           isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
           {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(isCreatorLabFlow
-              ? { Authorization: `Bearer ${storeAccessToken}` }
-              : {}),
+            Authorization: `Bearer ${storeAccessToken}`,
           },
           body: JSON.stringify({
             videoUrl: data.videoUrl,

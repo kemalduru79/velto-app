@@ -81,8 +81,8 @@ assert.ok(createPage.includes('fetch("/api/creator-store-image"'));
 assert.ok(createPage.includes("Authorization: `Bearer ${accessToken}`"));
 
 const protectedHashes = {
-  "app/api/store-image/route.ts": "aed83acf0f12a48ce2ddcad5947ce71e9930987f9e55783c8ac1fd44f3e063e7",
-  "app/api/store-video/route.ts": "04acfe7398554fafbb7f3e6bac0fa3b4d250e3f1440b624c53c8c72f0dfc1399",
+  "app/api/store-image/route.ts": "06a9948fda5ff1884f1076dce0ce99702dd2479b2afac316102487bb5ddf090b",
+  "app/api/store-video/route.ts": "a1b55827874b1304a832f14262016a40cf88fcfb232a241e9fe2525307c49160",
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
   "app/api/story/route.ts": "5559c4e40a9364865aa25353cfa1283f0e1a824e7513f125e75ec737ef97302f",
