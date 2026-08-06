@@ -22,28 +22,40 @@ try {
   const {
     MAX_JOB_REQUEST_BODY_BYTES,
     parseBoundedJobRequestJson,
-    validateJobProjectPolicy,
+    validatePublicJobEnqueuePolicy,
   } = require(compiledPath);
   const validProjectId = "c806716b-77f5-4952-89a6-5f7fdd62fdf1";
-  assert.deepEqual(validateJobProjectPolicy({ jobType: "video_reconcile", projectId: validProjectId }), { ok: true, jobType: "video_reconcile", projectId: validProjectId });
-  for (const projectId of [undefined, "", "   ", "x".repeat(129), "bad/id", {}, 42]) {
-    assert.equal(validateJobProjectPolicy({ jobType: "video_reconcile", projectId }).ok, false);
+  assert.equal(validatePublicJobEnqueuePolicy({ jobType: "video_reconcile", projectId: validProjectId }).ok, false);
+  assert.deepEqual(validatePublicJobEnqueuePolicy({ jobType: "runtime_probe" }), { ok: true, jobType: "runtime_probe", projectId: null });
+  assert.deepEqual(validatePublicJobEnqueuePolicy({ jobType: "runtime_probe", projectId: null }), { ok: true, jobType: "runtime_probe", projectId: null });
+  for (const projectId of [validProjectId, {}, 42, true]) {
+    assert.equal(validatePublicJobEnqueuePolicy({ jobType: "runtime_probe", projectId }).ok, false);
   }
-  assert.deepEqual(validateJobProjectPolicy({ jobType: "runtime_probe" }), { ok: true, jobType: "runtime_probe", projectId: null });
-  assert.deepEqual(validateJobProjectPolicy({ jobType: "runtime_probe", projectId: null }), { ok: true, jobType: "runtime_probe", projectId: null });
-  assert.equal(validateJobProjectPolicy({ jobType: "runtime_probe", projectId: validProjectId }).ok, false);
-  assert.equal(validateJobProjectPolicy({ jobType: "unknown", projectId: validProjectId }).ok, false);
-  const input = { jobType: "video_reconcile", projectId: ` ${validProjectId} ` };
+  assert.equal(validatePublicJobEnqueuePolicy({ jobType: "unknown", projectId: validProjectId }).ok, false);
+  const input = { jobType: "runtime_probe" };
   const snapshot = structuredClone(input);
-  const result = validateJobProjectPolicy(input);
+  const result = validatePublicJobEnqueuePolicy(input);
   assert.deepEqual(input, snapshot);
   for (const key of ["userId", "user_id", "ownerUserId", "owner_user_id"]) assert.ok(!(key in result));
 
   for (const field of ["userId", "user_id", "ownerUserId", "owner_user_id"]) {
-    assert.equal(validateJobProjectPolicy({ ...input, [field]: "attacker" }).code, "client_identity_not_allowed");
-    assert.equal(validateJobProjectPolicy({ ...input, payload: { taskId: "task", [field]: "attacker" } }).code, "client_identity_not_allowed");
+    assert.equal(validatePublicJobEnqueuePolicy({ ...input, [field]: "attacker" }).code, "client_identity_not_allowed");
+    assert.equal(validatePublicJobEnqueuePolicy({ ...input, payload: { ordinary: true, [field]: "attacker" } }).code, "client_identity_not_allowed");
   }
-  assert.equal(validateJobProjectPolicy({ ...input, payload: { taskId: "task", prompt: "compatible" } }).ok, true);
+  assert.equal(validatePublicJobEnqueuePolicy({ ...input, payload: { prompt: "compatible" } }).ok, true);
+  for (const payload of [
+    { projectId: "any-value" },
+    { projectId: null },
+    { projectId: "" },
+    { project_id: "any-value" },
+  ]) {
+    const nestedInput = { jobType: "runtime_probe", payload };
+    const nestedSnapshot = structuredClone(nestedInput);
+    const nestedResult = validatePublicJobEnqueuePolicy(nestedInput);
+    assert.equal(nestedResult.ok, false);
+    assert.equal(nestedResult.message, "runtime_probe does not accept projectId.");
+    assert.deepEqual(nestedInput, nestedSnapshot);
+  }
 
   const requestFor = (body, contentLength = null) => ({
     headers: { get: (name) => name.toLowerCase() === "content-length" ? contentLength : null },
@@ -83,20 +95,22 @@ try {
 
 const authentication = route.indexOf("authenticateRequest(req)");
 const boundedParse = route.indexOf("parseBoundedJobRequestJson(req)", authentication);
-const policy = route.indexOf("validateJobProjectPolicy(body)");
+const policy = route.indexOf("validatePublicJobEnqueuePolicy(body)");
 const services = route.indexOf("const services = getPersistenceServices()");
-const lookup = route.indexOf("services.projectRepository.getForOwner(");
 const enqueue = route.indexOf("services.jobQueue.enqueue(");
-assert.ok(authentication >= 0 && authentication < boundedParse && boundedParse < policy && policy < services && services < lookup && lookup < enqueue);
+assert.ok(authentication >= 0 && authentication < boundedParse && boundedParse < policy && policy < services && services < enqueue);
 assert.match(boundarySource, /request\.body\.getReader\(\)/);
 assert.match(boundarySource, /await reader\.cancel\(\)/);
 assert.doesNotMatch(route, /req\.(?:text|json|arrayBuffer|formData)\(/);
 assert.doesNotMatch(boundarySource, /request\.(?:text|json|arrayBuffer|formData)\(/);
-assert.match(route, /getForOwner\(\s*policy\.projectId,\s*principal\.id,\s*\)/);
+assert.doesNotMatch(route, /projectRepository|getForOwner/);
 assert.match(route, /userId:\s*principal\.id/);
+assert.match(route, /projectId:\s*null/);
+assert.match(boundarySource, /hasOwnProperty\.call\(payload, "projectId"\)/);
+assert.match(boundarySource, /hasOwnProperty\.call\(payload, "project_id"\)/);
 assert.doesNotMatch(route, /userId:\s*body|user_id:\s*body|ownerUserId:\s*body|owner_user_id:\s*body/);
-assert.equal((route.match(/Project was not found\./g) || []).length, 1);
-assert.match(boundarySource, /jobType === "runtime_probe"[\s\S]*?if \(projectId\)/);
+assert.match(boundarySource, /jobType !== "runtime_probe"/);
+assert.match(boundarySource, /runtime_probe does not accept projectId/);
 assert.doesNotMatch(route, /getById|\.from\(["']velto_projects["']\)|listForOwner/);
 assert.doesNotMatch(boundarySource, /supabase|provider|NextRequest|process\.env/i);
 
@@ -107,7 +121,7 @@ const protectedHashes = {
   "app/api/public-project/[shareId]/route.ts": "a081b5c63737c16414847071de61bc546fdc2248d0ce92a46f3fc8e197b969f6",
   "app/api/share-project/route.ts": "8ce1a207ef7261346f82e9f7d921c54c3e243366dacd7eddbf1224466e93f597",
   "lib/security/publicStoryverseProjection.ts": "a7753dcab05b7737c1278edba7deb9cc3171ab70a0fca670ab7e081ff295ed18",
-  "scripts/beta-data-p1b-3a-smoke-test.mjs": "039ea9401418a987b9b9745a838aae75e35f4fb9935a40129edecbd1e4221b73",
+  "scripts/beta-data-p1b-3a-smoke-test.mjs": "8c85f733c4ca7b90dfea25d6f81e629ad120690157c8b1f5fcd094792975deb0",
 };
 for (const [file, expected] of Object.entries(protectedHashes)) assert.equal(hash(file), expected, `${file} changed`);
 assert.equal(JSON.parse(read("package.json")).scripts["test:beta-data-p1b-3b-1"], "node scripts/beta-data-p1b-3b-1-smoke-test.mjs");

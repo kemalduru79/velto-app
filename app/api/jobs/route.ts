@@ -14,7 +14,7 @@ import type {
 } from "@/lib/persistence/jobs";
 import {
   parseBoundedJobRequestJson,
-  validateJobProjectPolicy,
+  validatePublicJobEnqueuePolicy,
 } from "@/lib/security/jobProjectOwnershipBoundary";
 
 export const runtime = "nodejs";
@@ -45,7 +45,7 @@ function errorResponse(error: unknown) {
   if (error instanceof AuthenticationError) {
     return NextResponse.json(
       { ok: false, error: error.message },
-      { status: 401 },
+      { status: 401, headers: NO_STORE_HEADERS },
     );
   }
 
@@ -74,7 +74,7 @@ async function postHandler(req: NextRequest) {
       );
     }
     const { body } = parsed;
-    const policy = validateJobProjectPolicy(body);
+    const policy = validatePublicJobEnqueuePolicy(body);
     if (!policy.ok) {
       return NextResponse.json(
         { ok: false, error: policy.message },
@@ -90,16 +90,6 @@ async function postHandler(req: NextRequest) {
         ? (body.payload as Record<string, unknown>)
         : {};
 
-    if (
-      jobType === "video_reconcile" &&
-      (typeof payload.taskId !== "string" || !payload.taskId.trim())
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "video_reconcile requires payload.taskId." },
-        { status: 400, headers: NO_STORE_HEADERS },
-      );
-    }
-
     const idempotencyKey =
       req.headers.get("x-idempotency-key")?.trim() ||
       (typeof body?.idempotencyKey === "string"
@@ -111,7 +101,7 @@ async function postHandler(req: NextRequest) {
       Math.min(Number(body?.priority ?? 100) || 100, 1000),
     );
     const requestedMaxAttempts = Number(
-      body?.maxAttempts ?? (jobType === "video_reconcile" ? 120 : 5),
+      body?.maxAttempts ?? 5,
     );
     const maxAttempts = Math.max(
       1,
@@ -124,24 +114,9 @@ async function postHandler(req: NextRequest) {
     );
 
     const services = getPersistenceServices();
-    let canonicalProjectId: string | null = null;
-    if (jobType === "video_reconcile") {
-      const ownedProject = await services.projectRepository.getForOwner(
-        policy.projectId,
-        principal.id,
-      );
-      if (!ownedProject) {
-        return NextResponse.json(
-          { ok: false, error: "Project was not found." },
-          { status: 404, headers: NO_STORE_HEADERS },
-        );
-      }
-      canonicalProjectId = ownedProject.id;
-    }
-
     const job = await services.jobQueue.enqueue({
       userId: principal.id,
-      projectId: canonicalProjectId,
+      projectId: null,
       jobType,
       payload: {
         ...payload,

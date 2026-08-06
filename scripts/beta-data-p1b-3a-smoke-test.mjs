@@ -54,7 +54,7 @@ const protectedHashes = {
   "app/api/load-project/[projectId]/route.ts": "2813a36706fb8de65d3e72795c070434b166a7fe044f4e04ab49572fe967dd58",
   "app/api/save-project/route.ts": "3657da0da57fd5db56a5a783ea0729f47f01a6df1d0df897ea0413e4bd03d348",
   "app/api/projects/route.ts": "191fb4473a5316932cf6fb7c82b5ef8e3ba35a0053b4e674d49eb2bf55eb0f20",
-  "app/api/jobs/route.ts": "09d1323e7288bec809abf56c048d1edacc5182a28074800bf27d7a7c96861acf",
+  "app/api/jobs/route.ts": "848f262b3472e9a4bb83768b84daacb75f6302d9ebd04eaf5fd6c05eea924522",
   "app/api/jobs/[jobId]/route.ts": "a3818dd7283e5bc8e0e24c942ba501db4563c280afe63e0abecc869198631e12",
   "lib/security/legacyMediaStorageBoundary.ts": "5647c6c5da4b9179a2b7ee6533d0f6d65f59aa646bf42273019dc433fc4d3cdd",
   "scripts/beta-data-p1b-2-smoke-test.mjs": "c858977fb0da42c97d4fdf6cc98336f63772bc4e9c8601296699e418b9f58dce",

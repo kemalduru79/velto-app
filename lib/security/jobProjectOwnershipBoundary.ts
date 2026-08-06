@@ -1,4 +1,3 @@
-const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 export const MAX_JOB_REQUEST_BODY_BYTES = 64 * 1024;
 const CLIENT_IDENTITY_FIELDS = [
   "userId",
@@ -67,8 +66,7 @@ export async function parseBoundedJobRequestJson(
   }
 }
 
-export type JobProjectPolicyResult =
-  | { ok: true; jobType: "video_reconcile"; projectId: string }
+export type PublicJobEnqueuePolicyResult =
   | { ok: true; jobType: "runtime_probe"; projectId: null }
   | {
       ok: false;
@@ -80,9 +78,9 @@ export type JobProjectPolicyResult =
       message: string;
     };
 
-export function validateJobProjectPolicy(
+export function validatePublicJobEnqueuePolicy(
   input: Readonly<Record<string, unknown>> | null,
-): JobProjectPolicyResult {
+): PublicJobEnqueuePolicyResult {
   const payload =
     input?.payload &&
     typeof input.payload === "object" &&
@@ -104,9 +102,22 @@ export function validateJobProjectPolicy(
     };
   }
 
+  if (
+    payload !== null &&
+    (Object.prototype.hasOwnProperty.call(payload, "projectId") ||
+      Object.prototype.hasOwnProperty.call(payload, "project_id"))
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      code: "invalid_project_id",
+      message: "runtime_probe does not accept projectId.",
+    };
+  }
+
   const jobType = typeof input?.jobType === "string" ? input.jobType.trim() : "";
 
-  if (jobType !== "runtime_probe" && jobType !== "video_reconcile") {
+  if (jobType !== "runtime_probe") {
     return {
       ok: false,
       status: 400,
@@ -119,26 +130,18 @@ export function validateJobProjectPolicy(
   const projectId =
     typeof suppliedProjectId === "string" ? suppliedProjectId.trim() : null;
 
-  if (jobType === "runtime_probe") {
-    if (projectId) {
-      return {
-        ok: false,
-        status: 400,
-        code: "invalid_project_id",
-        message: "runtime_probe does not accept projectId.",
-      };
-    }
-    return { ok: true, jobType, projectId: null };
-  }
-
-  if (!projectId || !PROJECT_ID_PATTERN.test(projectId)) {
+  if (
+    suppliedProjectId !== undefined &&
+    suppliedProjectId !== null &&
+    (typeof suppliedProjectId !== "string" || Boolean(projectId))
+  ) {
     return {
       ok: false,
       status: 400,
       code: "invalid_project_id",
-      message: "video_reconcile requires a valid projectId.",
+      message: "runtime_probe does not accept projectId.",
     };
   }
 
-  return { ok: true, jobType, projectId };
+  return { ok: true, jobType, projectId: null };
 }

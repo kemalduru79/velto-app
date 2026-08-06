@@ -4,6 +4,10 @@ import {
   withObservedApiRoute,
 } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
 import { getMediaProviderFacade } from "@/lib/providers";
 import {
   getCreditErrorResponse,
@@ -23,6 +27,10 @@ import {
   createVideoJobToken,
   parseVideoJobToken,
 } from "../../../lib/video/providers";
+import {
+  buildCanonicalCreatorVideoQueueInput,
+  validateCreatorVideoRequestBoundary,
+} from "@/lib/security/creatorVideoTaskBindingBoundary";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -134,7 +142,24 @@ async function postHandler(req: NextRequest) {
   let providerKey = "";
 
   try {
-    const body = (await req.json()) as Record<string, unknown>;
+    const principal = await authenticateRequest(req);
+    let requestValue: unknown;
+    try {
+      requestValue = await req.json();
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Invalid JSON request body." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const boundary = validateCreatorVideoRequestBoundary(requestValue);
+    if (!boundary.ok) {
+      return NextResponse.json(
+        { ok: false, error: boundary.message },
+        { status: boundary.status, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const { body, projectBinding } = boundary;
     const qualityMode = normalizeCreatorQualityMode(
       body.qualityMode,
       "standard",
@@ -164,35 +189,6 @@ async function postHandler(req: NextRequest) {
       );
     }
 
-    const selection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
-
-    if (!selection.available) {
-      throw new Error("Video production service is not configured.");
-    }
-
-    const durationPolicy = selection.provider.normalizeDuration(
-      body.duration,
-      qualityMode,
-    );
-
-    reservation = await reserveMeteredOperation(req, {
-      operationType: "creator_video",
-      qualityMode,
-      provider: selection.provider.key,
-      referenceId: `${typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : "draft"}:scene-${body.sceneId ?? "unknown"}:video`,
-      metadata: {
-        productProfile: "creatorlab",
-        projectId:
-          typeof body.projectId === "string" && body.projectId.trim()
-            ? body.projectId.trim()
-            : null,
-        sceneId: body.sceneId ?? null,
-        durationSec: durationPolicy.durationSec,
-        engineTier: selection.selectedTier,
-      },
-      billable: true,
-    });
-
     const useCinematicContinuity = qualityMode === "cinematic";
     const lastFrameUrl = useCinematicContinuity
       ? optionalImageUrl(body.lastFrameUrl)
@@ -214,6 +210,48 @@ async function postHandler(req: NextRequest) {
         );
       }
     }
+
+    const services = getPersistenceServices();
+    let canonicalProjectId: string | null = null;
+    if (projectBinding.mode === "saved_project") {
+      const ownedProject = await services.projectRepository.getForOwner(
+        projectBinding.requestedProjectId,
+        principal.id,
+      );
+      if (!ownedProject) {
+        return NextResponse.json(
+          { ok: false, error: "Project was not found." },
+          { status: 404, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      canonicalProjectId = ownedProject.id;
+    }
+
+    const selection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
+
+    if (!selection.available) {
+      throw new Error("Video production service is not configured.");
+    }
+
+    const durationPolicy = selection.provider.normalizeDuration(
+      body.duration,
+      qualityMode,
+    );
+
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_video",
+      qualityMode,
+      provider: selection.provider.key,
+      referenceId: `${canonicalProjectId || `draft:${principal.id}`}:scene-${body.sceneId ?? "unknown"}:video`,
+      metadata: {
+        productProfile: "creatorlab",
+        projectId: canonicalProjectId,
+        sceneId: body.sceneId ?? null,
+        durationSec: durationPolicy.durationSec,
+        engineTier: selection.selectedTier,
+      },
+      billable: true,
+    });
 
     // Do not reject an HTTPS asset based on a HEAD request. Some signed storage
     // and CDN URLs reject HEAD while remaining fully downloadable by providers.
@@ -270,31 +308,26 @@ async function postHandler(req: NextRequest) {
     const requestKey =
       req.headers.get("x-idempotency-key")?.trim() ||
       `creator-video:${publicTaskId}`;
-    const queueJob = await getPersistenceServices().jobQueue.enqueue({
-      userId: reservation?.userId || null,
-      projectId:
-        typeof body.projectId === "string" && body.projectId.trim()
-          ? body.projectId.trim()
-          : null,
+    const canonicalQueueInput = buildCanonicalCreatorVideoQueueInput({
+      userId: principal.id,
+      canonicalProjectId,
+      publicTaskId,
+      nativeTaskId: task.nativeTaskId,
+      provider: selection.provider.key,
+      sceneId: body.sceneId ?? null,
+      qualityMode,
+      creditReservationId: reservation?.reservationId || null,
+      reservedCredits: reservation?.reservedCredits || 0,
+      traceId: getObservabilityContext().traceId || null,
+    });
+    const queueJob = await services.jobQueue.enqueue({
+      userId: canonicalQueueInput.userId,
+      projectId: canonicalQueueInput.projectId,
       jobType: "video_reconcile",
       priority: 200,
       maxAttempts: 120,
       idempotencyKey: `video-reconcile:${requestKey}`,
-      payload: {
-        taskId: publicTaskId,
-        nativeTaskId: task.nativeTaskId,
-        sceneId: body.sceneId ?? null,
-        projectId:
-          typeof body.projectId === "string" && body.projectId.trim()
-            ? body.projectId.trim()
-            : null,
-        qualityMode,
-        provider: selection.provider.key,
-        creditReservationId: reservation?.reservationId || null,
-        reservedCredits: reservation?.reservedCredits || 0,
-        creditSettlementMode: "provider_dispatch",
-        traceId: getObservabilityContext().traceId || null,
-      },
+      payload: canonicalQueueInput.payload,
     });
 
     const chargedCredits = reservation?.reservedCredits || 0;
@@ -346,6 +379,13 @@ async function postHandler(req: NextRequest) {
         : { chargedCredits: 0, reservedCredits: 0, settlementPending: false },
     });
   } catch (error: unknown) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 401, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     if (reservation) {
       if (providerTaskAccepted) {
         // A provider task was accepted, therefore provider cost may already
