@@ -40,7 +40,8 @@
     "test:beta-sec-p1a-2": "node scripts/beta-sec-p1a-2-smoke-test.mjs",
     "test:beta-sec-p1b": "node scripts/beta-sec-p1b-smoke-test.mjs",
     "test:beta-data-p1b-1": "node scripts/beta-data-p1b-1-smoke-test.mjs",
-    "test:beta-data-p1b-2": "node scripts/beta-data-p1b-2-smoke-test.mjs"
+    "test:beta-data-p1b-2": "node scripts/beta-data-p1b-2-smoke-test.mjs",
+    "test:beta-data-p1b-3a": "node scripts/beta-data-p1b-3a-smoke-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",

@@ -6,11 +6,12 @@ import type {
   SaveVeltoProjectResult,
   VeltoProjectApiRecord,
 } from "./types";
+import type { PublicStoryverseProjectSourceRecord } from "@/lib/security/publicStoryverseProjection";
 
 const PROJECT_LIST_FIELDS =
   "id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url, exported_movie_result, export_signature";
 const PUBLIC_PROJECT_FIELDS =
-  "id, title, input_prompt, story_premise, language, visual_bible, characters, scenes, share_id, is_public, published_at, created_at, updated_at, exported_movie_url, exported_movie_result, export_signature";
+  "title, story_premise, language, flow_type, characters, scenes, published_at, exported_movie_url";
 
 function asProjectRecord(value: unknown): VeltoProjectApiRecord {
   return value as VeltoProjectApiRecord;
@@ -83,7 +84,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
 
   async getPublicByShareId(
     shareId: string,
-  ): Promise<VeltoProjectApiRecord | null> {
+  ): Promise<PublicStoryverseProjectSourceRecord | null> {
     const client = createServerSupabaseClient();
     const { data, error } = await client
       .from("velto_projects")
@@ -96,7 +97,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
       throw new Error(`Public project could not be read: ${error.message}`);
     }
 
-    return data ? asProjectRecord(data) : null;
+    return data ? (data as PublicStoryverseProjectSourceRecord) : null;
   }
 
   async saveForOwner(
@@ -147,7 +148,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
     const client = createServerSupabaseClient();
     const { data: existingProject, error: existingProjectError } = await client
       .from("velto_projects")
-      .select("id, owner_user_id, share_id")
+      .select("id, owner_user_id, share_id, flow_type")
       .eq("id", projectId)
       .maybeSingle();
 
@@ -160,6 +161,9 @@ export class SupabaseProjectRepository implements ProjectRepository {
     if (!existingProject) return { status: "not_found" };
     if (existingProject.owner_user_id !== ownerUserId) {
       return { status: "forbidden" };
+    }
+    if (existingProject.flow_type !== "storyverse") {
+      return { status: "unsupported_flow" };
     }
 
     let shareId = String(existingProject.share_id || "").trim();

@@ -1,3 +1,5 @@
+import type { PublicStoryverseProjectSourceRecord } from "@/lib/security/publicStoryverseProjection";
+
 export type VeltoProjectFlowType = "storyverse" | "creator_lab";
 
 /**
@@ -46,6 +48,7 @@ export type PublishVeltoProjectResult =
     }
   | { status: "not_found" }
   | { status: "forbidden" }
+  | { status: "unsupported_flow" }
   | { status: "share_id_exhausted" };
 
 export interface ProjectRepository {
@@ -54,7 +57,9 @@ export interface ProjectRepository {
     projectId: string,
     ownerUserId: string,
   ): Promise<VeltoProjectApiRecord | null>;
-  getPublicByShareId(shareId: string): Promise<VeltoProjectApiRecord | null>;
+  getPublicByShareId(
+    shareId: string,
+  ): Promise<PublicStoryverseProjectSourceRecord | null>;
   saveForOwner(input: SaveVeltoProjectInput): Promise<SaveVeltoProjectResult>;
   publishForOwner(
     projectId: string,

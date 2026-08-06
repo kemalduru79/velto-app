@@ -39,6 +39,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (result.status === "unsupported_flow") {
+      return NextResponse.json(
+        { error: "Bu proje türü için paylaşım desteklenmiyor." },
+        { status: 409 },
+      );
+    }
+
     if (result.status === "share_id_exhausted") {
       return NextResponse.json(
         { error: "Benzersiz paylaşım ID'si üretilemedi." },
