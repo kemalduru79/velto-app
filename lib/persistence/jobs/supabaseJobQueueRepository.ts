@@ -178,6 +178,21 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
     return data ? mapJob(data as JobRow) : null;
   }
 
+  async getInternal(jobId: string): Promise<VeltoJobRecord | null> {
+    const client = createServerSupabaseClient();
+    const { data, error } = await client
+      .from("velto_jobs")
+      .select("*")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Job could not be read internally: ${error.message}`);
+    }
+
+    return data ? mapJob(data as JobRow) : null;
+  }
+
   async listForUser(
     userId: string,
     limit = 20,

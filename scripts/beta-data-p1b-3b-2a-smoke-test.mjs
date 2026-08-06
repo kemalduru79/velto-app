@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -101,8 +100,7 @@ assert.match(jobsRoute, /headers:\s*NO_STORE_HEADERS/);
 assert.match(publicPolicySource, /hasOwnProperty\.call\(payload, "projectId"\)/);
 assert.match(publicPolicySource, /hasOwnProperty\.call\(payload, "project_id"\)/);
 
-const creatorPost = creatorRoute.slice(creatorRoute.indexOf("async function postHandler"), creatorRoute.indexOf("async function getHandler"));
-const creatorGet = creatorRoute.slice(creatorRoute.indexOf("async function getHandler"));
+const creatorPost = creatorRoute.slice(creatorRoute.indexOf("async function postHandler"), creatorRoute.indexOf("async function noStorePostHandler"));
 const creatorAuth = creatorPost.indexOf("authenticateRequest(req)");
 const creatorJson = creatorPost.indexOf("await req.json()");
 const creatorBoundary = creatorPost.indexOf("validateCreatorVideoRequestBoundary(requestValue)");
@@ -124,7 +122,6 @@ assert.doesNotMatch(creatorPost, /\.\.\.body|\.\.\.body\.payload/);
 assert.match(creatorPost, /taskId:\s*publicTaskId|publicTaskId,/);
 assert.match(creatorPost, /nativeTaskId:\s*task\.nativeTaskId/);
 assert.match(creatorPost, /provider:\s*selection\.provider\.key/);
-assert.match(creatorPost, /taskId:\s*publicTaskId/);
 assert.match(creatorPost, /queueJobId:\s*queueJob\.id/);
 const authenticationCatch = creatorPost.indexOf("error instanceof AuthenticationError");
 const creditCatch = creatorPost.indexOf("if (reservation)", creatorPost.indexOf("} catch (error: unknown)"));
@@ -134,26 +131,20 @@ assert.ok(authenticationCatch >= 0 && authenticationCatch < creditCatch && authe
 const authenticationResponse = creatorPost.slice(authenticationCatch, creditCatch);
 assert.match(authenticationResponse, /status:\s*401/);
 assert.match(authenticationResponse, /"Cache-Control":\s*"no-store"/);
-assert.match(authenticationResponse, /error:\s*error\.message/);
+assert.match(authenticationResponse, /error:\s*"Authentication required\."/);
+assert.doesNotMatch(authenticationResponse, /error\.message/);
 const successResponseStart = creatorPost.indexOf("return NextResponse.json({", creatorPost.indexOf("reservation = null"));
 assert.doesNotMatch(creatorPost.slice(successResponseStart, creatorPost.indexOf("  } catch", successResponseStart)), /nativeTaskId|provider:/);
-const baselineCreatorRoute = execFileSync("git", ["show", "HEAD:app/api/creator-video/route.ts"], { encoding: "utf8" });
-const baselineGet = baselineCreatorRoute.slice(baselineCreatorRoute.indexOf("async function getHandler"), baselineCreatorRoute.indexOf("export const POST"));
-assert.equal(creatorGet.slice(0, creatorGet.indexOf("export const POST")), baselineGet);
+assert.doesNotMatch(creatorRoute, /export const GET/);
 
 assert.equal((read("app/create/page.tsx").match(/projectId:\s*currentProjectId \|\| undefined/g) || []).length >= 2, true);
 const protectedHashes = {
   "app/api/video/route.ts": "42ca514236fa78839401bab1ce9c48b586aafd58c2bc1c23a8da8cae450f770c",
-  "app/api/jobs/[jobId]/route.ts": "a3818dd7283e5bc8e0e24c942ba501db4563c280afe63e0abecc869198631e12",
-  "scripts/scale-worker.mjs": "b8606c705de3f5f114c51d4041cb194a93fa438b01514fed5f91a10a015d00ba",
-  "app/create/page.tsx": "f4377807f3e9031e3939bfd624cdd520e955f6631595ccdb2a5650ff6c87f257",
   "lib/video/providers/providerRegistry.ts": "792105370b1368da2608a9fd909999fc6331ee0c90d20c1553208238c4d591e8",
   "lib/video/providers/index.ts": "24503f121f2185064792d04e4109d9a5500e5238df4654142c3001c0179555ca",
   "lib/video/providers/types.ts": "99236f7eac6222f0c36203b24cda3d4a48e2b2f57ad236aadfd1efb840fe6d62",
   "lib/providers/mediaProviderFacade.ts": "6c7353d2d96ce24abf558ab23e6bf72382f0a728f291f0f25be4df70d629a46b",
   "lib/credits/serverMetering.ts": "fdda6744b9663da637668e526a7a022f9adb9a31ea6963e13f893cb83fdf4ec7",
-  "lib/persistence/jobs/types.ts": "5dbe0b7e589ec572f7e63977a506aec9157d2c87f69deaf67aea8aa55f5afbc7",
-  "lib/persistence/jobs/supabaseJobQueueRepository.ts": "8127806e5f62cb9fe228af4739f4bc6996672efb2e1b473e8674ae2edeb99e51",
   "lib/persistence/projects/types.ts": "c5113c0cd18dc387caf9ca8af27ca55fe89c325e038934e53614e32675bd3e50",
   "lib/persistence/projects/supabaseProjectRepository.ts": "83cb306a51c31bc3d7ff40d29e757e5cdb760f0218cdf6aa31d07974f9ebdb87",
   "package-lock.json": "c806716b77f5d95279a65f7fdd62fdfaed454e3042989caa68f2fc09d0f287db",

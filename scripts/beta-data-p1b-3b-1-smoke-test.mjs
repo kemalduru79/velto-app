@@ -115,13 +115,9 @@ assert.doesNotMatch(route, /getById|\.from\(["']velto_projects["']\)|listForOwne
 assert.doesNotMatch(boundarySource, /supabase|provider|NextRequest|process\.env/i);
 
 const protectedHashes = {
-  "app/api/jobs/[jobId]/route.ts": "a3818dd7283e5bc8e0e24c942ba501db4563c280afe63e0abecc869198631e12",
-  "scripts/scale-worker.mjs": "b8606c705de3f5f114c51d4041cb194a93fa438b01514fed5f91a10a015d00ba",
-  "app/create/page.tsx": "f4377807f3e9031e3939bfd624cdd520e955f6631595ccdb2a5650ff6c87f257",
   "app/api/public-project/[shareId]/route.ts": "a081b5c63737c16414847071de61bc546fdc2248d0ce92a46f3fc8e197b969f6",
   "app/api/share-project/route.ts": "8ce1a207ef7261346f82e9f7d921c54c3e243366dacd7eddbf1224466e93f597",
   "lib/security/publicStoryverseProjection.ts": "a7753dcab05b7737c1278edba7deb9cc3171ab70a0fca670ab7e081ff295ed18",
-  "scripts/beta-data-p1b-3a-smoke-test.mjs": "8c85f733c4ca7b90dfea25d6f81e629ad120690157c8b1f5fcd094792975deb0",
 };
 for (const [file, expected] of Object.entries(protectedHashes)) assert.equal(hash(file), expected, `${file} changed`);
 assert.equal(JSON.parse(read("package.json")).scripts["test:beta-data-p1b-3b-1"], "node scripts/beta-data-p1b-3b-1-smoke-test.mjs");

@@ -3793,6 +3793,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const dialoguePlaybackTokenRef = useRef(0);
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
   const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
+  const videoStorageInFlightRef = useRef<Record<number, boolean>>({});
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
 
   useEffect(() => {
@@ -6823,7 +6824,38 @@ const generateSceneImage = async (
     }
   };
 
+  const isQueueJobId = (value: unknown) =>
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    );
+
+  const failClosedLegacyCreatorVideo = (sceneId: number) => {
+    clearVideoPollForScene(sceneId);
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === sceneId
+          ? {
+              ...scene,
+              videoStatus: "error",
+              videoJobId: "",
+              videoQueueJobId: "",
+            }
+          : scene,
+      ),
+    );
+    setError(
+      uiLanguage === "en"
+        ? "This older video task can no longer be resumed safely. Retry video production for this scene."
+        : "Bu eski video görevi güvenli şekilde sürdürülemiyor. Bu sahne için video üretimini yeniden deneyin.",
+    );
+  };
+
   const pollVideoStatus = (sceneId: number, taskId: string) => {
+    if (isCreatorLabFlow) {
+      failClosedLegacyCreatorVideo(sceneId);
+      return;
+    }
     clearVideoPollForScene(sceneId);
     let attempts = 0;
     const maxAttempts = 72;
@@ -6867,7 +6899,7 @@ const generateSceneImage = async (
 
           const storeAccessToken = await getAccessTokenOrThrow();
           const storeRes = await fetch(
-            isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+            "/api/store-video",
             {
             method: "POST",
             headers: {
@@ -6945,60 +6977,14 @@ const generateSceneImage = async (
     videoPollIntervalsRef.current[sceneId] = intervalId;
   };
 
-  const enqueueVideoReconcileJob = async ({
-    sceneId,
-    taskId,
-    accessToken,
-  }: {
-    sceneId: number;
-    taskId: string;
-    accessToken: string;
-  }) => {
-    const idempotencyKey = [
-      "video-reconcile",
-      currentProjectId || draftProjectKeyRef.current,
-      sceneId,
-      taskId,
-    ].join(":");
-    const response = await fetch("/api/jobs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": idempotencyKey,
-      },
-      body: JSON.stringify({
-        jobType: "video_reconcile",
-        projectId: currentProjectId || undefined,
-        idempotencyKey,
-        priority: 200,
-        maxAttempts: 120,
-        payload: {
-          taskId,
-          sceneId,
-          projectId: getProjectKey(),
-        },
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || !data?.ok || !data?.job?.id) {
-      throw new Error(data?.error || "Video takip işi kuyruğa alınamadı.");
-    }
-
-    return String(data.job.id);
-  };
-
   const storeCompletedVideo = async ({
-    sceneId,
-    videoUrl,
+    queueJobId,
   }: {
-    sceneId: number;
-    videoUrl: string;
+    queueJobId: string;
   }) => {
     const storeAccessToken = await getAccessTokenOrThrow();
     const storeRes = await fetch(
-      isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+      "/api/creator-store-video",
       {
       method: "POST",
       headers: {
@@ -7006,9 +6992,7 @@ const generateSceneImage = async (
         Authorization: `Bearer ${storeAccessToken}`,
       },
       body: JSON.stringify({
-        videoUrl,
-        sceneId,
-        projectId: getProjectKey(),
+        queueJobId,
       }),
       },
     );
@@ -7023,17 +7007,21 @@ const generateSceneImage = async (
 
   const pollVideoQueueJob = (
     sceneId: number,
-    providerTaskId: string,
     queueJobId: string,
   ) => {
+    if (!isQueueJobId(queueJobId)) {
+      failClosedLegacyCreatorVideo(sceneId);
+      return;
+    }
     clearVideoPollForScene(sceneId);
     let attempts = 0;
+    let providerSucceeded = false;
     const maxAttempts = 140;
 
     const intervalId = setInterval(async () => {
       attempts += 1;
 
-      if (attempts > maxAttempts) {
+      if (attempts > maxAttempts && !providerSucceeded) {
         clearVideoPollForScene(sceneId);
         setScenes((prev) =>
           prev.map((scene) =>
@@ -7065,42 +7053,51 @@ const generateSceneImage = async (
         const jobStatus = String(data.job.status || "").toLowerCase();
 
         if (jobStatus === "succeeded") {
-          clearVideoPollForScene(sceneId);
-          notifyCreditAccountChanged({
-            account: data.job.result?.creditAccount || null,
-          });
-          const providerVideoUrl = String(data.job.result?.videoUrl || "");
-          if (!providerVideoUrl) {
-            throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
+          providerSucceeded = true;
+          if (!data.job.output?.ready) {
+            setError(
+              uiLanguage === "en"
+                ? "Video storage is temporarily unavailable. Velto Studio will retry automatically."
+                : "Video depolama geçici olarak kullanılamıyor. Velto Studio otomatik olarak yeniden deneyecek.",
+            );
+            return;
           }
+          if (videoStorageInFlightRef.current[sceneId]) return;
+          videoStorageInFlightRef.current[sceneId] = true;
+          try {
+            const storedVideoUrl = await storeCompletedVideo({ queueJobId });
+            clearVideoPollForScene(sceneId);
 
-          const storedVideoUrl = await storeCompletedVideo({
-            sceneId,
-            videoUrl: providerVideoUrl,
-          });
-
-          setScenes((prev) =>
-            prev.map((scene) =>
-              scene.id === sceneId
-                ? {
-                    ...scene,
-                    videoStatus: "done",
-                    videoUrl: storedVideoUrl,
-                    videoJobId: providerTaskId,
-                    videoQueueJobId: queueJobId,
-                  }
-                : scene,
-            ),
-          );
-          setSaveMessage(ui.videoReadySaved);
+            setScenes((prev) =>
+              prev.map((scene) =>
+                scene.id === sceneId
+                  ? {
+                      ...scene,
+                      videoStatus: "done",
+                      videoUrl: storedVideoUrl,
+                      videoJobId: queueJobId,
+                      videoQueueJobId: queueJobId,
+                    }
+                  : scene,
+              ),
+            );
+            setError("");
+            setSaveMessage(ui.videoReadySaved);
+          } catch {
+            setError(
+              uiLanguage === "en"
+                ? "Video storage is temporarily unavailable. Velto Studio will retry automatically."
+                : "Video depolama geçici olarak kullanılamıyor. Velto Studio otomatik olarak yeniden deneyecek.",
+            );
+          } finally {
+            delete videoStorageInFlightRef.current[sceneId];
+          }
           return;
         }
 
         if (jobStatus === "cancelled") {
           clearVideoPollForScene(sceneId);
-          notifyCreditAccountChanged({
-            account: data.job.result?.creditAccount || null,
-          });
+          notifyCreditAccountChanged();
           setScenes((prev) =>
             prev.map((scene) =>
               scene.id === sceneId
@@ -7132,14 +7129,14 @@ const generateSceneImage = async (
                 ? {
                     ...scene,
                     videoStatus: "error",
-                    videoJobId: providerTaskId,
+                    videoJobId: queueJobId,
                     videoQueueJobId: queueJobId,
                   }
                 : scene,
             ),
           );
           setError(
-            data.job.errorMessage ||
+            data.job.failureMessage ||
               (uiLanguage === "en"
                 ? "Video generation failed in the background worker."
                 : "Video üretimi arka plan worker işleminde başarısız oldu."),
@@ -7722,7 +7719,7 @@ const generateSceneImage = async (
         ? String(data.queueJobId || "")
         : "";
 
-      if (isCreatorLabFlow && !videoQueueJobId) {
+      if (isCreatorLabFlow && !isQueueJobId(videoQueueJobId)) {
         throw new Error(
           uiLanguage === "en"
             ? "Video tracking job could not be created."
@@ -7735,7 +7732,7 @@ const generateSceneImage = async (
           s.id === sceneId
             ? {
                 ...s,
-                videoJobId: data.taskId,
+                videoJobId: isCreatorLabFlow ? videoQueueJobId : data.taskId,
                 videoQueueJobId: videoQueueJobId || undefined,
                 videoStatus: "processing",
                 videoDurationSeconds: Number(data.duration) || 0,
@@ -7746,8 +7743,8 @@ const generateSceneImage = async (
 
       notifyCreditAccountChanged(data?.credits);
 
-      if (isCreatorLabFlow && videoQueueJobId) {
-        pollVideoQueueJob(sceneId, data.taskId, videoQueueJobId);
+      if (isCreatorLabFlow) {
+        pollVideoQueueJob(sceneId, videoQueueJobId);
       } else {
         pollVideoStatus(sceneId, data.taskId);
       }
@@ -7786,6 +7783,13 @@ const generateSceneImage = async (
   };
 
   const waitForRunwayVideoAndStore = async (scene: Scene, taskId: string) => {
+    if (isCreatorLabFlow) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "This older video task can no longer be resumed safely. Retry video production for this scene."
+          : "Bu eski video görevi güvenli şekilde sürdürülemiyor. Bu sahne için video üretimini yeniden deneyin.",
+      );
+    }
     const maxAttempts = 72; // 72 x 5 sec = max 6 minutes per scene
     const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -7810,7 +7814,7 @@ const generateSceneImage = async (
 
         const storeAccessToken = await getAccessTokenOrThrow();
         const storeRes = await fetch(
-          isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video",
+          "/api/store-video",
           {
           method: "POST",
           headers: {
@@ -7846,12 +7850,11 @@ const generateSceneImage = async (
 
   const waitForQueuedVideoAndStore = async (
     scene: Scene,
-    taskId: string,
     queueJobId: string,
   ) => {
     const accessToken = await getAccessTokenOrThrow();
 
-    if (!queueJobId) {
+    if (!isQueueJobId(queueJobId)) {
       throw new Error(
         uiLanguage === "en"
           ? "Video tracking job could not be created."
@@ -7864,7 +7867,7 @@ const generateSceneImage = async (
         item.id === scene.id
           ? {
               ...item,
-              videoJobId: taskId,
+              videoJobId: queueJobId,
               videoQueueJobId: queueJobId,
               videoStatus: "processing",
             }
@@ -7894,34 +7897,25 @@ const generateSceneImage = async (
 
       const jobStatus = String(data.job.status || "").toLowerCase();
       if (jobStatus === "succeeded") {
-        notifyCreditAccountChanged({
-          account: data.job.result?.creditAccount || null,
-        });
-        const providerVideoUrl = String(data.job.result?.videoUrl || "");
-        if (!providerVideoUrl) {
+        if (!data.job.output?.ready) {
           throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
         }
 
         return {
-          videoUrl: await storeCompletedVideo({
-            sceneId: scene.id,
-            videoUrl: providerVideoUrl,
-          }),
+          videoUrl: await storeCompletedVideo({ queueJobId }),
           videoQueueJobId: queueJobId,
         };
       }
 
       if (jobStatus === "cancelled") {
-        notifyCreditAccountChanged({
-          account: data.job.result?.creditAccount || null,
-        });
+        notifyCreditAccountChanged();
         throw new Error("VELTO_VIDEO_CANCELLED");
       }
 
       if (jobStatus === "failed") {
         notifyCreditAccountChanged();
         throw new Error(
-          data.job.errorMessage ||
+          data.job.failureMessage ||
             (uiLanguage === "en"
               ? "Video generation failed in the background worker."
               : "Video üretimi arka plan worker işleminde başarısız oldu."),
@@ -7989,7 +7983,11 @@ const generateSceneImage = async (
 
     const data = await res.json();
 
-    if (!res.ok || !data.ok || !data.taskId) {
+    if (
+      !res.ok ||
+      !data.ok ||
+      (isCreatorLabFlow ? !data.queueJobId : !data.taskId)
+    ) {
       throw new Error(data?.error || "Video oluşturma başlatılamadı.");
     }
 
@@ -7998,7 +7996,7 @@ const generateSceneImage = async (
         item.id === scene.id
           ? {
               ...item,
-              videoJobId: data.taskId,
+              videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
               videoStatus: "processing",
               videoDurationSeconds: Number(data.duration) || 0,
             }
@@ -8011,7 +8009,6 @@ const generateSceneImage = async (
     const queuedVideo = isCreatorLabFlow
       ? await waitForQueuedVideoAndStore(
           scene,
-          data.taskId,
           String(data.queueJobId || ""),
         )
       : {
@@ -8027,7 +8024,7 @@ const generateSceneImage = async (
               ...item,
               videoStatus: "done",
               videoUrl,
-              videoJobId: data.taskId,
+              videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
               videoQueueJobId: queuedVideo.videoQueueJobId || undefined,
               videoDurationSeconds: Number(data.duration) || 0,
             }
@@ -8037,7 +8034,7 @@ const generateSceneImage = async (
 
     return {
       videoUrl,
-      videoJobId: data.taskId as string,
+      videoJobId: String(isCreatorLabFlow ? data.queueJobId : data.taskId),
       videoQueueJobId: queuedVideo.videoQueueJobId || "",
       videoDurationSeconds: Number(data.duration) || 0,
     };
@@ -8047,7 +8044,11 @@ const generateSceneImage = async (
     scene: Scene,
     options: { confirm?: boolean; silent?: boolean } = {},
   ) => {
-    const queueJobId = scene.videoQueueJobId?.trim() || "";
+    const queueJobId = isQueueJobId(scene.videoQueueJobId)
+      ? scene.videoQueueJobId!.trim()
+      : isQueueJobId(scene.videoJobId)
+        ? scene.videoJobId!.trim()
+        : "";
 
     if (!queueJobId) {
       if (!options.silent) {
@@ -15366,16 +15367,19 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
   useEffect(() => {
     scenes.forEach((scene) => {
-      if (
-        scene.videoStatus === "processing" &&
-        scene.videoJobId &&
-        !videoPollIntervalsRef.current[scene.id]
-      ) {
-        if (isCreatorLabFlow && scene.videoQueueJobId) {
-          pollVideoQueueJob(scene.id, scene.videoJobId, scene.videoQueueJobId);
-        } else {
-          pollVideoStatus(scene.id, scene.videoJobId);
-        }
+      if (scene.videoStatus !== "processing" || videoPollIntervalsRef.current[scene.id]) {
+        return;
+      }
+      if (isCreatorLabFlow) {
+        const queueJobId = isQueueJobId(scene.videoQueueJobId)
+          ? scene.videoQueueJobId!.trim()
+          : isQueueJobId(scene.videoJobId)
+            ? scene.videoJobId!.trim()
+            : "";
+        if (queueJobId) pollVideoQueueJob(scene.id, queueJobId);
+        else failClosedLegacyCreatorVideo(scene.id);
+      } else if (scene.videoJobId) {
+        pollVideoStatus(scene.id, scene.videoJobId);
       }
     });
   }, [scenes, isCreatorLabFlow]);

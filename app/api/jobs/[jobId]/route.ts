@@ -7,28 +7,42 @@ import {
 import { getPersistenceServices } from "@/lib/persistence";
 import type { CreditAccount } from "@/lib/credits/types";
 import type { VeltoJobRecord } from "@/lib/persistence/jobs";
+import { getVideoProvider } from "@/lib/video/providers";
 import {
-  getVideoProvider,
-  parseVideoJobToken,
-  type VideoProviderKey,
-} from "@/lib/video/providers";
+  isValidQueueJobId,
+  validatePersistedVideoJobBinding,
+} from "@/lib/security/persistedVideoJobBinding";
+import { canonicalVideoFailure } from "@/lib/security/videoJobPublicSafety";
 
-// VELTO_CANCEL_P1 — owner-scoped provider and credit cancellation
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
+const FORBIDDEN_HEADERS = ["x-task-id", "x-native-task-id", "x-provider", "x-provider-url"];
+
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
+}
+
 function publicJob(job: VeltoJobRecord) {
+  const outputReady =
+    job.status === "succeeded" &&
+    job.result?.outputReady === true &&
+    validatePersistedVideoJobBinding(job) !== null;
+  const failure = job.status === "failed" ? canonicalVideoFailure(job.errorCode) : null;
   return {
     id: job.id,
     projectId: job.projectId,
     jobType: job.jobType,
     status: job.status,
-    result: job.result,
-    errorCode: job.errorCode,
-    errorMessage: job.errorMessage,
+    output: {
+      ready: outputReady,
+      url: outputReady ? `/api/jobs/${encodeURIComponent(job.id)}/output` : null,
+    },
+    failureCode: failure?.failureCode || null,
+    failureMessage: failure?.failureMessage || null,
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
-    availableAt: job.availableAt,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     createdAt: job.createdAt,
@@ -38,21 +52,10 @@ function publicJob(job: VeltoJobRecord) {
 
 function routeError(error: unknown, fallback: string) {
   if (error instanceof AuthenticationError) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 401 },
-    );
+    return json({ ok: false, error: "Authentication required." }, 401);
   }
-
-  console.error("job route error:", error);
-
-  return NextResponse.json(
-    {
-      ok: false,
-      error: error instanceof Error ? error.message : fallback,
-    },
-    { status: 500 },
-  );
+  console.error("job route failed");
+  return json({ ok: false, error: fallback }, 500);
 }
 
 async function getHandler(
@@ -62,22 +65,22 @@ async function getHandler(
   try {
     const principal = await authenticateRequest(req);
     const { jobId } = await context.params;
+    if (!isValidQueueJobId(jobId)) {
+      return json({ ok: false, error: "Job identifier is invalid." }, 400);
+    }
+    if (
+      req.nextUrl.search ||
+      Number(req.headers.get("content-length") || 0) > 0 ||
+      FORBIDDEN_HEADERS.some((name) => req.headers.has(name))
+    ) {
+      return json({ ok: false, error: "Provider task input is not accepted." }, 400);
+    }
     const job = await getPersistenceServices().jobQueue.getForUser(
       jobId,
       principal.id,
     );
-
-    if (!job) {
-      return NextResponse.json(
-        { ok: false, error: "Job was not found." },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.json(
-      { ok: true, job: publicJob(job) },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    if (!job) return json({ ok: false, error: "Job was not found." }, 404);
+    return json({ ok: true, job: publicJob(job) });
   } catch (error) {
     return routeError(error, "Job status request failed.");
   }
@@ -90,117 +93,55 @@ async function deleteHandler(
   try {
     const principal = await authenticateRequest(req);
     const { jobId } = await context.params;
+    if (!isValidQueueJobId(jobId)) {
+      return json({ ok: false, error: "Job identifier is invalid." }, 400);
+    }
+    if (
+      req.nextUrl.search ||
+      Number(req.headers.get("content-length") || 0) > 0 ||
+      FORBIDDEN_HEADERS.some((name) => req.headers.has(name))
+    ) {
+      return json({ ok: false, error: "Provider task input is not accepted." }, 400);
+    }
     const services = getPersistenceServices();
     const job = await services.jobQueue.getForUser(jobId, principal.id);
-
-    if (!job) {
-      return NextResponse.json(
-        { ok: false, error: "Job was not found." },
-        { status: 404 },
-      );
-    }
+    if (!job) return json({ ok: false, error: "Job was not found." }, 404);
 
     if (job.status === "cancelled") {
-      return NextResponse.json({
+      return json({
         ok: true,
         job: publicJob(job),
         cancellation: { accepted: true, alreadyCancelled: true },
       });
     }
-
     if (job.status === "succeeded") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "This production already completed and can no longer be cancelled.",
-          job: publicJob(job),
-        },
-        { status: 409 },
+      return json(
+        { ok: false, error: "This production already completed and can no longer be cancelled.", job: publicJob(job) },
+        409,
       );
     }
-
     if (job.status === "failed") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "This production has already ended.",
-          job: publicJob(job),
-        },
-        { status: 409 },
+      return json(
+        { ok: false, error: "This production has already ended.", job: publicJob(job) },
+        409,
       );
     }
 
-    if (job.jobType !== "video_reconcile") {
-      return NextResponse.json(
-        { ok: false, error: "This job type does not support cancellation." },
-        { status: 409 },
-      );
+    const binding = validatePersistedVideoJobBinding(job);
+    if (!binding) {
+      return json({ ok: false, error: "The persisted video job binding is invalid." }, 409);
     }
-
-    const publicTaskId =
-      typeof job.payload.taskId === "string" ? job.payload.taskId.trim() : "";
-    const parsedTask = publicTaskId ? parseVideoJobToken(publicTaskId) : null;
-    const payloadProvider =
-      job.payload.provider === "runway" || job.payload.provider === "veo"
-        ? (job.payload.provider as VideoProviderKey)
-        : null;
-    const providerKey = parsedTask?.providerKey || payloadProvider;
-    const nativeTaskId =
-      parsedTask?.nativeTaskId ||
-      (typeof job.payload.nativeTaskId === "string"
-        ? job.payload.nativeTaskId.trim()
-        : "");
-
-    if (!providerKey || !nativeTaskId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "The provider task reference required for cancellation is missing.",
-        },
-        { status: 409 },
-      );
-    }
-
-    const provider = getVideoProvider(providerKey);
-    const cancellation = await provider.cancelTask(nativeTaskId);
-
+    const cancellation = await getVideoProvider(binding.provider).cancelTask(
+      binding.nativeTaskId,
+    );
     if (cancellation.status === "SUCCEEDED") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            cancellation.message ||
-            "This production already completed and can no longer be cancelled.",
-          cancellation,
-        },
-        { status: 409 },
-      );
+      return json({ ok: false, error: "This production already completed and can no longer be cancelled." }, 409);
     }
-
     if (!cancellation.supported) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            cancellation.message ||
-            "The active video service does not support verified cancellation for this task.",
-          cancellation,
-        },
-        { status: 409 },
-      );
+      return json({ ok: false, error: "Cancellation is not supported for this production." }, 409);
     }
-
     if (!cancellation.accepted) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            cancellation.message ||
-            "The video service did not confirm cancellation.",
-          cancellation,
-        },
-        { status: 502 },
-      );
+      return json({ ok: false, error: "Cancellation could not be confirmed." }, 502);
     }
 
     const cancelledJob = await services.jobQueue.cancelForUser({
@@ -208,68 +149,54 @@ async function deleteHandler(
       userId: principal.id,
       reason: "User cancelled video production.",
       result: {
-        provider: providerKey,
-        providerTaskId: nativeTaskId,
+        provider: binding.provider,
+        providerTaskId: binding.nativeTaskId,
         providerCancellationStatus: cancellation.status,
       },
     });
 
-    // VELTO_CANCEL_P1_1 — cancellation after provider dispatch stops the
-    // production result, but it does not refund Velto credit because provider
-    // cost exposure began when the task was accepted. Settle idempotently here
-    // as well, so a fast cancellation cannot bypass a deferred request-path
-    // settlement before the worker gets its first lease.
-    const reservationId =
-      typeof job.payload.creditReservationId === "string"
-        ? job.payload.creditReservationId.trim()
-        : "";
-    const chargedCredits = Number(job.payload.reservedCredits || 0);
+    // Provider-dispatched work remains charged. This is the existing
+    // provider-dispatch settlement rule and is intentionally idempotent.
+    const chargedCredits = binding.reservedCredits;
     let creditSettled = false;
     let creditAccount: CreditAccount | null = null;
-
-    if (reservationId && chargedCredits > 0) {
+    if (binding.creditReservationId && chargedCredits > 0) {
       try {
         const settlement = await services.creditRepository.settle({
           userId: principal.id,
-          reservationId,
+          reservationId: binding.creditReservationId,
           finalCredits: chargedCredits,
-          providerRequestId: nativeTaskId,
+          providerRequestId: binding.nativeTaskId,
           metadata: {
             jobId,
-            provider: providerKey,
-            providerTaskId: nativeTaskId,
+            provider: binding.provider,
+            providerTaskId: binding.nativeTaskId,
             billingMoment: "provider_dispatch",
             settledDuringCancellation: true,
           },
         });
         creditSettled = settlement.reservation.status === "settled";
         creditAccount = settlement.account;
-      } catch (creditError) {
-        console.warn("cancelled job dispatch credit settlement was not applied:", creditError);
+      } catch {
+        console.warn("cancelled job dispatch credit settlement was not applied");
       }
     }
-
     if (!creditAccount) {
-      creditAccount = await services.creditRepository
-        .getAccount(principal.id)
-        .catch(() => null);
+      creditAccount = await services.creditRepository.getAccount(principal.id).catch(() => null);
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        job: publicJob(cancelledJob),
-        cancellation,
-        credits: {
-          released: false,
-          charged: true,
-          settled: creditSettled,
-          chargedCredits,
-          account: creditAccount,
-        },
+    return json({
+      ok: true,
+      job: publicJob(cancelledJob),
+      cancellation: { accepted: true, alreadyCancelled: false },
+      credits: {
+        released: false,
+        charged: true,
+        settled: creditSettled,
+        chargedCredits,
+        account: creditAccount,
       },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    });
   } catch (error) {
     return routeError(error, "Job cancellation failed.");
   }

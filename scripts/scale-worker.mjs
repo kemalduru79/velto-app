@@ -11,6 +11,7 @@ const workerId =
 const internalBaseUrl = (
   process.env.VELTO_INTERNAL_BASE_URL || "http://127.0.0.1:3000"
 ).replace(/\/+$/, "");
+const internalWorkerToken = process.env.VELTO_INTERNAL_WORKER_TOKEN;
 const pollMs = clampNumber(process.env.VELTO_QUEUE_POLL_MS, 2000, 250, 30000);
 const leaseSeconds = clampNumber(
   process.env.VELTO_QUEUE_LEASE_SECONDS,
@@ -61,9 +62,9 @@ const finStaleJobMinutes = clampNumber(
   1440,
 );
 
-if (!supabaseUrl || !serviceRoleKey) {
+if (!supabaseUrl || !serviceRoleKey || !internalWorkerToken) {
   throw new Error(
-    "Worker requires SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+    "Worker requires SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and VELTO_INTERNAL_WORKER_TOKEN.",
   );
 }
 
@@ -448,17 +449,16 @@ async function handleRuntimeProbe(job) {
 }
 
 async function handleVideoReconcile(job) {
-  const taskId =
-    typeof job.payload?.taskId === "string" ? job.payload.taskId.trim() : "";
+  const queueJobId = typeof job.id === "string" ? job.id.trim() : "";
 
-  if (!taskId) {
+  if (!queueJobId) {
     await releaseJobCredit(job, "video_reconcile_invalid_payload", {
       jobId: job.id,
     });
     await failJob(
       job,
       "INVALID_PAYLOAD",
-      "video_reconcile requires payload.taskId.",
+      "video_reconcile requires a queue job identifier.",
       false,
     );
     return;
@@ -466,15 +466,16 @@ async function handleVideoReconcile(job) {
 
   const dispatchCreditAccount = await settleJobCredit(job, {
     jobId: job.id,
-    taskId,
     billingMoment: "provider_dispatch",
   });
 
   const response = await fetch(
-    `${internalBaseUrl}/api/creator-video?taskId=${encodeURIComponent(taskId)}`,
+    `${internalBaseUrl}/api/internal/jobs/${encodeURIComponent(queueJobId)}/provider-status`,
     {
+      method: "POST",
       headers: {
         Accept: "application/json",
+        Authorization: `Bearer ${internalWorkerToken}`,
       },
       signal: AbortSignal.timeout(20000),
     },
@@ -492,7 +493,6 @@ async function handleVideoReconcile(job) {
     if (!retryable || Number(job.attempts || 0) >= Number(job.max_attempts || 0)) {
       log("warn", "Terminal provider-status failure kept as charged after dispatch.", {
         jobId: job.id,
-        taskId,
         httpStatus: response.status,
       });
     }
@@ -513,8 +513,17 @@ async function handleVideoReconcile(job) {
     if (await cancellationWon(job.id)) {
       log("info", "Cancelled job ignored before completion.", {
         jobId: job.id,
-        taskId,
       });
+      return;
+    }
+
+    if (!body?.outputReady) {
+      await failJob(
+        job,
+        "VIDEO_OUTPUT_MISSING",
+        "Video generation completed without a readable output.",
+        false,
+      );
       return;
     }
 
@@ -522,16 +531,14 @@ async function handleVideoReconcile(job) {
       dispatchCreditAccount ||
       (await settleJobCredit(job, {
         jobId: job.id,
-        taskId,
         status,
         billingMoment: "provider_dispatch",
-        videoUrlCreated: Boolean(body?.videoUrl),
+        videoUrlCreated: Boolean(body?.outputReady),
       }));
 
     await completeJob(job, {
-      taskId,
       status,
-      videoUrl: body?.videoUrl || null,
+      outputReady: Boolean(body?.outputReady),
       failureCode: body?.failureCode || null,
       failureMessage: body?.failureMessage || null,
       creditAccount,
@@ -543,7 +550,6 @@ async function handleVideoReconcile(job) {
     if (await cancellationWon(job.id)) {
       log("info", "Cancelled job already reconciled by the request path.", {
         jobId: job.id,
-        taskId,
         status,
       });
       return;
@@ -551,7 +557,6 @@ async function handleVideoReconcile(job) {
 
     log("warn", "Provider video ended without output after billable dispatch.", {
       jobId: job.id,
-      taskId,
       status,
       failureCode: body?.failureCode || null,
     });
@@ -568,7 +573,6 @@ async function handleVideoReconcile(job) {
   if (Number(job.attempts || 0) >= Number(job.max_attempts || 0)) {
     log("warn", "Provider video reconciliation timed out after billable dispatch.", {
       jobId: job.id,
-      taskId,
       status,
     });
     await failJob(

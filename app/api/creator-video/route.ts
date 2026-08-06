@@ -25,7 +25,6 @@ import {
 } from "../../../lib/creator/mediaRouting";
 import {
   createVideoJobToken,
-  parseVideoJobToken,
 } from "../../../lib/video/providers";
 import {
   buildCanonicalCreatorVideoQueueInput,
@@ -290,13 +289,12 @@ async function postHandler(req: NextRequest) {
             providerTaskAcceptedAt: new Date().toISOString(),
           },
         );
-      } catch (dispatchMarkerError) {
+      } catch {
         // Do not hide an accepted provider task from the user merely because
         // the marker write was temporarily unavailable. The queue payload and
         // immediate settlement path provide two additional reconciliation paths.
         createLogger({ operation: "creator-video.dispatch-marker" }).error(
           "Provider dispatch marker failed.",
-          dispatchMarkerError,
         );
       }
     }
@@ -346,14 +344,13 @@ async function postHandler(req: NextRequest) {
           },
         });
         creditAccount = settlement.account;
-      } catch (settlementError) {
+      } catch {
         // The provider task and reconciliation job already exist. Keep the
         // reservation attached to the job; the worker repeats the idempotent
         // settlement before its first provider-status check.
         settlementPending = true;
         createLogger({ operation: "creator-video.credit-settlement" }).error(
           "Dispatch credit settlement was deferred.",
-          settlementError,
         );
       }
     }
@@ -362,7 +359,6 @@ async function postHandler(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      taskId: publicTaskId,
       queueJobId: queueJob.id,
       status: task.status || "PENDING",
       duration: durationPolicy.durationSec,
@@ -381,7 +377,7 @@ async function postHandler(req: NextRequest) {
   } catch (error: unknown) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json(
-        { ok: false, error: error.message },
+        { ok: false, error: "Authentication required." },
         { status: 401, headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -401,10 +397,9 @@ async function postHandler(req: NextRequest) {
               startupError: error instanceof Error ? error.message : "unknown",
             },
           });
-        } catch (settlementError) {
+        } catch {
           createLogger({ operation: "creator-video.credit-settlement" }).error(
             "Accepted-task credit settlement failed.",
-            settlementError,
           );
         }
       } else {
@@ -419,7 +414,6 @@ async function postHandler(req: NextRequest) {
 
     createLogger({ operation: "creator-video.create" }).error(
       "Creator video creation failed.",
-      error,
     );
 
     return NextResponse.json(
@@ -429,91 +423,13 @@ async function postHandler(req: NextRequest) {
   }
 }
 
-async function getHandler(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const taskId = searchParams.get("taskId");
-
-    if (!taskId) {
-      return NextResponse.json(
-        { ok: false, error: "taskId is required" },
-        { status: 400 },
-      );
-    }
-
-    const parsedProviderJob = parseVideoJobToken(taskId);
-    const providerJob = parsedProviderJob ||
-      (/^[a-z0-9._\-]+$/i.test(taskId)
-        ? { providerKey: "runway" as const, nativeTaskId: taskId }
-        : null);
-
-    if (!providerJob) {
-      return NextResponse.json(
-        { ok: false, error: "CreatorLab video task identifier is invalid." },
-        { status: 400 },
-      );
-    }
-
-    const provider = getMediaProviderFacade().getVideoByKey(providerJob.providerKey);
-    const task = await provider.retrieveTask(providerJob.nativeTaskId);
-
-    if (searchParams.get("download") === "1") {
-      if (task.status !== "SUCCEEDED" || !task.videoUrl) {
-        return NextResponse.json(
-          { ok: false, error: "Video output is not ready for download." },
-          { status: 409 },
-        );
-      }
-
-      const output = await provider.downloadOutput(task.videoUrl);
-
-      if (!output.ok || !output.body) {
-        return NextResponse.json(
-          { ok: false, error: "Video output could not be downloaded." },
-          { status: 502 },
-        );
-      }
-
-      const headers = new Headers({
-        "Cache-Control": "private, no-store, max-age=0",
-        "Content-Type": output.headers.get("content-type") || "video/mp4",
-      });
-      const contentLength = output.headers.get("content-length");
-      if (contentLength) headers.set("Content-Length", contentLength);
-
-      return new NextResponse(output.body, {
-        status: 200,
-        headers,
-      });
-    }
-
-    const videoUrl = task.videoUrl
-      ? new URL(
-          `/api/creator-video?taskId=${encodeURIComponent(taskId)}&download=1`,
-          req.url,
-        ).toString()
-      : null;
-
-    return NextResponse.json({
-      ok: true,
-      taskId,
-      status: task.status,
-      failureCode: task.failureCode,
-      failureMessage: task.failureMessage,
-      videoUrl,
-    });
-  } catch (error: unknown) {
-    createLogger({ operation: "creator-video.status" }).error(
-      "Creator video status failed.",
-      error,
-    );
-
-    return NextResponse.json(
-      { ok: false, error: publicError(error) },
-      { status: 500 },
-    );
-  }
+async function noStorePostHandler(req: NextRequest) {
+  const response = await postHandler(req);
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 
-export const POST = withObservedApiRoute("api.creator-video.create", postHandler);
-export const GET = withObservedApiRoute("api.creator-video.status", getHandler);
+export const POST = withObservedApiRoute(
+  "api.creator-video.create",
+  noStorePostHandler,
+);

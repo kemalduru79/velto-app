@@ -14,7 +14,6 @@ const createPage = read("app/create/page.tsx");
 
 for (const [route, id, bucket, limit] of [
   [imageRoute, "creator-store-image", 'bucket: "images"', "MAX_CREATOR_IMAGE_BYTES"],
-  [videoRoute, "creator-store-video", 'bucket: "videos"', "MAX_CREATOR_VIDEO_BYTES"],
 ]) {
   const handler = route.indexOf("export async function POST");
   const auth = route.indexOf("await enforceCreatorApiBoundary");
@@ -28,6 +27,18 @@ for (const [route, id, bucket, limit] of [
   assert.ok(route.includes("upsert: false"));
   assert.ok(!route.includes("body.bucket") && !route.includes("body.path"));
 }
+const videoHandler = videoRoute.indexOf("export async function POST");
+const videoAuth = videoRoute.indexOf("enforceCreatorApiBoundary<Record<string, unknown>>(", videoHandler);
+assert.ok(videoAuth >= 0 && videoAuth < videoRoute.indexOf("getPersistenceServices", videoHandler));
+assert.ok(videoAuth < videoRoute.indexOf("getVideoProvider", videoHandler));
+assert.ok(videoAuth < videoRoute.indexOf("uploadPublic", videoHandler));
+assert.match(videoRoute, /req,\s*"creator-store-video"/);
+assert.ok(videoRoute.includes('bucket: "videos"'));
+assert.ok(videoRoute.includes("MAX_CREATOR_VIDEO_BYTES"));
+assert.ok(videoRoute.includes("boundary.context.user.id"));
+assert.ok(videoRoute.includes("queueJobId"));
+assert.ok(videoRoute.includes("upsert: true"));
+assert.ok(!videoRoute.includes("randomUUID()") && !videoRoute.includes("safeRemoteMediaFetch("));
 
 for (const marker of [
   'url.protocol !== "https:"', "url.username || url.password", 'hostname === "localhost"',
@@ -76,7 +87,7 @@ assert.ok(generatedImageRoute.includes('image: `data:image/png;base64,${image.ba
 assert.ok(createPage.includes("const rawImage = imageData.image as string"));
 assert.match(createPage, /creator-store-image[\s\S]{0,450}image: rawImage/);
 assert.ok(createPage.includes('isCreatorLabFlow ? "/api/creator-store-image" : "/api/store-image"'));
-assert.ok(createPage.includes('isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video"'));
+assert.ok(createPage.includes('fetch(\n      "/api/creator-store-video"'));
 assert.ok(createPage.includes('fetch("/api/creator-store-image"'));
 assert.ok(createPage.includes("Authorization: `Bearer ${accessToken}`"));
 

@@ -66,6 +66,7 @@ export interface JobQueueRepository {
   enqueue(input: EnqueueVeltoJobInput): Promise<VeltoJobRecord>;
   cancelForUser(input: CancelVeltoJobInput): Promise<VeltoJobRecord>;
   getForUser(jobId: string, userId: string): Promise<VeltoJobRecord | null>;
+  getInternal(jobId: string): Promise<VeltoJobRecord | null>;
   listForUser(userId: string, limit?: number): Promise<VeltoJobRecord[]>;
   getHealth(workerStaleSeconds?: number): Promise<VeltoQueueHealth>;
 }

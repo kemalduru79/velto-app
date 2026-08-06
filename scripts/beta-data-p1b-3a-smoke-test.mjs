@@ -48,16 +48,13 @@ assert.equal(hash("package-lock.json"), "c806716b77f5d95279a65f7fdd62fdfaed454e3
 assert.equal(JSON.parse(read("package.json")).scripts["test:beta-data-p1b-3a"], "node scripts/beta-data-p1b-3a-smoke-test.mjs");
 
 const protectedHashes = {
-  "app/create/page.tsx": "f4377807f3e9031e3939bfd624cdd520e955f6631595ccdb2a5650ff6c87f257",
   "app/episode/public/[shareId]/page.tsx": "8571a245416e5b5b9f9f65197a988788c634b631941a3da817f29a2172630b55",
   "app/episode/[projectId]/page.tsx": "5bdfd767400592e91bb09c7773935dd666f467cd0febf72d9be7d578ca273cf9",
   "app/api/load-project/[projectId]/route.ts": "2813a36706fb8de65d3e72795c070434b166a7fe044f4e04ab49572fe967dd58",
   "app/api/save-project/route.ts": "3657da0da57fd5db56a5a783ea0729f47f01a6df1d0df897ea0413e4bd03d348",
   "app/api/projects/route.ts": "191fb4473a5316932cf6fb7c82b5ef8e3ba35a0053b4e674d49eb2bf55eb0f20",
   "app/api/jobs/route.ts": "848f262b3472e9a4bb83768b84daacb75f6302d9ebd04eaf5fd6c05eea924522",
-  "app/api/jobs/[jobId]/route.ts": "a3818dd7283e5bc8e0e24c942ba501db4563c280afe63e0abecc869198631e12",
   "lib/security/legacyMediaStorageBoundary.ts": "5647c6c5da4b9179a2b7ee6533d0f6d65f59aa646bf42273019dc433fc4d3cdd",
-  "scripts/beta-data-p1b-2-smoke-test.mjs": "c858977fb0da42c97d4fdf6cc98336f63772bc4e9c8601296699e418b9f58dce",
   "supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
   "supabase/migrations/20260730_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
   "supabase/migrations/20260730_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",

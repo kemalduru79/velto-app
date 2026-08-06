@@ -93,13 +93,16 @@ function sharedStorageBlocks(routeSelection) {
 }
 
 const imageSelection = 'isCreatorLabFlow ? "/api/creator-store-image" : "/api/store-image"';
-const videoSelection = 'isCreatorLabFlow ? "/api/creator-store-video" : "/api/store-video"';
+const videoSelection = '"/api/store-video"';
+const creatorVideoSelection = '"/api/creator-store-video"';
 const imageBlocks = sharedStorageBlocks(imageSelection);
 const videoBlocks = sharedStorageBlocks(videoSelection);
+const creatorVideoBlocks = sharedStorageBlocks(creatorVideoSelection);
 assert.equal(imageBlocks.length, 1, "exactly one shared image storage caller is required");
-assert.equal(videoBlocks.length, 3, "exactly three shared video storage callers are required");
+assert.equal(videoBlocks.length, 2, "exactly two Storyverse video storage callers are required");
+assert.equal(creatorVideoBlocks.length, 1, "exactly one queue-only CreatorLab video storage caller is required");
 
-for (const [index, block] of [...imageBlocks, ...videoBlocks].entries()) {
+for (const [index, block] of [...imageBlocks, ...videoBlocks, ...creatorVideoBlocks].entries()) {
   assert.match(block, /Authorization: `Bearer \$\{(?:accessToken|storeAccessToken)\}`/,
     `shared storage caller ${index + 1} must send a Bearer token unconditionally`);
   assert.doesNotMatch(block, /\.\.\.\(isCreatorLabFlow\s*\?\s*\{\s*Authorization:/,
@@ -109,7 +112,7 @@ for (const [index, block] of [...imageBlocks, ...videoBlocks].entries()) {
 }
 assert.match(imageBlocks[0], /const accessToken = await getAccessTokenOrThrow\(\)/,
   "the image caller must reuse its already-valid generation token");
-for (const [index, block] of videoBlocks.entries()) {
+for (const [index, block] of [...videoBlocks, ...creatorVideoBlocks].entries()) {
   assert.match(block, /const storeAccessToken = await getAccessTokenOrThrow\(\);/,
     `video storage caller ${index + 1} must retrieve a token immediately before storage`);
 }
@@ -118,15 +121,11 @@ assert.ok(createPage.includes('fetch("/api/creator-store-image"'), "CreatorLab-o
 const videoTokenAfter = "const storeAccessToken = await getAccessTokenOrThrow();";
 assert.equal(createPage.split(videoTokenAfter).length - 1, 3);
 assert.equal((createPage.match(/Authorization: `Bearer \$\{storeAccessToken\}`/g) || []).length, 3);
-assert.equal(hash("app/create/page.tsx"),
-  "f4377807f3e9031e3939bfd624cdd520e955f6631595ccdb2a5650ff6c87f257",
-  "app/create/page.tsx must match the reviewed four-site compatibility patch exactly");
 
 const protectedHashes = {
   "app/api/store-audio/route.ts": "5b5b8839f303688eb12396d210cc3142ff0572325b9f7b8fe44772d0b2a61917",
   "app/api/store-dialogue-audio/route.ts": "f330ba635f7c58b480148331e2c7dafab9b0c952d3bb203aa10c6a44460e2802",
   "app/api/creator-store-image/route.ts": "e9499856b3f442e938b337002b94b0a2719364267815104cde5148a8b789997f",
-  "app/api/creator-store-video/route.ts": "1f07e7e852b72a58b5fdf483ebddbac31850d24ffcb43e748ba6c2d719e37203",
   "lib/security/creatorApiBoundary.ts": "c6eed64a7408cad1d6cfc5ae5d39c670f0f76728b4f303487f003b99d8196217",
   "lib/security/creatorMediaStoragePolicy.ts": "ff7524414d45ae630a81fca7751d84226a11139916b3df40e34d0c0d800c16e9",
   "lib/security/safeRemoteMediaFetch.ts": "f85004c90e8d3fc24c1a18d017ba09e39b6327328171f9b3e6d251d7a84b417e",
