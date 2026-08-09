@@ -28,7 +28,7 @@
 // X.7.21 Global Background Ownership Fix: create page owns visible pastel background layer inside main.
 // X.7.22 Section Blend & Depth Pass: section surfaces blended into the owned pastel background.
 // X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -50,6 +50,13 @@ import {
   normalizeCreatorOutcome,
   type CreatorOutcome,
 } from "@/lib/creator/creatorOutcome";
+import {
+  CREATOR_PLATFORM_IDS,
+  CREATOR_PLATFORM_PRESETS,
+  createCreatorPlatformOutputPlan,
+  type CreatorPlatformId,
+  type CreatorPlatformOutputPlan,
+} from "@/lib/creator/platformPresets";
 import {
   CREATOR_QUALITY_MODE_OPTIONS,
   getCreatorMediaRoute,
@@ -738,12 +745,7 @@ type CreatorContentType =
   | "entertainment_storytelling"
   | "social_campaign";
 type CreatorFormat = "short_form" | "youtube_video";
-type CreatorPublishPlatform =
-  | "youtube"
-  | "youtube_shorts"
-  | "instagram_reels"
-  | "tiktok"
-  | "linkedin";
+type CreatorPublishPlatform = CreatorPlatformId;
 type CreatorThumbnailVariant = "subject" | "conflict" | "symbol";
 type CreatorThumbnailTextPosition = "top" | "center" | "bottom";
 type CreatorThumbnailFont = "bold_sans" | "editorial" | "condensed";
@@ -878,6 +880,7 @@ type CreatorProductionPackage = {
   qualityMode?: CreatorQualityMode;
   timelineSyncPlan?: TimelineSyncPlan;
   targetPlatforms?: CreatorPublishPlatform[];
+  platformOutputPlan?: CreatorPlatformOutputPlan;
   voicePreferences?: {
     narratorProfileId: CreatorVoiceSelectionId;
     dialogueProfileId: CreatorVoiceSelectionId;
@@ -1151,49 +1154,6 @@ const CREATOR_FORMAT_OPTIONS: Array<{
   },
 ];
 
-const CREATOR_PUBLISH_PLATFORM_OPTIONS: Array<{
-  value: CreatorPublishPlatform;
-  label: string;
-  guidanceEn: string;
-  guidanceTr: string;
-  nativeFormat: CreatorFormat | "both";
-}> = [
-  {
-    value: "youtube",
-    label: "YouTube",
-    guidanceEn: "Long-form title, description, chapters and thumbnail.",
-    guidanceTr: "Uzun format başlık, açıklama, bölümleme ve thumbnail.",
-    nativeFormat: "youtube_video",
-  },
-  {
-    value: "youtube_shorts",
-    label: "YouTube Shorts",
-    guidanceEn: "Vertical short-form packaging and caption copy.",
-    guidanceTr: "Dikey kısa format paketleme ve paylaşım metni.",
-    nativeFormat: "short_form",
-  },
-  {
-    value: "instagram_reels",
-    label: "Instagram Reels",
-    guidanceEn: "Mobile-first cover and concise social caption.",
-    guidanceTr: "Mobil öncelikli kapak ve kısa sosyal medya metni.",
-    nativeFormat: "short_form",
-  },
-  {
-    value: "tiktok",
-    label: "TikTok",
-    guidanceEn: "Fast hook, vertical cover and short caption.",
-    guidanceTr: "Hızlı hook, dikey kapak ve kısa paylaşım metni.",
-    nativeFormat: "short_form",
-  },
-  {
-    value: "linkedin",
-    label: "LinkedIn",
-    guidanceEn: "Professional context and thought-leadership copy.",
-    guidanceTr: "Profesyonel bağlam ve düşünce liderliği metni.",
-    nativeFormat: "both",
-  },
-];
 
 const CREATOR_RELEASE_CONFIRMATION_DEFAULTS: Record<CreatorReleaseConfirmationKey, boolean> = {
   videoReviewed: false,
@@ -1248,7 +1208,7 @@ function normalizeCreatorTargetPlatforms(
   value: unknown,
   format: CreatorFormat,
 ): CreatorPublishPlatform[] {
-  const allowed = new Set(CREATOR_PUBLISH_PLATFORM_OPTIONS.map((option) => option.value));
+  const allowed = new Set<CreatorPublishPlatform>(CREATOR_PLATFORM_IDS);
   const normalized = Array.isArray(value)
     ? value.filter(
         (item): item is CreatorPublishPlatform =>
@@ -3256,6 +3216,15 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorDurationPreset>("short_60");
   const [creatorVideoDurationSec, setCreatorVideoDurationSec] =
     useState<CreatorVideoDurationSec>(60);
+  const creatorPlatformOutputPlan = useMemo(
+    () =>
+      createCreatorPlatformOutputPlan({
+        targetPlatforms: creatorTargetPlatforms,
+        primaryFormat: creatorFormat,
+        durationSec: creatorVideoDurationSec,
+      }),
+    [creatorFormat, creatorTargetPlatforms, creatorVideoDurationSec],
+  );
   const [creatorCustomDurationSec, setCreatorCustomDurationSec] =
     useState<CreatorVideoDurationSec>(60);
   const [creatorQualityMode, setCreatorQualityMode] =
@@ -3780,12 +3749,23 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   }, [creatorThumbnailStudio]);
 
   useEffect(() => {
-    setCreatorProductionPackage((prev) =>
-      prev && !sameCreatorPlatformSelection(prev.targetPlatforms || [], creatorTargetPlatforms)
-        ? { ...prev, targetPlatforms: creatorTargetPlatforms }
-        : prev,
-    );
-  }, [creatorTargetPlatforms]);
+    setCreatorProductionPackage((prev) => {
+      if (!prev) return prev;
+      const platformSelectionChanged = !sameCreatorPlatformSelection(
+        prev.targetPlatforms || [],
+        creatorTargetPlatforms,
+      );
+      const platformPlanChanged =
+        JSON.stringify(prev.platformOutputPlan) !== JSON.stringify(creatorPlatformOutputPlan);
+      return platformSelectionChanged || platformPlanChanged
+        ? {
+            ...prev,
+            targetPlatforms: creatorTargetPlatforms,
+            platformOutputPlan: creatorPlatformOutputPlan,
+          }
+        : prev;
+    });
+  }, [creatorPlatformOutputPlan, creatorTargetPlatforms]);
 
   const [shareUrl, setShareUrl] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
@@ -9905,6 +9885,7 @@ const generateSceneImage = async (
               durationSec: creatorVideoDurationSec,
               qualityMode: creatorQualityMode,
               targetPlatforms: creatorTargetPlatforms,
+              platformOutputPlan: creatorPlatformOutputPlan,
               visualContinuity: getCreatorVisualContinuitySnapshot(),
               voicePreferences: {
                 narratorProfileId: getEffectiveNarratorVoiceProfileId(),
@@ -11837,6 +11818,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         durationSec: creatorVideoDurationSec,
         qualityMode: creatorQualityMode,
         targetPlatforms: creatorTargetPlatforms,
+        platformOutputPlan: creatorPlatformOutputPlan,
       };
       const nextCharacters = normalizeCreatorLabCharacters(
         Array.isArray(nextPackage.characters)
@@ -12215,6 +12197,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         durationSec: creatorVideoDurationSec,
         qualityMode: creatorQualityMode,
         targetPlatforms: creatorTargetPlatforms,
+        platformOutputPlan: creatorPlatformOutputPlan,
       };
 
       setCreatorProductionPackage(nextPackage);
@@ -16186,7 +16169,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     Boolean(youtubeMetadataResult),
   ].filter(Boolean).length;
   const getCreatorPlatformLabel = (platform: CreatorPublishPlatform) =>
-    CREATOR_PUBLISH_PLATFORM_OPTIONS.find((option) => option.value === platform)?.label || platform;
+    CREATOR_PLATFORM_PRESETS[platform].label[uiLanguage];
   const getCreatorPlatformCopy = (platform: CreatorPublishPlatform) => {
     if (platform === "youtube") {
       return youtubeMetadataResult?.firstComment || creatorProductionPackage?.caption || "";
@@ -27177,25 +27160,36 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   </small>
                 </div>
                 <div className="creatorlab-platform-choice-grid">
-                  {CREATOR_PUBLISH_PLATFORM_OPTIONS.map((option) => {
-                    const isSelected = creatorTargetPlatforms.includes(option.value);
-                    const isNative = option.nativeFormat === "both" || option.nativeFormat === creatorFormat;
+                  {CREATOR_PLATFORM_IDS.map((platform) => {
+                    const isSelected = creatorTargetPlatforms.includes(platform);
+                    const preset = CREATOR_PLATFORM_PRESETS[platform];
+                    const outputPlan = creatorPlatformOutputPlan.find(
+                      (item) => item.platform === platform,
+                    );
                     return (
                       <button
-                        key={option.value}
+                        key={platform}
                         type="button"
                         className={`creatorlab-platform-choice ${isSelected ? "is-selected" : ""}`}
-                        onClick={() => toggleCreatorTargetPlatform(option.value)}
+                        onClick={() => toggleCreatorTargetPlatform(platform)}
                         aria-pressed={isSelected}
                       >
                         <span className="creatorlab-platform-choice-check" aria-hidden="true">
                           {isSelected ? "✓" : "+"}
                         </span>
                         <div>
-                          <strong>{option.label}</strong>
-                          <small>{uiLanguage === "en" ? option.guidanceEn : option.guidanceTr}</small>
+                          <strong>{preset.label[uiLanguage]}</strong>
+                          <small>
+                            {preset.recommendedAspectRatio} · {preset.metadataPreset[uiLanguage]}
+                          </small>
                         </div>
-                        <em>{isNative ? uiLanguage === "en" ? "Native" : "Doğal" : uiLanguage === "en" ? "Adapted" : "Uyarlanır"}</em>
+                        <em>
+                          {isSelected && outputPlan?.needsAdaptation
+                            ? uiLanguage === "en"
+                              ? "Adapt at Publish"
+                              : "Publish aşamasında uyarlanacak"
+                            : preset.guidance[uiLanguage]}
+                        </em>
                       </button>
                     );
                   })}

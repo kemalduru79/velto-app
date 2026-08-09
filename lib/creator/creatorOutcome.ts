@@ -1,3 +1,5 @@
+import type { CreatorPlatformId } from "./platformPresets";
+
 export type CreatorOutcome =
   | "short"
   | "long_form"
@@ -14,9 +16,7 @@ export type CreatorOutcomeDefinition = {
     format: "short_form" | "youtube_video";
     durationPreset: "short_30" | "short_60" | "video_180" | "video_300";
     durationSeconds: 30 | 60 | 180 | 300;
-    targetPlatforms: Array<
-      "youtube" | "youtube_shorts" | "instagram_reels" | "tiktok" | "linkedin"
-    >;
+    targetPlatforms: CreatorPlatformId[];
     contentType?: "educational_explainer" | "social_campaign";
   };
 };
