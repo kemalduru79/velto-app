@@ -113,7 +113,6 @@ import {
 import {
   CREATOR_PROFILE_STORAGE_KEY,
   EMPTY_CREATOR_PROFILE,
-  hasCreatorProfileContext,
   parseCreatorProfile,
   type CreatorProfile,
 } from "@/lib/creator/creatorProfile";
@@ -1660,7 +1659,7 @@ const UI_TEXT = {
     analyzeContentOpportunity: "İçerik Fırsatını Analiz Et",
     analyzingContentOpportunity: "İçerik fırsatı analiz ediliyor...",
     creatorTopicLabel: "Velto Studio hangi konu veya video fikrini analiz etsin?",
-    creatorTopicPlaceholder: "Örn: LinkedIn’de AI trendleri nasıl anlatılmalı? veya YouTube için güçlü bir faceless video fikri öner",
+    creatorTopicPlaceholder: "Örn: LinkedIn’de AI trendleri nasıl anlatılmalı? veya güçlü bir faceless video fikri öner",
     mentorAnalysisTitle: "Mentor Analizi",
     audienceInsight: "Audience Insight",
     hookPatterns: "Hook Patterns",
@@ -1997,7 +1996,7 @@ const UI_TEXT = {
     analyzeContentOpportunity: "Analyze Content Opportunity",
     analyzingContentOpportunity: "Analyzing content opportunity...",
     creatorTopicLabel: "What topic or video idea should Velto Studio analyze?",
-    creatorTopicPlaceholder: "Example: How should AI trends be explained on LinkedIn, or suggest a strong faceless YouTube video idea",
+    creatorTopicPlaceholder: "Example: How should AI trends be explained on LinkedIn, or suggest a strong faceless video idea",
     mentorAnalysisTitle: "Mentor Analysis",
     audienceInsight: "Audience Insight",
     hookPatterns: "Hook Patterns",
@@ -3273,7 +3272,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState(false);
   const [creatorProfile, setCreatorProfile] =
     useState<CreatorProfile>(EMPTY_CREATOR_PROFILE);
-  const [creatorProfileLoaded, setCreatorProfileLoaded] = useState(false);
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
@@ -3818,7 +3816,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatorBriefDraftTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const creatorProfileAutoAppliedRef = useRef(false);
   const skipAutosaveRef = useRef(true);
   const isHydratingRef = useRef(false);
   const suspendAutosaveRef = useRef(false);
@@ -4110,9 +4107,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         setCreatorProfile(parseCreatorProfile(JSON.parse(saved)));
       }
     } catch {
-      // A profile is optional; an invalid local value must not block the workspace.
-    } finally {
-      setCreatorProfileLoaded(true);
+      // Brand Memory is optional; an invalid local value must not block the workspace.
     }
   }, []);
 
@@ -10388,30 +10383,15 @@ const generateSceneImage = async (
     );
   };
 
-  const applyCreatorProfile = (profile = creatorProfile) => {
-    const safeProfile = parseCreatorProfile(profile);
-    setCreatorCountry(safeProfile.defaultCountry);
-    setCreatorFormat(safeProfile.defaultFormat);
-    setCreatorTargetPlatforms(getDefaultCreatorTargetPlatforms(safeProfile.defaultFormat));
-    setCreatorQualityMode(safeProfile.defaultQualityMode);
-    const defaultOption = getCreatorDurationOptionsByFormat(safeProfile.defaultFormat)[0];
-    if (defaultOption) {
-      setCreatorDurationPreset(defaultOption.preset);
-      setCreatorVideoDurationSec(defaultOption.seconds);
-      setCreatorCustomDurationSec(defaultOption.seconds);
-    }
-  };
-
   const saveCreatorProfile = () => {
-    const nextProfile = parseCreatorProfile({
-      ...creatorProfile,
-      defaultCountry: creatorCountry,
-      defaultFormat: creatorFormat,
-      defaultQualityMode: creatorQualityMode,
-    });
+    const nextProfile = parseCreatorProfile(creatorProfile);
     setCreatorProfile(nextProfile);
     window.localStorage.setItem(CREATOR_PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
-    setSaveMessage(uiLanguage === "en" ? "Creator profile saved on this device ✅" : "Creator profili bu cihazda kaydedildi ✅");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? "Brand Memory saved on this device ✅"
+        : "Marka Hafızası bu cihazda kaydedildi ✅",
+    );
   };
 
   useEffect(() => {
@@ -10471,32 +10451,6 @@ const generateSceneImage = async (
       setCreatorBriefDraftHydrated(true);
     }
   }, [isCreatorLabFlow, creatorBriefDraftHydrated]);
-
-  useEffect(() => {
-    if (
-      !isCreatorLabFlow ||
-      !creatorBriefDraftHydrated ||
-      !creatorProfileLoaded ||
-      creatorProfileAutoAppliedRef.current ||
-      currentProjectId ||
-      input.trim() ||
-      creatorBriefDraftRestored ||
-      !hasCreatorProfileContext(creatorProfile)
-    ) {
-      return;
-    }
-
-    creatorProfileAutoAppliedRef.current = true;
-    applyCreatorProfile(creatorProfile);
-  }, [
-    isCreatorLabFlow,
-    creatorBriefDraftHydrated,
-    creatorProfileLoaded,
-    currentProjectId,
-    input,
-    creatorBriefDraftRestored,
-    creatorProfile,
-  ]);
 
   useEffect(() => {
     if (
@@ -16358,15 +16312,22 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   }> = creatorWorkspaceStep === 1
     ? [
         {
-          title: uiLanguage === "en" ? "Profile defaults" : "Profil varsayılanları",
-          description: hasCreatorProfileContext(creatorProfile)
-            ? uiLanguage === "en" ? "Audience and brand context are available for this brief." : "Kitle ve marka bağlamı bu brief için kullanılabilir."
-            : uiLanguage === "en" ? "Optional defaults can be added without blocking the brief." : "Opsiyonel varsayılanlar brief'i engellemeden eklenebilir.",
-          status: hasCreatorProfileContext(creatorProfile)
-            ? uiLanguage === "en" ? "Available" : "Mevcut"
+          title: uiLanguage === "en" ? "Brand Memory" : "Marka Hafızası",
+          description: creatorProfile.brandName || creatorProfile.defaultAudience
+            ? uiLanguage === "en"
+              ? "Velto can reuse this brand context across future projects."
+              : "Velto bu marka bağlamını gelecek projelerde yeniden kullanabilir."
+            : uiLanguage === "en"
+              ? "Optional brand context can be remembered without changing project settings."
+              : "Opsiyonel marka bağlamı proje ayarlarını değiştirmeden hatırlanabilir.",
+          status: creatorProfile.brandName || creatorProfile.defaultAudience
+            ? uiLanguage === "en" ? "Remembered" : "Hatırlanıyor"
             : uiLanguage === "en" ? "Optional" : "İsteğe bağlı",
-          metric: creatorProfile.brandName || creatorProfile.defaultAudience || (uiLanguage === "en" ? "No saved defaults" : "Kayıtlı varsayılan yok"),
-          targetId: "creatorlab-brief-profile",
+          metric:
+            creatorProfile.brandName ||
+            creatorProfile.defaultAudience ||
+            (uiLanguage === "en" ? "No brand memory" : "Marka hafızası yok"),
+          targetId: "creatorlab-brand-memory",
           icon: "ideas",
           tone: "violet",
         },
@@ -18912,6 +18873,64 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.09) !important;
 }
 
+.creatorlab-brand-memory {
+  scroll-margin-top: 104px;
+}
+
+.creatorlab-brand-memory-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.creatorlab-brand-memory-title-row > strong {
+  display: inline !important;
+}
+
+.creatorlab-brand-memory-optional {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 22px;
+  margin: 0 !important;
+  padding: 3px 7px;
+  color: var(--cl-soft) !important;
+  background: #f3f2ee;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  font-family: var(--cl-font-ui);
+  font-size: 0.58rem !important;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.creatorlab-brand-memory-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 2px;
+}
+
+.creatorlab-brand-memory-footer p {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--cl-muted) !important;
+  font-size: 0.69rem;
+  line-height: 1.5;
+}
+
+.creatorlab-brand-memory-footer button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 12px !important;
+  border-radius: 9px !important;
+  font-size: 0.69rem !important;
+  font-weight: 750 !important;
+}
+
 .creatorlab-brief-fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -20110,7 +20129,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
 .creatorlab-brief-core-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -20443,10 +20462,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .creatorlab-brief-core-grid > :last-child {
-    grid-column: 1 / -1;
-  }
-
   .creatorlab-context-grid {
     grid-template-columns: 1fr;
   }
@@ -20482,6 +20497,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
   .creatorlab-context-summary-values {
     display: none;
+  }
+
+
+  .creatorlab-brand-memory-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-brand-memory-footer button {
+    width: 100%;
   }
 }
 
@@ -26937,6 +26962,85 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <span className="creatorlab-brief-chip">{getCreatorQualityModeLabel()}</span>
                 </div>
               </section>
+
+              <details id="creatorlab-brand-memory" className="creatorlab-context-details creatorlab-brand-memory">
+                <summary>
+                  <div>
+                    <div className="creatorlab-brand-memory-title-row">
+                      <strong>{uiLanguage === "en" ? "Brand Memory" : "Marka Hafızası"}</strong>
+                      <span className="creatorlab-brand-memory-optional">
+                        {uiLanguage === "en" ? "Optional" : "İsteğe bağlı"}
+                      </span>
+                    </div>
+                    <span>
+                      {uiLanguage === "en"
+                        ? "Save the essentials Velto should remember for future projects."
+                        : "Velto'nun gelecek projelerde hatırlamasını istediğin temel bilgileri kaydet."}
+                    </span>
+                  </div>
+                  <div className="creatorlab-context-summary-values" aria-hidden="true">
+                    {creatorProfile.brandName && <span>{creatorProfile.brandName}</span>}
+                    {creatorProfile.defaultAudience && <span>{creatorProfile.defaultAudience}</span>}
+                  </div>
+                  <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div className="creatorlab-context-body">
+                  <div className="creatorlab-profile-input-grid">
+                    <label className="creatorlab-brief-field">
+                      <span>{uiLanguage === "en" ? "Brand / Creator Name" : "Marka / Creator Adı"}</span>
+                      <input
+                        value={creatorProfile.brandName}
+                        onChange={(event) =>
+                          setCreatorProfile((current) => ({
+                            ...current,
+                            brandName: event.target.value,
+                          }))
+                        }
+                        placeholder={uiLanguage === "en" ? "Example: Northstar Studio" : "Örnek: Northstar Studio"}
+                      />
+                      <small>
+                        {uiLanguage === "en"
+                          ? "The name Velto should associate with this creator or brand."
+                          : "Velto'nun bu creator veya marka ile ilişkilendireceği ad."}
+                      </small>
+                    </label>
+                    <label className="creatorlab-brief-field">
+                      <span>{uiLanguage === "en" ? "Primary Audience" : "Ana Hedef Kitle"}</span>
+                      <input
+                        value={creatorProfile.defaultAudience}
+                        onChange={(event) =>
+                          setCreatorProfile((current) => ({
+                            ...current,
+                            defaultAudience: event.target.value,
+                          }))
+                        }
+                        placeholder={
+                          uiLanguage === "en"
+                            ? "Example: B2B technology decision makers"
+                            : "Örnek: B2B teknoloji karar vericileri"
+                        }
+                      />
+                      <small>
+                        {uiLanguage === "en"
+                          ? "Reusable audience context, more specific than the project-level audience profile."
+                          : "Proje bazlı kitle profilinden daha spesifik, yeniden kullanılabilir hedef kitle bağlamı."}
+                      </small>
+                    </label>
+                  </div>
+                  <div className="creatorlab-brand-memory-footer">
+                    <p>
+                      {uiLanguage === "en"
+                        ? "Saved on this device. Format, platform, duration and quality stay project-specific."
+                        : "Bu cihazda saklanır. Format, platform, süre ve kalite proje bazında kalır."}
+                    </p>
+                    <button type="button" className="cl-primary-button" onClick={saveCreatorProfile}>
+                      {uiLanguage === "en"
+                        ? "Remember for future projects"
+                        : "Gelecek projeler için hatırla"}
+                    </button>
+                  </div>
+                </div>
+              </details>
             </>
           )}
 
@@ -26986,6 +27090,20 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     <option value="en">{ui.english}</option>
                   </select>
                   <small>{uiLanguage === "en" ? "Narration, metadata and captions" : "Anlatım, metadata ve altyazılar"}</small>
+                </label>
+
+                <label className="creatorlab-brief-field">
+                  <span>{ui.targetMarket}</span>
+                  <select value={creatorCountry} onChange={(event) => setCreatorCountry(event.target.value)}>
+                    {CREATOR_COUNTRY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <small>
+                    {uiLanguage === "en"
+                      ? "Used only when regional context improves the result."
+                      : "Yalnızca bölgesel bağlam sonucu iyileştirecekse kullanılır."}
+                  </small>
                 </label>
 
                 <label className="creatorlab-brief-field">
@@ -27133,59 +27251,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 )}
               </section>
 
-              <details id="creatorlab-brief-profile" className="creatorlab-context-details">
-                <summary>
-                  <div>
-                    <strong>{uiLanguage === "en" ? "Context & creator defaults" : "Bağlam ve creator varsayılanları"}</strong>
-                    <span>
-                      {hasCreatorProfileContext(creatorProfile)
-                        ? uiLanguage === "en" ? "Your saved profile is applied automatically to new briefs." : "Kayıtlı profiliniz yeni brief'lere otomatik uygulanır."
-                        : uiLanguage === "en" ? "Market and brand context are optional." : "Pazar ve marka bağlamı opsiyoneldir."}
-                    </span>
-                  </div>
-                  <div className="creatorlab-context-summary-values" aria-hidden="true">
-                    <span>{getCreatorCountryLabel()}</span>
-                    {creatorProfile.brandName && <span>{creatorProfile.brandName}</span>}
-                  </div>
-                  <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
-                </summary>
-                <div className="creatorlab-context-body">
-                  <div className="creatorlab-context-grid">
-                    <label className="creatorlab-brief-field">
-                      <span>{ui.targetMarket}</span>
-                      <select value={creatorCountry} onChange={(event) => setCreatorCountry(event.target.value)}>
-                        {CREATOR_COUNTRY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <small>{uiLanguage === "en" ? "Used only when regional context improves the result." : "Yalnızca bölgesel bağlam sonucu iyileştirecekse kullanılır."}</small>
-                    </label>
-                    <div className="creatorlab-profile-context-card">
-                      <span>{uiLanguage === "en" ? "Active creator profile" : "Aktif creator profili"}</span>
-                      <strong>{creatorProfile.brandName || (uiLanguage === "en" ? "No saved brand" : "Kayıtlı marka yok")}</strong>
-                      <p>{creatorProfile.defaultAudience || (uiLanguage === "en" ? "Audience remains project-specific." : "Hedef kitle proje özelinde belirlenir.")}</p>
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => applyCreatorProfile()}
-                          disabled={!creatorProfileLoaded || !hasCreatorProfileContext(creatorProfile)}
-                        >
-                          {uiLanguage === "en" ? "Apply now" : "Şimdi uygula"}
-                        </button>
-                        <button type="button" onClick={saveCreatorProfile}>
-                          {uiLanguage === "en" ? "Save profile" : "Profili kaydet"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="creatorlab-profile-input-grid">
-                    <input value={creatorProfile.brandName} onChange={(event) => setCreatorProfile((current) => ({ ...current, brandName: event.target.value }))} placeholder={uiLanguage === "en" ? "Creator or brand name" : "Creator veya marka adı"} />
-                    <input value={creatorProfile.defaultAudience} onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultAudience: event.target.value }))} placeholder={uiLanguage === "en" ? "Default audience" : "Varsayılan hedef kitle"} />
-                    <input value={creatorProfile.brandVoice} onChange={(event) => setCreatorProfile((current) => ({ ...current, brandVoice: event.target.value }))} placeholder={uiLanguage === "en" ? "Brand voice" : "Marka sesi"} />
-                    <input value={creatorProfile.defaultVisualStyle} onChange={(event) => setCreatorProfile((current) => ({ ...current, defaultVisualStyle: event.target.value }))} placeholder={uiLanguage === "en" ? "Default visual direction" : "Varsayılan görsel yön"} />
-                  </div>
-                </div>
-              </details>
+
 
               <div id="creatorlab-quality-panel" className="creatorlab-quality-panel">
                 <div className="creatorlab-quality-heading">
