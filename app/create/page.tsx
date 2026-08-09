@@ -41,9 +41,15 @@ import StoryverseShell from "@/components/experience/StoryverseShell";
 import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 import UserAccountMenu from "@/components/auth/UserAccountMenu";
+import CreatorOutcomeStart from "@/components/create/CreatorOutcomeStart";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
+import {
+  getCreatorOutcomeDefinition,
+  normalizeCreatorOutcome,
+  type CreatorOutcome,
+} from "@/lib/creator/creatorOutcome";
 import {
   CREATOR_QUALITY_MODE_OPTIONS,
   getCreatorMediaRoute,
@@ -222,6 +228,7 @@ type CreatorDirectorMessage = {
 };
 
 type CreatorTelemetryEventName =
+  | "outcome_selected"
   | "workspace_opened"
   | "stage_viewed"
   | "brief_ready"
@@ -787,6 +794,7 @@ type CreatorBriefDraftSaveState = "idle" | "saving" | "saved" | "error";
 
 type CreatorBriefDraftSnapshot = {
   version: 1;
+  outcome?: CreatorOutcome;
   input: string;
   language: ContentLanguage;
   country: string;
@@ -852,6 +860,10 @@ type CreatorProductionScene = {
 };
 
 type CreatorProductionPackage = {
+  outcome?: CreatorOutcome;
+  format?: CreatorFormat;
+  contentType?: CreatorContentType;
+  durationPreset?: CreatorDurationPreset;
   title: string;
   hook: string;
   storyPremise: string;
@@ -1135,7 +1147,7 @@ const CREATOR_FORMAT_OPTIONS: Array<{
   },
   {
     value: "youtube_video",
-    label: "YouTube Video",
+    label: "Long-form Video",
     guidance: "Best for 3-15 minute structured video packages.",
   },
 ];
@@ -3236,6 +3248,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("professional_18");
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational_explainer");
+  const [creatorOutcome, setCreatorOutcome] = useState<CreatorOutcome | undefined>();
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("short_form");
   const [creatorTargetPlatforms, setCreatorTargetPlatforms] = useState<CreatorPublishPlatform[]>(
     getDefaultCreatorTargetPlatforms("short_form"),
@@ -3488,6 +3501,29 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     } catch (telemetryError) {
       console.warn("Velto Studio telemetry delivery failed:", telemetryError);
     }
+  };
+
+  const handleCreatorOutcomeSelect = (nextOutcome: CreatorOutcome) => {
+    const definition = getCreatorOutcomeDefinition(nextOutcome);
+    const nextContentType = definition.defaults.contentType || creatorContentType;
+
+    setCreatorOutcome(nextOutcome);
+    setCreatorFormat(definition.defaults.format);
+    setCreatorDurationPreset(definition.defaults.durationPreset);
+    setCreatorVideoDurationSec(definition.defaults.durationSeconds);
+    setCreatorCustomDurationSec(definition.defaults.durationSeconds);
+    setCreatorTargetPlatforms([...definition.defaults.targetPlatforms]);
+    if (definition.defaults.contentType) {
+      setCreatorContentType(definition.defaults.contentType);
+    }
+
+    void emitCreatorTelemetry("outcome_selected", {
+      outcome: nextOutcome,
+      format: definition.defaults.format,
+      contentType: nextContentType,
+      durationSeconds: definition.defaults.durationSeconds,
+      targetPlatformCount: definition.defaults.targetPlatforms.length,
+    });
   };
 
   const refreshCreatorOpsStatus = async (): Promise<CreatorOpsStatus | null> => {
@@ -6038,6 +6074,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setCreatorOutcome(undefined);
     setIsGeneratingFullYoutubePackage(false);
     setIsAdvancedMode(false);
     setBulkResults([]);
@@ -9866,6 +9903,13 @@ const generateSceneImage = async (
         creatorProductionPackage: creatorProductionPackage
           ? {
               ...creatorProductionPackage,
+              outcome: creatorOutcome,
+              format: creatorFormat,
+              contentType: creatorContentType,
+              durationPreset: creatorDurationPreset,
+              durationSec: creatorVideoDurationSec,
+              qualityMode: creatorQualityMode,
+              targetPlatforms: creatorTargetPlatforms,
               visualContinuity: getCreatorVisualContinuitySnapshot(),
               voicePreferences: {
                 narratorProfileId: getEffectiveNarratorVoiceProfileId(),
@@ -10230,13 +10274,40 @@ const generateSceneImage = async (
         setNarratorSettings(defaultNarratorSettings);
       }
 
+      const savedFormat = normalizedSavedCreatorPackage?.format;
+      const restoredFormat: CreatorFormat =
+        savedFormat === "short_form" || savedFormat === "youtube_video"
+          ? savedFormat
+          : savedCreatorPackage?.durationSec && savedCreatorPackage.durationSec > 180
+            ? "youtube_video"
+            : creatorFormat;
+      if (savedFormat === "short_form" || savedFormat === "youtube_video") {
+        setCreatorFormat(savedFormat);
+      }
+
+      const savedContentType = normalizedSavedCreatorPackage?.contentType;
+      if (
+        CREATOR_CONTENT_TYPE_OPTIONS.some((option) => option.value === savedContentType)
+      ) {
+        setCreatorContentType(savedContentType as CreatorContentType);
+      }
+
+      const savedDurationPreset = normalizedSavedCreatorPackage?.durationPreset;
+      const savedDurationPresetValid =
+        savedDurationPreset === "custom" ||
+        getCreatorDurationOptionsByFormat(restoredFormat).some(
+          (option) => option.preset === savedDurationPreset,
+        );
+      if (savedDurationPresetValid) {
+        setCreatorDurationPreset(savedDurationPreset as CreatorDurationPreset);
+      }
+
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
+      setCreatorOutcome(normalizeCreatorOutcome(normalizedSavedCreatorPackage?.outcome));
       setCreatorTargetPlatforms(
         normalizeCreatorTargetPlatforms(
           normalizedSavedCreatorPackage?.targetPlatforms,
-          savedCreatorPackage?.durationSec && savedCreatorPackage.durationSec > 180
-            ? "youtube_video"
-            : creatorFormat,
+          restoredFormat,
         ),
       );
       setYoutubeMetadataResult(project.youtube_metadata || null);
@@ -10354,6 +10425,7 @@ const generateSceneImage = async (
         const draft = JSON.parse(rawDraft) as Partial<CreatorBriefDraftSnapshot>;
         if (draft.version === 1 && typeof draft.input === "string") {
           setInput(draft.input);
+          setCreatorOutcome(normalizeCreatorOutcome(draft.outcome));
           setLanguage(draft.language === "en" ? "en" : "tr");
           setCreatorCountry(typeof draft.country === "string" ? draft.country : "global");
           setCreatorAgeGroup(
@@ -10454,6 +10526,7 @@ const generateSceneImage = async (
         const updatedAt = new Date().toISOString();
         const snapshot: CreatorBriefDraftSnapshot = {
           version: 1,
+          outcome: creatorOutcome,
           input,
           language,
           country: creatorCountry,
@@ -10489,6 +10562,7 @@ const generateSceneImage = async (
     creatorCountry,
     creatorAgeGroup,
     creatorContentType,
+    creatorOutcome,
     creatorFormat,
     creatorDurationPreset,
     creatorVideoDurationSec,
@@ -11802,6 +11876,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             language,
           },
         ),
+        outcome: creatorOutcome,
+        format: creatorFormat,
+        contentType: creatorContentType,
+        durationPreset: creatorDurationPreset,
+        durationSec: creatorVideoDurationSec,
+        qualityMode: creatorQualityMode,
         targetPlatforms: creatorTargetPlatforms,
       };
       const nextCharacters = normalizeCreatorLabCharacters(
@@ -12159,20 +12239,29 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         topic: input,
         accessToken,
       });
-      const nextPackage = normalizeCreatorLabGeneratedPackage(
-        {
-          ...scriptPlannedPackage,
-          scenes: normalizeScenesWithIntelligence(
-            (scriptPlannedPackage.scenes || []) as CreatorProductionScene[]
-          ) as CreatorProductionScene[],
-        },
-        {
-          topic: input,
-          contentType: getCreatorContentTypeLabel(),
-          format: getCreatorFormatLabel(),
-          language,
-        },
-      );
+      const nextPackage = {
+        ...normalizeCreatorLabGeneratedPackage(
+          {
+            ...scriptPlannedPackage,
+            scenes: normalizeScenesWithIntelligence(
+              (scriptPlannedPackage.scenes || []) as CreatorProductionScene[]
+            ) as CreatorProductionScene[],
+          },
+          {
+            topic: input,
+            contentType: getCreatorContentTypeLabel(),
+            format: getCreatorFormatLabel(),
+            language,
+          },
+        ),
+        outcome: creatorOutcome,
+        format: creatorFormat,
+        contentType: creatorContentType,
+        durationPreset: creatorDurationPreset,
+        durationSec: creatorVideoDurationSec,
+        qualityMode: creatorQualityMode,
+        targetPlatforms: creatorTargetPlatforms,
+      };
 
       setCreatorProductionPackage(nextPackage);
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
@@ -26814,11 +26903,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <span className="creatorlab-brief-step-badge">{uiLanguage === "en" ? "Draft stage" : "Taslak aşaması"}</span>
               </div>
 
+              <CreatorOutcomeStart
+                language={uiLanguage === "en" ? "en" : "tr"}
+                value={creatorOutcome}
+                onSelect={handleCreatorOutcomeSelect}
+              />
+
               <section className="creatorlab-topic-card">
                 <div className="creatorlab-topic-header">
                   <div>
                     <label htmlFor="creatorlab-topic-input">
-                      {uiLanguage === "en" ? "What do you want to create?" : "Ne üretmek istiyorsun?"}
+                      {uiLanguage === "en" ? "Describe your idea" : "Fikrini anlat"}
                     </label>
                     <p>
                       {uiLanguage === "en"
@@ -26929,7 +27024,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     const isSelected = creatorFormat === option.value;
                     const localizedGuidance = option.value === "short_form"
                       ? uiLanguage === "en" ? "Vertical, fast and optimized for short-form feeds." : "Dikey, hızlı ve kısa video akışları için optimize."
-                      : uiLanguage === "en" ? "Structured long-form package for YouTube." : "YouTube için yapılandırılmış uzun format paket.";
+                      : uiLanguage === "en" ? "Structured long-form package ready for platform adaptation." : "Platformlara uyarlanmaya hazır, yapılandırılmış uzun video paketi.";
                     return (
                       <button
                         key={option.value}
@@ -29508,7 +29603,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
                                       <video src={scene.videoUrl} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
                                     ) : scene.image ? (
-                                      <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full object-cover" />
+                                      <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full bg-slate-950 object-contain" />
                                     ) : (
                                       <div className="flex aspect-video items-center justify-center bg-slate-100 px-4 text-center text-xs text-slate-500">
                                         {uiLanguage === "en" ? "Continue Production will generate this visual." : "Üretime Devam Et bu görseli oluşturacak."}
@@ -29725,13 +29820,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                                       muted
                                                       playsInline
                                                       preload="metadata"
-                                                      className="aspect-video w-full bg-slate-950 object-cover"
+                                                      className="aspect-video w-full bg-slate-950 object-contain"
                                                     />
                                                   ) : (
                                                     <img
                                                       src={asset.url}
                                                       alt={uiLanguage === "en" ? `Scene ${scene.id} image version` : `Sahne ${scene.id} görsel sürümü`}
-                                                      className="aspect-video w-full object-cover"
+                                                      className="aspect-video w-full bg-slate-950 object-contain"
                                                     />
                                                   )}
                                                   <div className="space-y-3 p-3">
@@ -29798,12 +29893,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                               {sceneComparedAssets.map((asset) => (
                                                 <div key={`compare-${asset.id}`} className="overflow-hidden rounded-lg border border-blue-200 bg-white">
                                                   {asset.kind === "video" ? (
-                                                    <video src={asset.url} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
+                                                    <video src={asset.url} controls playsInline className="aspect-video w-full bg-slate-950 object-contain" />
                                                   ) : (
                                                     <img
                                                       src={asset.url}
                                                       alt={uiLanguage === "en" ? "Compared image version" : "Karşılaştırılan görsel sürümü"}
-                                                      className="aspect-video w-full object-cover"
+                                                      className="aspect-video w-full bg-slate-950 object-contain"
                                                     />
                                                   )}
                                                   <p className="px-2 py-2 text-[10px] font-semibold text-slate-600">

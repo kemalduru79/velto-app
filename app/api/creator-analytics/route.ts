@@ -10,6 +10,7 @@ const RATE_WINDOW_MS = 5 * 60 * 1000;
 const RATE_LIMIT = 180;
 
 const EVENT_NAMES = new Set([
+  "outcome_selected",
   "workspace_opened",
   "stage_viewed",
   "brief_ready",
