@@ -115,6 +115,17 @@ function getVisualDuration(scene: FlowContinuityAuditInputScene) {
     };
   }
 
+  if (scene.source === "video") {
+    const videoDurationSec = safeDuration(scene.videoDurationSec);
+
+    if (videoDurationSec > 0) {
+      return {
+        durationSec: videoDurationSec,
+        durationSource: "video_request" as const,
+      };
+    }
+  }
+
   const timelineBlockDuration = sumVisualBlocks(scene.visualBlocks);
 
   if (timelineBlockDuration > 0) {
@@ -125,15 +136,6 @@ function getVisualDuration(scene: FlowContinuityAuditInputScene) {
   }
 
   if (scene.source === "video") {
-    const videoDurationSec = safeDuration(scene.videoDurationSec);
-
-    if (videoDurationSec > 0) {
-      return {
-        durationSec: videoDurationSec,
-        durationSource: "video_request" as const,
-      };
-    }
-
     const fallbackVideoDurationSec = safeDuration(
       scene.fallbackVideoDurationSec,
     );

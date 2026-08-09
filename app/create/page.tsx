@@ -77,6 +77,8 @@ import {
   type CreatorSceneContinuityMode,
   type CreatorVisualContinuitySettings,
 } from "@/lib/creator/visualContinuity";
+import { buildCreatorGenerationContinuityContext } from "@/lib/creator/sceneContinuity";
+import type { CreatorSceneContinuityState } from "@/lib/creator/continuityContracts";
 
 // CONT-P1R + 3L COMPLETION
 import { getCreatorVoiceRoute } from "@/lib/creator/voiceRouting";
@@ -617,6 +619,7 @@ type Scene = {
   renderMode?: "video" | "image";
   projectContinuityMode?: CreatorProjectContinuityMode;
   continuityMode?: CreatorSceneContinuityMode;
+  continuity?: CreatorSceneContinuityState;
   id: number;
   text: string;
   narration: string;
@@ -858,6 +861,7 @@ type CreatorProductionScene = {
   emotion: string;
   motionHint: string;
   visualPrompt?: string;
+  continuity?: CreatorSceneContinuityState;
   intelligence?: SceneIntelligence;
   targetDurationSec?: number;
   estimatedSpeechSec?: number;
@@ -6295,6 +6299,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           }
         : null;
 
+    const currentScene = scenes[sceneIndex];
+    const structuredContext = buildCreatorGenerationContinuityContext({
+      mode: continuityMode,
+      characters: getSafeCharactersForImagePrompt(currentScene?.text || ""),
+      visualBible: getSafeVisualBibleForImagePrompt(),
+      previousState: scenes[sceneIndex - 1]?.continuity,
+      currentState: currentScene?.continuity,
+      nextState:
+        continuityMode === "consistent"
+          ? scenes[sceneIndex + 1]?.continuity
+          : undefined,
+      isFirstScene: sceneIndex === 0,
+    });
+
     return {
       sceneId,
       sceneCount: scenes.length,
@@ -6303,6 +6321,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         continuityMode === "consistent"
           ? toContinuityScene(scenes[sceneIndex + 1])
           : null,
+      structuredContext,
     };
   };
 

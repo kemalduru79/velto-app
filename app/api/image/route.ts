@@ -17,6 +17,9 @@ import {
   buildCreatorSmartVisualPlan,
   selectCreatorSceneCharacters,
 } from "../../../lib/creator/smartVisuals";
+import type { CreatorGenerationContinuityContext } from "../../../lib/creator/continuityContracts";
+import type { CreatorResolvedContinuityMode } from "../../../lib/creator/visualContinuity";
+import { buildCreatorGenerationContinuityContext } from "../../../lib/creator/sceneContinuity";
 
 // 3L SMART VISUALS V2
 // CONT-P1R SELECTIVE CONTINUITY
@@ -44,11 +47,6 @@ type VisualBible = {
 
 type ImageProductProfile = "storyverse" | "creatorlab";
 
-type CreatorResolvedContinuityMode =
-  | "independent"
-  | "consistent"
-  | "previous";
-
 type SceneContinuityContext = {
   sceneId?: number;
   sceneCount?: number;
@@ -64,6 +62,7 @@ type SceneContinuityContext = {
     emotion?: string;
     motionHint?: string;
   } | null;
+  structuredContext?: CreatorGenerationContinuityContext;
 };
 
 const DEFAULT_GUIDE_CHARACTER: Character = {
@@ -210,6 +209,8 @@ Consistency rules: ${consistencyRules}
 function buildContinuityBlock(
   context: SceneContinuityContext | null | undefined,
   continuityMode: CreatorResolvedContinuityMode,
+  characters?: Character[],
+  visualBible?: VisualBible | null,
 ) {
   if (continuityMode === "independent") {
     return [
@@ -243,6 +244,42 @@ function buildContinuityBlock(
     ].join("\n");
   };
 
+  const suppliedStructured = context.structuredContext;
+  const structured = suppliedStructured
+    ? buildCreatorGenerationContinuityContext({
+        mode: continuityMode,
+        characters,
+        visualBible,
+        previousState: suppliedStructured.previousState,
+        currentState: suppliedStructured.currentState,
+        nextState: suppliedStructured.nextState,
+        isFirstScene: !context.previousScene,
+      })
+    : undefined;
+  const structuredBlock = structured
+    ? [
+        "Structured production continuity (augments Character Cast and Visual Bible; explicit current-scene requirements remain highest priority):",
+        `- production identity: ${[
+          structured.productionIdentity.visualStyle,
+          structured.productionIdentity.palette,
+          structured.productionIdentity.cameraLanguage,
+          structured.productionIdentity.productionUniverse,
+        ].filter(Boolean).join("; ") || "use the authoritative Character Cast and Visual Bible above"}`,
+        `- must preserve: ${structured.transition.mustPreserve.join(", ") || "none"}`,
+        `- allowed changes: ${structured.transition.allowedChanges.join(", ") || "none specified"}`,
+        `- previous state: ${structured.previousState ? JSON.stringify(structured.previousState) : "not supplied"}`,
+        `- current state: ${structured.currentState ? JSON.stringify(structured.currentState) : "not supplied"}`,
+        `- next state: ${continuityMode === "consistent" && structured.nextState ? JSON.stringify(structured.nextState) : "not used"}`,
+        `- inherited handoff: ${Object.keys(structured.transition.inheritedState).length ? JSON.stringify(structured.transition.inheritedState) : "none"}`,
+        `- continuity guard: ${structured.guard.status}${structured.guard.contradictions.length ? `; review ${structured.guard.contradictions.join(" | ")}` : ""}`,
+        `- editorial fallback: ${structured.transition.fallbackRecommendation}`,
+        ...structured.guard.contextAugmentations.map((instruction) => `- deterministic context repair: ${instruction}`),
+        structured.transition.fallbackRecommendation !== "none"
+          ? "- Treat fallback as editorial guidance only. Do not invent extra media or force a false literal match."
+          : "",
+      ].filter(Boolean).join("\n")
+    : "Structured production continuity: not supplied; use the legacy adjacent-scene context below.";
+
   return [
     `Timeline position: scene ${context.sceneId || "?"} of ${context.sceneCount || "?"}`,
     describeScene("Previous scene", context.previousScene),
@@ -252,6 +289,7 @@ function buildContinuityBlock(
     continuityMode === "previous"
       ? "Continue directly from the previous scene. Preserve its active character, location, lighting, time, prop state, screen direction, and camera handoff unless this scene explicitly changes them."
       : "Keep recurring characters and the shared world recognizable, while allowing the shot, location or metaphor to change when the current scene explicitly requires it.",
+    structuredBlock,
   ].join("\n");
 }
 
@@ -523,7 +561,12 @@ async function postHandler(req: Request) {
       normalizedProductProfile,
       normalizedContinuityMode,
     );
-    const continuityBlock = buildContinuityBlock(continuityContext, normalizedContinuityMode);
+    const continuityBlock = buildContinuityBlock(
+      continuityContext,
+      normalizedContinuityMode,
+      characters,
+      visualBible,
+    );
     const shouldUsePremiumVisuals = isCreatorLab
       ? creatorVisualRoute?.qualityMode === "pro" ||
         creatorVisualRoute?.qualityMode === "cinematic" ||
@@ -573,7 +616,7 @@ STORYVERSE VISUAL ROUTE:
       ? `
 Negative guidance:
 - no default Joe, child guide, mascot, or cartoon treatment unless explicitly requested
-- no style, realism-level, palette, lighting, wardrobe, product, or brand drift
+- no unrequested style, realism-level, palette, lighting, wardrobe, product, or brand drift; validated explicit current-scene changes remain intentional
 - no random presenter, celebrity lookalike, or extra lead-character invention
 - no generic AI slideshow composition, cheap stock-photo look, waxy skin, plastic face, poster clutter, or unreadable micro-detail
 - no inconsistent face, hair, age impression, outfit, accessory, or body proportions for locked cast
@@ -605,7 +648,8 @@ Negative guidance:
             ].join("\n")
           : [
               "SHARED CHARACTER AND WORLD:",
-              "- Preserve recurring character identity, wardrobe, key products, world rules, palette, lighting logic, realism level and brand language across linked scenes.",
+              "- Preserve recurring character identity, face and world characteristics across linked scenes, except production facts explicitly marked as deliberate current-scene changes.",
+              "- An explicit wardrobe change may change clothing only; it never permits face, age, hair, body-proportion or canonical identity drift.",
               "- Do not force the exact same shot or background when the current scene explicitly requests a new location, B-roll or metaphor.",
             ].join("\n");
 

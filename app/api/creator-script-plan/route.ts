@@ -9,6 +9,10 @@ import {
   creatorBriefRequestsDialogue,
   normalizeCreatorAdultScene,
 } from "../../../lib/creator/adultContentGuard";
+import {
+  mergeCreatorSceneContinuityState,
+  normalizeCreatorSceneContinuityState,
+} from "../../../lib/creator/sceneContinuity";
 
 type CreatorSceneInput = {
   id?: unknown;
@@ -20,6 +24,7 @@ type CreatorSceneInput = {
   motionHint?: unknown;
   visualPrompt?: unknown;
   intelligence?: unknown;
+  continuity?: unknown;
 };
 
 type CreatorProductionPackageInput = {
@@ -249,6 +254,7 @@ function normalizeSourceScenes(value: unknown, sceneCount: number) {
       motionHint: asString(raw.motionHint),
       visualPrompt: asString(raw.visualPrompt),
       intelligence: raw.intelligence,
+      continuity: normalizeCreatorSceneContinuityState(raw.continuity),
     };
   });
 }
@@ -282,6 +288,10 @@ function normalizeModelScenes(
       emotion: asString(revised.emotion, source.emotion),
       motionHint: asString(revised.motionHint, source.motionHint),
       visualPrompt: asString(revised.visualPrompt, source.visualPrompt),
+      continuity: mergeCreatorSceneContinuityState(
+        source.continuity,
+        revised.continuity,
+      ),
     };
   });
 }
@@ -408,6 +418,7 @@ async function reviseScenes({
           emotion: "scene emotion",
           motionHint: "visual movement direction",
           visualPrompt: "specific visual-generation prompt",
+          continuity: "optional supplied structured continuity state, including explicitChanges when deliberate; preserve or update only when the rewritten scene changes a production fact",
         },
       ],
     },
@@ -423,6 +434,7 @@ async function reviseScenes({
       "Do not repeat the hook in later scenes.",
       "Write for continuous spoken delivery without abrupt cutoffs at scene boundaries.",
       "Make visualPrompt specific enough to support multiple coherent visual beats inside the scene.",
+      "Preserve supplied structured continuity metadata. Do not invent missing facts or silently erase deliberate scene changes.",
     ],
   };
 

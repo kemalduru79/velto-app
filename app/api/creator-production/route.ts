@@ -7,6 +7,7 @@ import {
   type VideoQualityTier,
 } from "../../../lib/video/timelineSync";
 import { getCreatorVoiceScriptGuidance } from "../../../lib/creator/voiceRouting";
+import { normalizeCreatorSceneContinuityState } from "../../../lib/creator/sceneContinuity";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -346,6 +347,7 @@ function normalizeScenes(value: unknown, sceneCount: number) {
 
   return value.slice(0, sceneCount).map((item, index) => {
     const scene = item as Record<string, unknown>;
+    const continuity = normalizeCreatorSceneContinuityState(scene.continuity);
 
     return {
       id: Number(scene.id) || index + 1,
@@ -362,6 +364,7 @@ function normalizeScenes(value: unknown, sceneCount: number) {
         asString(scene.visualPrompt, "Simple animated movement."),
       ),
       visualPrompt: asString(scene.visualPrompt),
+      ...(continuity ? { continuity } : {}),
     };
   });
 }
@@ -618,6 +621,22 @@ export async function POST(req: Request) {
             emotion: "string",
             motionHint: "string",
             visualPrompt: "string",
+            continuity: {
+              charactersPresent: ["optional character/persona names"],
+              location: "optional location",
+              timeOfDay: "optional time of day",
+              lighting: "optional lighting state",
+              wardrobe: ["optional character: wardrobe facts"],
+              props: ["optional active props or products"],
+              productState: "optional product state",
+              actionStart: "optional opening action state",
+              actionEnd: "optional closing action state",
+              screenDirection: "optional screen direction",
+              cameraIntent: "optional shot or transition intent",
+              emotionalState: "optional visible emotional state",
+              continuityNotes: ["optional deliberate changes or handoff notes"],
+              explicitChanges: ["optional changed field name such as location"],
+            },
           },
         ],
         thumbnailIdea: "string",
@@ -641,6 +660,9 @@ export async function POST(req: Request) {
         "Dialogue may be empty if the format is narrator-led. If dialogue is used, keep it very short.",
         "Do not compensate with long dialogue. The total speech budget includes narration and dialogue together.",
         "Scenes must be visual and easy for AI image/video generation.",
+        "For each scene, include only continuity fields supported by the scene. Omit unknown values; never invent continuity facts merely to fill the object.",
+        "Use continuityNotes to identify deliberate location, time, wardrobe, product-state, or editorial B-roll transitions.",
+        "Set continuity.explicitChanges only when the current scene deliberately changes a structured continuity field relative to the prior scene; otherwise omit it.",
         "Keep content safe, platform-appropriate, and aligned with the selected audience profile.",
         "Do not force a fixed mascot, child guide, or Joe unless the user explicitly requested it in the topic, mentor analysis, or channel concept.",
         "CreatorLab is an 18+ professional creator workflow. Do not create teen or child presenters unless the user explicitly requested a teen/child audience or character.",
