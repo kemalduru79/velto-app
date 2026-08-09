@@ -32,7 +32,10 @@ type ReserveMeteredOperationInput = {
   referenceId?: string;
   metadata?: Record<string, unknown>;
   billable?: boolean;
+  requireCostGuardConfirmation?: boolean;
 };
+
+export const CREATOR_COST_GUARD_VERSION = "creator-cost-guard-v1";
 
 export async function reserveMeteredOperation(
   request: Request,
@@ -45,6 +48,17 @@ export async function reserveMeteredOperation(
   const credits = getOperationCreditCost(input.operationType, input.qualityMode);
 
   if (credits <= 0) return null;
+
+  if (input.requireCostGuardConfirmation) {
+    const confirmation = request.headers.get("x-creator-cost-guard")?.trim();
+    const logicalOperationId = request.headers.get("x-idempotency-key")?.trim();
+    if (confirmation !== CREATOR_COST_GUARD_VERSION || !logicalOperationId) {
+      throw new CreditEngineError(
+        "CreatorLab paid operations require explicit Cost Guard confirmation.",
+        "INVALID_INPUT",
+      );
+    }
+  }
 
   const idempotencyKey =
     request.headers.get("x-idempotency-key")?.trim() ||

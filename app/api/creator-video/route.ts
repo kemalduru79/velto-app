@@ -250,6 +250,7 @@ async function postHandler(req: NextRequest) {
         engineTier: selection.selectedTier,
       },
       billable: true,
+      requireCostGuardConfirmation: true,
     });
 
     // Do not reject an HTTPS asset based on a HEAD request. Some signed storage

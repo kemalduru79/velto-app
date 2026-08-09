@@ -93,6 +93,7 @@ export async function POST(request: Request) {
         finalProductionGate: "3Q",
       },
       billable: productProfile === "creatorlab",
+      requireCostGuardConfirmation: productProfile === "creatorlab",
     });
 
     const response = await fetch(`${exportApiBase}/export-movie`, {

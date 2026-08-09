@@ -224,6 +224,7 @@ async function postHandler(req: NextRequest) {
         voiceProfileId: selectedVoiceProfile.id,
       },
       billable: isCreatorLab,
+      requireCostGuardConfirmation: isCreatorLab,
     });
 
     const voiceResult = await voiceProvider.synthesize({

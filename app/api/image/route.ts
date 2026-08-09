@@ -675,6 +675,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
         imageUseCase: normalizedImageUseCase,
       },
       billable: isCreatorLab,
+      requireCostGuardConfirmation: isCreatorLab,
     });
 
     const model = creatorVisualRoute?.imageModel || "gpt-image-1";

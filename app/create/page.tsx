@@ -42,6 +42,9 @@ import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 import UserAccountMenu from "@/components/auth/UserAccountMenu";
 import CreatorOutcomeStart from "@/components/create/CreatorOutcomeStart";
+import CreatorCostGuard, {
+  type CreatorCostGuardRequest,
+} from "@/components/create/CreatorCostGuard";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -84,7 +87,10 @@ import {
   normalizeCreatorVoiceSelectionId,
   type CreatorVoiceSelectionId,
 } from "@/lib/creator/voiceProfiles";
-import { getOperationCreditCost } from "@/lib/credits/operationPolicy";
+import {
+  estimateCreatorOperationManifest,
+  getOperationCreditCost,
+} from "@/lib/credits/operationPolicy";
 import {
   CREATOR_VOICE_FAVORITES_STORAGE_KEY,
   CREATOR_VOICE_RECENTS_STORAGE_KEY,
@@ -3388,6 +3394,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useRef<ReturnType<typeof setInterval> | null>(null);
   const imageDispatchCountdownResolveRef =
     useRef<((proceed: boolean) => void) | null>(null);
+  const [creatorCostGuardRequest, setCreatorCostGuardRequest] = useState<
+    (CreatorCostGuardRequest & { operationId: string }) | null
+  >(null);
+  const creatorCostGuardResolveRef = useRef<((operationId: string | null) => void) | null>(null);
+  const ambiguousCreatorOperationIdsRef = useRef(new Map<string, string>());
   const batchRenderCancelRef = useRef(false);
 
   const [playingSceneId, setPlayingSceneId] = useState<number | null>(null);
@@ -3417,8 +3428,80 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       imageDispatchCountdownResolveRef.current?.(false);
       imageDispatchCountdownResolveRef.current = null;
       imageDispatchCountdownRef.current = null;
+      creatorCostGuardResolveRef.current?.(null);
+      creatorCostGuardResolveRef.current = null;
     };
   }, []);
+
+  const requestCreatorCostGuardConfirmation = (
+    request: CreatorCostGuardRequest,
+    operationKey?: string,
+  ) => {
+    if (creatorCostGuardResolveRef.current) return Promise.resolve<string | null>(null);
+    const operationId = operationKey
+      ? ambiguousCreatorOperationIdsRef.current.get(operationKey) ||
+        window.crypto.randomUUID()
+      : window.crypto.randomUUID();
+    setCreatorCostGuardRequest({ ...request, operationId });
+    return new Promise<string | null>((resolve) => {
+      creatorCostGuardResolveRef.current = resolve;
+    });
+  };
+
+  const finishCreatorCostGuardConfirmation = (confirmed: boolean) => {
+    const pending = creatorCostGuardRequest;
+    const resolve = creatorCostGuardResolveRef.current;
+    creatorCostGuardResolveRef.current = null;
+    setCreatorCostGuardRequest(null);
+    resolve?.(confirmed && pending ? pending.operationId : null);
+  };
+
+  const creatorCostGuardHeaders = (operationId: string) => ({
+    "x-creator-cost-guard": "creator-cost-guard-v1",
+    "x-idempotency-key": operationId,
+  });
+
+  const retainAmbiguousCreatorOperationId = (
+    operationKey: string,
+    operationId: string,
+  ) => {
+    ambiguousCreatorOperationIdsRef.current.set(operationKey, operationId);
+  };
+
+  const retireAmbiguousCreatorOperationId = (
+    operationKey: string,
+    operationId: string,
+  ) => {
+    if (ambiguousCreatorOperationIdsRef.current.get(operationKey) === operationId) {
+      ambiguousCreatorOperationIdsRef.current.delete(operationKey);
+    }
+  };
+
+  const isCreatorOperationHttpOutcomeAmbiguous = async (response: Response) => {
+    if (response.status === 408 || response.status >= 500) return true;
+
+    const payload = await response.clone().json().catch(() => null);
+    return payload?.code === "IDEMPOTENCY_REQUEST_IN_PROGRESS";
+  };
+
+  const getCreatorBatchChildOperationKey = (
+    operation: "image" | "voice" | "dialogue" | "video",
+    sceneId: number,
+    imageUseCase?: "scene" | "thumbnail" | "hook",
+  ) => [
+    "batch-child",
+    operation,
+    getProjectKey(),
+    sceneId,
+    ...(operation === "image" ? [imageUseCase || "scene"] : []),
+  ].join(":");
+
+  const resolveCreatorBatchChildOperationId = (
+    operationKey: string | undefined,
+    derivedOperationId: string,
+  ) => operationKey
+    ? ambiguousCreatorOperationIdsRef.current.get(operationKey) || derivedOperationId
+    : derivedOperationId;
 
   const getCreatorTelemetrySessionId = () => {
     if (typeof window === "undefined") return "server";
@@ -6231,22 +6314,38 @@ const generateSceneImage = async (
       premiumVisualMode?: boolean;
       imageUseCase?: "scene" | "thumbnail" | "hook";
       skipDispatchCountdown?: boolean;
+      creatorOperationId?: string;
+      creatorOperationKey?: string;
+      batchChildOperationKey?: string;
     }
   ) => {
     if (!canRunCreatorMediaAction("visuals")) {
       throw new Error(getCreatorMediaActionError());
     }
 
+    let creatorOperationId = options?.creatorOperationId || "";
+    const requestedImageUseCase =
+      options?.imageUseCase ||
+      (options?.isThumbnail ? "thumbnail" : options?.isHookScene || scene.id === 1 ? "hook" : "scene");
+    const creatorOperationKey = options?.creatorOperationKey ||
+      `image:${getProjectKey()}:${scene.id}:${requestedImageUseCase}`;
+    const shouldTrackAmbiguousOutcome =
+      isCreatorLabFlow &&
+      (!options?.skipDispatchCountdown || Boolean(options?.creatorOperationKey));
     if (isCreatorLabFlow && !options?.skipDispatchCountdown) {
-      const proceed = await startImageDispatchCountdown({
+      creatorOperationId = (await startImageDispatchCountdown({
         scope: "scene",
         sceneId: scene.id,
         sceneCount: 1,
         seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) {
+        operationKey: creatorOperationKey,
+      })) || "";
+      if (!creatorOperationId) {
         throw new Error("VELTO_IMAGE_DISPATCH_CANCELLED");
       }
+    }
+    if (isCreatorLabFlow && !creatorOperationId) {
+      throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
     }
 
     const safeScene = getSafeSceneForImagePrompt(scene);
@@ -6255,8 +6354,7 @@ const generateSceneImage = async (
     const premiumVisualMode = Boolean(
       options?.premiumVisualMode || isHookScene || isThumbnail
     );
-    const imageUseCase =
-      options?.imageUseCase || (isThumbnail ? "thumbnail" : isHookScene ? "hook" : "scene");
+    const imageUseCase = requestedImageUseCase;
     const resolvedContinuityMode = isCreatorLabFlow
       ? getCreatorResolvedContinuityMode(scene as Scene)
       : "consistent";
@@ -6268,21 +6366,25 @@ const generateSceneImage = async (
       : safeScene.text;
 
     const accessToken = await getAccessTokenOrThrow();
-    const imageRequestKey = [
-      "creator-image",
-      getProjectKey(),
-      scene.id,
-      imageUseCase,
-      Date.now(),
-    ].join(":");
-    const imageRes = await fetch("/api/image", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": imageRequestKey,
-      },
-      body: JSON.stringify({
+    const derivedImageRequestKey = `${creatorOperationId}:image:${scene.id}:${imageUseCase}`;
+    const imageRequestKey = isCreatorLabFlow
+      ? resolveCreatorBatchChildOperationId(
+          options?.batchChildOperationKey,
+          derivedImageRequestKey,
+        )
+      : ["storyverse-image", getProjectKey(), scene.id, imageUseCase, Date.now()].join(":");
+    let imageRes: Response;
+    try {
+      imageRes = await fetch("/api/image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          ...(isCreatorLabFlow
+            ? creatorCostGuardHeaders(imageRequestKey)
+            : { "x-idempotency-key": imageRequestKey }),
+        },
+        body: JSON.stringify({
         productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
         qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
         creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
@@ -6305,8 +6407,28 @@ const generateSceneImage = async (
         continuityContext: isCreatorLabFlow
           ? getSafeCreatorContinuityContext(scene.id, resolvedContinuityMode)
           : undefined,
-      }),
-    });
+        }),
+      });
+    } catch (transportError) {
+      if (shouldTrackAmbiguousOutcome || options?.batchChildOperationKey) {
+        retainAmbiguousCreatorOperationId(
+          options?.batchChildOperationKey || creatorOperationKey,
+          options?.batchChildOperationKey ? imageRequestKey : creatorOperationId,
+        );
+      }
+      throw transportError;
+    }
+    if (shouldTrackAmbiguousOutcome || options?.batchChildOperationKey) {
+      const operationKey = options?.batchChildOperationKey || creatorOperationKey;
+      const operationId = options?.batchChildOperationKey
+        ? imageRequestKey
+        : creatorOperationId;
+      if (await isCreatorOperationHttpOutcomeAmbiguous(imageRes)) {
+        retainAmbiguousCreatorOperationId(operationKey, operationId);
+      } else {
+        retireAmbiguousCreatorOperationId(operationKey, operationId);
+      }
+    }
 
     const imageData = await imageRes.json();
 
@@ -6386,7 +6508,15 @@ const generateSceneImage = async (
     );
   };
 
-  const getSceneAudioUrl = async (scene: Scene) => {
+  const getSceneAudioUrl = async (
+    scene: Scene,
+    options: {
+      skipCostGuardConfirmation?: boolean;
+      creatorOperationId?: string;
+      batchChildOperationKey?: string;
+    } = {},
+  ) => {
+    const creatorOperationKey = `voice:${getProjectKey()}:${scene.id}`;
     const voiceProfile = getCreatorNarratorProfileHint();
     const effectiveVoiceId = getEffectiveNarratorVoiceId(scene);
     const voiceRoute = getCreatorSceneVoiceContext({
@@ -6404,6 +6534,7 @@ const generateSceneImage = async (
       `${effectiveVoiceProfileId}:${effectiveVoiceId || "profile-default"}`,
     );
 
+    let creatorOperationId = options.creatorOperationId || "";
     if (
       scene.audioUrl &&
       scene.audioSourceText &&
@@ -6425,16 +6556,40 @@ const generateSceneImage = async (
       );
     }
 
+    if (
+      isCreatorLabFlow &&
+      !options.skipCostGuardConfirmation &&
+      getOperationCreditCost("creator_voice", creatorQualityMode) > 0
+    ) {
+      creatorOperationId = (await requestCreatorCostGuardConfirmation({
+        operationName: uiLanguage === "en" ? "Generate narrator" : "Anlatıcı üret",
+        estimatedCredits: getOperationCreditCost("creator_voice", creatorQualityMode),
+        qualityLabel: getCreatorQualityModeLabel(),
+        summary: `${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`,
+      }, creatorOperationKey)) || "";
+      if (!creatorOperationId) throw new Error(uiLanguage === "en" ? "Voice generation cancelled." : "Ses üretimi iptal edildi.");
+    }
+    if (isCreatorLabFlow && !creatorOperationId) throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
     const accessToken = await getAccessTokenOrThrow();
-    const voiceRequestKey = `creator-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
-    const res = await fetch("/api/store-audio", {
-      method: "POST",
-      headers: {
+    const derivedVoiceRequestKey = `${creatorOperationId}:voice:${scene.id}`;
+    const voiceRequestKey = isCreatorLabFlow
+      ? resolveCreatorBatchChildOperationId(
+          options.batchChildOperationKey,
+          derivedVoiceRequestKey,
+        )
+      : `storyverse-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
+    let res: Response;
+    try {
+      res = await fetch("/api/store-audio", {
+        method: "POST",
+        headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": voiceRequestKey,
+        ...(isCreatorLabFlow
+          ? creatorCostGuardHeaders(voiceRequestKey)
+          : { "x-idempotency-key": voiceRequestKey }),
       },
-      body: JSON.stringify({
+        body: JSON.stringify({
         text: scene.narration,
         sceneId: scene.id,
         projectKey: getProjectKey(),
@@ -6454,8 +6609,28 @@ const generateSceneImage = async (
         voiceProfile,
         companionText: scene.dialogue,
         clientSettingsKey: currentSettingsKey,
-      }),
-    });
+        }),
+      });
+    } catch (transportError) {
+      if (isCreatorLabFlow && (!options.skipCostGuardConfirmation || options.batchChildOperationKey)) {
+        retainAmbiguousCreatorOperationId(
+          options.batchChildOperationKey || creatorOperationKey,
+          options.batchChildOperationKey ? voiceRequestKey : creatorOperationId,
+        );
+      }
+      throw transportError;
+    }
+    if (isCreatorLabFlow && (!options.skipCostGuardConfirmation || options.batchChildOperationKey)) {
+      const operationKey = options.batchChildOperationKey || creatorOperationKey;
+      const operationId = options.batchChildOperationKey
+        ? voiceRequestKey
+        : creatorOperationId;
+      if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+        retainAmbiguousCreatorOperationId(operationKey, operationId);
+      } else {
+        retireAmbiguousCreatorOperationId(operationKey, operationId);
+      }
+    }
 
     const responseText = await res.text();
     let data: any = null;
@@ -6592,7 +6767,15 @@ const generateSceneImage = async (
     ];
   };
 
-  const getSceneDialogueUrl = async (scene: Scene) => {
+  const getSceneDialogueUrl = async (
+    scene: Scene,
+    options: {
+      skipCostGuardConfirmation?: boolean;
+      creatorOperationId?: string;
+      batchChildOperationKey?: string;
+    } = {},
+  ) => {
+    const creatorOperationKey = `dialogue:${getProjectKey()}:${scene.id}`;
     const lines = parseDialogueLines(scene.dialogue);
 
     if (lines.length === 0) {
@@ -6620,6 +6803,7 @@ const generateSceneImage = async (
       voiceIdentityKey,
     );
 
+    let creatorOperationId = options.creatorOperationId || "";
     if (
       scene.dialogueAudioUrl &&
       scene.dialogueAudioSourceText &&
@@ -6641,16 +6825,40 @@ const generateSceneImage = async (
       );
     }
 
+    if (
+      isCreatorLabFlow &&
+      !options.skipCostGuardConfirmation &&
+      getOperationCreditCost("creator_dialogue_voice", creatorQualityMode) > 0
+    ) {
+      creatorOperationId = (await requestCreatorCostGuardConfirmation({
+        operationName: uiLanguage === "en" ? "Generate dialogue" : "Diyalog üret",
+        estimatedCredits: getOperationCreditCost("creator_dialogue_voice", creatorQualityMode),
+        qualityLabel: getCreatorQualityModeLabel(),
+        summary: `${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`,
+      }, creatorOperationKey)) || "";
+      if (!creatorOperationId) throw new Error(uiLanguage === "en" ? "Dialogue generation cancelled." : "Diyalog üretimi iptal edildi.");
+    }
+    if (isCreatorLabFlow && !creatorOperationId) throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
     const accessToken = await getAccessTokenOrThrow();
-    const dialogueVoiceRequestKey = `creator-dialogue-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
-    const res = await fetch("/api/store-dialogue-audio", {
-      method: "POST",
-      headers: {
+    const derivedDialogueVoiceRequestKey = `${creatorOperationId}:dialogue-voice:${scene.id}`;
+    const dialogueVoiceRequestKey = isCreatorLabFlow
+      ? resolveCreatorBatchChildOperationId(
+          options.batchChildOperationKey,
+          derivedDialogueVoiceRequestKey,
+        )
+      : `storyverse-dialogue-voice-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
+    let res: Response;
+    try {
+      res = await fetch("/api/store-dialogue-audio", {
+        method: "POST",
+        headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": dialogueVoiceRequestKey,
+        ...(isCreatorLabFlow
+          ? creatorCostGuardHeaders(dialogueVoiceRequestKey)
+          : { "x-idempotency-key": dialogueVoiceRequestKey }),
       },
-      body: JSON.stringify({
+        body: JSON.stringify({
         lines,
         voiceId: effectiveDialogueVoiceId,
         voiceSelection: getEffectiveDialogueVoiceSelection(scene),
@@ -6674,8 +6882,28 @@ const generateSceneImage = async (
         advancedVoiceTuning: narratorSettings.advancedTuning === true,
         companionText: scene.narration,
         clientSettingsKey: currentSettingsKey,
-      }),
-    });
+        }),
+      });
+    } catch (transportError) {
+      if (isCreatorLabFlow && (!options.skipCostGuardConfirmation || options.batchChildOperationKey)) {
+        retainAmbiguousCreatorOperationId(
+          options.batchChildOperationKey || creatorOperationKey,
+          options.batchChildOperationKey ? dialogueVoiceRequestKey : creatorOperationId,
+        );
+      }
+      throw transportError;
+    }
+    if (isCreatorLabFlow && (!options.skipCostGuardConfirmation || options.batchChildOperationKey)) {
+      const operationKey = options.batchChildOperationKey || creatorOperationKey;
+      const operationId = options.batchChildOperationKey
+        ? dialogueVoiceRequestKey
+        : creatorOperationId;
+      if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+        retainAmbiguousCreatorOperationId(operationKey, operationId);
+      } else {
+        retireAmbiguousCreatorOperationId(operationKey, operationId);
+      }
+    }
 
     const data = await res.json();
 
@@ -7460,64 +7688,24 @@ const generateSceneImage = async (
     sceneId = null,
     sceneCount = 1,
     seconds,
+    operationKey,
   }: {
     scope: "scene" | "batch";
     sceneId?: number | null;
     sceneCount?: number;
     seconds: number;
+    operationKey?: string;
   }) => {
-    if (videoDispatchCountdownRef.current || imageDispatchCountdownRef.current) {
-      setError(
-        uiLanguage === "en"
-          ? "Another media start countdown is already active."
-          : "Başka bir medya başlatma geri sayımı zaten aktif.",
-      );
-      return Promise.resolve(false);
-    }
-
-    const initialCountdown: VideoDispatchCountdown = {
-      scope,
-      sceneId,
-      sceneCount: Math.max(1, sceneCount),
-      secondsRemaining: seconds,
-      totalSeconds: seconds,
-    };
-
-    videoDispatchCountdownRef.current = initialCountdown;
-    setVideoDispatchCountdown(initialCountdown);
-    setError("");
-    setSaveMessage(
-      scope === "batch"
-        ? uiLanguage === "en"
-          ? `Batch video production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto video charges.`
-          : `Toplu video üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto video maliyetini önlemek için şimdi iptal et.`
-        : uiLanguage === "en"
-          ? `Video production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto video charges.`
-          : `Video üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto video maliyetini önlemek için şimdi iptal et.`,
-    );
-
-    return new Promise<boolean>((resolve) => {
-      videoDispatchCountdownResolveRef.current = resolve;
-      videoDispatchCountdownTimerRef.current = setInterval(() => {
-        const current = videoDispatchCountdownRef.current;
-        if (!current) return;
-
-        const secondsRemaining = current.secondsRemaining - 1;
-        if (secondsRemaining <= 0) {
-          setSaveMessage(
-            uiLanguage === "en"
-              ? "Countdown completed. Sending the provider request and charging Velto video credits."
-              : "Geri sayım tamamlandı. Servis talebi gönderiliyor ve Velto video kredisi tüketiliyor.",
-          );
-          finishVideoDispatchCountdown(true);
-          return;
-        }
-
-        const nextCountdown = { ...current, secondsRemaining };
-        videoDispatchCountdownRef.current = nextCountdown;
-        setVideoDispatchCountdown(nextCountdown);
-      }, 1000);
-    });
+    void seconds;
+    const count = Math.max(1, sceneCount);
+    const estimatedCredits = estimateCreatorOperationManifest({ videos: count }, creatorQualityMode).totalCredits;
+    if (estimatedCredits <= 0) return Promise.resolve(window.crypto.randomUUID());
+    return requestCreatorCostGuardConfirmation({
+      operationName: uiLanguage === "en" ? (scope === "batch" ? "Create video blocks" : "Create video block") : (scope === "batch" ? "Video bloklarını üret" : "Video bloğu üret"),
+      estimatedCredits,
+      qualityLabel: getCreatorQualityModeLabel(),
+      summary: scope === "batch" ? `${count} ${uiLanguage === "en" ? "video operations" : "video işlemi"}` : sceneId ? `${uiLanguage === "en" ? "Scene" : "Sahne"} ${sceneId}` : undefined,
+    }, operationKey);
   };
 
   const finishImageDispatchCountdown = (proceed: boolean) => {
@@ -7559,75 +7747,36 @@ const generateSceneImage = async (
     sceneId = null,
     sceneCount = 1,
     seconds,
+    operationKey,
   }: {
     scope: "scene" | "batch" | "thumbnail";
     sceneId?: number | null;
     sceneCount?: number;
     seconds: number;
+    operationKey?: string;
   }) => {
-    if (imageDispatchCountdownRef.current || videoDispatchCountdownRef.current) {
-      setError(
-        uiLanguage === "en"
-          ? "Another media start countdown is already active."
-          : "Başka bir medya başlatma geri sayımı zaten aktif.",
-      );
-      return Promise.resolve(false);
-    }
-
-    const initialCountdown: ImageDispatchCountdown = {
-      scope,
-      sceneId,
-      sceneCount: Math.max(1, sceneCount),
-      secondsRemaining: seconds,
-      totalSeconds: seconds,
-    };
-
-    imageDispatchCountdownRef.current = initialCountdown;
-    setImageDispatchCountdown(initialCountdown);
-    setError("");
-    setSaveMessage(
-      scope === "batch"
-        ? uiLanguage === "en"
-          ? `Batch image production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
-          : `Toplu görsel üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`
-        : scope === "thumbnail"
-          ? uiLanguage === "en"
-            ? `AI thumbnail generation will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
-            : `AI thumbnail üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`
-          : uiLanguage === "en"
-            ? `Image production will be sent in ${seconds} seconds. Cancel now to avoid provider and Velto image charges.`
-            : `Görsel üretimi ${seconds} saniye içinde servise gönderilecek. Servis ve Velto görsel maliyetini önlemek için şimdi iptal et.`,
-    );
-
-    return new Promise<boolean>((resolve) => {
-      imageDispatchCountdownResolveRef.current = resolve;
-      imageDispatchCountdownTimerRef.current = setInterval(() => {
-        const current = imageDispatchCountdownRef.current;
-        if (!current) return;
-
-        const secondsRemaining = current.secondsRemaining - 1;
-        if (secondsRemaining <= 0) {
-          setSaveMessage(
-            uiLanguage === "en"
-              ? "Countdown completed. Sending the provider request and starting Velto image billing."
-              : "Geri sayım tamamlandı. Servis talebi gönderiliyor ve Velto görsel ücretlendirmesi başlıyor.",
-          );
-          finishImageDispatchCountdown(true);
-          return;
-        }
-
-        const nextCountdown = { ...current, secondsRemaining };
-        imageDispatchCountdownRef.current = nextCountdown;
-        setImageDispatchCountdown(nextCountdown);
-      }, 1000);
-    });
+    void seconds;
+    const count = Math.max(1, sceneCount);
+    const estimatedCredits = estimateCreatorOperationManifest({ images: count }, creatorQualityMode).totalCredits;
+    if (estimatedCredits <= 0) return Promise.resolve(window.crypto.randomUUID());
+    return requestCreatorCostGuardConfirmation({
+      operationName: uiLanguage === "en" ? (scope === "thumbnail" ? "Create AI thumbnail" : scope === "batch" ? "Create images" : "Create image") : (scope === "thumbnail" ? "AI thumbnail üret" : scope === "batch" ? "Görselleri üret" : "Görsel üret"),
+      estimatedCredits,
+      qualityLabel: getCreatorQualityModeLabel(),
+      summary: scope === "batch" ? `${count} ${uiLanguage === "en" ? "image operations" : "görsel işlemi"}` : sceneId ? `${uiLanguage === "en" ? "Scene" : "Sahne"} ${sceneId}` : undefined,
+    }, operationKey);
   };
 
   const handleGenerateVideo = async (
     sceneId: number,
-    options: { skipDispatchCountdown?: boolean } = {},
+    options: {
+      skipDispatchCountdown?: boolean;
+      creatorOperationId?: string;
+      batchChildOperationKey?: string;
+    } = {},
   ) => {
     const scene = scenes.find((s) => s.id === sceneId);
+    const creatorOperationKey = `video:${getProjectKey()}:${sceneId}`;
 
     if (!scene) {
       setError("Sahne bulunamadı.");
@@ -7655,15 +7804,18 @@ const generateSceneImage = async (
       return false;
     }
 
-    if (!options.skipDispatchCountdown) {
-      const proceed = await startVideoDispatchCountdown({
+    let creatorOperationId = options.creatorOperationId || "";
+    if (isCreatorLabFlow && !options.skipDispatchCountdown) {
+      creatorOperationId = (await startVideoDispatchCountdown({
         scope: "scene",
         sceneId: scene.id,
         sceneCount: 1,
         seconds: SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return false;
+        operationKey: creatorOperationKey,
+      })) || "";
+      if (!creatorOperationId) return false;
     }
+    if (isCreatorLabFlow && !creatorOperationId) return false;
 
     clearVideoPollForScene(sceneId);
     setError("");
@@ -7687,15 +7839,25 @@ const generateSceneImage = async (
 
     try {
       const accessToken = await getAccessTokenOrThrow();
-      const videoRequestKey = `creator-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
-      const res = await fetch(getVideoApiEndpoint(), {
-        method: "POST",
-        headers: {
+      const derivedVideoRequestKey = `${creatorOperationId}:video:${scene.id}`;
+      const videoRequestKey = isCreatorLabFlow
+        ? resolveCreatorBatchChildOperationId(
+            options.batchChildOperationKey,
+            derivedVideoRequestKey,
+          )
+        : `storyverse-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
+      let res: Response;
+      try {
+        res = await fetch(getVideoApiEndpoint(), {
+          method: "POST",
+          headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
-          "x-idempotency-key": videoRequestKey,
+          ...(isCreatorLabFlow
+            ? creatorCostGuardHeaders(videoRequestKey)
+            : { "x-idempotency-key": videoRequestKey }),
         },
-        body: JSON.stringify({
+          body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           projectId: currentProjectId || undefined,
           sceneId: scene.id,
@@ -7708,8 +7870,28 @@ const generateSceneImage = async (
           emotion: scene.emotion,
           duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
           ...getCreatorCinematicVideoInputs(scene),
-        }),
-      });
+          }),
+        });
+      } catch (transportError) {
+        if (isCreatorLabFlow && (!options.skipDispatchCountdown || options.batchChildOperationKey)) {
+          retainAmbiguousCreatorOperationId(
+            options.batchChildOperationKey || creatorOperationKey,
+            options.batchChildOperationKey ? videoRequestKey : creatorOperationId,
+          );
+        }
+        throw transportError;
+      }
+      if (isCreatorLabFlow && (!options.skipDispatchCountdown || options.batchChildOperationKey)) {
+        const operationKey = options.batchChildOperationKey || creatorOperationKey;
+        const operationId = options.batchChildOperationKey
+          ? videoRequestKey
+          : creatorOperationId;
+        if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+          retainAmbiguousCreatorOperationId(operationKey, operationId);
+        } else {
+          retireAmbiguousCreatorOperationId(operationKey, operationId);
+        }
+      }
 
       const data = await res.json();
 
@@ -7945,13 +8127,20 @@ const generateSceneImage = async (
   };
 
 
-  const generateSceneVideoAndWait = async (scene: Scene) => {
+  const generateSceneVideoAndWait = async (
+    scene: Scene,
+    creatorOperationId?: string,
+    batchChildOperationKey?: string,
+  ) => {
     if (!scene.image) {
       throw new Error("Video için önce sahne görseli hazırlanmalı.");
     }
 
     if (!(await prepareCreatorMediaAction("ai_video_blocks"))) {
       throw new Error(getCreatorMediaActionError("ai_video_blocks"));
+    }
+    if (isCreatorLabFlow && !creatorOperationId) {
+      throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
     }
 
     clearVideoPollForScene(scene.id);
@@ -7969,29 +8158,52 @@ const generateSceneImage = async (
     );
 
     const accessToken = await getAccessTokenOrThrow();
-    const videoRequestKey = `creator-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
-    const res = await fetch(getVideoApiEndpoint(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": videoRequestKey,
-      },
-      body: JSON.stringify({
-        productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
-        projectId: currentProjectId || undefined,
-        sceneId: scene.id,
-        qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
-        creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
-        imageUrl: scene.image,
-        text: scene.text,
-        motionHint: scene.motionHint,
-        cameraDirection: scene.cameraDirection,
-        emotion: scene.emotion,
-        duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
-        ...getCreatorCinematicVideoInputs(scene),
-      }),
-    });
+    const derivedVideoRequestKey = `${creatorOperationId}:video:${scene.id}`;
+    const videoRequestKey = isCreatorLabFlow
+      ? resolveCreatorBatchChildOperationId(
+          batchChildOperationKey,
+          derivedVideoRequestKey,
+        )
+      : `storyverse-video-${currentProjectId || "draft"}-${scene.id}-${Date.now()}`;
+    let res: Response;
+    try {
+      res = await fetch(getVideoApiEndpoint(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          ...(isCreatorLabFlow
+            ? creatorCostGuardHeaders(videoRequestKey)
+            : { "x-idempotency-key": videoRequestKey }),
+        },
+        body: JSON.stringify({
+          productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+          projectId: currentProjectId || undefined,
+          sceneId: scene.id,
+          qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+          creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
+          imageUrl: scene.image,
+          text: scene.text,
+          motionHint: scene.motionHint,
+          cameraDirection: scene.cameraDirection,
+          emotion: scene.emotion,
+          duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+          ...getCreatorCinematicVideoInputs(scene),
+        }),
+      });
+    } catch (transportError) {
+      if (isCreatorLabFlow && batchChildOperationKey) {
+        retainAmbiguousCreatorOperationId(batchChildOperationKey, videoRequestKey);
+      }
+      throw transportError;
+    }
+    if (isCreatorLabFlow && batchChildOperationKey) {
+      if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+        retainAmbiguousCreatorOperationId(batchChildOperationKey, videoRequestKey);
+      } else {
+        retireAmbiguousCreatorOperationId(batchChildOperationKey, videoRequestKey);
+      }
+    }
 
     const data = await res.json();
 
@@ -8203,13 +8415,14 @@ const generateSceneImage = async (
     }
 
     const pendingImageSceneCount = scenes.filter((scene) => !scene.image).length;
+    let batchOperationId = "";
     if (isCreatorLabFlow && pendingImageSceneCount > 0) {
-      const proceed = await startImageDispatchCountdown({
+      batchOperationId = (await startImageDispatchCountdown({
         scope: "batch",
         sceneCount: pendingImageSceneCount,
         seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
+      })) || "";
+      if (!batchOperationId) return;
     }
 
     setError("");
@@ -8245,7 +8458,15 @@ const generateSceneImage = async (
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
+            nextImage = await generateSceneImage(scene, {
+              skipDispatchCountdown: true,
+              creatorOperationId: batchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey(
+                "image",
+                scene.id,
+                scene.id === 1 ? "hook" : "scene",
+              ),
+            });
             scene = {
               ...scene,
               image: nextImage,
@@ -8333,13 +8554,14 @@ const generateSceneImage = async (
       return false;
     }
 
+    let batchOperationId = "";
     if (isCreatorLabFlow && targetScenes.length > 0) {
-      const proceed = await startImageDispatchCountdown({
+      batchOperationId = (await startImageDispatchCountdown({
         scope: "batch",
         sceneCount: targetScenes.length,
         seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return false;
+      })) || "";
+      if (!batchOperationId) return false;
     }
 
     setError("");
@@ -8381,7 +8603,15 @@ const generateSceneImage = async (
 
         try {
           setRedrawLoadingId(scene.id);
-          const nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
+          const nextImage = await generateSceneImage(scene, {
+            skipDispatchCountdown: true,
+            creatorOperationId: batchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey(
+              "image",
+              scene.id,
+              scene.id === 1 ? "hook" : "scene",
+            ),
+          });
           const nextScene = {
             ...scene,
             image: nextImage,
@@ -8486,13 +8716,14 @@ const generateSceneImage = async (
         (!scene.videoUrl || scene.videoStatus !== "done"),
     ).length;
 
-    if (pendingVideoSceneCount > 0) {
-      const proceed = await startVideoDispatchCountdown({
+    let batchOperationId = "";
+    if (isCreatorLabFlow && pendingVideoSceneCount > 0) {
+      batchOperationId = (await startVideoDispatchCountdown({
         scope: "batch",
         sceneCount: pendingVideoSceneCount,
         seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
+      })) || "";
+      if (!batchOperationId) return;
     }
 
     setError("");
@@ -8536,7 +8767,11 @@ const generateSceneImage = async (
 
         try {
           if (!scene.videoUrl || scene.videoStatus !== "done") {
-            const videoResult = await generateSceneVideoAndWait(scene);
+            const videoResult = await generateSceneVideoAndWait(
+              scene,
+              batchOperationId,
+              getCreatorBatchChildOperationKey("video", scene.id),
+            );
             scene = {
               ...scene,
               videoUrl: videoResult.videoUrl,
@@ -8637,22 +8872,26 @@ const generateSceneImage = async (
     ).length;
     const pendingImageSceneCount = workingScenes.filter((scene) => !scene.image).length;
 
-    if (pendingVideoSceneCount > 0) {
-      // The existing batch undo window gates the complete production run, so
-      // no image or video provider call starts before the countdown reaches zero.
-      const proceed = await startVideoDispatchCountdown({
-        scope: "batch",
-        sceneCount: pendingVideoSceneCount,
-        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
-    } else if (isCreatorLabFlow && pendingImageSceneCount > 0) {
-      const proceed = await startImageDispatchCountdown({
-        scope: "batch",
-        sceneCount: pendingImageSceneCount,
-        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
+    let batchOperationId = "";
+    if (isCreatorLabFlow) {
+      const manifest = {
+        images: pendingImageSceneCount,
+        voices: workingScenes.filter((scene) => scene.narration?.trim() && !getSceneAudioStatus(scene)).length,
+        dialogueVoices: workingScenes.filter((scene) => scene.dialogue?.trim() && !getSceneDialogueAudioStatus(scene)).length,
+        videos: pendingVideoSceneCount,
+      };
+      const estimate = estimateCreatorOperationManifest(manifest, creatorQualityMode);
+      if (estimate.totalCredits > 0) {
+        batchOperationId = (await requestCreatorCostGuardConfirmation({
+          operationName: uiLanguage === "en" ? "Start batch production" : "Toplu üretimi başlat",
+          estimatedCredits: estimate.totalCredits,
+          qualityLabel: getCreatorQualityModeLabel(),
+          summary: `${manifest.images} ${uiLanguage === "en" ? "images" : "görsel"} · ${manifest.voices} ${uiLanguage === "en" ? "narrations" : "anlatım"} · ${manifest.dialogueVoices} ${uiLanguage === "en" ? "dialogues" : "diyalog"} · ${manifest.videos} video`,
+        })) || "";
+        if (!batchOperationId) return;
+      } else {
+        batchOperationId = window.crypto.randomUUID();
+      }
     }
 
     setError("");
@@ -8687,7 +8926,15 @@ const generateSceneImage = async (
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
+            nextImage = await generateSceneImage(scene, {
+              skipDispatchCountdown: true,
+              creatorOperationId: batchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey(
+                "image",
+                scene.id,
+                scene.id === 1 ? "hook" : "scene",
+              ),
+            });
             scene = {
               ...scene,
               image: nextImage,
@@ -8713,12 +8960,20 @@ const generateSceneImage = async (
 
           if (scene.narration?.trim()) {
             setLoadingAudioSceneId(scene.id);
-            nextAudioUrl = await getSceneAudioUrl(scene);
+            nextAudioUrl = await getSceneAudioUrl(scene, {
+              skipCostGuardConfirmation: true,
+              creatorOperationId: batchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey("voice", scene.id),
+            });
           }
 
           if (scene.dialogue?.trim()) {
             setLoadingDialogueSceneId(scene.id);
-            nextDialogueAudioUrl = await getSceneDialogueUrl(scene);
+            nextDialogueAudioUrl = await getSceneDialogueUrl(scene, {
+              skipCostGuardConfirmation: true,
+              creatorOperationId: batchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey("dialogue", scene.id),
+            });
           }
 
           const nextTiming = await refreshSceneTiming(scene.id, {
@@ -8746,7 +9001,11 @@ const generateSceneImage = async (
               message: uiLanguage === "en" ? "Generating routed video block..." : "Yönlendirilmiş video block üretiliyor...",
             });
 
-            const videoResult = await generateSceneVideoAndWait(scene);
+            const videoResult = await generateSceneVideoAndWait(
+              scene,
+              batchOperationId,
+              getCreatorBatchChildOperationKey("video", scene.id),
+            );
             scene = {
               ...scene,
               videoUrl: videoResult.videoUrl,
@@ -8869,27 +9128,36 @@ const generateSceneImage = async (
         ? getCreatorRoutedVideoSceneIds(scenes)
         : scenes.map((scene) => scene.id),
     );
-    const retryVideoSceneCount = uniqueSceneIds.filter((sceneId) =>
-      retryRoutedVideoSceneIdSet.has(sceneId),
-    ).length;
-    const retryImageSceneCount = uniqueSceneIds.filter((sceneId) =>
-      !scenes.find((scene) => scene.id === sceneId)?.image,
-    ).length;
-
-    if (retryVideoSceneCount > 0) {
-      const proceed = await startVideoDispatchCountdown({
-        scope: "batch",
-        sceneCount: retryVideoSceneCount,
-        seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
-    } else if (isCreatorLabFlow && retryImageSceneCount > 0) {
-      const proceed = await startImageDispatchCountdown({
-        scope: "batch",
-        sceneCount: retryImageSceneCount,
-        seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
+    const retryScenes = scenes.filter((scene) => uniqueSceneIds.includes(scene.id));
+    const retryManifest = {
+      images: retryScenes.filter((scene) => !scene.image).length,
+      voices: retryScenes.filter(
+        (scene) => scene.narration?.trim() && !getSceneAudioStatus(scene),
+      ).length,
+      dialogueVoices: retryScenes.filter(
+        (scene) => scene.dialogue?.trim() && !getSceneDialogueAudioStatus(scene),
+      ).length,
+      videos: retryScenes.filter((scene) =>
+        retryRoutedVideoSceneIdSet.has(scene.id),
+      ).length,
+    };
+    let retryBatchOperationId = "";
+    if (isCreatorLabFlow) {
+      const retryEstimate = estimateCreatorOperationManifest(
+        retryManifest,
+        creatorQualityMode,
+      );
+      if (retryEstimate.totalCredits > 0) {
+        retryBatchOperationId = (await requestCreatorCostGuardConfirmation({
+          operationName: uiLanguage === "en" ? "Retry failed production" : "Başarısız üretimi yeniden dene",
+          estimatedCredits: retryEstimate.totalCredits,
+          qualityLabel: getCreatorQualityModeLabel(),
+          summary: `${retryManifest.images} ${uiLanguage === "en" ? "images" : "görsel"} · ${retryManifest.voices} ${uiLanguage === "en" ? "narrations" : "anlatım"} · ${retryManifest.dialogueVoices} ${uiLanguage === "en" ? "dialogues" : "diyalog"} · ${retryManifest.videos} video`,
+        })) || "";
+        if (!retryBatchOperationId) return;
+      } else {
+        retryBatchOperationId = window.crypto.randomUUID();
+      }
     }
 
     setError("");
@@ -8938,7 +9206,15 @@ const generateSceneImage = async (
 
           if (!nextImage) {
             setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene, { skipDispatchCountdown: true });
+            nextImage = await generateSceneImage(scene, {
+              skipDispatchCountdown: true,
+              creatorOperationId: retryBatchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey(
+                "image",
+                scene.id,
+                scene.id === 1 ? "hook" : "scene",
+              ),
+            });
             scene = {
               ...scene,
               image: nextImage,
@@ -8964,12 +9240,20 @@ const generateSceneImage = async (
 
           if (scene.narration?.trim()) {
             setLoadingAudioSceneId(scene.id);
-            nextAudioUrl = await getSceneAudioUrl(scene);
+            nextAudioUrl = await getSceneAudioUrl(scene, {
+              skipCostGuardConfirmation: true,
+              creatorOperationId: retryBatchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey("voice", scene.id),
+            });
           }
 
           if (scene.dialogue?.trim()) {
             setLoadingDialogueSceneId(scene.id);
-            nextDialogueAudioUrl = await getSceneDialogueUrl(scene);
+            nextDialogueAudioUrl = await getSceneDialogueUrl(scene, {
+              skipCostGuardConfirmation: true,
+              creatorOperationId: retryBatchOperationId,
+              batchChildOperationKey: getCreatorBatchChildOperationKey("dialogue", scene.id),
+            });
           }
 
           const nextTiming = await refreshSceneTiming(scene.id, {
@@ -8996,7 +9280,11 @@ const generateSceneImage = async (
               message: uiLanguage === "en" ? "Retry: generating routed video block..." : "Retry: yönlendirilmiş video block üretiliyor...",
             });
 
-            const videoResult = await generateSceneVideoAndWait(scene);
+            const videoResult = await generateSceneVideoAndWait(
+              scene,
+              retryBatchOperationId,
+              getCreatorBatchChildOperationKey("video", scene.id),
+            );
             scene = {
               ...scene,
               videoUrl: videoResult.videoUrl,
@@ -9274,6 +9562,20 @@ const generateSceneImage = async (
       : rawExportScenes;
     const flowContinuityAudit = exportFlowValidation?.audit || null;
 
+    const creatorExportOperationKey = `export:${getProjectKey()}`;
+    let creatorExportOperationId = "";
+    if (isCreatorLabFlow && getOperationCreditCost("creator_export", creatorQualityMode) > 0) {
+      creatorExportOperationId = (await requestCreatorCostGuardConfirmation({
+        operationName: uiLanguage === "en" ? "Create final export" : "Final export üret",
+        estimatedCredits: getOperationCreditCost("creator_export", creatorQualityMode),
+        qualityLabel: getCreatorQualityModeLabel(),
+        summary: `${exportScenes.length} ${uiLanguage === "en" ? "scenes" : "sahne"}`,
+      }, creatorExportOperationKey)) || "";
+      if (!creatorExportOperationId) return;
+    } else if (isCreatorLabFlow) {
+      creatorExportOperationId = window.crypto.randomUUID();
+    }
+
     setIsExportingMovie(true);
     setError("");
     setSaveMessage("");
@@ -9288,23 +9590,23 @@ const generateSceneImage = async (
       const exportEndpoint = isCreatorLabFlow
         ? "/api/creator-export"
         : `${exportApiBase}/export-movie`;
-      const exportRequestKey = [
-        "creator-export",
-        getProjectKey(),
-        Date.now(),
-      ].join(":");
-      const res = await fetch(exportEndpoint, {
-        method: "POST",
-        headers: {
+      const exportRequestKey = isCreatorLabFlow
+        ? `${creatorExportOperationId}:export`
+        : ["storyverse-export", getProjectKey(), Date.now()].join(":");
+      let res: Response;
+      try {
+        res = await fetch(exportEndpoint, {
+          method: "POST",
+          headers: {
           "Content-Type": "application/json",
           ...(isCreatorLabFlow
             ? {
                 Authorization: `Bearer ${exportAccessToken}`,
-                "x-idempotency-key": exportRequestKey,
+                ...creatorCostGuardHeaders(exportRequestKey),
               }
             : {}),
         },
-        body: JSON.stringify({
+          body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           title,
@@ -9358,8 +9660,30 @@ const generateSceneImage = async (
               },
             };
           }),
-        }),
-      });
+          }),
+        });
+      } catch (transportError) {
+        if (isCreatorLabFlow) {
+          retainAmbiguousCreatorOperationId(
+            creatorExportOperationKey,
+            creatorExportOperationId,
+          );
+        }
+        throw transportError;
+      }
+      if (isCreatorLabFlow) {
+        if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+          retainAmbiguousCreatorOperationId(
+            creatorExportOperationKey,
+            creatorExportOperationId,
+          );
+        } else {
+          retireAmbiguousCreatorOperationId(
+            creatorExportOperationKey,
+            creatorExportOperationId,
+          );
+        }
+      }
 
       const data = await res.json();
 
@@ -9488,6 +9812,26 @@ const generateSceneImage = async (
       return;
     }
 
+    let audioBatchOperationId = "";
+    if (isCreatorLabFlow) {
+      const manifest = {
+        voices: scenes.filter((scene) => scene.narration?.trim() && !getSceneAudioStatus(scene)).length,
+        dialogueVoices: scenes.filter((scene) => scene.dialogue?.trim() && !getSceneDialogueAudioStatus(scene)).length,
+      };
+      const estimate = estimateCreatorOperationManifest(manifest, creatorQualityMode);
+      if (estimate.totalCredits > 0) {
+        audioBatchOperationId = (await requestCreatorCostGuardConfirmation({
+          operationName: uiLanguage === "en" ? "Prepare voice tracks" : "Ses kayıtlarını hazırla",
+          estimatedCredits: estimate.totalCredits,
+          qualityLabel: getCreatorQualityModeLabel(),
+          summary: `${manifest.voices} ${uiLanguage === "en" ? "narration" : "anlatım"} · ${manifest.dialogueVoices} ${uiLanguage === "en" ? "dialogue" : "diyalog"}`,
+        })) || "";
+        if (!audioBatchOperationId) return;
+      } else {
+        audioBatchOperationId = window.crypto.randomUUID();
+      }
+    }
+
     setError("");
     setSaveMessage("");
     setIsPreparingAudio(true);
@@ -9500,12 +9844,20 @@ const generateSceneImage = async (
 
         if (scene.narration?.trim()) {
           setLoadingAudioSceneId(scene.id);
-          latestNarrationUrl = await getSceneAudioUrl(scene);
+          latestNarrationUrl = await getSceneAudioUrl(scene, {
+            skipCostGuardConfirmation: true,
+            creatorOperationId: audioBatchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey("voice", scene.id),
+          });
         }
 
         if (scene.dialogue?.trim()) {
           setLoadingDialogueSceneId(scene.id);
-          latestDialogueUrl = await getSceneDialogueUrl(scene);
+          latestDialogueUrl = await getSceneDialogueUrl(scene, {
+            skipCostGuardConfirmation: true,
+            creatorOperationId: audioBatchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey("dialogue", scene.id),
+          });
         }
 
         await refreshSceneTiming(scene.id, {
@@ -9558,6 +9910,26 @@ const generateSceneImage = async (
       return false;
     }
 
+    let audioBatchOperationId = "";
+    if (isCreatorLabFlow) {
+      const manifest = {
+        voices: targetScenes.filter((scene) => scene.narration?.trim() && !getSceneAudioStatus(scene)).length,
+        dialogueVoices: targetScenes.filter((scene) => scene.dialogue?.trim() && !getSceneDialogueAudioStatus(scene)).length,
+      };
+      const estimate = estimateCreatorOperationManifest(manifest, creatorQualityMode);
+      if (estimate.totalCredits > 0) {
+        audioBatchOperationId = (await requestCreatorCostGuardConfirmation({
+          operationName: uiLanguage === "en" ? "Prepare selected voice tracks" : "Seçili ses kayıtlarını hazırla",
+          estimatedCredits: estimate.totalCredits,
+          qualityLabel: getCreatorQualityModeLabel(),
+          summary: `${manifest.voices} ${uiLanguage === "en" ? "narration" : "anlatım"} · ${manifest.dialogueVoices} ${uiLanguage === "en" ? "dialogue" : "diyalog"}`,
+        })) || "";
+        if (!audioBatchOperationId) return false;
+      } else {
+        audioBatchOperationId = window.crypto.randomUUID();
+      }
+    }
+
     setError("");
     setSaveMessage("");
     setIsPreparingAudio(true);
@@ -9571,12 +9943,20 @@ const generateSceneImage = async (
 
         if (scene.narration?.trim()) {
           setLoadingAudioSceneId(scene.id);
-          latestNarrationUrl = await getSceneAudioUrl(scene);
+          latestNarrationUrl = await getSceneAudioUrl(scene, {
+            skipCostGuardConfirmation: true,
+            creatorOperationId: audioBatchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey("voice", scene.id),
+          });
         }
 
         if (scene.dialogue?.trim()) {
           setLoadingDialogueSceneId(scene.id);
-          latestDialogueUrl = await getSceneDialogueUrl(scene);
+          latestDialogueUrl = await getSceneDialogueUrl(scene, {
+            skipCostGuardConfirmation: true,
+            creatorOperationId: audioBatchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey("dialogue", scene.id),
+          });
         }
 
         await refreshSceneTiming(scene.id, {
@@ -10572,14 +10952,10 @@ const generateSceneImage = async (
 
   const getCreatorQualityEstimate = () => {
     const sceneCount = getCreatorSceneCount();
-    const durationMinutes = Math.max(1, Math.ceil(creatorVideoDurationSec / 60));
 
     const modePolicy: Record<
       CreatorQualityMode,
       {
-        baseCredits: number;
-        sceneCredits: number;
-        durationCredits: number;
         videoRatio: number;
         mediaPathEn: string;
         mediaPathTr: string;
@@ -10590,9 +10966,6 @@ const generateSceneImage = async (
       }
     > = {
       draft: {
-        baseCredits: 1,
-        sceneCredits: 0,
-        durationCredits: 0,
         videoRatio: 0,
         mediaPathEn: "Text-only strategy package",
         mediaPathTr: "Yalnızca metin strateji paketi",
@@ -10602,9 +10975,6 @@ const generateSceneImage = async (
         exportReadinessTr: "Brief, hook, sahne taslağı ve metadata ön çalışması",
       },
       standard: {
-        baseCredits: 3,
-        sceneCredits: 1,
-        durationCredits: 1,
         videoRatio: 0,
         mediaPathEn: "Mostly images, voice and light motion",
         mediaPathTr: "Ağırlıklı görsel, ses ve hafif hareket",
@@ -10614,9 +10984,6 @@ const generateSceneImage = async (
         exportReadinessTr: "Kontrollü kredi kullanımıyla hazırlanabilir creator paketi",
       },
       pro: {
-        baseCredits: 6,
-        sceneCredits: 2,
-        durationCredits: 2,
         videoRatio: 0.45,
         mediaPathEn: "Selective video blocks, stronger voice and thumbnail routing",
         mediaPathTr: "Seçili video blokları, daha güçlü ses ve thumbnail yönlendirme",
@@ -10626,9 +10993,6 @@ const generateSceneImage = async (
         exportReadinessTr: "Profesyonel yayına hazır paket",
       },
       cinematic: {
-        baseCredits: 10,
-        sceneCredits: 4,
-        durationCredits: 4,
         videoRatio: 0.75,
         mediaPathEn: "Premium video blocks, continuity-aware export and higher-end voice",
         mediaPathTr: "Premium video blokları, süreklilik odaklı export ve üst kalite ses",
@@ -10640,9 +11004,20 @@ const generateSceneImage = async (
     };
 
     const policy = modePolicy[creatorQualityMode];
-    const estimatedCredits = policy.baseCredits + sceneCount * policy.sceneCredits + durationMinutes * policy.durationCredits;
     const estimatedVideoBlocks = Math.min(sceneCount, Math.max(0, Math.round(sceneCount * policy.videoRatio)));
     const estimatedImageMotionBlocks = Math.max(0, sceneCount - estimatedVideoBlocks);
+    const knownNarrationTracks = scenes.filter((scene) => Boolean(scene.narration?.trim())).length;
+    const knownDialogueTracks = scenes.filter((scene) => Boolean(scene.dialogue?.trim())).length;
+    const estimatedCredits = estimateCreatorOperationManifest(
+      {
+        images: sceneCount,
+        voices: knownNarrationTracks,
+        dialogueVoices: knownDialogueTracks,
+        videos: estimatedVideoBlocks,
+        exports: creatorQualityMode === "draft" ? 0 : 1,
+      },
+      creatorQualityMode,
+    ).totalCredits;
 
     return {
       estimatedCredits,
@@ -13002,28 +13377,30 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       .join("\n");
   };
 
-  const generatePremiumYoutubeThumbnailImage = async (refinementInstruction?: string) => {
+  const generatePremiumYoutubeThumbnailImage = async (
+    creatorOperationId: string,
+    creatorOperationKey: string,
+    refinementInstruction?: string,
+  ) => {
     if (!canRunCreatorMediaAction("visuals")) {
       throw new Error(getCreatorMediaActionError());
     }
 
     const thumbnailPrompt = buildPremiumThumbnailPrompt(refinementInstruction);
     const accessToken = await getAccessTokenOrThrow();
-    const imageRequestKey = [
-      "creator-image",
-      getProjectKey(),
-      "thumbnail",
-      Date.now(),
-    ].join(":");
+    if (!creatorOperationId) throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
+    const imageRequestKey = `${creatorOperationId}:image:thumbnail:thumbnail`;
 
-    const imageRes = await fetch("/api/image", {
-      method: "POST",
-      headers: {
+    let imageRes: Response;
+    try {
+      imageRes = await fetch("/api/image", {
+        method: "POST",
+        headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
-        "x-idempotency-key": imageRequestKey,
+        ...creatorCostGuardHeaders(imageRequestKey),
       },
-      body: JSON.stringify({
+        body: JSON.stringify({
         productProfile: "creatorlab",
         qualityMode: creatorQualityMode,
         creatorFormat,
@@ -13041,8 +13418,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         isThumbnail: true,
         premiumVisualMode: true,
         imageUseCase: "thumbnail",
-      }),
-    });
+        }),
+      });
+    } catch (transportError) {
+      retainAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+      throw transportError;
+    }
+    if (await isCreatorOperationHttpOutcomeAmbiguous(imageRes)) {
+      retainAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+    } else {
+      retireAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+    }
 
     const imageData = await imageRes.json();
 
@@ -13232,18 +13618,22 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
   const handleRefinePremiumYoutubeThumbnail = async (preset: CreatorThumbnailRefinementPreset) => {
     if (!creatorProductionPackage) return;
-    const proceed = await startImageDispatchCountdown({
+    const creatorOperationKey = `premium-thumbnail:refine:${getProjectKey()}:${preset}`;
+    const creatorOperationId = await startImageDispatchCountdown({
       scope: "thumbnail",
       sceneCount: 1,
       seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      operationKey: creatorOperationKey,
     });
-    if (!proceed) return;
+    if (!creatorOperationId) return;
     setCreatorThumbnailRefining(preset);
     setYoutubeThumbnailLoading(true);
     setError("");
     setSaveMessage("");
     try {
       const generatedThumbnail = await generatePremiumYoutubeThumbnailImage(
+        creatorOperationId,
+        creatorOperationKey,
         getThumbnailRefinementInstruction(preset),
       );
       const nextResult: YoutubeThumbnailResult = {
@@ -13277,19 +13667,24 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       return;
     }
 
-    const proceed = await startImageDispatchCountdown({
+    const creatorOperationKey = `premium-thumbnail:generate:${getProjectKey()}`;
+    const creatorOperationId = await startImageDispatchCountdown({
       scope: "thumbnail",
       sceneCount: 1,
       seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      operationKey: creatorOperationKey,
     });
-    if (!proceed) return;
+    if (!creatorOperationId) return;
 
     setYoutubeThumbnailLoading(true);
     setError("");
     setSaveMessage("");
 
     try {
-      const generatedThumbnail = await generatePremiumYoutubeThumbnailImage();
+      const generatedThumbnail = await generatePremiumYoutubeThumbnailImage(
+        creatorOperationId,
+        creatorOperationKey,
+      );
       const nextResult: YoutubeThumbnailResult = {
         imageUrl: generatedThumbnail.imageUrl,
         prompt: generatedThumbnail.prompt,
@@ -13828,14 +14223,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       return;
     }
 
+    let creatorOperationId = "";
+    const creatorOperationKey = `image:${getProjectKey()}:${scene.id}:scene`;
     if (isCreatorLabFlow) {
-      const proceed = await startImageDispatchCountdown({
+      creatorOperationId = (await startImageDispatchCountdown({
         scope: "scene",
         sceneId: scene.id,
         sceneCount: 1,
         seconds: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) return;
+        operationKey: creatorOperationKey,
+      })) || "";
+      if (!creatorOperationId) return;
     }
 
     setRedrawLoadingId(scene.id);
@@ -13868,7 +14266,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         )
       );
 
-      const image = await generateSceneImage(scene, { skipDispatchCountdown: true });
+      const image = await generateSceneImage(scene, {
+        skipDispatchCountdown: true,
+        creatorOperationId,
+        creatorOperationKey,
+      });
 
       setScenes((prev) =>
         prev.map((item) => (item.id === scene.id ? { ...item, image } : item))
@@ -14297,13 +14699,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     }
 
     const usesBatchCountdown = targetScenes.length > 1;
+    let batchOperationId = "";
     if (usesBatchCountdown) {
-      const proceed = await startVideoDispatchCountdown({
+      batchOperationId = (await startVideoDispatchCountdown({
         scope: "batch",
         sceneCount: targetScenes.length,
         seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
-      });
-      if (!proceed) {
+      })) || "";
+      if (!batchOperationId) {
         throw new Error(
           uiLanguage === "en"
             ? "Video generation was cancelled before provider dispatch."
@@ -14315,6 +14718,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     for (const scene of targetScenes) {
       const started = await handleGenerateVideo(scene.id, {
         skipDispatchCountdown: usesBatchCountdown,
+        creatorOperationId: batchOperationId || undefined,
+        batchChildOperationKey: usesBatchCountdown
+          ? getCreatorBatchChildOperationKey("video", scene.id)
+          : undefined,
       });
       if (!started) {
         throw new Error(
@@ -27284,7 +27691,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   return (
                     <div className="creatorlab-quality-summary">
                       <div className="creatorlab-quality-metric">
-                        <span>{uiLanguage === "en" ? "Current estimate" : "Mevcut tahmin"}</span>
+                        <span>{uiLanguage === "en" ? "Projected policy estimate" : "Politikaya dayalı öngörü"}</span>
                         <strong>{estimate.estimatedCredits} {uiLanguage === "en" ? "credits" : "kredi"}</strong>
                       </div>
                       <div className="creatorlab-quality-metric">
@@ -33725,6 +34132,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           </div>
         )}
       </ActiveProductShell>
+      {isCreatorLabFlow && (
+        <CreatorCostGuard
+          request={creatorCostGuardRequest}
+          language={uiLanguage}
+          onConfirm={() => finishCreatorCostGuardConfirmation(true)}
+          onCancel={() => finishCreatorCostGuardConfirmation(false)}
+        />
+      )}
     </WorldProvider>
   );
 }
