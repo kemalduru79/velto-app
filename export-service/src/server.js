@@ -464,6 +464,56 @@ async function createSilentAudio(outputPath, durationSeconds) {
   ]);
 }
 
+async function createSpeechDuckingControl({
+  speechAudioPath,
+  outputPath,
+  durationSeconds,
+}) {
+  const safeDuration = Math.max(0.01, Number(durationSeconds) || 0.01);
+
+  if (!speechAudioPath) {
+    await createSilentAudio(outputPath, safeDuration);
+    return outputPath;
+  }
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    speechAudioPath,
+    "-af",
+    `aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${safeDuration.toFixed(3)},asetpts=PTS-STARTPTS`,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
+async function concatSpeechDuckingControls(controlPaths, tempDir) {
+  if (controlPaths.length === 0) return undefined;
+
+  const outputPath = path.join(tempDir, "speech-ducking-control.m4a");
+  if (controlPaths.length === 1) {
+    await fs.promises.copyFile(controlPaths[0], outputPath);
+    return outputPath;
+  }
+
+  const listPath = path.join(tempDir, "speech-ducking-control-list.txt");
+  const listContent = controlPaths
+    .map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`)
+    .join("\n");
+  await fs.promises.writeFile(listPath, listContent, "utf8");
+  await concatAudioFiles(listPath, outputPath);
+  return outputPath;
+}
+
 async function polishSceneAudio({
   inputPath,
   outputPath,
@@ -1196,7 +1246,36 @@ async function mixFinalVideoWithBackgroundMusic({
   bgmPath,
   outputVideoPath,
   bgmVolume = 0.16,
+  autoDucking = true,
+  fadeInSec = 1.5,
+  fadeOutSec = 2,
+  speechControlPath,
+  preserveProgramLevel = false,
 }) {
+  const durationSec = await getMediaDuration(inputVideoPath);
+  const safeDuration = Math.max(0.1, durationSec);
+  const safeVolume = Math.min(0.3, Math.max(0.04, Number(bgmVolume) || 0.16));
+  const safeFadeIn = Math.min(5, Math.max(0, Number(fadeInSec) || 0));
+  const safeFadeOut = Math.min(8, Math.max(0, Number(fadeOutSec) || 0));
+  const fadeOutStart = Math.max(0, safeDuration - safeFadeOut);
+  const fadeInFilter = safeFadeIn > 0
+    ? `,afade=t=in:st=0:d=${Math.min(safeFadeIn, safeDuration).toFixed(3)}`
+    : "";
+  const fadeOutFilter = safeFadeOut > 0
+    ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${Math.min(safeFadeOut, safeDuration).toFixed(3)}`
+    : "";
+  const musicFilter =
+    `[1:a]atrim=duration=${safeDuration.toFixed(3)},asetpts=PTS-STARTPTS,` +
+    `volume=${safeVolume.toFixed(3)}${fadeInFilter}${fadeOutFilter}[music];`;
+  const useSpeechDucking = autoDucking && Boolean(speechControlPath);
+  const finalMixOptions =
+    `amix=inputs=2:duration=first:dropout_transition=0` +
+    (preserveProgramLevel ? ":normalize=0" : "");
+  const mixFilter = useSpeechDucking
+    ? `[music][2:a]sidechaincompress=threshold=0.035:ratio=6:attack=25:release=450:makeup=1[bed];` +
+      `[0:a][bed]${finalMixOptions},alimiter=limit=0.95[a]`
+    : `[0:a][music]${finalMixOptions},alimiter=limit=0.95[a]`;
+
   await runFfmpeg([
     "-y",
     "-i",
@@ -1205,9 +1284,9 @@ async function mixFinalVideoWithBackgroundMusic({
     "-1",
     "-i",
     bgmPath,
+    ...(useSpeechDucking ? ["-i", speechControlPath] : []),
     "-filter_complex",
-    `[1:a]volume=${bgmVolume.toFixed(3)}[bgm];` +
-      `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+    musicFilter + mixFilter,
     "-map",
     "0:v",
     "-map",
@@ -1227,6 +1306,31 @@ async function mixFinalVideoWithBackgroundMusic({
     "-shortest",
     outputVideoPath,
   ]);
+}
+
+// CreatorLab IDs resolve only through this server-owned map. It is intentionally
+// empty until a real, approved local music asset is added to the service image.
+const CREATOR_MUSIC_ASSET_BY_ID = Object.freeze({});
+
+function normalizeCreatorBackgroundMusic(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  const requestedTrackId = typeof source.selectedTrackId === "string"
+    ? source.selectedTrackId.trim()
+    : "";
+  const assetName = CREATOR_MUSIC_ASSET_BY_ID[requestedTrackId];
+  const mode = source.mode === "selected" && assetName ? "selected" : "none";
+
+  return {
+    mode,
+    selectedTrackId: mode === "selected" ? requestedTrackId : undefined,
+    assetName: mode === "selected" ? assetName : undefined,
+    volume: Math.min(0.3, Math.max(0.04, Number(source.volume) || 0.16)),
+    autoDucking: source.autoDucking !== false,
+    fadeInSec: Math.min(5, Math.max(0, Number(source.fadeInSec) || 0)),
+    fadeOutSec: Math.min(8, Math.max(0, Number(source.fadeOutSec) || 0)),
+  };
 }
 
 app.get("/health", (_req, res) => {
@@ -1272,6 +1376,12 @@ app.post("/export-movie", async (req, res) => {
     }
 
     const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
+    const isCreatorLabExport = body?.productProfile === "creatorlab";
+    const creatorMusic = normalizeCreatorBackgroundMusic(body?.backgroundMusic);
+    const shouldPrepareSpeechDucking =
+      isCreatorLabExport &&
+      creatorMusic.mode === "selected" &&
+      creatorMusic.autoDucking;
     const projectId =
       typeof body?.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -1298,6 +1408,8 @@ app.post("/export-movie", async (req, res) => {
     const sceneClipPaths = [];
     const sceneDurationsSec = [];
     const sceneContinuityChecks = [];
+    const sceneSpeechControlPaths = [];
+    let speechDuckingControlAvailable = shouldPrepareSpeechDucking;
     let visualFillerSceneCount = 0;
     let visualFillerDurationSec = 0;
     const visualFillerStrategyCount = {};
@@ -1490,6 +1602,28 @@ app.post("/export-movie", async (req, res) => {
       sceneDurationsSec.push(clipResult.durationSec);
       sceneContinuityChecks.push(sceneContinuityCheck);
 
+      if (shouldPrepareSpeechDucking && speechDuckingControlAvailable) {
+        const sceneSpeechControlPath = path.join(
+          tempDir,
+          `scene-speech-control-${i + 1}.m4a`
+        );
+        try {
+          await createSpeechDuckingControl({
+            speechAudioPath: finalAudioPath,
+            outputPath: sceneSpeechControlPath,
+            durationSeconds: clipResult.durationSec,
+          });
+          sceneSpeechControlPaths.push(sceneSpeechControlPath);
+        } catch (speechControlError) {
+          speechDuckingControlAvailable = false;
+          sceneSpeechControlPaths.length = 0;
+          console.warn(
+            "Speech-only ducking control preparation failed; music will be mixed without ducking:",
+            speechControlError
+          );
+        }
+      }
+
       if (clipResult.fillerStrategy !== "none") {
         visualFillerSceneCount += 1;
         visualFillerDurationSec += clipResult.fillerDurationSec;
@@ -1506,11 +1640,30 @@ app.post("/export-movie", async (req, res) => {
       outputFilePath
     );
 
-    const bgmPath = path.join(process.cwd(), "assets", "bgm.mp3");
+    const bgmPath = isCreatorLabExport
+      ? creatorMusic.assetName
+        ? path.join(process.cwd(), "assets", "music", creatorMusic.assetName)
+        : ""
+      : path.join(process.cwd(), "assets", "bgm.mp3");
     let finalOutputFilePath = outputFilePath;
     let backgroundMusicEmbedded = false;
+    let speechControlPath;
 
-    if (fs.existsSync(bgmPath)) {
+    if (shouldPrepareSpeechDucking && speechDuckingControlAvailable) {
+      try {
+        speechControlPath = await concatSpeechDuckingControls(
+          sceneSpeechControlPaths,
+          tempDir
+        );
+      } catch (speechControlError) {
+        console.warn(
+          "Speech-only ducking timeline failed; music will be mixed without ducking:",
+          speechControlError
+        );
+      }
+    }
+
+    if (bgmPath && fs.existsSync(bgmPath)) {
       const outputWithBgmPath = path.join(tempDir, "output-with-continuous-bgm.mp4");
 
       try {
@@ -1518,7 +1671,13 @@ app.post("/export-movie", async (req, res) => {
           inputVideoPath: outputFilePath,
           bgmPath,
           outputVideoPath: outputWithBgmPath,
-          bgmVolume: 0.16,
+          bgmVolume: isCreatorLabExport ? creatorMusic.volume : 0.16,
+          autoDucking:
+            isCreatorLabExport && creatorMusic.autoDucking && Boolean(speechControlPath),
+          fadeInSec: isCreatorLabExport ? creatorMusic.fadeInSec : 0,
+          fadeOutSec: isCreatorLabExport ? creatorMusic.fadeOutSec : 0,
+          speechControlPath,
+          preserveProgramLevel: isCreatorLabExport,
         });
 
         finalOutputFilePath = outputWithBgmPath;
@@ -1528,7 +1687,11 @@ app.post("/export-movie", async (req, res) => {
         console.warn("Background music mix skipped:", bgmError);
       }
     } else {
-      console.log("No bgm.mp3 found under assets. Export continues without background music.");
+      console.log(
+        isCreatorLabExport
+          ? "No approved CreatorLab music selected. Export continues without background music."
+          : "No bgm.mp3 found under assets. Export continues without background music."
+      );
     }
 
     const expectedFinalDurationSec = roundDuration(

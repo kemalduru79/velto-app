@@ -6,6 +6,11 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
+import { normalizeCreatorBackgroundMusicConfig } from "@/lib/creator/backgroundMusic";
+import {
+  autoMatchCreatorMusic,
+  CREATOR_MUSIC_TRACK_IDS,
+} from "@/lib/creator/musicLibrary";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -74,8 +79,29 @@ export async function POST(request: Request) {
       body.productProfile === "creatorlab" ? "creatorlab" : "storyverse";
     const qualityMode = body.qualityMode;
     const exportPayload = { ...body };
-    delete exportPayload.productProfile;
     delete exportPayload.qualityMode;
+    if (productProfile === "creatorlab") {
+      let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
+        body.backgroundMusic,
+        CREATOR_MUSIC_TRACK_IDS,
+      );
+      if (backgroundMusic.mode === "auto") {
+        const matchedTrack = autoMatchCreatorMusic({
+          contentType: typeof body.contentType === "string" ? body.contentType : "",
+          outcome: typeof body.outcome === "string" ? body.outcome : "",
+          topic: typeof body.title === "string" ? body.title : "",
+          visualStyle: typeof body.visualStyle === "string" ? body.visualStyle : "",
+          emotionalTone: typeof body.emotionalTone === "string" ? body.emotionalTone : "",
+          format: typeof body.creatorFormat === "string" ? body.creatorFormat : "",
+        });
+        backgroundMusic = matchedTrack
+          ? { ...backgroundMusic, mode: "selected", selectedTrackId: matchedTrack.id }
+          : { ...backgroundMusic, mode: "none", selectedTrackId: undefined };
+      }
+      exportPayload.backgroundMusic = backgroundMusic;
+    } else {
+      delete exportPayload.backgroundMusic;
+    }
 
     const exportApiBase = getExportApiBase();
 

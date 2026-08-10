@@ -45,6 +45,16 @@ import CreatorOutcomeStart from "@/components/create/CreatorOutcomeStart";
 import CreatorCostGuard, {
   type CreatorCostGuardRequest,
 } from "@/components/create/CreatorCostGuard";
+import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
+import {
+  DEFAULT_CREATOR_BACKGROUND_MUSIC,
+  normalizeCreatorBackgroundMusicConfig,
+  type CreatorBackgroundMusicConfig,
+} from "@/lib/creator/backgroundMusic";
+import {
+  CREATOR_MUSIC_LIBRARY_VERSION,
+  CREATOR_MUSIC_TRACK_IDS,
+} from "@/lib/creator/musicLibrary";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -891,6 +901,7 @@ type CreatorProductionPackage = {
   timelineSyncPlan?: TimelineSyncPlan;
   targetPlatforms?: CreatorPublishPlatform[];
   platformOutputPlan?: CreatorPlatformOutputPlan;
+  backgroundMusic?: CreatorBackgroundMusicConfig;
   voicePreferences?: {
     narratorProfileId: CreatorVoiceSelectionId;
     dialogueProfileId: CreatorVoiceSelectionId;
@@ -3264,6 +3275,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
   const [creatorProductionPackage, setCreatorProductionPackage] =
     useState<CreatorProductionPackage | null>(null);
+  const [creatorBackgroundMusic, setCreatorBackgroundMusic] =
+    useState<CreatorBackgroundMusicConfig>(DEFAULT_CREATOR_BACKGROUND_MUSIC);
   const [creatorTimelinePreviewPlan, setCreatorTimelinePreviewPlan] =
     useState<TimelineSyncPlan | null>(null);
   const [creatorEditPlan, setCreatorEditPlan] =
@@ -4992,6 +5005,16 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return JSON.stringify({
       title: nextTitle || "",
       scenes: exportableScenes,
+      ...(isCreatorLabFlow ? {
+        backgroundMusic: creatorBackgroundMusic,
+        musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION,
+        autoMatchInputs: {
+          contentType: creatorContentType,
+          outcome: creatorOutcome || "",
+          creatorFormat,
+          visualStyle: visualBible?.style || "",
+        },
+      } : {}),
     });
   };
 
@@ -6136,6 +6159,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
     setCreatorOutcome(undefined);
     setIsGeneratingFullYoutubePackage(false);
     setIsAdvancedMode(false);
@@ -9628,6 +9652,14 @@ const generateSceneImage = async (
           body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+          ...(isCreatorLabFlow ? { backgroundMusic: creatorBackgroundMusic } : {}),
+          ...(isCreatorLabFlow ? { musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION } : {}),
+          ...(isCreatorLabFlow ? {
+            contentType: creatorContentType,
+            outcome: creatorOutcome || "",
+            creatorFormat,
+            visualStyle: visualBible?.style || "",
+          } : {}),
           title,
           projectId: getProjectKey(),
           exportMode: "mixed",
@@ -10285,6 +10317,7 @@ const generateSceneImage = async (
               qualityMode: creatorQualityMode,
               targetPlatforms: creatorTargetPlatforms,
               platformOutputPlan: creatorPlatformOutputPlan,
+              backgroundMusic: creatorBackgroundMusic,
               visualContinuity: getCreatorVisualContinuitySnapshot(),
               voicePreferences: {
                 narratorProfileId: getEffectiveNarratorVoiceProfileId(),
@@ -10575,6 +10608,12 @@ const generateSceneImage = async (
       setCreatorProjectContinuityMode(loadedContinuitySettings.projectMode);
       setCreatorSceneContinuityModes(loadedContinuitySettings.sceneModes);
       setCreatorContinuityHydrated(true);
+      setCreatorBackgroundMusic(
+        normalizeCreatorBackgroundMusicConfig(
+          isCreatorProject ? savedCreatorPackage?.backgroundMusic : undefined,
+          CREATOR_MUSIC_TRACK_IDS,
+        ),
+      );
 
       const savedQualityMode = normalizedSavedCreatorPackage?.qualityMode;
       if (
@@ -28349,8 +28388,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   aria-pressed={creatorProjectContinuityMode === "independent"}
                   className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "independent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
                 >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "No · Generate independently" : "Hayır · Bağımsız üret"}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Default. Each scene may use a different person, location or metaphor." : "Varsayılan. Her sahne farklı kişi, mekân veya metafor kullanabilir."}</span>
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler"}</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each scene may use a different person, location or metaphor." : "Her sahne farklı kişi, mekân veya metafor kullanabilir."}</span>
                 </button>
                 <button
                   type="button"
@@ -28358,7 +28397,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   aria-pressed={creatorProjectContinuityMode === "consistent"}
                   className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "consistent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
                 >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Yes · Keep characters and world" : "Evet · Karakter ve evreni koru"}</strong>
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru"}</strong>
                   <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Reuse the recurring cast, visual world and handoff logic." : "Tekrar eden kadroyu, görsel evreni ve sahne geçişlerini korur."}</span>
                 </button>
                 <button
@@ -28367,7 +28406,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   aria-pressed={creatorProjectContinuityMode === "selective"}
                   className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "selective" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
                 >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Some scenes · Choose individually" : "Bazı sahneler · Tek tek seç"}</strong>
+                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Mixed / Choose per scene" : "Karma / Sahne başına seç"}</strong>
                   <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Scenes stay independent unless you explicitly link them." : "Sen açıkça bağlamadıkça sahneler bağımsız kalır."}</span>
                 </button>
               </div>
@@ -28927,6 +28966,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     </div>
                   </details>
                 </section>
+
+                <CreatorBackgroundMusic
+                  value={creatorBackgroundMusic}
+                  onChange={(nextValue) => {
+                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, CREATOR_MUSIC_TRACK_IDS);
+                    setCreatorBackgroundMusic(normalized);
+                    setExportSignature("");
+                  }}
+                  language={uiLanguage === "en" ? "en" : "tr"}
+                />
 
                 <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section">
                   <div className="creatorlab-cast-brand-section-heading">
