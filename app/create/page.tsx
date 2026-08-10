@@ -89,6 +89,12 @@ import {
 } from "@/lib/creator/visualContinuity";
 import { buildCreatorGenerationContinuityContext } from "@/lib/creator/sceneContinuity";
 import type { CreatorSceneContinuityState } from "@/lib/creator/continuityContracts";
+import {
+  createCreatorCharacterId,
+  ensureCreatorCharacterIds,
+  normalizeCreatorDialogueSpeakerCharacterId,
+  resolveCreatorDialogueSpeaker,
+} from "@/lib/creator/characterIdentity";
 
 // CONT-P1R + 3L COMPLETION
 import { getCreatorVoiceRoute } from "@/lib/creator/voiceRouting";
@@ -634,6 +640,7 @@ type Scene = {
   text: string;
   narration: string;
   dialogue: string;
+  dialogueSpeakerCharacterId?: string;
   cameraDirection: string;
   emotion: string;
   motionHint: string;
@@ -686,6 +693,7 @@ type BatchRenderItem = {
 };
 
 type Character = {
+  id?: string;
   name: string;
   age: string;
   appearance: string;
@@ -1303,7 +1311,7 @@ const withDefaultGuideCharacter = (incomingCharacters?: Character[]): Character[
 
 
 const normalizeCreatorLabCharacters = (incomingCharacters?: Character[]): Character[] => {
-  return normalizeCreatorAdultCharacters(
+  return ensureCreatorCharacterIds(normalizeCreatorAdultCharacters(
     Array.isArray(incomingCharacters)
       ? incomingCharacters.map((character) => ({
           ...character,
@@ -1312,7 +1320,7 @@ const normalizeCreatorLabCharacters = (incomingCharacters?: Character[]): Charac
           voiceProfileId: normalizeCreatorVoiceSelectionId(character.voiceProfileId, "velto_warm"),
         }))
       : [],
-  ) as Character[];
+  ) as Character[]) as Character[];
 };
 
 const normalizeCreatorLabGeneratedPackage = (
@@ -5523,14 +5531,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     );
 
   const getEffectiveDialogueVoiceProfileId = (scene?: Scene) => {
-    const matchingCharacter = scene?.dialogue
-      ? characters.find((character) =>
-          Boolean(character.name?.trim()) &&
-          scene.dialogue.toLocaleLowerCase("tr-TR").includes(
-            character.name.trim().toLocaleLowerCase("tr-TR"),
-          ),
-        )
-      : null;
+    const matchingCharacter = resolveCreatorDialogueSpeaker({
+      speakerCharacterId: scene?.dialogueSpeakerCharacterId,
+      characters,
+    });
 
     return normalizeCreatorVoiceSelectionId(
       scene?.dialogueVoiceProfileId ||
@@ -5541,14 +5545,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const getMatchingDialogueCharacter = (scene?: Scene) =>
-    scene?.dialogue
-      ? characters.find((character) =>
-          Boolean(character.name?.trim()) &&
-          scene.dialogue.toLocaleLowerCase("tr-TR").includes(
-            character.name.trim().toLocaleLowerCase("tr-TR"),
-          ),
-        )
-      : undefined;
+    resolveCreatorDialogueSpeaker({
+      speakerCharacterId: scene?.dialogueSpeakerCharacterId,
+      characters,
+    });
 
   const getEffectiveNarratorVoiceSelection = (scene?: Scene) =>
     normalizeVoiceLibrarySelection(
@@ -6726,22 +6726,15 @@ const generateSceneImage = async (
     return data.audioUrl as string;
   };
 
-  const normalizeName = (value: string) =>
-    value
-      .toLocaleLowerCase("tr-TR")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const parseDialogueLines = (dialogue: string): ParsedDialogueLine[] => {
+  const parseDialogueLines = (scene: Scene): ParsedDialogueLine[] => {
+    const dialogue = scene.dialogue;
     if (!dialogue?.trim()) {
       return [];
     }
 
     const cleanedDialogue = dialogue.trim();
-
-    const characterMap = new Map(
-      characters.map((character) => [normalizeName(character.name), character])
-    );
+    const explicitSpeaker = getMatchingDialogueCharacter(scene);
+    const explicitVoiceId = explicitSpeaker?.voiceId || "";
 
     const result: ParsedDialogueLine[] = [];
 
@@ -6765,12 +6758,10 @@ const generateSceneImage = async (
         continue;
       }
 
-      const character = characterMap.get(normalizeName(speaker));
-
       result.push({
         speaker,
         text,
-        voiceId: character?.voiceId || "",
+        voiceId: explicitVoiceId,
       });
     }
 
@@ -6781,8 +6772,6 @@ const generateSceneImage = async (
     const quoteMatches = Array.from(cleanedDialogue.matchAll(/["“](.+?)["”]/g));
 
     if (quoteMatches.length > 0) {
-      const fallbackCharacter = characters[0];
-
       for (const match of quoteMatches) {
         const text = (match[1] || "").trim();
 
@@ -6791,9 +6780,9 @@ const generateSceneImage = async (
         }
 
         result.push({
-          speaker: fallbackCharacter?.name || "Karakter",
+          speaker: explicitSpeaker?.name || "Character",
           text,
-          voiceId: fallbackCharacter?.voiceId || "",
+          voiceId: explicitVoiceId,
         });
       }
 
@@ -6802,13 +6791,11 @@ const generateSceneImage = async (
       }
     }
 
-    const fallbackCharacter = characters[0];
-
     return [
       {
-        speaker: fallbackCharacter?.name || "Karakter",
+        speaker: explicitSpeaker?.name || "Character",
         text: cleanedDialogue.replace(/^["'“”]+|["'“”]+$/g, ""),
-        voiceId: fallbackCharacter?.voiceId || "",
+        voiceId: explicitVoiceId,
       },
     ];
   };
@@ -6822,7 +6809,7 @@ const generateSceneImage = async (
     } = {},
   ) => {
     const creatorOperationKey = `dialogue:${getProjectKey()}:${scene.id}`;
-    const lines = parseDialogueLines(scene.dialogue);
+    const lines = parseDialogueLines(scene);
 
     if (lines.length === 0) {
       throw new Error("Bu sahnede diyalog üretilecek içerik bulunamadı.");
@@ -10459,6 +10446,9 @@ const generateSceneImage = async (
               allowDialogue: loadedDialogueRequested,
             })
           : savedCreatorPackage;
+      const loadedCharacters = isCreatorProject
+        ? normalizeCreatorLabCharacters(project.characters)
+        : withDefaultGuideCharacter(project.characters);
       const loadedProjectScenes = Array.isArray(project.scenes)
         ? project.scenes.map((scene: Scene, index: number) =>
             isCreatorProject
@@ -10486,11 +10476,7 @@ const generateSceneImage = async (
       setInput(project.input_prompt || "");
       // SADECE content language güncellensin
       setLanguage(project.language === "en" ? "en" : "tr");
-      setCharacters(
-        project.flow_type === "creator_lab"
-          ? normalizeCreatorLabCharacters(project.characters)
-          : withDefaultGuideCharacter(project.characters)
-      );
+      setCharacters(loadedCharacters);
       setVisualBible(project.visual_bible || emptyVisualBible);
       setCreatorUndoStack([]);
       setCreatorAssetCompareSelection({});
@@ -10499,6 +10485,12 @@ const generateSceneImage = async (
         loadedProjectScenes.length
           ? loadedProjectScenes.map((scene: Scene) => ({
               ...scene,
+              dialogueSpeakerCharacterId: isCreatorProject
+                ? normalizeCreatorDialogueSpeakerCharacterId(
+                    scene.dialogueSpeakerCharacterId,
+                    loadedCharacters,
+                  )
+                : undefined,
               audioUrl: scene.audioUrl || "",
               audioPath: scene.audioPath || "",
               audioSourceText: scene.audioSourceText || "",
@@ -10771,7 +10763,7 @@ const generateSceneImage = async (
         title: project.title || "",
         storyPremise: project.story_premise || "",
         characters: project.flow_type === "creator_lab"
-          ? normalizeCreatorLabCharacters(project.characters)
+          ? loadedCharacters
           : Array.isArray(project.characters)
             ? project.characters.map((character: Character) => ({
                 ...character,
@@ -12068,6 +12060,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     topic: string;
     accessToken: string;
   }) => {
+    const productionPackageWithCharacterIds = {
+      ...productionPackage,
+      characters: normalizeCreatorLabCharacters(productionPackage.characters),
+    };
     const res = await fetch("/api/creator-script-plan", {
       method: "POST",
       headers: {
@@ -12087,7 +12083,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           contentType: getCreatorContentTypeLabel(),
           format: creatorFormat,
         }),
-        productionPackage,
+        productionPackage: productionPackageWithCharacterIds,
       }),
     });
 
@@ -14020,6 +14016,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     setCharacters((prev) => [
       ...prev,
       {
+        id: createCreatorCharacterId(),
         name: "",
         age: "",
         appearance: "",
@@ -14035,7 +14032,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   };
 
   const removeCharacter = (index: number) => {
+    const removedCharacterId = characters[index]?.id;
     setCharacters((prev) => prev.filter((_, i) => i !== index));
+    if (removedCharacterId) {
+      setScenes((prev) =>
+        prev.map((scene) =>
+          scene.dialogueSpeakerCharacterId === removedCharacterId
+            ? { ...scene, dialogueSpeakerCharacterId: undefined }
+            : scene,
+        ),
+      );
+    }
   };
 
   const generateCharacterReference = async (index: number) => {
@@ -30682,6 +30689,64 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                     </label>
                                   )}
                                 </div>
+
+                                {hasDialogue && characters.length > 0 && (
+                                  <label className="block rounded-2xl border border-slate-200 bg-white p-4">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                      {uiLanguage === "en" ? "Dialogue speaker" : "Diyalog konuşmacısı"}
+                                    </span>
+                                    <select
+                                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
+                                      value={
+                                        normalizeCreatorDialogueSpeakerCharacterId(
+                                          scene.dialogueSpeakerCharacterId,
+                                          characters,
+                                        ) || ""
+                                      }
+                                      onChange={(event) => {
+                                        const nextSpeakerId = normalizeCreatorDialogueSpeakerCharacterId(
+                                          event.target.value,
+                                          characters,
+                                        );
+                                        setScenes((currentScenes) =>
+                                          currentScenes.map((item) =>
+                                            item.id === scene.id
+                                              ? {
+                                                  ...item,
+                                                  dialogueSpeakerCharacterId: nextSpeakerId,
+                                                  dialogueAudioUrl: "",
+                                                  dialogueAudioPath: "",
+                                                  dialogueAudioSourceText: "",
+                                                  dialogueAudioSettingsKey: "",
+                                                  timing: buildSceneTimingForCurrentFlow(
+                                                    item.timing?.narrationDuration || 0,
+                                                    0,
+                                                    item,
+                                                  ),
+                                                }
+                                              : item,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <option value="">
+                                        {uiLanguage === "en"
+                                          ? "Default character voice"
+                                          : "Varsayılan karakter sesi"}
+                                      </option>
+                                      {characters.map((character) => (
+                                        <option key={character.id} value={character.id}>
+                                          {character.name || (uiLanguage === "en" ? "Unnamed character" : "Adsız karakter")}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <small className="mt-2 block text-xs leading-5 text-slate-500">
+                                      {uiLanguage === "en"
+                                        ? "This scene supports one dialogue speaker. Selection is free and does not generate audio."
+                                        : "Bu sahne tek diyalog konuşmacısını destekler. Seçim ücretsizdir ve ses üretmez."}
+                                    </small>
+                                  </label>
+                                )}
 
                                 <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
                                   <div className="creatorlab-voice-selection-card rounded-2xl border border-slate-200 bg-white p-4">

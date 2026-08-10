@@ -153,11 +153,17 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
-const currentPackageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
-const baselinePackageLock = JSON.parse(execFileSync("git", ["show", "HEAD:package-lock.json"], { encoding: "utf8" }));
-delete currentPackageLock.packages?.[""]?.dependencies?.["hls.js"];
-delete currentPackageLock.packages?.["node_modules/hls.js"];
-assert.deepEqual(currentPackageLock, baselinePackageLock, "package-lock.json changed beyond approved hls.js dependency");
+const currentPackageLock = fs.readFileSync("package-lock.json", "utf8");
+const baselinePackageLock = execFileSync(
+  "git",
+  ["show", "HEAD:package-lock.json"],
+  { encoding: "utf8" },
+);
+assert.equal(
+  currentPackageLock,
+  baselinePackageLock,
+  "package-lock.json changed from the committed baseline",
+);
 
 for (const file of [
   ...execFileSync("git", ["ls-files", "supabase/migrations", "app/episode", "app/api/video/route.ts", "app/api/public-project", "app/api/share-project", "lib/security/publicStoryverseProjection.ts"], { encoding: "utf8" }).trim().split("\n"),

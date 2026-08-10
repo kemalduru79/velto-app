@@ -13,12 +13,17 @@ import {
   mergeCreatorSceneContinuityState,
   normalizeCreatorSceneContinuityState,
 } from "../../../lib/creator/sceneContinuity";
+import {
+  ensureCreatorCharacterIds,
+  normalizeCreatorDialogueSpeakerCharacterId,
+} from "../../../lib/creator/characterIdentity";
 
 type CreatorSceneInput = {
   id?: unknown;
   text?: unknown;
   narration?: unknown;
   dialogue?: unknown;
+  dialogueSpeakerCharacterId?: unknown;
   cameraDirection?: unknown;
   emotion?: unknown;
   motionHint?: unknown;
@@ -239,7 +244,11 @@ function parseModelJson(raw: string) {
   }
 }
 
-function normalizeSourceScenes(value: unknown, sceneCount: number) {
+function normalizeSourceScenes(
+  value: unknown,
+  sceneCount: number,
+  characters: Array<{ id: string }>,
+) {
   const source = Array.isArray(value) ? value : [];
 
   return Array.from({ length: sceneCount }, (_, index) => {
@@ -249,6 +258,10 @@ function normalizeSourceScenes(value: unknown, sceneCount: number) {
       text: asString(raw.text),
       narration: asString(raw.narration),
       dialogue: asString(raw.dialogue),
+      dialogueSpeakerCharacterId: normalizeCreatorDialogueSpeakerCharacterId(
+        raw.dialogueSpeakerCharacterId,
+        characters,
+      ),
       cameraDirection: asString(raw.cameraDirection),
       emotion: asString(raw.emotion),
       motionHint: asString(raw.motionHint),
@@ -262,6 +275,7 @@ function normalizeSourceScenes(value: unknown, sceneCount: number) {
 function normalizeModelScenes(
   value: unknown,
   sourceScenes: ReturnType<typeof normalizeSourceScenes>,
+  characters: Array<{ id: string }>,
 ) {
   const modelScenes = Array.isArray(value) ? value : [];
   const byId = new Map<number, Record<string, unknown>>();
@@ -281,6 +295,10 @@ function normalizeModelScenes(
       text: asString(revised.text, source.text),
       narration: asString(revised.narration, source.narration),
       dialogue: asString(revised.dialogue, source.dialogue),
+      dialogueSpeakerCharacterId: normalizeCreatorDialogueSpeakerCharacterId(
+        revised.dialogueSpeakerCharacterId,
+        characters,
+      ),
       cameraDirection: asString(
         revised.cameraDirection,
         source.cameraDirection,
@@ -370,6 +388,7 @@ async function reviseScenes({
   sourceScenes,
   budgets,
   repairIssues,
+  characters,
 }: {
   client: OpenAI;
   topic: string;
@@ -380,6 +399,7 @@ async function reviseScenes({
   sourceScenes: ReturnType<typeof normalizeSourceScenes>;
   budgets: SceneBudget[];
   repairIssues?: Array<{ id: number; status: string; words: number }>;
+  characters: Array<{ id: string; name?: unknown; personality?: unknown }>;
 }) {
   const systemPrompt = [
     "You are a senior documentary writer, YouTube script editor, retention editor, and scene-based production planner for CreatorLab, an adult 18+ professional creator product.",
@@ -407,6 +427,11 @@ async function reviseScenes({
     repairIssues: repairIssues || [],
     sceneBudgets: budgets,
     sourceScenes,
+    castAllowlist: characters.map((character) => ({
+      id: character.id,
+      name: asString(character.name),
+      role: asString(character.personality),
+    })),
     requiredJsonShape: {
       scenes: [
         {
@@ -414,6 +439,7 @@ async function reviseScenes({
           text: "concise scene purpose",
           narration: "professionally speakable narration within the supplied word range",
           dialogue: "optional dialogue; empty when narrator-led",
+          dialogueSpeakerCharacterId: "exact castAllowlist id only when exactly one known cast member speaks; otherwise omit",
           cameraDirection: "production direction, not spoken text",
           emotion: "scene emotion",
           motionHint: "visual movement direction",
@@ -431,6 +457,7 @@ async function reviseScenes({
       dialogueRequested
         ? "Dialogue is explicitly requested by the brief. Keep it professional, natural, and necessary."
         : "Keep dialogue empty in every scene. Use professional narration or voice-over instead, including in Scene 1.",
+      "Set dialogueSpeakerCharacterId only by selecting an exact id from castAllowlist when exactly one known cast member is the scene's dialogue speaker. Omit it for no dialogue, uncertainty, or multiple speakers.",
       "Do not repeat the hook in later scenes.",
       "Write for continuous spoken delivery without abrupt cutoffs at scene boundaries.",
       "Make visualPrompt specific enough to support multiple coherent visual beats inside the scene.",
@@ -448,7 +475,7 @@ async function reviseScenes({
   });
 
   const parsed = parseModelJson(response.output_text || "");
-  return normalizeModelScenes(parsed.scenes, sourceScenes).map((scene, index) =>
+  return normalizeModelScenes(parsed.scenes, sourceScenes, characters).map((scene, index) =>
     normalizeCreatorAdultScene(scene, {
       language,
       isOpeningScene: index === 0,
@@ -518,9 +545,15 @@ export async function POST(req: Request) {
       typeof body?.dialogueRequested === "boolean"
         ? body.dialogueRequested
         : creatorBriefRequestsDialogue({ topic, contentType, format });
+    const characters = ensureCreatorCharacterIds(
+      Array.isArray(productionPackage.characters)
+        ? productionPackage.characters as Array<Record<string, unknown>>
+        : [],
+    );
     const sourceScenes = normalizeSourceScenes(
       productionPackage.scenes,
       sceneCount,
+      characters,
     );
 
     if (!process.env.OPENAI_API_KEY) {
@@ -548,6 +581,7 @@ export async function POST(req: Request) {
       dialogueRequested,
       sourceScenes,
       budgets,
+      characters,
     });
 
     const firstHealth = revisedScenes.map((scene, index) =>
@@ -571,6 +605,7 @@ export async function POST(req: Request) {
         dialogueRequested,
         sourceScenes: revisedScenes,
         budgets,
+        characters,
         repairIssues,
       });
     }
@@ -602,6 +637,7 @@ export async function POST(req: Request) {
 
     const resultPackage = {
       ...productionPackage,
+      characters,
       scenes: enrichedScenes,
       durationSec,
       sceneCount,
