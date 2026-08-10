@@ -97,7 +97,7 @@ check("individual operations capture and pass immutable identities", () => {
   assert.match(page, /window\.crypto\.randomUUID\(\)/);
   assert.doesNotMatch(page, /activeCreatorOperationIdRef/);
   const imageFunction = section(page, "const generateSceneImage", "const updateSceneAudioData");
-  const voiceFunction = section(page, "const getSceneAudioUrl", "const normalizeName");
+  const voiceFunction = section(page, "const getSceneAudioUrl", "const parseDialogueLines");
   const dialogueFunction = section(page, "const getSceneDialogueUrl", "const playAudioFromUrl");
   const videoFunction = section(page, "const handleGenerateVideo", "const waitForRunwayVideoAndStore");
   for (const source of [imageFunction, voiceFunction, dialogueFunction, videoFunction]) {
@@ -198,7 +198,7 @@ check("ambiguous batch children reuse only their exact keyed identities", () => 
 
   for (const functionSource of [
     section(page, "const generateSceneImage", "const updateSceneAudioData"),
-    section(page, "const getSceneAudioUrl", "const normalizeName"),
+    section(page, "const getSceneAudioUrl", "const parseDialogueLines"),
     section(page, "const getSceneDialogueUrl", "const playAudioFromUrl"),
     section(page, "const handleGenerateVideo", "const waitForRunwayVideoAndStore"),
     section(page, "const generateSceneVideoAndWait", "const generateAllSceneVisuals"),
@@ -262,7 +262,7 @@ check("HTTP ambiguity keeps the same identity until a terminal outcome", () => {
 
   for (const functionSource of [
     section(page, "const generateSceneImage", "const updateSceneAudioData"),
-    section(page, "const getSceneAudioUrl", "const normalizeName"),
+    section(page, "const getSceneAudioUrl", "const parseDialogueLines"),
     section(page, "const getSceneDialogueUrl", "const playAudioFromUrl"),
     section(page, "const handleGenerateVideo", "const waitForRunwayVideoAndStore"),
     section(page, "const generateSceneVideoAndWait", "const generateAllSceneVisuals"),

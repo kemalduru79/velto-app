@@ -140,8 +140,9 @@ check("Storyverse legacy BGM remains separate", () => {
   assert.match(renderer, /isCreatorLabExport \? creatorMusic\.volume : 0\.16/);
 });
 check("continuity wording changed without semantic values", () => {
-  for (const label of ["Independent scenes", "Keep continuity", "Mixed / Choose per scene"]) assert.match(page, new RegExp(label.replace("/", "\\/")));
-  for (const value of ["independent", "consistent", "selective"]) assert.match(page, new RegExp(`setCreatorProjectContinuityMode\\("${value}"\\)`));
+  for (const label of ["Independent scenes", "Keep continuity", "Choose per scene"]) assert.match(page, new RegExp(label));
+  for (const value of ["independent", "consistent", "selective"]) assert.match(page, new RegExp(`value: "${value}" as const`));
+  assert.match(page, /setCreatorProjectContinuityMode\(option\.value\)/);
 });
 check("no package or database migration was introduced", () => {
   JSON.parse(packageJson);

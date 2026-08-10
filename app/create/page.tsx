@@ -46,6 +46,10 @@ import CreatorCostGuard, {
   type CreatorCostGuardRequest,
 } from "@/components/create/CreatorCostGuard";
 import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
+import CreatorProductionSubnav, {
+  type CreatorProductionSubstep,
+} from "@/components/create/CreatorProductionSubnav";
+import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import {
   DEFAULT_CREATOR_BACKGROUND_MUSIC,
   normalizeCreatorBackgroundMusicConfig,
@@ -616,7 +620,7 @@ type CreatorVoicePickerTarget =
   | { scope: "project_dialogue" }
   | { scope: "scene_narrator"; sceneId: number }
   | { scope: "scene_dialogue"; sceneId: number }
-  | { scope: "character"; characterIndex: number };
+  | { scope: "character"; characterId: string };
 
 type CreatorVoiceLibraryTab = "available" | "shared" | "favorites" | "recent";
 
@@ -3278,6 +3282,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorSelectedHookPattern, setCreatorSelectedHookPattern] = useState("");
   const [creatorSelectedWorkspaceStep, setCreatorSelectedWorkspaceStep] =
     useState<1 | 2 | 3 | 4>(1);
+  const [creatorProductionSubstep, setCreatorProductionSubstep] =
+    useState<CreatorProductionSubstep>("setup");
   const creatorLastAutoStepRef = useRef<1 | 2 | 3 | 4>(1);
   const [creatorBriefEditorOpen, setCreatorBriefEditorOpen] = useState(false);
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
@@ -5600,7 +5606,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       );
     }
     return normalizeVoiceLibrarySelection(
-      characters[voiceLibraryTarget.characterIndex]?.voiceSelection,
+      characters.find((character) => character.id === voiceLibraryTarget.characterId)
+        ?.voiceSelection,
     );
   };
 
@@ -5608,7 +5615,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     if (!voiceLibraryTarget) return "";
     const labels = {
       project_narrator: uiLanguage === "en" ? "Project narrator" : "Proje anlatıcısı",
-      project_dialogue: uiLanguage === "en" ? "Project dialogue" : "Proje diyaloğu",
+      project_dialogue: uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi",
       scene_narrator: uiLanguage === "en" ? "Scene narrator" : "Sahne anlatıcısı",
       scene_dialogue: uiLanguage === "en" ? "Scene dialogue" : "Sahne diyaloğu",
       character: uiLanguage === "en" ? "Character voice" : "Karakter sesi",
@@ -5897,8 +5904,22 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           ),
         );
       } else {
-        updateCharacter(voiceLibraryTarget.characterIndex, "voiceId", selection.voiceId);
-        updateCharacter(voiceLibraryTarget.characterIndex, "voiceSelection", selection);
+        const characterSelection: CreatorVoiceLibrarySelection = {
+          ...selection,
+          previewUrl: undefined,
+          publicOwnerId: undefined,
+        };
+        setCharacters((current) =>
+          current.map((character) =>
+            character.id === voiceLibraryTarget.characterId
+              ? {
+                  ...character,
+                  voiceId: characterSelection.voiceId,
+                  voiceSelection: characterSelection,
+                }
+              : character,
+          ),
+        );
         clearAllSceneDialogueAudioData();
       }
 
@@ -5953,8 +5974,13 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         ),
       );
     } else {
-      updateCharacter(voiceLibraryTarget.characterIndex, "voiceId", "");
-      updateCharacter(voiceLibraryTarget.characterIndex, "voiceSelection", undefined);
+      setCharacters((current) =>
+        current.map((character) =>
+          character.id === voiceLibraryTarget.characterId
+            ? { ...character, voiceId: "", voiceSelection: undefined }
+            : character,
+        ),
+      );
       clearAllSceneDialogueAudioData();
     }
     clearAllSceneTimingData();
@@ -6161,6 +6187,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setCreatorProductionSubstep("setup");
     setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
     setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
     setCreatorOutcome(undefined);
@@ -10724,6 +10751,11 @@ const generateSceneImage = async (
       }
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
+      setCreatorProductionSubstep(
+        isCreatorProject && loadedProjectScenes.length > 0
+          ? "create_review"
+          : "setup",
+      );
       setCreatorOutcome(normalizeCreatorOutcome(normalizedSavedCreatorPackage?.outcome));
       setCreatorTargetPlatforms(
         normalizeCreatorTargetPlatforms(
@@ -12275,6 +12307,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       const nextVisualBible = nextPackage.visualBible || emptyVisualBible;
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
       setStorySetup({
@@ -12645,6 +12678,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       };
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
 
@@ -16350,6 +16384,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     !creatorMotionRequired ||
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
+  const creatorFinalVideoProgressDetail = creatorProductionComplete
+    ? uiLanguage === "en" ? "Ready" : "Hazır"
+    : creatorFinalVideoReadiness?.canStartFinalVideo
+      ? uiLanguage === "en" ? "Ready to build" : "Oluşturmaya hazır"
+      : uiLanguage === "en" ? "Waiting for assets" : "Varlıklar bekleniyor";
   const creatorTimelineNeedsAttention = scenes.length > 0 && !creatorTimelineMediaGate.approved;
   const creatorNextProductionAction = creatorVideoSelectionBlockedByQuality
       ? {
@@ -17352,16 +17391,39 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       visualBible?.camera?.trim() ||
       visualBible?.consistencyRules?.trim(),
   );
-  const creatorVoiceDirectionConfigured = Boolean(
-    narratorSettings.voiceId?.trim() ||
-      getEffectiveNarratorVoiceProfileId() !== "velto_balanced" ||
-      getEffectiveDialogueVoiceProfileId() !== "velto_warm",
+  const creatorBoundDialogueCharacterIds = new Set(
+    scenes.flatMap((scene) => {
+      const speaker = resolveCreatorDialogueSpeaker({
+        speakerCharacterId: scene.dialogueSpeakerCharacterId,
+        characters,
+      });
+      return speaker?.id ? [speaker.id] : [];
+    }),
   );
-  const creatorCastBrandConfiguredCount = [
-    creatorBrandConfigured,
-    creatorVisualDirectionConfigured,
-    characters.length > 0 || creatorVoiceDirectionConfigured,
-  ].filter(Boolean).length;
+  const creatorResolvedCharacterVoiceCount = characters.filter(
+    (character) =>
+      creatorBoundDialogueCharacterIds.has(character.id || "") &&
+      Boolean(
+        character.voiceSelection?.voiceId ||
+          character.voiceId?.trim() ||
+          narratorSettings.dialogueVoiceSelection?.voiceId ||
+          narratorSettings.dialogueVoiceId?.trim() ||
+          getEffectiveDialogueVoiceProfileId(),
+      ),
+  ).length;
+  const creatorCharacterVoiceSummary = creatorBoundDialogueCharacterIds.size > 0
+    ? `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"} · ${uiLanguage === "en" ? "Character voices" : "Karakter sesleri"} ${creatorResolvedCharacterVoiceCount}/${creatorBoundDialogueCharacterIds.size} ${uiLanguage === "en" ? "resolved" : "çözümlendi"}`
+    : `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"} · ${uiLanguage === "en" ? characters.length === 0 ? "Character voices · Not needed for this project" : "Character voices · No character dialogue yet" : characters.length === 0 ? "Karakter sesleri · Bu proje için gerekli değil" : "Karakter sesleri · Henüz karakter diyaloğu yok"}`;
+  const creatorMusicSummary = creatorBackgroundMusic.mode === "selected"
+    ? uiLanguage === "en" ? "Selected" : "Seçildi"
+    : creatorBackgroundMusic.mode === "auto"
+      ? uiLanguage === "en" ? "Auto Match" : "Otomatik Eşleştir"
+      : uiLanguage === "en" ? "Off" : "Kapalı";
+  const creatorContinuitySummary = creatorProjectContinuityMode === "consistent"
+    ? uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru"
+    : creatorProjectContinuityMode === "selective"
+      ? uiLanguage === "en" ? "Choose per scene" : "Sahne başına seç"
+      : uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler";
 
   const audioDurationMatchedCount = scenes.filter(
     (scene) =>
@@ -28387,53 +28449,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               </ol>
             </section>
 
-            <section className="mb-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <div>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
-                  {uiLanguage === "en" ? "Visual continuity" : "Görsel devamlılık"}
-                </span>
-                <h3 className="mt-2 text-lg font-semibold text-slate-950">
-                  {uiLanguage === "en"
-                    ? "Do these scenes share recurring characters or the same visual world?"
-                    : "Bu sahnelerde tekrar eden karakterler veya ortak bir görsel evren var mı?"}
-                </h3>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  {uiLanguage === "en"
-                    ? "Choose the simplest project rule. You can still override any scene later."
-                    : "En basit proje kuralını seç. Her sahneyi daha sonra ayrı ayrı değiştirebilirsin."}
-                </p>
-              </div>
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setCreatorProjectContinuityMode("independent")}
-                  aria-pressed={creatorProjectContinuityMode === "independent"}
-                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "independent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler"}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each scene may use a different person, location or metaphor." : "Her sahne farklı kişi, mekân veya metafor kullanabilir."}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreatorProjectContinuityMode("consistent")}
-                  aria-pressed={creatorProjectContinuityMode === "consistent"}
-                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "consistent" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru"}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Reuse the recurring cast, visual world and handoff logic." : "Tekrar eden kadroyu, görsel evreni ve sahne geçişlerini korur."}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreatorProjectContinuityMode("selective")}
-                  aria-pressed={creatorProjectContinuityMode === "selective"}
-                  className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === "selective" ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                >
-                  <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Mixed / Choose per scene" : "Karma / Sahne başına seç"}</strong>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Scenes stay independent unless you explicitly link them." : "Sen açıkça bağlamadıkça sahneler bağımsız kalır."}</span>
-                </button>
-              </div>
-            </section>
-
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
                 <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
@@ -28478,81 +28493,34 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               </span>
             </header>
 
-            <article className="creatorlab-production-project-card">
-              <div className="creatorlab-production-project-copy">
-                <span>{uiLanguage === "en" ? "Approved production plan" : "Onaylanan üretim planı"}</span>
-                <strong title={creatorProductionPackage.title}>{creatorProductionPackage.title}</strong>
-                <p>{creatorProductionPackage.storyPremise}</p>
-              </div>
-              <div className="creatorlab-production-project-meta">
-                <div>
-                  <span>{uiLanguage === "en" ? "Format" : "Format"}</span>
-                  <strong>{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label}</strong>
-                </div>
-                <div>
-                  <span>{uiLanguage === "en" ? "Runtime" : "Süre"}</span>
-                  <strong>{getCreatorDurationLabel()}</strong>
-                </div>
-                <div>
-                  <span>{uiLanguage === "en" ? "Quality" : "Kalite"}</span>
-                  <strong>{getCreatorQualityModeLabel()}</strong>
-                </div>
-              </div>
-            </article>
+            <CreatorProductionSubnav
+              value={creatorProductionSubstep}
+              onChange={setCreatorProductionSubstep}
+              language={uiLanguage === "en" ? "en" : "tr"}
+            />
 
-            <details id="creatorlab-cast-brand" className="creatorlab-cast-brand-panel creatorlab-production-identity-panel">
-              <summary>
-                <div className="creatorlab-cast-brand-summary-copy">
-                  <span>{uiLanguage === "en" ? "Production identity" : "Üretim kimliği"}</span>
-                  <strong>{creatorPresentationModeLabel}</strong>
-                  <p>
-                    {creatorProfile.brandName || (uiLanguage === "en" ? "No brand profile" : "Marka profili yok")}
-                    {" · "}
-                    {creatorVisualDirectionConfigured
-                      ? uiLanguage === "en" ? "Visual direction ready" : "Görsel yön hazır"
-                      : uiLanguage === "en" ? "Default visual direction" : "Varsayılan görsel yön"}
-                  </p>
-                </div>
-                <div className="creatorlab-cast-brand-summary-meta">
-                  <span className="creatorlab-cast-brand-mode-pill">
-                    {characters.length > 0
-                      ? `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"}`
-                      : uiLanguage === "en" ? "Cast optional" : "Kadro opsiyonel"}
-                  </span>
-                  <span className="creatorlab-cast-brand-readiness">
-                    {creatorCastBrandConfiguredCount}/3 {uiLanguage === "en" ? "ready" : "hazır"}
-                  </span>
-                  <span className="creatorlab-cast-brand-chevron" aria-hidden="true">⌄</span>
-                </div>
-              </summary>
+            {creatorProductionSubstep === "create_review" && (
+              <>
+                <CreatorProductionSetupSummary
+                  title={creatorProductionPackage.title}
+                  premise={creatorProductionPackage.storyPremise}
+                  format={CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}
+                  runtime={getCreatorDurationLabel()}
+                  quality={getCreatorQualityModeLabel()}
+                  approach={creatorPresentationModeLabel}
+                  castSummary={creatorCharacterVoiceSummary}
+                  music={creatorMusicSummary}
+                  continuity={creatorContinuitySummary}
+                  onEdit={() => setCreatorProductionSubstep("setup")}
+                  language={uiLanguage === "en" ? "en" : "tr"}
+                />
+              </>
+            )}
 
-              <div className="creatorlab-cast-brand-body">
-                <div className="creatorlab-cast-brand-intro">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Optional by design" : "Tasarım gereği opsiyonel"}</span>
-                    <strong>
-                      {uiLanguage === "en"
-                        ? "Keep the production simple, then add identity where it improves the result."
-                        : "Üretimi sade tut; yalnızca sonucu iyileştirdiğinde kimlik katmanı ekle."}
-                    </strong>
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Changes made here guide new visual generation, voice-over and retries. Existing scene copy or completed assets are not rewritten automatically."
-                        : "Buradaki değişiklikler yeni görsel üretimini, seslendirmeyi ve tekrar denemeleri yönlendirir. Mevcut sahne metni veya tamamlanmış varlıklar otomatik olarak yeniden yazılmaz."}
-                    </p>
-                  </div>
-                  <div className="creatorlab-cast-brand-signal-row" aria-label={uiLanguage === "en" ? "Cast and brand readiness" : "Cast ve marka hazırlığı"}>
-                    <span className={creatorBrandConfigured ? "is-ready" : ""}>
-                      {creatorBrandConfigured ? "✓" : "1"} {uiLanguage === "en" ? "Brand" : "Marka"}
-                    </span>
-                    <span className={creatorVisualDirectionConfigured ? "is-ready" : ""}>
-                      {creatorVisualDirectionConfigured ? "✓" : "2"} {uiLanguage === "en" ? "Visual direction" : "Görsel yön"}
-                    </span>
-                    <span className={characters.length > 0 || creatorVoiceDirectionConfigured ? "is-ready" : ""}>
-                      {characters.length > 0 || creatorVoiceDirectionConfigured ? "✓" : "3"} {uiLanguage === "en" ? "Presence" : "Anlatım kimliği"}
-                    </span>
-                  </div>
-                </div>
+            {creatorProductionSubstep === "setup" && (
+              <div className="space-y-5" data-production-substep="setup">
+                <div id="creatorlab-cast-brand" className="space-y-5">
+                  <div className="creatorlab-cast-brand-body">
 
                 <section className="creatorlab-cast-brand-section">
                   <div className="creatorlab-cast-brand-section-heading">
@@ -28646,7 +28614,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   )}
                 </section>
 
-                <div className="creatorlab-cast-brand-grid">
+                <section className="space-y-3">
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {uiLanguage === "en" ? "Brand & Visual Direction" : "Marka ve Görsel Yön"}
+                    </span>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {uiLanguage === "en" ? "Set the identity, style and atmosphere shared across the project." : "Proje genelinde kullanılan kimliği, stili ve atmosferi belirle."}
+                    </p>
+                  </div>
+                  <div className="creatorlab-cast-brand-grid">
                   <section className="creatorlab-cast-brand-card">
                     <div className="creatorlab-cast-brand-card-heading">
                       <span>{uiLanguage === "en" ? "Brand foundation" : "Marka temeli"}</span>
@@ -28716,14 +28693,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       </div>
                     </details>
                   </section>
-                </div>
+                  </div>
+                </section>
 
                 <section id="creatorlab-cast-voice" className="creatorlab-cast-brand-section creatorlab-voice-direction-section">
                   <div className="creatorlab-cast-brand-section-heading">
                     <div>
-                      <span>{uiLanguage === "en" ? "Voice direction" : "Ses yönü"}</span>
-                      <h3>{uiLanguage === "en" ? "Set the narrator or presenter performance" : "Anlatıcı veya sunucu performansını ayarla"}</h3>
-                      <p>{uiLanguage === "en" ? "The main workflow shows readiness only. Fine tuning stays here as an optional production control." : "Ana akış yalnızca hazırlık durumunu gösterir. İnce ayarlar opsiyonel üretim kontrolü olarak burada kalır."}</p>
+                      <span>{uiLanguage === "en" ? "Cast & Voices" : "Kadro ve Sesler"}</span>
+                      <h3>{uiLanguage === "en" ? "Set narration, character defaults and individual voices" : "Anlatımı, karakter varsayılanını ve bireysel sesleri ayarla"}</h3>
+                      <p>{uiLanguage === "en" ? "Characters inherit the default unless you choose an individual voice." : "Bireysel bir ses seçmediğin karakterler varsayılan sesi kullanır."}</p>
                     </div>
                     <span className="creatorlab-cast-brand-current-mode">
                       {getCreatorVoiceSelectionLabel(
@@ -28758,7 +28736,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       </small>
                     </label>
                     <label>
-                      <span>{uiLanguage === "en" ? "Dialogue delivery style" : "Diyalog ifade stili"}</span>
+                      <span>{uiLanguage === "en" ? "Default character delivery style" : "Varsayılan karakter ifade stili"}</span>
                       <select
                         value={getEffectiveDialogueVoiceProfileId()}
                         onChange={(event) =>
@@ -28821,11 +28799,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            {uiLanguage === "en" ? "Project dialogue voice" : "Proje diyalog sesi"}
+                            {uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi"}
                           </span>
                           <strong className="mt-2 block text-sm text-slate-950">
                             {narratorSettings.dialogueVoiceSelection?.name ||
-                              (uiLanguage === "en" ? "Velto default dialogue voice" : "Velto varsayılan diyalog sesi")}
+                              (uiLanguage === "en" ? "Velto default character voice" : "Velto varsayılan karakter sesi")}
                           </strong>
                           <p className="mt-1 text-xs leading-5 text-slate-500">
                             {narratorSettings.dialogueVoiceSelection
@@ -28845,14 +28823,24 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       <button
                         type="button"
                         onClick={() => openCreatorVoiceLibrary({ scope: "project_dialogue" })}
-                        className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+                        className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
                       >
-                        {uiLanguage === "en" ? "Browse dialogue voices" : "Diyalog seslerini keşfet"}
+                        {uiLanguage === "en" ? "Browse character voices" : "Karakter seslerini keşfet"}
                       </button>
                     </div>
                   </div>
 
                   <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
+                    <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 border-b border-violet-200 pb-3 text-xs font-semibold text-violet-900">
+                      <span>{uiLanguage === "en" ? "Narrator voice · Ready" : "Anlatıcı sesi · Hazır"}</span>
+                      <span>
+                        {creatorBoundDialogueCharacterIds.size > 0
+                          ? `${uiLanguage === "en" ? "Character voices" : "Karakter sesleri"} · ${creatorResolvedCharacterVoiceCount}/${creatorBoundDialogueCharacterIds.size} ${uiLanguage === "en" ? "resolved" : "çözümlendi"}`
+                          : uiLanguage === "en"
+                            ? characters.length === 0 ? "Character voices · Not needed for this project" : "Character voices · No character dialogue yet"
+                            : characters.length === 0 ? "Karakter sesleri · Bu proje için gerekli değil" : "Karakter sesleri · Henüz karakter diyaloğu yok"}
+                      </span>
+                    </div>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <strong>
                         {uiLanguage === "en" ? "Voice credit estimate" : "Ses kredi tahmini"}
@@ -28989,24 +28977,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   </details>
                 </section>
 
-                <CreatorBackgroundMusic
-                  key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
-                  value={creatorBackgroundMusic}
-                  onChange={(nextValue) => {
-                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, [], isCreatorPremiumMusicTrackId);
-                    setCreatorBackgroundMusic(normalized);
-                    setExportSignature("");
-                  }}
-                  language={uiLanguage === "en" ? "en" : "tr"}
-                  autoMatchInput={{
-                    contentType: creatorContentType,
-                    outcome: creatorOutcome || "",
-                    format: creatorFormat,
-                    topic: title || input,
-                    visualStyle: visualBible?.style || "",
-                  }}
-                />
-
                 <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section">
                   <div className="creatorlab-cast-brand-section-heading">
                     <div>
@@ -29034,7 +29004,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   ) : (
                     <div className="creatorlab-cast-card-list">
                       {characters.map((character, index) => (
-                        <details key={`creator-cast-${index}`} className="creatorlab-cast-member">
+                        <details key={character.id} className="creatorlab-cast-member">
                           <summary>
                             <div className="creatorlab-cast-member-avatar">
                               {character.referenceImage ? (
@@ -29048,7 +29018,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               <span>{character.age || (uiLanguage === "en" ? "Role not defined" : "Rol tanımlanmadı")}</span>
                             </div>
                             <span className="creatorlab-cast-member-status">
-                              {character.referenceImage ? (uiLanguage === "en" ? "Reference ready" : "Referans hazır") : (uiLanguage === "en" ? "Needs details" : "Detay gerekli")}
+                              {uiLanguage === "en" ? "Voice" : "Ses"} · {character.voiceSelection?.name || (uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi")}
                             </span>
                             <span className="creatorlab-cast-brand-chevron" aria-hidden="true">⌄</span>
                           </summary>
@@ -29123,7 +29093,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                   </span>
                                   <strong className="mt-2 block text-sm text-slate-950">
                                     {character.voiceSelection?.name ||
-                                      (uiLanguage === "en" ? "Project dialogue default" : "Proje diyalog varsayılanı")}
+                                      (uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi")}
                                   </strong>
                                   <p className="mt-1 text-xs leading-5 text-slate-500">
                                     {character.voiceSelection
@@ -29134,11 +29104,32 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                   </p>
                                   <button
                                     type="button"
-                                    onClick={() => openCreatorVoiceLibrary({ scope: "character", characterIndex: index })}
+                                    onClick={() => openCreatorVoiceLibrary({ scope: "character", characterId: character.id || "" })}
                                     className="mt-3 min-h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                                   >
-                                    {uiLanguage === "en" ? "Choose character voice" : "Karakter sesi seç"}
+                                    {character.voiceSelection
+                                      ? uiLanguage === "en" ? "Change voice" : "Sesi değiştir"
+                                      : uiLanguage === "en" ? "Choose voice" : "Ses seç"}
                                   </button>
+                                  {character.voiceSelection && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCharacters((current) =>
+                                          current.map((item) =>
+                                            item.id === character.id
+                                              ? { ...item, voiceId: "", voiceSelection: undefined }
+                                              : item,
+                                          ),
+                                        );
+                                        clearAllSceneDialogueAudioData();
+                                        clearAllSceneTimingData();
+                                      }}
+                                      className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                    >
+                                      {uiLanguage === "en" ? "Use Default Character Voice" : "Varsayılan Karakter Sesini Kullan"}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </details>
@@ -29190,19 +29181,82 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   )}
                 </section>
 
-                <div className="creatorlab-cast-brand-footer">
-                  <div>
-                    <strong>{uiLanguage === "en" ? "Production identity summary" : "Üretim kimliği özeti"}</strong>
-                    <p>
-                      {creatorPresentationModeLabel} · {creatorProfile.brandName || (uiLanguage === "en" ? "No brand name" : "Marka adı yok")} · {creatorVisualDirectionConfigured ? (uiLanguage === "en" ? "Visual direction ready" : "Görsel yön hazır") : (uiLanguage === "en" ? "Default visual direction" : "Varsayılan görsel yön")}
-                    </p>
                   </div>
-                  <span>{uiLanguage === "en" ? "Non-blocking" : "Engelleyici değil"}</span>
+                </div>
+
+                <CreatorBackgroundMusic
+                  key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
+                  value={creatorBackgroundMusic}
+                  onChange={(nextValue) => {
+                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, [], isCreatorPremiumMusicTrackId);
+                    setCreatorBackgroundMusic(normalized);
+                    setExportSignature("");
+                  }}
+                  language={uiLanguage === "en" ? "en" : "tr"}
+                  autoMatchInput={{
+                    contentType: creatorContentType,
+                    outcome: creatorOutcome || "",
+                    format: creatorFormat,
+                    topic: title || input,
+                    visualStyle: visualBible?.style || "",
+                  }}
+                />
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
+                      {uiLanguage === "en" ? "Visual Continuity" : "Görsel Devamlılık"}
+                    </span>
+                    <h3 className="mt-2 text-lg font-semibold text-slate-950">
+                      {uiLanguage === "en" ? "Choose one project-level continuity rule" : "Proje düzeyinde bir devamlılık kuralı seç"}
+                    </h3>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                    {([
+                      {
+                        value: "independent" as const,
+                        label: uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler",
+                        description: uiLanguage === "en" ? "Each scene can use its own visual direction." : "Her sahne kendi görsel yönünü kullanabilir.",
+                      },
+                      {
+                        value: "consistent" as const,
+                        label: uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru",
+                        description: uiLanguage === "en" ? "Maintain visual consistency across connected scenes." : "Bağlantılı sahnelerde görsel tutarlılığı koru.",
+                      },
+                      {
+                        value: "selective" as const,
+                        label: uiLanguage === "en" ? "Choose per scene" : "Sahne başına seç",
+                        description: uiLanguage === "en" ? "Set continuity individually for each scene." : "Devamlılığı her sahne için ayrı ayarla.",
+                      },
+                    ]).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setCreatorProjectContinuityMode(option.value)}
+                        aria-pressed={creatorProjectContinuityMode === option.value}
+                        className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === option.value ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                      >
+                        <strong className="block text-sm text-slate-950">{option.label}</strong>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <div className="flex justify-end border-t border-slate-200 pt-5">
+                  <button
+                    type="button"
+                    data-production-primary-continue="true"
+                    onClick={() => setCreatorProductionSubstep("create_review")}
+                    className="min-h-12 rounded-xl bg-blue-700 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  >
+                    {uiLanguage === "en" ? "Continue to Create & Review →" : "Üret ve İncele'ye Devam Et →"}
+                  </button>
                 </div>
               </div>
-            </details>
+            )}
 
-            {scenes.length === 0 ? (
+            {creatorProductionSubstep === "create_review" && (scenes.length === 0 ? (
               <div className="creatorlab-production-empty">
                 <div className="creatorlab-production-empty-icon" aria-hidden="true">▤</div>
                 <div>
@@ -29227,7 +29281,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             ) : (
               <>
                 <div
-                  className={`creatorlab-production-progress ${creatorMotionRequired ? "has-motion-step" : ""}`}
+                  data-production-compact-progress="true"
+                  className={`grid overflow-hidden rounded-xl border border-slate-200 bg-white ${creatorMotionRequired ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
                   role="list"
                   aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
                 >
@@ -29268,9 +29323,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     {
                       number: creatorMotionRequired ? 4 : 3,
                       label: uiLanguage === "en" ? "Final video" : "Final video",
-                      detail: creatorProductionComplete
-                        ? uiLanguage === "en" ? "Ready" : "Hazır"
-                        : uiLanguage === "en" ? "Waiting for assets" : "Varlıklar bekleniyor",
+                      detail: creatorFinalVideoProgressDetail,
                       complete: creatorProductionComplete,
                       active:
                         creatorVisualsComplete &&
@@ -29283,20 +29336,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       key={item.number}
                       role="listitem"
                       aria-current={item.active ? "step" : undefined}
-                      className={`creatorlab-production-progress-step ${item.complete ? "is-complete" : ""} ${item.active ? "is-active" : ""}`}
+                      className={`flex min-h-14 items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${item.active ? "bg-blue-50/60" : ""}`}
                     >
-                      <span className="creatorlab-production-progress-number" aria-hidden="true">{item.complete ? "✓" : item.number}</span>
-                      <div className="creatorlab-production-progress-copy">
-                        <strong>{item.label}</strong>
-                        <span>{item.detail}</span>
+                      <div className="min-w-0">
+                        <strong className="block text-xs font-semibold text-slate-900">{item.label}</strong>
+                        <span className="mt-0.5 block text-[11px] text-slate-500">{item.detail}</span>
                       </div>
-                      <span className={`creatorlab-production-progress-status ${item.complete ? "is-complete" : item.active ? "is-active" : ""}`}>
-                        {item.complete
-                          ? uiLanguage === "en" ? "Complete" : "Tamamlandı"
-                          : item.active
-                            ? uiLanguage === "en" ? "Current" : "Sıradaki"
-                            : uiLanguage === "en" ? "Waiting" : "Bekliyor"}
-                      </span>
+                      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${item.complete ? "bg-emerald-500" : item.active ? "bg-blue-500" : "bg-slate-300"}`} />
                     </div>
                   ))}
                 </div>
@@ -29326,13 +29372,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </div>
                 )}
 
-                <div id="creatorlab-production-action" className="creatorlab-production-action-bar">
-                  <div className="creatorlab-production-action-copy" aria-live="polite">
-                    <span className="creatorlab-production-action-kicker">{uiLanguage === "en" ? "Next production action" : "Sıradaki üretim aksiyonu"}</span>
-                    <strong>{creatorNextProductionAction.title}</strong>
-                    <p>{creatorNextProductionAction.description}</p>
-                  </div>
-                  <div className="creatorlab-production-actions">
+                {!creatorProductionComplete && (
+                  <div id="creatorlab-production-action" data-production-compact-action="true" className="flex flex-col gap-3 border-b border-slate-200 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0" aria-live="polite">
+                      <strong className="block text-sm font-semibold text-slate-950">{creatorNextProductionAction.title}</strong>
+                      {creatorTimelineNeedsAttention && (
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{creatorNextProductionAction.description}</p>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={continueCreatorProduction}
@@ -29343,7 +29390,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         isExportingMovie ||
                         buildingStory
                       }
-                      className="creatorlab-production-primary-action"
+                      className="min-h-10 shrink-0 rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {creatorMediaPreflightLoading
                         ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
@@ -29353,16 +29400,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                             ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
                             : isExportingMovie
                               ? ui.creatingMovie
-                              : creatorNextProductionAction.buttonLabel}
+                        : creatorNextProductionAction.buttonLabel}
                     </button>
                   </div>
-                </div>
+                )}
 
                 <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard">
                   <div className="creatorlab-production-storyboard-heading">
                     <div>
                       <span>{uiLanguage === "en" ? "Scene workspace" : "Sahne çalışma alanı"}</span>
-                      <h2>{uiLanguage === "en" ? "Review the plan without managing the production engine" : "Üretim motorunu yönetmeden sahne planını kontrol et"}</h2>
+                      <h2>{uiLanguage === "en" ? "Scenes" : "Sahneler"}</h2>
                     </div>
                     <p>
                       {uiLanguage === "en"
@@ -29371,7 +29418,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     </p>
                   </div>
 
-                  <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] md:p-4">
+                  <div className="mb-4 border-y border-slate-200 py-3 md:py-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
                         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -31028,7 +31075,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </section>
 
               </>
-            )}
+            ))}
           </section>
         )}
 
