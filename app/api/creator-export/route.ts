@@ -8,8 +8,7 @@ import {
 } from "@/lib/credits/serverMetering";
 import { normalizeCreatorBackgroundMusicConfig } from "@/lib/creator/backgroundMusic";
 import {
-  autoMatchCreatorMusic,
-  CREATOR_MUSIC_TRACK_IDS,
+  isCreatorPremiumMusicTrackId,
 } from "@/lib/creator/musicLibrary";
 
 export const runtime = "nodejs";
@@ -83,20 +82,19 @@ export async function POST(request: Request) {
     if (productProfile === "creatorlab") {
       let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
         body.backgroundMusic,
-        CREATOR_MUSIC_TRACK_IDS,
+        [],
+        isCreatorPremiumMusicTrackId,
       );
-      if (backgroundMusic.mode === "auto") {
-        const matchedTrack = autoMatchCreatorMusic({
-          contentType: typeof body.contentType === "string" ? body.contentType : "",
-          outcome: typeof body.outcome === "string" ? body.outcome : "",
-          topic: typeof body.title === "string" ? body.title : "",
-          visualStyle: typeof body.visualStyle === "string" ? body.visualStyle : "",
-          emotionalTone: typeof body.emotionalTone === "string" ? body.emotionalTone : "",
-          format: typeof body.creatorFormat === "string" ? body.creatorFormat : "",
-        });
-        backgroundMusic = matchedTrack
-          ? { ...backgroundMusic, mode: "selected", selectedTrackId: matchedTrack.id }
-          : { ...backgroundMusic, mode: "none", selectedTrackId: undefined };
+      if (backgroundMusic.mode === "selected") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "creator_premium_music_confirmation_required",
+            error: "Premium music must be confirmed before final export.",
+            creditReserved: false,
+          },
+          { status: 409 },
+        );
       }
       exportPayload.backgroundMusic = backgroundMusic;
     } else {

@@ -1,43 +1,31 @@
-import type { CreatorMusicTrack } from "./backgroundMusic";
+export const CREATOR_MUSIC_LIBRARY_VERSION = "creator-premium-music-v1" as const;
 
-export const CREATOR_MUSIC_LIBRARY_VERSION = "creator-music-v1" as const;
-
-// No licensable background-music asset currently exists in this repository.
-// Populate only when a real preview and matching export-service asset are added.
-export const CREATOR_MUSIC_LIBRARY: readonly CreatorMusicTrack[] = [];
-
-export const CREATOR_MUSIC_TRACK_IDS = CREATOR_MUSIC_LIBRARY.map((track) => track.id);
-
-export function getCreatorMusicTrack(trackId: unknown) {
-  if (typeof trackId !== "string") return undefined;
-  return CREATOR_MUSIC_LIBRARY.find((track) => track.id === trackId);
+export function normalizeCreatorPremiumMusicTrackId(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length < 1 || value.length > 128) return undefined;
+  if (value !== value.trim()) return undefined;
+  return /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/.test(value) ? value : undefined;
 }
 
-export function autoMatchCreatorMusic(input: {
+export function isCreatorPremiumMusicTrackId(value: unknown): value is string {
+  return normalizeCreatorPremiumMusicTrackId(value) !== undefined;
+}
+
+export function buildCreatorPremiumMusicQuery(input: {
   contentType?: string;
   outcome?: string;
   topic?: string;
   visualStyle?: string;
   emotionalTone?: string;
   format?: string;
-}): CreatorMusicTrack | undefined {
+}): string {
   const text = Object.values(input).join(" ").toLowerCase();
-  const desiredEnergy = /launch|action|bold|exciting|viral|short/.test(text)
-    ? "high"
-    : /calm|reflect|story|documentary|emotional/.test(text)
-      ? "low"
-      : "medium";
-  const tokens = new Set(text.split(/[^a-z0-9]+/).filter(Boolean));
-
-  return [...CREATOR_MUSIC_LIBRARY]
-    .map((track) => ({
-      track,
-      score:
-        (track.energy === desiredEnergy ? 3 : 0) +
-        [...(track.mood || []), ...(track.genre || [])]
-          .reduce((score, tag) => score + (tokens.has(tag.toLowerCase()) ? 1 : 0), 0),
-    }))
-    .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score || left.track.id.localeCompare(right.track.id))[0]
-    ?.track;
+  const direction = /documentary|story|reflect|emotional/.test(text)
+    ? "cinematic emotional reflective"
+    : /promotion|viral|launch|short|social/.test(text)
+      ? "energetic upbeat confident"
+      : /technology|innovation|business|corporate/.test(text)
+        ? "professional modern inspiring"
+        : "premium cinematic inspiring";
+  const topic = String(input.topic || "").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  return [direction, topic].filter(Boolean).join(" ");
 }

@@ -57,24 +57,24 @@ check("auto mode remains valid with an empty library", () => {
   assert.equal(auto.mode, "auto");
   assert.equal(auto.selectedTrackId, undefined);
 });
-check("library is honest, deterministic, and provider-free", () => {
-  assert.match(librarySource, /CREATOR_MUSIC_LIBRARY[^=]*= \[\]/);
-  assert.equal(library.CREATOR_MUSIC_LIBRARY_VERSION, "creator-music-v1");
+check("catalog integration is deterministic and generation-free", () => {
+  assert.equal(library.CREATOR_MUSIC_LIBRARY_VERSION, "creator-premium-music-v1");
   assert.doesNotMatch(librarySource, /fetch\(|openai|elevenlabs|spotify|youtube/i);
-  assert.match(librarySource, /sort\(\(left, right\)/);
+  assert.match(librarySource, /buildCreatorPremiumMusicQuery/);
 });
-check("picker exposes product modes and local preview lifecycle", () => {
-  for (const label of ["No Music", "Auto Match", "Choose Music", "Preview", "Stop"]) assert.match(picker, new RegExp(label));
-  assert.match(picker, /new Audio\(track\.previewUrl\)/);
+check("picker exposes product modes and temporary preview lifecycle", () => {
+  for (const label of ["No Music", "Auto Match", "Browse Music", "Play", "Stop"]) assert.match(picker, new RegExp(label));
+  assert.match(picker, /new Audio\(\)/);
   assert.match(picker, /useEffect\(\(\) => stopPreview/);
-  assert.match(picker, /onClick=\{\(\) => \{\s*stopPreview\(\);\s*onChange\(\{ \.\.\.value, mode: "selected", selectedTrackId: track\.id \}\)/);
+  assert.match(picker, /const selectTrack = \(track: CreatorPremiumMusicTrack\) => \{\s*stopPreview\(\);[\s\S]*?onChange\(\{ \.\.\.value, mode: "selected", selectedTrackId: track\.id \}\)/);
   assert.doesNotMatch(picker, /ElevenLabs|Spotify|YouTube Music/);
 });
 check("Choose Music opens browsing state without persisting incomplete selection", () => {
-  assert.match(picker, /const \[pickerOpen, setPickerOpen\] = useState\(value\.mode === "selected"\)/);
-  assert.match(picker, /if \(mode === "selected"\) \{\s*setPickerOpen\(true\);\s*return;/);
-  assert.match(picker, /\{pickerOpen && \(/);
-  assert.match(picker, /The approved music library is currently empty/);
+  assert.match(picker, /type MusicView = "none" \| "auto" \| "browse"/);
+  assert.match(picker, /if \(mode === "selected"\) return "browse"/);
+  assert.match(picker, /onClick=\{\(\) => setView\(view\)\}/);
+  assert.match(picker, /musicView === "browse" && <div/);
+  assert.match(picker, /No matching tracks found/);
   assert.match(picker, /onChange\(\{ \.\.\.value, mode: "selected", selectedTrackId: track\.id \}\)/);
 });
 check("persistence and stale signature include normalized music", () => {
@@ -92,36 +92,14 @@ check("Auto Match inputs reach both export payload and render signature", () => 
   }
   assert.match(page, /autoMatchInputs/);
   assert.match(page, /musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION/);
-  assert.match(route, /contentType: typeof body\.contentType/);
-  assert.match(route, /visualStyle: typeof body\.visualStyle/);
+  assert.match(picker, /autoMatchInput/);
 });
-check("product and renderer registries have exact safe parity", () => {
+check("renderer acquisition registry remains empty before paid music", () => {
   const registryBody = renderer.match(/const CREATOR_MUSIC_ASSET_BY_ID = Object\.freeze\(\{([\s\S]*?)\}\);/)?.[1];
   assert.notEqual(registryBody, undefined);
   const rendererEntries = [...registryBody.matchAll(/["']([^"']+)["']\s*:\s*["']([^"']+)["']/g)]
     .map((match) => [match[1], match[2]]);
-  const rendererAssets = new Map(rendererEntries);
-  const rendererIds = rendererEntries.map(([id]) => id);
-  const productIds = library.CREATOR_MUSIC_LIBRARY.map((track) => track.id);
-  assert.equal(new Set(productIds).size, productIds.length);
-  assert.equal(new Set(rendererIds).size, rendererIds.length);
-  for (const track of library.CREATOR_MUSIC_LIBRARY) {
-    if (track.previewUrl) {
-      assert.match(track.previewUrl, /^\/(?!\/)/);
-      assert.doesNotMatch(track.previewUrl, /:\/\//);
-    }
-    if (track.exportAssetKey) {
-      assert.match(track.exportAssetKey, /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-      assert.equal(rendererAssets.get(track.id), track.exportAssetKey);
-    }
-  }
-  for (const [rendererId, assetName] of rendererEntries) {
-    assert.match(assetName, /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-    const productTrack = library.CREATOR_MUSIC_LIBRARY.find((track) => track.id === rendererId);
-    assert.equal(productTrack?.exportAssetKey, assetName);
-  }
-  assert.deepEqual(productIds, []);
-  assert.deepEqual(rendererIds, []);
+  assert.deepEqual(rendererEntries, []);
 });
 check("CreatorLab payload is normalized server-side and Storyverse is scoped", () => {
   assert.match(route, /normalizeCreatorBackgroundMusicConfig/);

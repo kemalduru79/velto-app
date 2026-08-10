@@ -2,17 +2,6 @@ export const CREATOR_BACKGROUND_MUSIC_VERSION = 1 as const;
 
 export type CreatorBackgroundMusicMode = "none" | "auto" | "selected";
 
-export type CreatorMusicTrack = {
-  id: string;
-  title: string;
-  mood?: string[];
-  genre?: string[];
-  energy?: "low" | "medium" | "high";
-  durationSec?: number;
-  previewUrl?: string;
-  exportAssetKey?: string;
-};
-
 export type CreatorBackgroundMusicConfig = {
   version: typeof CREATOR_BACKGROUND_MUSIC_VERSION;
   mode: CreatorBackgroundMusicMode;
@@ -44,6 +33,7 @@ function clamp(value: unknown, minimum: number, maximum: number, fallback: numbe
 export function normalizeCreatorBackgroundMusicConfig(
   value: unknown,
   allowedTrackIds: Iterable<string> = [],
+  isAllowedTrackId?: (trackId: string) => boolean,
 ): CreatorBackgroundMusicConfig {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -53,9 +43,9 @@ export function normalizeCreatorBackgroundMusicConfig(
     ? source.mode as CreatorBackgroundMusicMode
     : "none";
   const requestedTrackId = typeof source.selectedTrackId === "string"
-    ? source.selectedTrackId.trim()
+    ? source.selectedTrackId
     : "";
-  const selectedTrackId = requestedTrackId && allowed.has(requestedTrackId)
+  const selectedTrackId = requestedTrackId && (allowed.has(requestedTrackId) || isAllowedTrackId?.(requestedTrackId))
     ? requestedTrackId
     : undefined;
 

@@ -53,7 +53,7 @@ import {
 } from "@/lib/creator/backgroundMusic";
 import {
   CREATOR_MUSIC_LIBRARY_VERSION,
-  CREATOR_MUSIC_TRACK_IDS,
+  isCreatorPremiumMusicTrackId,
 } from "@/lib/creator/musicLibrary";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
@@ -3277,6 +3277,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorProductionPackage | null>(null);
   const [creatorBackgroundMusic, setCreatorBackgroundMusic] =
     useState<CreatorBackgroundMusicConfig>(DEFAULT_CREATOR_BACKGROUND_MUSIC);
+  const [creatorBackgroundMusicHydrationRevision, setCreatorBackgroundMusicHydrationRevision] =
+    useState(0);
   const [creatorTimelinePreviewPlan, setCreatorTimelinePreviewPlan] =
     useState<TimelineSyncPlan | null>(null);
   const [creatorEditPlan, setCreatorEditPlan] =
@@ -6159,6 +6161,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
     setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
     setCreatorOutcome(undefined);
     setIsGeneratingFullYoutubePackage(false);
@@ -9540,6 +9543,16 @@ const generateSceneImage = async (
       return;
     }
 
+    if (isCreatorLabFlow && creatorBackgroundMusic.mode === "selected") {
+      setSaveMessage("");
+      setError(
+        uiLanguage === "en"
+          ? "Premium music must be confirmed before final export."
+          : "Final dışa aktarmadan önce premium müzik onaylanmalıdır.",
+      );
+      return;
+    }
+
     if (isCreatorLabFlow) {
       if (!(await prepareCreatorMediaAction("final_video"))) {
         return;
@@ -10608,10 +10621,12 @@ const generateSceneImage = async (
       setCreatorProjectContinuityMode(loadedContinuitySettings.projectMode);
       setCreatorSceneContinuityModes(loadedContinuitySettings.sceneModes);
       setCreatorContinuityHydrated(true);
+      setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
       setCreatorBackgroundMusic(
         normalizeCreatorBackgroundMusicConfig(
           isCreatorProject ? savedCreatorPackage?.backgroundMusic : undefined,
-          CREATOR_MUSIC_TRACK_IDS,
+          [],
+          isCreatorPremiumMusicTrackId,
         ),
       );
 
@@ -28968,13 +28983,21 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </section>
 
                 <CreatorBackgroundMusic
+                  key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
                   value={creatorBackgroundMusic}
                   onChange={(nextValue) => {
-                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, CREATOR_MUSIC_TRACK_IDS);
+                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, [], isCreatorPremiumMusicTrackId);
                     setCreatorBackgroundMusic(normalized);
                     setExportSignature("");
                   }}
                   language={uiLanguage === "en" ? "en" : "tr"}
+                  autoMatchInput={{
+                    contentType: creatorContentType,
+                    outcome: creatorOutcome || "",
+                    format: creatorFormat,
+                    topic: title || input,
+                    visualStyle: visualBible?.style || "",
+                  }}
                 />
 
                 <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section">
