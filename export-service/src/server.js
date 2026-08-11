@@ -6,6 +6,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { createHash } from "crypto";
 
 const app = express();
 
@@ -13,7 +14,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token"],
   })
 );
 
@@ -22,7 +23,7 @@ app.options(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token"],
   })
 );
 
@@ -44,6 +45,12 @@ const OUTPUT_FPS = 25;
 const OUTPUT_AUDIO_SAMPLE_RATE = 44100;
 const STITCH_DURATION_TOLERANCE_SECONDS = 0.25;
 const STITCH_AV_DRIFT_TOLERANCE_SECONDS = 0.15;
+const CREATOR_PREMIUM_MUSIC_LICENSE_POLICY_VERSION = "creator-premium-music-license-v1";
+const CREATOR_PREMIUM_MUSIC_PROVIDER_KEY = "premium_music_catalog";
+const MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES = 30 * 1024 * 1024;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TRACK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
+const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -1308,10 +1315,6 @@ async function mixFinalVideoWithBackgroundMusic({
   ]);
 }
 
-// CreatorLab IDs resolve only through this server-owned map. It is intentionally
-// empty until a real, approved local music asset is added to the service image.
-const CREATOR_MUSIC_ASSET_BY_ID = Object.freeze({});
-
 function normalizeCreatorBackgroundMusic(value) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -1319,18 +1322,83 @@ function normalizeCreatorBackgroundMusic(value) {
   const requestedTrackId = typeof source.selectedTrackId === "string"
     ? source.selectedTrackId.trim()
     : "";
-  const assetName = CREATOR_MUSIC_ASSET_BY_ID[requestedTrackId];
-  const mode = source.mode === "selected" && assetName ? "selected" : "none";
+  const mode = source.mode === "selected" && TRACK_ID_PATTERN.test(requestedTrackId) ? "selected" : "none";
 
   return {
     mode,
     selectedTrackId: mode === "selected" ? requestedTrackId : undefined,
-    assetName: mode === "selected" ? assetName : undefined,
     volume: Math.min(0.3, Math.max(0.04, Number(source.volume) || 0.16)),
     autoDucking: source.autoDucking !== false,
     fadeInSec: Math.min(5, Math.max(0, Number(source.fadeInSec) || 0)),
     fadeOutSec: Math.min(8, Math.max(0, Number(source.fadeOutSec) || 0)),
   };
+}
+
+function isMp3(buffer) {
+  return buffer.length >= 4 && (
+    (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+    (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)
+  );
+}
+
+async function resolvePrivateCreatorMusicAsset({ req, body, tempDir }) {
+  const contract = body?.musicEntitlement;
+  if (!contract) return "";
+  const configuredToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim();
+  const suppliedToken = req.get("x-velto-internal-export-token") || "";
+  if (!configuredToken || suppliedToken !== configuredToken) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const entitlementId = typeof contract.entitlementId === "string" ? contract.entitlementId : "";
+  const trackId = typeof contract.trackId === "string" ? contract.trackId : "";
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  const contractKeys = contract && typeof contract === "object" && !Array.isArray(contract)
+    ? Object.keys(contract).sort()
+    : [];
+  if (
+    body.productProfile !== "creatorlab" || contractKeys.join(",") !== "entitlementId,trackId" ||
+    !UUID_PATTERN.test(entitlementId) || !TRACK_ID_PATTERN.test(trackId) ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(projectId)
+  ) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const configuredBucket = process.env.CREATOR_PREMIUM_MUSIC_BUCKET?.trim();
+  if (!configuredBucket || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/.test(configuredBucket)) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const supabase = getSupabaseAdmin();
+  const { data: row, error } = await supabase.from("creator_music_entitlements")
+    .select("id,user_id,project_id,provider_key,track_id,license_policy_version,status,storage_bucket,storage_path,content_type,size_bytes,checksum")
+    .eq("id", entitlementId).maybeSingle();
+  const sizeBytes = Number(row?.size_bytes);
+  if (
+    error || !row || row.status !== "acquired" || row.track_id !== trackId ||
+    row.project_id !== projectId || row.provider_key !== CREATOR_PREMIUM_MUSIC_PROVIDER_KEY ||
+    row.license_policy_version !== CREATOR_PREMIUM_MUSIC_LICENSE_POLICY_VERSION ||
+    row.storage_bucket !== configuredBucket || row.content_type !== "audio/mpeg" ||
+    !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES ||
+    !CHECKSUM_PATTERN.test(row.checksum || "") || !UUID_PATTERN.test(row.user_id || "")
+  ) throw new Error("Premium music entitlement is unavailable.");
+  const storagePath = typeof row.storage_path === "string" ? row.storage_path : "";
+  const canonicalPath = `creator/${row.user_id}/music/${row.id}/${row.checksum}.mp3`;
+  if (storagePath !== canonicalPath || storagePath.includes("..") || storagePath.includes("\\") || /[\u0000-\u001f\u007f]/.test(storagePath)) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const { data: privateObject, error: downloadError } = await supabase.storage.from(configuredBucket).download(storagePath);
+  if (downloadError || !privateObject || privateObject.size < 1 || privateObject.size > MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES || privateObject.size !== sizeBytes) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const buffer = Buffer.from(await privateObject.arrayBuffer());
+  if (!isMp3(buffer) || createHash("sha256").update(buffer).digest("hex") !== row.checksum) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const localPath = path.join(tempDir, `creator-music-${row.id}.mp3`);
+  await fs.promises.writeFile(localPath, buffer);
+  const media = await probeMediaStreams(localPath);
+  if (!media.hasAudio || media.hasVideo) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  return localPath;
 }
 
 app.get("/health", (_req, res) => {
@@ -1350,6 +1418,33 @@ app.post("/export-movie", async (req, res) => {
 
   try {
     const body = req.body || {};
+    const selectedCreatorMusicRequested =
+      body?.productProfile === "creatorlab" &&
+      body?.backgroundMusic &&
+      typeof body.backgroundMusic === "object" &&
+      !Array.isArray(body.backgroundMusic) &&
+      body.backgroundMusic.mode === "selected";
+    if (selectedCreatorMusicRequested && !body.musicEntitlement) {
+      return res.status(409).json({
+        ok: false,
+        error: "Premium music must be confirmed before final export.",
+      });
+    }
+    if (body.musicEntitlement && !selectedCreatorMusicRequested) {
+      return res.status(403).json({
+        ok: false,
+        error: "Premium music entitlement is unavailable.",
+      });
+    }
+    let privateCreatorMusicPath = "";
+    try {
+      privateCreatorMusicPath = await resolvePrivateCreatorMusicAsset({ req, body, tempDir });
+    } catch {
+      return res.status(403).json({
+        ok: false,
+        error: "Premium music entitlement is unavailable.",
+      });
+    }
     const exportFlowValidation = body?.exportFlowValidation;
 
     if (exportFlowValidation?.version === "3N-5") {
@@ -1641,9 +1736,7 @@ app.post("/export-movie", async (req, res) => {
     );
 
     const bgmPath = isCreatorLabExport
-      ? creatorMusic.assetName
-        ? path.join(process.cwd(), "assets", "music", creatorMusic.assetName)
-        : ""
+      ? privateCreatorMusicPath
       : path.join(process.cwd(), "assets", "bgm.mp3");
     let finalOutputFilePath = outputFilePath;
     let backgroundMusicEmbedded = false;
@@ -1682,7 +1775,9 @@ app.post("/export-movie", async (req, res) => {
 
         finalOutputFilePath = outputWithBgmPath;
         backgroundMusicEmbedded = true;
-        console.log("Continuous background music embedded:", bgmPath);
+        console.log(isCreatorLabExport
+          ? "Entitled CreatorLab background music embedded."
+          : "Continuous background music embedded:", isCreatorLabExport ? "" : bgmPath);
       } catch (bgmError) {
         console.warn("Background music mix skipped:", bgmError);
       }

@@ -94,19 +94,17 @@ check("Auto Match inputs reach both export payload and render signature", () => 
   assert.match(page, /musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION/);
   assert.match(picker, /autoMatchInput/);
 });
-check("renderer acquisition registry remains empty before paid music", () => {
-  const registryBody = renderer.match(/const CREATOR_MUSIC_ASSET_BY_ID = Object\.freeze\(\{([\s\S]*?)\}\);/)?.[1];
-  assert.notEqual(registryBody, undefined);
-  const rendererEntries = [...registryBody.matchAll(/["']([^"']+)["']\s*:\s*["']([^"']+)["']/g)]
-    .map((match) => [match[1], match[2]]);
-  assert.deepEqual(rendererEntries, []);
+check("renderer uses server-resolved private entitlement music", () => {
+  assert.doesNotMatch(renderer, /CREATOR_MUSIC_ASSET_BY_ID/);
+  assert.match(renderer, /resolvePrivateCreatorMusicAsset/);
+  assert.match(renderer, /supabase\.storage\.from\(configuredBucket\)\.download\(storagePath\)/);
 });
 check("CreatorLab payload is normalized server-side and Storyverse is scoped", () => {
   assert.match(route, /normalizeCreatorBackgroundMusicConfig/);
   assert.match(route, /productProfile === "creatorlab"/);
+  assert.match(route, /resolveCreatorPremiumMusicExportEntitlement/);
   assert.match(renderer, /isCreatorLabExport/);
-  assert.match(renderer, /CREATOR_MUSIC_ASSET_BY_ID/);
-  assert.match(renderer, /path\.join\(process\.cwd\(\), "assets", "music", creatorMusic\.assetName\)/);
+  assert.match(renderer, /\? privateCreatorMusicPath/);
 });
 check("renderer loops, trims, fades, ducks, limits, and keeps duration", () => {
   for (const marker of ["-stream_loop", "atrim=duration=", "afade=t=in", "afade=t=out", "sidechaincompress", "alimiter=limit=0.95", "duration=first", "-shortest"]) assert.match(renderer, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

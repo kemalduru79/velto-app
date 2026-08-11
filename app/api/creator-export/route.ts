@@ -10,6 +10,9 @@ import { normalizeCreatorBackgroundMusicConfig } from "@/lib/creator/backgroundM
 import {
   isCreatorPremiumMusicTrackId,
 } from "@/lib/creator/musicLibrary";
+import { authenticateRequest } from "@/lib/auth/server";
+import { resolveCreatorPremiumMusicExportEntitlement } from "@/lib/creator/musicEntitlement";
+import { isPremiumMusicAcquisitionEnabled } from "@/lib/providers/music/downloadSecurity";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -79,6 +82,10 @@ export async function POST(request: Request) {
     const qualityMode = body.qualityMode;
     const exportPayload = { ...body };
     delete exportPayload.qualityMode;
+    delete exportPayload.musicEntitlement;
+    delete exportPayload.musicAsset;
+    delete exportPayload.musicStorage;
+    let internalExportToken: string | undefined;
     if (productProfile === "creatorlab") {
       let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
         body.backgroundMusic,
@@ -86,15 +93,31 @@ export async function POST(request: Request) {
         isCreatorPremiumMusicTrackId,
       );
       if (backgroundMusic.mode === "selected") {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "creator_premium_music_confirmation_required",
-            error: "Premium music must be confirmed before final export.",
-            creditReserved: false,
-          },
+        const blockPremiumMusicExport = () => NextResponse.json(
+          { ok: false, code: "creator_premium_music_confirmation_required", error: "Premium music must be confirmed before final export.", creditReserved: false },
           { status: 409 },
         );
+        if (!isPremiumMusicAcquisitionEnabled()) return blockPremiumMusicExport();
+        internalExportToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim();
+        if (!internalExportToken) return blockPremiumMusicExport();
+        let principal;
+        try {
+          principal = await authenticateRequest(request);
+        } catch {
+          return blockPremiumMusicExport();
+        }
+        let musicEntitlement;
+        try {
+          musicEntitlement = await resolveCreatorPremiumMusicExportEntitlement({
+            userId: principal.id,
+            projectId: body.projectId,
+            trackId: backgroundMusic.selectedTrackId,
+          });
+        } catch {
+          return blockPremiumMusicExport();
+        }
+        if (!musicEntitlement) return blockPremiumMusicExport();
+        exportPayload.musicEntitlement = musicEntitlement;
       }
       exportPayload.backgroundMusic = backgroundMusic;
     } else {
@@ -122,7 +145,12 @@ export async function POST(request: Request) {
 
     const response = await fetch(`${exportApiBase}/export-movie`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(exportPayload.musicEntitlement && internalExportToken
+          ? { "x-velto-internal-export-token": internalExportToken }
+          : {}),
+      },
       body: JSON.stringify(exportPayload),
       signal: AbortSignal.timeout(55_000),
     });
