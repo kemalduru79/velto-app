@@ -1169,6 +1169,25 @@ const CREATOR_CONTENT_TYPE_OPTIONS: Array<{
 ];
 
 const CREATOR_BRIEF_DRAFT_STORAGE_KEY = "velto.creatorlab.briefDraft.v1";
+const PROJECT_URL_PARAM = "project";
+const PROJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function replaceProjectUrlIdentity(projectId: string, flowKey?: "creator_lab" | "storyverse") {
+  const url = new URL(window.location.href);
+  const normalizedProjectId = projectId.trim();
+
+  if (flowKey) {
+    url.searchParams.set("flow", flowKey);
+  }
+
+  if (normalizedProjectId) {
+    url.searchParams.set(PROJECT_URL_PARAM, normalizedProjectId);
+  } else {
+    url.searchParams.delete(PROJECT_URL_PARAM);
+  }
+
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 const CREATOR_FORMAT_OPTIONS: Array<{
   value: CreatorFormat;
@@ -3913,7 +3932,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatorBriefDraftTimerRef = useRef<NodeJS.Timeout | null>(null);
   const skipAutosaveRef = useRef(true);
-  const isHydratingRef = useRef(false);
+  const isHydratingRef = useRef(true);
   const suspendAutosaveRef = useRef(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -4237,6 +4256,28 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       fetchProjects();
       fetchUserRole();
     }
+  }, [authLoading]);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    const projectId = new URLSearchParams(window.location.search)
+      .get(PROJECT_URL_PARAM)
+      ?.trim() || "";
+
+    if (!projectId) {
+      isHydratingRef.current = false;
+      return;
+    }
+
+    if (!PROJECT_ID_PATTERN.test(projectId)) {
+      setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
+      isHydratingRef.current = false;
+      skipAutosaveRef.current = false;
+      return;
+    }
+
+    void loadProject(projectId);
   }, [authLoading]);
 
   useEffect(() => {
@@ -4852,6 +4893,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const loadProjectById = async (projectId: string) => {
+    isHydratingRef.current = true;
+    if (currentProjectId && currentProjectId !== projectId) {
+      resetStoryFlow();
+    }
+    replaceProjectUrlIdentity(projectId);
     setLoadProjectId(projectId);
     await loadProject(projectId);
   };
@@ -6220,6 +6266,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setSaveMessage("");
     setCurrentProjectId("");
     setLoadProjectId("");
+    replaceProjectUrlIdentity("");
     setIsBatchRendering(false);
     setBatchRenderItems([]);
     setBatchRenderStartedAt("");
@@ -10389,6 +10436,7 @@ const generateSceneImage = async (
     if (data?.project?.id) {
       setCurrentProjectId(data.project.id);
       setLoadProjectId(data.project.id);
+      replaceProjectUrlIdentity(data.project.id);
     }
 
     await fetchProjects();
@@ -10427,11 +10475,18 @@ const generateSceneImage = async (
   const loadProject = async (projectIdOverride?: string) => {
     const projectIdToLoad = (projectIdOverride || loadProjectId).trim();
 
-    if (!projectIdToLoad) {
-      setError("Lütfen bir proje seç veya proje ID gir.");
+    if (!PROJECT_ID_PATTERN.test(projectIdToLoad)) {
+      setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
+      isHydratingRef.current = false;
+      skipAutosaveRef.current = false;
       return;
     }
 
+    isHydratingRef.current = true;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
     setIsLoadingProject(true);
     setError("");
     setSaveMessage("");
@@ -10439,7 +10494,7 @@ const generateSceneImage = async (
     try {
       const accessToken = await getAccessTokenOrThrow();
 
-      const res = await fetch(`/api/load-project/${projectIdToLoad}`, {
+      const res = await fetch(`/api/load-project/${encodeURIComponent(projectIdToLoad)}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -10449,7 +10504,7 @@ const generateSceneImage = async (
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Proje yüklenemedi.");
+        setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
         return;
       }
 
@@ -10498,6 +10553,11 @@ const generateSceneImage = async (
 
       setCurrentProjectId(project.id || "");
       setLoadProjectId(project.id || projectIdToLoad);
+      setSelectedFlowKey(isCreatorProject ? "creator_lab" : "storyverse");
+      replaceProjectUrlIdentity(
+        project.id || projectIdToLoad,
+        isCreatorProject ? "creator_lab" : "storyverse",
+      );
       setSelectedChildId(project.child_id || "");
       setTitle(project.title || "");
       setInput(project.input_prompt || "");
@@ -10812,13 +10872,11 @@ const generateSceneImage = async (
 
       setSaveMessage(ui.projectLoaded);
 
-      setTimeout(() => {
-        isHydratingRef.current = false;
-        skipAutosaveRef.current = false;
-      }, 0);
     } catch (e: any) {
-      setError(e?.message || "Yükleme sırasında hata oluştu.");
+      setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
     } finally {
+      isHydratingRef.current = false;
+      skipAutosaveRef.current = false;
       setIsLoadingProject(false);
     }
   };
@@ -12440,6 +12498,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       if (saveData?.project?.id && !forceNewProject) {
         setCurrentProjectId(saveData.project.id);
         setLoadProjectId(saveData.project.id);
+        replaceProjectUrlIdentity(saveData.project.id);
       }
 
       await fetchProjects();
