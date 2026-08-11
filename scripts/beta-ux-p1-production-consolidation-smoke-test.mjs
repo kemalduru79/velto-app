@@ -20,7 +20,7 @@ assert.match(subnav, /border-blue-600 bg-white/);
 assert.match(subnav, /border-transparent text-slate-400/);
 assert.doesNotMatch(subnav, /fetch\(|credits|provider/i);
 assert.match(page, /useState<CreatorProductionSubstep>\("setup"\)/);
-assert.match(page, /setCreatorProductionSubstep\("create_review"\)/);
+assert.match(page, /selectCreatorProductionSubstep\("create_review"\)/);
 assert.match(summary, /Edit Setup/);
 assert.doesNotMatch(summary, /fetch\(|credits|provider/i);
 
@@ -36,7 +36,7 @@ assert.match(setupSource, /CreatorBackgroundMusic/);
 assert.match(setupSource, /Visual Continuity/);
 assert.match(setupSource, /Continue to Create & Review/);
 assert.match(setupSource, /data-production-primary-continue="true"/);
-assert.match(setupSource, /onClick=\{\(\) => setCreatorProductionSubstep\("create_review"\)\}/);
+assert.match(setupSource, /onClick=\{\(\) => selectCreatorProductionSubstep\("create_review"\)\}/);
 assert.doesNotMatch(setupSource, /data-production-primary-continue[\s\S]{0,500}(fetch\(|continueCreatorProduction|credits|provider)/i);
 assert.doesNotMatch(setupSource, /Mini Timeline/);
 assert.doesNotMatch(setupSource, /Scene workspace/);
@@ -96,6 +96,20 @@ const sceneWorkspaceIndex = page.indexOf('id="creatorlab-production-storyboard"'
 assert.ok(compactHeaderIndex >= 0 && compactProgressIndex >= 0 && sceneWorkspaceIndex > compactProgressIndex);
 assert.doesNotMatch(page.slice(compactProgressIndex, sceneWorkspaceIndex), /Approved production plan|Production Setup/);
 
+assert.match(page, /if \(value === "setup"\) return "setup"/);
+assert.match(page, /if \(value === "review"\) return "create_review"/);
+assert.match(page, /onChange=\{selectCreatorProductionSubstep\}/);
+assert.doesNotMatch(subnav, /dashboard|overview|assets|timeline/i);
+
+const referencePreviewCssStart = page.indexOf(".creatorlab-cast-reference-image {");
+const referencePreviewCssEnd = page.indexOf("}", referencePreviewCssStart);
+const referencePreviewCss = page.slice(referencePreviewCssStart, referencePreviewCssEnd + 1);
+assert.ok(referencePreviewCssStart >= 0);
+assert.match(referencePreviewCss, /width: min\(100%, 380px\)/);
+assert.match(referencePreviewCss, /height: auto/);
+assert.match(referencePreviewCss, /object-fit: contain/);
+assert.doesNotMatch(referencePreviewCss, /object-fit: cover|aspect-ratio|height:\s*\d/);
+
 assert.match(music, /No Music/);
 assert.match(music, /Auto Match/);
 assert.match(music, /Browse Music/);
@@ -115,4 +129,4 @@ assert.match(page, /dialogueVoiceSelection: narratorSettings\.dialogueVoiceSelec
 assert.match(page, /characters,/);
 assert.match(page, /scenes: sourceScenes/);
 
-console.log("CreatorLab Production UX consolidation smoke passed (50/50).");
+console.log("CreatorLab Production UX consolidation smoke passed (58/58).");

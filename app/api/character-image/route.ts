@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import {
+  getCreditErrorResponse,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
+import {
   normalizeCreatorQualityMode,
   type CreatorQualityMode,
 } from "../../../lib/creator/mediaRouting";
@@ -8,6 +15,7 @@ import {
 export const runtime = "nodejs";
 
 type Character = {
+  id?: string;
   name: string;
   age: string;
   appearance: string;
@@ -65,8 +73,10 @@ function getCreatorCharacterRoute(qualityMode: CreatorQualityMode) {
 }
 
 export async function POST(req: Request) {
+  let reservation: MeteredOperationReservation | null = null;
+  let providerSucceeded = false;
+
   try {
-    const client = getOpenAIClient();
     const {
       title,
       character,
@@ -107,6 +117,25 @@ export async function POST(req: Request) {
     }
 
     const creatorRoute = getCreatorCharacterRoute(normalizedQualityMode);
+
+    if (isCreatorLab) {
+      reservation = await reserveMeteredOperation(req, {
+        operationType: "creator_image",
+        qualityMode: normalizedQualityMode,
+        provider: "openai",
+        referenceId: character.id?.trim()
+          ? `character:${character.id.trim()}:reference`
+          : "character:unassigned:reference",
+        metadata: {
+          productProfile: "creatorlab",
+          characterId: character.id?.trim() || null,
+          qualityMode: normalizedQualityMode,
+          purpose: "character_reference",
+        },
+        billable: true,
+        requireCostGuardConfirmation: true,
+      });
+    }
 
     const prompt = isCreatorLab
       ? `
@@ -197,6 +226,7 @@ Requirements:
           quality: "high",
         };
 
+    const client = getOpenAIClient();
     const image = (await client.images.generate({
       ...request,
       stream: false,
@@ -210,9 +240,27 @@ Requirements:
       );
     }
 
+    providerSucceeded = true;
+    const chargedCredits = reservation?.reservedCredits || 0;
+    const creditResult = reservation
+      ? await settleMeteredOperation(reservation, {
+          metadata: {
+            route: "character-image",
+            purpose: "character_reference",
+            model: request.model,
+            quality: request.quality,
+            size: request.size,
+          },
+        })
+      : null;
+    reservation = null;
+
     return NextResponse.json({
       image: `data:image/png;base64,${base64}`,
       usage: (image as any).usage || null,
+      credits: creditResult
+        ? { chargedCredits, account: creditResult.account }
+        : { chargedCredits: 0 },
       visualRoute: isCreatorLab
         ? {
             qualityMode: normalizedQualityMode,
@@ -228,15 +276,35 @@ Requirements:
           },
     });
   } catch (error) {
+    if (reservation) {
+      if (providerSucceeded) {
+        try {
+          await settleMeteredOperation(reservation, {
+            metadata: {
+              route: "character-image",
+              purpose: "character_reference",
+              settlementRetry: true,
+            },
+          });
+        } catch {
+          console.error("character-image credit settlement failed after provider success");
+        }
+      } else {
+        await releaseMeteredOperation(
+          reservation,
+          "character_reference_generation_failed",
+          { route: "character-image", purpose: "character_reference" },
+        );
+      }
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("character-image error:", error);
 
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Karakter referans görseli oluşturulurken hata oluştu.";
-
     return NextResponse.json(
-      { error: message || "Karakter referans görseli oluşturulurken hata oluştu." },
+      { error: "Karakter referans görseli oluşturulurken hata oluştu." },
       { status: 500 },
     );
   }

@@ -1170,6 +1170,7 @@ const CREATOR_CONTENT_TYPE_OPTIONS: Array<{
 
 const CREATOR_BRIEF_DRAFT_STORAGE_KEY = "velto.creatorlab.briefDraft.v1";
 const PROJECT_URL_PARAM = "project";
+const PRODUCTION_URL_PARAM = "production";
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 function replaceProjectUrlIdentity(projectId: string, flowKey?: "creator_lab" | "storyverse") {
@@ -1186,6 +1187,22 @@ function replaceProjectUrlIdentity(projectId: string, flowKey?: "creator_lab" | 
     url.searchParams.delete(PROJECT_URL_PARAM);
   }
 
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function getProductionSubstepFromUrl(): CreatorProductionSubstep | null {
+  const value = new URLSearchParams(window.location.search).get(PRODUCTION_URL_PARAM);
+  if (value === "setup") return "setup";
+  if (value === "review") return "create_review";
+  return null;
+}
+
+function replaceProductionSubstepUrl(substep: CreatorProductionSubstep) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(
+    PRODUCTION_URL_PARAM,
+    substep === "create_review" ? "review" : "setup",
+  );
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
@@ -3303,6 +3320,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<1 | 2 | 3 | 4>(1);
   const [creatorProductionSubstep, setCreatorProductionSubstep] =
     useState<CreatorProductionSubstep>("setup");
+  const selectCreatorProductionSubstep = (substep: CreatorProductionSubstep) => {
+    setCreatorProductionSubstep(substep);
+    replaceProductionSubstepUrl(substep);
+  };
   const creatorLastAutoStepRef = useRef<1 | 2 | 3 | 4>(1);
   const [creatorBriefEditorOpen, setCreatorBriefEditorOpen] = useState(false);
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
@@ -10812,8 +10833,9 @@ const generateSceneImage = async (
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
       setCreatorProductionSubstep(
-        isCreatorProject && loadedProjectScenes.length > 0
-          ? "create_review"
+        isCreatorProject
+          ? getProductionSubstepFromUrl() ||
+              (loadedProjectScenes.length > 0 ? "create_review" : "setup")
           : "setup",
       );
       setCreatorOutcome(normalizeCreatorOutcome(normalizedSavedCreatorPackage?.outcome));
@@ -14156,23 +14178,69 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       return;
     }
 
+    let creatorOperationId = "";
+    const creatorOperationKey = `character-reference:${getProjectKey()}:${character.id || index}`;
+
+    if (isCreatorLabFlow) {
+      const estimatedCredits = getOperationCreditCost("creator_image", creatorQualityMode);
+      if (estimatedCredits <= 0) {
+        setError(
+          uiLanguage === "en"
+            ? "Draft mode is text-only. Select Standard, Pro or Cinematic before generating a character reference."
+            : "Taslak modu yalnızca metindir. Karakter referansı üretmeden önce Standard, Pro veya Cinematic seç.",
+        );
+        return;
+      }
+
+      creatorOperationId = (await requestCreatorCostGuardConfirmation({
+        operationName: uiLanguage === "en" ? "Reference image" : "Referans görsel",
+        estimatedCredits,
+        qualityLabel: getCreatorQualityModeLabel(),
+        summary: character.name,
+      }, creatorOperationKey)) || "";
+      if (!creatorOperationId) return;
+    }
+
     setCharacterLoadingIndex(index);
     setError("");
 
     try {
-      const res = await fetch("/api/character-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title,
-          character,
-          visualBible,
-          productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
-          qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
-        }),
-      });
+      const accessToken = isCreatorLabFlow ? await getAccessTokenOrThrow() : "";
+      let res: Response;
+      try {
+        res = await fetch("/api/character-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(isCreatorLabFlow
+              ? {
+                  Authorization: `Bearer ${accessToken}`,
+                  ...creatorCostGuardHeaders(creatorOperationId),
+                }
+              : {}),
+          },
+          body: JSON.stringify({
+            title,
+            character,
+            visualBible,
+            productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
+            qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
+          }),
+        });
+      } catch (transportError) {
+        if (isCreatorLabFlow) {
+          retainAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+        }
+        throw transportError;
+      }
+
+      if (isCreatorLabFlow) {
+        if (await isCreatorOperationHttpOutcomeAmbiguous(res)) {
+          retainAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+        } else {
+          retireAmbiguousCreatorOperationId(creatorOperationKey, creatorOperationId);
+        }
+      }
 
       const data = await res.json();
 
@@ -14180,6 +14248,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         setError(data.error || "Karakter referans görseli üretilemedi.");
         return;
       }
+
+      notifyCreditAccountChanged(data.credits);
 
       setCharacters((prev) =>
         prev.map((item, i) =>
@@ -23999,8 +24069,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
 .creatorlab-cast-reference-image {
   width: min(100%, 380px);
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
+  background: var(--cl-surface-muted);
   border: 1px solid var(--cl-border);
   border-radius: 12px;
 }
@@ -28554,7 +28625,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
             <CreatorProductionSubnav
               value={creatorProductionSubstep}
-              onChange={setCreatorProductionSubstep}
+              onChange={selectCreatorProductionSubstep}
               language={uiLanguage === "en" ? "en" : "tr"}
             />
 
@@ -28570,7 +28641,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   castSummary={creatorCharacterVoiceSummary}
                   music={creatorMusicSummary}
                   continuity={creatorContinuitySummary}
-                  onEdit={() => setCreatorProductionSubstep("setup")}
+                  onEdit={() => selectCreatorProductionSubstep("setup")}
                   language={uiLanguage === "en" ? "en" : "tr"}
                 />
               </>
@@ -29306,7 +29377,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <button
                     type="button"
                     data-production-primary-continue="true"
-                    onClick={() => setCreatorProductionSubstep("create_review")}
+                    onClick={() => selectCreatorProductionSubstep("create_review")}
                     className="min-h-12 rounded-xl bg-blue-700 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                   >
                     {uiLanguage === "en" ? "Continue to Create & Review →" : "Üret ve İncele'ye Devam Et →"}

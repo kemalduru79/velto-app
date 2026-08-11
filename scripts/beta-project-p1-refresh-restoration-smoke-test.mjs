@@ -12,6 +12,7 @@ const repository = fs.readFileSync(
 );
 
 assert.match(page, /const PROJECT_URL_PARAM = "project"/);
+assert.match(page, /const PRODUCTION_URL_PARAM = "production"/);
 assert.match(page, /new URLSearchParams\(window\.location\.search\)[\s\S]*\.get\(PROJECT_URL_PARAM\)/);
 assert.match(page, /void loadProject\(projectId\)/);
 assert.match(page, /setSelectedFlowKey\(isCreatorProject \? "creator_lab" : "storyverse"\)/);
@@ -34,6 +35,19 @@ assert.match(page, /const PROJECT_ID_PATTERN = \/\^\[A-Za-z0-9_-\]/);
 assert.match(page, /Project could not be opened\./);
 assert.match(page, /if \(currentProjectId && currentProjectId !== projectId\) \{\s*resetStoryFlow\(\)/);
 assert.match(page, /const resetStoryFlow = \(\) => \{[\s\S]*setCurrentProjectId\(""\)[\s\S]*replaceProjectUrlIdentity\(""\)/);
+
+assert.match(page, /if \(value === "setup"\) return "setup"/);
+assert.match(page, /if \(value === "review"\) return "create_review"/);
+assert.match(page, /return null;/);
+assert.match(page, /substep === "create_review" \? "review" : "setup"/);
+assert.match(page, /url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
+assert.match(page, /const selectCreatorProductionSubstep = \(substep: CreatorProductionSubstep\) => \{[\s\S]*setCreatorProductionSubstep\(substep\)[\s\S]*replaceProductionSubstepUrl\(substep\)/);
+assert.match(page, /onChange=\{selectCreatorProductionSubstep\}/);
+assert.match(page, /onClick=\{\(\) => selectCreatorProductionSubstep\("create_review"\)\}/);
+assert.match(page, /onEdit=\{\(\) => selectCreatorProductionSubstep\("setup"\)\}/);
+assert.match(page, /getProductionSubstepFromUrl\(\) \|\|[\s\S]*loadedProjectScenes\.length > 0 \? "create_review" : "setup"/);
+assert.match(page, /const url = new URL\(window\.location\.href\);[\s\S]*url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
+assert.match(page, /onStartNewProject=\{\(\) => \{[\s\S]*window\.history\.replaceState\(null, "", "\/create\?flow=creator_lab"\)/);
 
 assert.match(page, /const loadedCharacters = isCreatorProject[\s\S]*normalizeCreatorLabCharacters\(project\.characters\)/);
 assert.match(page, /dialogueSpeakerCharacterId: isCreatorProject[\s\S]*normalizeCreatorDialogueSpeakerCharacterId/);
