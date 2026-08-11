@@ -1,12 +1,16 @@
 import { ProviderError, classifyProviderError } from "@/lib/providers/core/providerError";
+import { isIP } from "node:net";
 import { normalizeCreatorPremiumMusicTrackId } from "@/lib/creator/musicLibrary";
 import type {
   CreatorPremiumMusicTrack,
+  MusicDownloadInput,
+  MusicDownloadResult,
   MusicPreviewResult,
   MusicProvider,
   MusicSearchInput,
   MusicSearchResult,
 } from "./types";
+import { isPremiumMusicAcquisitionEnabled } from "./downloadSecurity";
 
 const API_BASE = "https://partner-content-api.epidemicsound.com";
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -100,5 +104,38 @@ export class EpidemicMusicAdapter implements MusicProvider {
     const streamUrl = text(raw.url, 1000);
     if (!/^https:\/\//.test(streamUrl)) throw new ProviderError("Music preview is unavailable.", { code: "upstream", retryable: true });
     return { streamUrl, ...(text(raw.expires, 80) ? { expiresAt: text(raw.expires, 80) } : {}) };
+  }
+
+  async downloadTrack(input: MusicDownloadInput): Promise<MusicDownloadResult> {
+    const trackId = normalizeCreatorPremiumMusicTrackId(input.trackId);
+    const networkLikeTrackId = trackId
+      ? trackId.toLowerCase().replace(/^\[|\]$/g, "")
+      : "";
+    if (
+      !trackId ||
+      networkLikeTrackId === "localhost" ||
+      networkLikeTrackId.endsWith(".localhost") ||
+      networkLikeTrackId.endsWith(".local") ||
+      isIP(networkLikeTrackId) !== 0
+    ) {
+      throw new ProviderError("Premium music acquisition is unavailable.", {
+        code: "invalid_request",
+        retryable: false,
+      });
+    }
+    if (!isPremiumMusicAcquisitionEnabled()) {
+      throw new ProviderError("Premium music acquisition is unavailable.", {
+        code: "not_configured",
+        retryable: false,
+      });
+    }
+
+    // The production acquisition endpoint and response contract have not been
+    // approved in this repository. Keep this method fail-closed rather than
+    // guessing a download URL or exposing a commercial provider operation.
+    throw new ProviderError("Premium music acquisition is unavailable.", {
+      code: "not_configured",
+      retryable: false,
+    });
   }
 }

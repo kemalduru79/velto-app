@@ -6,4 +6,4 @@ export function getMusicProvider(): MusicProvider {
   provider ||= new EpidemicMusicAdapter();
   return provider;
 }
-export type { CreatorPremiumMusicTrack, MusicPreviewResult, MusicProvider, MusicSearchInput, MusicSearchResult } from "./types";
+export type { CreatorPremiumMusicTrack, MusicAcquisitionContext, MusicDownloadInput, MusicDownloadResult, MusicPreviewResult, MusicProvider, MusicSearchInput, MusicSearchResult } from "./types";

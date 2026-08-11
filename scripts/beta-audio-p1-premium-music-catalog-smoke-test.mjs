@@ -37,7 +37,7 @@ check("adapter uses fixed endpoints, timeout, bounded search, and normalization"
   assert.match(adapter, /AbortSignal\.timeout\(REQUEST_TIMEOUT_MS\)/);
   assert.match(adapter, /Math\.min\(20, Math\.max\(1/);
   assert.match(adapter, /normalizePremiumMusicTrack/);
-  assert.doesNotMatch(adapter, /download|create-version|adapt-length/i);
+  assert.doesNotMatch(adapter, /create-version|adapt-length/i);
 });
 check("adapter returns product shapes rather than raw provider payload", () => {
   assert.match(adapter, /return \{ tracks, limit, offset, hasMore/);
@@ -190,7 +190,7 @@ check("catalog revision remains deterministic in render signature", () => {
 });
 check("normal tests consume no provider quota", () => {
   assert.doesNotMatch(new URL(import.meta.url).pathname, /RUN_CREATOR_MUSIC_LIVE_TEST/);
-  assert.doesNotMatch(adapter, /\/download|create-version|adapt-length/);
+  assert.doesNotMatch(adapter, /this\.request\([^\n]*(?:download|acqui)|create-version|adapt-length/);
 });
 
 console.log(`\nCreatorLab premium music catalog smoke test passed (${checks.length} checks).`);
