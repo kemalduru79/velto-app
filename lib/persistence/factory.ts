@@ -2,7 +2,7 @@ import { SupabaseCreditRepository } from "@/lib/credits/supabaseCreditRepository
 import { SupabaseJobQueueRepository } from "./jobs";
 import { SupabaseProjectRepository } from "./projects";
 import { SupabaseObjectStorageRepository } from "./storage";
-import { SupabaseCreatorMusicEntitlementRepository } from "./music";
+import { SupabaseCreatorMusicEntitlementRepository, SupabaseCreatorMusicUsageEventRepository } from "./music";
 import type { PersistenceServices } from "./types";
 
 type DatabaseDriver = "supabase";
@@ -49,6 +49,7 @@ export function createPersistenceServices(): PersistenceServices {
       jobQueue: new SupabaseJobQueueRepository(),
       projectRepository: new SupabaseProjectRepository(),
       creatorMusicEntitlementRepository: new SupabaseCreatorMusicEntitlementRepository(),
+      creatorMusicUsageEventRepository: new SupabaseCreatorMusicUsageEventRepository(),
     };
   }
 

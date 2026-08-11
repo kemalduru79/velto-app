@@ -46,3 +46,40 @@ export interface CreatorMusicEntitlementRepository {
   markFailed(id: string, userId: string): Promise<CreatorMusicEntitlement>;
   markRevoked(id: string, userId: string): Promise<CreatorMusicEntitlement>;
 }
+
+export type CreatorMusicUsageEventStatus = "pending" | "reported" | "failed";
+export type CreatorMusicUsageErrorCode =
+  | "provider_unavailable"
+  | "provider_rate_limited"
+  | "provider_rejected"
+  | "reporting_unavailable"
+  | "unknown";
+
+export type CreatorMusicUsageEventIdentity = {
+  entitlementId: string;
+  userId: string;
+  projectId: string;
+  providerKey: string;
+  trackId: string;
+  licensePolicyVersion: string;
+  exportUsageKey: string;
+};
+
+export type CreatorMusicUsageEvent = CreatorMusicUsageEventIdentity & {
+  id: string;
+  status: CreatorMusicUsageEventStatus;
+  attemptCount: number;
+  lastErrorCode?: CreatorMusicUsageErrorCode;
+  providerUsageEventId?: string;
+  createdAt: string;
+  updatedAt: string;
+  reportedAt?: string;
+};
+
+export interface CreatorMusicUsageEventRepository {
+  getByUsageKey(entitlementId: string, exportUsageKey: string): Promise<CreatorMusicUsageEvent | null>;
+  createOrGetPending(identity: CreatorMusicUsageEventIdentity): Promise<{ event: CreatorMusicUsageEvent; created: boolean }>;
+  listPending(limit?: number): Promise<CreatorMusicUsageEvent[]>;
+  markReported(id: string, providerUsageEventId?: string): Promise<CreatorMusicUsageEvent>;
+  markFailed(id: string, errorCode: CreatorMusicUsageErrorCode): Promise<CreatorMusicUsageEvent>;
+}

@@ -13,6 +13,8 @@ import {
 import { authenticateRequest } from "@/lib/auth/server";
 import { resolveCreatorPremiumMusicExportEntitlement } from "@/lib/creator/musicEntitlement";
 import { isPremiumMusicAcquisitionEnabled } from "@/lib/providers/music/downloadSecurity";
+import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
+import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -86,6 +88,7 @@ export async function POST(request: Request) {
     delete exportPayload.musicAsset;
     delete exportPayload.musicStorage;
     let internalExportToken: string | undefined;
+    let musicUsageIdentity: CreatorMusicUsageEventIdentity | null = null;
     if (productProfile === "creatorlab") {
       let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
         body.backgroundMusic,
@@ -117,6 +120,14 @@ export async function POST(request: Request) {
           return blockPremiumMusicExport();
         }
         if (!musicEntitlement) return blockPremiumMusicExport();
+        musicUsageIdentity = buildCreatorMusicUsageEventIdentity({
+          entitlementId: musicEntitlement.entitlementId,
+          userId: principal.id,
+          projectId: typeof body.projectId === "string" ? body.projectId : "",
+          trackId: musicEntitlement.trackId,
+          exportIdempotencyKey: request.headers.get("x-idempotency-key"),
+        });
+        if (!musicUsageIdentity) return blockPremiumMusicExport();
         exportPayload.musicEntitlement = musicEntitlement;
       }
       exportPayload.backgroundMusic = backgroundMusic;
@@ -159,6 +170,10 @@ export async function POST(request: Request) {
 
     if (!response.ok || !data?.ok || !data?.movieUrl) {
       throw new Error(data?.error || "Film export işlemi başarısız oldu.");
+    }
+
+    if (musicUsageIdentity) {
+      await registerCreatorMusicExportUsage(musicUsageIdentity);
     }
 
     const creditResult = creditReservation
