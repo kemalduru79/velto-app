@@ -50,6 +50,7 @@ import CreatorProductionSubnav, {
   type CreatorProductionSubstep,
 } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
+import CreatorEditor from "@/components/create/CreatorEditor";
 import {
   DEFAULT_CREATOR_BACKGROUND_MUSIC,
   normalizeCreatorBackgroundMusicConfig,
@@ -131,6 +132,13 @@ import {
   normalizeCreatorAdultScene,
   sanitizeCreatorAdultSpeech,
 } from "@/lib/creator/adultContentGuard";
+import {
+  createCreatorSceneId,
+  normalizeCreatorSceneIds,
+  projectCanonicalCreatorScenes,
+  selectCreatorSceneId,
+  synchronizeCreatorSceneProjectionIds,
+} from "@/lib/creator/editorState";
 import {
   createCreatorFinalVideoReadiness,
   type CreatorFinalVideoReadinessReport,
@@ -641,6 +649,7 @@ type Scene = {
   continuityMode?: CreatorSceneContinuityMode;
   continuity?: CreatorSceneContinuityState;
   id: number;
+  creatorSceneId?: string;
   text: string;
   narration: string;
   dialogue: string;
@@ -876,6 +885,7 @@ type CreatorMentorResult = {
 
 type CreatorProductionScene = {
   id: number;
+  creatorSceneId?: string;
   text: string;
   narration: string;
   dialogue: string;
@@ -1373,7 +1383,15 @@ const normalizeCreatorLabGeneratedPackage = (
     allowDialogue?: boolean;
   },
 ): CreatorProductionPackage => {
-  return normalizeCreatorAdultPackage(productionPackage, options) as CreatorProductionPackage;
+  const normalizedPackage = normalizeCreatorAdultPackage(
+    productionPackage,
+    options,
+  ) as CreatorProductionPackage;
+
+  return {
+    ...normalizedPackage,
+    scenes: normalizeCreatorSceneIds(normalizedPackage.scenes || []),
+  };
 };
 
 
@@ -3354,6 +3372,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [refinedCreatorScenes, setRefinedCreatorScenes] = useState<
     CreatorProductionScene[]
   >([]);
+  const [selectedCreatorEditorSceneId, setSelectedCreatorEditorSceneId] =
+    useState<string | null>(null);
+  const [creatorEditorOpen, setCreatorEditorOpen] = useState(false);
   const [refineScenesLoading, setRefineScenesLoading] = useState(false);
   const [youtubeResearchVideos, setYoutubeResearchVideos] = useState<
     YoutubeResearchVideo[]
@@ -3805,6 +3826,18 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       });
       return changed ? next : prev;
     });
+  }, [isCreatorLabFlow, scenes]);
+
+  useEffect(() => {
+    if (!isCreatorLabFlow) {
+      setSelectedCreatorEditorSceneId(null);
+      setCreatorEditorOpen(false);
+      return;
+    }
+
+    setSelectedCreatorEditorSceneId((current) =>
+      selectCreatorSceneId(scenes, current),
+    );
   }, [isCreatorLabFlow, scenes]);
 
 
@@ -6273,6 +6306,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setSceneOptimizationResult([]);
     setSceneOptimizationSummary(null);
     setRefinedCreatorScenes([]);
+    setSelectedCreatorEditorSceneId(null);
+    setCreatorEditorOpen(false);
     setTitle("");
     setCharacters([]);
     setVisualBible(null);
@@ -10539,7 +10574,7 @@ const generateSceneImage = async (
         contentType: savedCreatorPackage?.contentType || "",
         format: savedCreatorPackage?.format || "",
       });
-      const normalizedSavedCreatorPackage =
+      let normalizedSavedCreatorPackage =
         isCreatorProject && savedCreatorPackage
           ? normalizeCreatorLabGeneratedPackage(savedCreatorPackage, {
               topic: project.input_prompt || project.title || "",
@@ -10552,7 +10587,7 @@ const generateSceneImage = async (
       const loadedCharacters = isCreatorProject
         ? normalizeCreatorLabCharacters(project.characters)
         : withDefaultGuideCharacter(project.characters);
-      const loadedProjectScenes = Array.isArray(project.scenes)
+      const loadedProjectScenesBeforeIdentity = Array.isArray(project.scenes)
         ? project.scenes.map((scene: Scene, index: number) =>
             isCreatorProject
               ? normalizeCreatorAdultScene(scene, {
@@ -10565,6 +10600,18 @@ const generateSceneImage = async (
               : scene,
           )
         : [];
+      const loadedProjectScenes = isCreatorProject
+        ? normalizeCreatorSceneIds(loadedProjectScenesBeforeIdentity)
+        : loadedProjectScenesBeforeIdentity;
+      if (isCreatorProject && normalizedSavedCreatorPackage) {
+        normalizedSavedCreatorPackage = {
+          ...normalizedSavedCreatorPackage,
+          scenes: synchronizeCreatorSceneProjectionIds(
+            loadedProjectScenes,
+            normalizedSavedCreatorPackage.scenes || [],
+          ),
+        };
+      }
 
       isHydratingRef.current = true;
 
@@ -10587,6 +10634,8 @@ const generateSceneImage = async (
       setCharacters(loadedCharacters);
       setVisualBible(project.visual_bible || emptyVisualBible);
       setCreatorUndoStack([]);
+      setSelectedCreatorEditorSceneId(null);
+      setCreatorEditorOpen(false);
       setCreatorAssetCompareSelection({});
       setCreatorAssetHistoryOpen({});
       setScenes(
@@ -10857,17 +10906,20 @@ const generateSceneImage = async (
       setSceneOptimizationSummary(project.scene_optimization_summary || null);
       setRefinedCreatorScenes(
         Array.isArray(project.refined_creator_scenes)
-          ? project.refined_creator_scenes.map(
-              (scene: CreatorProductionScene, index: number) =>
-                isCreatorProject
-                  ? normalizeCreatorAdultScene(scene, {
-                      language: loadedContentLanguage,
-                      isOpeningScene: index === 0,
-                      allowDialogue:
-                        loadedDialogueRequested ||
-                        (index > 0 && Boolean(scene.dialogue?.trim())),
-                    })
-                  : scene,
+          ? synchronizeCreatorSceneProjectionIds(
+              loadedProjectScenes,
+              project.refined_creator_scenes.map(
+                (scene: CreatorProductionScene, index: number) =>
+                  isCreatorProject
+                    ? normalizeCreatorAdultScene(scene, {
+                        language: loadedContentLanguage,
+                        isOpeningScene: index === 0,
+                        allowDialogue:
+                          loadedDialogueRequested ||
+                          (index > 0 && Boolean(scene.dialogue?.trim())),
+                      })
+                    : scene,
+              ),
             )
           : []
       );
@@ -12390,6 +12442,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
+      setSelectedCreatorEditorSceneId(null);
+      setCreatorEditorOpen(false);
       setStorySetup({
         title: nextPackage.title || "",
         storyPremise: nextPackage.storyPremise || "",
@@ -12762,6 +12816,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
+      setSelectedCreatorEditorSceneId(null);
+      setCreatorEditorOpen(false);
 
       setStorySetup({
         title: nextPackage.title || "",
@@ -14295,18 +14351,21 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
         });
-        const creatorSourceScenes = rawCreatorSourceScenes.map((scene, index) =>
-          normalizeCreatorAdultScene(scene, {
-            language,
-            isOpeningScene: index === 0,
-            allowDialogue:
-              dialogueRequested ||
-              (index > 0 && Boolean(rawCreatorSourceScenes[index]?.dialogue?.trim())),
-          }),
+        const creatorSourceScenes = normalizeCreatorSceneIds(
+          rawCreatorSourceScenes.map((scene, index) =>
+            normalizeCreatorAdultScene(scene, {
+              language,
+              isOpeningScene: index === 0,
+              allowDialogue:
+                dialogueRequested ||
+                (index > 0 && Boolean(rawCreatorSourceScenes[index]?.dialogue?.trim())),
+            }),
+          ),
         );
 
         const packageScenes: Scene[] = creatorSourceScenes.map((scene, index) => ({
           id: scene.id,
+          creatorSceneId: scene.creatorSceneId,
           text: scene.text || "",
           narration: scene.narration || "",
           dialogue: scene.dialogue || "",
@@ -15451,8 +15510,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   };
 
   const splitCreatorScene = (sceneId: number) => {
-    const sceneIndex = scenes.findIndex((scene) => scene.id === sceneId);
-    const scene = scenes[sceneIndex];
+    const normalizedScenes = normalizeCreatorSceneIds(scenes);
+    const sceneIndex = normalizedScenes.findIndex((scene) => scene.id === sceneId);
+    const scene = normalizedScenes[sceneIndex];
     const draft = sceneScriptDrafts[sceneId];
 
     if (!scene || !draft) return;
@@ -15520,6 +15580,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     };
     const secondBase: Scene = {
       ...scene,
+      creatorSceneId: createCreatorSceneId(),
       narration: secondNarration,
       dialogue: secondDialogue,
       text: `${scene.text || (uiLanguage === "en" ? "Scene" : "Sahne")} — ${uiLanguage === "en" ? "continued" : "devam"}`,
@@ -15547,10 +15608,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     };
 
     const inserted = [
-      ...scenes.slice(0, sceneIndex),
+      ...normalizedScenes.slice(0, sceneIndex),
       firstBase,
       secondBase,
-      ...scenes.slice(sceneIndex + 1),
+      ...normalizedScenes.slice(sceneIndex + 1),
     ];
     const nextScenes = inserted.map((item, index) => {
       const withId = { ...item, id: index + 1 };
@@ -15589,8 +15650,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       prev
         ? {
             ...prev,
-            scenes: nextScenes.map((item) => ({
-              id: item.id,
+            scenes: projectCanonicalCreatorScenes(nextScenes, (item) => ({
               text: item.text,
               narration: item.narration,
               dialogue: item.dialogue,
@@ -29533,6 +29593,28 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         : creatorNextProductionAction.buttonLabel}
                     </button>
                   </div>
+                )}
+
+                {!creatorEditorOpen && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      data-creator-editor-entry="true"
+                      onClick={() => setCreatorEditorOpen(true)}
+                      className="min-h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-800 transition hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                    >
+                      {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
+                    </button>
+                  </div>
+                )}
+
+                {creatorEditorOpen && (
+                  <CreatorEditor
+                    scenes={scenes}
+                    selectedCreatorSceneId={selectedCreatorEditorSceneId}
+                    onSelectScene={setSelectedCreatorEditorSceneId}
+                    language={uiLanguage === "en" ? "en" : "tr"}
+                  />
                 )}
 
                 <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard">
