@@ -2,6 +2,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { PersistenceError } from "./persistenceError";
 import type {
   ObjectStorageRepository,
+  PrivateObjectUploadInput,
+  PrivateObjectUploadResult,
   PublicObjectUploadInput,
   PublicObjectUploadResult,
 } from "./types";
@@ -27,6 +29,25 @@ function requireStorageName(value: string, field: "bucket" | "path") {
 export class SupabaseObjectStorageRepository
   implements ObjectStorageRepository
 {
+  async uploadPrivate(
+    input: PrivateObjectUploadInput,
+  ): Promise<PrivateObjectUploadResult> {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const path = requireStorageName(input.path, "path");
+    if (input.contentType !== "audio/mpeg") {
+      throw new PersistenceError("Private media content type is invalid.", "INVALID_STORAGE_INPUT");
+    }
+    const { data, error } = await createServerSupabaseClient().storage.from(bucket).upload(path, input.body, {
+      contentType: input.contentType,
+      cacheControl: input.cacheControl,
+      upsert: input.upsert ?? false,
+    });
+    if (error) {
+      throw new PersistenceError("Licensed media asset could not be stored.", "STORAGE_UPLOAD_FAILED", error);
+    }
+    return { bucket, path: data?.path || path };
+  }
+
   async uploadPublic(
     input: PublicObjectUploadInput,
   ): Promise<PublicObjectUploadResult> {
