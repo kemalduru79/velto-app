@@ -6,6 +6,11 @@ type CreatorEditorProps = {
   scenes: readonly CreatorEditorTimelineScene[];
   selectedCreatorSceneId: string | null;
   onSelectScene: (creatorSceneId: string) => void;
+  onMoveScene: (direction: "earlier" | "later") => void;
+  onDuplicateScene: () => void;
+  onDeleteScene: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
   language: "en" | "tr";
 };
 
@@ -13,6 +18,11 @@ export default function CreatorEditor({
   scenes,
   selectedCreatorSceneId,
   onSelectScene,
+  onMoveScene,
+  onDuplicateScene,
+  onDeleteScene,
+  onUndo,
+  canUndo,
   language,
 }: CreatorEditorProps) {
   const selectedScene =
@@ -69,6 +79,57 @@ export default function CreatorEditor({
           onSelectScene={onSelectScene}
           language={language}
         />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label={language === "en" ? "Selected scene actions" : "Seçili sahne işlemleri"}>
+        <span className="mr-auto text-xs font-semibold text-slate-700">
+          {language === "en" ? "Scene Actions" : "Sahne İşlemleri"}
+        </span>
+        <button
+          type="button"
+          aria-label={language === "en" ? "Move selected scene earlier" : "Seçili sahneyi önceye taşı"}
+          onClick={() => onMoveScene("earlier")}
+          disabled={selectedIndex <= 0}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {language === "en" ? "Move Earlier" : "Önceye Taşı"}
+        </button>
+        <button
+          type="button"
+          aria-label={language === "en" ? "Move selected scene later" : "Seçili sahneyi sonraya taşı"}
+          onClick={() => onMoveScene("later")}
+          disabled={selectedIndex < 0 || selectedIndex >= scenes.length - 1}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {language === "en" ? "Move Later" : "Sonraya Taşı"}
+        </button>
+        <button
+          type="button"
+          aria-label={language === "en" ? "Duplicate selected scene" : "Seçili sahneyi çoğalt"}
+          onClick={onDuplicateScene}
+          className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800"
+        >
+          {language === "en" ? "Duplicate" : "Çoğalt"}
+        </button>
+        <button
+          type="button"
+          aria-label={language === "en" ? "Delete selected scene" : "Seçili sahneyi sil"}
+          onClick={onDeleteScene}
+          disabled={scenes.length <= 1}
+          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {language === "en" ? "Delete" : "Sil"}
+        </button>
+        {canUndo && (
+          <button
+            type="button"
+            aria-label={language === "en" ? "Undo latest scene change" : "Son sahne değişikliğini geri al"}
+            onClick={onUndo}
+            className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800"
+          >
+            {language === "en" ? "Undo" : "Geri Al"}
+          </button>
+        )}
       </div>
     </section>
   );

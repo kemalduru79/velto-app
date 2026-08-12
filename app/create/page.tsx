@@ -134,8 +134,11 @@ import {
 } from "@/lib/creator/adultContentGuard";
 import {
   createCreatorSceneId,
+  duplicateCreatorScene,
+  moveCreatorScene,
   normalizeCreatorSceneIds,
   projectCanonicalCreatorScenes,
+  removeCreatorScene,
   selectCreatorSceneId,
   synchronizeCreatorSceneProjectionIds,
 } from "@/lib/creator/editorState";
@@ -954,6 +957,8 @@ type CreatorUndoEntry = {
   createdAt: string;
   scenes: Scene[];
   productionPackage: CreatorProductionPackage | null;
+  refinedScenes: CreatorProductionScene[];
+  selectedCreatorSceneId: string | null;
   directorState: {
     input: string;
     selectedStrategyDirectionId: string;
@@ -7590,6 +7595,8 @@ const generateSceneImage = async (
       productionPackage: creatorProductionPackage
         ? cloneCreatorHistoryValue(creatorProductionPackage)
         : null,
+      refinedScenes: cloneCreatorHistoryValue(refinedCreatorScenes),
+      selectedCreatorSceneId: selectedCreatorEditorSceneId,
       directorState: {
         input,
         selectedStrategyDirectionId: creatorSelectedStrategyDirectionId,
@@ -7618,6 +7625,10 @@ const generateSceneImage = async (
     setScenes(restoredScenes);
     setCreatorProductionPackage(
       entry.productionPackage ? cloneCreatorHistoryValue(entry.productionPackage) : null,
+    );
+    setRefinedCreatorScenes(cloneCreatorHistoryValue(entry.refinedScenes));
+    setSelectedCreatorEditorSceneId(
+      selectCreatorSceneId(restoredScenes, entry.selectedCreatorSceneId),
     );
     setInput(entry.directorState.input);
     setCreatorSelectedStrategyDirectionId(entry.directorState.selectedStrategyDirectionId);
@@ -7649,6 +7660,115 @@ const generateSceneImage = async (
         ? `Undone: ${entry.label}`
         : `Geri alındı: ${entry.label}`,
     );
+  };
+
+  const projectCreatorEditorScenes = (nextScenes: Scene[]) =>
+    projectCanonicalCreatorScenes(nextScenes, (scene) => ({
+      text: scene.text,
+      narration: scene.narration,
+      dialogue: scene.dialogue,
+      cameraDirection: scene.cameraDirection,
+      emotion: scene.emotion,
+      motionHint: scene.motionHint,
+      visualPrompt: scene.visualPrompt,
+      continuity: scene.continuity,
+      intelligence: scene.intelligence,
+      targetDurationSec: scene.targetDurationSec,
+      estimatedSpeechSec: scene.estimatedSpeechSec,
+      speechWordCount: scene.speechWordCount,
+      scriptHealth: scene.scriptHealth,
+      visualBlockPlan: scene.visualBlockPlan,
+    }));
+
+  const applyCreatorEditorStructuralChange = ({
+    nextScenes,
+    selectedCreatorSceneId,
+    undoLabel,
+    feedback,
+  }: {
+    nextScenes: Scene[];
+    selectedCreatorSceneId: string | null;
+    undoLabel: string;
+    feedback: string;
+  }) => {
+    pushCreatorUndoSnapshot(undoLabel);
+    clearAllVideoPolls();
+    stopDialoguePlayback();
+    stopStoryPlayback();
+
+    const nextProjection = projectCreatorEditorScenes(nextScenes);
+    setScenes(nextScenes);
+    setCreatorProductionPackage((prev) =>
+      prev
+        ? {
+            ...prev,
+            scenes: nextProjection,
+            sceneCount: nextScenes.length,
+            timelineSyncPlan: undefined,
+          }
+        : prev,
+    );
+    setRefinedCreatorScenes((prev) =>
+      prev.length > 0 ? nextProjection : prev,
+    );
+    setSelectedCreatorEditorSceneId(selectedCreatorSceneId);
+    setCreatorSelectedSceneIds([]);
+    setCreatorAssetCompareSelection({});
+    setSceneScriptDrafts({});
+    setEditingSceneId(null);
+    setBatchRenderItems([]);
+    setCreatorTimelinePreviewPlan(null);
+    setCreatorEditPlan(null);
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setError("");
+    setSaveMessage(feedback);
+  };
+
+  const moveSelectedCreatorEditorScene = (direction: "earlier" | "later") => {
+    if (!selectedCreatorEditorSceneId) return;
+    const nextScenes = moveCreatorScene(
+      scenes,
+      selectedCreatorEditorSceneId,
+      direction,
+    );
+    if (nextScenes.every((scene, index) => scene.creatorSceneId === scenes[index]?.creatorSceneId)) {
+      return;
+    }
+
+    applyCreatorEditorStructuralChange({
+      nextScenes,
+      selectedCreatorSceneId: selectedCreatorEditorSceneId,
+      undoLabel: direction === "earlier" ? "Move scene earlier" : "Move scene later",
+      feedback: uiLanguage === "en" ? "Scene moved." : "Sahne taşındı.",
+    });
+  };
+
+  const deleteSelectedCreatorEditorScene = () => {
+    if (!selectedCreatorEditorSceneId) return;
+    const result = removeCreatorScene(scenes, selectedCreatorEditorSceneId);
+    if (!result.removed) return;
+
+    applyCreatorEditorStructuralChange({
+      nextScenes: result.scenes,
+      selectedCreatorSceneId: result.selectedCreatorSceneId,
+      undoLabel: "Delete scene",
+      feedback: uiLanguage === "en" ? "Scene deleted — Undo is available." : "Sahne silindi — Geri al kullanılabilir.",
+    });
+  };
+
+  const duplicateSelectedCreatorEditorScene = () => {
+    if (!selectedCreatorEditorSceneId) return;
+    const result = duplicateCreatorScene(scenes, selectedCreatorEditorSceneId);
+    if (!result.duplicated) return;
+
+    applyCreatorEditorStructuralChange({
+      nextScenes: result.scenes,
+      selectedCreatorSceneId: result.selectedCreatorSceneId,
+      undoLabel: "Duplicate scene",
+      feedback: uiLanguage === "en" ? "Scene duplicated." : "Sahne çoğaltıldı.",
+    });
   };
 
   const toggleCreatorAssetCompare = (sceneId: number, assetId: string) => {
@@ -29613,6 +29733,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     scenes={scenes}
                     selectedCreatorSceneId={selectedCreatorEditorSceneId}
                     onSelectScene={setSelectedCreatorEditorSceneId}
+                    onMoveScene={moveSelectedCreatorEditorScene}
+                    onDuplicateScene={duplicateSelectedCreatorEditorScene}
+                    onDeleteScene={deleteSelectedCreatorEditorScene}
+                    onUndo={undoLastCreatorChange}
+                    canUndo={creatorUndoStack.length > 0}
                     language={uiLanguage === "en" ? "en" : "tr"}
                   />
                 )}

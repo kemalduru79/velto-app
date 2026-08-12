@@ -91,8 +91,8 @@ matches(timeline, /onSelectScene\(scene\.creatorSceneId!\)/, "timeline selection
 matches(timeline, /<button[\s\S]*?aria-pressed=\{selected\}/, "timeline control is keyboard accessible"); // 34
 doesNotMatch(timeline, /key=\{(?:index|scene\.id)\}/, "timeline has no index/numeric key"); // 35
 doesNotMatch(editor + timeline, /onDrag|draggable|drag\/drop|sortable/i, "no reorder or drag/drop"); // 36
-doesNotMatch(editor + timeline, /onDelete|deleteScene|removeScene/i, "no delete"); // 37
-doesNotMatch(editor + timeline, /duplicateScene|onDuplicate/i, "no duplicate"); // 38
+matches(editor, /onDeleteScene/, "scene delete extends the foundation through a callback"); // 37
+matches(editor, /onDuplicateScene/, "scene duplicate extends the foundation through a callback"); // 38
 doesNotMatch(editor + timeline, /trim|ffmpeg/i, "no trim or FFmpeg"); // 39
 matches(editor, /videoUrl[\s\S]*?image/, "safe existing preview media only"); // 40
 
