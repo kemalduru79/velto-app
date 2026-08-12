@@ -5,6 +5,7 @@ import CreatorEditorTimeline, {
   type CreatorEditorTimelineScene,
 } from "@/components/create/CreatorEditorTimeline";
 import {
+  type CreatorAudioCurrentness,
   getCreatorSceneEffectiveDuration,
   normalizeCreatorSceneTrim,
 } from "@/lib/creator/editorState";
@@ -23,6 +24,9 @@ type CreatorEditorProps = {
     clipOutSec?: number;
     sourceDurationSec?: number;
   }) => void;
+  onSaveText: (edit: { text: string; narration: string; dialogue: string }) => void;
+  getNarrationAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
+  getDialogueAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
   sceneOperationsDisabled?: boolean;
   language: "en" | "tr";
 };
@@ -37,6 +41,9 @@ export default function CreatorEditor({
   onUndo,
   canUndo,
   onUpdateTrim,
+  onSaveText,
+  getNarrationAudioState,
+  getDialogueAudioState,
   sceneOperationsDisabled = false,
   language,
 }: CreatorEditorProps) {
@@ -48,12 +55,31 @@ export default function CreatorEditor({
   const [sourceDurationSec, setSourceDurationSec] = useState(0);
   const [trimStartDraft, setTrimStartDraft] = useState("0");
   const [trimEndDraft, setTrimEndDraft] = useState("");
+  const [textDraft, setTextDraft] = useState("");
+  const [narrationDraft, setNarrationDraft] = useState("");
+  const [dialogueDraft, setDialogueDraft] = useState("");
+  const canonicalTextRef = useRef("");
 
   useEffect(() => {
     setSourceDurationSec(0);
     setTrimStartDraft("0");
     setTrimEndDraft("");
   }, [selectedScene?.creatorSceneId, selectedScene?.videoUrl]);
+
+  useEffect(() => {
+    if (!selectedScene) return;
+    const canonical = JSON.stringify([
+      selectedScene.creatorSceneId,
+      selectedScene.text || "",
+      selectedScene.narration || "",
+      selectedScene.dialogue || "",
+    ]);
+    if (canonical === canonicalTextRef.current) return;
+    canonicalTextRef.current = canonical;
+    setTextDraft(selectedScene.text || "");
+    setNarrationDraft(selectedScene.narration || "");
+    setDialogueDraft(selectedScene.dialogue || "");
+  }, [selectedScene]);
 
   if (!selectedScene) return null;
 
@@ -66,12 +92,30 @@ export default function CreatorEditor({
     sourceDurationSec,
     sourceType: hasSelectedVideo ? "video" : "image",
   });
+  const textChanged =
+    textDraft !== (selectedScene.text || "") ||
+    narrationDraft !== (selectedScene.narration || "") ||
+    dialogueDraft !== (selectedScene.dialogue || "");
+  const narrationAudioState = getNarrationAudioState(selectedScene.creatorSceneId || "");
+  const dialogueAudioState = getDialogueAudioState(selectedScene.creatorSceneId || "");
   const effectiveDurationSec = getCreatorSceneEffectiveDuration({
     visualDurationSec: normalizedTrim.visualDurationSec,
     targetDurationSec: selectedScene.timing?.targetSceneDuration,
-    speechDurationSec: selectedScene.timing?.totalAudioDuration,
+    speechDurationSec:
+      (narrationAudioState === "current"
+        ? selectedScene.timing?.narrationDuration || 0
+        : 0) +
+      (dialogueAudioState === "current"
+        ? selectedScene.timing?.dialogueDuration || 0
+        : 0),
     speechTailBufferSec: selectedScene.timing?.speechTailBuffer ?? 0.75,
   });
+  const voiceLabel = (state: CreatorAudioCurrentness) => {
+    if (state === "current") return language === "en" ? "Voice ready" : "Ses hazır";
+    if (state === "stale") return language === "en" ? "Voice needs refresh" : "Sesin yenilenmesi gerekiyor";
+    if (state === "missing") return language === "en" ? "No voice generated" : "Ses üretilmedi";
+    return language === "en" ? "No voice needed" : "Ses gerekmiyor";
+  };
   const handleVideoMetadata = () => {
     const duration = videoRef.current?.duration || 0;
     if (!Number.isFinite(duration) || duration <= 0) return;
@@ -172,12 +216,30 @@ export default function CreatorEditor({
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             {language === "en" ? "Selected scene" : "Seçili sahne"} {selectedIndex + 1}
           </span>
-          <h3 className="mt-2 text-sm font-bold text-slate-950">
-            {selectedScene.text || (language === "en" ? "Untitled scene" : "Başlıksız sahne")}
-          </h3>
-          <p className="mt-2 line-clamp-6 text-xs leading-5 text-slate-600">
-            {selectedScene.narration || (language === "en" ? "No narration yet." : "Henüz anlatım yok.")}
-          </p>
+          <div className="mt-3 space-y-3" data-creator-text-editor="true">
+            <label className="block text-xs font-semibold text-slate-700">
+              {language === "en" ? "Scene Text" : "Sahne Metni"}
+              <textarea value={textDraft} onChange={(event) => setTextDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-700">
+              {language === "en" ? "Narration" : "Anlatım"}
+              <textarea value={narrationDraft} onChange={(event) => setNarrationDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+              <span data-narration-voice-state={narrationAudioState} className={narrationAudioState === "stale" ? "mt-1 block text-amber-700" : "mt-1 block text-slate-500"}>{voiceLabel(narrationAudioState)}</span>
+            </label>
+            <label className="block text-xs font-semibold text-slate-700">
+              {language === "en" ? "Dialogue" : "Diyalog"}
+              <textarea value={dialogueDraft} onChange={(event) => setDialogueDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+              <span data-dialogue-voice-state={dialogueAudioState} className={dialogueAudioState === "stale" ? "mt-1 block text-amber-700" : "mt-1 block text-slate-500"}>{voiceLabel(dialogueAudioState)}</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => onSaveText({ text: textDraft, narration: narrationDraft, dialogue: dialogueDraft })}
+              disabled={!textChanged || sceneOperationsDisabled}
+              className="w-full rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {language === "en" ? "Save Changes" : "Değişiklikleri Kaydet"}
+            </button>
+          </div>
         </div>
       </div>
 

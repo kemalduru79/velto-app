@@ -8,6 +8,8 @@ export type CreatorFinalVideoReadinessScene = {
   dialogue?: string;
   audioUrl?: string;
   dialogueAudioUrl?: string;
+  narrationAudioCurrent?: boolean;
+  dialogueAudioCurrent?: boolean;
 };
 
 export type CreatorFinalVideoReadinessStatus =
@@ -61,9 +63,12 @@ function hasReadyVisual(scene: CreatorFinalVideoReadinessScene) {
 }
 
 function hasReadyVoice(scene: CreatorFinalVideoReadinessScene) {
-  const narrationReady = !hasText(scene.narration) || hasText(scene.audioUrl);
+  const narrationReady =
+    !hasText(scene.narration) ||
+    (scene.narrationAudioCurrent ?? hasText(scene.audioUrl));
   const dialogueReady =
-    !hasText(scene.dialogue) || hasText(scene.dialogueAudioUrl);
+    !hasText(scene.dialogue) ||
+    (scene.dialogueAudioCurrent ?? hasText(scene.dialogueAudioUrl));
 
   return narrationReady && dialogueReady;
 }

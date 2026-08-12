@@ -3,6 +3,49 @@ export type CreatorSceneIdentity = {
   creatorSceneId?: string;
 };
 
+export type CreatorAudioCurrentness = "current" | "stale" | "missing" | "not_required";
+
+export function deriveCreatorAudioCurrentness({
+  spokenText,
+  audioUrl,
+  sourceText,
+  settingsKey,
+  currentSettingsKey,
+}: {
+  spokenText?: string;
+  audioUrl?: string;
+  sourceText?: string;
+  settingsKey?: string;
+  currentSettingsKey?: string;
+}): CreatorAudioCurrentness {
+  if (!String(spokenText || "").trim()) return "not_required";
+  if (!String(audioUrl || "").trim()) return "missing";
+  return sourceText === spokenText && settingsKey === currentSettingsKey
+    ? "current"
+    : "stale";
+}
+
+export function applyCreatorSceneTextEdit<
+  TScene extends CreatorSceneIdentity & { text: string; narration: string; dialogue: string },
+>(
+  scenes: readonly TScene[],
+  creatorSceneId: string,
+  edit: { text: string; narration: string; dialogue: string },
+): { scenes: TScene[]; changed: boolean } {
+  let changed = false;
+  const nextScenes = scenes.map((scene) => {
+    if (scene.creatorSceneId !== creatorSceneId) return scene;
+    if (
+      scene.text === edit.text &&
+      scene.narration === edit.narration &&
+      scene.dialogue === edit.dialogue
+    ) return scene;
+    changed = true;
+    return { ...scene, ...edit };
+  });
+  return { scenes: nextScenes, changed };
+}
+
 export const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
 
 export type CreatorSceneTrim = {

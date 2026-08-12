@@ -5,12 +5,15 @@ export type CreatorEditorTimelineScene = {
   creatorSceneId?: string;
   text: string;
   narration: string;
+  dialogue: string;
   image?: string;
   videoUrl?: string;
   renderMode?: "video" | "image";
   clipInSec?: number;
   clipOutSec?: number;
   timing?: {
+    narrationDuration?: number;
+    dialogueDuration?: number;
     totalAudioDuration?: number;
     targetSceneDuration?: number;
     speechTailBuffer?: number;

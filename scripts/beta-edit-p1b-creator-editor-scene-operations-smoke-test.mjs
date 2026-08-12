@@ -96,7 +96,7 @@ matches(editor, /canUndo && \([\s\S]*onClick=\{onUndo\}/, "Undo action is condit
 check((editor.match(/<button/g) || []).length >= 5 && (editor.match(/aria-label=/g) || []).length >= 6, "actions use accessible buttons"); // 50
 absent(editor + timeline, /onDrag|draggable|sortable|dnd/i, "no drag/drop dependency"); // 51
 matches(editor, /data-creator-trim-controls="true"/, "trim is isolated from structural operation helpers"); // 52
-absent(editor, /textarea|voice editor|contenteditable/i, "no text/voice editor"); // 53
+matches(editor, /data-creator-text-editor="true"[\s\S]*Save Changes/, "later text editor remains isolated behind explicit Save"); // 53
 
 const operationBlock = page.slice(page.indexOf("const applyCreatorEditorStructuralChange"), page.indexOf("const toggleCreatorAssetCompare"));
 absent(operationBlock, /fetch\(|\/api\/|generate/i, "operations call no generation route"); // 54

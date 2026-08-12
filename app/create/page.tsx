@@ -133,7 +133,9 @@ import {
   sanitizeCreatorAdultSpeech,
 } from "@/lib/creator/adultContentGuard";
 import {
+  applyCreatorSceneTextEdit,
   createCreatorSceneId,
+  deriveCreatorAudioCurrentness,
   duplicateCreatorScene,
   isCreatorSceneId,
   moveCreatorScene,
@@ -5039,8 +5041,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         source: exportSource,
         hasNarration: Boolean(scene.narration?.trim()),
         hasDialogue: Boolean(scene.dialogue?.trim()),
-        narrationDurationSec: scene.timing?.narrationDuration,
-        dialogueDurationSec: scene.timing?.dialogueDuration,
+        narrationDurationSec:
+          !isCreatorLabFlow || getCreatorNarrationAudioCurrentness(scene) === "current"
+            ? scene.timing?.narrationDuration
+            : undefined,
+        dialogueDurationSec:
+          !isCreatorLabFlow || getCreatorDialogueAudioCurrentness(scene) === "current"
+            ? scene.timing?.dialogueDuration
+            : undefined,
         targetDurationSec:
           scene.timing?.targetSceneDuration ||
           timelineScene?.targetVisualSeconds ||
@@ -6206,18 +6214,67 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     if (!scene.dialogue?.trim()) {
       return true;
     }
+    return getCreatorDialogueAudioCurrentness(scene) === "current";
+  };
 
-    const effectiveVoiceProfileId = getEffectiveDialogueVoiceProfileId(scene);
-    const effectiveVoiceId = getEffectiveDialogueVoiceId(scene);
-
-    return !!(
-      scene.dialogueAudioUrl &&
-      scene.dialogueAudioSourceText &&
-      scene.dialogueAudioSourceText === scene.dialogue &&
-      scene.dialogueAudioSettingsKey?.includes(effectiveVoiceProfileId) &&
-      scene.dialogueAudioSettingsKey?.includes(effectiveVoiceId || "profile-default")
+  const getCreatorNarrationSettingsKey = (scene: Scene) => {
+    const effectiveVoiceId = getEffectiveNarratorVoiceId(scene);
+    const voiceRoute = getCreatorSceneVoiceContext({
+      scene,
+      role: "narrator",
+      text: scene.narration,
+      companionText: scene.dialogue,
+      hasExplicitVoiceId: Boolean(effectiveVoiceId),
+      voiceProfile: getCreatorNarratorProfileHint(),
+    });
+    return getNarratorSettingsKey(
+      { ...narratorSettings, voiceId: effectiveVoiceId },
+      voiceRoute?.routeKey,
+      `${getEffectiveNarratorVoiceProfileId(scene)}:${effectiveVoiceId || "profile-default"}`,
     );
   };
+
+  const getCreatorDialogueSettingsKey = (scene: Scene) => {
+    const lines = parseDialogueLines(scene);
+    const effectiveVoiceId = getEffectiveDialogueVoiceId(scene);
+    const voiceIdentityKey = [
+      getEffectiveDialogueVoiceProfileId(scene),
+      effectiveVoiceId || "profile-default",
+      ...lines.map((line) => `${line.speaker}:${line.voiceId || "fallback"}`),
+    ].join("|");
+    const voiceRoute = getCreatorSceneVoiceContext({
+      scene,
+      role: "dialogue",
+      text: lines.map((line) => line.text).join(" "),
+      companionText: scene.narration,
+      hasExplicitVoiceId:
+        Boolean(effectiveVoiceId) || lines.some((line) => Boolean(line.voiceId)),
+      voiceProfile: voiceIdentityKey,
+    });
+    return getNarratorSettingsKey(
+      narratorSettings,
+      voiceRoute?.routeKey,
+      voiceIdentityKey,
+    );
+  };
+
+  const getCreatorNarrationAudioCurrentness = (scene: Scene) =>
+    deriveCreatorAudioCurrentness({
+      spokenText: scene.narration,
+      audioUrl: scene.audioUrl,
+      sourceText: scene.audioSourceText,
+      settingsKey: scene.audioSettingsKey,
+      currentSettingsKey: getCreatorNarrationSettingsKey(scene),
+    });
+
+  const getCreatorDialogueAudioCurrentness = (scene: Scene) =>
+    deriveCreatorAudioCurrentness({
+      spokenText: scene.dialogue,
+      audioUrl: scene.dialogueAudioUrl,
+      sourceText: scene.dialogueAudioSourceText,
+      settingsKey: scene.dialogueAudioSettingsKey,
+      currentSettingsKey: getCreatorDialogueSettingsKey(scene),
+    });
 
   const getSceneVoiceStatus = (scene: Scene) => {
     const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
@@ -7860,6 +7917,37 @@ const generateSceneImage = async (
       feedback: resetRequested
         ? uiLanguage === "en" ? "Video trim reset." : "Video kırpma sıfırlandı."
         : uiLanguage === "en" ? "Video trim updated." : "Video kırpma güncellendi.",
+    });
+  };
+
+  const saveSelectedCreatorSceneText = (edit: {
+    text: string;
+    narration: string;
+    dialogue: string;
+  }) => {
+    if (!selectedCreatorEditorSceneId || !isCreatorLabFlow) return;
+    const selectedScene = scenes.find(
+      (scene) => scene.creatorSceneId === selectedCreatorEditorSceneId,
+    );
+    if (
+      !selectedScene ||
+      selectedScene.videoStatus === "processing" ||
+      selectedScene.videoStatus === "delayed"
+    ) return;
+    const result = applyCreatorSceneTextEdit(
+      scenes,
+      selectedCreatorEditorSceneId,
+      edit,
+    );
+    if (!result.changed) return;
+    applyCreatorEditorStructuralChange({
+      nextScenes: result.scenes,
+      selectedCreatorSceneId: selectedCreatorEditorSceneId,
+      undoLabel: "Edit scene text",
+      feedback:
+        uiLanguage === "en"
+          ? "Scene text updated. Refresh any voice marked out of date before final production."
+          : "Sahne metni güncellendi. Final üretimden önce güncelliğini yitiren sesleri yenileyin.",
     });
   };
 
@@ -9894,7 +9982,13 @@ const generateSceneImage = async (
       }
 
       const readiness = createCreatorFinalVideoReadiness({
-        scenes,
+        scenes: scenes.map((scene) => ({
+          ...scene,
+          narrationAudioCurrent:
+            getCreatorNarrationAudioCurrentness(scene) === "current",
+          dialogueAudioCurrent:
+            getCreatorDialogueAudioCurrentness(scene) === "current",
+        })),
         timelineApproved: getCreatorTimelineMediaGate().approved,
         flowValidation: buildExportFlowValidation(scenes),
       });
@@ -16432,7 +16526,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     : null;
   const creatorFinalVideoReadiness = isCreatorLabFlow
     ? createCreatorFinalVideoReadiness({
-        scenes,
+        scenes: scenes.map((scene) => ({
+          ...scene,
+          narrationAudioCurrent:
+            getCreatorNarrationAudioCurrentness(scene) === "current",
+          dialogueAudioCurrent:
+            getCreatorDialogueAudioCurrentness(scene) === "current",
+        })),
         timelineApproved: creatorTimelineMediaGate.approved,
         flowValidation: exportFlowValidation,
       })
@@ -29845,6 +29945,23 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     onUndo={undoLastCreatorChange}
                     canUndo={creatorUndoStack.length > 0}
                     onUpdateTrim={updateSelectedCreatorSceneTrim}
+                    onSaveText={saveSelectedCreatorSceneText}
+                    getNarrationAudioState={(creatorSceneId) => {
+                      const scene = scenes.find(
+                        (item) => item.creatorSceneId === creatorSceneId,
+                      );
+                      return scene
+                        ? getCreatorNarrationAudioCurrentness(scene)
+                        : "missing";
+                    }}
+                    getDialogueAudioState={(creatorSceneId) => {
+                      const scene = scenes.find(
+                        (item) => item.creatorSceneId === creatorSceneId,
+                      );
+                      return scene
+                        ? getCreatorDialogueAudioCurrentness(scene)
+                        : "missing";
+                    }}
                     sceneOperationsDisabled={
                       isBatchRendering ||
                       scenes.some((scene) =>
