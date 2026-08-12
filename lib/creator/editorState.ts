@@ -274,6 +274,33 @@ export function duplicateCreatorScene<TScene extends CreatorSceneWithDispatchSta
   };
 }
 
+export function addCreatorScene<TScene extends CreatorSceneIdentity>(
+  scenes: readonly TScene[],
+  selectedCreatorSceneId: string | null,
+  createBlankScene: (creatorSceneId: string) => TScene,
+  createId: () => string = createCreatorSceneId,
+): { scenes: TScene[]; selectedCreatorSceneId: string; added: true } {
+  const usedIds = new Set(scenes.map((scene) => scene.creatorSceneId));
+  let creatorSceneId = createId();
+  while (!isCreatorSceneId(creatorSceneId) || usedIds.has(creatorSceneId)) {
+    creatorSceneId = createId();
+  }
+  const selectedIndex = selectedCreatorSceneId
+    ? scenes.findIndex((scene) => scene.creatorSceneId === selectedCreatorSceneId)
+    : -1;
+  const insertionIndex = selectedIndex >= 0 ? selectedIndex + 1 : scenes.length;
+  const blankScene = { ...createBlankScene(creatorSceneId), creatorSceneId };
+  return {
+    scenes: reordinalizeCreatorScenes([
+      ...scenes.slice(0, insertionIndex),
+      blankScene,
+      ...scenes.slice(insertionIndex),
+    ]),
+    selectedCreatorSceneId: creatorSceneId,
+    added: true,
+  };
+}
+
 export function selectCreatorSceneId<TScene extends CreatorSceneIdentity>(
   scenes: readonly TScene[],
   selectedCreatorSceneId: string | null,

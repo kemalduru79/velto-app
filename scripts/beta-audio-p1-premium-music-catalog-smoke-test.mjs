@@ -176,7 +176,7 @@ check("selected premium music blocks export before reservation", () => {
   const reserveIndex = exportRoute.indexOf("reserveMeteredOperation(request");
   assert.ok(blockIndex > 0 && reserveIndex > blockIndex);
   assert.match(exportRoute, /creditReserved: false/);
-  assert.match(page, /creatorBackgroundMusic\.mode === "selected"[\s\S]*Premium music must be confirmed before final export\.[\s\S]*return;/);
+  assert.match(page, /creatorBackgroundMusic\.mode === "selected"[\s\S]*creatorBackgroundMusic\.confirmedTrackId !== creatorBackgroundMusic\.selectedTrackId[\s\S]*Premium music must be confirmed before final export\.[\s\S]*return;/);
   assert.doesNotMatch(exportRoute.slice(0, reserveIndex), /downloadTrack|createVersion/);
 });
 check("credits and Cost Guard remain untouched", () => {

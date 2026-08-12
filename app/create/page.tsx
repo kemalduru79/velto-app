@@ -52,6 +52,12 @@ import CreatorProductionSubnav, {
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import CreatorEditor from "@/components/create/CreatorEditor";
 import {
+  buildCreatorVideoGenerationSignature,
+  buildLegacyCreatorVideoGenerationSignature,
+  deriveCreatorVideoCurrentness,
+  type CreatorVideoCurrentness,
+} from "@/lib/creator/videoGeneration";
+import {
   DEFAULT_CREATOR_BACKGROUND_MUSIC,
   normalizeCreatorBackgroundMusicConfig,
   type CreatorBackgroundMusicConfig,
@@ -60,6 +66,7 @@ import {
   CREATOR_MUSIC_LIBRARY_VERSION,
   isCreatorPremiumMusicTrackId,
 } from "@/lib/creator/musicLibrary";
+import { resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -133,6 +140,7 @@ import {
   sanitizeCreatorAdultSpeech,
 } from "@/lib/creator/adultContentGuard";
 import {
+  addCreatorScene,
   applyCreatorSceneTextEdit,
   createCreatorSceneId,
   deriveCreatorAudioCurrentness,
@@ -648,6 +656,7 @@ type CreatorSceneAssetVersion = {
   createdAt: string;
   source: "generated" | "restored" | "loaded";
   durationSec?: number;
+  generationSignature?: string;
 };
 
 type Scene = {
@@ -683,6 +692,8 @@ type Scene = {
   videoJobId?: string;
   videoQueueJobId?: string;
   videoDurationSeconds?: number;
+  videoGenerationSignature?: string;
+  videoPendingGenerationSignature?: string;
   clipInSec?: number;
   clipOutSec?: number;
   timing?: SceneTiming;
@@ -3184,11 +3195,22 @@ function normalizeCreatorAssetHistory(scene: Scene): Scene {
   );
   let nextHistory = validHistory;
   let changed = validHistory.length !== rawHistory.length;
+  if (scene.videoGenerationSignature && scene.videoUrl) {
+    nextHistory = nextHistory.map((asset) =>
+      asset.kind === "video" && asset.url === scene.videoUrl && !asset.generationSignature
+        ? { ...asset, generationSignature: scene.videoGenerationSignature }
+        : asset,
+    );
+    changed = changed || nextHistory.some(
+      (asset, index) => asset !== validHistory[index],
+    );
+  }
 
   const appendCurrentAsset = (
     kind: CreatorSceneAssetKind,
     url: string | undefined,
     durationSec?: number,
+    generationSignature?: string,
   ) => {
     const normalizedUrl = String(url || "").trim();
     if (!normalizedUrl || nextHistory.some((asset) => asset.kind === kind && asset.url === normalizedUrl)) {
@@ -3203,6 +3225,7 @@ function normalizeCreatorAssetHistory(scene: Scene): Scene {
         url: normalizedUrl,
         createdAt: new Date().toISOString(),
         source: "generated" as const,
+        ...(generationSignature ? { generationSignature } : {}),
         ...(Number.isFinite(Number(durationSec)) && Number(durationSec) > 0
           ? { durationSec: Number(durationSec) }
           : {}),
@@ -3213,7 +3236,7 @@ function normalizeCreatorAssetHistory(scene: Scene): Scene {
 
   appendCurrentAsset("image", scene.image);
   if (scene.videoStatus === "done") {
-    appendCurrentAsset("video", scene.videoUrl, scene.videoDurationSeconds);
+    appendCurrentAsset("video", scene.videoUrl, scene.videoDurationSeconds, scene.videoGenerationSignature);
   }
 
   return changed ? { ...scene, assetHistory: nextHistory } : scene;
@@ -5121,7 +5144,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         const exportSource = getSceneExportSource(scene);
 
         return {
-          id: scene.id,
+          creatorSceneId: scene.creatorSceneId || `legacy-${scene.id}`,
           renderMode: scene.renderMode || "",
           exportSource,
           text: scene.text || "",
@@ -5134,6 +5157,15 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           videoUrl: exportSource === "video" ? scene.videoUrl || "" : "",
           videoStatus: scene.videoStatus || "idle",
           videoDurationSeconds: scene.videoDurationSeconds || 0,
+          videoGenerationSignature: scene.videoGenerationSignature || "",
+          clipInSec: scene.clipInSec || 0,
+          clipOutSec: scene.clipOutSec || 0,
+          audioUrl: scene.audioUrl || "",
+          audioSourceText: scene.audioSourceText || "",
+          audioSettingsKey: scene.audioSettingsKey || "",
+          dialogueAudioUrl: scene.dialogueAudioUrl || "",
+          dialogueAudioSourceText: scene.dialogueAudioSourceText || "",
+          dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey || "",
           timing: scene.timing || null,
         };
       });
@@ -5337,9 +5369,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     });
 
     return {
-      ...(report.finalVideo.current && finalVideoResult
-        ? finalVideoResult
-        : {}),
+      ...(finalVideoResult ? finalVideoResult : {}),
       projectLifecycle,
       projectPerformanceHistory: creatorPerformanceHistory,
     };
@@ -7494,6 +7524,7 @@ const generateSceneImage = async (
     sceneId: number,
     queueJobId: string,
     creatorSceneId?: string,
+    generationSignature?: string,
   ) => {
     if (!isQueueJobId(queueJobId)) {
       failClosedLegacyCreatorVideo(sceneId, creatorSceneId);
@@ -7574,11 +7605,14 @@ const generateSceneImage = async (
               prev.map((scene) =>
                 matchesVideoScene(scene, sceneId, creatorSceneId)
                   ? {
-                      ...scene,
+                      ...normalizeCreatorAssetHistory(scene),
                       videoStatus: "done",
                       videoUrl: storedVideoUrl,
                       videoJobId: queueJobId,
                       videoQueueJobId: queueJobId,
+                      videoGenerationSignature:
+                        generationSignature || scene.videoPendingGenerationSignature,
+                      videoPendingGenerationSignature: undefined,
                     }
                   : scene,
               ),
@@ -7676,6 +7710,41 @@ const generateSceneImage = async (
     };
   };
 
+  const getCreatorVideoGenerationSignature = (scene: Scene) =>
+    buildCreatorVideoGenerationSignature({
+      text: scene.text,
+      motionHint: scene.motionHint,
+      cameraDirection: scene.cameraDirection,
+      emotion: scene.emotion,
+      imageUrl: scene.image,
+      qualityMode: creatorQualityMode,
+      creatorFormat,
+      duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+      ...getCreatorCinematicVideoInputs(scene),
+    });
+
+  const getLegacyCreatorVideoGenerationSignature = (scene: Scene) =>
+    buildLegacyCreatorVideoGenerationSignature({
+      text: scene.text,
+      motionHint: scene.motionHint,
+      cameraDirection: scene.cameraDirection,
+      emotion: scene.emotion,
+      imageUrl: scene.image,
+      qualityMode: creatorQualityMode,
+      creatorFormat,
+      duration: scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS,
+      ...getCreatorCinematicVideoInputs(scene),
+    });
+
+  const getCreatorVideoState = (scene: Scene): CreatorVideoCurrentness =>
+    deriveCreatorVideoCurrentness({
+      videoUrl: scene.videoUrl,
+      videoStatus: scene.videoStatus,
+      generationSignature: scene.videoGenerationSignature,
+      currentSignature: getCreatorVideoGenerationSignature(scene),
+      legacyCurrentSignature: getLegacyCreatorVideoGenerationSignature(scene),
+    });
+
   const pushCreatorUndoSnapshot = (label: string) => {
     if (!isCreatorLabFlow) {
       return;
@@ -7745,9 +7814,6 @@ const generateSceneImage = async (
     setEditingSceneId(null);
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
     setError("");
     setSaveMessage(
       uiLanguage === "en"
@@ -7815,9 +7881,6 @@ const generateSceneImage = async (
     setBatchRenderItems([]);
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
     setError("");
     setSaveMessage(feedback);
   };
@@ -7839,6 +7902,61 @@ const generateSceneImage = async (
       undoLabel: direction === "earlier" ? "Move scene earlier" : "Move scene later",
       feedback: uiLanguage === "en" ? "Scene moved." : "Sahne taşındı.",
     });
+  };
+
+  const addCreatorEditorScene = () => {
+    if (!isCreatorLabFlow) return;
+    const result = addCreatorScene(
+      scenes,
+      selectedCreatorEditorSceneId,
+      (creatorSceneId): Scene => ({
+        id: 0,
+        creatorSceneId,
+        text: "",
+        narration: "",
+        dialogue: "",
+        cameraDirection: "",
+        emotion: "",
+        motionHint: "",
+        image: "",
+        audioUrl: "",
+        audioPath: "",
+        audioSourceText: "",
+        audioSettingsKey: "",
+        dialogueAudioUrl: "",
+        dialogueAudioPath: "",
+        dialogueAudioSourceText: "",
+        dialogueAudioSettingsKey: "",
+        videoUrl: "",
+        videoStatus: "idle",
+        videoJobId: "",
+        videoQueueJobId: "",
+        videoDurationSeconds: 0,
+        assetHistory: [],
+        visualBlockPlan: [],
+        timing: buildSceneTiming(0, 0, {
+          audioFirst: true,
+          plannedDuration: TARGET_SCENE_DURATION_SECONDS,
+        }),
+      }),
+    );
+    pushCreatorUndoSnapshot("Add scene");
+    const nextProjection = projectCreatorEditorScenes(result.scenes);
+    setScenes(result.scenes);
+    setCreatorProductionPackage((prev) => prev ? {
+      ...prev,
+      scenes: nextProjection,
+      sceneCount: result.scenes.length,
+      timelineSyncPlan: undefined,
+    } : prev);
+    setRefinedCreatorScenes((prev) => prev.length > 0 ? nextProjection : prev);
+    setSelectedCreatorEditorSceneId(result.selectedCreatorSceneId);
+    setCreatorSelectedSceneIds([]);
+    setCreatorAssetCompareSelection({});
+    setCreatorTimelinePreviewPlan(null);
+    setCreatorEditPlan(null);
+    setError("");
+    setSaveMessage(uiLanguage === "en" ? "Blank scene added." : "Boş sahne eklendi.");
   };
 
   const deleteSelectedCreatorEditorScene = () => {
@@ -7935,7 +8053,13 @@ const generateSceneImage = async (
       selectedScene.videoStatus === "delayed"
     ) return;
     const result = applyCreatorSceneTextEdit(
-      scenes,
+      scenes.map((scene) =>
+        scene.creatorSceneId === selectedCreatorEditorSceneId &&
+        scene.videoUrl && scene.videoStatus === "done" &&
+        !scene.videoGenerationSignature
+          ? { ...scene, videoGenerationSignature: getCreatorVideoGenerationSignature(scene) }
+          : scene,
+      ),
       selectedCreatorEditorSceneId,
       edit,
     );
@@ -7961,6 +8085,15 @@ const generateSceneImage = async (
     });
   };
 
+  const invalidateFinalVideoForProductionChange = () => {
+    // CreatorLab keeps the last successful output and derives staleness from
+    // exportSignature. Storyverse retains its existing invalidation behavior.
+    if (isCreatorLabFlow) return;
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+  };
+
   const restoreCreatorSceneAsset = (
     sceneId: number,
     asset: CreatorSceneAssetVersion,
@@ -7968,6 +8101,10 @@ const generateSceneImage = async (
     const scene = scenes.find((item) => item.id === sceneId);
     if (!scene) {
       return;
+    }
+    if (["processing", "delayed"].includes(scene.videoStatus || "")) {
+      setError(uiLanguage === "en" ? "Video generation is already active for this scene." : "Bu sahne için video üretimi zaten etkin.");
+      return false;
     }
 
     const isCurrent =
@@ -8009,12 +8146,10 @@ const generateSceneImage = async (
           videoStatus: "done",
           videoJobId: "",
           videoDurationSeconds: asset.durationSec || item.videoDurationSeconds || 0,
+          videoGenerationSignature: asset.generationSignature,
         };
       }),
     );
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
     setError("");
     setSaveMessage(
       asset.kind === "image"
@@ -8070,9 +8205,7 @@ const generateSceneImage = async (
           : scene,
       ),
     );
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setError("");
     setSaveMessage(
       renderMode === "video"
@@ -8286,12 +8419,13 @@ const generateSceneImage = async (
     const creatorSceneId = isCreatorLabFlow && isCreatorSceneId(scene.creatorSceneId)
       ? scene.creatorSceneId
       : undefined;
+    const generationSignature = isCreatorLabFlow
+      ? getCreatorVideoGenerationSignature(scene)
+      : undefined;
     clearVideoPollForScene(sceneId, creatorSceneId);
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
 
     setScenes((prev) =>
       prev.map((s) =>
@@ -8299,8 +8433,7 @@ const generateSceneImage = async (
           ? {
               ...s,
               videoStatus: "processing",
-              videoUrl: "",
-              videoDurationSeconds: 0,
+              videoPendingGenerationSignature: generationSignature,
             }
           : s
       )
@@ -8330,6 +8463,7 @@ const generateSceneImage = async (
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           projectId: currentProjectId || undefined,
           sceneId: scene.id,
+          creatorSceneId,
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
           imageUrl: scene.image,
@@ -8399,6 +8533,7 @@ const generateSceneImage = async (
                 videoQueueJobId: videoQueueJobId || undefined,
                 videoStatus: "processing",
                 videoDurationSeconds: Number(data.duration) || 0,
+                videoPendingGenerationSignature: generationSignature,
               }
             : s
         )
@@ -8407,7 +8542,7 @@ const generateSceneImage = async (
       notifyCreditAccountChanged(data?.credits);
 
       if (isCreatorLabFlow) {
-        pollVideoQueueJob(sceneId, videoQueueJobId, creatorSceneId);
+        pollVideoQueueJob(sceneId, videoQueueJobId, creatorSceneId, generationSignature);
       } else {
         pollVideoStatus(sceneId, data.taskId);
       }
@@ -8896,9 +9031,7 @@ const generateSceneImage = async (
 
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setIsBatchRendering(true);
     setBatchRenderStartedAt(new Date().toISOString());
     batchRenderCancelRef.current = false;
@@ -9035,9 +9168,7 @@ const generateSceneImage = async (
 
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setIsBatchRendering(true);
     setBatchRenderStartedAt(new Date().toISOString());
     batchRenderCancelRef.current = false;
@@ -9197,9 +9328,7 @@ const generateSceneImage = async (
 
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setIsBatchRendering(true);
     setBatchRenderStartedAt(new Date().toISOString());
     batchRenderCancelRef.current = false;
@@ -9365,9 +9494,7 @@ const generateSceneImage = async (
 
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setIsBatchRendering(true);
     setBatchRenderStartedAt(new Date().toISOString());
     batchRenderCancelRef.current = false;
@@ -9631,9 +9758,7 @@ const generateSceneImage = async (
 
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setIsBatchRendering(true);
     batchRenderCancelRef.current = false;
     suspendAutosaveRef.current = true;
@@ -9886,6 +10011,20 @@ const generateSceneImage = async (
     }
 
     if (readiness.status === "visuals_required") {
+      const outdatedVideoSceneIds = scenes
+        .filter((scene) =>
+          readiness.missingVisualSceneIds.includes(scene.id) &&
+          getCreatorEffectiveSceneOutputMode(scene) === "video" &&
+          ["stale", "processing", "delayed", "error"].includes(
+            getCreatorVideoState(scene),
+          ),
+        )
+        .map((scene) => scene.id);
+      if (outdatedVideoSceneIds.length > 0) {
+        return uiLanguage === "en"
+          ? `Refresh outdated scene video before final production. Scene(s): ${outdatedVideoSceneIds.join(", ")}.`
+          : `Final üretimden önce güncelliğini yitiren sahne videosunu yenileyin. Sahne(ler): ${outdatedVideoSceneIds.join(", ")}.`;
+      }
       return uiLanguage === "en"
         ? `Generate Visuals first. Missing scene(s): ${missingVisuals}.`
         : `Önce Görselleri Üret. Eksik sahne(ler): ${missingVisuals}.`;
@@ -9966,7 +10105,11 @@ const generateSceneImage = async (
       return;
     }
 
-    if (isCreatorLabFlow && creatorBackgroundMusic.mode === "selected") {
+    if (
+      isCreatorLabFlow &&
+      creatorBackgroundMusic.mode === "selected" &&
+      creatorBackgroundMusic.confirmedTrackId !== creatorBackgroundMusic.selectedTrackId
+    ) {
       setSaveMessage("");
       setError(
         uiLanguage === "en"
@@ -9988,6 +10131,7 @@ const generateSceneImage = async (
             getCreatorNarrationAudioCurrentness(scene) === "current",
           dialogueAudioCurrent:
             getCreatorDialogueAudioCurrentness(scene) === "current",
+          videoCurrent: getCreatorVideoState(scene) === "current",
         })),
         timelineApproved: getCreatorTimelineMediaGate().approved,
         flowValidation: buildExportFlowValidation(scenes),
@@ -10042,9 +10186,15 @@ const generateSceneImage = async (
       return;
     }
 
-    const exportScenes = exportFlowValidation
+    const validatedExportScenes = exportFlowValidation
       ? applyExportFlowAutoFixes(rawExportScenes, exportFlowValidation)
       : rawExportScenes;
+    const exportScenes = isCreatorLabFlow
+      ? resolveCanonicalCreatorExportScenes(validatedExportScenes.map((scene) => ({
+          ...scene,
+          exportSource: getSceneExportSource(scene),
+        })))
+      : validatedExportScenes;
     const flowContinuityAudit = exportFlowValidation?.audit || null;
 
     const creatorExportOperationKey = `export:${getProjectKey()}`;
@@ -10064,9 +10214,6 @@ const generateSceneImage = async (
     setIsExportingMovie(true);
     setError("");
     setSaveMessage("");
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
 
     try {
       const exportAccessToken = isCreatorLabFlow
@@ -10132,8 +10279,6 @@ const generateSceneImage = async (
 
             return {
               ...scene,
-              exportSource: getSceneExportSource(scene),
-              videoUrl: getSceneExportSource(scene) === "video" ? scene.videoUrl : "",
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
@@ -10517,6 +10662,15 @@ const generateSceneImage = async (
       return;
     }
 
+    if (creatorMusicConfirmationRequired) {
+      setError(
+        uiLanguage === "en"
+          ? "Confirm premium music to continue."
+          : "Devam etmek için premium müziği onayla.",
+      );
+      return;
+    }
+
     await handleExportMovie(false);
   };
 
@@ -10642,6 +10796,7 @@ const generateSceneImage = async (
       youtubeMetadata?: YoutubeMetadataResult | null;
       youtubeThumbnail?: YoutubeThumbnailResult | null;
       forceInvalidateFinalVideo?: boolean;
+      backgroundMusic?: CreatorBackgroundMusicConfig;
     } = {},
   ) => {
     const sourceScenes = lifecycleOverrides.sourceScenes || scenes;
@@ -10661,15 +10816,15 @@ const generateSceneImage = async (
     const candidateFinalVideoUrl = forceInvalidateFinalVideo
       ? ""
       : lifecycleOverrides.finalVideoUrl ??
-        (hasReusableExport() ? exportedMovieUrl : "");
+        (isCreatorLabFlow ? exportedMovieUrl : hasReusableExport() ? exportedMovieUrl : "");
     const candidateFinalVideoResult = forceInvalidateFinalVideo
       ? null
       : lifecycleOverrides.finalVideoResult ??
-        (hasReusableExport() ? exportMovieResult : null);
+        (isCreatorLabFlow ? exportMovieResult : hasReusableExport() ? exportMovieResult : null);
     const candidateFinalVideoSignature = forceInvalidateFinalVideo
       ? ""
       : lifecycleOverrides.storedFinalVideoSignature ??
-        (hasReusableExport() ? exportSignature : "");
+        (isCreatorLabFlow ? exportSignature : hasReusableExport() ? exportSignature : "");
     const currentSourceSignature = buildExportSignature(title, sourceScenes);
     const finalVideoCurrent =
       Boolean(candidateFinalVideoUrl) &&
@@ -10703,15 +10858,9 @@ const generateSceneImage = async (
     const persistedCreatorExportResult = isCreatorLabFlow
       ? buildCreatorPersistedExportResult({
           sourceScenes,
-          finalVideoUrl: finalVideoCurrent
-            ? candidateFinalVideoUrl
-            : "",
-          finalVideoResult: finalVideoCurrent
-            ? candidateFinalVideoResult
-            : null,
-          storedFinalVideoSignature: finalVideoCurrent
-            ? candidateFinalVideoSignature
-            : "",
+          finalVideoUrl: candidateFinalVideoUrl,
+          finalVideoResult: candidateFinalVideoResult,
+          storedFinalVideoSignature: candidateFinalVideoSignature,
           storedPublishPackageSignature:
             lifecycleOverrides.storedPublishPackageSignature ??
             creatorPackageSignature,
@@ -10759,7 +10908,8 @@ const generateSceneImage = async (
               qualityMode: creatorQualityMode,
               targetPlatforms: creatorTargetPlatforms,
               platformOutputPlan: creatorPlatformOutputPlan,
-              backgroundMusic: creatorBackgroundMusic,
+              backgroundMusic:
+                lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
               visualContinuity: getCreatorVisualContinuitySnapshot(),
               voicePreferences: {
                 narratorProfileId: getEffectiveNarratorVoiceProfileId(),
@@ -10785,13 +10935,13 @@ const generateSceneImage = async (
           youtubeThumbnailResult,
         sceneOptimizationResult,
         sceneOptimizationSummary,
-        exportedMovieUrl: finalVideoCurrent
-          ? candidateFinalVideoUrl
-          : null,
+        exportedMovieUrl: isCreatorLabFlow
+          ? candidateFinalVideoUrl || null
+          : finalVideoCurrent ? candidateFinalVideoUrl : null,
         exportedMovieResult: persistedCreatorExportResult,
-        exportSignature: finalVideoCurrent
-          ? candidateFinalVideoSignature
-          : null,
+        exportSignature: isCreatorLabFlow
+          ? candidateFinalVideoSignature || null
+          : finalVideoCurrent ? candidateFinalVideoSignature : null,
       }),
     });
 
@@ -12773,9 +12923,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     setSceneScriptDrafts({});
       setBranchingSceneId(null);
       setBranchInstructions({});
-      setExportedMovieUrl("");
-      setExportMovieResult(null);
-      setExportSignature("");
+      invalidateFinalVideoForProductionChange();
       setCreatorProductionLoading(false);
 
       // 3) YouTube metadata
@@ -13314,9 +13462,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       })
     );
 
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setSaveMessage(ui.optimizationApplied);
   };
 
@@ -14863,9 +15009,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         );
       }
       clearVideoPollForScene(scene.id);
-      setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+      invalidateFinalVideoForProductionChange();
 
       setScenes((prev) =>
         prev.map((item) =>
@@ -14975,9 +15119,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           : `Sahne ${scene.id} görsel yönünü geliştir`,
       );
       clearVideoPollForScene(scene.id);
-      setExportedMovieUrl("");
-      setExportMovieResult(null);
-      setExportSignature("");
+      invalidateFinalVideoForProductionChange();
       setCreatorTimelinePreviewPlan(null);
       setCreatorEditPlan(null);
 
@@ -15137,9 +15279,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     clearSceneAudioData(sceneId);
     clearSceneDialogueAudioData(sceneId);
     clearVideoPollForScene(sceneId);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
 
@@ -15812,9 +15952,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     );
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setSaveMessage(
       uiLanguage === "en"
         ? "A visual beat was added. Motion must be regenerated for this scene."
@@ -15988,9 +16126,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     setEditingSceneId(null);
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
+    invalidateFinalVideoForProductionChange();
     setError("");
     setSaveMessage(
       uiLanguage === "en"
@@ -16122,9 +16258,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       clearSceneAudioData(sceneId);
       clearSceneDialogueAudioData(sceneId);
       clearVideoPollForScene(sceneId);
-      setExportedMovieUrl("");
-      setExportMovieResult(null);
-      setExportSignature("");
+      invalidateFinalVideoForProductionChange();
 
       setScenes((prevScenes) =>
         prevScenes.map((scene) =>
@@ -16432,7 +16566,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           : isQueueJobId(scene.videoJobId)
             ? scene.videoJobId!.trim()
             : "";
-        if (queueJobId) pollVideoQueueJob(scene.id, queueJobId, scene.creatorSceneId);
+        if (queueJobId) pollVideoQueueJob(
+          scene.id,
+          queueJobId,
+          scene.creatorSceneId,
+          scene.videoPendingGenerationSignature,
+        );
         else failClosedLegacyCreatorVideo(scene.id, scene.creatorSceneId);
       } else if (scene.videoJobId) {
         pollVideoStatus(scene.id, scene.videoJobId);
@@ -16532,6 +16671,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             getCreatorNarrationAudioCurrentness(scene) === "current",
           dialogueAudioCurrent:
             getCreatorDialogueAudioCurrentness(scene) === "current",
+          videoCurrent: getCreatorVideoState(scene) === "current",
         })),
         timelineApproved: creatorTimelineMediaGate.approved,
         flowValidation: exportFlowValidation,
@@ -16594,7 +16734,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       : null;
   const creatorBriefComplete = Boolean(input.trim() || creatorMentorResult);
   const creatorStrategyComplete = Boolean(creatorProductionPackage);
+  const creatorHasFinalVideo = Boolean(exportedMovieUrl);
   const creatorProductionComplete = Boolean(exportedMovieUrl && hasReusableExport());
+  const creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete;
   const creatorPublishComplete =
     creatorProjectLifecycle?.status === "exported";
   const creatorProgressStep: 1 | 2 | 3 | 4 = creatorProductionComplete || creatorPublishComplete
@@ -16799,8 +16941,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     const previousProgressStep = creatorLastAutoStepRef.current;
 
     if (creatorProgressStep > previousProgressStep) {
-      setCreatorSelectedWorkspaceStep(creatorProgressStep);
-      setCreatorBriefEditorOpen(false);
+      // Readiness may automatically reveal Brief → Strategy → Production, but
+      // Publish is an explicit user navigation boundary. Editing media can
+      // make a prior Final Video current again and must never jump to step 4.
+      const automaticTargetStep = Math.min(creatorProgressStep, 3) as 1 | 2 | 3;
+      setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
+        current < automaticTargetStep ? automaticTargetStep : current,
+      );
+      if (automaticTargetStep > previousProgressStep) {
+        setCreatorBriefEditorOpen(false);
+      }
     } else if (creatorProgressStep < previousProgressStep) {
       setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
         current > creatorProgressStep ? creatorProgressStep : current,
@@ -16899,8 +17049,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     !creatorMotionRequired ||
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
+  const creatorMusicConfirmationRequired =
+    creatorBackgroundMusic.mode === "selected" &&
+    creatorBackgroundMusic.confirmedTrackId !== creatorBackgroundMusic.selectedTrackId;
   const creatorFinalVideoProgressDetail = creatorProductionComplete
     ? uiLanguage === "en" ? "Ready" : "Hazır"
+    : creatorMusicConfirmationRequired && creatorFinalVideoReadiness?.canStartFinalVideo
+      ? uiLanguage === "en" ? "Music confirmation required" : "Müzik onayı gerekli"
     : creatorFinalVideoReadiness?.canStartFinalVideo
       ? uiLanguage === "en" ? "Ready to build" : "Oluşturmaya hazır"
       : uiLanguage === "en" ? "Waiting for assets" : "Varlıklar bekleniyor";
@@ -16993,14 +17148,32 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             : !creatorProductionComplete
               ? {
                   title:
-                    uiLanguage === "en"
-                      ? "All production assets are ready"
-                      : "Tüm üretim varlıkları hazır",
-                  description: creatorFinalVideoReadinessMessage,
+                    creatorFinalVideoNeedsRebuild
+                      ? uiLanguage === "en"
+                        ? "Final video needs rebuild"
+                        : "Final videonun yeniden oluşturulması gerekiyor"
+                    : creatorMusicConfirmationRequired
+                      ? uiLanguage === "en"
+                        ? "Production assets are ready"
+                        : "Üretim varlıkları hazır"
+                      : uiLanguage === "en"
+                        ? "All production assets are ready"
+                        : "Tüm üretim varlıkları hazır",
+                  description: creatorFinalVideoNeedsRebuild
+                    ? uiLanguage === "en"
+                      ? "Production inputs changed after the existing Final Video was created. The old output remains available until rebuild succeeds."
+                      : "Mevcut Final Video oluşturulduktan sonra üretim girdileri değişti. Yeniden oluşturma başarılı olana kadar eski çıktı kullanılabilir kalır."
+                    : creatorMusicConfirmationRequired
+                    ? uiLanguage === "en"
+                      ? "1 action required before final video: confirm premium music to continue."
+                      : "Final videodan önce 1 işlem gerekli: devam etmek için premium müziği onayla."
+                    : creatorFinalVideoReadinessMessage,
                   buttonLabel:
-                    uiLanguage === "en"
-                      ? "Continue · Build Final Video"
-                      : "Devam · Final Videoyu Oluştur",
+                    creatorFinalVideoNeedsRebuild
+                      ? uiLanguage === "en" ? "Rebuild Final Video" : "Final Videoyu Yeniden Oluştur"
+                      : uiLanguage === "en"
+                        ? "Continue · Build Final Video"
+                        : "Devam · Final Videoyu Oluştur",
                 }
               : {
                   title:
@@ -29706,7 +29879,29 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   onChange={(nextValue) => {
                     const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, [], isCreatorPremiumMusicTrackId);
                     setCreatorBackgroundMusic(normalized);
-                    setExportSignature("");
+                  }}
+                  onConfirmTrack={async (trackId) => {
+                    if (creatorBackgroundMusic.selectedTrackId !== trackId) return false;
+                    const confirmedMusic = normalizeCreatorBackgroundMusicConfig(
+                      { ...creatorBackgroundMusic, confirmedTrackId: trackId },
+                      [],
+                      isCreatorPremiumMusicTrackId,
+                    );
+                    setCreatorBackgroundMusic(confirmedMusic);
+                    setError("");
+                    try {
+                      await persistProject(false, { backgroundMusic: confirmedMusic });
+                      return true;
+                    } catch (confirmationSaveError) {
+                      console.error("premium music confirmation save error:", confirmationSaveError);
+                      setCreatorBackgroundMusic(creatorBackgroundMusic);
+                      setError(
+                        uiLanguage === "en"
+                          ? "Music confirmation could not be saved. Try again."
+                          : "Müzik onayı kaydedilemedi. Tekrar dene.",
+                      );
+                      return false;
+                    }
                   }}
                   language={uiLanguage === "en" ? "en" : "tr"}
                   autoMatchInput={{
@@ -29888,11 +30083,82 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 </div>
                 )}
 
+                {creatorMusicConfirmationRequired && (
+                  <div data-premium-music-confirmation="required" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                    <strong className="block text-sm font-semibold">
+                      {uiLanguage === "en" ? "Premium music selected" : "Premium müzik seçildi"}
+                    </strong>
+                    <p className="mt-1 text-xs leading-5">
+                      {uiLanguage === "en"
+                        ? "Premium music must be confirmed before final export. Review and preview the exact selected track to continue."
+                        : "Final dışa aktarmadan önce premium müzik onaylanmalıdır. Devam etmek için seçili parçayı inceleyip önizle."}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        data-change-premium-music="true"
+                        onClick={() => {
+                          selectCreatorProductionSubstep("setup");
+                          window.setTimeout(
+                            () => document.getElementById("creatorlab-background-music")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                            60,
+                          );
+                        }}
+                        className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100"
+                      >
+                        {uiLanguage === "en" ? "Change Music" : "Müziği Değiştir"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {creatorHasFinalVideo && (
+                  <section data-creator-final-video-lifecycle={creatorFinalVideoNeedsRebuild ? "outdated" : "current"} className={`rounded-2xl border p-4 ${creatorFinalVideoNeedsRebuild ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">{uiLanguage === "en" ? "Final Video" : "Final Video"}</span>
+                        <strong className="mt-1 block text-sm text-slate-950">
+                          {creatorFinalVideoNeedsRebuild
+                            ? uiLanguage === "en" ? "Final video needs rebuild" : "Final videonun yeniden oluşturulması gerekiyor"
+                            : uiLanguage === "en" ? "Final video is current" : "Final video güncel"}
+                        </strong>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                          {creatorFinalVideoNeedsRebuild
+                            ? uiLanguage === "en" ? "Your existing final video remains available while production changes are reviewed or rebuilt." : "Üretim değişiklikleri incelenirken veya yeniden oluşturulurken mevcut final video kullanılabilir kalır."
+                            : uiLanguage === "en" ? "Continue editing at any time, or rebuild this output intentionally." : "İstediğin zaman düzenlemeye devam et veya bu çıktıyı bilinçli olarak yeniden oluştur."}
+                        </p>
+                      </div>
+                      <video src={exportMovieResult?.downloadUrl || exportedMovieUrl} controls preload="metadata" className="max-h-44 w-full rounded-xl bg-black object-contain lg:w-72" />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        data-edit-current-final-video="true"
+                        onClick={() => setCreatorEditorOpen(true)}
+                        className={`rounded-xl px-4 py-2 text-xs font-semibold ${creatorFinalVideoNeedsRebuild ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white shadow-md hover:bg-blue-800"}`}
+                      >
+                        {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
+                      </button>
+                      <button
+                        type="button"
+                        data-rebuild-final-video="true"
+                        onClick={() => void handleExportMovie(true)}
+                        disabled={isExportingMovie || creatorMusicConfirmationRequired}
+                        className={`rounded-xl px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${creatorFinalVideoNeedsRebuild ? "bg-blue-700 text-white shadow-md hover:bg-blue-800" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        {isExportingMovie
+                          ? uiLanguage === "en" ? "Building Final Video…" : "Final Video Oluşturuluyor…"
+                          : uiLanguage === "en" ? "Rebuild Final Video" : "Final Videoyu Yeniden Oluştur"}
+                      </button>
+                    </div>
+                  </section>
+                )}
+
                 {!creatorProductionComplete && (
                   <div id="creatorlab-production-action" data-production-compact-action="true" className="flex flex-col gap-3 border-b border-slate-200 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0" aria-live="polite">
                       <strong className="block text-sm font-semibold text-slate-950">{creatorNextProductionAction.title}</strong>
-                      {creatorTimelineNeedsAttention && (
+                      {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
                         <p className="mt-1 text-xs leading-5 text-slate-500">{creatorNextProductionAction.description}</p>
                       )}
                     </div>
@@ -29904,9 +30170,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         isBatchRendering ||
                         isPreparingAudio ||
                         isExportingMovie ||
-                        buildingStory
+                        buildingStory ||
+                        (creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete && creatorMusicConfirmationRequired)
                       }
-                      className="min-h-10 shrink-0 rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`min-h-10 shrink-0 rounded-xl px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed ${creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete ? "bg-blue-700 text-white shadow-md hover:bg-blue-800 disabled:bg-blue-200 disabled:text-blue-700 disabled:shadow-none" : "bg-slate-950 text-white hover:bg-slate-800 disabled:opacity-50"}`}
                     >
                       {creatorMediaPreflightLoading
                         ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
@@ -29927,7 +30194,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       type="button"
                       data-creator-editor-entry="true"
                       onClick={() => setCreatorEditorOpen(true)}
-                      className="min-h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-800 transition hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      className="min-h-10 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                     >
                       {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
                     </button>
@@ -29940,6 +30207,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     selectedCreatorSceneId={selectedCreatorEditorSceneId}
                     onSelectScene={setSelectedCreatorEditorSceneId}
                     onMoveScene={moveSelectedCreatorEditorScene}
+                    onAddScene={addCreatorEditorScene}
                     onDuplicateScene={duplicateSelectedCreatorEditorScene}
                     onDeleteScene={deleteSelectedCreatorEditorScene}
                     onUndo={undoLastCreatorChange}
@@ -29961,6 +30229,25 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       return scene
                         ? getCreatorDialogueAudioCurrentness(scene)
                         : "missing";
+                    }}
+                    getVideoState={(creatorSceneId) => {
+                      const scene = scenes.find(
+                        (item) => item.creatorSceneId === creatorSceneId,
+                      );
+                      return scene ? getCreatorVideoState(scene) : "missing";
+                    }}
+                    onRefreshVideo={(creatorSceneId) => {
+                      const scene = scenes.find(
+                        (item) => item.creatorSceneId === creatorSceneId,
+                      );
+                      if (scene) void handleGenerateVideo(scene.id);
+                    }}
+                    onRestoreMedia={(creatorSceneId, assetId) => {
+                      const scene = scenes.find(
+                        (item) => item.creatorSceneId === creatorSceneId,
+                      );
+                      const asset = scene?.assetHistory?.find((item) => item.id === assetId);
+                      if (scene && asset) restoreCreatorSceneAsset(scene.id, asset);
                     }}
                     sceneOperationsDisabled={
                       isBatchRendering ||
@@ -30781,7 +31068,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                 <div className="space-y-3">
                                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
-                                      <video src={scene.videoUrl} controls playsInline className="aspect-video w-full bg-slate-950 object-cover" />
+                                      <video
+                                        data-creator-scene-video-preview="contain"
+                                        src={scene.videoUrl}
+                                        controls
+                                        playsInline
+                                        className="aspect-video w-full bg-slate-950 object-contain"
+                                      />
                                     ) : scene.image ? (
                                       <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full bg-slate-950 object-contain" />
                                     ) : (

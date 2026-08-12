@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const helperSource = read("lib/creator/exportScenes.ts");
+const helperJs = ts.transpileModule(helperSource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
+const helper = await import(`data:text/javascript;base64,${Buffer.from(helperJs).toString("base64")}`);
+const page = read("app/create/page.tsx");
+const route = read("app/api/creator-export/route.ts");
+const service = read("export-service/src/server.js");
+let checks = 0;
+const check = (value, label) => { assert.ok(value, label); checks += 1; };
+const scene = (id, overrides = {}) => ({ creatorSceneId: id, exportSource: "video", videoUrl: `${id}-current.mp4`, image: `${id}-current.jpg`, assetHistory: [], ...overrides });
+
+check(helper.resolveCanonicalCreatorExportScenes([scene("a")]).length === 1, "one scene without history produces one clip");
+check(helper.resolveCanonicalCreatorExportScenes([scene("a", { assetHistory: Array.from({ length: 5 }, (_, i) => ({ kind: "video", url: `old-${i}` })) })]).length === 1, "video history adds no clips");
+check(helper.resolveCanonicalCreatorExportScenes([scene("a", { exportSource: "image", assetHistory: Array.from({ length: 5 }, (_, i) => ({ kind: "image", url: `old-${i}` })) })]).length === 1, "image history adds no clips");
+const mixed = helper.resolveCanonicalCreatorExportScenes([scene("a"), scene("b", { exportSource: "image" }), scene("c")]);
+check(mixed.length === 3, "three canonical scenes produce three clips");
+check(mixed[0].videoUrl === "a-current.mp4", "current regenerated video is selected once");
+check(!("assetHistory" in mixed[0]), "history is stripped from export payload");
+check(!JSON.stringify(mixed).includes("old-"), "unselected history is never exported");
+check(!("compareSelection" in helper.resolveCanonicalCreatorExportScenes([scene("a", { compareSelection: "old" })])[0]), "compare state is stripped");
+check(helper.resolveCanonicalCreatorExportScenes([scene("a", { videoUrl: "restored.mp4" })])[0].videoUrl === "restored.mp4", "restored canonical asset exports once");
+assert.throws(() => helper.resolveCanonicalCreatorExportScenes([scene("a"), scene("a")]), /Creator export scenes are invalid/); checks += 1;
+check(helper.resolveCanonicalCreatorExportScenes([scene("b"), scene("a")]).map((item) => item.creatorSceneId).join(",") === "b,a", "canonical reorder controls sequence only");
+const preserved = scene("a", { assetHistory: [{ kind: "video", url: "old" }] }); helper.resolveCanonicalCreatorExportScenes([preserved]);
+check(preserved.assetHistory.length === 1, "editor history remains preserved");
+check(/resolveCanonicalCreatorExportScenes/.test(page) && /resolveCanonicalCreatorExportScenes/.test(route), "shared resolver protects client and Next server boundaries");
+check(/resolveCreatorExportSequence/.test(service) && /seen\.has\(creatorSceneId\)/.test(service), "export service rejects duplicate stable identities");
+check(/exportSource === "video"[\s\S]*image: exportSource === "image"[\s\S]*videoUrl: exportSource === "video"/.test(helperSource), "exactly one selected media source survives");
+check(/scale=\$\{OUTPUT_WIDTH\}:\$\{OUTPUT_HEIGHT\}:force_original_aspect_ratio=decrease/.test(service), "images use contain scaling");
+check(/pad=\$\{OUTPUT_WIDTH\}:\$\{OUTPUT_HEIGHT\}/.test(service), "portrait and square images receive safe padding");
+check(!/scale=1400:788:force_original_aspect_ratio=increase/.test(service), "aggressive enlargement removed");
+check(!/zoompan=z=/.test(service), "center-cropping zoompan removed");
+check(/const OUTPUT_WIDTH = 1280/.test(service) && /const OUTPUT_HEIGHT = 720/.test(service), "output remains 1280x720");
+check(/const OUTPUT_FPS = 25/.test(service) && /fps=\$\{OUTPUT_FPS\}/.test(service), "output remains 25fps");
+check(/trim=start=0:duration=\$\{durationSec\.toFixed\(3\)\}/.test(service), "image duration remains exact");
+check(/verifyRenderedContinuity/.test(service), "continuity checks remain active");
+
+console.log(`Final export media isolation smoke passed (${checks}/${checks}).`);

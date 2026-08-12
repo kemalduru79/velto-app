@@ -9,12 +9,14 @@ import {
   getCreatorSceneEffectiveDuration,
   normalizeCreatorSceneTrim,
 } from "@/lib/creator/editorState";
+import type { CreatorVideoCurrentness } from "@/lib/creator/videoGeneration";
 
 type CreatorEditorProps = {
   scenes: readonly CreatorEditorTimelineScene[];
   selectedCreatorSceneId: string | null;
   onSelectScene: (creatorSceneId: string) => void;
   onMoveScene: (direction: "earlier" | "later") => void;
+  onAddScene: () => void;
   onDuplicateScene: () => void;
   onDeleteScene: () => void;
   onUndo: () => void;
@@ -27,6 +29,9 @@ type CreatorEditorProps = {
   onSaveText: (edit: { text: string; narration: string; dialogue: string }) => void;
   getNarrationAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
   getDialogueAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
+  getVideoState: (creatorSceneId: string) => CreatorVideoCurrentness;
+  onRefreshVideo: (creatorSceneId: string) => void;
+  onRestoreMedia: (creatorSceneId: string, assetId: string) => void;
   sceneOperationsDisabled?: boolean;
   language: "en" | "tr";
 };
@@ -36,6 +41,7 @@ export default function CreatorEditor({
   selectedCreatorSceneId,
   onSelectScene,
   onMoveScene,
+  onAddScene,
   onDuplicateScene,
   onDeleteScene,
   onUndo,
@@ -44,6 +50,9 @@ export default function CreatorEditor({
   onSaveText,
   getNarrationAudioState,
   getDialogueAudioState,
+  getVideoState,
+  onRefreshVideo,
+  onRestoreMedia,
   sceneOperationsDisabled = false,
   language,
 }: CreatorEditorProps) {
@@ -58,7 +67,11 @@ export default function CreatorEditor({
   const [textDraft, setTextDraft] = useState("");
   const [narrationDraft, setNarrationDraft] = useState("");
   const [dialogueDraft, setDialogueDraft] = useState("");
+  const [selectedMediaFingerprint, setSelectedMediaFingerprint] = useState("");
   const canonicalTextRef = useRef("");
+  const selectedMediaUrl = selectedScene?.renderMode === "image"
+    ? selectedScene.image
+    : selectedScene?.videoUrl;
 
   useEffect(() => {
     setSourceDurationSec(0);
@@ -81,6 +94,36 @@ export default function CreatorEditor({
     setDialogueDraft(selectedScene.dialogue || "");
   }, [selectedScene]);
 
+  useEffect(() => {
+    let active = true;
+    const fingerprint = async () => {
+      if (!selectedMediaUrl || !globalThis.crypto?.subtle) {
+        if (active) setSelectedMediaFingerprint("");
+        return;
+      }
+      let normalized = selectedMediaUrl;
+      try {
+        const url = new URL(selectedMediaUrl);
+        url.search = "";
+        url.hash = "";
+        normalized = url.toString();
+      } catch {
+        normalized = selectedMediaUrl.split(/[?#]/, 1)[0];
+      }
+      const digest = await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(normalized),
+      );
+      const value = Array.from(
+        new Uint8Array(digest),
+        (byte) => byte.toString(16).padStart(2, "0"),
+      ).join("").slice(0, 12);
+      if (active) setSelectedMediaFingerprint(value);
+    };
+    void fingerprint();
+    return () => { active = false; };
+  }, [selectedMediaUrl]);
+
   if (!selectedScene) return null;
 
   const hasSelectedVideo = Boolean(
@@ -98,6 +141,7 @@ export default function CreatorEditor({
     dialogueDraft !== (selectedScene.dialogue || "");
   const narrationAudioState = getNarrationAudioState(selectedScene.creatorSceneId || "");
   const dialogueAudioState = getDialogueAudioState(selectedScene.creatorSceneId || "");
+  const videoState = getVideoState(selectedScene.creatorSceneId || "");
   const effectiveDurationSec = getCreatorSceneEffectiveDuration({
     visualDurationSec: normalizedTrim.visualDurationSec,
     targetDurationSec: selectedScene.timing?.targetSceneDuration,
@@ -116,6 +160,14 @@ export default function CreatorEditor({
     if (state === "missing") return language === "en" ? "No voice generated" : "Ses üretilmedi";
     return language === "en" ? "No voice needed" : "Ses gerekmiyor";
   };
+  const videoLabel = {
+    current: language === "en" ? "Video ready" : "Video hazır",
+    stale: language === "en" ? "Video needs refresh" : "Videonun yenilenmesi gerekiyor",
+    processing: language === "en" ? "Refreshing video…" : "Video yenileniyor…",
+    delayed: language === "en" ? "Generation delayed" : "Üretim gecikti",
+    error: language === "en" ? "Generation failed" : "Üretim başarısız",
+    missing: language === "en" ? "No video generated" : "Video üretilmedi",
+  }[videoState];
   const handleVideoMetadata = () => {
     const duration = videoRef.current?.duration || 0;
     if (!Number.isFinite(duration) || duration <= 0) return;
@@ -217,6 +269,15 @@ export default function CreatorEditor({
             {language === "en" ? "Selected scene" : "Seçili sahne"} {selectedIndex + 1}
           </span>
           <div className="mt-3 space-y-3" data-creator-text-editor="true">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-video-currentness={videoState}>
+              <span className={videoState === "stale" ? "text-xs font-semibold text-amber-700" : "text-xs font-semibold text-slate-600"}>{videoLabel}</span>
+              {selectedMediaFingerprint && <code data-selected-media-fingerprint="true" className="mt-1 block text-[10px] text-slate-500">media:{selectedMediaFingerprint}</code>}
+              {(videoState === "stale" || videoState === "missing" || videoState === "error") && selectedScene.renderMode !== "image" && (
+                <button type="button" onClick={() => onRefreshVideo(selectedScene.creatorSceneId!)} disabled={sceneOperationsDisabled} className="mt-2 block rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40">
+                  {language === "en" ? "Refresh Video" : "Videoyu Yenile"}
+                </button>
+              )}
+            </div>
             <label className="block text-xs font-semibold text-slate-700">
               {language === "en" ? "Scene Text" : "Sahne Metni"}
               <textarea value={textDraft} onChange={(event) => setTextDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
@@ -242,6 +303,26 @@ export default function CreatorEditor({
           </div>
         </div>
       </div>
+
+      {(selectedScene.assetHistory || []).length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-media-history="true">
+          <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">{language === "en" ? "Current Version" : "Geçerli Sürüm"}</span>
+            <strong className="mt-1 block text-xs text-emerald-950">
+              {hasSelectedVideo ? (language === "en" ? "Selected video · used in Final Video" : "Seçili video · Final Videoda kullanılır") : (language === "en" ? "Selected image · used in Final Video" : "Seçili görsel · Final Videoda kullanılır")}
+            </strong>
+          </div>
+          <strong className="text-sm text-slate-950">{language === "en" ? "Previous Versions" : "Önceki Sürümler"}</strong>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(selectedScene.assetHistory || []).slice().reverse().map((asset) => (
+              <button key={asset.id} type="button" disabled={sceneOperationsDisabled} onClick={() => onRestoreMedia(selectedScene.creatorSceneId!, asset.id)} className="rounded-lg border border-slate-300 px-3 py-2 text-left text-xs text-slate-700 disabled:opacity-40">
+                <span className="block">{asset.kind === "video" ? "Video" : language === "en" ? "Image" : "Görsel"} · {new Date(asset.createdAt).toLocaleDateString(language)}</span>
+                <strong className="mt-1 block text-blue-700">{language === "en" ? "Use This Version" : "Bu Sürümü Kullan"}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasSelectedVideo && (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-trim-controls="true">
@@ -316,6 +397,14 @@ export default function CreatorEditor({
         <span className="mr-auto text-xs font-semibold text-slate-700">
           {language === "en" ? "Scene Actions" : "Sahne İşlemleri"}
         </span>
+        <button
+          type="button"
+          aria-label={language === "en" ? "Add new scene" : "Yeni sahne ekle"}
+          onClick={onAddScene}
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
+        >
+          {language === "en" ? "+ Add Scene" : "+ Sahne Ekle"}
+        </button>
         <button
           type="button"
           aria-label={language === "en" ? "Move selected scene earlier" : "Seçili sahneyi önceye taşı"}

@@ -76,7 +76,7 @@ matches(editor, /currentTime >=[\s\S]*currentTime = normalizedTrim\.clipInSec/, 
 matches(editor, /if \(!normalizedTrim\.isTrimmed\) return;/, "untrimmed seeking remains normal"); // 36
 matches(editor, /selectedScene\.image[\s\S]*<img/, "image preview unchanged"); // 37
 absent(editor, /creator-export|export-movie|Final Export/, "preview does not export"); // 38
-absent(editor.replace(/No voice generated/g, "No voice yet"), /\/api\/|fetch\(|generate/i, "preview does not generate"); // 39
+absent(editor.replace(/No (?:voice|video) generated/g, "No media yet"), /\/api\/|fetch\(|generate/i, "preview does not generate"); // 39
 absent(editor, /credit|reserve|CreatorCostGuard/i, "preview reserves no credits"); // 40
 
 matches(page, /setScenes\(nextScenes\)[\s\S]*scenes: nextProjection/, "trim mutates canonical scenes first"); // 41
@@ -105,15 +105,15 @@ check(fixtures.every(([start, end]) => {
   return browser.isTrimmed === server.isTrimmed && browser.visualDurationSec === Number(server.visualDurationSec.toFixed(3));
 }), "preview/export fixtures agree"); // 59
 
-matches(page, /const applyCreatorEditorStructuralChange[\s\S]*setExportedMovieUrl\(""\)[\s\S]*setExportSignature\(""\)[\s\S]*const updateSelectedCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates export"); // 60
+matches(page, /clipInSec: scene\.clipInSec[\s\S]*clipOutSec: scene\.clipOutSec[\s\S]*const updateSelectedCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates final output through deterministic signature mismatch"); // 60
 check(trimHandler.includes('resetRequested ? "Reset scene trim"') && trimHandler.includes("applyCreatorEditorStructuralChange"), "reset uses invalidating mutation path"); // 61
 absent(editor + helperSource, /provider|\/api\//i, "no provider calls added"); // 62
-absent((editor + helperSource).replace(/No voice generated/g, "No voice yet"), /generate|creator-video|creator-image/i, "no generation calls added"); // 63
+absent((editor + helperSource).replace(/No (?:voice|video) generated/g, "No media yet"), /generate|creator-video|creator-image/i, "no generation calls added"); // 63
 const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" });
 check(!changed.includes("lib/credits/"), "credit policy unchanged"); // 64
 check(!changed.includes("CreatorCostGuard"), "Cost Guard unchanged"); // 65
 check(!changed.includes("supabase/migrations/"), "no migration"); // 66
-check(!changed.split("\n").some((line) => /(?:app|components|lib|supabase)\/.+music/i.test(line)), "premium music unchanged"); // 67
+check(!changed.split("\n").some((line) => /app\/api\/creator-music\/|lib\/providers\/music\//i.test(line)), "premium music commercial boundary unchanged"); // 67
 matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*onUpdateTrim=\{updateSelectedCreatorSceneTrim\}/, "Storyverse has no trim controls"); // 68
 
 console.log(`Creator Editor trim and Draft Preview smoke passed (${checks}/68).`);

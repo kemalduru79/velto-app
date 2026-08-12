@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const page = read("app/create/page.tsx");
+const editor = read("components/create/CreatorEditor.tsx");
+const exportScenes = read("lib/creator/exportScenes.ts");
+let checks = 0;
+const check = (value, label) => { assert.ok(value, label); checks += 1; };
+
+check(/Previous Versions/.test(editor), "history supports multiple versions");
+check(/Use This Version/.test(editor) && /onRestoreMedia/.test(editor), "user can select a historical version");
+check(/Current Version/.test(editor), "canonical current media is identified");
+check(/scenes: sourceScenes/.test(page), "canonical selection persists with project scenes");
+check(/assetHistory/.test(page) && /assetHistory/.test(editor), "history remains intact");
+check(/assetHistory: _assetHistory/.test(exportScenes), "unselected history never enters export");
+check(/videoGenerationSignature: asset\.generationSignature/.test(page), "selected historical provenance is restored");
+check(/getCreatorVideoState\(scene\)/.test(page) && /videoCurrent: getCreatorVideoState/.test(page), "stale selected video remains blocked");
+const restoreBlock = page.slice(page.indexOf("const restoreCreatorSceneAsset"), page.indexOf("const setCreatorScenesRenderMode"));
+check(!/credit|reserve|fetch\(/i.test(restoreBlock), "selection uses no credits or provider call");
+check(/!creatorProductionComplete/.test(page) && /Continue · Build Final Video/.test(page), "no final output exposes Build Final Video");
+check(/creatorHasFinalVideo[\s\S]*data-edit-current-final-video="true"/.test(page), "final output exposes Edit Video");
+check(/data-rebuild-final-video="true"/.test(page), "final output exposes Rebuild Final Video");
+check(/creatorHasFinalVideo && \(/.test(page), "completed output does not hide production actions");
+check(/text: scene\.text/.test(page) && /currentSignature = buildExportSignature/.test(page), "scene edit affects signature");
+check(/creatorSceneId: scene\.creatorSceneId/.test(page), "ordered stable scene identities affect signature");
+check(/videoUrl: exportSource === "video"/.test(page), "selected media affects signature");
+check(/clipInSec: scene\.clipInSec/.test(page) && /clipOutSec: scene\.clipOutSec/.test(page), "trim affects signature");
+check(/backgroundMusic: creatorBackgroundMusic/.test(page), "music affects signature");
+check(/exportSignature === getCurrentExportSignature\(\)/.test(page), "unchanged project keeps final output current");
+check(/<video src=\{exportMovieResult\?\.downloadUrl \|\| exportedMovieUrl\}/.test(page), "stale final output remains playable");
+const rebuildStart = page.slice(page.indexOf("setIsExportingMovie(true)"), page.indexOf("try {", page.indexOf("setIsExportingMovie(true)")));
+check(!/setExportedMovieUrl\(""\)|setExportMovieResult\(null\)|setExportSignature\(""\)/.test(rebuildStart), "rebuild preserves old output before success");
+check(/catch \(e: any\)[\s\S]*setError/.test(page), "rebuild failure preserves old output");
+check(/setExportedMovieUrl\(nextExportResult\.movieUrl\)[\s\S]*setExportSignature\(currentSignature\)/.test(page), "rebuild success replaces output and provenance");
+check(!/onRestoreMedia[\s\S]{0,500}handleExportMovie/.test(editor), "editing never auto rebuilds");
+check(/getOperationCreditCost\("creator_export"/.test(page) && /requestCreatorCostGuardConfirmation/.test(page), "creator_export Cost Guard remains authoritative");
+check(/disabled=\{isExportingMovie \|\| creatorMusicConfirmationRequired\}/.test(page), "double rebuild is blocked while running");
+check(/exportedMovieUrl: isCreatorLabFlow[\s\S]*candidateFinalVideoUrl/.test(page) && /exportSignature: isCreatorLabFlow[\s\S]*candidateFinalVideoSignature/.test(page), "refresh preserves current or outdated output state");
+check(/isCreatorLabFlow/.test(page) && /isStoryverseFlow/.test(page), "Storyverse remains separately gated");
+
+const renderModeHandler = page.slice(page.indexOf("const setCreatorScenesRenderMode"), page.indexOf("const toggleCreatorSceneSelection"));
+check(/renderMode === "image"/.test(renderModeHandler), "VIDEO to IMAGE updates canonical mode in Production");
+check(/renderMode === "video"/.test(renderModeHandler), "IMAGE to VIDEO updates canonical mode in Production");
+check(!/setCreatorSelectedWorkspaceStep|navigateCreatorWorkspaceStep|router\.|push\(/.test(renderModeHandler), "media toggles contain no workflow or route navigation");
+check(/setScenes\(\(prev\)[\s\S]*renderMode/.test(renderModeHandler), "media toggle updates canonical scene mode");
+check(/invalidateFinalVideoForProductionChange/.test(renderModeHandler), "media toggle recalculates signature-derived final readiness");
+check(/creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete/.test(page), "toggle can mark an existing Final Video outdated");
+check(/if \(isCreatorLabFlow\) return;/.test(page), "CreatorLab preserves the old Final Video during toggle");
+check(/data-rebuild-final-video="true"/.test(page), "Rebuild Final Video remains available");
+check(/automaticTargetStep = Math\.min\(creatorProgressStep, 3\)/.test(page), "automatic workflow progression stops at Production");
+check(!/setCreatorSelectedWorkspaceStep\(creatorProgressStep\)/.test(page), "passive readiness cannot navigate to Publish");
+check(/const navigateCreatorWorkspaceStep[\s\S]*setCreatorSelectedWorkspaceStep\(step\)/.test(page), "explicit workspace navigation still reaches Publish");
+check(/creatorProgressStep[\s\S]*creatorProductionPackage \|\| scenes\.length > 0[\s\S]*\? 3/.test(page), "refresh restores Production for edited media");
+check(/if \(!isCreatorLabFlow\)[\s\S]*return;/.test(page), "Storyverse remains outside CreatorLab auto-step correction");
+
+console.log(`Final video lifecycle smoke passed (${checks}/${checks}).`);

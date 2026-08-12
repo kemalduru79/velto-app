@@ -30,6 +30,8 @@ import {
   buildCanonicalCreatorVideoQueueInput,
   validateCreatorVideoRequestBoundary,
 } from "@/lib/security/creatorVideoTaskBindingBoundary";
+import { CREATOR_VIDEO_WORKER_STALE_SECONDS } from "@/lib/creator/videoGeneration";
+import { buildCreatorVideoProviderPrompt } from "@/lib/creator/videoPromptPolicy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -77,30 +79,6 @@ function requestedRatio(body: Record<string, unknown>) {
   }
 
   return body.creatorFormat === "short_form" ? "720:1280" : "1280:720";
-}
-
-function buildPrompt(body: Record<string, unknown>) {
-  const text = typeof body.text === "string" ? body.text.trim() : "";
-  const motionHint =
-    typeof body.motionHint === "string" ? body.motionHint.trim() : "";
-  const cameraDirection =
-    typeof body.cameraDirection === "string"
-      ? body.cameraDirection.trim()
-      : "";
-  const emotion =
-    typeof body.emotion === "string" ? body.emotion.trim() : "";
-
-  return [
-    "Create a polished cinematic motion block from the supplied production image.",
-    text ? `Scene context: ${text}` : "",
-    motionHint ? `Motion direction: ${motionHint}` : "",
-    cameraDirection ? `Camera direction: ${cameraDirection}` : "",
-    emotion ? `Emotional tone: ${emotion}` : "",
-    "Preserve subject identity, visual continuity, composition and professional production quality.",
-    "Avoid frozen frames, abrupt morphing, text artifacts and unrelated scene changes.",
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function publicError(error: unknown) {
@@ -226,6 +204,31 @@ async function postHandler(req: NextRequest) {
       canonicalProjectId = ownedProject.id;
     }
 
+    if (body.productProfile === "creatorlab") {
+      const queueHealth = await services.jobQueue.getHealth(
+        CREATOR_VIDEO_WORKER_STALE_SECONDS,
+      );
+      if (queueHealth.activeWorkers < 1) {
+        return NextResponse.json(
+          { ok: false, error: "Video generation is temporarily unavailable. Please try again shortly." },
+          { status: 503, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+    }
+    if (body.productProfile === "creatorlab" && canonicalProjectId) {
+      const activeDuplicate = (await services.jobQueue.listForUser(principal.id, 100)).some(
+        (job) => job.projectId === canonicalProjectId &&
+          ["queued", "running"].includes(job.status) &&
+          String(job.payload.sceneId ?? "") === String(body.sceneId ?? ""),
+      );
+      if (activeDuplicate) {
+        return NextResponse.json(
+          { ok: false, error: "Video generation is already active for this scene." },
+          { status: 409, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+    }
+
     const selection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
 
     if (!selection.available) {
@@ -259,7 +262,7 @@ async function postHandler(req: NextRequest) {
       imageUrl: imageUrl as string,
       lastFrameUrl,
       referenceImageUrls: references,
-      promptText: buildPrompt(body),
+      promptText: buildCreatorVideoProviderPrompt(body),
       requestedRatio: requestedRatio(body),
       durationSec: durationPolicy.durationSec,
     });
@@ -314,6 +317,7 @@ async function postHandler(req: NextRequest) {
       nativeTaskId: task.nativeTaskId,
       provider: selection.provider.key,
       sceneId: body.sceneId ?? null,
+      creatorSceneId: typeof body.creatorSceneId === "string" ? body.creatorSceneId : null,
       qualityMode,
       creditReservationId: reservation?.reservationId || null,
       reservedCredits: reservation?.reservedCredits || 0,

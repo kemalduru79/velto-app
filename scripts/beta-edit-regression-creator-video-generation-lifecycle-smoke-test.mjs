@@ -37,7 +37,7 @@ matches(poller, /failureMessage[\s\S]*Video generation failed in the background 
 const pollFetchCount = (poller.match(/fetch\(/g) || []).length;
 check(pollFetchCount === 1 && !/creator-video/.test(poller), "11 transient polling never redispatches provider request");
 matches(poller, /attempts > maxAttempts[\s\S]*videoStatus: "delayed"[\s\S]*durable job is preserved/, "12 slow jobs leave bounded recoverable state");
-matches(recovery, /videoStatus === "processing" \|\| scene\.videoStatus === "delayed"[\s\S]*pollVideoQueueJob\(scene\.id, queueJobId, scene\.creatorSceneId\)/, "13 refresh resumes durable active/delayed job");
+matches(recovery, /videoStatus === "processing" \|\| scene\.videoStatus === "delayed"[\s\S]*pollVideoQueueJob\([\s\S]*scene\.id,[\s\S]*queueJobId,[\s\S]*scene\.creatorSceneId/, "13 refresh resumes durable active/delayed job");
 matches(page, /const updateSelectedCreatorSceneTrim[\s\S]*\.\.\.scene,[\s\S]*clipInSec:/, "14 canonical trim update preserves job fields");
 absent(editorState.slice(editorState.indexOf("normalizeCreatorSceneTrim"), editorState.indexOf("getCreatorSceneEffectiveDuration")), /videoJobId|videoQueueJobId|videoStatus/, "15 trim normalization cannot strip generation state");
 matches(editor, /sceneOperationsDisabled \|\| selectedIndex/ , "16 reorder disabled while active generation is linked");

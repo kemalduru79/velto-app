@@ -10,6 +10,7 @@ export type CreatorFinalVideoReadinessScene = {
   dialogueAudioUrl?: string;
   narrationAudioCurrent?: boolean;
   dialogueAudioCurrent?: boolean;
+  videoCurrent?: boolean;
 };
 
 export type CreatorFinalVideoReadinessStatus =
@@ -57,7 +58,7 @@ function hasReadyVisual(scene: CreatorFinalVideoReadinessScene) {
     hasText(scene.videoUrl) && scene.videoStatus?.toLowerCase() === "done";
 
   if (scene.renderMode === "image") return hasImage;
-  if (scene.renderMode === "video") return hasVideo;
+  if (scene.renderMode === "video") return hasVideo && scene.videoCurrent !== false;
 
   return hasVideo || hasImage;
 }

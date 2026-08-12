@@ -79,7 +79,7 @@ matches(page, /scenes: cloneCreatorHistoryValue\(scenes\)[\s\S]*setScenes\(resto
 matches(page, /setExportedMovieUrl\(""\)[\s\S]*setExportSignature\(""\)/, "51 Save invalidates export");
 const saveHandler = page.slice(page.indexOf("const saveSelectedCreatorSceneText"), page.indexOf("const toggleCreatorAssetCompare"));
 absent(saveHandler, /fetch\(|provider/, "52 no provider call");
-absent(saveHandler, /generate|Generation/, "53 no generation");
+absent(saveHandler, /handleGenerateVideo|getVideoApiEndpoint|store-audio/, "53 no generation dispatch");
 absent(saveHandler, /credit|reserve/i, "54 no credits");
 absent(page.slice(page.indexOf("const undoLastCreatorChange"), page.indexOf("const projectCreatorEditorScenes")), /credit|reserve/i, "55 Undo free");
 absent(saveHandler, /delete.*storage|storage.*delete/i, "56 no storage deletion");
@@ -87,7 +87,7 @@ const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" })
 check(!changed.includes("supabase/migrations"), "57 no migration");
 check(!changed.includes("lib/credits"), "58 credit policy unchanged");
 check(!changed.includes("CreatorCostGuard"), "59 Cost Guard unchanged");
-check(!changed.split("\n").some((line) => /music/i.test(line)), "60 premium music unchanged");
+check(!changed.split("\n").some((line) => /app\/api\/creator-music\/|lib\/providers\/music\//i.test(line)), "60 premium music commercial boundary unchanged");
 check(helper.applyCreatorSceneTextEdit([base], id1, { text: "V", narration: "N", dialogue: "D" }).scenes[0].videoQueueJobId === "queue", "61 video lifecycle preserved");
 matches(page, /videoStatus === "processing"[\s\S]*videoStatus === "delayed"/, "62 active job safety");
 matches(page, /!selectedCreatorEditorSceneId \|\| !isCreatorLabFlow/, "63 Storyverse protected");

@@ -15,6 +15,8 @@ import { resolveCreatorPremiumMusicExportEntitlement } from "@/lib/creator/music
 import { isPremiumMusicAcquisitionEnabled } from "@/lib/providers/music/downloadSecurity";
 import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
+import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
+import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -87,6 +89,34 @@ export async function POST(request: Request) {
     delete exportPayload.musicEntitlement;
     delete exportPayload.musicAsset;
     delete exportPayload.musicStorage;
+    if (productProfile === "creatorlab") {
+      try {
+        exportPayload.scenes = resolveCanonicalCreatorExportScenes(
+          Array.isArray(body.scenes) ? body.scenes.filter(
+            (scene): scene is Record<string, unknown> => Boolean(scene && typeof scene === "object" && !Array.isArray(scene)),
+          ) : [],
+        ).map((scene) => {
+          const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+          const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+          if (process.env.NODE_ENV !== "production") {
+            console.info("Creator export scene", {
+              scene: scene.creatorSceneId.slice(0, 12),
+              mode: scene.exportSource,
+              media: mediaIdentity,
+            });
+          }
+          return { ...scene, mediaIdentity };
+        });
+      } catch (error) {
+        if (error instanceof CreatorExportSceneError) {
+          return NextResponse.json(
+            { ok: false, code: "creator_export_scene_identity_invalid", error: "Final video scene sequence is invalid.", creditReserved: false },
+            { status: 409 },
+          );
+        }
+        throw error;
+      }
+    }
     let internalExportToken: string | undefined;
     let musicUsageIdentity: CreatorMusicUsageEventIdentity | null = null;
     if (productProfile === "creatorlab") {
@@ -147,7 +177,7 @@ export async function POST(request: Request) {
       referenceId:
         typeof body.projectId === "string" ? body.projectId : undefined,
       metadata: {
-        sceneCount: Array.isArray(body.scenes) ? body.scenes.length : 0,
+        sceneCount: Array.isArray(exportPayload.scenes) ? exportPayload.scenes.length : 0,
         finalProductionGate: "3Q",
       },
       billable: productProfile === "creatorlab",

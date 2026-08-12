@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { MAX_CREATOR_VIDEO_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
@@ -69,12 +70,13 @@ export async function POST(req: NextRequest) {
       output,
       MAX_CREATOR_VIDEO_BYTES,
     );
+    const contentIdentity = createHash("sha256").update(media.buffer).digest("hex").slice(0, 24);
     const stored = await services.objectStorage.uploadPublic({
       bucket: "videos",
-      path: `creator/${boundary.context.user.id}/video/queue-${input.queueJobId}.${media.extension}`,
+      path: `creator/${boundary.context.user.id}/video/queue-${input.queueJobId}-${contentIdentity}.${media.extension}`,
       body: media.buffer,
       contentType: media.mimeType,
-      upsert: true,
+      upsert: false,
     });
     return json({ ok: true, videoUrl: stored.publicUrl, path: stored.path });
   } catch (error) {

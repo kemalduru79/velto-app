@@ -6,6 +6,7 @@ export type CreatorBackgroundMusicConfig = {
   version: typeof CREATOR_BACKGROUND_MUSIC_VERSION;
   mode: CreatorBackgroundMusicMode;
   selectedTrackId?: string;
+  confirmedTrackId?: string;
   volume: number;
   autoDucking: boolean;
   fadeInSec: number;
@@ -48,6 +49,9 @@ export function normalizeCreatorBackgroundMusicConfig(
   const selectedTrackId = requestedTrackId && (allowed.has(requestedTrackId) || isAllowedTrackId?.(requestedTrackId))
     ? requestedTrackId
     : undefined;
+  const confirmedTrackId = typeof source.confirmedTrackId === "string" && source.confirmedTrackId === selectedTrackId
+    ? source.confirmedTrackId
+    : undefined;
 
   if (mode === "selected" && !selectedTrackId) mode = "none";
 
@@ -55,6 +59,7 @@ export function normalizeCreatorBackgroundMusicConfig(
     version: CREATOR_BACKGROUND_MUSIC_VERSION,
     mode,
     ...(mode === "selected" && selectedTrackId ? { selectedTrackId } : {}),
+    ...(mode === "selected" && confirmedTrackId ? { confirmedTrackId } : {}),
     volume: clamp(source.volume, 0.04, 0.3, DEFAULT_CREATOR_BACKGROUND_MUSIC.volume),
     autoDucking: source.autoDucking !== false,
     fadeInSec: clamp(source.fadeInSec, 0, 5, DEFAULT_CREATOR_BACKGROUND_MUSIC.fadeInSec),

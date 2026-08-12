@@ -8,6 +8,12 @@ export type CreatorEditorTimelineScene = {
   dialogue: string;
   image?: string;
   videoUrl?: string;
+  videoStatus?: "idle" | "processing" | "delayed" | "done" | "error";
+  videoGenerationSignature?: string;
+  assetHistory?: Array<{
+    id: string; kind: "image" | "video"; url: string; createdAt: string;
+    durationSec?: number; generationSignature?: string;
+  }>;
   renderMode?: "video" | "image";
   clipInSec?: number;
   clipOutSec?: number;

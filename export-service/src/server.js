@@ -318,16 +318,11 @@ function createNormalizedAudioFilter(durationSec) {
 }
 
 function createImageMotionFilter(durationSec, motionPreset = "slow_push_in") {
-  const frameCount = Math.max(1, Math.round(durationSec * OUTPUT_FPS));
-  const motion =
-    motionPreset === "soft_pan"
-      ? `zoompan=z='1.045':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
-      : `zoompan=z='min(zoom+0.0008,1.055)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`;
-
   return [
-    "scale=1400:788:force_original_aspect_ratio=increase",
-    `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}`,
-    motion,
+    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
+    `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black`,
+    "setsar=1",
+    `fps=${OUTPUT_FPS}`,
     `trim=start=0:duration=${durationSec.toFixed(3)}`,
     "settb=AVTB",
     `setpts=N/(${OUTPUT_FPS}*TB)`,
@@ -1493,6 +1488,51 @@ app.get("/health", (_req, res) => {
   });
 });
 
+function resolveCreatorExportSequence(scenes) {
+  const seen = new Set();
+  return scenes.map((scene) => {
+    const creatorSceneId = typeof scene?.creatorSceneId === "string"
+      ? scene.creatorSceneId.trim()
+      : "";
+    if (!creatorSceneId || seen.has(creatorSceneId)) {
+      throw new Error("creator_export_scene_identity_invalid");
+    }
+    seen.add(creatorSceneId);
+    const { assetHistory, compareAssetId, compareSelection, selectedHistoryAssetId, ...canonical } = scene;
+    const exportSource = scene.exportSource === "video" ? "video" : "image";
+    const selectedMedia = exportSource === "video" ? scene.videoUrl : scene.image;
+    if (typeof selectedMedia !== "string" || !selectedMedia.trim()) {
+      throw new Error("creator_export_scene_media_missing");
+    }
+    return {
+      ...canonical,
+      creatorSceneId,
+      exportSource,
+      image: exportSource === "image" && typeof scene.image === "string" ? scene.image : "",
+      videoUrl: exportSource === "video" && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+    };
+  });
+}
+
+function normalizeCreatorMediaIdentity(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value.trim());
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value.trim().split(/[?#]/, 1)[0];
+  }
+}
+
+function fingerprintCreatorMedia(value) {
+  const normalized = normalizeCreatorMediaIdentity(value);
+  return normalized
+    ? createHash("sha256").update(normalized).digest("hex").slice(0, 12)
+    : "";
+}
+
 app.post("/export-movie", async (req, res) => {
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "velto-export-")
@@ -1552,8 +1592,18 @@ app.post("/export-movie", async (req, res) => {
       }
     }
 
-    const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
     const isCreatorLabExport = body?.productProfile === "creatorlab";
+    let scenes = Array.isArray(body?.scenes) ? body.scenes : [];
+    if (isCreatorLabExport) {
+      try {
+        scenes = resolveCreatorExportSequence(scenes);
+      } catch {
+        return res.status(409).json({
+          ok: false,
+          error: "Final video scene sequence is invalid.",
+        });
+      }
+    }
     const creatorMusic = normalizeCreatorBackgroundMusic(body?.backgroundMusic);
     const shouldPrepareSpeechDucking =
       isCreatorLabExport &&
@@ -1609,6 +1659,21 @@ app.post("/export-movie", async (req, res) => {
         typeof scene.videoUrl === "string" && scene.videoUrl.trim();
       const hasImageSource =
         typeof scene.image === "string" && scene.image.trim();
+
+      if (isCreatorLabExport) {
+        const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+        const actualMediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+        if (!actualMediaIdentity || scene.mediaIdentity !== actualMediaIdentity) {
+          return res.status(409).json({ ok: false, error: "Final video scene media identity is invalid." });
+        }
+        if (process.env.NODE_ENV !== "production") {
+          console.info("Export service scene", {
+            scene: scene.creatorSceneId.slice(0, 12),
+            mode: scene.exportSource,
+            media: actualMediaIdentity,
+          });
+        }
+      }
 
       let sourcePath = "";
       let sourceType = "";

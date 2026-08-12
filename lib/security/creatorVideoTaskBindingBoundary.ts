@@ -1,4 +1,5 @@
 const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const CREATOR_SCENE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const CREATOR_VIDEO_RESERVED_CLIENT_FIELDS = [
   "taskId",
@@ -66,6 +67,13 @@ export function validateCreatorVideoRequestBoundary(
   if (!projectBinding) {
     return { ok: false, status: 400, message: "projectId is invalid." };
   }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "creatorSceneId") &&
+    (typeof value.creatorSceneId !== "string" ||
+      !CREATOR_SCENE_ID_PATTERN.test(value.creatorSceneId))
+  ) {
+    return { ok: false, status: 400, message: "creatorSceneId is invalid." };
+  }
   return { ok: true, body: value, projectBinding };
 }
 
@@ -76,6 +84,7 @@ type CanonicalCreatorVideoQueueInput = {
   nativeTaskId: string;
   provider: "runway" | "veo";
   sceneId: unknown;
+  creatorSceneId?: string | null;
   qualityMode: unknown;
   creditReservationId: string | null;
   reservedCredits: number;
@@ -92,6 +101,7 @@ export function buildCanonicalCreatorVideoQueueInput(
       taskId: input.publicTaskId,
       nativeTaskId: input.nativeTaskId,
       sceneId: input.sceneId,
+      creatorSceneId: input.creatorSceneId || null,
       qualityMode: input.qualityMode,
       provider: input.provider,
       creditReservationId: input.creditReservationId,

@@ -19,9 +19,10 @@ function getInitialMusicView(mode: CreatorBackgroundMusicConfig["mode"]): MusicV
   return "none";
 }
 
-export default function CreatorBackgroundMusic({ value, onChange, language, autoMatchInput = {} }: {
+export default function CreatorBackgroundMusic({ value, onChange, onConfirmTrack, language, autoMatchInput = {} }: {
   value: CreatorBackgroundMusicConfig;
   onChange: (value: CreatorBackgroundMusicConfig) => void;
+  onConfirmTrack?: (trackId: string) => Promise<boolean>;
   language: "en" | "tr";
   autoMatchInput?: AutoMatchInput;
 }) {
@@ -36,6 +37,7 @@ export default function CreatorBackgroundMusic({ value, onChange, language, auto
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [catalogError, setCatalogError] = useState("");
+  const [confirmingTrackId, setConfirmingTrackId] = useState("");
   const english = language === "en";
 
   const stopPreview = () => {
@@ -157,8 +159,12 @@ export default function CreatorBackgroundMusic({ value, onChange, language, auto
     stopPreview();
     onChange({ ...value, mode: "selected", selectedTrackId: track.id });
   };
+  const selectedTrack = tracks.find((track) => track.id === value.selectedTrackId);
+  const confirmationRequired =
+    value.mode === "selected" &&
+    value.confirmedTrackId !== value.selectedTrackId;
 
-  return <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+  return <section id="creatorlab-background-music" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
     <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">{english ? "Background music" : "Arka plan müziği"}</span>
     <h3 className="mt-2 text-lg font-semibold text-slate-950">{english ? "Velto Premium Music" : "Velto Premium Müzik"}</h3>
     <p className="mt-1 text-xs text-slate-500">{english ? "Browsing and previewing are free. Music is optional." : "Göz atma ve önizleme ücretsizdir. Müzik isteğe bağlıdır."}</p>
@@ -180,6 +186,46 @@ export default function CreatorBackgroundMusic({ value, onChange, language, auto
         <button type="button" onClick={() => selectTrack(track)} className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">{value.selectedTrackId === track.id ? (english ? "Selected" : "Seçildi") : (english ? "Select track" : "Parçayı seç")}</button>
       </div>)}
       {hasMore && <button type="button" disabled={loading} onClick={() => void loadTracks({ more: true })} className="w-full rounded-xl border border-slate-200 py-2 text-sm font-semibold">{english ? "Load more" : "Daha fazla yükle"}</button>}
+    </div>}
+    {confirmationRequired && selectedTrack && <div data-selected-music-confirmation-card="true" className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">{english ? "Selected Music" : "Seçili Müzik"}</span>
+      <div className="mt-3 flex items-center gap-3">
+        {selectedTrack.artworkUrl && <img src={selectedTrack.artworkUrl} alt="" className="h-14 w-14 rounded-xl object-cover" />}
+        <div className="min-w-0 flex-1">
+          <strong className="block truncate text-sm">{selectedTrack.title}</strong>
+          <span className="mt-0.5 block truncate text-xs text-amber-800">{[
+            selectedTrack.artist,
+            selectedTrack.moods[0],
+            selectedTrack.genres[0],
+            selectedTrack.durationSec ? `${Math.floor(selectedTrack.durationSec / 60)}:${String(Math.round(selectedTrack.durationSec % 60)).padStart(2, "0")}` : "",
+          ].filter(Boolean).join(" · ")}</span>
+        </div>
+      </div>
+      <p className="mt-3 text-xs leading-5">{english ? "Listen to the selected track before confirming it for final export." : "Final dışa aktarım için onaylamadan önce seçili parçayı dinle."}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={!selectedTrack.previewAvailable} onClick={() => void previewTrack(selectedTrack)} className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-xs font-semibold disabled:opacity-40">
+          {playingId === selectedTrack.id ? (english ? "Pause Preview" : "Önizlemeyi Duraklat") : (english ? "Play Preview" : "Önizlemeyi Oynat")}
+        </button>
+        <button type="button" onClick={() => setView("browse")} className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-xs font-semibold">
+          {english ? "Change Music" : "Müziği Değiştir"}
+        </button>
+        <button
+          type="button"
+          data-confirm-selected-music="true"
+          disabled={confirmingTrackId === selectedTrack.id}
+          onClick={async () => {
+            if (!onConfirmTrack) return;
+            setConfirmingTrackId(selectedTrack.id);
+            await onConfirmTrack(selectedTrack.id);
+            setConfirmingTrackId("");
+          }}
+          className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+        >
+          {confirmingTrackId === selectedTrack.id
+            ? english ? "Confirming…" : "Onaylanıyor…"
+            : english ? "Confirm This Music" : "Bu Müziği Onayla"}
+        </button>
+      </div>
     </div>}
   </section>;
 }

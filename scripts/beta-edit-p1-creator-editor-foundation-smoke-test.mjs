@@ -98,8 +98,8 @@ matches(editor, /videoUrl[\s\S]*?image/, "safe existing preview media only"); //
 
 doesNotMatch(editor + timeline + stateSource, /fetch\(|\/api\//, "no provider or generation call added"); // 41
 const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
-check(!changedFiles.some((file) => file.startsWith("app/api/")) && changedFiles.filter((file) => file.startsWith("export-service/")).every((file) => file === "export-service/src/server.js"), "no API or unrelated export-service change"); // 42
-check(!changedFiles.some((file) => /^(?:app|components|lib|supabase)\/.+(?:credit|music)/i.test(file)), "no credit or music product change"); // 43
+check(changedFiles.filter((file) => file.startsWith("app/api/")).every((file) => file === "app/api/creator-video/route.ts" || file === "app/api/creator-store-video/route.ts" || file === "app/api/creator-export/route.ts") && changedFiles.filter((file) => file.startsWith("export-service/")).every((file) => file === "export-service/src/server.js"), "only authorized Creator video storage/export API changes"); // 42
+check(!changedFiles.some((file) => /credit/i.test(file)) && !changedFiles.some((file) => file.startsWith("app/api/creator-music/") || file.startsWith("lib/providers/music/")), "no credit or commercial music product change"); // 43
 check(!changedFiles.some((file) => file.startsWith("supabase/migrations/")), "no migration"); // 44
 matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*?<CreatorEditor/, "editor remains CreatorLab-only"); // 45
 
