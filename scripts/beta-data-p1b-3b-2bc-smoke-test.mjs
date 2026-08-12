@@ -38,12 +38,12 @@ assert.doesNotMatch(storeHelper, /taskId|nativeTaskId|provider|videoUrl,/);
 const queuePoll = page.slice(page.indexOf("const pollVideoQueueJob"), page.indexOf("const getCreatorCinematicVideoInputs"));
 const queueWait = page.slice(page.indexOf("const waitForQueuedVideoAndStore"), page.indexOf("const generateSceneVideoAndWait"));
 assert.match(queuePoll, /storeCompletedVideo\(\{ queueJobId \}\)/);
-assert.match(queuePoll, /videoStorageInFlightRef\.current\[sceneId\]/);
-assert.match(queuePoll, /delete videoStorageInFlightRef\.current\[sceneId\]/);
-assert.match(queuePoll, /let providerSucceeded = false/);
-assert.match(queuePoll, /attempts > maxAttempts && !providerSucceeded/);
+assert.match(queuePoll, /videoStorageInFlightRef\.current\[pollKey\]/);
+assert.match(queuePoll, /delete videoStorageInFlightRef\.current\[pollKey\]/);
+assert.doesNotMatch(queuePoll, /providerSucceeded/);
+assert.match(queuePoll, /attempts > maxAttempts/);
 const queueStore = queuePoll.indexOf("await storeCompletedVideo({ queueJobId })");
-const queueClear = queuePoll.indexOf("clearVideoPollForScene(sceneId)", queueStore);
+const queueClear = queuePoll.indexOf("clearVideoPollForScene(sceneId, creatorSceneId)", queueStore);
 assert.ok(queueStore >= 0 && queueClear > queueStore, "polling must clear only after durable storage succeeds");
 assert.doesNotMatch(queuePoll, /fetch\(getVideoApiEndpoint\(|method:\s*"POST"[\s\S]*creator-video/);
 assert.match(queuePoll, /Video storage is temporarily unavailable\. Velto Studio will retry automatically\./);
@@ -56,7 +56,7 @@ assert.match(page, /failClosedLegacyCreatorVideo/);
 const reloadStart = page.lastIndexOf("useEffect(() => {", page.indexOf("scenes.forEach((scene)"));
 const reloadEffect = page.slice(reloadStart, page.indexOf("useEffect(() => {", reloadStart + 20));
 assert.match(reloadEffect, /isQueueJobId\(scene\.videoQueueJobId\)[\s\S]*isQueueJobId\(scene\.videoJobId\)/);
-assert.match(reloadEffect, /else failClosedLegacyCreatorVideo\(scene\.id\)/);
+assert.match(reloadEffect, /else failClosedLegacyCreatorVideo\(scene\.id, scene\.creatorSceneId\)/);
 
 for (const route of [jobs, output]) {
   assert.ok(route.indexOf("authenticateRequest(req)") < route.indexOf("getPersistenceServices()"));

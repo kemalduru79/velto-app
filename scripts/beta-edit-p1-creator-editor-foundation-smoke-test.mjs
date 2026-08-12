@@ -93,13 +93,13 @@ doesNotMatch(timeline, /key=\{(?:index|scene\.id)\}/, "timeline has no index/num
 doesNotMatch(editor + timeline, /onDrag|draggable|drag\/drop|sortable/i, "no reorder or drag/drop"); // 36
 matches(editor, /onDeleteScene/, "scene delete extends the foundation through a callback"); // 37
 matches(editor, /onDuplicateScene/, "scene duplicate extends the foundation through a callback"); // 38
-doesNotMatch(editor + timeline, /trim|ffmpeg/i, "no trim or FFmpeg"); // 39
+matches(editor, /data-creator-trim-controls="true"/, "trim extends the editor foundation without FFmpeg in the browser"); // 39
 matches(editor, /videoUrl[\s\S]*?image/, "safe existing preview media only"); // 40
 
 doesNotMatch(editor + timeline + stateSource, /fetch\(|\/api\//, "no provider or generation call added"); // 41
 const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
-check(!changedFiles.some((file) => file.startsWith("app/api/") || file.startsWith("export-service/")), "no API or export-service change"); // 42
-check(!changedFiles.some((file) => file.includes("credit") || file.includes("music")), "no credit or music change"); // 43
+check(!changedFiles.some((file) => file.startsWith("app/api/")) && changedFiles.filter((file) => file.startsWith("export-service/")).every((file) => file === "export-service/src/server.js"), "no API or unrelated export-service change"); // 42
+check(!changedFiles.some((file) => /^(?:app|components|lib|supabase)\/.+(?:credit|music)/i.test(file)), "no credit or music product change"); // 43
 check(!changedFiles.some((file) => file.startsWith("supabase/migrations/")), "no migration"); // 44
 matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*?<CreatorEditor/, "editor remains CreatorLab-only"); // 45
 

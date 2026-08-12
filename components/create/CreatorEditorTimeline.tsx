@@ -7,6 +7,14 @@ export type CreatorEditorTimelineScene = {
   narration: string;
   image?: string;
   videoUrl?: string;
+  renderMode?: "video" | "image";
+  clipInSec?: number;
+  clipOutSec?: number;
+  timing?: {
+    totalAudioDuration?: number;
+    targetSceneDuration?: number;
+    speechTailBuffer?: number;
+  };
 };
 
 type CreatorEditorTimelineProps = {

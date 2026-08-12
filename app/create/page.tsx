@@ -135,8 +135,10 @@ import {
 import {
   createCreatorSceneId,
   duplicateCreatorScene,
+  isCreatorSceneId,
   moveCreatorScene,
   normalizeCreatorSceneIds,
+  normalizeCreatorSceneTrim,
   projectCanonicalCreatorScenes,
   removeCreatorScene,
   selectCreatorSceneId,
@@ -675,10 +677,12 @@ type Scene = {
   narratorVoiceSelection?: CreatorVoiceLibrarySelection;
   dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
   videoUrl?: string;
-  videoStatus?: "idle" | "processing" | "done" | "error";
+  videoStatus?: "idle" | "processing" | "delayed" | "done" | "error";
   videoJobId?: string;
   videoQueueJobId?: string;
   videoDurationSeconds?: number;
+  clipInSec?: number;
+  clipOutSec?: number;
   timing?: SceneTiming;
   intelligence?: SceneIntelligence;
   targetDurationSec?: number;
@@ -903,6 +907,8 @@ type CreatorProductionScene = {
   speechWordCount?: number;
   scriptHealth?: CreatorScriptHealth;
   visualBlockPlan?: CreatorVisualBlockPlan[];
+  clipInSec?: number;
+  clipOutSec?: number;
 };
 
 type CreatorProductionPackage = {
@@ -3999,8 +4005,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const storyPlaybackTokenRef = useRef(0);
   const dialoguePlaybackTokenRef = useRef(0);
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
-  const videoPollIntervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
-  const videoStorageInFlightRef = useRef<Record<number, boolean>>({});
+  const videoPollIntervalsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const videoStorageInFlightRef = useRef<Record<string, boolean>>({});
+  const delayedVideoPollKeysRef = useRef<Set<string>>(new Set());
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
 
   useEffect(() => {
@@ -5552,11 +5559,23 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return timing;
   };
 
-  const clearVideoPollForScene = (sceneId: number) => {
-    const existing = videoPollIntervalsRef.current[sceneId];
+  const getVideoPollKey = (sceneId: number, creatorSceneId?: string) =>
+    isCreatorSceneId(creatorSceneId) ? creatorSceneId : String(sceneId);
+
+  const matchesVideoScene = (
+    scene: Scene,
+    sceneId: number,
+    creatorSceneId?: string,
+  ) => isCreatorSceneId(creatorSceneId)
+    ? scene.creatorSceneId === creatorSceneId
+    : scene.id === sceneId;
+
+  const clearVideoPollForScene = (sceneId: number, creatorSceneId?: string) => {
+    const pollKey = getVideoPollKey(sceneId, creatorSceneId);
+    const existing = videoPollIntervalsRef.current[pollKey];
     if (existing) {
       clearInterval(existing);
-      delete videoPollIntervalsRef.current[sceneId];
+      delete videoPollIntervalsRef.current[pollKey];
     }
   };
 
@@ -6287,6 +6306,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const resetStoryFlow = () => {
     clearAllVideoPolls();
+    delayedVideoPollKeysRef.current.clear();
     stopDialoguePlayback();
     stopStoryPlayback();
     setStorySetup(null);
@@ -7238,11 +7258,11 @@ const generateSceneImage = async (
       value.trim(),
     );
 
-  const failClosedLegacyCreatorVideo = (sceneId: number) => {
-    clearVideoPollForScene(sceneId);
+  const failClosedLegacyCreatorVideo = (sceneId: number, creatorSceneId?: string) => {
+    clearVideoPollForScene(sceneId, creatorSceneId);
     setScenes((prev) =>
       prev.map((scene) =>
-        scene.id === sceneId
+        matchesVideoScene(scene, sceneId, creatorSceneId)
           ? {
               ...scene,
               videoStatus: "error",
@@ -7416,30 +7436,35 @@ const generateSceneImage = async (
   const pollVideoQueueJob = (
     sceneId: number,
     queueJobId: string,
+    creatorSceneId?: string,
   ) => {
     if (!isQueueJobId(queueJobId)) {
-      failClosedLegacyCreatorVideo(sceneId);
+      failClosedLegacyCreatorVideo(sceneId, creatorSceneId);
       return;
     }
-    clearVideoPollForScene(sceneId);
+    const pollKey = getVideoPollKey(sceneId, creatorSceneId);
+    delayedVideoPollKeysRef.current.delete(pollKey);
+    clearVideoPollForScene(sceneId, creatorSceneId);
     let attempts = 0;
-    let providerSucceeded = false;
     const maxAttempts = 140;
 
     const intervalId = setInterval(async () => {
       attempts += 1;
 
-      if (attempts > maxAttempts && !providerSucceeded) {
-        clearVideoPollForScene(sceneId);
+      if (attempts > maxAttempts) {
+        delayedVideoPollKeysRef.current.add(pollKey);
+        clearVideoPollForScene(sceneId, creatorSceneId);
         setScenes((prev) =>
           prev.map((scene) =>
-            scene.id === sceneId ? { ...scene, videoStatus: "error" } : scene,
+            matchesVideoScene(scene, sceneId, creatorSceneId)
+              ? { ...scene, videoStatus: "delayed" }
+              : scene,
           ),
         );
         setError(
           uiLanguage === "en"
-            ? "Video tracking timed out. The durable job remains available in the queue for operational review."
-            : "Video takibi zaman aşımına uğradı. Kalıcı iş kaydı operasyonel kontrol için kuyrukta tutuluyor.",
+            ? "Video generation is taking longer than expected. The durable job is preserved; refresh later to check it again."
+            : "Video üretimi beklenenden uzun sürüyor. Kalıcı iş korunuyor; daha sonra yenileyerek tekrar kontrol edin.",
         );
         return;
       }
@@ -7461,24 +7486,36 @@ const generateSceneImage = async (
         const jobStatus = String(data.job.status || "").toLowerCase();
 
         if (jobStatus === "succeeded") {
-          providerSucceeded = true;
           if (!data.job.output?.ready) {
+            clearVideoPollForScene(sceneId, creatorSceneId);
+            setScenes((prev) =>
+              prev.map((scene) =>
+                matchesVideoScene(scene, sceneId, creatorSceneId)
+                  ? {
+                      ...scene,
+                      videoStatus: "error",
+                      videoJobId: queueJobId,
+                      videoQueueJobId: queueJobId,
+                    }
+                  : scene,
+              ),
+            );
             setError(
               uiLanguage === "en"
-                ? "Video storage is temporarily unavailable. Velto Studio will retry automatically."
-                : "Video depolama geçici olarak kullanılamıyor. Velto Studio otomatik olarak yeniden deneyecek.",
+                ? "Video generation completed, but its output is not safely available. The durable job was preserved for review."
+                : "Video üretimi tamamlandı ancak çıktı güvenli biçimde kullanılamıyor. Kalıcı iş inceleme için korundu.",
             );
             return;
           }
-          if (videoStorageInFlightRef.current[sceneId]) return;
-          videoStorageInFlightRef.current[sceneId] = true;
+          if (videoStorageInFlightRef.current[pollKey]) return;
+          videoStorageInFlightRef.current[pollKey] = true;
           try {
             const storedVideoUrl = await storeCompletedVideo({ queueJobId });
-            clearVideoPollForScene(sceneId);
+            clearVideoPollForScene(sceneId, creatorSceneId);
 
             setScenes((prev) =>
               prev.map((scene) =>
-                scene.id === sceneId
+                matchesVideoScene(scene, sceneId, creatorSceneId)
                   ? {
                       ...scene,
                       videoStatus: "done",
@@ -7498,17 +7535,17 @@ const generateSceneImage = async (
                 : "Video depolama geçici olarak kullanılamıyor. Velto Studio otomatik olarak yeniden deneyecek.",
             );
           } finally {
-            delete videoStorageInFlightRef.current[sceneId];
+            delete videoStorageInFlightRef.current[pollKey];
           }
           return;
         }
 
         if (jobStatus === "cancelled") {
-          clearVideoPollForScene(sceneId);
+          clearVideoPollForScene(sceneId, creatorSceneId);
           notifyCreditAccountChanged();
           setScenes((prev) =>
             prev.map((scene) =>
-              scene.id === sceneId
+              matchesVideoScene(scene, sceneId, creatorSceneId)
                 ? {
                     ...scene,
                     videoStatus: "idle",
@@ -7529,11 +7566,11 @@ const generateSceneImage = async (
         }
 
         if (jobStatus === "failed") {
-          clearVideoPollForScene(sceneId);
+          clearVideoPollForScene(sceneId, creatorSceneId);
           notifyCreditAccountChanged();
           setScenes((prev) =>
             prev.map((scene) =>
-              scene.id === sceneId
+              matchesVideoScene(scene, sceneId, creatorSceneId)
                 ? {
                     ...scene,
                     videoStatus: "error",
@@ -7555,7 +7592,7 @@ const generateSceneImage = async (
       }
     }, 3000);
 
-    videoPollIntervalsRef.current[sceneId] = intervalId;
+    videoPollIntervalsRef.current[pollKey] = intervalId;
   };
 
 
@@ -7678,6 +7715,8 @@ const generateSceneImage = async (
       speechWordCount: scene.speechWordCount,
       scriptHealth: scene.scriptHealth,
       visualBlockPlan: scene.visualBlockPlan,
+      clipInSec: scene.clipInSec,
+      clipOutSec: scene.clipOutSec,
     }));
 
   const applyCreatorEditorStructuralChange = ({
@@ -7768,6 +7807,59 @@ const generateSceneImage = async (
       selectedCreatorSceneId: result.selectedCreatorSceneId,
       undoLabel: "Duplicate scene",
       feedback: uiLanguage === "en" ? "Scene duplicated." : "Sahne çoğaltıldı.",
+    });
+  };
+
+  const updateSelectedCreatorSceneTrim = ({
+    clipInSec,
+    clipOutSec,
+    sourceDurationSec,
+  }: {
+    clipInSec?: number;
+    clipOutSec?: number;
+    sourceDurationSec?: number;
+  }) => {
+    if (!selectedCreatorEditorSceneId) return;
+    const selectedScene = scenes.find(
+      (scene) => scene.creatorSceneId === selectedCreatorEditorSceneId,
+    );
+    if (!selectedScene?.videoUrl) return;
+
+    const resetRequested = clipInSec === undefined && clipOutSec === undefined;
+    const normalized = resetRequested
+      ? null
+      : normalizeCreatorSceneTrim({
+          clipInSec,
+          clipOutSec,
+          sourceDurationSec: Number(sourceDurationSec),
+          sourceType: "video",
+        });
+    if (!resetRequested && !normalized?.isTrimmed) return;
+
+    const nextScenes = scenes.map((scene) =>
+      scene.creatorSceneId === selectedCreatorEditorSceneId
+        ? {
+            ...scene,
+            clipInSec: normalized?.clipInSec,
+            clipOutSec: normalized?.clipOutSec,
+          }
+        : scene,
+    );
+    if (
+      nextScenes.every(
+        (scene, index) =>
+          scene.clipInSec === scenes[index]?.clipInSec &&
+          scene.clipOutSec === scenes[index]?.clipOutSec,
+      )
+    ) return;
+
+    applyCreatorEditorStructuralChange({
+      nextScenes,
+      selectedCreatorSceneId: selectedCreatorEditorSceneId,
+      undoLabel: resetRequested ? "Reset scene trim" : "Trim scene video",
+      feedback: resetRequested
+        ? uiLanguage === "en" ? "Video trim reset." : "Video kırpma sıfırlandı."
+        : uiLanguage === "en" ? "Video trim updated." : "Video kırpma güncellendi.",
     });
   };
 
@@ -7883,6 +7975,9 @@ const generateSceneImage = async (
           ? {
               ...scene,
               renderMode,
+              ...(renderMode === "image"
+                ? { clipInSec: undefined, clipOutSec: undefined }
+                : {}),
             }
           : scene,
       ),
@@ -8100,7 +8195,10 @@ const generateSceneImage = async (
     }
     if (isCreatorLabFlow && !creatorOperationId) return false;
 
-    clearVideoPollForScene(sceneId);
+    const creatorSceneId = isCreatorLabFlow && isCreatorSceneId(scene.creatorSceneId)
+      ? scene.creatorSceneId
+      : undefined;
+    clearVideoPollForScene(sceneId, creatorSceneId);
     setError("");
     setSaveMessage("");
     setExportedMovieUrl("");
@@ -8109,7 +8207,7 @@ const generateSceneImage = async (
 
     setScenes((prev) =>
       prev.map((s) =>
-        s.id === sceneId
+        matchesVideoScene(s, sceneId, creatorSceneId)
           ? {
               ...s,
               videoStatus: "processing",
@@ -8206,7 +8304,7 @@ const generateSceneImage = async (
 
       setScenes((prev) =>
         prev.map((s) =>
-          s.id === sceneId
+          matchesVideoScene(s, sceneId, creatorSceneId)
             ? {
                 ...s,
                 videoJobId: isCreatorLabFlow ? videoQueueJobId : data.taskId,
@@ -8221,7 +8319,7 @@ const generateSceneImage = async (
       notifyCreditAccountChanged(data?.credits);
 
       if (isCreatorLabFlow) {
-        pollVideoQueueJob(sceneId, videoQueueJobId);
+        pollVideoQueueJob(sceneId, videoQueueJobId, creatorSceneId);
       } else {
         pollVideoStatus(sceneId, data.taskId);
       }
@@ -8231,7 +8329,7 @@ const generateSceneImage = async (
 
       setScenes((prev) =>
         prev.map((s) =>
-          s.id === sceneId
+          matchesVideoScene(s, sceneId, creatorSceneId)
             ? {
                 ...s,
                 videoStatus: "error",
@@ -8603,11 +8701,11 @@ const generateSceneImage = async (
         );
       }
 
-      clearVideoPollForScene(scene.id);
+      clearVideoPollForScene(scene.id, scene.creatorSceneId);
       notifyCreditAccountChanged({ account: data?.credits?.account || null });
       setScenes((prev) =>
         prev.map((item) =>
-          item.id === scene.id
+          matchesVideoScene(item, scene.id, scene.creatorSceneId)
             ? {
                 ...item,
                 videoStatus: "idle",
@@ -10736,6 +10834,7 @@ const generateSceneImage = async (
       isHydratingRef.current = true;
 
       clearAllVideoPolls();
+      delayedVideoPollKeysRef.current.clear();
       stopDialoguePlayback();
       stopStoryPlayback();
 
@@ -16223,7 +16322,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
   useEffect(() => {
     scenes.forEach((scene) => {
-      if (scene.videoStatus !== "processing" || videoPollIntervalsRef.current[scene.id]) {
+      const pollKey = getVideoPollKey(scene.id, scene.creatorSceneId);
+      const resumableStatus =
+        scene.videoStatus === "processing" || scene.videoStatus === "delayed";
+      if (
+        !resumableStatus ||
+        videoPollIntervalsRef.current[pollKey] ||
+        delayedVideoPollKeysRef.current.has(pollKey)
+      ) {
         return;
       }
       if (isCreatorLabFlow) {
@@ -16232,8 +16338,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           : isQueueJobId(scene.videoJobId)
             ? scene.videoJobId!.trim()
             : "";
-        if (queueJobId) pollVideoQueueJob(scene.id, queueJobId);
-        else failClosedLegacyCreatorVideo(scene.id);
+        if (queueJobId) pollVideoQueueJob(scene.id, queueJobId, scene.creatorSceneId);
+        else failClosedLegacyCreatorVideo(scene.id, scene.creatorSceneId);
       } else if (scene.videoJobId) {
         pollVideoStatus(scene.id, scene.videoJobId);
       }
@@ -29738,6 +29844,14 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     onDeleteScene={deleteSelectedCreatorEditorScene}
                     onUndo={undoLastCreatorChange}
                     canUndo={creatorUndoStack.length > 0}
+                    onUpdateTrim={updateSelectedCreatorSceneTrim}
+                    sceneOperationsDisabled={
+                      isBatchRendering ||
+                      scenes.some((scene) =>
+                        scene.videoStatus === "processing" ||
+                        scene.videoStatus === "delayed"
+                      )
+                    }
                     language={uiLanguage === "en" ? "en" : "tr"}
                   />
                 )}
@@ -30636,7 +30750,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                         }}
                                         disabled={
                                           !sceneVideoDispatchCountdownActive &&
-                                          (scene.videoStatus === "processing" ||
+                                          ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
                                             !scene.image ||
                                             creatorMediaPreflightLoading ||
                                             creatorVideoSelectionBlockedByQuality ||
@@ -30668,6 +30782,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                             ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
                                             : scene.videoStatus === "processing"
                                               ? ui.videoCreating
+                                              : scene.videoStatus === "delayed"
+                                                ? uiLanguage === "en" ? "Taking longer · refresh to check" : "Uzun sürüyor · kontrol için yenile"
                                               : creatorVideoSelectionBlockedByQuality
                                                 ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
                                                 : scene.videoUrl && scene.videoStatus === "done"
@@ -30690,7 +30806,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                     </div>
                                   )}
 
-                                  {scene.videoStatus === "processing" && scene.videoQueueJobId && (
+                                  {(scene.videoStatus === "processing" || scene.videoStatus === "delayed") && scene.videoQueueJobId && (
                                     <button
                                       type="button"
                                       onClick={() => void requestCancelSceneVideo(scene)}
@@ -33516,6 +33632,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                             className={`rounded-full px-3 py-1 text-xs ${
                               scene.videoStatus === "done"
                                 ? "border border-green-200 bg-green-50/80 text-green-700"
+                                : scene.videoStatus === "delayed"
+                                ? "border border-amber-300 bg-amber-50 text-amber-800"
                                 : scene.videoStatus === "processing"
                                 ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
                                 : scene.videoStatus === "error"
@@ -33525,6 +33643,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                           >
                             {scene.videoStatus === "done"
                               ? "Video ready"
+                              : scene.videoStatus === "delayed"
+                              ? "Video delayed · refresh to check"
                               : scene.videoStatus === "processing"
                               ? "Video rendering"
                               : scene.videoStatus === "error"
@@ -33741,7 +33861,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         }}
                         disabled={
                           !sceneVideoDispatchCountdownActive &&
-                          (scene.videoStatus === "processing" ||
+                          ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
                             !scene.image ||
                             creatorMediaPreflightLoading ||
                             Boolean(videoDispatchCountdown) ||
@@ -33778,6 +33898,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                             ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
                             : scene.videoStatus === "processing"
                               ? ui.videoCreating
+                              : scene.videoStatus === "delayed"
+                                ? uiLanguage === "en" ? "Taking longer · refresh to check" : "Uzun sürüyor · kontrol için yenile"
                               : isCreatorActionBlocked("ai_video_blocks")
                                 ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
                                 : ui.convertToVideo}
@@ -33791,7 +33913,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         </span>
                       )}
 
-                      {scene.videoStatus === "processing" && scene.videoQueueJobId && (
+                      {(scene.videoStatus === "processing" || scene.videoStatus === "delayed") && scene.videoQueueJobId && (
                         <button
                           type="button"
                           onClick={() => void requestCancelSceneVideo(scene)}

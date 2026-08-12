@@ -3,10 +3,84 @@ export type CreatorSceneIdentity = {
   creatorSceneId?: string;
 };
 
+export const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
+
+export type CreatorSceneTrim = {
+  clipInSec?: number;
+  clipOutSec?: number;
+};
+
+export type NormalizedCreatorSceneTrim = CreatorSceneTrim & {
+  sourceDurationSec: number;
+  visualDurationSec: number;
+  isTrimmed: boolean;
+};
+
+const roundCreatorClipSeconds = (value: number) =>
+  Number(value.toFixed(3));
+
+export function normalizeCreatorSceneTrim({
+  clipInSec,
+  clipOutSec,
+  sourceDurationSec,
+  sourceType = "video",
+}: CreatorSceneTrim & {
+  sourceDurationSec: number;
+  sourceType?: "video" | "image";
+}): NormalizedCreatorSceneTrim {
+  const safeSourceDuration =
+    Number.isFinite(sourceDurationSec) && sourceDurationSec > 0
+      ? sourceDurationSec
+      : 0;
+  const fullSource: NormalizedCreatorSceneTrim = {
+    sourceDurationSec: roundCreatorClipSeconds(safeSourceDuration),
+    visualDurationSec: roundCreatorClipSeconds(safeSourceDuration),
+    isTrimmed: false,
+  };
+
+  if (sourceType !== "video" || safeSourceDuration <= 0) return fullSource;
+  if (clipInSec === undefined && clipOutSec === undefined) return fullSource;
+  if (!Number.isFinite(clipInSec) || !Number.isFinite(clipOutSec)) return fullSource;
+
+  const start = Math.max(0, Math.min(clipInSec as number, safeSourceDuration));
+  const end = Math.max(0, Math.min(clipOutSec as number, safeSourceDuration));
+  if (end - start < CREATOR_MIN_VIDEO_CLIP_SECONDS) return fullSource;
+
+  if (start <= 0 && Math.abs(end - safeSourceDuration) < 0.001) {
+    return fullSource;
+  }
+
+  return {
+    clipInSec: roundCreatorClipSeconds(start),
+    clipOutSec: roundCreatorClipSeconds(end),
+    sourceDurationSec: roundCreatorClipSeconds(safeSourceDuration),
+    visualDurationSec: roundCreatorClipSeconds(end - start),
+    isTrimmed: true,
+  };
+}
+
+export function getCreatorSceneEffectiveDuration({
+  visualDurationSec,
+  targetDurationSec = 0,
+  speechDurationSec = 0,
+  speechTailBufferSec = 0.75,
+}: {
+  visualDurationSec: number;
+  targetDurationSec?: number;
+  speechDurationSec?: number;
+  speechTailBufferSec?: number;
+}): number {
+  const visual = Number.isFinite(visualDurationSec) ? Math.max(0, visualDurationSec) : 0;
+  const target = Number.isFinite(targetDurationSec) ? Math.max(0, targetDurationSec) : 0;
+  const speech = Number.isFinite(speechDurationSec) ? Math.max(0, speechDurationSec) : 0;
+  const tail = Number.isFinite(speechTailBufferSec) ? Math.max(0, speechTailBufferSec) : 0;
+  return roundCreatorClipSeconds(Math.max(visual, target, speech > 0 ? speech + tail : 0));
+}
+
 type CreatorSceneWithDispatchState = CreatorSceneIdentity & {
   videoJobId?: string;
   videoQueueJobId?: string;
-  videoStatus?: "idle" | "processing" | "done" | "error";
+  videoStatus?: "idle" | "processing" | "delayed" | "done" | "error";
   visualBlockPlan?: Array<{ id: string; [key: string]: unknown }>;
 };
 
@@ -137,7 +211,7 @@ export function duplicateCreatorScene<TScene extends CreatorSceneWithDispatchSta
     creatorSceneId: duplicateId,
     videoJobId: "",
     videoQueueJobId: "",
-    videoStatus: source.videoStatus === "processing" || source.videoStatus === "error"
+    videoStatus: source.videoStatus === "processing" || source.videoStatus === "delayed" || source.videoStatus === "error"
       ? "idle"
       : source.videoStatus,
     visualBlockPlan: source.visualBlockPlan?.map((block, index) => ({

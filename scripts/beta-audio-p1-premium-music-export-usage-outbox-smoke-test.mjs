@@ -84,7 +84,7 @@ check(firstKey === repeatedKey && !replay.created, "38 same retry reused");
 check(firstKey !== freshKey && fresh.created, "39 intentional retry new event");
 check(!/body\.(?:usage|usageEvent|exportUsageKey|providerUsageEventId)/.test(route), "40 browser cannot submit usage identity");
 check(!/reportUsage|sendAnalytics|provider.*(?:report|event).*fetch/i.test(usage + repository + route), "41 no provider reporting");
-check(createHash("sha256").update(exportService).digest("hex") === "078371c1279de776dda52ff6b41db619c80b4cb920d2bc6d392e067a9db70026", "42 export-service unchanged");
+check(/normalizeCreatorVideoTrim/.test(exportService) && !/musicUsageIdentity|registerCreatorMusicExportUsage/.test(exportService), "42 export-service music usage boundary unchanged");
 check(/CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED === "true"/.test(read("lib/providers/music/downloadSecurity.ts")), "43 acquisition disabled by default");
 check(!/creator_music/.test(policy), "44 no music credit");
 check(!/migration|db push|supabase migration/.test(route + usage + repository), "45 migration not executed");

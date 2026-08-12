@@ -35,6 +35,7 @@ const MIN_SCENE_DURATION = 8;
 const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
 const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
 const SPEECH_FREEZE_TAIL_BUFFER_SECONDS = 0.75;
+const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
 const AMBIENT_ENGINE_ENABLED = true;
 const AMBIENT_DEFAULT_VOLUME = 0.055;
 const AMBIENT_MAX_VOLUME = 0.085;
@@ -278,6 +279,33 @@ function createNormalizedVideoFilter(durationSec) {
   ].join(",");
 }
 
+function createCreatorTrimmedVideoFilter({
+  clipInSec,
+  visualDurationSec,
+  effectiveDurationSec,
+  freezeTail = false,
+}) {
+  const filters = [
+    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
+    `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+    "setsar=1",
+    `fps=${OUTPUT_FPS}`,
+    `trim=start=${clipInSec.toFixed(3)}:duration=${visualDurationSec.toFixed(3)}`,
+    "settb=AVTB",
+    `setpts=N/(${OUTPUT_FPS}*TB)`,
+  ];
+  if (freezeTail && effectiveDurationSec > visualDurationSec) {
+    filters.push(
+      `tpad=stop_mode=clone:stop_duration=${(effectiveDurationSec - visualDurationSec).toFixed(3)}`,
+    );
+  }
+  filters.push(
+    `trim=start=0:duration=${effectiveDurationSec.toFixed(3)}`,
+    "format=yuv420p",
+  );
+  return filters.join(",");
+}
+
 function createNormalizedAudioFilter(durationSec) {
   return [
     "asetpts=PTS-STARTPTS",
@@ -372,6 +400,35 @@ function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "imag
     requestedTarget || TARGET_SCENE_DURATION,
     audioDrivenDuration || TARGET_SCENE_DURATION
   );
+}
+
+function normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport) {
+  const safeSourceDuration =
+    Number.isFinite(sourceDuration) && sourceDuration > 0 ? sourceDuration : 0;
+  const fullSource = {
+    clipInSec: 0,
+    clipOutSec: safeSourceDuration,
+    visualDurationSec: safeSourceDuration,
+    isTrimmed: false,
+  };
+  if (!isCreatorLabExport || safeSourceDuration <= 0) return fullSource;
+  if (scene?.clipInSec === undefined && scene?.clipOutSec === undefined) return fullSource;
+
+  const requestedStart = Number(scene?.clipInSec);
+  const requestedEnd = Number(scene?.clipOutSec);
+  if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd)) return fullSource;
+
+  const clipInSec = Math.max(0, Math.min(requestedStart, safeSourceDuration));
+  const clipOutSec = Math.max(0, Math.min(requestedEnd, safeSourceDuration));
+  if (clipOutSec - clipInSec < CREATOR_MIN_VIDEO_CLIP_SECONDS) return fullSource;
+  if (clipInSec <= 0 && Math.abs(clipOutSec - safeSourceDuration) < 0.001) return fullSource;
+
+  return {
+    clipInSec,
+    clipOutSec,
+    visualDurationSec: clipOutSec - clipInSec,
+    isTrimmed: true,
+  };
 }
 
 function getTransitionAwareDuration({ targetDuration, audioDuration = 0, sourceDuration = 0 }) {
@@ -728,6 +785,7 @@ async function createSceneClipWithAudio({
   audioPath,
   outputPath,
   targetDuration,
+  creatorTrim,
 }) {
   const requestedTargetDuration =
     typeof targetDuration === "number" &&
@@ -736,7 +794,10 @@ async function createSceneClipWithAudio({
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const videoDuration = await getMediaDuration(videoPath);
+  const fullVideoDuration = await getMediaDuration(videoPath);
+  const videoDuration = creatorTrim?.isTrimmed
+    ? creatorTrim.visualDurationSec
+    : fullVideoDuration;
   const audioDuration = audioPath
     ? await getMediaDuration(audioPath).catch(() => 0)
     : 0;
@@ -757,8 +818,13 @@ async function createSceneClipWithAudio({
 
   if (!needsFiller) {
     inputs = ["-i", videoPath];
-    visualFilter =
-      `[0:v]${createNormalizedVideoFilter(effectiveDuration)}[v]`;
+    visualFilter = creatorTrim?.isTrimmed
+      ? `[0:v]${createCreatorTrimmedVideoFilter({
+          clipInSec: creatorTrim.clipInSec,
+          visualDurationSec: videoDuration,
+          effectiveDurationSec: effectiveDuration,
+        })}[v]`
+      : `[0:v]${createNormalizedVideoFilter(effectiveDuration)}[v]`;
   } else if (referenceImagePath && videoDuration > 0) {
     const primaryDuration = alignDurationToFrameGrid(
       Math.min(videoDuration, effectiveDuration)
@@ -781,10 +847,26 @@ async function createSceneClipWithAudio({
     fillerStrategy = "image_motion_tail";
     fillerDurationSec = tailDuration;
     visualFilter = [
-      `[0:v]${createNormalizedVideoFilter(primaryDuration)}[v0]`,
+      `[0:v]${creatorTrim?.isTrimmed
+        ? createCreatorTrimmedVideoFilter({
+            clipInSec: creatorTrim.clipInSec,
+            visualDurationSec: primaryDuration,
+            effectiveDurationSec: primaryDuration,
+          })
+        : createNormalizedVideoFilter(primaryDuration)}[v0]`,
       `[1:v]${createImageMotionFilter(tailDuration, "soft_pan")}[v1]`,
       `[v0][v1]concat=n=2:v=1:a=0[v]`,
     ].join(";");
+  } else if (creatorTrim?.isTrimmed) {
+    inputs = ["-i", videoPath];
+    fillerStrategy = "freeze_frame_tail";
+    fillerDurationSec = Math.max(0, effectiveDuration - videoDuration);
+    visualFilter = `[0:v]${createCreatorTrimmedVideoFilter({
+      clipInSec: creatorTrim.clipInSec,
+      visualDurationSec: videoDuration,
+      effectiveDurationSec: effectiveDuration,
+      freezeTail: true,
+    })}[v]`;
   } else {
     inputs = ["-stream_loop", "-1", "-i", videoPath];
     fillerStrategy = "motion_loop";
@@ -1609,11 +1691,18 @@ app.post("/export-movie", async (req, res) => {
         console.warn(`Scene ${scene.id || i + 1} source duration probe skipped:`, durationError);
       }
 
+      const creatorTrim = sourceType === "video"
+        ? normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport)
+        : null;
+      const effectiveVisualSourceDuration = creatorTrim?.isTrimmed
+        ? creatorTrim.visualDurationSec
+        : sourceDuration;
+
       const targetDuration = getSceneTargetDuration(
         scene,
         fallbackAudioDuration,
         sourceType,
-        sourceDuration
+        effectiveVisualSourceDuration
       );
 
       console.log(
@@ -1679,6 +1768,7 @@ app.post("/export-movie", async (req, res) => {
               audioPath: audioForClip,
               outputPath: clipOutputPath,
               targetDuration,
+              creatorTrim,
             })
           : await createImageClipWithAudio({
               imagePath: sourcePath,

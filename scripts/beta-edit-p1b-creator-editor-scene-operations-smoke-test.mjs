@@ -88,15 +88,15 @@ matches(page, /const secondBase: Scene = \{[\s\S]*creatorSceneId: createCreatorS
 matches(page, /setCreatorTimelinePreviewPlan\(null\)[\s\S]*setCreatorEditPlan\(null\)/, "timeline projections invalidated without generation"); // 43
 
 matches(editor, /Scene Actions|Sahne İşlemleri/, "selected scene actions exist"); // 44
-matches(editor, /onMoveScene\("earlier"\)[\s\S]*disabled=\{selectedIndex <= 0\}/, "Move Earlier boundary disabled"); // 45
-matches(editor, /onMoveScene\("later"\)[\s\S]*disabled=\{selectedIndex < 0 \|\| selectedIndex >= scenes\.length - 1\}/, "Move Later boundary disabled"); // 46
+matches(editor, /onMoveScene\("earlier"\)[\s\S]*disabled=\{sceneOperationsDisabled \|\| selectedIndex <= 0\}/, "Move Earlier boundary disabled"); // 45
+matches(editor, /onMoveScene\("later"\)[\s\S]*disabled=\{sceneOperationsDisabled \|\| selectedIndex < 0 \|\| selectedIndex >= scenes\.length - 1\}/, "Move Later boundary disabled"); // 46
 matches(editor, /onDuplicateScene[\s\S]*Duplicate/, "Duplicate action exists"); // 47
 matches(editor, /onDeleteScene[\s\S]*Delete/, "Delete action exists"); // 48
 matches(editor, /canUndo && \([\s\S]*onClick=\{onUndo\}/, "Undo action is conditional"); // 49
 check((editor.match(/<button/g) || []).length >= 5 && (editor.match(/aria-label=/g) || []).length >= 6, "actions use accessible buttons"); // 50
 absent(editor + timeline, /onDrag|draggable|sortable|dnd/i, "no drag/drop dependency"); // 51
-absent(editor + timeline, /trim/i, "no trim controls"); // 52
-absent(editor, /textarea|voice editor|onChange=/i, "no text/voice editor"); // 53
+matches(editor, /data-creator-trim-controls="true"/, "trim is isolated from structural operation helpers"); // 52
+absent(editor, /textarea|voice editor|contenteditable/i, "no text/voice editor"); // 53
 
 const operationBlock = page.slice(page.indexOf("const applyCreatorEditorStructuralChange"), page.indexOf("const toggleCreatorAssetCompare"));
 absent(operationBlock, /fetch\(|\/api\/|generate/i, "operations call no generation route"); // 54
@@ -104,9 +104,9 @@ absent(operationBlock, /provider/i, "operations call no provider"); // 55
 absent(operationBlock, /credit|reserve|CreatorCostGuard/i, "operations reserve no credits"); // 56
 const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" });
 check(!changed.includes("lib/credits/") && !changed.includes("CreatorCostGuard"), "Cost Guard policy unchanged"); // 57
-check(!changed.includes("export-service/"), "export-service unchanged"); // 58
+check(!changed.includes("app/api/") && changed.split("\n").filter((line) => line.includes("export-service/")).every((line) => line.endsWith("export-service/src/server.js")), "no unrelated export path changed"); // 58
 check(!changed.includes("supabase/migrations/"), "no migration"); // 59
-check(!changed.toLowerCase().includes("music"), "premium music unchanged"); // 60
+check(!changed.split("\n").some((line) => /(?:app|components|lib|supabase)\/.+music/i.test(line)), "premium music unchanged"); // 60
 matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*onMoveScene=\{moveSelectedCreatorEditorScene\}/, "Storyverse operations absent"); // 61
 matches(page, /setCreatorUndoStack\(\[\]\)[\s\S]*setSelectedCreatorEditorSceneId\(null\)[\s\S]*setCreatorEditorOpen\(false\)/, "project boundary resets operation state"); // 62
 
