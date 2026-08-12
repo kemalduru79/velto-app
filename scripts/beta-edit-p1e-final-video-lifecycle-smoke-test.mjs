@@ -5,6 +5,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const page = read("app/create/page.tsx");
 const editor = read("components/create/CreatorEditor.tsx");
 const exportScenes = read("lib/creator/exportScenes.ts");
+const finalSignature = read("lib/creator/finalProductionSignature.ts");
 let checks = 0;
 const check = (value, label) => { assert.ok(value, label); checks += 1; };
 
@@ -22,12 +23,12 @@ check(/!creatorProductionComplete/.test(page) && /Continue · Build Final Video/
 check(/creatorHasFinalVideo[\s\S]*data-edit-current-final-video="true"/.test(page), "final output exposes Edit Video");
 check(/data-rebuild-final-video="true"/.test(page), "final output exposes Rebuild Final Video");
 check(/creatorHasFinalVideo && \(/.test(page), "completed output does not hide production actions");
-check(/text: scene\.text/.test(page) && /currentSignature = buildExportSignature/.test(page), "scene edit affects signature");
-check(/creatorSceneId: scene\.creatorSceneId/.test(page), "ordered stable scene identities affect signature");
-check(/videoUrl: exportSource === "video"/.test(page), "selected media affects signature");
-check(/clipInSec: scene\.clipInSec/.test(page) && /clipOutSec: scene\.clipOutSec/.test(page), "trim affects signature");
-check(/backgroundMusic: creatorBackgroundMusic/.test(page), "music affects signature");
-check(/exportSignature === getCurrentExportSignature\(\)/.test(page), "unchanged project keeps final output current");
+check(!/\btext:|\bnarration:|\bdialogue:/.test(finalSignature), "non-render script text is excluded from final signature");
+check(/creatorSceneId: scene\.creatorSceneId/.test(finalSignature), "ordered stable scene identities affect signature");
+check(/selectedMedia: canonicalCreatorMediaIdentity/.test(finalSignature), "selected media affects signature");
+check(/clipInSec: Number/.test(finalSignature) && /clipOutSec: Number/.test(finalSignature), "trim affects signature");
+check(/backgroundMusic: renderMusicConfig/.test(finalSignature), "music affects signature");
+check(/exportSignature === currentSignature/.test(page), "unchanged project keeps final output current");
 check(/<video src=\{exportMovieResult\?\.downloadUrl \|\| exportedMovieUrl\}/.test(page), "stale final output remains playable");
 const rebuildStart = page.slice(page.indexOf("setIsExportingMovie(true)"), page.indexOf("try {", page.indexOf("setIsExportingMovie(true)")));
 check(!/setExportedMovieUrl\(""\)|setExportMovieResult\(null\)|setExportSignature\(""\)/.test(rebuildStart), "rebuild preserves old output before success");

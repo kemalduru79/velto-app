@@ -51,6 +51,11 @@ import CreatorProductionSubnav, {
 } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import { getCreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
+import {
+  buildCreatorFinalProductionSignature,
+  projectLegacyCreatorFinalProductionSignature,
+} from "@/lib/creator/finalProductionSignature";
 import {
   buildCreatorVideoGenerationSignature,
   buildLegacyCreatorVideoGenerationSignature,
@@ -5076,7 +5081,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           scene.timing?.targetSceneDuration ||
           timelineScene?.targetVisualSeconds ||
           TARGET_SCENE_DURATION_SECONDS,
-        videoDurationSec: scene.videoDurationSeconds,
+        videoDurationSec:
+          exportSource === "video"
+            ? normalizeCreatorSceneTrim({
+                clipInSec: scene.clipInSec,
+                clipOutSec: scene.clipOutSec,
+                sourceDurationSec: scene.videoDurationSeconds || 0,
+              }).visualDurationSec
+            : scene.videoDurationSeconds,
         fallbackVideoDurationSec:
           timelineScene?.recommendedClipSeconds ||
           DEFAULT_VIDEO_DURATION_SECONDS,
@@ -5144,6 +5156,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         const exportSource = getSceneExportSource(scene);
 
         return {
+          id: scene.id,
           creatorSceneId: scene.creatorSceneId || `legacy-${scene.id}`,
           renderMode: scene.renderMode || "",
           exportSource,
@@ -5170,19 +5183,16 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         };
       });
 
+    if (isCreatorLabFlow) {
+      return buildCreatorFinalProductionSignature({
+        scenes: exportableScenes,
+        backgroundMusic: creatorBackgroundMusic,
+      });
+    }
+
     return JSON.stringify({
       title: nextTitle || "",
       scenes: exportableScenes,
-      ...(isCreatorLabFlow ? {
-        backgroundMusic: creatorBackgroundMusic,
-        musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION,
-        autoMatchInputs: {
-          contentType: creatorContentType,
-          outcome: creatorOutcome || "",
-          creatorFormat,
-          visualStyle: visualBible?.style || "",
-        },
-      } : {}),
     });
   };
 
@@ -5193,7 +5203,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       return false;
     }
 
-    return exportSignature === getCurrentExportSignature();
+    const currentSignature = getCurrentExportSignature();
+    return exportSignature === currentSignature || (
+      isCreatorLabFlow &&
+      projectLegacyCreatorFinalProductionSignature(exportSignature) === currentSignature
+    );
   };
 
   // 3U PROJECT & EXPORT READINESS
@@ -10089,7 +10103,7 @@ const generateSceneImage = async (
     if (
       !forceRebuild &&
       exportedMovieUrl &&
-      exportSignature === currentSignature
+      hasReusableExport()
     ) {
       setError("");
       setSaveMessage(ui.movieCreated);
@@ -30235,6 +30249,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         (item) => item.creatorSceneId === creatorSceneId,
                       );
                       return scene ? getCreatorVideoState(scene) : "missing";
+                    }}
+                    getContinuityWarning={(creatorSceneId) => {
+                      const sceneAudit = flowContinuityAudit?.scenes.find((audit) => {
+                        const scene = scenes.find((item) => item.creatorSceneId === creatorSceneId);
+                        return scene && String(audit.id) === String(scene.id);
+                      });
+                      return getCreatorContinuityWarning(sceneAudit, uiLanguage === "en" ? "en" : "tr");
                     }}
                     onRefreshVideo={(creatorSceneId) => {
                       const scene = scenes.find(

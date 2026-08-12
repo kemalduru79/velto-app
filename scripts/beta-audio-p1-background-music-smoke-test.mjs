@@ -24,6 +24,7 @@ const check = (name, fn) => {
 const contractSource = await read("lib/creator/backgroundMusic.ts");
 const librarySource = await read("lib/creator/musicLibrary.ts");
 const page = await read("app/create/page.tsx");
+const finalSignature = await read("lib/creator/finalProductionSignature.ts");
 const picker = await read("components/create/CreatorBackgroundMusic.tsx");
 const route = await read("app/api/creator-export/route.ts");
 const renderer = await read("export-service/src/server.js");
@@ -86,13 +87,13 @@ check("new-project reset clears music without changing narrower rerun paths", ()
   assert.match(page, /const resetStoryFlow = \(\) => \{[\s\S]*setCreatorBackgroundMusic\(DEFAULT_CREATOR_BACKGROUND_MUSIC\)/);
   assert.equal((page.match(/setCreatorBackgroundMusic\(DEFAULT_CREATOR_BACKGROUND_MUSIC\)/g) || []).length, 1);
 });
-check("Auto Match inputs reach both export payload and render signature", () => {
+check("Auto Match inputs reach export while UI matching state stays out of render signature", () => {
   for (const field of ["contentType: creatorContentType", "outcome: creatorOutcome", "creatorFormat", "visualStyle: visualBible?.style"]) {
-    assert.ok(page.split(field).length >= 3, `${field} must appear in payload and signature`);
+    assert.ok(page.includes(field), `${field} must remain in the export payload`);
   }
-  assert.match(page, /autoMatchInputs/);
   assert.match(page, /musicLibraryVersion: CREATOR_MUSIC_LIBRARY_VERSION/);
   assert.match(picker, /autoMatchInput/);
+  assert.doesNotMatch(finalSignature, /autoMatchInputs|musicLibraryVersion|contentType|visualStyle/);
 });
 check("renderer uses server-resolved private entitlement music", () => {
   assert.doesNotMatch(renderer, /CREATOR_MUSIC_ASSET_BY_ID/);

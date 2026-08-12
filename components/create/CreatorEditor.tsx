@@ -10,6 +10,7 @@ import {
   normalizeCreatorSceneTrim,
 } from "@/lib/creator/editorState";
 import type { CreatorVideoCurrentness } from "@/lib/creator/videoGeneration";
+import type { CreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
 
 type CreatorEditorProps = {
   scenes: readonly CreatorEditorTimelineScene[];
@@ -30,6 +31,7 @@ type CreatorEditorProps = {
   getNarrationAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
   getDialogueAudioState: (creatorSceneId: string) => CreatorAudioCurrentness;
   getVideoState: (creatorSceneId: string) => CreatorVideoCurrentness;
+  getContinuityWarning: (creatorSceneId: string) => CreatorContinuityWarning | null;
   onRefreshVideo: (creatorSceneId: string) => void;
   onRestoreMedia: (creatorSceneId: string, assetId: string) => void;
   sceneOperationsDisabled?: boolean;
@@ -51,6 +53,7 @@ export default function CreatorEditor({
   getNarrationAudioState,
   getDialogueAudioState,
   getVideoState,
+  getContinuityWarning,
   onRefreshVideo,
   onRestoreMedia,
   sceneOperationsDisabled = false,
@@ -142,6 +145,7 @@ export default function CreatorEditor({
   const narrationAudioState = getNarrationAudioState(selectedScene.creatorSceneId || "");
   const dialogueAudioState = getDialogueAudioState(selectedScene.creatorSceneId || "");
   const videoState = getVideoState(selectedScene.creatorSceneId || "");
+  const continuityWarning = getContinuityWarning(selectedScene.creatorSceneId || "");
   const effectiveDurationSec = getCreatorSceneEffectiveDuration({
     visualDurationSec: normalizedTrim.visualDurationSec,
     targetDurationSec: selectedScene.timing?.targetSceneDuration,
@@ -278,6 +282,36 @@ export default function CreatorEditor({
                 </button>
               )}
             </div>
+            {continuityWarning && (
+              <div
+                data-creator-continuity-warning={continuityWarning.severity}
+                className={`rounded-lg border p-3 ${continuityWarning.severity === "high" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
+              >
+                <strong className="text-xs">
+                  {continuityWarning.severity === "high"
+                    ? language === "en" ? "Review required" : "Kontrol gerekli"
+                    : language === "en" ? "Check this scene" : "Bu sahneyi kontrol et"}
+                </strong>
+                <ul className="mt-1 space-y-1 text-xs leading-5">
+                  {continuityWarning.messages.map((message) => <li key={message}>{message}</li>)}
+                </ul>
+                {continuityWarning.action === "review_trim" && hasSelectedVideo ? (
+                  <button type="button" onClick={() => document.getElementById("creator-selected-scene-trim")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mt-2 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold">
+                    {language === "en" ? "Review Trim" : "Kırpmayı Kontrol Et"}
+                  </button>
+                ) : continuityWarning.action === "refresh_video" && selectedScene.renderMode !== "image" ? (
+                  <button type="button" onClick={() => onRefreshVideo(selectedScene.creatorSceneId!)} disabled={sceneOperationsDisabled} className="mt-2 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold disabled:opacity-40">
+                    {language === "en" ? "Refresh Video" : "Videoyu Yenile"}
+                  </button>
+                ) : (
+                  <p className="mt-2 text-xs font-semibold">
+                    {continuityWarning.action === "generate_voice"
+                      ? language === "en" ? "Generate or refresh Voice in Scene Production." : "Scene Production içinde sesi üret veya yenile."
+                      : language === "en" ? "Review this scene's media and timing." : "Bu sahnenin medya ve zamanlamasını kontrol et."}
+                  </p>
+                )}
+              </div>
+            )}
             <label className="block text-xs font-semibold text-slate-700">
               {language === "en" ? "Scene Text" : "Sahne Metni"}
               <textarea value={textDraft} onChange={(event) => setTextDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
@@ -325,7 +359,7 @@ export default function CreatorEditor({
       )}
 
       {hasSelectedVideo && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-trim-controls="true">
+        <div id="creator-selected-scene-trim" className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-trim-controls="true">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-sm text-slate-950">{language === "en" ? "Trim Video" : "Videoyu Kırp"}</strong>
             <span className="text-xs text-slate-500">
