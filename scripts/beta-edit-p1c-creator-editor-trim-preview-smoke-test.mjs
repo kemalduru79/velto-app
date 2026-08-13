@@ -7,6 +7,8 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 const page = read("app/create/page.tsx");
 const helperSource = read("lib/creator/editorState.ts");
 const editor = read("components/create/CreatorEditor.tsx");
+const trimControl = read("components/create/CreatorVideoTrimControl.tsx");
+const editorUi = editor + trimControl;
 const exportRoute = read("app/api/creator-export/route.ts");
 const exportService = read("export-service/src/server.js");
 const operationsSmoke = read("scripts/beta-edit-p1b-creator-editor-scene-operations-smoke-test.mjs");
@@ -59,16 +61,16 @@ check(helper.getCreatorSceneEffectiveDuration({ visualDurationSec: 5, speechDura
 check(normalize(2, 8, 10, "image").visualDurationSec === 10, "image duration unchanged"); // 22
 
 matches(editor, /hasSelectedVideo && \([\s\S]*data-creator-trim-controls="true"/, "trim controls video-only"); // 23
-matches(editor, /Start \(seconds\)|Başlangıç \(saniye\)/, "Start control exists"); // 24
-matches(editor, /End \(seconds\)|Bitiş \(saniye\)/, "End control exists"); // 25
-matches(editor, /Reset Trim|Kırpmayı Sıfırla/, "Reset exists"); // 26
+matches(editorUi, /Start \(seconds\)|Başlangıç \(saniye\)/, "Start control exists"); // 24
+matches(editorUi, /End \(seconds\)|Bitiş \(saniye\)/, "End control exists"); // 25
+matches(editorUi, /Reset Trim|Kırpmayı Sıfırla/, "Reset exists"); // 26
 check(editor.includes("onLoadedMetadata={handleVideoMetadata}") && editor.includes("videoRef.current?.duration"), "metadata supplies source duration"); // 27
 matches(page, /if \(!resetRequested && !normalized\?\.isTrimmed\) return;/, "invalid trim not persisted"); // 28
 const trimHandler = page.slice(page.indexOf("const updateSelectedCreatorSceneTrim"), page.indexOf("const toggleCreatorAssetCompare"));
 absent(trimHandler, /fetch\(|credit|provider|generate/i, "trim update free"); // 29
 absent(trimHandler, /fetch\(|credit|provider|generate/i, "reset free"); // 30
-absent(editor, /react-player|video\.js|plyr/i, "no custom player package"); // 31
-absent(editor, /type="range"|dual|drag/i, "no range/drag dependency"); // 32
+absent(editorUi, /react-player|video\.js|plyr/i, "no custom player package"); // 31
+matches(trimControl, /onPointerMove|role="slider"/, "native drag control uses no range dependency"); // 32
 
 matches(editor, /onPlay=[\s\S]*currentTime = normalizedTrim\.clipInSec/, "preview starts at clipIn"); // 33
 matches(editor, /onTimeUpdate=[\s\S]*currentTime = normalizedTrim\.clipOutSec[\s\S]*\.pause\(\)/, "preview stops at clipOut"); // 34
@@ -107,8 +109,8 @@ check(fixtures.every(([start, end]) => {
 
 matches(page, /clipInSec: scene\.clipInSec[\s\S]*clipOutSec: scene\.clipOutSec[\s\S]*const updateSelectedCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates final output through deterministic signature mismatch"); // 60
 check(trimHandler.includes('resetRequested ? "Reset scene trim"') && trimHandler.includes("applyCreatorEditorStructuralChange"), "reset uses invalidating mutation path"); // 61
-absent(editor + helperSource, /provider|\/api\//i, "no provider calls added"); // 62
-absent(editor + helperSource, /fetch\(|\/api\/creator-(?:video|image)/i, "no direct generation calls added"); // 63
+absent(editorUi + helperSource, /provider|\/api\//i, "no provider calls added"); // 62
+absent(editorUi + helperSource, /fetch\(|\/api\/creator-(?:video|image)/i, "no direct generation calls added"); // 63
 const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" });
 check(!changed.includes("lib/credits/"), "credit policy unchanged"); // 64
 check(!changed.includes("CreatorCostGuard"), "Cost Guard unchanged"); // 65

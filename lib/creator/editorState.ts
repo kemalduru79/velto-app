@@ -47,6 +47,8 @@ export function applyCreatorSceneTextEdit<
 }
 
 export const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
+export type CreatorTrimHandle = "start" | "end";
+export type CreatorTrimValues = { start: number; end: number };
 
 export type CreatorSceneTrim = {
   clipInSec?: number;
@@ -61,6 +63,30 @@ export type NormalizedCreatorSceneTrim = CreatorSceneTrim & {
 
 const roundCreatorClipSeconds = (value: number) =>
   Number(value.toFixed(3));
+
+export function constrainCreatorTrimProposal(
+  handle: CreatorTrimHandle,
+  seconds: number,
+  current: CreatorTrimValues,
+  sourceDurationSec: number,
+): CreatorTrimValues {
+  const duration = Math.max(0, sourceDurationSec);
+  if (!Number.isFinite(seconds) || duration <= 0) return current;
+  if (handle === "start") {
+    return {
+      ...current,
+      start: roundCreatorClipSeconds(
+        Math.max(0, Math.min(seconds, current.end - CREATOR_MIN_VIDEO_CLIP_SECONDS)),
+      ),
+    };
+  }
+  return {
+    ...current,
+    end: roundCreatorClipSeconds(
+      Math.min(duration, Math.max(seconds, current.start + CREATOR_MIN_VIDEO_CLIP_SECONDS)),
+    ),
+  };
+}
 
 export function normalizeCreatorSceneTrim({
   clipInSec,

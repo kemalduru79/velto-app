@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import CreatorEditorTimeline, {
   type CreatorEditorTimelineScene,
 } from "@/components/create/CreatorEditorTimeline";
+import CreatorVideoTrimControl from "@/components/create/CreatorVideoTrimControl";
 import {
   type CreatorAudioCurrentness,
-  getCreatorSceneEffectiveDuration,
   normalizeCreatorSceneTrim,
 } from "@/lib/creator/editorState";
 import type { CreatorVideoCurrentness } from "@/lib/creator/videoGeneration";
@@ -65,8 +65,6 @@ export default function CreatorEditor({
   const selectedIndex = selectedScene ? scenes.indexOf(selectedScene) : -1;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [sourceDurationSec, setSourceDurationSec] = useState(0);
-  const [trimStartDraft, setTrimStartDraft] = useState("0");
-  const [trimEndDraft, setTrimEndDraft] = useState("");
   const [textDraft, setTextDraft] = useState("");
   const [narrationDraft, setNarrationDraft] = useState("");
   const [dialogueDraft, setDialogueDraft] = useState("");
@@ -78,8 +76,6 @@ export default function CreatorEditor({
 
   useEffect(() => {
     setSourceDurationSec(0);
-    setTrimStartDraft("0");
-    setTrimEndDraft("");
   }, [selectedScene?.creatorSceneId, selectedScene?.videoUrl]);
 
   useEffect(() => {
@@ -146,18 +142,6 @@ export default function CreatorEditor({
   const dialogueAudioState = getDialogueAudioState(selectedScene.creatorSceneId || "");
   const videoState = getVideoState(selectedScene.creatorSceneId || "");
   const continuityWarning = getContinuityWarning(selectedScene.creatorSceneId || "");
-  const effectiveDurationSec = getCreatorSceneEffectiveDuration({
-    visualDurationSec: normalizedTrim.visualDurationSec,
-    targetDurationSec: selectedScene.timing?.targetSceneDuration,
-    speechDurationSec:
-      (narrationAudioState === "current"
-        ? selectedScene.timing?.narrationDuration || 0
-        : 0) +
-      (dialogueAudioState === "current"
-        ? selectedScene.timing?.dialogueDuration || 0
-        : 0),
-    speechTailBufferSec: selectedScene.timing?.speechTailBuffer ?? 0.75,
-  });
   const voiceLabel = (state: CreatorAudioCurrentness) => {
     if (state === "current") return language === "en" ? "Voice ready" : "Ses hazır";
     if (state === "stale") return language === "en" ? "Voice needs refresh" : "Sesin yenilenmesi gerekiyor";
@@ -181,31 +165,8 @@ export default function CreatorEditor({
       sourceDurationSec: duration,
     });
     setSourceDurationSec(duration);
-    setTrimStartDraft(String(trim.clipInSec ?? 0));
-    setTrimEndDraft(String(trim.clipOutSec ?? Number(duration.toFixed(3))));
     if (videoRef.current && trim.isTrimmed) {
       videoRef.current.currentTime = trim.clipInSec || 0;
-    }
-  };
-  const commitTrimDraft = () => {
-    const start = Number(trimStartDraft);
-    const end = Number(trimEndDraft);
-    if (!sourceDurationSec || !Number.isFinite(start) || !Number.isFinite(end)) return;
-    const trim = normalizeCreatorSceneTrim({
-      clipInSec: start,
-      clipOutSec: end,
-      sourceDurationSec,
-    });
-    if (trim.isTrimmed) {
-      setTrimStartDraft(String(trim.clipInSec));
-      setTrimEndDraft(String(trim.clipOutSec));
-      onUpdateTrim({
-        clipInSec: trim.clipInSec,
-        clipOutSec: trim.clipOutSec,
-        sourceDurationSec,
-      });
-    } else if (start <= 0 && end >= sourceDurationSec) {
-      onUpdateTrim({});
     }
   };
 
@@ -368,52 +329,23 @@ export default function CreatorEditor({
                 : language === "en" ? "Loading video duration…" : "Video süresi yükleniyor…"}
             </span>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs font-semibold text-slate-700">
-              {language === "en" ? "Start (seconds)" : "Başlangıç (saniye)"}
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max={Math.max(0, Number(trimEndDraft || sourceDurationSec) - 0.25)}
-                value={trimStartDraft}
-                disabled={!sourceDurationSec}
-                onChange={(event) => setTrimStartDraft(event.target.value)}
-                onBlur={commitTrimDraft}
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
-              />
-            </label>
-            <label className="text-xs font-semibold text-slate-700">
-              {language === "en" ? "End (seconds)" : "Bitiş (saniye)"}
-              <input
-                type="number"
-                step="0.1"
-                min={Number(trimStartDraft || 0) + 0.25}
-                max={sourceDurationSec || undefined}
-                value={trimEndDraft}
-                disabled={!sourceDurationSec}
-                onChange={(event) => setTrimEndDraft(event.target.value)}
-                onBlur={commitTrimDraft}
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
-              />
-            </label>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-slate-600">
-              {language === "en" ? "Visual clip" : "Görsel klip"}: {normalizedTrim.visualDurationSec.toFixed(1)}s · {language === "en" ? "Effective scene" : "Efektif sahne"}: {effectiveDurationSec.toFixed(1)}s
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setTrimStartDraft("0");
-                setTrimEndDraft(sourceDurationSec ? String(Number(sourceDurationSec.toFixed(3))) : "");
-                onUpdateTrim({});
+          <div className="mt-3">
+            <CreatorVideoTrimControl
+              sourceDurationSec={sourceDurationSec}
+              clipInSec={selectedScene.clipInSec}
+              clipOutSec={selectedScene.clipOutSec}
+              targetDurationSec={selectedScene.timing?.targetSceneDuration}
+              speechDurationSec={(narrationAudioState === "current" ? selectedScene.timing?.narrationDuration || 0 : 0) + (dialogueAudioState === "current" ? selectedScene.timing?.dialogueDuration || 0 : 0)}
+              speechTailBufferSec={selectedScene.timing?.speechTailBuffer ?? 0.75}
+              language={language}
+              disabled={sceneOperationsDisabled}
+              onPreviewBoundary={(seconds) => {
+                if (!videoRef.current) return;
+                videoRef.current.pause();
+                videoRef.current.currentTime = seconds;
               }}
-              disabled={!sourceDurationSec || !normalizedTrim.isTrimmed}
-              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-700 disabled:opacity-40"
-            >
-              {language === "en" ? "Reset Trim" : "Kırpmayı Sıfırla"}
-            </button>
+              onCommitTrim={onUpdateTrim}
+            />
           </div>
         </div>
       )}
