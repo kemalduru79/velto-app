@@ -37,30 +37,28 @@ export default function CreatorProductionSubnav({
 
   return (
     <nav
-      className="grid gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 sm:grid-cols-2"
+      className="creatorlab-uxp2a-production-nav"
       aria-label={language === "en" ? "Production sections" : "Üretim bölümleri"}
     >
       {items.map((item) => {
         const active = value === item.value;
+
         return (
           <button
             key={item.value}
             type="button"
             aria-current={active ? "step" : undefined}
+            data-active={active ? "true" : "false"}
             data-production-substep-selected={active ? "true" : "false"}
             onClick={() => onChange(item.value)}
-            className={`flex min-h-12 items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${
-              active
-                ? "border-blue-600 bg-white text-slate-950 shadow-sm ring-2 ring-blue-100"
-                : "border-transparent text-slate-400 hover:bg-white/60 hover:text-slate-600"
-            }`}
+            className="creatorlab-uxp2a-production-nav-item"
           >
-            <span className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${active ? "bg-blue-700 text-white" : "bg-slate-200 text-slate-400"}`}>
+            <span className="creatorlab-uxp2a-production-step" aria-hidden="true">
               {item.number}
             </span>
             <span className="min-w-0">
-              <strong className="block text-sm">{item.label}</strong>
-              <span className={`mt-0.5 hidden text-[11px] leading-4 sm:block ${active ? "text-slate-600" : "text-slate-400"}`}>
+              <strong className="creatorlab-uxp2a-production-label">{item.label}</strong>
+              <span className="creatorlab-uxp2a-production-description">
                 {item.description}
               </span>
             </span>

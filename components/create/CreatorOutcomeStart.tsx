@@ -20,23 +20,23 @@ export default function CreatorOutcomeStart({
   return (
     <section
       aria-labelledby={headingId}
-      className="rounded-[28px] border border-orange-200/40 bg-white/72 p-5 shadow-[0_18px_50px_rgba(148,83,32,0.08)] sm:p-6"
+      className="creatorlab-uxp2a-card creatorlab-uxp2a-outcome-card"
     >
-      <div className="mb-4 max-w-2xl">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-700">
+      <div className="creatorlab-uxp2a-outcome-copy">
+        <p className="creatorlab-uxp2a-kicker">
           {language === "en" ? "Start with an outcome" : "Sonuçla başla"}
         </p>
-        <h2 id={headingId} className="mt-1 text-xl font-semibold text-slate-950 sm:text-2xl">
+        <h2 id={headingId} className="creatorlab-uxp2a-title">
           {language === "en" ? "What do you want to create?" : "Ne oluşturmak istiyorsun?"}
         </h2>
-        <p className="mt-1 text-sm leading-6 text-slate-600">
+        <p className="creatorlab-uxp2a-description">
           {language === "en"
-            ? "Choose a starting point. You can adjust every production setting below."
-            : "Bir başlangıç noktası seç. Aşağıdaki tüm üretim ayarlarını değiştirebilirsin."}
+            ? "Choose the result you want Velto to help you produce. You can refine the production settings before generation."
+            : "Velto'nun üretmene yardımcı olmasını istediğin sonucu seç. Üretimden önce ayarları detaylandırabilirsin."}
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="creatorlab-uxp2a-outcome-grid">
         {CREATOR_OUTCOME_DEFINITIONS.map((definition, index) => {
           const isSelected = value === definition.value;
 
@@ -45,6 +45,7 @@ export default function CreatorOutcomeStart({
               key={definition.value}
               type="button"
               aria-pressed={isSelected}
+              data-selected={isSelected ? "true" : "false"}
               onClick={() => onSelect(definition.value)}
               className={`creatorlab-format-choice ${isSelected ? "is-selected" : ""}`}
             >
