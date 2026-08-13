@@ -40,9 +40,8 @@ export default function CreatorEditorTimeline({
   language,
 }: CreatorEditorTimelineProps) {
   return (
-    <div
+    <ul
       className="flex gap-3 overflow-x-auto pb-2"
-      role="list"
       aria-label={language === "en" ? "Creator Editor scene timeline" : "Creator Editor sahne zaman çizelgesi"}
     >
       {scenes.map((scene, index) => {
@@ -52,11 +51,11 @@ export default function CreatorEditorTimeline({
         const summary = scene.text || scene.narration || (language === "en" ? "Untitled scene" : "Başlıksız sahne");
 
         return (
+          <li key={scene.creatorSceneId} className="shrink-0">
           <button
-            key={scene.creatorSceneId}
             type="button"
-            role="listitem"
             aria-pressed={selected}
+            aria-current={selected ? "true" : undefined}
             aria-label={`${language === "en" ? "Select scene" : "Sahneyi seç"} ${index + 1}: ${summary}`}
             onClick={() => onSelectScene(scene.creatorSceneId!)}
             className={`min-w-44 max-w-56 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
@@ -77,8 +76,9 @@ export default function CreatorEditorTimeline({
                   : language === "en" ? "Draft" : "Taslak"}
             </span>
           </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }

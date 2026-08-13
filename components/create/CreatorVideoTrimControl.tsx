@@ -152,7 +152,7 @@ export default function CreatorVideoTrimControl({
   return (
     <div data-creator-drag-trim="true">
       <div className="flex justify-between text-[11px] font-medium text-slate-500"><span>{formatTime(0)}</span><span>{formatTime(sourceDurationSec)}</span></div>
-      <div ref={railRef} className="relative mt-2 h-14 touch-none select-none" aria-label={language === "en" ? "Video trim timeline" : "Video kırpma zaman çizelgesi"}>
+      <div ref={railRef} className="relative mx-6 mt-2 h-14 touch-none select-none" aria-label={language === "en" ? "Video trim timeline" : "Video kırpma zaman çizelgesi"}>
         <div className="absolute inset-x-0 top-4 h-6 overflow-hidden rounded-lg bg-slate-200 shadow-inner">
           <div className="absolute inset-y-0 bg-blue-600" style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }} />
           <div className="absolute inset-y-0 left-0 bg-slate-900/20" style={{ width: `${startPercent}%` }} />
@@ -179,7 +179,7 @@ export default function CreatorVideoTrimControl({
             onPointerUp={(event) => finishDrag(event, false)}
             onPointerCancel={(event) => finishDrag(event, true)}
             onKeyDown={(event) => handleKeyDown(handle, event)}
-            className="absolute top-1 z-10 flex h-12 w-7 -translate-x-1/2 touch-none items-center justify-center rounded-lg border-2 border-white bg-slate-950 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-40"
+            className="absolute top-1 z-10 flex h-12 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-lg border-2 border-white bg-slate-950 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-40"
             style={{ left: `${handle === "start" ? startPercent : endPercent}%` }}
           ><span className="h-5 w-0.5 rounded bg-white/80" /></button>;
         })}

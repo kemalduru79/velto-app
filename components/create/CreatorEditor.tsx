@@ -63,6 +63,7 @@ export default function CreatorEditor({
     scenes.find((scene) => scene.creatorSceneId === selectedCreatorSceneId) ||
     scenes[0];
   const selectedIndex = selectedScene ? scenes.indexOf(selectedScene) : -1;
+  const editorRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [sourceDurationSec, setSourceDurationSec] = useState(0);
   const [textDraft, setTextDraft] = useState("");
@@ -73,6 +74,11 @@ export default function CreatorEditor({
   const selectedMediaUrl = selectedScene?.renderMode === "image"
     ? selectedScene.image
     : selectedScene?.videoUrl;
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => editorRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     setSourceDurationSec(0);
@@ -171,13 +177,13 @@ export default function CreatorEditor({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 md:p-5" data-creator-editor="foundation">
+    <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
       <div>
         <div>
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">
             {language === "en" ? "Draft Preview" : "Taslak Önizleme"}
           </span>
-          <h2 className="mt-1 text-lg font-bold text-slate-950">
+          <h2 id="creator-editor-title" className="mt-1 text-lg font-bold text-slate-950">
             {language === "en" ? "Creator Editor" : "Creator Editor"}
           </h2>
         </div>
@@ -234,7 +240,7 @@ export default function CreatorEditor({
             {language === "en" ? "Selected scene" : "Seçili sahne"} {selectedIndex + 1}
           </span>
           <div className="mt-3 space-y-3" data-creator-text-editor="true">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-video-currentness={videoState}>
+            <div role="status" aria-live="polite" aria-atomic="true" className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-video-currentness={videoState}>
               <span className={videoState === "stale" ? "text-xs font-semibold text-amber-700" : "text-xs font-semibold text-slate-600"}>{videoLabel}</span>
               {selectedMediaFingerprint && <code data-selected-media-fingerprint="true" className="mt-1 block text-[10px] text-slate-500">media:{selectedMediaFingerprint}</code>}
               {(videoState === "stale" || videoState === "missing" || videoState === "error") && selectedScene.renderMode !== "image" && (
@@ -245,6 +251,8 @@ export default function CreatorEditor({
             </div>
             {continuityWarning && (
               <div
+                role="status"
+                aria-live="polite"
                 data-creator-continuity-warning={continuityWarning.severity}
                 className={`rounded-lg border p-3 ${continuityWarning.severity === "high" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
               >
@@ -257,7 +265,7 @@ export default function CreatorEditor({
                   {continuityWarning.messages.map((message) => <li key={message}>{message}</li>)}
                 </ul>
                 {continuityWarning.action === "review_trim" && hasSelectedVideo ? (
-                  <button type="button" onClick={() => document.getElementById("creator-selected-scene-trim")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mt-2 rounded-lg border border-current px-3 py-1.5 text-xs font-semibold">
+                  <button type="button" onClick={() => document.getElementById("creator-selected-scene-trim")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" })} className="mt-2 min-h-11 rounded-lg border border-current px-3 py-2 text-xs font-semibold">
                     {language === "en" ? "Review Trim" : "Kırpmayı Kontrol Et"}
                   </button>
                 ) : continuityWarning.action === "refresh_video" && selectedScene.renderMode !== "image" ? (

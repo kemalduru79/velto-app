@@ -16986,6 +16986,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           ? "creatorlab-production-canvas"
           : "creatorlab-publish-canvas";
 
+  const getCreatorScrollBehavior = (): ScrollBehavior =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+
   const navigateCreatorWorkspaceStep = (step: 1 | 2 | 3 | 4) => {
     if (!creatorCanOpenWorkspaceStep(step)) {
       return;
@@ -16999,7 +17005,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         const target =
           document.getElementById(creatorWorkspaceRootId(step)) ||
           document.getElementById("creatorlab-main-workspace");
-        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        target?.scrollIntoView({ behavior: getCreatorScrollBehavior(), block: "start" });
       }, 60);
     }
   };
@@ -26851,7 +26857,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <button
                     key={step.id}
                     type="button"
-                    className={`creatorlab-workflow-step ${isActive ? "is-active" : ""} ${step.complete ? "is-complete" : ""}`}
+                    className={`creatorlab-workflow-step focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isActive ? "is-active" : ""} ${step.complete ? "is-complete" : ""}`}
                     aria-current={isActive ? "step" : undefined}
                     aria-disabled={!creatorCanOpenWorkspaceStep(step.id)}
                     disabled={!creatorCanOpenWorkspaceStep(step.id)}
@@ -30114,7 +30120,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         onClick={() => {
                           selectCreatorProductionSubstep("setup");
                           window.setTimeout(
-                            () => document.getElementById("creatorlab-background-music")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                            () => document.getElementById("creatorlab-background-music")?.scrollIntoView({ behavior: getCreatorScrollBehavior(), block: "start" }),
                             60,
                           );
                         }}
@@ -30127,7 +30133,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 )}
 
                 {creatorHasFinalVideo && (
-                  <section data-creator-final-video-lifecycle={creatorFinalVideoNeedsRebuild ? "outdated" : "current"} className={`rounded-2xl border p-4 ${creatorFinalVideoNeedsRebuild ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <section role="status" aria-live="polite" aria-atomic="true" data-creator-final-video-lifecycle={creatorFinalVideoNeedsRebuild ? "outdated" : "current"} className={`min-w-0 rounded-2xl border p-4 ${creatorFinalVideoNeedsRebuild ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                       <div className="min-w-0 flex-1">
                         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">{uiLanguage === "en" ? "Final Video" : "Final Video"}</span>
@@ -30149,7 +30155,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         type="button"
                         data-edit-current-final-video="true"
                         onClick={() => setCreatorEditorOpen(true)}
-                        className={`rounded-xl px-4 py-2 text-xs font-semibold ${creatorFinalVideoNeedsRebuild ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white shadow-md hover:bg-blue-800"}`}
+                        className={`min-h-11 rounded-xl px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${creatorFinalVideoNeedsRebuild ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white shadow-md hover:bg-blue-800"}`}
                       >
                         {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
                       </button>
@@ -30158,7 +30164,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         data-rebuild-final-video="true"
                         onClick={() => void handleExportMovie(true)}
                         disabled={isExportingMovie || creatorMusicConfirmationRequired}
-                        className={`rounded-xl px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${creatorFinalVideoNeedsRebuild ? "bg-blue-700 text-white shadow-md hover:bg-blue-800" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                        className={`min-h-11 rounded-xl px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${creatorFinalVideoNeedsRebuild ? "bg-blue-700 text-white shadow-md hover:bg-blue-800" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
                       >
                         {isExportingMovie
                           ? uiLanguage === "en" ? "Building Final Video…" : "Final Video Oluşturuluyor…"
