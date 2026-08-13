@@ -20,6 +20,11 @@ const required = {
     "creatorlab-uxp2a-production-nav-item",
     "data-production-substep-selected",
   ],
+  "components/navigation/ProductTopNavigation.tsx": [
+    'const newProjectLabel = language === "en" ? "New project" : "Yeni proje";',
+    "newProjectShortLabel",
+    "onClick={onStudioClick}",
+  ],
   "app/creatorlab-ux-p2a.css": [
     "--cl-brand-strong",
     "prefers-reduced-motion",
@@ -28,6 +33,10 @@ const required = {
   "app/creatorlab-ux-p2a-compat.css": [
     ".creatorlab-uxp2a-shell .creatorlab-topbar-tool-button",
     ".creatorlab-uxp2a-shell .creatorlab-workspace-stage",
+    ".creatorlab-uxp2a-shell .creatorlab-brief-step-badge",
+    ".creatorlab-uxp2a-shell .creatorlab-workflow-step:disabled",
+    "#creatorlab-brief-action.creatorlab-brief-action-bar",
+    "position: fixed",
   ],
 };
 
@@ -55,6 +64,19 @@ if (!outcome.includes("onClick={() => onSelect(definition.value)}")) {
 const production = fs.readFileSync("components/create/CreatorProductionSubnav.tsx", "utf8");
 if (!production.includes("onClick={() => onChange(item.value)}")) {
   failures.push("CreatorProductionSubnav: navigation behavior changed");
+}
+
+const navigation = fs.readFileSync("components/navigation/ProductTopNavigation.tsx", "utf8");
+if (!navigation.includes("onClick={onStudioClick}")) {
+  failures.push("ProductTopNavigation: new-project click behavior changed");
+}
+
+const page = fs.readFileSync("app/create/page.tsx", "utf8");
+if (!page.includes('id="creatorlab-brief-action" className="creatorlab-brief-action-bar"')) {
+  failures.push("CreatorLab Brief: primary action anchor missing");
+}
+if (!page.includes('onClick={createSetup} disabled={loadingSetup || !input.trim()} className="creatorlab-primary-action"')) {
+  failures.push("CreatorLab Brief: existing createSetup primary action behavior changed");
 }
 
 if (failures.length > 0) {
