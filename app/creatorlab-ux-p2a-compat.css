@@ -1,0 +1,285 @@
+/* UX-P2A note: CreatorLab-only compatibility overrides. Storyverse remains outside the scoped shell. */
+
+.creatorlab-uxp2a-shell .creatorlab-dashboard-bar {
+  border-color: rgba(203, 211, 223, 0.88);
+  background: rgba(252, 252, 253, 0.9);
+  box-shadow: 0 8px 30px rgba(25, 42, 68, 0.055);
+  backdrop-filter: blur(18px);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-tool-button {
+  min-height: 2.25rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  background: transparent;
+  color: var(--cl-muted);
+  box-shadow: none;
+  font-size: 0.75rem;
+  font-weight: 750;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-tool-button:hover {
+  border-color: rgba(203, 211, 223, 0.72);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--cl-text-strong);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-tool-button[aria-current="page"] {
+  border-color: var(--cl-border-strong);
+  background: #ffffff;
+  color: var(--cl-text-strong);
+  box-shadow: 0 5px 16px rgba(25, 42, 68, 0.08);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workspace-stage {
+  border-color: var(--cl-border);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--cl-shadow-card);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workspace-stage::before {
+  opacity: 0.52;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-utility-panel {
+  border-color: var(--cl-border);
+  background: rgba(246, 248, 251, 0.86);
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-section-kicker {
+  color: var(--cl-brand-strong);
+  letter-spacing: 0.16em;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-section-title {
+  color: var(--cl-text-strong);
+  letter-spacing: -0.025em;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-section-description {
+  color: var(--cl-muted);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-toolbar {
+  border-color: var(--cl-border);
+  background: rgba(248, 249, 251, 0.9);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-toolbar-button {
+  border-color: var(--cl-border);
+  background: #ffffff;
+  color: var(--cl-text);
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-toolbar-button:hover {
+  border-color: var(--cl-border-strong);
+  color: var(--cl-text-strong);
+  box-shadow: var(--cl-shadow-control);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-result-card,
+.creatorlab-uxp2a-shell .creatorlab-production-section {
+  border-color: var(--cl-border);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 34px rgba(25, 42, 68, 0.055);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-production-subnav-shell {
+  border-color: var(--cl-border);
+  background: rgba(244, 246, 249, 0.9);
+}
+
+.creatorlab-uxp2a-shell :where(input, textarea, select) {
+  accent-color: var(--cl-brand-strong);
+}
+
+/* UX-P2A pass 2 — compact workspace chrome and persistent primary action. */
+.creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
+  min-height: 72px;
+  gap: 14px;
+  padding: 11px 20px;
+  border-bottom-color: rgba(203, 211, 223, 0.72);
+  background: rgba(252, 252, 253, 0.92);
+  box-shadow: 0 5px 22px rgba(25, 42, 68, 0.045);
+  backdrop-filter: blur(18px);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-brand-mark {
+  width: 42px;
+  height: 42px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-brand-name {
+  line-height: 1.05;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-save-state {
+  margin-top: 4px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-block {
+  grid-template-columns: minmax(120px, 190px) auto;
+  gap: 8px;
+  width: min(100%, 250px);
+  padding-top: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-copy,
+.creatorlab-uxp2a-shell .creatorlab-readiness-block .creatorlab-status-pill {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-track {
+  min-width: 120px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-value {
+  min-width: 2.5rem;
+  color: var(--cl-brand-strong);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-actions {
+  gap: 5px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-actions nav {
+  gap: 4px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-language-toggle {
+  margin-inline: 1px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-brief-step-badge {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workflow-step:disabled {
+  opacity: 0.78;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workflow-step:not(.is-active) .creatorlab-step-copy strong {
+  color: #586579 !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workflow-step:not(.is-active) .creatorlab-step-copy span {
+  color: #838d9d;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-workflow-step:not(.is-active) .creatorlab-step-number {
+  color: #7f8998;
+  border-color: #d7dce4;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+  position: fixed;
+  left: calc(50% + 110px);
+  bottom: 20px;
+  z-index: 92;
+  width: min(690px, calc(100vw - 390px));
+  margin: 0;
+  padding: 10px 11px 10px 14px;
+  border: 1px solid rgba(203, 211, 223, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 44px rgba(25, 42, 68, 0.16);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-brief-action-copy {
+  min-width: 0;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-brief-action-copy strong {
+  color: var(--cl-text-strong);
+  font-size: 0.8rem;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-brief-action-copy p {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--cl-muted);
+  font-size: 0.69rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-primary-action {
+  flex: 0 0 auto;
+  min-height: 2.65rem;
+  padding-inline: 1rem;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+@media (min-width: 1440px) {
+  .creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
+    grid-template-columns: minmax(260px, 1fr) minmax(170px, 250px) max-content;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
+    grid-column: auto;
+    grid-row: auto;
+    align-self: center;
+  }
+}
+
+@media (max-width: 899px) {
+  .creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+    left: 50%;
+    bottom: 92px;
+    width: min(680px, calc(100vw - 28px));
+  }
+}
+
+@media (max-width: 699px) {
+  .creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+    padding: 9px;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-brief-action-copy {
+    display: none;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-brief-action .creatorlab-primary-action {
+    width: 100%;
+  }
+}
+
+@media (max-width: 639px) {
+  .creatorlab-uxp2a-shell .creatorlab-topbar-tool-button {
+    min-height: 2.15rem;
+    padding-inline: 0.55rem;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
+    padding-inline: 12px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
+    width: 100%;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+    bottom: calc(90px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+  }
+}

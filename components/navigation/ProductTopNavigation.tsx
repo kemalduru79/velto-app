@@ -91,6 +91,8 @@ export default function ProductTopNavigation({
   const isDark = tone === "dark";
   const productsLabel = language === "en" ? "Products" : "Ürünler";
   const studioLabel = "Velto Studio";
+  const newProjectLabel = language === "en" ? "New project" : "Yeni proje";
+  const newProjectShortLabel = language === "en" ? "New" : "Yeni";
   const reportsLabel = language === "en" ? "Reports" : "Raporlar";
 
   if (variant === "creatorlab") {
@@ -112,12 +114,11 @@ export default function ProductTopNavigation({
             type="button"
             onClick={onStudioClick}
             className="creatorlab-topbar-tool-button"
-            aria-current={active === "studio" ? "page" : undefined}
             aria-label={language === "en" ? "Start a new Velto Studio project" : "Yeni bir Velto Studio projesi başlat"}
           >
             <StudioIcon />
-            <span className="hidden 2xl:inline">{studioLabel}</span>
-            <span className="2xl:hidden">Studio</span>
+            <span className="hidden 2xl:inline">{newProjectLabel}</span>
+            <span className="2xl:hidden">{newProjectShortLabel}</span>
           </button>
         ) : (
           <Link
