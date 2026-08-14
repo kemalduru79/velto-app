@@ -4,6 +4,7 @@ const required = {
   "app/layout.tsx": [
     'import "./creatorlab-ux-p2a.css";',
     'import "./creatorlab-ux-p2a-compat.css";',
+    'import "./creatorlab-ux-p2a-final.css";',
   ],
   "components/experience/CreatorLabShell.tsx": [
     "creatorlab-uxp2a-shell",
@@ -37,6 +38,12 @@ const required = {
     ".creatorlab-uxp2a-shell .creatorlab-workflow-step:disabled",
     "#creatorlab-brief-action.creatorlab-brief-action-bar",
     "position: fixed",
+  ],
+  "app/creatorlab-ux-p2a-final.css": [
+    ":has(.creatorlab-primary-action:disabled)",
+    ".creatorlab-readiness-copy > strong",
+    ".creatorlab-copilot-launcher",
+    "padding-bottom: 108px",
   ],
 };
 
