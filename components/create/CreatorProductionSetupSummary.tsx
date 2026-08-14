@@ -24,22 +24,25 @@ export default function CreatorProductionSetupSummary({
   language: "tr" | "en";
 }) {
   return (
-    <section data-production-compact-header="true" className="border-b border-slate-200 py-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{title}</h2>
-          {premise && <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-5 text-slate-500">{premise}</p>}
-          <p className="mt-3 text-xs font-semibold text-slate-700">
+    <section data-production-compact-header="true" className="creatorlab-p2c-production-plan">
+      <div className="creatorlab-p2c-production-plan-layout">
+        <div className="creatorlab-p2c-production-plan-copy">
+          <span className="creatorlab-p2c-production-plan-kicker">
+            {language === "en" ? "Production Plan" : "Üretim Planı"}
+          </span>
+          <h2>{title}</h2>
+          {premise && <p className="creatorlab-p2c-production-plan-premise">{premise}</p>}
+          <p className="creatorlab-p2c-production-plan-primary-meta">
             {format} · {runtime} · {quality}
           </p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
+          <p className="creatorlab-p2c-production-plan-secondary-meta">
             {approach} · {castSummary} · {language === "en" ? "Music" : "Müzik"} {music} · {continuity}
           </p>
         </div>
         <button
           type="button"
           onClick={onEdit}
-          className="min-h-10 shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          className="creatorlab-p2c-production-plan-edit"
         >
           {language === "en" ? "Edit Setup" : "Kurulumu Düzenle"}
         </button>

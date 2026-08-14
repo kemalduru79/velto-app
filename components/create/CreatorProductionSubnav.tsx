@@ -42,6 +42,8 @@ export default function CreatorProductionSubnav({
     >
       {items.map((item) => {
         const active = value === item.value;
+        const complete = value === "create_review" && item.value === "setup";
+        const state = active ? "active" : complete ? "complete" : "available";
 
         return (
           <button
@@ -49,6 +51,7 @@ export default function CreatorProductionSubnav({
             type="button"
             aria-current={active ? "step" : undefined}
             data-active={active ? "true" : "false"}
+            data-state={state}
             data-production-substep-selected={active ? "true" : "false"}
             onClick={() => onChange(item.value)}
             className="creatorlab-uxp2a-production-nav-item"
@@ -57,7 +60,16 @@ export default function CreatorProductionSubnav({
               {item.number}
             </span>
             <span className="min-w-0">
-              <strong className="creatorlab-uxp2a-production-label">{item.label}</strong>
+              <span className="creatorlab-uxp2c-production-label-row">
+                <strong className="creatorlab-uxp2a-production-label">{item.label}</strong>
+                <small className="creatorlab-uxp2c-production-phase-status">
+                  {active
+                    ? language === "en" ? "Current" : "Şu an"
+                    : complete
+                      ? language === "en" ? "Complete" : "Tamamlandı"
+                      : language === "en" ? "Available" : "Hazır"}
+                </small>
+              </span>
               <span className="creatorlab-uxp2a-production-description">
                 {item.description}
               </span>

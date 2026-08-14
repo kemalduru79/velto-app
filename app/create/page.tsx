@@ -29196,14 +29196,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <header className="creatorlab-production-heading">
               <div>
                 <p className="creatorlab-production-kicker">
-                  {uiLanguage === "en" ? "Step 3 · Production" : "Adım 3 · Üretim"}
+                  {uiLanguage === "en" ? "Production" : "Üretim"}
                 </p>
-                <h1>{uiLanguage === "en" ? "Production" : "Üretim"}</h1>
-                <p>
-                  {uiLanguage === "en"
-                    ? "Turn the approved plan into visuals, voice-over and a safe final video. Velto Studio keeps the technical routing in the background and shows only the next useful action."
-                    : "Onaylanan planı görsellere, seslendirmeye ve güvenli bir final videoya dönüştür. Velto Studio teknik yönlendirmeyi arka planda tutar ve yalnızca sıradaki yararlı aksiyonu gösterir."}
-                </p>
+                <h1>{creatorProductionPackage.title}</h1>
+                <div className="creatorlab-p2c-production-header-meta" aria-label={uiLanguage === "en" ? "Current production plan" : "Mevcut üretim planı"}>
+                  <span>{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}</span>
+                  <span>{getCreatorDurationLabel()}</span>
+                  <span>{scenes.length} {uiLanguage === "en" ? "scenes" : "sahne"}</span>
+                  <span>{getCreatorQualityModeLabel()}</span>
+                </div>
               </div>
               <span className="creatorlab-production-stage-badge">
                 {scenes.length > 0
@@ -30021,12 +30022,24 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               </div>
             ) : (
               <>
-                <div
-                  data-production-compact-progress="true"
-                  className={`grid overflow-hidden rounded-xl border border-slate-200 bg-white ${creatorMotionRequired ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
-                  role="list"
-                  aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
-                >
+                <section className="creatorlab-p2c-production-status" aria-labelledby="creatorlab-production-status-title">
+                  <div className="creatorlab-p2c-production-status-heading">
+                    <div>
+                      <span>{uiLanguage === "en" ? "Create & Review" : "Üret ve İncele"}</span>
+                      <h2 id="creatorlab-production-status-title">{uiLanguage === "en" ? "Production status" : "Üretim durumu"}</h2>
+                    </div>
+                    <p aria-live="polite">
+                      {uiLanguage === "en"
+                        ? `${scenes.length} scenes · ${visualAssetReadyCount} visuals ready · ${audioReadyCount} voice tracks ready`
+                        : `${scenes.length} sahne · ${visualAssetReadyCount} görsel hazır · ${audioReadyCount} ses hazır`}
+                    </p>
+                  </div>
+                  <div
+                    data-production-compact-progress="true"
+                    className={`creatorlab-p2c-production-progress grid overflow-hidden rounded-xl border border-slate-200 bg-white ${creatorMotionRequired ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+                    role="list"
+                    aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
+                  >
                   {[
                     {
                       number: 1,
@@ -30086,7 +30099,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${item.complete ? "bg-emerald-500" : item.active ? "bg-blue-500" : "bg-slate-300"}`} />
                     </div>
                   ))}
-                </div>
+                  </div>
+                </section>
 
                 {(creatorMediaPreflightLoading || creatorTimelineNeedsAttention) && (
                 <div id="creatorlab-production-safety" className={`creatorlab-production-safety ${creatorTimelineNeedsAttention ? "is-review" : "is-safe"}`}>

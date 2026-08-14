@@ -177,7 +177,7 @@ export default function CreatorEditor({
   };
 
   return (
-    <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
+    <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="creatorlab-p2c-editor-surface min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
       <div>
         <div>
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">
