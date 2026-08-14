@@ -76,7 +76,9 @@ export default function CreatorEditor({
     : selectedScene?.videoUrl;
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => editorRef.current?.focus());
+    const frame = window.requestAnimationFrame(() =>
+      editorRef.current?.focus({ preventScroll: true }),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
@@ -162,6 +164,18 @@ export default function CreatorEditor({
     error: language === "en" ? "Generation failed" : "Üretim başarısız",
     missing: language === "en" ? "No video generated" : "Video üretilmedi",
   }[videoState];
+  const sceneTitle =
+    selectedScene.text ||
+    selectedScene.narration ||
+    (language === "en" ? "Untitled scene" : "Başlıksız sahne");
+  const sceneStatusTone =
+    continuityWarning || videoState === "stale" || videoState === "error"
+      ? "attention"
+      : videoState === "processing" || videoState === "delayed"
+        ? "generating"
+        : videoState === "current"
+          ? "ready"
+          : "pending";
   const handleVideoMetadata = () => {
     const duration = videoRef.current?.duration || 0;
     if (!Number.isFinite(duration) || duration <= 0) return;
@@ -177,20 +191,27 @@ export default function CreatorEditor({
   };
 
   return (
-    <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="creatorlab-p2c-editor-surface min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
-      <div>
-        <div>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">
-            {language === "en" ? "Draft Preview" : "Taslak Önizleme"}
-          </span>
-          <h2 id="creator-editor-title" className="mt-1 text-lg font-bold text-slate-950">
-            {language === "en" ? "Creator Editor" : "Creator Editor"}
+    <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="creatorlab-p2c-editor-surface creatorlab-p2c-editor min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
+      <div className="creatorlab-p2c-editor-heading">
+        <div className="min-w-0">
+          <span>{language === "en" ? "Edit & Assemble" : "Düzenle ve Birleştir"}</span>
+          <h2 id="creator-editor-title">
+            {language === "en" ? "Scene" : "Sahne"} {String(selectedIndex + 1).padStart(2, "0")} · {sceneTitle}
           </h2>
+        </div>
+        <div className="creatorlab-p2c-editor-heading-status" data-editor-status={sceneStatusTone}>
+          <strong>{videoLabel}</strong>
+          <small>{voiceLabel(narrationAudioState)}</small>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1.45fr)_minmax(220px,0.55fr)]">
-        <div className="flex min-h-56 items-center justify-center overflow-hidden rounded-xl bg-slate-950">
+      <div className="creatorlab-p2c-editor-layout">
+        <div className="creatorlab-p2c-editor-preview-column">
+          <div className="creatorlab-p2c-editor-section-heading">
+            <span>{language === "en" ? "Media Preview" : "Medya Önizleme"}</span>
+            <small>{hasSelectedVideo ? "Video" : selectedScene.image ? (language === "en" ? "Image" : "Görsel") : (language === "en" ? "No media" : "Medya yok")}</small>
+          </div>
+          <div className="creatorlab-p2c-editor-preview-canvas">
           {hasSelectedVideo ? (
             <video
               ref={videoRef}
@@ -223,28 +244,32 @@ export default function CreatorEditor({
                 if (event.currentTarget.currentTime < start) event.currentTarget.currentTime = start;
                 if (event.currentTarget.currentTime > end) event.currentTarget.currentTime = end;
               }}
-              className="max-h-80 w-full object-contain"
+              className="max-h-96 w-full object-contain"
             />
           ) : selectedScene.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={selectedScene.image} alt="" className="max-h-80 w-full object-contain" />
+            <img src={selectedScene.image} alt="" className="max-h-96 w-full object-contain" />
           ) : (
             <div className="px-6 text-center text-sm text-slate-300">
               {language === "en" ? "Media preview will appear here." : "Medya önizlemesi burada görünecek."}
             </div>
           )}
+          {selectedMediaFingerprint && (
+            <span hidden data-selected-media-fingerprint="true">{selectedMediaFingerprint}</span>
+          )}
+          </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            {language === "en" ? "Selected scene" : "Seçili sahne"} {selectedIndex + 1}
-          </span>
-          <div className="mt-3 space-y-3" data-creator-text-editor="true">
-            <div role="status" aria-live="polite" aria-atomic="true" className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-video-currentness={videoState}>
+        <aside className="creatorlab-p2c-editor-inspector" aria-label={language === "en" ? "Selected scene inspector" : "Seçili sahne denetçisi"}>
+          <div className="creatorlab-p2c-editor-section-heading">
+            <span>{language === "en" ? "Scene Inspector" : "Sahne Denetçisi"}</span>
+            <small>{selectedIndex + 1}/{scenes.length}</small>
+          </div>
+          <div className="creatorlab-p2c-editor-status-stack">
+            <div role="status" aria-live="polite" aria-atomic="true" className="creatorlab-p2c-editor-status" data-video-currentness={videoState} data-tone={sceneStatusTone}>
               <span className={videoState === "stale" ? "text-xs font-semibold text-amber-700" : "text-xs font-semibold text-slate-600"}>{videoLabel}</span>
-              {selectedMediaFingerprint && <code data-selected-media-fingerprint="true" className="mt-1 block text-[10px] text-slate-500">media:{selectedMediaFingerprint}</code>}
               {(videoState === "stale" || videoState === "missing" || videoState === "error") && selectedScene.renderMode !== "image" && (
-                <button type="button" onClick={() => onRefreshVideo(selectedScene.creatorSceneId!)} disabled={sceneOperationsDisabled} className="mt-2 block rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40">
+                <button type="button" onClick={() => onRefreshVideo(selectedScene.creatorSceneId!)} disabled={sceneOperationsDisabled}>
                   {language === "en" ? "Refresh Video" : "Videoyu Yenile"}
                 </button>
               )}
@@ -254,12 +279,10 @@ export default function CreatorEditor({
                 role="status"
                 aria-live="polite"
                 data-creator-continuity-warning={continuityWarning.severity}
-                className={`rounded-lg border p-3 ${continuityWarning.severity === "high" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
+                className="creatorlab-p2c-editor-attention"
               >
                 <strong className="text-xs">
-                  {continuityWarning.severity === "high"
-                    ? language === "en" ? "Review required" : "Kontrol gerekli"
-                    : language === "en" ? "Check this scene" : "Bu sahneyi kontrol et"}
+                  {language === "en" ? "Attention" : "Dikkat"}
                 </strong>
                 <ul className="mt-1 space-y-1 text-xs leading-5">
                   {continuityWarning.messages.map((message) => <li key={message}>{message}</li>)}
@@ -281,6 +304,16 @@ export default function CreatorEditor({
                 )}
               </div>
             )}
+          </div>
+
+          <section className="creatorlab-p2c-editor-content" data-creator-text-editor="true" aria-labelledby="creator-editor-content-title">
+            <div className="creatorlab-p2c-editor-content-heading">
+              <div>
+                <span>{language === "en" ? "Content" : "İçerik"}</span>
+                <h3 id="creator-editor-content-title">{language === "en" ? "Scene copy and voice" : "Sahne metni ve ses"}</h3>
+              </div>
+              {textChanged && <small>{language === "en" ? "Unsaved changes" : "Kaydedilmemiş değişiklikler"}</small>}
+            </div>
             <label className="block text-xs font-semibold text-slate-700">
               {language === "en" ? "Scene Text" : "Sahne Metni"}
               <textarea value={textDraft} onChange={(event) => setTextDraft(event.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
@@ -299,16 +332,23 @@ export default function CreatorEditor({
               type="button"
               onClick={() => onSaveText({ text: textDraft, narration: narrationDraft, dialogue: dialogueDraft })}
               disabled={!textChanged || sceneOperationsDisabled}
-              className="w-full rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="creatorlab-p2c-editor-save"
             >
-              {language === "en" ? "Save Changes" : "Değişiklikleri Kaydet"}
+              {textChanged
+                ? language === "en" ? "Save Changes" : "Değişiklikleri Kaydet"
+                : language === "en" ? "Changes Saved" : "Değişiklikler Kaydedildi"}
             </button>
-          </div>
-        </div>
+          </section>
+        </aside>
       </div>
 
       {(selectedScene.assetHistory || []).length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-media-history="true">
+        <details className="creatorlab-p2c-editor-disclosure" data-creator-media-history="true">
+          <summary>
+            <span>{language === "en" ? "Advanced · Media History" : "Gelişmiş · Medya Geçmişi"}</span>
+            <small>{selectedScene.assetHistory?.length || 0} {language === "en" ? "previous versions" : "önceki sürüm"}</small>
+          </summary>
+          <div className="creatorlab-p2c-editor-disclosure-body">
           <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">{language === "en" ? "Current Version" : "Geçerli Sürüm"}</span>
             <strong className="mt-1 block text-xs text-emerald-950">
@@ -324,11 +364,21 @@ export default function CreatorEditor({
               </button>
             ))}
           </div>
-        </div>
+          </div>
+        </details>
       )}
 
       {hasSelectedVideo && (
-        <div id="creator-selected-scene-trim" className="mt-4 rounded-xl border border-slate-200 bg-white p-4" data-creator-trim-controls="true">
+        <details id="creator-selected-scene-trim" className="creatorlab-p2c-editor-disclosure creatorlab-p2c-editor-media-timing" data-creator-trim-controls="true" open>
+          <summary>
+            <span>{language === "en" ? "Media & Timing" : "Medya ve Zamanlama"}</span>
+            <small>
+              {sourceDurationSec > 0
+                ? `${language === "en" ? "Source" : "Kaynak"}: ${sourceDurationSec.toFixed(1)}s`
+                : language === "en" ? "Loading duration…" : "Süre yükleniyor…"}
+            </small>
+          </summary>
+          <div className="creatorlab-p2c-editor-disclosure-body">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-sm text-slate-950">{language === "en" ? "Trim Video" : "Videoyu Kırp"}</strong>
             <span className="text-xs text-slate-500">
@@ -355,10 +405,11 @@ export default function CreatorEditor({
               onCommitTrim={onUpdateTrim}
             />
           </div>
-        </div>
+          </div>
+        </details>
       )}
 
-      <div className="mt-4 border-t border-slate-200 pt-4">
+      <div className="creatorlab-p2c-editor-timeline-wrap">
         <CreatorEditorTimeline
           scenes={scenes}
           selectedCreatorSceneId={selectedCreatorSceneId}
@@ -367,10 +418,12 @@ export default function CreatorEditor({
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3" aria-label={language === "en" ? "Selected scene actions" : "Seçili sahne işlemleri"}>
-        <span className="mr-auto text-xs font-semibold text-slate-700">
-          {language === "en" ? "Scene Actions" : "Sahne İşlemleri"}
-        </span>
+      <details className="creatorlab-p2c-editor-disclosure creatorlab-p2c-editor-scene-actions" aria-label={language === "en" ? "Selected scene actions" : "Seçili sahne işlemleri"}>
+        <summary>
+          <span>{language === "en" ? "Advanced · Scene Actions" : "Gelişmiş · Sahne İşlemleri"}</span>
+          <small>{language === "en" ? "Arrange, duplicate or remove" : "Sırala, çoğalt veya kaldır"}</small>
+        </summary>
+        <div className="creatorlab-p2c-editor-action-grid">
         <button
           type="button"
           aria-label={language === "en" ? "Add new scene" : "Yeni sahne ekle"}
@@ -425,7 +478,8 @@ export default function CreatorEditor({
             {language === "en" ? "Undo" : "Geri Al"}
           </button>
         )}
-      </div>
+        </div>
+      </details>
     </section>
   );
 }

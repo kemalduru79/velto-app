@@ -35,6 +35,35 @@ requireNeedles("components/create/CreatorEditor.tsx", [
   "CreatorEditorTimeline",
   'data-creator-editor="foundation"',
   "creatorlab-p2c-editor-surface",
+  '"Edit & Assemble"',
+  "focus({ preventScroll: true })",
+  "onSaveText({ text: textDraft, narration: narrationDraft, dialogue: dialogueDraft })",
+  "onUpdateTrim",
+  "onRefreshVideo(selectedScene.creatorSceneId!)",
+  "onRestoreMedia(selectedScene.creatorSceneId!, asset.id)",
+  'data-creator-continuity-warning={continuityWarning.severity}',
+  'hidden data-selected-media-fingerprint="true"',
+  "onMoveScene(\"earlier\")",
+  "onMoveScene(\"later\")",
+  "onDuplicateScene",
+  "onDeleteScene",
+  "onAddScene",
+  "onClick={onUndo}",
+]);
+
+const editor = read("components/create/CreatorEditor.tsx");
+if (editor.includes("media:{selectedMediaFingerprint}")) {
+  failures.push("CreatorEditor: media fingerprint remains visibly rendered");
+}
+
+requireNeedles("components/create/CreatorEditorTimeline.tsx", [
+  "CreatorEditorTimeline",
+  "onSelectScene(scene.creatorSceneId!)",
+  'aria-current={selected ? "true" : undefined}',
+  "selectedItem.scrollIntoView",
+  'window.matchMedia("(prefers-reduced-motion: reduce)")',
+  "scene.timing?.targetSceneDuration",
+  "creatorlab-p2c-editor-timeline-thumbnail",
 ]);
 
 requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
@@ -68,6 +97,8 @@ const page = requireNeedles("app/create/page.tsx", [
   "deriveCreatorSceneTriageStatus",
   'data-focused-scene="true"',
   "<CreatorSceneProductionStatus",
+  "creatorEditorWasOpenRef",
+  "setSelectedCreatorEditorSceneId(focusedScene.creatorSceneId)",
   'className="scene-production-navigator sticky top-4 z-20 mb-5"',
   'className="scene-production-navigator__tabs"',
   'data-production-step="script"',
@@ -86,6 +117,11 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
   ".creatorlab-p2c-scene-operations",
   ".creatorlab-p2c-focused-scene",
   ".creatorlab-p2c-scene-next-action",
+  ".creatorlab-p2c-editor-layout",
+  ".creatorlab-p2c-editor-preview-canvas",
+  ".creatorlab-p2c-editor-inspector",
+  ".creatorlab-p2c-editor-timeline-track",
+  ".creatorlab-p2c-editor-disclosure",
   ".scene-production-navigator",
   "prefers-reduced-motion",
 ]);
@@ -94,6 +130,8 @@ const p2cPresentationCopy = [
   read("components/create/CreatorProductionSubnav.tsx"),
   read("components/create/CreatorProductionSetupSummary.tsx"),
   read("components/create/CreatorSceneProductionStatus.tsx"),
+  editor,
+  read("components/create/CreatorEditorTimeline.tsx"),
   p2cCss,
 ].join("\n");
 

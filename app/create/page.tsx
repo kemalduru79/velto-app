@@ -3420,6 +3420,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [selectedCreatorEditorSceneId, setSelectedCreatorEditorSceneId] =
     useState<string | null>(null);
   const [creatorEditorOpen, setCreatorEditorOpen] = useState(false);
+  const creatorEditorWasOpenRef = useRef(false);
   const [creatorFocusedSceneId, setCreatorFocusedSceneId] = useState<number | null>(null);
   const [refineScenesLoading, setRefineScenesLoading] = useState(false);
   const [youtubeResearchVideos, setYoutubeResearchVideos] = useState<
@@ -3873,6 +3874,19 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       return changed ? next : prev;
     });
   }, [isCreatorLabFlow, scenes]);
+
+  useEffect(() => {
+    if (!creatorEditorOpen) {
+      creatorEditorWasOpenRef.current = false;
+      return;
+    }
+    if (creatorEditorWasOpenRef.current) return;
+    creatorEditorWasOpenRef.current = true;
+    const focusedScene = scenes.find((scene) => scene.id === creatorFocusedSceneId);
+    if (focusedScene?.creatorSceneId) {
+      setSelectedCreatorEditorSceneId(focusedScene.creatorSceneId);
+    }
+  }, [creatorEditorOpen, creatorFocusedSceneId, scenes]);
 
   useEffect(() => {
     if (!isCreatorLabFlow) {
