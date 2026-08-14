@@ -4,6 +4,7 @@ import "./globals.css";
 import "./creatorlab-ux-p2a.css";
 import "./creatorlab-ux-p2a-compat.css";
 import "./creatorlab-ux-p2a-final.css";
+import "./creatorlab-ux-p2b.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
