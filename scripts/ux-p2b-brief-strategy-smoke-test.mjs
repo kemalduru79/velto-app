@@ -43,7 +43,13 @@ const page = requireNeedles("app/create/page.tsx", [
   'id="creatorlab-strategy-youtube"',
   'id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar"',
   "onClick={handleCreatorProductionPackage}",
+  '"Selected direction"',
+  '"Seçili yön"',
 ]);
+
+if (page && page.includes("Selected for Production")) {
+  failures.push('Strategy: stale "Selected for Production" status copy remains');
+}
 
 if (page && !page.includes('useState("recommended")')) {
   failures.push("Strategy: recommended direction default changed or missing");

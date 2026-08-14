@@ -28700,7 +28700,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         )}
 
         {saveMessage && (
-          <div role={isCreatorLabFlow ? "status" : undefined} aria-live={isCreatorLabFlow ? "polite" : undefined} className="rounded-2xl border border-green-200 bg-green-50/80 p-4 text-green-700">
+          <div
+            role={isCreatorLabFlow ? "status" : undefined}
+            aria-live={isCreatorLabFlow ? "polite" : undefined}
+            className={`rounded-2xl border border-green-200 bg-green-50/80 p-4 text-green-700 ${
+              isCreatorLabFlow &&
+              (saveMessage === "Creator mentor analysis is ready ✅" ||
+                saveMessage === "Creator mentor analizi hazır ✅")
+                ? "creatorlab-mentor-ready-status"
+                : ""
+            }`}
+          >
             {saveMessage}
           </div>
         )}
@@ -28802,7 +28812,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     creatorSelectedStrategyDirectionId === "recommended" ? "is-selected" : ""
                   }`}>
                     {creatorSelectedStrategyDirectionId === "recommended"
-                      ? uiLanguage === "en" ? "Selected for Production" : "Production için seçildi"
+                      ? uiLanguage === "en" ? "Selected direction" : "Seçili yön"
                       : uiLanguage === "en" ? "Mentor recommendation" : "Mentor önerisi"}
                   </span>
                 </div>

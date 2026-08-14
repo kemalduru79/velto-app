@@ -54,15 +54,15 @@
 
 .creatorlab-uxp2a-shell .creatorlab-idea-lab-panel {
   margin-top: 2px;
-  border-style: dashed;
-  background: linear-gradient(180deg, rgba(249, 250, 252, 0.9), rgba(246, 248, 251, 0.82));
+  border: 1px solid var(--cl-border);
+  background: var(--cl-surface-muted);
+  box-shadow: none !important;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-idea-lab-panel[open] {
-  border-style: solid;
-  border-color: rgba(188, 204, 226, 0.92);
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(25, 42, 68, 0.05) !important;
+  border-color: var(--cl-border-strong);
+  background: var(--cl-surface-elevated);
+  box-shadow: 0 6px 18px rgba(25, 42, 68, 0.035) !important;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-idea-lab-panel > summary:hover {
@@ -72,6 +72,17 @@
 .creatorlab-uxp2a-shell .creatorlab-idea-lab-panel[open] > summary {
   border-bottom: 1px solid rgba(218, 222, 229, 0.76);
   background: rgba(249, 251, 254, 0.96);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-mentor-ready-status {
+  padding: 7px 11px !important;
+  color: var(--cl-success) !important;
+  background: color-mix(in srgb, var(--cl-success-soft) 52%, transparent) !important;
+  border-color: color-mix(in srgb, var(--cl-success) 18%, transparent) !important;
+  border-radius: 10px !important;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-idea-lab-body {
