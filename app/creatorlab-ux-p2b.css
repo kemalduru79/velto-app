@@ -1,0 +1,281 @@
+/* UX-P2B — Brief & Strategy Experience
+   Scope: CreatorLab only. Preserve all Brief, Idea Lab, Strategy, credit and generation handlers. */
+
+/* Brief: keep the primary path calm and outcome-led. */
+.creatorlab-uxp2a-shell .creatorlab-brief-experience {
+  gap: 16px;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-settings.creatorlab-brief-card-v2 {
+  border-color: rgba(210, 216, 225, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 251, 253, 0.94));
+  box-shadow: 0 7px 22px rgba(25, 42, 68, 0.04) !important;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-settings .creatorlab-brief-section-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(218, 222, 229, 0.72);
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-settings .creatorlab-brief-section-heading > div > p:first-child {
+  color: var(--cl-brand-strong) !important;
+}
+
+/* Secondary planning must remain available without competing with the main Brief. */
+.creatorlab-uxp2a-shell .creatorlab-secondary-panel {
+  border-color: rgba(211, 216, 224, 0.82);
+  background: rgba(249, 250, 252, 0.82);
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-secondary-panel > summary {
+  min-height: 58px;
+  padding: 12px 15px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-secondary-summary-copy strong {
+  color: #35445b !important;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-secondary-summary-copy span {
+  max-width: 720px;
+  color: #7a8493 !important;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-secondary-status {
+  color: #6f7a8a;
+  background: rgba(241, 243, 246, 0.94);
+  border-color: rgba(211, 216, 224, 0.8);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-panel {
+  margin-top: 2px;
+  border-style: dashed;
+  background: linear-gradient(180deg, rgba(249, 250, 252, 0.9), rgba(246, 248, 251, 0.82));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-panel[open] {
+  border-style: solid;
+  border-color: rgba(188, 204, 226, 0.92);
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(25, 42, 68, 0.05) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-panel > summary:hover {
+  background: rgba(246, 248, 251, 0.9);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-panel[open] > summary {
+  border-bottom: 1px solid rgba(218, 222, 229, 0.76);
+  background: rgba(249, 251, 254, 0.96);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-body {
+  gap: 16px;
+  padding: 16px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-entry {
+  border-color: rgba(211, 216, 224, 0.8);
+  background: rgba(250, 251, 253, 0.86);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-grid article {
+  border-color: rgba(211, 216, 224, 0.86);
+  background: #ffffff;
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-idea-lab-grid article.is-selected {
+  border-color: var(--cl-accent-border);
+  background: var(--cl-accent-soft);
+  box-shadow: 0 0 0 1px rgba(23, 105, 224, 0.05) !important;
+}
+
+/* Strategy: recommendation first, evidence second, approval always obvious. */
+.creatorlab-uxp2a-shell #creatorlab-strategy-canvas.creatorlab-strategy-experience {
+  gap: 15px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-stage-badge {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-heading {
+  align-items: flex-start;
+  padding-bottom: 2px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-heading p:last-child {
+  max-width: 700px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-brief-strip {
+  gap: 16px;
+  padding: 12px 15px;
+  border-color: rgba(211, 216, 224, 0.78);
+  background: rgba(249, 250, 252, 0.9);
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-brief-copy > span {
+  color: #708096;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-recommendation {
+  gap: 24px;
+  padding: 22px;
+  border-color: rgba(188, 212, 251, 0.92);
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 58%, #f4f8ff 100%);
+  box-shadow: 0 10px 30px rgba(25, 42, 68, 0.055) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-recommendation.is-selected {
+  border-color: var(--cl-accent);
+  box-shadow: 0 12px 32px rgba(23, 105, 224, 0.085) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-recommendation-label {
+  color: var(--cl-brand-strong) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-selection-badge {
+  border-color: rgba(188, 212, 251, 0.92);
+  background: rgba(237, 244, 255, 0.92);
+  color: var(--cl-brand-strong) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-recommendation-aside {
+  border-left-color: rgba(218, 222, 229, 0.84);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-grid {
+  gap: 12px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-panel {
+  border-color: rgba(211, 216, 224, 0.82);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 20px rgba(25, 42, 68, 0.035) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-panel-heading {
+  margin-bottom: 14px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-panel-heading > div > span {
+  color: #64748a !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-idea-card {
+  border-color: rgba(216, 221, 228, 0.86);
+  background: rgba(250, 251, 252, 0.78);
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-idea-card:not(.is-selected) {
+  opacity: 0.86;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-idea-card:hover,
+.creatorlab-uxp2a-shell .creatorlab-strategy-idea-card.is-selected {
+  opacity: 1;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-strategy-idea-card.is-selected {
+  border-color: var(--cl-accent-border);
+  background: var(--cl-accent-soft);
+}
+
+/* Optional market research is evidence, not a required workflow step. */
+.creatorlab-uxp2a-shell #creatorlab-strategy-youtube.creatorlab-strategy-panel {
+  border-style: dashed;
+  background: rgba(247, 249, 252, 0.8);
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-strategy-youtube:focus-within,
+.creatorlab-uxp2a-shell #creatorlab-strategy-youtube:hover {
+  border-style: solid;
+  border-color: rgba(188, 204, 226, 0.9);
+  background: rgba(250, 252, 255, 0.98);
+}
+
+/* Approval stays in document flow, but remains discoverable while reviewing Strategy. */
+.creatorlab-uxp2a-shell #creatorlab-strategy-action.creatorlab-strategy-action-bar {
+  position: sticky;
+  bottom: 14px;
+  z-index: 48;
+  margin-top: 4px;
+  border: 1px solid rgba(194, 204, 217, 0.94);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 14px 36px rgba(25, 42, 68, 0.12) !important;
+  backdrop-filter: blur(16px);
+}
+
+.creatorlab-uxp2a-shell #creatorlab-strategy-action .creatorlab-strategy-action-copy strong {
+  color: var(--cl-text-strong) !important;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-strategy-action .creatorlab-strategy-action-copy p {
+  color: var(--cl-muted) !important;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-strategy-action .creatorlab-primary-action {
+  min-height: 2.8rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 899px) {
+  .creatorlab-uxp2a-shell #creatorlab-strategy-action.creatorlab-strategy-action-bar {
+    bottom: 86px;
+  }
+}
+
+@media (max-width: 760px) {
+  .creatorlab-uxp2a-shell .creatorlab-strategy-recommendation {
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-strategy-action.creatorlab-strategy-action-bar {
+    align-items: stretch;
+    gap: 10px;
+    padding: 11px;
+  }
+}
+
+@media (max-width: 639px) {
+  .creatorlab-uxp2a-shell .creatorlab-secondary-panel > summary {
+    padding-inline: 12px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-idea-lab-body {
+    padding: 12px;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-strategy-action.creatorlab-strategy-action-bar {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-strategy-action .creatorlab-strategy-action-copy {
+    display: none;
+  }
+
+  .creatorlab-uxp2a-shell #creatorlab-strategy-action .creatorlab-primary-action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-uxp2a-shell .creatorlab-idea-lab-panel,
+  .creatorlab-uxp2a-shell .creatorlab-strategy-recommendation,
+  .creatorlab-uxp2a-shell .creatorlab-strategy-idea-card {
+    transition: none !important;
+  }
+}
