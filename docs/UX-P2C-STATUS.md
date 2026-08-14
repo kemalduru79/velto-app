@@ -30,3 +30,48 @@
 ### Dependencies and infrastructure
 
 UX-P2C-1 adds zero new dependencies and zero new infrastructure.
+
+## UX-P2C-2 — Scene Production Operational UX
+
+### Scene triage model
+
+UX-P2C-2 adds a deterministic, frontend-only attention model derived from existing in-memory scene state:
+
+- **Generating:** an existing image, narration, dialogue, batch, dispatch-countdown, or queued video operation is active.
+- **Review:** generation failed, media is stale, continuity reports a warning, or the current script health needs review.
+- **Ready:** script, visual, voice, and any required motion output are ready.
+- **Needs action:** one or more required scene assets are still missing without an active generation or review condition.
+
+The model is non-persisted, non-authoritative, and never changes generation behavior.
+
+### Navigator and selected-scene focus
+
+- The existing Scene Production area now begins with a compact operational overview showing real ready, needs-action, generating, and review counts.
+- Compact scene rows expose scene identity, overall status, three-step readiness, generating/attention state, and a clear focused selection.
+- Only the focused scene renders its detailed operational controls, reducing scanning noise for projects with many scenes.
+- Existing bulk selection remains separate and unchanged for controlled multi-scene actions.
+- The PROD-UX-P1 Script, Visual, and Audio navigator remains the focused scene's operational spine.
+
+### Primary action and attention treatment
+
+- The focused scene presents one dominant next-action entry that routes to the relevant existing Script, Visual, or Audio control.
+- Supporting and advanced controls remain in their existing panels and retain their handlers.
+- Active generation disables the competing dominant action and shows an explicit generating state without fake percentages or timers.
+- Missing, failed, and review conditions are summarized once beside the selected scene action.
+- Credit-consuming paths use provider-neutral wording and remain protected by CreatorCostGuard; no independent credit calculation was added.
+
+### Behavior explicitly preserved
+
+- Setup/Create & Review navigation and Production Plan behavior.
+- Scene bulk selection, render-mode controls, batch generation, individual generation, polling, queues, cancellation, and history.
+- The existing Scene Production Navigator and its active/ready/pending three-step behavior.
+- Creator Editor, timeline, trimming, text editing, media regeneration, continuity warnings, and scene operations.
+- Creator Background Music and CreatorCostGuard confirmation behavior.
+- API contracts, generation algorithms, provider routing, credit pricing, persistence, export architecture, and Storyverse.
+
+### Remaining for UX-P2C-3
+
+- Deeper Creator Editor and timeline layout, navigation, and editing interaction refinement.
+- Advanced editor progressive disclosure beyond the scene-production focus introduced here.
+
+UX-P2C-2 adds zero new dependencies and zero new infrastructure.

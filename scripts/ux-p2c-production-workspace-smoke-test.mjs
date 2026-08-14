@@ -37,6 +37,16 @@ requireNeedles("components/create/CreatorEditor.tsx", [
   "creatorlab-p2c-editor-surface",
 ]);
 
+requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
+  '"ready"',
+  '"needs_action"',
+  '"generating"',
+  '"review"',
+  "deriveCreatorSceneTriageStatus",
+  "data-scene-production-overview",
+  "aria-current={focused ? \"true\" : undefined}",
+]);
+
 const page = requireNeedles("app/create/page.tsx", [
   "<CreatorProductionSubnav",
   "<CreatorProductionSetupSummary",
@@ -49,6 +59,15 @@ const page = requireNeedles("app/create/page.tsx", [
   "onClick={continueCreatorProduction}",
   "handleExportMovie",
   "handleGenerateVideo",
+  "redrawSceneImage",
+  "prepareSelectedSceneAudio",
+  "prepareSelectedSceneAudio([scene.id])",
+  "creatorFocusedSceneId",
+  "setCreatorFocusedSceneId",
+  "creatorSceneProductionSummaries",
+  "deriveCreatorSceneTriageStatus",
+  'data-focused-scene="true"',
+  "<CreatorSceneProductionStatus",
   'className="scene-production-navigator sticky top-4 z-20 mb-5"',
   'className="scene-production-navigator__tabs"',
   'data-production-step="script"',
@@ -64,6 +83,9 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
   ".creatorlab-p2c-production-header-meta",
   ".creatorlab-p2c-production-status",
   ".creatorlab-p2c-editor-surface",
+  ".creatorlab-p2c-scene-operations",
+  ".creatorlab-p2c-focused-scene",
+  ".creatorlab-p2c-scene-next-action",
   ".scene-production-navigator",
   "prefers-reduced-motion",
 ]);
@@ -71,6 +93,7 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
 const p2cPresentationCopy = [
   read("components/create/CreatorProductionSubnav.tsx"),
   read("components/create/CreatorProductionSetupSummary.tsx"),
+  read("components/create/CreatorSceneProductionStatus.tsx"),
   p2cCss,
 ].join("\n");
 
@@ -80,6 +103,10 @@ if (/choose\s+(?:an?\s+)?provider|provider\s+(?:choice|selection)|openai|replica
 
 if (page && !page.includes("requestCreatorCostGuardConfirmation")) {
   failures.push("CreatorCostGuard confirmation path is missing");
+}
+
+if (/storyverse/i.test(p2cCss)) {
+  failures.push("UX-P2C: presentation stylesheet references the Storyverse path");
 }
 
 if (failures.length > 0) {

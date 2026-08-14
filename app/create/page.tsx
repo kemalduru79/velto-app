@@ -51,6 +51,10 @@ import CreatorProductionSubnav, {
 } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import CreatorSceneProductionStatus, {
+  deriveCreatorSceneTriageStatus,
+  getCreatorSceneTriageLabel,
+} from "@/components/create/CreatorSceneProductionStatus";
 import { getCreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
 import {
   buildCreatorFinalProductionSignature,
@@ -3416,6 +3420,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [selectedCreatorEditorSceneId, setSelectedCreatorEditorSceneId] =
     useState<string | null>(null);
   const [creatorEditorOpen, setCreatorEditorOpen] = useState(false);
+  const [creatorFocusedSceneId, setCreatorFocusedSceneId] = useState<number | null>(null);
   const [refineScenesLoading, setRefineScenesLoading] = useState(false);
   const [youtubeResearchVideos, setYoutubeResearchVideos] = useState<
     YoutubeResearchVideo[]
@@ -3873,11 +3878,17 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     if (!isCreatorLabFlow) {
       setSelectedCreatorEditorSceneId(null);
       setCreatorEditorOpen(false);
+      setCreatorFocusedSceneId(null);
       return;
     }
 
     setSelectedCreatorEditorSceneId((current) =>
       selectCreatorSceneId(scenes, current),
+    );
+    setCreatorFocusedSceneId((current) =>
+      current && scenes.some((scene) => scene.id === current)
+        ? current
+        : scenes[0]?.id ?? null,
     );
   }, [isCreatorLabFlow, scenes]);
 
@@ -17069,6 +17080,69 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     !creatorMotionRequired ||
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
+  const creatorSceneProductionSummaries = scenes.map((scene, index) => {
+    const sceneDraft = sceneScriptDrafts[scene.id] || {
+      narration: scene.narration || "",
+      dialogue: scene.dialogue || "",
+    };
+    const scriptHealth = assessCreatorSceneScriptDraft({
+      scene,
+      draft: sceneDraft,
+      language,
+      qualityMode: creatorQualityMode,
+    });
+    const visualReady = Boolean(scene.image);
+    const voiceReady = getSceneVoiceStatus(scene);
+    const motionRequired = creatorRoutedMotionSceneIdSet.has(scene.id);
+    const motionReady =
+      motionRequired && Boolean(scene.videoUrl) && scene.videoStatus === "done";
+    const narrationState = getCreatorNarrationAudioCurrentness(scene);
+    const dialogueState = getCreatorDialogueAudioCurrentness(scene);
+    const videoState = getCreatorVideoState(scene);
+    const continuityAudit = flowContinuityAudit?.scenes.find(
+      (audit) => String(audit.id) === String(scene.id),
+    );
+    const continuityWarning = getCreatorContinuityWarning(
+      continuityAudit,
+      uiLanguage === "en" ? "en" : "tr",
+    );
+    const generating =
+      redrawLoadingId === scene.id ||
+      loadingAudioSceneId === scene.id ||
+      loadingDialogueSceneId === scene.id ||
+      scene.videoStatus === "processing" ||
+      scene.videoStatus === "delayed" ||
+      (isBatchRendering && creatorSelectedSceneIdSet.has(scene.id)) ||
+      (imageDispatchCountdown?.scope === "scene" && imageDispatchCountdown.sceneId === scene.id) ||
+      (videoDispatchCountdown?.scope === "scene" && videoDispatchCountdown.sceneId === scene.id);
+    const status = deriveCreatorSceneTriageStatus({
+      generating,
+      failed: scene.videoStatus === "error",
+      stale:
+        narrationState === "stale" ||
+        dialogueState === "stale" ||
+        videoState === "stale",
+      hasContinuityWarning: Boolean(continuityWarning),
+      scriptNeedsReview: scriptHealth.status !== "ready",
+      scriptReady: scriptHealth.status === "ready",
+      visualReady,
+      voiceReady,
+      motionRequired,
+      motionReady,
+    });
+
+    return {
+      id: scene.id,
+      number: index + 1,
+      title:
+        scene.text ||
+        scene.narration ||
+        (uiLanguage === "en" ? `Scene ${index + 1}` : `Sahne ${index + 1}`),
+      status,
+      readySteps: [scriptHealth.status === "ready", visualReady, voiceReady].filter(Boolean).length,
+      totalSteps: 3 as const,
+    };
+  });
   const creatorMusicConfirmationRequired =
     creatorBackgroundMusic.mode === "selected" &&
     creatorBackgroundMusic.confirmedTrackId !== creatorBackgroundMusic.selectedTrackId;
@@ -30324,6 +30398,13 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     </p>
                   </div>
 
+                  <CreatorSceneProductionStatus
+                    scenes={creatorSceneProductionSummaries}
+                    focusedSceneId={creatorFocusedSceneId}
+                    onFocusScene={setCreatorFocusedSceneId}
+                    language={uiLanguage === "en" ? "en" : "tr"}
+                  />
+
                   <div className="mb-4 border-y border-slate-200 py-3 md:py-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -30406,7 +30487,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                             aria-pressed={selected}
                             onClick={() => {
                               toggleCreatorSceneSelection(scene.id);
-                              focusCreatorScene(scene.id, "visual");
+                              setCreatorFocusedSceneId(scene.id);
+                              window.setTimeout(() => focusCreatorScene(scene.id, "visual"), 0);
                             }}
                             className={`min-w-[116px] rounded-xl border px-3 py-2 text-left transition ${
                               selected
@@ -30518,7 +30600,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   </div>
 
                   <div className="space-y-3">
-                    {scenes.map((scene, index) => {
+                    {scenes.filter((scene) => scene.id === creatorFocusedSceneId).map((scene) => {
+                      const index = scenes.findIndex((item) => item.id === scene.id);
                       const visualReady = Boolean(scene.image);
                       const voiceReady = getSceneVoiceStatus(scene);
                       const motionRouted = creatorRoutedMotionSceneIdSet.has(scene.id);
@@ -30619,16 +30702,73 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       const sceneComparedAssets = sceneComparedAssetIds
                         .map((assetId) => sceneAssetHistory.find((asset) => asset.id === assetId))
                         .filter((asset): asset is CreatorSceneAssetVersion => Boolean(asset));
+                      const sceneOperationalSummary = creatorSceneProductionSummaries.find(
+                        (item) => item.id === scene.id,
+                      );
+                      const scenePrimaryTab: CreatorSceneInspectorTab =
+                        sceneDraftHealth.status !== "ready"
+                          ? "script"
+                          : !visualReady || motionFailed || (motionRouted && !motionReady)
+                            ? "visual"
+                            : !voiceReady
+                              ? "audio"
+                              : "script";
+                      const scenePrimaryActionLabel =
+                        sceneDraftHealth.status !== "ready"
+                          ? uiLanguage === "en" ? "Review Script" : "Metni Kontrol Et"
+                          : !visualReady
+                            ? uiLanguage === "en" ? "Generate Visual" : "Görsel Üret"
+                            : !voiceReady
+                              ? uiLanguage === "en" ? "Generate Voice" : "Ses Üret"
+                              : motionFailed
+                                ? uiLanguage === "en" ? "Retry Video" : "Videoyu Yeniden Dene"
+                                : motionRouted && !motionReady
+                                  ? uiLanguage === "en" ? "Generate Video" : "Video Üret"
+                                  : uiLanguage === "en" ? "Review Scene" : "Sahneyi Kontrol Et";
+                      const scenePrimaryActionUsesCredits =
+                        sceneDraftHealth.status === "ready" &&
+                        (!visualReady || !voiceReady || (motionRouted && !motionReady));
+                      const sceneAttentionSummary =
+                        scene.videoStatus === "processing" || scene.videoStatus === "delayed"
+                          ? uiLanguage === "en" ? "Video generation is in progress." : "Video üretimi devam ediyor."
+                          : motionFailed
+                            ? uiLanguage === "en" ? "Video generation failed and can be retried." : "Video üretimi başarısız oldu ve yeniden denenebilir."
+                            : sceneDraftHealth.status !== "ready"
+                              ? simpleGuidance
+                              : !visualReady
+                                ? uiLanguage === "en" ? "This scene needs a visual." : "Bu sahnenin görsele ihtiyacı var."
+                                : !voiceReady
+                                  ? uiLanguage === "en" ? "This scene needs its voice track." : "Bu sahnenin ses kaydına ihtiyacı var."
+                                  : motionRouted && !motionReady
+                                    ? uiLanguage === "en" ? "The scene image is ready for video generation." : "Sahne görseli video üretimine hazır."
+                                    : uiLanguage === "en" ? "All required scene assets are ready for review." : "Gerekli tüm sahne varlıkları kontrole hazır.";
+                      const runCreatorScenePrimaryAction = () => {
+                        setCreatorSceneInspectorTabs((current) => ({
+                          ...current,
+                          [scene.id]: scenePrimaryTab,
+                        }));
+                        if (sceneDraftHealth.status !== "ready") return;
+                        if (!visualReady) {
+                          void redrawSceneImage(scene);
+                          return;
+                        }
+                        if (!voiceReady) {
+                          void prepareSelectedSceneAudio([scene.id]);
+                          return;
+                        }
+                        if (motionRouted && !motionReady) {
+                          void handleGenerateVideo(scene.id);
+                        }
+                      };
 
                       return (
                         <details
                           id={`creator-scene-${scene.id}`}
                           key={`creator-scene-workspace-${scene.id}`}
-                          className={`group overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)] ${
-                            creatorSelectedSceneIdSet.has(scene.id)
-                              ? "border-blue-300 ring-2 ring-blue-100"
-                              : "border-slate-200"
-                          }`}
+                          open
+                          data-focused-scene="true"
+                          data-scene-triage-status={sceneOperationalSummary?.status}
+                          className="creatorlab-p2c-focused-scene group overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]"
                         >
                           <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 transition hover:bg-slate-50 md:px-5 [&::-webkit-details-marker]:hidden">
                             <input
@@ -30667,28 +30807,51 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               </p>
                             </div>
                             <div className="hidden items-center gap-2 lg:flex">
-                              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                {uiLanguage === "en" ? "Visual" : "Görsel"} · {visualReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
+                              <span className="creatorlab-p2c-focused-scene-completion">
+                                {sceneProductionReadyCount}/3 {uiLanguage === "en" ? "steps ready" : "adım hazır"}
                               </span>
-                              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                {uiLanguage === "en" ? "Voice" : "Ses"} · {voiceReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
-                              </span>
-                              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${motionFailed ? "bg-rose-50 text-rose-700" : sceneOutputMode === "image" || motionReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                {uiLanguage === "en" ? "Output" : "Çıktı"} · {sceneOutputMode === "image"
-                                  ? uiLanguage === "en" ? "Image" : "Görsel"
-                                  : sceneOutputMode === "video"
-                                    ? motionFailed
-                                      ? uiLanguage === "en" ? "Video retry" : "Video tekrar"
-                                      : motionReady
-                                        ? uiLanguage === "en" ? "Video ready" : "Video hazır"
-                                        : uiLanguage === "en" ? "Video pending" : "Video bekliyor"
-                                    : uiLanguage === "en" ? "Choose" : "Seç"}
+                              <span className="creatorlab-p2c-focused-scene-status">
+                                {sceneOperationalSummary
+                                  ? getCreatorSceneTriageLabel(sceneOperationalSummary.status, uiLanguage === "en" ? "en" : "tr")
+                                  : uiLanguage === "en" ? "Needs action" : "Aksiyon gerekli"}
                               </span>
                             </div>
                             <span className="text-slate-400 transition group-open:rotate-180" aria-hidden="true">⌄</span>
                           </summary>
 
                           <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-5">
+                            <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
+                              <div>
+                                <span>
+                                  {sceneOperationalSummary
+                                    ? getCreatorSceneTriageLabel(sceneOperationalSummary.status, uiLanguage === "en" ? "en" : "tr")
+                                    : uiLanguage === "en" ? "Needs action" : "Aksiyon gerekli"}
+                                </span>
+                                <strong>{sceneAttentionSummary}</strong>
+                                {scenePrimaryActionUsesCredits && (
+                                  <small>{uiLanguage === "en" ? "Uses credits · confirmation before generation" : "Kredi kullanır · üretimden önce onaylanır"}</small>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={runCreatorScenePrimaryAction}
+                                disabled={
+                                  scene.videoStatus === "processing" ||
+                                  scene.videoStatus === "delayed" ||
+                                  redrawLoadingId === scene.id ||
+                                  loadingAudioSceneId === scene.id ||
+                                  loadingDialogueSceneId === scene.id ||
+                                  creatorMediaPreflightLoading ||
+                                  Boolean(imageDispatchCountdown) ||
+                                  Boolean(videoDispatchCountdown)
+                                }
+                              >
+                                {scene.videoStatus === "processing" || scene.videoStatus === "delayed"
+                                  ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
+                                  : scenePrimaryActionLabel}
+                              </button>
+                            </div>
+
                             {index === 0 && creatorOpeningHookOptions.length > 0 && (
                               <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
                                 <div>
