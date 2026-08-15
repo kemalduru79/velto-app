@@ -17505,6 +17505,22 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     (item) => creatorReleaseConfirmations[item.key],
   );
   const creatorReleaseReady = creatorPublishSystemReady && creatorReleaseConfirmed;
+  const creatorPublishIsOutdated =
+    creatorFinalVideoNeedsRebuild ||
+    creatorProjectLifecycle?.status === "export_outdated";
+  const creatorPublishAttentionItems = [
+    ...creatorPublishSystemChecks
+      .filter((item) => !item.ready)
+      .map((item) => ({ key: `system-${item.key}`, label: item.label })),
+    ...creatorReleaseConfirmationItems
+      .filter((item) => !creatorReleaseConfirmations[item.key])
+      .map((item) => ({ key: `confirmation-${item.key}`, label: item.label })),
+  ];
+  const creatorPublishReadinessState = creatorPublishIsOutdated
+    ? "outdated"
+    : creatorReleaseReady
+      ? "ready"
+      : "needs-attention";
   const creatorPublishChecklistCount =
     creatorPublishSystemChecks.filter((item) => item.ready).length +
     creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length;
@@ -32216,65 +32232,72 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <p className="creatorlab-publish-kicker">
                   {uiLanguage === "en" ? "Step 5 · Publish" : "Adım 5 · Yayınla"}
                 </p>
-                <h1>
-                  {uiLanguage === "en"
-                    ? "Review, approve and export the complete creator release package."
-                    : "Eksiksiz creator yayın paketini kontrol et, onayla ve dışa aktar."}
-                </h1>
-                <p>
-                  {uiLanguage === "en"
-                    ? "Your final video, thumbnail, publishing copy and platform adaptations are organized in one release workspace."
-                    : "Final video, thumbnail, yayın metinleri ve platform uyarlamaları tek teslim çalışma alanında düzenlendi."}
-                </p>
+                <h1>{creatorProductionPackage.title}</h1>
+                <div className="creatorlab-p2d-publish-meta" aria-label={uiLanguage === "en" ? "Publish package summary" : "Yayın paketi özeti"}>
+                  <span>{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}</span>
+                  <span>{getCreatorDurationLabel()}</span>
+                  <span>{scenes.length} {uiLanguage === "en" ? "scenes" : "sahne"}</span>
+                  <span>{creatorProductionComplete
+                    ? uiLanguage === "en" ? "Final video ready" : "Final video hazır"
+                    : uiLanguage === "en" ? "Final video needs attention" : "Final video kontrol edilmeli"}</span>
+                </div>
               </div>
-              <span className="creatorlab-publish-stage-badge">
-                {creatorPublishComplete
-                  ? uiLanguage === "en" ? "Package delivered" : "Paket teslim edildi"
-                  : `${creatorPublishAssetCount}/3 ${uiLanguage === "en" ? "release assets" : "yayın varlığı"}`}
+              <span className="creatorlab-publish-stage-badge" data-readiness-state={creatorPublishReadinessState}>
+                {creatorPublishIsOutdated
+                  ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
+                  : creatorReleaseReady
+                    ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır"
+                    : `${creatorPublishAttentionItems.length} ${uiLanguage === "en" ? "items need attention" : "öğe kontrol edilmeli"}`}
               </span>
             </div>
 
-            <div className="creatorlab-publish-readiness" aria-label={uiLanguage === "en" ? "Publishing readiness" : "Yayın hazırlığı"}>
-              <div className={`creatorlab-publish-readiness-card ${creatorPublishVideoUrl ? "is-ready" : ""}`}>
-                <span className="creatorlab-publish-readiness-icon" aria-hidden="true">✓</span>
-                <div className="creatorlab-publish-readiness-copy">
-                  <span>{uiLanguage === "en" ? "Final video" : "Final video"}</span>
-                  <strong>{creatorPublishVideoUrl ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}</strong>
+            <section
+              className="creatorlab-p2d-readiness"
+              data-publish-readiness={creatorPublishReadinessState}
+              aria-labelledby="creatorlab-publish-readiness-title"
+            >
+              <div className="creatorlab-p2d-readiness-summary">
+                <span aria-hidden="true">{creatorPublishIsOutdated ? "!" : creatorReleaseReady ? "✓" : creatorPublishAttentionItems.length}</span>
+                <div>
+                  <small>{uiLanguage === "en" ? "Publish readiness" : "Yayın hazırlığı"}</small>
+                  <h2 id="creatorlab-publish-readiness-title">
+                    {creatorPublishIsOutdated
+                      ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
+                      : creatorReleaseReady
+                        ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır"
+                        : uiLanguage === "en"
+                          ? `${creatorPublishAttentionItems.length} items need attention`
+                          : `${creatorPublishAttentionItems.length} öğe kontrol edilmeli`}
+                  </h2>
                 </div>
               </div>
-              <div className={`creatorlab-publish-readiness-card is-thumbnail-essential ${creatorPublishThumbnailUrl ? "is-ready" : ""}`}>
-                <div className="creatorlab-publish-essential-thumbnail">
-                  {creatorPublishThumbnailUrl ? (
-                    <img src={creatorPublishThumbnailUrl} alt="" />
-                  ) : (
-                    <span className="creatorlab-publish-readiness-icon" aria-hidden="true">2</span>
-                  )}
-                </div>
-                <div className="creatorlab-publish-readiness-copy">
-                  <span>Thumbnail</span>
-                  <strong>
-                    {creatorPublishThumbnailUrl
-                      ? uiLanguage === "en" ? "Selected" : "Seçildi"
-                      : uiLanguage === "en" ? "Required" : "Gerekli"}
-                  </strong>
-                </div>
+              {creatorPublishAttentionItems.length > 0 && (
+                <ul className="creatorlab-p2d-readiness-actions">
+                  {creatorPublishAttentionItems.slice(0, 4).map((item) => (
+                    <li key={item.key}>{item.label}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <div className="creatorlab-p2d-package-heading">
+              <div>
+                <span>{uiLanguage === "en" ? "Publish Package" : "Yayın Paketi"}</span>
+                <h2>{uiLanguage === "en" ? "Final assets and publishing copy" : "Final varlıklar ve yayın metinleri"}</h2>
+              </div>
+              <div className="creatorlab-p2d-package-heading-actions">
+                <small>{creatorPublishAssetCount}/3 {uiLanguage === "en" ? "core assets ready" : "temel varlık hazır"}</small>
                 <button
                   type="button"
                   className="creatorlab-publish-essential-action"
                   onClick={() => setCreatorThumbnailChooserOpen((prev) => !prev)}
                   aria-expanded={creatorThumbnailChooserOpen}
+                  aria-controls="creatorlab-primary-thumbnail-chooser"
                 >
                   {creatorPublishThumbnailUrl
-                    ? uiLanguage === "en" ? "Change" : "Değiştir"
-                    : uiLanguage === "en" ? "Select" : "Seç"}
+                    ? uiLanguage === "en" ? "Change thumbnail" : "Thumbnail'ı değiştir"
+                    : uiLanguage === "en" ? "Select thumbnail" : "Thumbnail seç"}
                 </button>
-              </div>
-              <div className={`creatorlab-publish-readiness-card ${youtubeMetadataResult ? "is-ready" : ""}`}>
-                <span className="creatorlab-publish-readiness-icon" aria-hidden="true">{youtubeMetadataResult ? "✓" : "3"}</span>
-                <div className="creatorlab-publish-readiness-copy">
-                  <span>{uiLanguage === "en" ? "Publishing copy" : "Yayın metinleri"}</span>
-                  <strong>{youtubeMetadataResult ? uiLanguage === "en" ? "Prepared" : "Hazırlandı" : uiLanguage === "en" ? "Can be generated" : "Üretilebilir"}</strong>
-                </div>
               </div>
             </div>
 
@@ -32370,8 +32393,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     title={
                       imageDispatchCountdown?.scope === "thumbnail"
                         ? uiLanguage === "en"
-                          ? "Cancel before provider dispatch. No image credit has been used yet."
-                          : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
+                          ? "Cancel before generation starts. No image credit has been used yet."
+                          : "Üretim başlamadan iptal et. Henüz görsel kredisi kullanılmadı."
                         : uiLanguage === "en"
                           ? "Uses image-generation credits based on the selected quality tier"
                           : "Seçili kalite seviyesine göre görsel üretim kredisi kullanır"
@@ -32773,7 +32796,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     </button>
                     <button
                       type="button"
-                      className="creatorlab-publish-primary-button border-2 border-blue-700 bg-blue-700 px-5 py-3 font-bold text-white shadow-lg transition hover:bg-blue-800 disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none"
+                      className="creatorlab-publish-secondary-button px-5 py-3 font-bold"
                       style={{ minWidth: "190px", borderRadius: "12px" }}
                       onClick={handleSaveCreatorThumbnail}
                       disabled={!creatorPublishThumbnailUrl || !creatorThumbnailHasUnsavedChanges || creatorThumbnailSaving}
@@ -32796,8 +32819,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         </strong>
                         <p className="mt-1 text-xs leading-5 text-amber-800">
                           {uiLanguage === "en"
-                            ? "No provider request or Velto image credit has been used yet. At zero, dispatch and billing begin."
-                            : "Henüz servis talebi gönderilmedi ve Velto görsel kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar."}
+                            ? "No image credit has been used yet. At zero, generation and credit use begin."
+                            : "Henüz görsel kredisi kullanılmadı. Sayaç sıfırlandığında üretim ve kredi kullanımı başlar."}
                         </p>
                       </div>
                       <button type="button" onClick={cancelPendingImageDispatch} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700">
@@ -32889,8 +32912,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 )}
               </details>
             </div>
-
-            <div className="creatorlab-publish-content-grid">            </div>
 
             <div className="creatorlab-publish-content-grid">
               <article id="creatorlab-publish-metadata" className="creatorlab-publish-metadata-card">
@@ -33088,8 +33109,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <div id="creatorlab-publish-action" className="creatorlab-publish-action-bar">
               <div className="creatorlab-publish-action-copy">
                 <strong>
-                  {creatorPublishComplete
-                    ? uiLanguage === "en" ? "Creator Package delivered" : "Creator Paketi teslim edildi"
+                  {creatorPublishIsOutdated
+                    ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
+                    : creatorPublishComplete
+                      ? uiLanguage === "en" ? "Current package is ready" : "Mevcut paket hazır"
                     : creatorReleaseReady
                       ? uiLanguage === "en" ? "Release approved and ready to export" : "Yayın onaylandı ve dışa aktarıma hazır"
                       : uiLanguage === "en" ? "Complete release validation before export" : "Dışa aktarımdan önce yayın doğrulamasını tamamla"}
@@ -33113,8 +33136,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               >
                 {isDownloadingCreatorPackage
                   ? uiLanguage === "en" ? "Preparing package..." : "Paket hazırlanıyor..."
-                  : creatorPublishComplete
-                    ? uiLanguage === "en" ? "Download Creator Package Again" : "Creator Paketini Yeniden İndir"
+                  : creatorPublishIsOutdated
+                    ? uiLanguage === "en" ? "Refresh Creator Package" : "Creator Paketini Güncelle"
+                    : creatorPublishComplete
+                      ? uiLanguage === "en" ? "Download Creator Package Again" : "Creator Paketini Yeniden İndir"
                     : uiLanguage === "en" ? "Approve & Export Creator Package" : "Onayla ve Creator Paketini Dışa Aktar"}
               </button>
             </div>
