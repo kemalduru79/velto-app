@@ -1189,24 +1189,155 @@
   opacity: 0.42;
 }
 
-@media (min-width: 900px) and (max-width: 1439px) {
-  .creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
-    grid-template-columns: minmax(210px, 1fr) max-content;
-    grid-template-rows: auto auto;
-    gap: 5px 14px;
-  }
+/* Keep identity and actions on the primary row; lifecycle progress owns the
+   quieter second row at every desktop width and browser zoom level. */
+.creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
+  grid-template-columns: minmax(220px, 1fr) minmax(0, max-content);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 8px 18px;
+  min-height: 0;
+  padding-block: 10px 9px;
+}
 
-  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: start;
-  }
+.creatorlab-uxp2a-shell .creatorlab-brand-block {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
 
-  .creatorlab-uxp2a-shell .creatorlab-topbar-actions {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    min-width: 0;
-  }
+.creatorlab-uxp2a-shell .creatorlab-project-name {
+  max-width: min(42rem, 46vw);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-topbar-actions {
+  grid-column: 2;
+  grid-row: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  row-gap: 5px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-block {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  grid-template-columns: minmax(90px, auto) minmax(140px, 1fr) auto;
+  justify-content: stretch;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--cl-surface-muted) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cl-border) 76%, transparent);
+  border-radius: 9px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-copy {
+  display: block;
+  min-width: 0;
+  text-align: left;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-copy > span,
+.creatorlab-uxp2a-shell .creatorlab-readiness-block .creatorlab-status-pill {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-copy > strong {
+  display: block;
+  overflow: hidden;
+  color: var(--cl-muted);
+  font-size: 0.66rem;
+  font-weight: 720;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-readiness-track {
+  width: 100%;
+  min-width: 0;
+}
+
+/* A shared rail makes Setup and Create & Review read as one two-phase flow. */
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav {
+  position: relative;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  padding: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cl-surface-muted) 80%, white);
+  border: 1px solid var(--cl-border);
+  border-radius: 13px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav::before {
+  position: absolute;
+  top: 50%;
+  right: 25%;
+  left: 25%;
+  z-index: 0;
+  height: 1px;
+  background: var(--cl-border-strong);
+  content: "";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item {
+  position: relative;
+  z-index: 1;
+  min-height: 58px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cl-surface-muted) 90%, white);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item + .creatorlab-uxp2a-production-nav-item {
+  border-left: 1px solid transparent;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item::after {
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="complete"] {
+  color: var(--cl-muted);
+  background: color-mix(in srgb, var(--cl-success-soft) 42%, var(--cl-surface-muted));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="complete"] .creatorlab-uxp2a-production-step {
+  color: transparent;
+  background: var(--cl-success-soft);
+  border-color: color-mix(in srgb, var(--cl-success) 30%, var(--cl-border));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="complete"] .creatorlab-uxp2a-production-step::before {
+  color: var(--cl-success);
+  content: "✓";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="active"] {
+  color: var(--cl-text-strong);
+  background: var(--cl-surface-elevated);
+  border-color: color-mix(in srgb, var(--cl-accent) 32%, var(--cl-border));
+  box-shadow: 0 6px 16px rgba(25, 42, 68, 0.07);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="active"]::after {
+  height: 3px;
+  background: var(--cl-accent);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item[data-state="active"] .creatorlab-uxp2a-production-step {
+  color: #ffffff;
+  background: var(--cl-accent);
+  border-color: var(--cl-accent);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-uxp2a-production-description {
+  display: block;
 }
 
 @media (max-width: 1100px) {
@@ -1224,7 +1355,56 @@
   }
 }
 
+@media (max-width: 760px) {
+  .creatorlab-uxp2a-shell .creatorlab-workspace-topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 8px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-brand-block,
+  .creatorlab-uxp2a-shell .creatorlab-topbar-actions,
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
+    grid-column: 1;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-brand-block {
+    grid-row: 1;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-topbar-actions {
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
+    grid-row: 3;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-project-name {
+    max-width: calc(100vw - 96px);
+  }
+}
+
 @media (max-width: 720px) {
+  .creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav::before {
+    top: 30px;
+    right: auto;
+    bottom: 30px;
+    left: 24px;
+    width: 1px;
+    height: auto;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-uxp2a-production-nav-item + .creatorlab-uxp2a-production-nav-item {
+    border-top: 1px solid transparent;
+  }
+
   .creatorlab-uxp2a-shell .creatorlab-p2c-batch-toolbar,
   .creatorlab-uxp2a-shell .creatorlab-p2c-batch-mode,
   .creatorlab-uxp2a-shell .creatorlab-p2c-batch-actions {

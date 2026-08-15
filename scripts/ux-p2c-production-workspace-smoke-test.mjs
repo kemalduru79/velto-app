@@ -105,6 +105,10 @@ const page = requireNeedles("app/create/page.tsx", [
   'data-production-step="visual"',
   'data-production-step="audio"',
   "sceneProductionReadyCount}/3",
+  'className="creatorlab-workspace-topbar"',
+  'className="creatorlab-readiness-block"',
+  "<ProductTopNavigation",
+  "<UserAccountMenu",
   'data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}',
   '"Select scenes for batch actions"',
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")',
@@ -141,6 +145,12 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
 requireNeedles("components/navigation/ProductTopNavigation.tsx", [
   "creatorlab-product-navigation",
   "<UserAccountMenu",
+]);
+
+requireNeedles("components/auth/UserAccountMenu.tsx", [
+  "availableCredits",
+  "reservedCredits",
+  "t.credits",
 ]);
 
 const p2cPresentationCopy = [
