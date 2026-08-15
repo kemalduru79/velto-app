@@ -8216,6 +8216,50 @@ const generateSceneImage = async (
     );
   };
 
+  const reuseCreatorProjectImage = (
+    targetCreatorSceneId: string,
+    imageUrl: string,
+    sourceCreatorSceneId: string,
+  ) => {
+    const targetScene = scenes.find((scene) => scene.creatorSceneId === targetCreatorSceneId);
+    if (!targetScene || targetScene.image === imageUrl) return;
+    if (["processing", "delayed"].includes(targetScene.videoStatus || "")) {
+      setError(uiLanguage === "en" ? "Video generation is already active for this scene." : "Bu sahne için video üretimi zaten etkin.");
+      return;
+    }
+
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en"
+        ? `Reuse project image in scene ${targetScene.id}`
+        : `Proje görselini sahne ${targetScene.id} içinde kullan`,
+    );
+    clearVideoPollForScene(targetScene.id, targetCreatorSceneId);
+    setScenes((prev) => prev.map((scene) => {
+      if (scene.creatorSceneId !== targetCreatorSceneId) return scene;
+      const normalized = normalizeCreatorAssetHistory(scene);
+      return {
+        ...normalized,
+        image: imageUrl,
+        videoUrl: "",
+        videoStatus: "idle",
+        videoJobId: "",
+        videoQueueJobId: "",
+        videoDurationSeconds: 0,
+        videoGenerationSignature: undefined,
+        videoPendingGenerationSignature: undefined,
+        clipInSec: undefined,
+        clipOutSec: undefined,
+      };
+    }));
+    setError("");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? `Project image reused from another scene. Existing motion requires refresh.`
+        : `Başka bir sahnedeki proje görseli kullanıldı. Mevcut hareket yenilenmelidir.`,
+    );
+    void sourceCreatorSceneId;
+  };
+
   const setCreatorScenesRenderMode = (
     sceneIds: number[],
     renderMode: "image" | "video",
@@ -30475,6 +30519,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       const asset = scene?.assetHistory?.find((item) => item.id === assetId);
                       if (scene && asset) restoreCreatorSceneAsset(scene.id, asset);
                     }}
+                    onUseProjectImage={reuseCreatorProjectImage}
                     sceneOperationsDisabled={
                       isBatchRendering ||
                       scenes.some((scene) =>

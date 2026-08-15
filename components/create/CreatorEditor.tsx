@@ -5,6 +5,7 @@ import CreatorEditorTimeline, {
   type CreatorEditorTimelineScene,
 } from "@/components/create/CreatorEditorTimeline";
 import CreatorVideoTrimControl from "@/components/create/CreatorVideoTrimControl";
+import CreatorProjectAssets from "@/components/create/CreatorProjectAssets";
 import {
   type CreatorAudioCurrentness,
   normalizeCreatorSceneTrim,
@@ -34,6 +35,7 @@ type CreatorEditorProps = {
   getContinuityWarning: (creatorSceneId: string) => CreatorContinuityWarning | null;
   onRefreshVideo: (creatorSceneId: string) => void;
   onRestoreMedia: (creatorSceneId: string, assetId: string) => void;
+  onUseProjectImage: (targetCreatorSceneId: string, url: string, sourceCreatorSceneId: string) => void;
   sceneOperationsDisabled?: boolean;
   language: "en" | "tr";
 };
@@ -56,6 +58,7 @@ export default function CreatorEditor({
   getContinuityWarning,
   onRefreshVideo,
   onRestoreMedia,
+  onUseProjectImage,
   sceneOperationsDisabled = false,
   language,
 }: CreatorEditorProps) {
@@ -341,6 +344,16 @@ export default function CreatorEditor({
           </section>
         </aside>
       </div>
+
+      <CreatorProjectAssets
+        scenes={scenes}
+        targetCreatorSceneId={selectedScene.creatorSceneId!}
+        disabled={sceneOperationsDisabled}
+        language={language}
+        onUseImage={(url, sourceCreatorSceneId) =>
+          onUseProjectImage(selectedScene.creatorSceneId!, url, sourceCreatorSceneId)
+        }
+      />
 
       {(selectedScene.assetHistory || []).length > 0 && (
         <details className="creatorlab-p2c-editor-disclosure" data-creator-media-history="true">
