@@ -30542,32 +30542,42 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       })}
                     </div>
 
-                    <div className="mt-2 flex flex-col gap-3 border-t border-slate-100 pt-3 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="text-xs text-slate-600" aria-live="polite">
-                        <strong className="text-slate-950">{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "scene(s) selected" : "sahne seçili"}
-                        {creatorSelectedSceneIds.length > 0 && (
-                          <span>
-                            {` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals missing" : "görsel eksik"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
+                    <div
+                      className="creatorlab-p2c-batch-toolbar"
+                      data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}
+                    >
+                      {creatorSelectedSceneIds.length === 0 ? (
+                        <p className="creatorlab-p2c-batch-empty" aria-live="polite">
+                          {uiLanguage === "en" ? "Select scenes for batch actions" : "Toplu işlemler için sahneleri seçin"}
+                        </p>
+                      ) : (
+                        <>
+                          <div className="creatorlab-p2c-batch-selection" aria-live="polite">
+                            <strong>{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "selected" : "seçili"}
+                            <span>
+                              {` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals missing" : "görsel eksik"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}
+                            </span>
+                          </div>
+                          <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Output mode" : "Çıktı modu"}>
+                            <span>{uiLanguage === "en" ? "Output" : "Çıktı"}</span>
+                            <div className="creatorlab-p2c-batch-segmented">
                         <button
                           type="button"
                           onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")}
-                          disabled={creatorSelectedSceneIds.length === 0}
-                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                          className="creatorlab-p2c-batch-mode-button"
                         >
-                          {uiLanguage === "en" ? "Selected → Image" : "Seçili → Görsel"}
+                          {uiLanguage === "en" ? "Image" : "Görsel"}
                         </button>
                         <button
                           type="button"
                           onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")}
-                          disabled={creatorSelectedSceneIds.length === 0}
-                          className="min-h-10 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-40"
+                          className="creatorlab-p2c-batch-mode-button"
                         >
-                          {uiLanguage === "en" ? "Selected → Video" : "Seçili → Video"}
+                          Video
                         </button>
+                            </div>
+                          </div>
+                          <div className="creatorlab-p2c-batch-actions">
                         <button
                           type="button"
                           onClick={() => {
@@ -30585,10 +30595,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               Boolean(imageDispatchCountdown) ||
                               Boolean(videoDispatchCountdown))
                           }
-                          className={`min-h-10 rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-40 ${
+                          className={`creatorlab-p2c-batch-action ${
                             imageDispatchCountdown?.scope === "batch"
-                              ? "border-rose-300 bg-rose-50 text-rose-700"
-                              : "border-violet-200 bg-violet-50 text-violet-800"
+                              ? "is-cancel"
+                              : ""
                           }`}
                         >
                           {imageDispatchCountdown?.scope === "batch"
@@ -30597,19 +30607,21 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               : `Görsel başlangıcını iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
                             : isBatchRendering
                               ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
-                              : uiLanguage === "en" ? "Generate missing visuals" : "Eksik görselleri üret"}
+                              : uiLanguage === "en" ? "Generate visuals" : "Görselleri üret"}
                         </button>
                         <button
                           type="button"
                           onClick={() => void prepareSelectedSceneAudio()}
                           disabled={creatorSelectedSceneIds.length === 0 || isPreparingAudio || creatorMediaPreflightLoading}
-                          className="min-h-10 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 disabled:opacity-40"
+                          className="creatorlab-p2c-batch-action"
                         >
                           {isPreparingAudio
                             ? uiLanguage === "en" ? "Preparing voice..." : "Ses hazırlanıyor..."
-                            : uiLanguage === "en" ? "Generate missing voice" : "Eksik sesleri üret"}
+                            : uiLanguage === "en" ? "Generate voice" : "Ses üret"}
                         </button>
-                      </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 

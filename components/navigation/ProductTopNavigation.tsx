@@ -99,11 +99,12 @@ export default function ProductTopNavigation({
     return (
       <nav
         aria-label={language === "en" ? "Product navigation" : "Ürün navigasyonu"}
-        className={`flex items-center gap-2 ${className}`}
+        className={`creatorlab-product-navigation flex items-center gap-2 ${className}`}
       >
         <Link
           href="/dashboard"
           className="creatorlab-topbar-tool-button"
+          aria-label={productsLabel}
           aria-current={active === "products" ? "page" : undefined}
         >
           <GridIcon />
@@ -124,6 +125,7 @@ export default function ProductTopNavigation({
           <Link
             href="/create?flow=creator_lab"
             className="creatorlab-topbar-tool-button"
+            aria-label={studioLabel}
             aria-current={active === "studio" ? "page" : undefined}
           >
             <StudioIcon />
@@ -134,6 +136,7 @@ export default function ProductTopNavigation({
         <Link
           href="/reports"
           className="creatorlab-topbar-tool-button"
+          aria-label={reportsLabel}
           aria-current={active === "reports" ? "page" : undefined}
         >
           <ReportsIcon />

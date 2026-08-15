@@ -105,7 +105,17 @@ const page = requireNeedles("app/create/page.tsx", [
   'data-production-step="visual"',
   'data-production-step="audio"',
   "sceneProductionReadyCount}/3",
+  'data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}',
+  '"Select scenes for batch actions"',
+  'setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")',
+  'setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")',
+  "generateSelectedSceneVisuals()",
+  "prepareSelectedSceneAudio()",
 ]);
+
+if (page.includes("Selected → Image") || page.includes("Selected → Video")) {
+  failures.push("UX-P2C: stale selected-to-output batch copy remains visible");
+}
 
 requireNeedles("app/layout.tsx", ['import "./creatorlab-ux-p2c.css";']);
 
@@ -123,7 +133,14 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
   ".creatorlab-p2c-editor-timeline-track",
   ".creatorlab-p2c-editor-disclosure",
   ".scene-production-navigator",
+  ".creatorlab-p2c-batch-toolbar",
+  ".creatorlab-product-navigation",
   "prefers-reduced-motion",
+]);
+
+requireNeedles("components/navigation/ProductTopNavigation.tsx", [
+  "creatorlab-product-navigation",
+  "<UserAccountMenu",
 ]);
 
 const p2cPresentationCopy = [
