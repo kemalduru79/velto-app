@@ -42,6 +42,18 @@ Blockers, warnings, and existing recommended next actions form the primary decis
 
 UX-P2D-2 changes no report calculation, readiness or lifecycle calculation, credit policy, API, authentication, persistence, download format, CreatorLab workflow, Publish behavior, Storyverse, or Creator Director behavior. It adds zero dependencies and zero infrastructure.
 
+## UX-P2D-3 — Velto Copilot Cohesion
+
+Velto Copilot remains a contextual creative co-director inside Velto Studio: it uses current project, selected-scene, readiness, publishing, and reporting context to answer, advise, and preview a safe next action. It remains a non-modal floating panel rather than a workflow step, support widget, or duplicate status dashboard.
+
+Copilot now receives the explicit five-step user-facing workflow: Brief, Strategy, Production Setup, Create & Review, and Publish. The existing internal four-stage `creatorWorkspaceStep` remains authoritative for project state and non-navigation action gating. Structured navigation accepts visible Steps 1–5 and maps them through the existing client navigation helper: Step 3 selects the Production Setup substep, Step 4 selects Create & Review, and Step 5 opens the internal Publish stage. No additional persistent state machine was introduced.
+
+The panel hierarchy is Velto Copilot identity and current context, compact Creative Director/Studio Help modes, conversation, contextual prompts/follow-ups, and composer. Empty-state prompts distinguish Production Setup from Create & Review and align Publish guidance with ready, needs-attention, package-update, and export concepts supplied by existing context. Reporting readiness, strengths, warnings, and next actions are reused without duplicate calculations.
+
+Structured actions remain previews with before/after changes and explicit Apply or Cancel controls. Paid media and release actions retain the existing second confirmation path, existing paid-action classification, existing handlers, and existing readiness validation. Copilot never auto-runs generation or export.
+
+The launcher retains its VS identity with a restrained neutral/blue treatment and moves clear of the desktop Publish action bar. Conversation, history storage, multilingual responses, follow-ups, action approval, and focus/keyboard behavior remain intact. UX-P2D-3 changes no provider/model choice, token limit, authentication, API endpoint, credit calculation, generation routing, queue/job, persistence, Publish, Reports, Storyverse, or infrastructure.
+
 ### Remaining P2D work
 
-- UX-P2D-3: Creator Director/Copilot cohesion.
+No dedicated UX-P2D-4 implementation is currently required. A final cross-surface polish pass should only be opened if integrated visual QA identifies a concrete inconsistency or regression.

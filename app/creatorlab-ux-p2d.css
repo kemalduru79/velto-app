@@ -355,3 +355,170 @@
     transition: none !important;
   }
 }
+
+/* UX-P2D-3 — Velto Copilot cohesion. */
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher {
+  right: 20px;
+  bottom: 20px;
+  width: 52px;
+  height: 52px;
+  padding: 3px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(14, 32, 58, 0.14) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:hover,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:focus-visible,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-open {
+  transform: translateY(-2px);
+  border-color: var(--cl-accent-border) !important;
+  box-shadow: 0 10px 26px rgba(14, 32, 58, 0.17) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-header-brand,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+  color: #ffffff;
+  background: var(--cl-accent);
+  border-radius: 10px;
+  letter-spacing: -0.04em;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  font-size: 0.78rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-header-brand {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  box-shadow: none;
+  font-size: 0.7rem;
+}
+
+.creatorlab-uxp2a-shell :is(.creatorlab-copilot-header-brand, .creatorlab-copilot-launcher-brand) i {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher small {
+  top: -5px;
+  right: -5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--cl-warning);
+  border-width: 2px;
+  font-size: 0.56rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer {
+  right: 20px;
+  bottom: 82px;
+  width: min(410px, calc(100vw - 32px));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+  max-height: calc(100dvh - 110px);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.99);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(14, 32, 58, 0.18) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-ai-heading {
+  top: -16px;
+  padding: 7px 0 11px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-context-bar {
+  margin: 10px 0;
+  padding: 9px 11px;
+  background: var(--cl-surface-muted);
+  border-radius: 9px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-mode-tabs {
+  margin-bottom: 10px;
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-chat {
+  max-height: min(42dvh, 410px);
+  background: #f7f9fc;
+  border-radius: 11px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-message p {
+  border-radius: 10px 10px 10px 3px;
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-message.is-user p {
+  color: #174c91 !important;
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+  border-radius: 10px 10px 3px 10px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-action-card {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button,
+.creatorlab-uxp2a-shell .creatorlab-copilot-followups button {
+  border-radius: 9px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-composer {
+  bottom: -16px;
+  margin-top: 9px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+  bottom: 104px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+  bottom: 166px;
+}
+
+@media (max-width: 900px) {
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+    bottom: 16px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+    bottom: 78px;
+  }
+}
+
+@media (max-width: 599px) {
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer,
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+    right: 8px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: calc(100vw - 16px);
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+    max-height: min(80dvh, 760px);
+    padding: 13px 11px calc(11px + env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher,
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+    right: 10px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}

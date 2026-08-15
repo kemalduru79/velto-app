@@ -41,7 +41,7 @@ type DirectorActionPayload = {
   thumbnailHeadline: string | null;
   thumbnailSubHeadline: string | null;
   thumbnailSceneId: number | null;
-  workspaceStage: 1 | 2 | 3 | 4 | null;
+  workspaceStage: 1 | 2 | 3 | 4 | 5 | null;
 };
 
 type GeneratedDirectorAction = {
@@ -223,6 +223,10 @@ function buildCompactContext(context: DirectorContext, sceneLimit: number) {
       currentStageProgress: safeNumber(workflow.currentStageProgress),
       availableStages: safeNumberArray(workflow.availableStages)
         .filter((stage) => stage >= 1 && stage <= 4),
+      visibleCurrentStep: safeNumber(workflow.visibleCurrentStep),
+      visibleCurrentLabel: safeNullableText(workflow.visibleCurrentLabel, 120),
+      visibleAvailableSteps: safeNumberArray(workflow.visibleAvailableSteps)
+        .filter((step) => step >= 1 && step <= 5),
     },
     readiness: {
       lifecycleStatus: safeNullableText(readiness.lifecycleStatus, 80),
@@ -251,7 +255,7 @@ function buildCompactContext(context: DirectorContext, sceneLimit: number) {
     },
     studioGuide: {
       stages: Array.isArray(studioGuide.stages)
-        ? studioGuide.stages.slice(0, 4).map((item: unknown) => {
+        ? studioGuide.stages.slice(0, 5).map((item: unknown) => {
             const stage = safeObject(item);
 
             return {
@@ -354,8 +358,8 @@ function normalizeActionPayload(value: unknown): DirectorActionPayload {
     thumbnailSubHeadline: safeNullableText(payload.thumbnailSubHeadline, 240),
     thumbnailSceneId: safeNumber(payload.thumbnailSceneId),
     workspaceStage:
-      [1, 2, 3, 4].includes(Number(payload.workspaceStage))
-        ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4)
+      [1, 2, 3, 4, 5].includes(Number(payload.workspaceStage))
+        ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4 | 5)
         : null,
   };
 }
@@ -399,13 +403,14 @@ function buildActionChanges(
     const stageLabels: Record<number, string> = {
       1: "Brief",
       2: "Strategy",
-      3: "Production",
-      4: "Publish & Export",
+      3: "Production Setup",
+      4: "Create & Review",
+      5: "Publish",
     };
 
     return [{
       label: "Workspace",
-      before: stageLabels[Number(context.activeStage)] || "Current stage",
+      before: stageLabels[Number(context?.workflow?.visibleCurrentStep)] || "Current step",
       after: stageLabels[Number(payload.workspaceStage)] || "Requested stage",
     }];
   }
@@ -504,9 +509,9 @@ function sanitizeGeneratedActions(
   const selectedSceneIds = safeNumberArray(context?.production?.selectedSceneIds)
     .filter((sceneId) => allowedSceneIds.has(sceneId));
   const qualityLevel = safeText(context?.project?.qualityLevel, 40);
-  const availableStages = new Set(
-    safeNumberArray(context?.workflow?.availableStages)
-      .filter((stage) => stage >= 1 && stage <= 4),
+  const availableVisibleSteps = new Set(
+    safeNumberArray(context?.workflow?.visibleAvailableSteps)
+      .filter((step) => step >= 1 && step <= 5),
   );
 
   return value
@@ -539,7 +544,7 @@ function sanitizeGeneratedActions(
       if (action.type === "navigate_workspace_stage") {
         return Boolean(
           action.payload.workspaceStage &&
-          availableStages.has(action.payload.workspaceStage),
+          availableVisibleSteps.has(action.payload.workspaceStage),
         );
       }
 
@@ -651,7 +656,7 @@ const DIRECTOR_RESPONSE_SCHEMA = {
               thumbnailSceneId: { type: ["number", "null"] },
               workspaceStage: {
                 anyOf: [
-                  { type: "number", enum: [1, 2, 3, 4] },
+                  { type: "number", enum: [1, 2, 3, 4, 5] },
                   { type: "null" },
                 ],
               },
@@ -735,7 +740,9 @@ Operating rules:
 - You may propose at most two structured actions, but never claim that an action has already happened.
 - A structured action is only a preview. The user must approve it in the interface before CreatorLab applies or runs anything.
 - Only use action types from the supplied schema and only when the current stage and context make the action reliable.
-- Use navigate_workspace_stage when a user asks where to go or what to do next and the target stage is available.
+- The user-facing workflow has exactly five steps: Brief, Strategy, Production Setup, Create & Review, and Publish. Use these names in answers and previews; never expose the internal four-stage architecture.
+- Use workflow.visibleCurrentStep, workflow.visibleCurrentLabel and workflow.visibleAvailableSteps for user-facing workflow guidance.
+- Use navigate_workspace_stage when a user asks where to go or what to do next and the target visible step is available. Its workspaceStage payload is the visible step number 1–5.
 - Safe text or selection changes may be proposed when they materially improve the project.
 - Paid-media actions may be proposed only when the user explicitly asks to generate or run that media action.
 - Export may be proposed only when the user explicitly asks to export or download the Creator Package.

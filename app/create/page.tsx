@@ -254,7 +254,7 @@ type CreatorDirectorActionPayload = {
   thumbnailHeadline: string | null;
   thumbnailSubHeadline: string | null;
   thumbnailSceneId: number | null;
-  workspaceStage: 1 | 2 | 3 | 4 | null;
+  workspaceStage: 1 | 2 | 3 | 4 | 5 | null;
 };
 type CreatorDirectorAction = {
   id: string;
@@ -413,8 +413,8 @@ function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[
               ? Number(payload.thumbnailSceneId)
               : null,
           workspaceStage:
-            [1, 2, 3, 4].includes(Number(payload.workspaceStage))
-              ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4)
+            [1, 2, 3, 4, 5].includes(Number(payload.workspaceStage))
+              ? (Number(payload.workspaceStage) as 1 | 2 | 3 | 4 | 5)
               : null,
         },
         status: "pending" as const,
@@ -4739,6 +4739,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         availableStages: ([1, 2, 3, 4] as const).filter((stage) =>
           creatorCanOpenWorkspaceStep(stage),
         ),
+        visibleCurrentStep: creatorVisibleWorkflowStep,
+        visibleCurrentLabel: creatorVisibleWorkflowTitle,
+        visibleAvailableSteps: ([1, 2, 3, 4, 5] as const).filter((step) =>
+          creatorCanOpenVisibleWorkflowStep(step),
+        ),
       },
       readiness: {
         lifecycleStatus: creatorProjectLifecycle?.status || "draft",
@@ -4798,7 +4803,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           },
           {
             stage: 3,
-            name: "Production",
+            name: "Production Setup",
+            purpose:
+              "Configure the production look, sound, quality and editable scene plan before creating media.",
+            keyControls: [
+              "visual direction",
+              "voice direction",
+              "production quality",
+              "scene plan",
+              "continue to create and review",
+            ],
+          },
+          {
+            stage: 4,
+            name: "Create & Review",
             purpose:
               "Edit scenes, choose image or video output, create media assets and validate timeline readiness.",
             keyControls: [
@@ -4813,8 +4831,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
             ],
           },
           {
-            stage: 4,
-            name: "Publish & Export",
+            stage: 5,
+            name: "Publish",
             purpose:
               "Review final video, thumbnail, publishing metadata, release confirmations and Creator Package.",
             keyControls: [
@@ -15556,7 +15574,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       if (action.type === "navigate_workspace_stage") {
         const targetStage = action.payload.workspaceStage;
 
-        if (!targetStage || !creatorCanOpenWorkspaceStep(targetStage)) {
+        if (!targetStage || !creatorCanOpenVisibleWorkflowStep(targetStage)) {
           throw new Error(
             uiLanguage === "en"
               ? "The suggested workspace stage is not available yet."
@@ -15564,7 +15582,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           );
         }
 
-        navigateCreatorWorkspaceStep(targetStage);
+        navigateCreatorVisibleWorkflowStep(targetStage);
         setSaveMessage(
           uiLanguage === "en"
             ? "Velto Copilot opened the suggested stage."
@@ -15659,8 +15677,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         if (creatorWorkspaceStep !== 4) {
           throw new Error(
             uiLanguage === "en"
-              ? "Thumbnail copy can only be changed in Publish & Export."
-              : "Thumbnail metni yalnızca Yayınla ve Dışa Aktar aşamasında değiştirilebilir.",
+              ? "Thumbnail copy can only be changed in Publish."
+              : "Thumbnail metni yalnızca Yayınla adımında değiştirilebilir.",
           );
         }
         if (!action.payload.thumbnailHeadline && !action.payload.thumbnailSubHeadline) {
@@ -18109,15 +18127,20 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     creatorDirectorPendingAction,
   ]);
 
-  const creatorDirectorContextLabel = creatorWorkspaceStep === 1
-    ? "Brief"
-    : creatorWorkspaceStep === 2
-      ? uiLanguage === "en" ? "Strategy" : "Strateji"
-      : creatorWorkspaceStep === 3
-        ? creatorSelectedSceneIds.length === 1
-          ? `${creatorVisibleWorkflowTitle} · ${uiLanguage === "en" ? "Scene" : "Sahne"} ${creatorSelectedSceneIds[0]}`
-          : creatorVisibleWorkflowTitle || (uiLanguage === "en" ? "Production" : "Üretim")
-        : uiLanguage === "en" ? "Publish & Export" : "Yayınla ve Dışa Aktar";
+  const creatorDirectorContextLabel =
+    creatorVisibleWorkflowStep === 4 && creatorSelectedSceneIds.length === 1
+      ? `${creatorVisibleWorkflowTitle} · ${uiLanguage === "en" ? "Scene" : "Sahne"} ${String(creatorSelectedSceneIds[0]).padStart(2, "0")}`
+      : creatorVisibleWorkflowStep === 5
+        ? `${creatorVisibleWorkflowTitle} · ${
+            creatorPublishIsOutdated
+              ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
+              : creatorReleaseReady
+                ? uiLanguage === "en" ? "Ready to export" : "Dışa aktarıma hazır"
+                : uiLanguage === "en"
+                  ? `${creatorPublishAttentionItems.length} items need attention`
+                  : `${creatorPublishAttentionItems.length} öğe kontrol edilmeli`
+          }`
+      : creatorVisibleWorkflowTitle || (uiLanguage === "en" ? "Current workspace" : "Mevcut çalışma alanı");
 
   const creatorDirectorPromptChips = creatorDirectorMode === "help"
     ? [
@@ -18125,29 +18148,35 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         uiLanguage === "en" ? "Why is the main action unavailable?" : "Ana aksiyon neden kullanılamıyor?",
         uiLanguage === "en" ? "Explain the quality levels." : "Kalite seviyelerini açıkla.",
       ]
-    : creatorWorkspaceStep === 1
+    : creatorVisibleWorkflowStep === 1
       ? [
           uiLanguage === "en" ? "Improve this brief without making it longer." : "Bu brief'i uzatmadan güçlendir.",
           uiLanguage === "en" ? "Is the audience and format choice coherent?" : "Hedef kitle ve format seçimi tutarlı mı?",
           uiLanguage === "en" ? "What is the single missing decision?" : "Eksik olan tek kritik karar nedir?",
         ]
-      : creatorWorkspaceStep === 2
+      : creatorVisibleWorkflowStep === 2
         ? [
             uiLanguage === "en" ? "Which direction is strongest and why?" : "Hangi yön daha güçlü ve neden?",
             uiLanguage === "en" ? "Strengthen the opening angle." : "Açılış açısını güçlendir.",
             uiLanguage === "en" ? "What production risk should I resolve first?" : "Önce hangi üretim riskini çözmeliyim?",
           ]
-        : creatorWorkspaceStep === 3
+        : creatorVisibleWorkflowStep === 3
           ? [
-              uiLanguage === "en" ? "Which selected scenes should use video?" : "Seçili sahnelerin hangileri video olmalı?",
-              uiLanguage === "en" ? "Find narration-duration problems." : "Anlatım-süre sorunlarını bul.",
-              uiLanguage === "en" ? "What blocks the next production action?" : "Sonraki üretim aksiyonunu ne engelliyor?",
+              uiLanguage === "en" ? "What should I configure next?" : "Sırada neyi yapılandırmalıyım?",
+              uiLanguage === "en" ? "Review my production setup." : "Üretim kurulumumu değerlendir.",
+              uiLanguage === "en" ? "What blocks Create & Review?" : "Üret ve İncele adımını ne engelliyor?",
             ]
-          : [
-              uiLanguage === "en" ? "What blocks release approval?" : "Yayın onayını ne engelliyor?",
-              uiLanguage === "en" ? "Review the title and thumbnail promise." : "Başlık ve thumbnail vaadini değerlendir.",
-              uiLanguage === "en" ? "What should I verify before export?" : "Dışa aktarmadan önce neyi doğrulamalıyım?",
-            ];
+          : creatorVisibleWorkflowStep === 4
+            ? [
+                uiLanguage === "en" ? "Which scenes need attention?" : "Hangi sahneler dikkat gerektiriyor?",
+                uiLanguage === "en" ? "Find narration-duration problems." : "Anlatım-süre sorunlarını bul.",
+                uiLanguage === "en" ? "What blocks the next action?" : "Sonraki aksiyonu ne engelliyor?",
+              ]
+            : [
+                uiLanguage === "en" ? "What blocks export?" : "Dışa aktarımı ne engelliyor?",
+                uiLanguage === "en" ? "Is this package ready?" : "Bu paket hazır mı?",
+                uiLanguage === "en" ? "What should I verify before export?" : "Dışa aktarmadan önce neyi doğrulamalıyım?",
+              ];
 
   const creatorWorkspaceGuidance = creatorWorkspaceStep === 1
     ? uiLanguage === "en" ? "Complete the brief, then analyze the content opportunity." : "Brief'i tamamla, ardından içerik fırsatını analiz et."
@@ -27038,7 +27067,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         )}
 
         {isCreatorLabFlow && creatorDirectorOpen && (
-          <div className="creatorlab-copilot-floating-layer">
+          <div className={`creatorlab-copilot-floating-layer ${creatorVisibleWorkflowStep === 5 ? "is-publish-context" : ""}`}>
             <aside
               id="creatorlab-director-dialog"
               ref={creatorDirectorDialogRef}
@@ -27058,7 +27087,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <h2 id="creatorlab-director-title" className="creatorlab-dialog-title">
                     {uiLanguage === "en" ? "Velto Copilot" : "Velto Copilot"}
                   </h2>
-                  <span>{creatorVisibleWorkflowTitle}</span>
+                  <span>{uiLanguage === "en" ? "Creative co-director" : "Yaratıcı yardımcı yönetmen"}</span>
                 </div>
                 <button
                   type="button"
@@ -27146,14 +27175,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <div className="creatorlab-director-empty">
                     <strong>
                       {creatorDirectorMode === "project"
-                        ? uiLanguage === "en" ? "Ask your Creative Director" : "Creative Director’a sor"
+                        ? uiLanguage === "en"
+                          ? `How can I help with ${creatorVisibleWorkflowTitle || "this project"}?`
+                          : `${creatorVisibleWorkflowTitle || "Bu proje"} için nasıl yardımcı olabilirim?`
                         : uiLanguage === "en" ? "Ask Velto Studio Help" : "Velto Studio Yardımı’na sor"}
                     </strong>
                     <p>
                       {creatorDirectorMode === "project"
                         ? uiLanguage === "en"
-                          ? "Your Creative Director understands the current brief, strategy, scenes, readiness and release blockers."
-                          : "Creative Director mevcut brief'i, stratejiyi, sahneleri, hazırlık durumunu ve yayın engellerini anlar."
+                          ? "Ask your Creative Director for concise, project-aware guidance and one practical next step."
+                          : "Creative Director’dan projeye özel kısa yönlendirme ve uygulanabilir tek bir sonraki adım iste."
                         : uiLanguage === "en"
                           ? "Get concise guidance about controls, workflow stages, quality levels and export requirements."
                           : "Kontroller, iş akışı, kalite seviyeleri ve dışa aktarım koşulları hakkında kısa destek al."}
@@ -27205,7 +27236,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                   >
                                     <div className="creatorlab-director-action-heading">
                                       <div>
-                                        <small>{uiLanguage === "en" ? "Change preview" : "Değişiklik önizlemesi"}</small>
+                                        <small>{uiLanguage === "en" ? "Suggested action" : "Önerilen aksiyon"}</small>
                                         <strong>{action.title}</strong>
                                       </div>
                                       <span className={`is-${action.impact}`}>
@@ -27240,7 +27271,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                           onClick={() => dismissCreatorDirectorAction(message.id, action.id)}
                                           disabled={Boolean(creatorDirectorActionBusyId)}
                                         >
-                                          {uiLanguage === "en" ? "Dismiss" : "Kapat"}
+                                          {uiLanguage === "en" ? "Cancel" : "Vazgeç"}
                                         </button>
                                         <button
                                           type="button"
@@ -27260,8 +27291,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                         <strong>
                                           {action.impact === "credit_variable"
                                             ? uiLanguage === "en"
-                                              ? "This action can call paid media APIs."
-                                              : "Bu aksiyon ücretli medya API'lerini çağırabilir."
+                                              ? "This action may use media-generation credits."
+                                              : "Bu aksiyon medya üretim kredisi kullanabilir."
                                             : uiLanguage === "en"
                                               ? "This will export the current release package."
                                               : "Bu işlem mevcut yayın paketini dışa aktaracak."}
@@ -27269,8 +27300,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                         <p>
                                           {action.impact === "credit_variable"
                                             ? uiLanguage === "en"
-                                              ? "Final credit usage is variable and will be recorded by the production workflow. Generated provider cost cannot be undone."
-                                              : "Nihai kredi kullanımı değişkendir ve üretim akışı tarafından kaydedilecektir. Oluşan sağlayıcı maliyeti geri alınamaz."
+                                              ? "Final credit usage is variable and will be recorded by the production workflow. Completed generation cannot be undone."
+                                              : "Nihai kredi kullanımı değişkendir ve üretim akışı tarafından kaydedilecektir. Tamamlanan üretim geri alınamaz."
                                             : uiLanguage === "en"
                                               ? "Velto Studio will recheck release readiness before downloading the package."
                                               : "Velto Studio paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
@@ -27535,7 +27566,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           <button
             ref={creatorDirectorTriggerRef}
             type="button"
-            className={`creatorlab-copilot-launcher ${creatorDirectorOpen ? "is-open" : ""} ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""}`}
+            className={`creatorlab-copilot-launcher ${creatorDirectorOpen ? "is-open" : ""} ${creatorDirectorAttentionCount > 0 ? "has-attention" : ""} ${creatorVisibleWorkflowStep === 5 ? "is-publish-context" : ""}`}
             onClick={(event) => {
               creatorDrawerReturnFocusRef.current = event.currentTarget;
               closeCreatorProjectsDrawer(false);
