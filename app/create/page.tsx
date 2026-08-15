@@ -46,9 +46,7 @@ import CreatorCostGuard, {
   type CreatorCostGuardRequest,
 } from "@/components/create/CreatorCostGuard";
 import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
-import CreatorProductionSubnav, {
-  type CreatorProductionSubstep,
-} from "@/components/create/CreatorProductionSubnav";
+import type { CreatorProductionSubstep } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import CreatorEditor from "@/components/create/CreatorEditor";
 import CreatorSceneProductionStatus, {
@@ -4735,8 +4733,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       },
       workflow: {
         currentStage: creatorWorkspaceStep,
-        currentStageLabel:
-          creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title || null,
+        currentStageLabel: creatorVisibleWorkflowTitle,
         currentStageStatus: creatorWorkspaceStageStatus,
         currentStageProgress: creatorWorkspaceStageProgress,
         availableStages: ([1, 2, 3, 4] as const).filter((stage) =>
@@ -17035,6 +17032,32 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     }
   };
 
+  const creatorVisibleWorkflowStep: 1 | 2 | 3 | 4 | 5 =
+    creatorWorkspaceStep === 3
+      ? creatorProductionSubstep === "setup" ? 3 : 4
+      : creatorWorkspaceStep === 4
+        ? 5
+        : creatorWorkspaceStep;
+
+  const creatorCanOpenVisibleWorkflowStep = (step: 1 | 2 | 3 | 4 | 5) =>
+    step === 1 || step === 2
+      ? creatorCanOpenWorkspaceStep(step)
+      : step === 3 || step === 4
+        ? creatorCanOpenWorkspaceStep(3) && Boolean(creatorProductionPackage)
+        : creatorCanOpenWorkspaceStep(4);
+
+  const navigateCreatorVisibleWorkflowStep = (step: 1 | 2 | 3 | 4 | 5) => {
+    if (!creatorCanOpenVisibleWorkflowStep(step)) return;
+
+    if (step === 3 || step === 4) {
+      selectCreatorProductionSubstep(step === 3 ? "setup" : "create_review");
+      navigateCreatorWorkspaceStep(3);
+      return;
+    }
+
+    navigateCreatorWorkspaceStep(step === 5 ? 4 : step);
+  };
+
   const creatorWorkflowSteps = [
     {
       id: 1 as const,
@@ -17050,17 +17073,25 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     },
     {
       id: 3 as const,
-      title: uiLanguage === "en" ? "Production" : "Üretim",
-      description: uiLanguage === "en" ? "Generate visuals and voice" : "Görsel ve sesi üret",
-      complete: creatorProductionComplete,
+      title: uiLanguage === "en" ? "Production Setup" : "Üretim Kurulumu",
+      description: uiLanguage === "en" ? "Configure look, sound and production" : "Görsel, ses ve üretimi yapılandır",
+      complete: creatorProductionSubstep === "create_review",
     },
     {
       id: 4 as const,
+      title: uiLanguage === "en" ? "Create & Review" : "Üret ve İncele",
+      description: uiLanguage === "en" ? "Produce, review and refine scenes" : "Sahneleri üret, kontrol et ve geliştir",
+      complete: creatorProductionComplete,
+    },
+    {
+      id: 5 as const,
       title: uiLanguage === "en" ? "Publish" : "Yayınla",
-      description: uiLanguage === "en" ? "Finalize and package" : "Sonlandır ve paketle",
+      description: uiLanguage === "en" ? "Finalize and package" : "Son kontrolleri ve paketi tamamla",
       complete: creatorPublishComplete,
     },
   ];
+  const creatorVisibleWorkflowTitle =
+    creatorWorkflowSteps.find((step) => step.id === creatorVisibleWorkflowStep)?.title || null;
   const creatorVisualsComplete = scenes.length > 0 && visualAssetReadyCount >= scenes.length;
   const creatorVoiceOverComplete = scenes.length > 0 && audioReadyCount >= scenes.length;
   const creatorSelectedSceneIdSet = new Set(creatorSelectedSceneIds);
@@ -18058,8 +18089,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       ? uiLanguage === "en" ? "Strategy" : "Strateji"
       : creatorWorkspaceStep === 3
         ? creatorSelectedSceneIds.length === 1
-          ? `${uiLanguage === "en" ? "Production · Scene" : "Üretim · Sahne"} ${creatorSelectedSceneIds[0]}`
-          : uiLanguage === "en" ? "Production" : "Üretim"
+          ? `${creatorVisibleWorkflowTitle} · ${uiLanguage === "en" ? "Scene" : "Sahne"} ${creatorSelectedSceneIds[0]}`
+          : creatorVisibleWorkflowTitle || (uiLanguage === "en" ? "Production" : "Üretim")
         : uiLanguage === "en" ? "Publish & Export" : "Yayınla ve Dışa Aktar";
 
   const creatorDirectorPromptChips = creatorDirectorMode === "help"
@@ -26847,7 +26878,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <div className="creatorlab-readiness-block">
               <div className="creatorlab-readiness-copy">
                 <span>{uiLanguage === "en" ? "Current Project Status" : "Mevcut Proje Durumu"}</span>
-                <strong>{creatorReadinessLabel}</strong>
+                <strong>{creatorVisibleWorkflowTitle}</strong>
               </div>
               <div
                 className="creatorlab-readiness-track"
@@ -26940,16 +26971,25 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <p className="creatorlab-rail-kicker">{uiLanguage === "en" ? "Project workflow" : "Proje akışı"}</p>
             <nav className="creatorlab-step-list" aria-label={uiLanguage === "en" ? "Velto Studio workflow steps" : "Velto Studio iş akışı adımları"}>
               {creatorWorkflowSteps.map((step) => {
-                const isActive = creatorWorkspaceStep === step.id;
+                const isActive = creatorVisibleWorkflowStep === step.id;
+                const isAvailable = creatorCanOpenVisibleWorkflowStep(step.id);
+                const presentationState = isActive
+                  ? "current"
+                  : step.complete
+                    ? "completed"
+                    : isAvailable
+                      ? "available"
+                      : "future";
                 return (
                   <button
                     key={step.id}
                     type="button"
                     className={`creatorlab-workflow-step focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isActive ? "is-active" : ""} ${step.complete ? "is-complete" : ""}`}
+                    data-workflow-state={presentationState}
                     aria-current={isActive ? "step" : undefined}
-                    aria-disabled={!creatorCanOpenWorkspaceStep(step.id)}
-                    disabled={!creatorCanOpenWorkspaceStep(step.id)}
-                    onClick={() => navigateCreatorWorkspaceStep(step.id)}
+                    aria-disabled={!isAvailable}
+                    disabled={!isAvailable}
+                    onClick={() => navigateCreatorVisibleWorkflowStep(step.id)}
                   >
                     <div className="creatorlab-step-number" aria-hidden="true">
                       {step.id}
@@ -26992,7 +27032,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   <h2 id="creatorlab-director-title" className="creatorlab-dialog-title">
                     {uiLanguage === "en" ? "Velto Copilot" : "Velto Copilot"}
                   </h2>
-                  <span>{creatorWorkflowSteps[creatorWorkspaceStep - 1]?.title}</span>
+                  <span>{creatorVisibleWorkflowTitle}</span>
                 </div>
                 <button
                   type="button"
@@ -29284,7 +29324,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <header className="creatorlab-production-heading">
               <div>
                 <p className="creatorlab-production-kicker">
-                  {uiLanguage === "en" ? "Production" : "Üretim"}
+                  {creatorProductionSubstep === "setup"
+                    ? uiLanguage === "en" ? "Step 3 · Production Setup" : "Adım 3 · Üretim Kurulumu"
+                    : uiLanguage === "en" ? "Step 4 · Create & Review" : "Adım 4 · Üret ve İncele"}
                 </p>
                 <h1>{creatorProductionPackage.title}</h1>
                 <div className="creatorlab-p2c-production-header-meta" aria-label={uiLanguage === "en" ? "Current production plan" : "Mevcut üretim planı"}>
@@ -29300,12 +29342,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   : uiLanguage === "en" ? "Plan approved" : "Plan onaylandı"}
               </span>
             </header>
-
-            <CreatorProductionSubnav
-              value={creatorProductionSubstep}
-              onChange={selectCreatorProductionSubstep}
-              language={uiLanguage === "en" ? "en" : "tr"}
-            />
 
             {creatorProductionSubstep === "create_review" && (
               <>
@@ -32187,7 +32223,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
             <div className="creatorlab-publish-heading">
               <div>
                 <p className="creatorlab-publish-kicker">
-                  {uiLanguage === "en" ? "Step 4 · Publish & Export" : "Adım 4 · Yayınla ve Dışa Aktar"}
+                  {uiLanguage === "en" ? "Step 5 · Publish" : "Adım 5 · Yayınla"}
                 </p>
                 <h1>
                   {uiLanguage === "en"

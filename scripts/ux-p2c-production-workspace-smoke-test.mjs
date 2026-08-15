@@ -77,7 +77,6 @@ requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
 ]);
 
 const page = requireNeedles("app/create/page.tsx", [
-  "<CreatorProductionSubnav",
   "<CreatorProductionSetupSummary",
   "<CreatorEditor",
   "<CreatorCostGuard",
@@ -115,7 +114,25 @@ const page = requireNeedles("app/create/page.tsx", [
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")',
   "generateSelectedSceneVisuals()",
   "prepareSelectedSceneAudio()",
+  'title: "Brief"',
+  '"Production Setup"',
+  '"Create & Review"',
+  '"Publish"',
+  "creatorVisibleWorkflowStep",
+  "creatorCanOpenVisibleWorkflowStep",
+  "navigateCreatorVisibleWorkflowStep",
+  'selectCreatorProductionSubstep(step === 3 ? "setup" : "create_review")',
+  'navigateCreatorWorkspaceStep(step === 5 ? 4 : step)',
+  '"Step 5 · Publish"',
 ]);
+
+if (page.includes("<CreatorProductionSubnav")) {
+  failures.push("UX-P2C: nested Production Setup/Create & Review navigation is still rendered");
+}
+
+if (page.includes('"Generate visuals and voice"')) {
+  failures.push("UX-P2C: old four-step Production rail copy remains visible");
+}
 
 if (page.includes("Selected → Image") || page.includes("Selected → Video")) {
   failures.push("UX-P2C: stale selected-to-output batch copy remains visible");

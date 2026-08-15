@@ -122,3 +122,19 @@ When the Editor opens, `creatorFocusedSceneId` is mapped once to the same scene'
 P2C-3 completes the planned Editor and Timeline information architecture. A P2C-4 pass, if scheduled, should be limited to final visual QA and usability polish rather than new workflow or generation capability.
 
 UX-P2C-3 adds zero new dependencies and zero new infrastructure.
+
+## UX-P2C-5 — Unified Five-Step Project Workflow
+
+CreatorLab now presents one canonical Project Workflow:
+
+1. Brief
+2. Strategy
+3. Production Setup
+4. Create & Review
+5. Publish
+
+The nested Setup/Create & Review navigator was removed from the Production canvas so the left Project Workflow is the single navigation source of truth. The existing internal four-stage workspace and `creatorProductionSubstep` state remain authoritative: visible Production Setup maps to internal Production plus `setup`, while visible Create & Review maps to internal Production plus `create_review`. Publish remains the existing internal Publish workspace and is now visibly numbered Step 5.
+
+All availability and completion presentation is derived from existing brief, approved-strategy/production-package, production-complete, and publish-complete state. The existing Production and Publish gates remain authoritative; no visit-based completion flags or persisted workflow state were added. The global header retains the legitimate lifecycle readiness percentage while its compact phase label now reflects the active five-step workflow item.
+
+This information-architecture correction does not change API contracts, persistence, generation, provider routing, credits, queues/jobs, export behavior, or Storyverse. It adds zero dependencies and zero infrastructure.
