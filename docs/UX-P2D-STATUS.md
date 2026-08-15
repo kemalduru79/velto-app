@@ -30,7 +30,18 @@ UX-P2D-1 adds no direct social publishing, scheduling, platform APIs, new AI gen
 
 UX-P2D-1 adds zero dependencies and zero infrastructure.
 
+## UX-P2D-2 — Reports Cohesion
+
+Reports remains a top-level portfolio and project-readiness surface, not a sixth CreatorLab workflow step. Its scope remains saved production state, publishing readiness, continuity, lifecycle history, and estimated credit needs. It does not claim post-publish audience, engagement, retention, or social performance analytics.
+
+The portfolio now prioritizes total, active, current-package, and needs-update counts. Production-ready projects, final-video coverage, and total scenes remain available in a compact secondary disclosure. The project selector uses denser, keyboard-accessible rows with the established blue selected state, search, lifecycle filtering, dates, progress, and project metadata preserved.
+
+The selected report now leads with project identity, lifecycle status, last update, and a primary **Open project in Velto Studio** action. HTML and JSON report downloads remain unchanged as secondary actions. Internal readiness score, stage, publishing readiness, and estimated credits required to complete are primary signals; media readiness, planned duration, continuity, and total/used credit context remain available as supporting detail.
+
+Blockers, warnings, and existing recommended next actions form the primary decision section, while existing strengths are presented as secondary ready signals. Reports diagnoses unresolved work and Studio remains the operational place to resolve it. Credit totals, estimated used, and estimated remaining values retain the existing explanatory disclaimer and are not presented as billed usage or account balance.
+
+UX-P2D-2 changes no report calculation, readiness or lifecycle calculation, credit policy, API, authentication, persistence, download format, CreatorLab workflow, Publish behavior, Storyverse, or Creator Director behavior. It adds zero dependencies and zero infrastructure.
+
 ### Remaining P2D work
 
-- UX-P2D-2: Reports cohesion.
 - UX-P2D-3: Creator Director/Copilot cohesion.

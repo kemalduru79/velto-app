@@ -190,47 +190,34 @@ function ProjectListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-[24px] border p-4 text-left transition ${
-        selected
-          ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)]"
-          : "border-slate-200 bg-white text-slate-950 hover:border-slate-400 hover:shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
-      }`}
+      aria-pressed={selected}
+      className={`reports-project-row ${selected ? "is-selected" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-black">{project.title}</p>
           <p
-            className={`mt-1 text-xs ${
-              selected ? "text-white/58" : "text-slate-500"
-            }`}
+            className="reports-project-date"
           >
             {formatDate(project.updatedAt || project.createdAt, locale)}
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${
-            selected
-              ? "border-white/15 bg-white/10 text-white"
-              : statusTone(project.status)
-          }`}
+          className={`reports-project-progress ${statusTone(project.status)}`}
         >
           {project.progress}%
         </span>
       </div>
 
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-200/70">
+      <div className="reports-project-progress-track">
         <span
-          className={`block h-full rounded-full ${
-            selected ? "bg-white" : "bg-slate-950"
-          }`}
+          className="reports-project-progress-value"
           style={{ width: `${project.progress}%` }}
         />
       </div>
 
       <div
-        className={`mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold ${
-          selected ? "text-white/72" : "text-slate-600"
-        }`}
+        className="reports-project-meta"
       >
         <span>{getProjectStageLabel(project.status, locale)}</span>
         <span>·</span>
@@ -259,15 +246,8 @@ function FindingList({
   emptyText: string;
   tone: "positive" | "warning" | "action";
 }) {
-  const toneClass =
-    tone === "positive"
-      ? "border-emerald-200 bg-emerald-50/80 text-emerald-950"
-      : tone === "warning"
-        ? "border-amber-200 bg-amber-50/80 text-amber-950"
-        : "border-blue-200 bg-blue-50/80 text-blue-950";
-
   return (
-    <section className={`rounded-[22px] border p-4 ${toneClass}`}>
+    <section className={`reports-finding reports-finding-${tone}`}>
       <h3 className="text-sm font-black">{title}</h3>
       <ul className="mt-3 space-y-2 text-xs leading-5">
         {(items.length ? items : [emptyText]).slice(0, 5).map((item, index) => (
@@ -299,12 +279,13 @@ export default function CreatorReportsCenter() {
           eyebrow: "Reporting across all projects",
           title: "Reports",
           intro:
-            "Review the production and publishing readiness of every saved CreatorLab project without opening its workspace. This area reports project status—not post-publish audience or engagement performance.",
+            "Understand what is ready, what needs attention and which CreatorLab project should be opened next. Reports reflects saved project status—not post-publish audience performance.",
           refresh: "Refresh",
           refreshing: "Refreshing...",
           portfolio: "All Projects Overview",
           portfolioHint:
             "A current summary of your saved CreatorLab projects.",
+          portfolioDetails: "Secondary portfolio details",
           projects: "Saved Projects",
           search: "Search saved projects",
           allStatuses: "All project stages",
@@ -313,6 +294,7 @@ export default function CreatorReportsCenter() {
           selectProject: "Select a saved project to view its status report.",
           loadingReport: "Loading project status report...",
           report: "Project Status and Readiness Report",
+          reportEyebrow: "Project readiness",
           reportHint:
             "Shows production progress, output currency, publishing readiness, and estimated credit needs for the selected project.",
           downloadHtml: "Download readable report",
@@ -352,6 +334,9 @@ export default function CreatorReportsCenter() {
           noStrength: "No completed readiness signal yet.",
           noFinding: "No item currently requires attention.",
           noAction: "No additional action is currently required.",
+          actionRequired: "Action required",
+          readySignals: "Ready",
+          supportingSignals: "Supporting project details",
           history: "Project Stage History",
           noHistory: "No saved project-stage transition yet.",
           estimateNote:
@@ -386,12 +371,13 @@ export default function CreatorReportsCenter() {
           eyebrow: "Tüm projeler için raporlama",
           title: "Raporlar",
           intro:
-            "Çalışma alanını açmadan tüm kayıtlı CreatorLab projelerinin üretim ve yayın hazırlığını inceleyin. Bu alan yayın sonrası izlenme veya etkileşim performansını değil, proje durumunu gösterir.",
+            "Nelerin hazır olduğunu, nelerin dikkat gerektirdiğini ve sırada hangi CreatorLab projesinin açılması gerektiğini anlayın. Raporlar yayın sonrası kitle performansını değil, kayıtlı proje durumunu gösterir.",
           refresh: "Yenile",
           refreshing: "Yenileniyor...",
           portfolio: "Tüm Projelerin Özeti",
           portfolioHint:
             "Kayıtlı CreatorLab projelerinizin güncel durum özeti.",
+          portfolioDetails: "İkincil portföy detayları",
           projects: "Kayıtlı Projeler",
           search: "Kayıtlı projelerde ara",
           allStatuses: "Tüm proje aşamaları",
@@ -400,6 +386,7 @@ export default function CreatorReportsCenter() {
           selectProject: "Durum raporunu görmek için kayıtlı bir proje seçin.",
           loadingReport: "Proje durum raporu yükleniyor...",
           report: "Proje Durum ve Hazırlık Raporu",
+          reportEyebrow: "Proje hazırlığı",
           reportHint:
             "Seçili projenin üretim ilerlemesini, çıktı güncelliğini, yayın hazırlığını ve tahmini kredi ihtiyacını gösterir.",
           downloadHtml: "Okunabilir raporu indir",
@@ -439,6 +426,9 @@ export default function CreatorReportsCenter() {
           noStrength: "Henüz tamamlanmış bir hazırlık sinyali yok.",
           noFinding: "Şu anda dikkat gerektiren bir konu yok.",
           noAction: "Şu anda ek bir aksiyon gerekmiyor.",
+          actionRequired: "Aksiyon gerekli",
+          readySignals: "Hazır",
+          supportingSignals: "Destekleyici proje detayları",
           history: "Proje Aşaması Geçmişi",
           noHistory: "Henüz kayıtlı proje aşaması geçişi yok.",
           estimateNote:
@@ -672,7 +662,7 @@ export default function CreatorReportsCenter() {
     });
   };
 
-  const metricCards = [
+  const primaryPortfolioMetrics = [
     {
       label: copy.totalProjects,
       value: portfolio.totalProjects,
@@ -684,6 +674,19 @@ export default function CreatorReportsCenter() {
       hint: copy.activeProjectsHint,
     },
     {
+      label: copy.exported,
+      value: portfolio.exportedProjects,
+      hint: copy.exportedHint,
+    },
+    {
+      label: copy.outdated,
+      value: portfolio.outdatedProjects,
+      hint: copy.outdatedHint,
+    },
+  ];
+
+  const secondaryPortfolioMetrics = [
+    {
       label: copy.productionReady,
       value: portfolio.productionReadyProjects,
       hint: copy.productionReadyHint,
@@ -694,16 +697,6 @@ export default function CreatorReportsCenter() {
       hint: copy.finalVideosHint,
     },
     {
-      label: copy.exported,
-      value: portfolio.exportedProjects,
-      hint: copy.exportedHint,
-    },
-    {
-      label: copy.outdated,
-      value: portfolio.outdatedProjects,
-      hint: copy.outdatedHint,
-    },
-    {
       label: copy.sceneCount,
       value: portfolio.totalScenes,
       hint: copy.sceneCountHint,
@@ -711,34 +704,32 @@ export default function CreatorReportsCenter() {
   ];
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.13),transparent_28%),radial-gradient(circle_at_88%_6%,rgba(244,63,94,0.12),transparent_30%),linear-gradient(180deg,#07101f_0%,#111827_36%,#f8fafc_36%,#f8fafc_100%)] text-slate-950">
-      <div className="mx-auto max-w-[1500px] px-4 py-5 md:px-8 md:py-7">
-        <header className="flex flex-col gap-4 text-white lg:flex-row lg:items-center lg:justify-between">
+    <main className="reports-shell">
+      <div className="reports-frame">
+        <header className="reports-product-bar">
           <Link
             href="/dashboard"
-            className="inline-flex w-fit items-center gap-3 rounded-full border border-white/10 bg-white/[0.07] px-4 py-2 backdrop-blur-xl"
+            className="reports-brand"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-xs font-black text-slate-950">
+            <span className="reports-brand-mark">
               V
             </span>
             <span>
               <strong className="block text-sm tracking-[0.18em]">VELTO</strong>
-              <small className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/52">
+              <small>
                 {copy.title}
               </small>
             </span>
           </Link>
 
           <div className="flex flex-wrap items-center gap-2">
-            <ProductTopNavigation tone="dark" active="reports" />
-            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.07] p-1 text-xs font-black backdrop-blur-xl">
+            <ProductTopNavigation tone="light" active="reports" />
+            <div className="reports-language-switcher">
               <button
                 type="button"
                 onClick={() => setLanguage("tr")}
                 className={`rounded-full px-3 py-2 transition ${
-                  locale === "tr"
-                    ? "bg-white text-slate-950"
-                    : "text-white/65 hover:bg-white/10 hover:text-white"
+                  locale === "tr" ? "is-active" : ""
                 }`}
               >
                 TR
@@ -747,9 +738,7 @@ export default function CreatorReportsCenter() {
                 type="button"
                 onClick={() => setLanguage("en")}
                 className={`rounded-full px-3 py-2 transition ${
-                  locale === "en"
-                    ? "bg-white text-slate-950"
-                    : "text-white/65 hover:bg-white/10 hover:text-white"
+                  locale === "en" ? "is-active" : ""
                 }`}
               >
                 EN
@@ -758,19 +747,19 @@ export default function CreatorReportsCenter() {
           </div>
         </header>
 
-        <section className="pb-14 pt-12 text-white">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">
+        <section className="reports-header">
+          <p className="reports-eyebrow">
             {copy.eyebrow}
           </p>
-          <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] md:text-6xl">
+          <h1>
             {copy.title}
           </h1>
-          <p className="mt-4 max-w-4xl text-base font-medium leading-7 text-white/65">
+          <p className="reports-intro">
             {copy.intro}
           </p>
         </section>
 
-        <section className="-mt-4 rounded-[34px] border border-slate-200 bg-white p-5 shadow-[0_30px_100px_rgba(15,23,42,0.13)] md:p-7">
+        <section className="reports-portfolio">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
@@ -790,11 +779,11 @@ export default function CreatorReportsCenter() {
             </button>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-            {metricCards.map((metric) => (
+          <div className="reports-portfolio-primary">
+            {primaryPortfolioMetrics.map((metric) => (
               <div
                 key={metric.label}
-                className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4"
+                className="reports-portfolio-metric"
               >
                 <p className="text-3xl font-black tracking-tight text-slate-950">
                   {metric.value}
@@ -808,6 +797,18 @@ export default function CreatorReportsCenter() {
               </div>
             ))}
           </div>
+          <details className="reports-portfolio-secondary">
+            <summary>{copy.portfolioDetails}</summary>
+            <div>
+              {secondaryPortfolioMetrics.map((metric) => (
+                <div key={metric.label} className="reports-portfolio-detail">
+                  <strong>{metric.value}</strong>
+                  <span>{metric.label}</span>
+                  <small>{metric.hint}</small>
+                </div>
+              ))}
+            </div>
+          </details>
         </section>
 
         {error && (
@@ -816,8 +817,8 @@ export default function CreatorReportsCenter() {
           </div>
         )}
 
-        <section className="mt-6 grid gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
-          <aside className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+        <section className="reports-workspace">
+          <aside className="reports-project-selector">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
@@ -831,12 +832,14 @@ export default function CreatorReportsCenter() {
 
             <div className="mt-4 grid gap-3">
               <input
+                aria-label={copy.search}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={copy.search}
                 className="min-h-11 rounded-2xl border border-slate-300 bg-white px-4 text-sm outline-none transition focus:border-slate-950"
               />
               <select
+                aria-label={copy.allStatuses}
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value as StatusFilter)
@@ -852,7 +855,7 @@ export default function CreatorReportsCenter() {
               </select>
             </div>
 
-            <div className="mt-4 max-h-[820px] space-y-3 overflow-y-auto pr-1">
+            <div className="reports-project-list">
               {!loadingProjects && filteredProjects.length === 0 && (
                 <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
                   <p className="text-sm font-semibold text-slate-600">
@@ -879,7 +882,7 @@ export default function CreatorReportsCenter() {
             </div>
           </aside>
 
-          <article className="min-h-[680px] rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-7">
+          <article className="reports-project-report">
             {!selectedProjectId && (
               <div className="flex min-h-[580px] items-center justify-center text-center">
                 <div>
@@ -914,17 +917,14 @@ export default function CreatorReportsCenter() {
 
             {report && selectedSummary && !loadingProject && (
               <div>
-                <div className="flex flex-col gap-5 border-b border-slate-200 pb-6 lg:flex-row lg:items-start lg:justify-between">
+                <div className="reports-project-header">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                      REPORT-P1R · {copy.report}
+                    <p className="reports-eyebrow">
+                      {copy.reportEyebrow}
                     </p>
                     <h2 className="mt-2 text-3xl font-black tracking-[-0.035em] text-slate-950">
                       {report.project.title}
                     </h2>
-                    <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                      {copy.reportHint}
-                    </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <span
                         className={`rounded-full border px-3 py-1.5 text-xs font-black ${statusTone(
@@ -946,31 +946,31 @@ export default function CreatorReportsCenter() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="reports-report-actions">
+                    <Link
+                      href="/create?flow=creator_lab"
+                      className="reports-primary-action"
+                    >
+                      {copy.openStudio}
+                    </Link>
                     <button
                       type="button"
                       onClick={handleDownloadHtml}
-                      className="min-h-11 rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 transition hover:border-slate-950"
+                      className="reports-secondary-action"
                     >
                       {copy.downloadHtml}
                     </button>
                     <button
                       type="button"
                       onClick={handleDownloadJson}
-                      className="min-h-11 rounded-full border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 transition hover:border-slate-950"
+                      className="reports-secondary-action"
                     >
                       {copy.downloadJson}
                     </button>
-                    <Link
-                      href="/create?flow=creator_lab"
-                      className="inline-flex min-h-11 items-center rounded-full bg-slate-950 px-4 text-sm font-black text-white"
-                    >
-                      {copy.openStudio}
-                    </Link>
                   </div>
                 </div>
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="reports-primary-signals">
                   {[
                     {
                       label: copy.readinessScore,
@@ -986,30 +986,9 @@ export default function CreatorReportsCenter() {
                       hint: copy.projectStageHint,
                     },
                     {
-                      label: copy.mediaReadiness,
-                      value: `${copy.visualAssetsReady}: ${report.production.visualReadyScenes}/${report.production.totalScenes} · ${copy.voiceAssetsReady}: ${report.production.voiceReadyScenes}/${report.production.totalScenes}`,
-                      hint: copy.mediaReadinessHint,
-                    },
-                    {
                       label: copy.estimatedCreditSummary,
-                      value: `${copy.estimatedProjectTotal}: ${report.credits.estimatedTotalCredits} ${copy.creditUnit}`,
-                      hint: `${copy.estimatedUsed}: ${report.credits.estimatedUsedCredits} · ${copy.estimatedToComplete}: ${report.credits.estimatedRemainingCredits}`,
-                    },
-                    {
-                      label: copy.plannedDuration,
-                      value: formatDuration(
-                        report.production.targetDurationSec,
-                        locale,
-                      ),
-                      hint: copy.plannedDurationHint,
-                    },
-                    {
-                      label: copy.visualTimingConsistency,
-                      value: getContinuityStatusLabel(
-                        report.continuity.status,
-                        copy,
-                      ),
-                      hint: copy.visualTimingConsistencyHint,
+                      value: `${report.credits.estimatedRemainingCredits} ${copy.creditUnit}`,
+                      hint: copy.estimatedToComplete,
                     },
                     {
                       label: copy.publishingReadiness,
@@ -1019,7 +998,7 @@ export default function CreatorReportsCenter() {
                   ].map((item) => (
                     <div
                       key={item.label}
-                      className="rounded-[22px] border border-slate-200 bg-slate-50 p-4"
+                      className="reports-primary-signal"
                     >
                       <p className="text-xs font-black leading-4 text-slate-700">
                         {item.label}
@@ -1034,29 +1013,73 @@ export default function CreatorReportsCenter() {
                   ))}
                 </div>
 
-                <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                  <FindingList
-                    title={copy.strengths}
-                    items={report.findings.strengths}
-                    emptyText={copy.noStrength}
-                    tone="positive"
-                  />
-                  <FindingList
-                    title={copy.findings}
-                    items={[
-                      ...report.findings.blockers,
-                      ...report.findings.warnings,
-                    ]}
-                    emptyText={copy.noFinding}
-                    tone="warning"
-                  />
-                  <FindingList
-                    title={copy.nextActions}
-                    items={report.nextActions}
-                    emptyText={copy.noAction}
-                    tone="action"
-                  />
-                </div>
+                <details className="reports-supporting-signals">
+                  <summary>{copy.supportingSignals}</summary>
+                  <div>
+                    {[
+                      {
+                        label: copy.mediaReadiness,
+                        value: `${copy.visualAssetsReady}: ${report.production.visualReadyScenes}/${report.production.totalScenes} · ${copy.voiceAssetsReady}: ${report.production.voiceReadyScenes}/${report.production.totalScenes}`,
+                        hint: copy.mediaReadinessHint,
+                      },
+                      {
+                        label: copy.plannedDuration,
+                        value: formatDuration(report.production.targetDurationSec, locale),
+                        hint: copy.plannedDurationHint,
+                      },
+                      {
+                        label: copy.visualTimingConsistency,
+                        value: getContinuityStatusLabel(report.continuity.status, copy),
+                        hint: copy.visualTimingConsistencyHint,
+                      },
+                      {
+                        label: copy.estimatedProjectTotal,
+                        value: `${report.credits.estimatedTotalCredits} ${copy.creditUnit}`,
+                        hint: `${copy.estimatedUsed}: ${report.credits.estimatedUsedCredits}`,
+                      },
+                    ].map((item) => (
+                      <div key={item.label} className="reports-supporting-signal">
+                        <strong>{item.label}</strong>
+                        <span>{item.value}</span>
+                        <small>{item.hint}</small>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+
+                <section className="reports-decisions" aria-labelledby="reports-action-required-title">
+                  <div>
+                    <h3 className="reports-eyebrow" id="reports-action-required-title">{copy.actionRequired}</h3>
+                    <div className="reports-action-grid">
+                      <FindingList
+                        title={copy.findings}
+                        items={[...report.findings.blockers, ...report.findings.warnings]}
+                        emptyText={copy.noFinding}
+                        tone="warning"
+                      />
+                      <FindingList
+                        title={copy.nextActions}
+                        items={report.nextActions}
+                        emptyText={copy.noAction}
+                        tone="action"
+                      />
+                    </div>
+                    {(report.findings.blockers.length > 0 || report.findings.warnings.length > 0 || report.nextActions.length > 0) && (
+                      <Link href="/create?flow=creator_lab" className="reports-inline-studio-action">
+                        {copy.openStudio}
+                      </Link>
+                    )}
+                  </div>
+                  <div className="reports-ready-signals">
+                    <h3 className="reports-eyebrow">{copy.readySignals}</h3>
+                    <FindingList
+                      title={copy.strengths}
+                      items={report.findings.strengths}
+                      emptyText={copy.noStrength}
+                      tone="positive"
+                    />
+                  </div>
+                </section>
 
                 <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                   <section className="rounded-[24px] border border-slate-200 p-5">
