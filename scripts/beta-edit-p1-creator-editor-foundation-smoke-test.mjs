@@ -106,9 +106,9 @@ matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*?<CreatorEdi
 const editorEntryStart = page.indexOf('data-creator-editor-entry="true"');
 const editorEntryEnd = page.indexOf("</button>", editorEntryStart);
 const editorEntry = page.slice(editorEntryStart, editorEntryEnd);
-check(editorEntryStart >= 0, "Edit Video entry action exists"); // 46
-matches(editorEntry, /onClick=\{\(\) => setCreatorEditorOpen\(true\)\}/, "Edit Video has a real state transition"); // 47
-matches(page, /!creatorEditorOpen && \([\s\S]*?data-creator-editor-entry="true"/, "entry is visible only while editor is closed"); // 48
+check(editorEntryStart >= 0, "Open Editor entry action exists"); // 46
+matches(editorEntry, /onClick=\{\(\) => setCreatorEditorOpen\(true\)\}/, "Open Editor has a real state transition"); // 47
+matches(page, /contextualAction=\{!creatorEditorOpen \? \([\s\S]*?data-creator-editor-entry="true"/, "entry is visible only while editor is closed"); // 48
 matches(page, /creatorEditorOpen && \(\s*<CreatorEditor/, "open state renders CreatorEditor"); // 49
 doesNotMatch(editor, /Edit Video|Videoyu Düzenle|setCreatorEditorOpen/, "CreatorEditor has no dead Edit Video control"); // 50
 doesNotMatch(editorEntry, /fetch\(|generate|buildStory|persistProject|saveProject/i, "opening editor does not generate or save"); // 51

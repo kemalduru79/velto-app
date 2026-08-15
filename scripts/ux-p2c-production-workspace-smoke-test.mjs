@@ -66,7 +66,7 @@ requireNeedles("components/create/CreatorEditorTimeline.tsx", [
   "creatorlab-p2c-editor-timeline-thumbnail",
 ]);
 
-requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
+const sceneProductionStatus = requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
   '"ready"',
   '"needs_action"',
   '"generating"',
@@ -74,6 +74,9 @@ requireNeedles("components/create/CreatorSceneProductionStatus.tsx", [
   "deriveCreatorSceneTriageStatus",
   "data-scene-production-overview",
   "aria-current={focused ? \"true\" : undefined}",
+  "contextualAction?: ReactNode",
+  "creatorlab-p2c-scene-operations-action",
+  'language === "en" ? "Scene Production" : "Sahne Üretimi"',
 ]);
 
 const page = requireNeedles("app/create/page.tsx", [
@@ -124,6 +127,12 @@ const page = requireNeedles("app/create/page.tsx", [
   'selectCreatorProductionSubstep(step === 3 ? "setup" : "create_review")',
   'navigateCreatorWorkspaceStep(step === 5 ? 4 : step)',
   '"Step 5 · Publish"',
+  "setSaveMessage(ui.autoSaved)",
+  'data-autosave-status={isCreatorLabFlow && saveMessage === ui.autoSaved ? "saved" : undefined}',
+  'data-creator-editor-entry="true"',
+  "onClick={() => setCreatorEditorOpen(true)}",
+  '"Open Editor"',
+  "contextualAction={!creatorEditorOpen",
 ]);
 
 if (page.includes("<CreatorProductionSubnav")) {
@@ -132,6 +141,10 @@ if (page.includes("<CreatorProductionSubnav")) {
 
 if (page.includes('"Generate visuals and voice"')) {
   failures.push("UX-P2C: old four-step Production rail copy remains visible");
+}
+
+if (page.includes('"Scene workspace"') || sceneProductionStatus.includes('"Operational overview"')) {
+  failures.push("UX-P2C: redundant scene hierarchy copy remains visible");
 }
 
 if (page.includes("Selected → Image") || page.includes("Selected → Video")) {

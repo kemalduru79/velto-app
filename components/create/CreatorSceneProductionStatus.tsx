@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type CreatorSceneTriageStatus =
   | "ready"
   | "needs_action"
@@ -62,11 +64,13 @@ export default function CreatorSceneProductionStatus({
   focusedSceneId,
   onFocusScene,
   language,
+  contextualAction,
 }: {
   scenes: readonly CreatorSceneProductionSummary[];
   focusedSceneId: number | null;
   onFocusScene: (sceneId: number) => void;
   language: "en" | "tr";
+  contextualAction?: ReactNode;
 }) {
   const counts = scenes.reduce(
     (summary, scene) => ({
@@ -84,24 +88,26 @@ export default function CreatorSceneProductionStatus({
     >
       <div className="creatorlab-p2c-scene-operations-heading">
         <div>
-          <span>{language === "en" ? "Operational overview" : "Operasyon özeti"}</span>
-          <h3 id="creatorlab-scene-production-title">
+          <h2 id="creatorlab-scene-production-title">
             {language === "en" ? "Scene Production" : "Sahne Üretimi"}
-          </h3>
+          </h2>
+          <p>
+            <strong>{scenes.length}</strong> {language === "en" ? "scenes" : "sahne"}
+            <span>·</span>
+            <strong>{counts.ready}</strong> {language === "en" ? "ready" : "hazır"}
+            <span>·</span>
+            <strong>{counts.needs_action}</strong> {language === "en" ? "need action" : "aksiyon gerekli"}
+            {counts.generating > 0 && (
+              <><span>·</span><strong>{counts.generating}</strong> {language === "en" ? "generating" : "üretiliyor"}</>
+            )}
+            {counts.review > 0 && (
+              <><span>·</span><strong>{counts.review}</strong> {language === "en" ? "to review" : "kontrol edilecek"}</>
+            )}
+          </p>
         </div>
-        <p>
-          <strong>{scenes.length}</strong> {language === "en" ? "scenes" : "sahne"}
-          <span>·</span>
-          <strong>{counts.ready}</strong> {language === "en" ? "ready" : "hazır"}
-          <span>·</span>
-          <strong>{counts.needs_action}</strong> {language === "en" ? "need action" : "aksiyon gerekli"}
-          {counts.generating > 0 && (
-            <><span>·</span><strong>{counts.generating}</strong> {language === "en" ? "generating" : "üretiliyor"}</>
-          )}
-          {counts.review > 0 && (
-            <><span>·</span><strong>{counts.review}</strong> {language === "en" ? "to review" : "kontrol edilecek"}</>
-          )}
-        </p>
+        {contextualAction && (
+          <div className="creatorlab-p2c-scene-operations-action">{contextualAction}</div>
+        )}
       </div>
 
       <ol

@@ -649,16 +649,8 @@
   padding: 0 2px;
 }
 
-.creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading > div > span {
-  color: var(--cl-accent);
-  font-size: 0.57rem;
-  font-weight: 760;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading h3 {
-  margin: 2px 0 0;
+.creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading h2 {
+  margin: 0;
   color: var(--cl-text-strong);
   font-size: 0.92rem;
   font-weight: 730;
@@ -1176,6 +1168,50 @@
 .creatorlab-uxp2a-shell .creatorlab-readiness-track {
   width: 100%;
   min-width: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-autosave-status {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  width: auto;
+  min-height: 28px;
+  padding: 5px 9px;
+  color: var(--cl-success);
+  background: color-mix(in srgb, var(--cl-success-soft) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cl-success) 18%, var(--cl-border));
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 680;
+  line-height: 1;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-autosave-status > span {
+  width: 6px;
+  height: 6px;
+  background: var(--cl-success);
+  border-radius: 50%;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-action {
+  flex: 0 0 auto;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-open-editor {
+  min-height: 36px;
+  padding: 7px 11px;
+  color: var(--cl-text);
+  background: var(--cl-surface-elevated);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 8px;
+  font-size: 0.67rem;
+  font-weight: 690;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-open-editor:hover {
+  color: var(--cl-text-strong);
+  border-color: var(--cl-accent-border);
 }
 
 /* Five concise items now form the only visible project workflow. */

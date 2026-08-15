@@ -1856,7 +1856,7 @@ const UI_TEXT = {
     customDurationMinutes: "Süre (dakika)",
     durationScenePlan: "Tahmini sahne planı",
     usePatternDuration: "Pattern önerisini kullan",
-    autoSaved: "Otomatik kaydedildi ✅",
+    autoSaved: "Kaydedildi",
     projectSaved: "Proje kaydedildi ✅",
     projectUpdated: "Proje güncellendi ✅",
     childAdded: "Çocuk profili eklendi ✅",
@@ -2193,7 +2193,7 @@ const UI_TEXT = {
     customDurationMinutes: "Duration (minutes)",
     durationScenePlan: "Estimated scene plan",
     usePatternDuration: "Use pattern recommendation",
-    autoSaved: "Autosaved ✅",
+    autoSaved: "Saved",
     projectSaved: "Project saved ✅",
     projectUpdated: "Project updated ✅",
     childAdded: "Child profile added ✅",
@@ -28831,14 +28831,20 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
           <div
             role={isCreatorLabFlow ? "status" : undefined}
             aria-live={isCreatorLabFlow ? "polite" : undefined}
-            className={`rounded-2xl border border-green-200 bg-green-50/80 p-4 text-green-700 ${
-              isCreatorLabFlow &&
-              (saveMessage === "Creator mentor analysis is ready ✅" ||
-                saveMessage === "Creator mentor analizi hazır ✅")
-                ? "creatorlab-mentor-ready-status"
-                : ""
-            }`}
+            data-autosave-status={isCreatorLabFlow && saveMessage === ui.autoSaved ? "saved" : undefined}
+            className={
+              isCreatorLabFlow && saveMessage === ui.autoSaved
+                ? "creatorlab-autosave-status"
+                : `rounded-2xl border border-green-200 bg-green-50/80 p-4 text-green-700 ${
+                    isCreatorLabFlow &&
+                    (saveMessage === "Creator mentor analysis is ready ✅" ||
+                      saveMessage === "Creator mentor analizi hazır ✅")
+                      ? "creatorlab-mentor-ready-status"
+                      : ""
+                  }`
+            }
           >
+            {isCreatorLabFlow && saveMessage === ui.autoSaved && <span aria-hidden="true" />}
             {saveMessage}
           </div>
         )}
@@ -30356,19 +30362,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   </div>
                 )}
 
-                {!creatorEditorOpen && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      data-creator-editor-entry="true"
-                      onClick={() => setCreatorEditorOpen(true)}
-                      className="min-h-10 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                    >
-                      {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
-                    </button>
-                  </div>
-                )}
-
                 {creatorEditorOpen && (
                   <CreatorEditor
                     scenes={scenes}
@@ -30436,23 +30429,21 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 )}
 
                 <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard">
-                  <div className="creatorlab-production-storyboard-heading">
-                    <div>
-                      <span>{uiLanguage === "en" ? "Scene workspace" : "Sahne çalışma alanı"}</span>
-                      <h2>{uiLanguage === "en" ? "Scenes" : "Sahneler"}</h2>
-                    </div>
-                    <p>
-                      {uiLanguage === "en"
-                        ? `${scenes.length} scenes · ${formatDurationLabel(creatorVideoDurationSec)} target`
-                        : `${scenes.length} sahne · ${formatDurationLabel(creatorVideoDurationSec)} hedef`}
-                    </p>
-                  </div>
-
                   <CreatorSceneProductionStatus
                     scenes={creatorSceneProductionSummaries}
                     focusedSceneId={creatorFocusedSceneId}
                     onFocusScene={setCreatorFocusedSceneId}
                     language={uiLanguage === "en" ? "en" : "tr"}
+                    contextualAction={!creatorEditorOpen ? (
+                      <button
+                        type="button"
+                        data-creator-editor-entry="true"
+                        onClick={() => setCreatorEditorOpen(true)}
+                        className="creatorlab-p2c-open-editor"
+                      >
+                        {uiLanguage === "en" ? "Open Editor" : "Editörü Aç"}
+                      </button>
+                    ) : undefined}
                   />
 
                   <div className="mb-4 border-y border-slate-200 py-3 md:py-4">

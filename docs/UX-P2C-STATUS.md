@@ -138,3 +138,13 @@ The nested Setup/Create & Review navigator was removed from the Production canva
 All availability and completion presentation is derived from existing brief, approved-strategy/production-package, production-complete, and publish-complete state. The existing Production and Publish gates remain authoritative; no visit-based completion flags or persisted workflow state were added. The global header retains the legitimate lifecycle readiness percentage while its compact phase label now reflects the active five-step workflow item.
 
 This information-architecture correction does not change API contracts, persistence, generation, provider routing, credits, queues/jobs, export behavior, or Storyverse. It adds zero dependencies and zero infrastructure.
+
+## UX-P2C Final Cleanup — Ready for Closure
+
+- Normal CreatorLab autosave success is now a compact, low-emphasis Saved status; the existing error alert remains prominent for exceptional persistence failures.
+- Scene Production is the single scene-section identity, with the existing scene, readiness, and triage counts directly beneath it. Redundant Scene Workspace, Scenes, and Operational Overview labels were removed.
+- The existing Editor-open handler now appears as a contextual secondary Open Editor action in the Scene Production heading instead of an isolated button.
+- The accepted five-step Project Workflow remains unchanged, as do scene triage, focused-scene behavior, batch selection, Creator Editor synchronization, and timeline behavior.
+- No API, persistence timing, generation, credit, provider-routing, queue/job, export, dependency, infrastructure, or Storyverse behavior changed.
+
+UX-P2C is ready for closure after final validation.
