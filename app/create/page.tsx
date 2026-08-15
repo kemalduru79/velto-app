@@ -17446,30 +17446,35 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     {
       key: "finalVideo",
       label: uiLanguage === "en" ? "Final video exists" : "Final video mevcut",
+      attentionLabel: uiLanguage === "en" ? "Create final video" : "Final videoyu oluştur",
       detail: uiLanguage === "en" ? "A downloadable final render is available." : "İndirilebilir final render hazır.",
       ready: Boolean(creatorPublishVideoUrl),
     },
     {
       key: "thumbnail",
       label: uiLanguage === "en" ? "Thumbnail selected" : "Thumbnail seçildi",
+      attentionLabel: uiLanguage === "en" ? "Select thumbnail" : "Thumbnail seç",
       detail: uiLanguage === "en" ? "A clean source image and overlay design are defined." : "Temiz kaynak görsel ve yazı katmanı tanımlandı.",
       ready: Boolean(creatorPublishThumbnailUrl),
     },
     {
       key: "captions",
       label: uiLanguage === "en" ? "Captions can be generated" : "Altyazılar üretilebilir",
+      attentionLabel: uiLanguage === "en" ? "Prepare captions" : "Altyazıları hazırla",
       detail: uiLanguage === "en" ? "Narration or dialogue is available for SRT/VTT." : "SRT/VTT için anlatım veya diyalog mevcut.",
       ready: creatorPublishCaptionReady,
     },
     {
       key: "metadata",
       label: uiLanguage === "en" ? "Publishing copy prepared" : "Yayın metinleri hazır",
+      attentionLabel: uiLanguage === "en" ? "Prepare publishing copy" : "Yayın metinlerini hazırla",
       detail: uiLanguage === "en" ? "Title, description and channel copy are ready." : "Başlık, açıklama ve kanal metinleri hazır.",
       ready: Boolean(youtubeMetadataResult),
     },
     {
       key: "ratio",
       label: uiLanguage === "en" ? `${creatorPublishRatioLabel} output preset` : `${creatorPublishRatioLabel} çıktı oranı`,
+      attentionLabel: uiLanguage === "en" ? `Prepare ${creatorPublishRatioLabel} output` : `${creatorPublishRatioLabel} çıktıyı hazırla`,
       detail: uiLanguage === "en" ? "The export format matches the selected primary format." : "Export formatı seçilen ana formatla uyumlu.",
       ready: Boolean(creatorPublishVideoUrl && creatorFormat),
     },
@@ -17478,26 +17483,31 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const creatorReleaseConfirmationItems: Array<{
     key: CreatorReleaseConfirmationKey;
     label: string;
+    attentionLabel: string;
     detail: string;
   }> = [
     {
       key: "videoReviewed",
       label: uiLanguage === "en" ? "I reviewed the final video" : "Final videoyu kontrol ettim",
+      attentionLabel: uiLanguage === "en" ? "Review final video" : "Final videoyu kontrol et",
       detail: uiLanguage === "en" ? "Playback, timing and visible output were checked." : "Oynatma, zamanlama ve görünen çıktı kontrol edildi.",
     },
     {
       key: "claimsVerified",
       label: uiLanguage === "en" ? "Claims and facts are verified" : "İddia ve bilgiler doğrulandı",
+      attentionLabel: uiLanguage === "en" ? "Verify claims and facts" : "İddia ve bilgileri doğrula",
       detail: uiLanguage === "en" ? "Names, figures, quotations and assertions were reviewed." : "İsimler, rakamlar, alıntılar ve iddialar gözden geçirildi.",
     },
     {
       key: "rightsConfirmed",
       label: uiLanguage === "en" ? "Usage rights are confirmed" : "Kullanım hakları doğrulandı",
+      attentionLabel: uiLanguage === "en" ? "Confirm usage rights" : "Kullanım haklarını doğrula",
       detail: uiLanguage === "en" ? "Visual, audio, brand and reference permissions are valid." : "Görsel, ses, marka ve referans izinleri geçerli.",
     },
     {
       key: "thumbnailApproved",
       label: uiLanguage === "en" ? "Thumbnail is approved" : "Thumbnail onaylandı",
+      attentionLabel: uiLanguage === "en" ? "Approve thumbnail" : "Thumbnail'ı onayla",
       detail: uiLanguage === "en" ? "Crop, text, safe zone and readability were reviewed." : "Kadraj, metin, güvenli alan ve okunabilirlik kontrol edildi.",
     },
   ];
@@ -17511,10 +17521,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   const creatorPublishAttentionItems = [
     ...creatorPublishSystemChecks
       .filter((item) => !item.ready)
-      .map((item) => ({ key: `system-${item.key}`, label: item.label })),
+      .map((item) => ({ key: `system-${item.key}`, label: item.attentionLabel })),
     ...creatorReleaseConfirmationItems
       .filter((item) => !creatorReleaseConfirmations[item.key])
-      .map((item) => ({ key: `confirmation-${item.key}`, label: item.label })),
+      .map((item) => ({ key: `confirmation-${item.key}`, label: item.attentionLabel })),
   ];
   const creatorPublishReadinessState = creatorPublishIsOutdated
     ? "outdated"
@@ -32451,21 +32461,29 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 className="creatorlab-publish-thumbnail-card creatorlabs-thumbnail-studio creatorlab-thumbnail-studio-details"
               >
                 <summary className="creatorlab-publish-card-heading creatorlab-thumbnail-studio-summary">
-                  <div>
-                    <span>
-                      {uiLanguage === "en" ? "Thumbnail Studio" : "Thumbnail Stüdyosu"}
-                    </span>
-                    <strong>
-                      {uiLanguage === "en"
-                        ? "Edit crop, typography and overlay"
-                        : "Kadraj, tipografi ve metin katmanını düzenle"}
-                    </strong>
+                  <div className="creatorlab-p2d-thumbnail-summary-preview">
+                    {creatorPublishThumbnailUrl ? (
+                      <img src={creatorPublishThumbnailUrl} alt="" />
+                    ) : (
+                      <span aria-hidden="true">+</span>
+                    )}
                   </div>
-                  <small>
-                    {creatorPublishThumbnailUrl
-                      ? uiLanguage === "en" ? "Optional styling" : "Opsiyonel tasarım"
-                      : uiLanguage === "en" ? "Select source above" : "Yukarıdan kaynak seç"}
-                  </small>
+                  <div className="creatorlab-p2d-thumbnail-summary-copy">
+                    <span>Thumbnail</span>
+                    <strong>
+                      {creatorPublishThumbnailUrl
+                        ? uiLanguage === "en" ? "Ready for publishing" : "Yayın için hazır"
+                        : uiLanguage === "en" ? "Thumbnail required" : "Thumbnail gerekli"}
+                    </strong>
+                    <small>
+                      {creatorPublishThumbnailUrl
+                        ? uiLanguage === "en" ? "Current saved design" : "Mevcut kayıtlı tasarım"
+                        : uiLanguage === "en" ? "Select a source image above" : "Yukarıdan bir kaynak görsel seç"}
+                    </small>
+                  </div>
+                  <span className="creatorlab-p2d-thumbnail-edit-action">
+                    {uiLanguage === "en" ? "Edit thumbnail" : "Thumbnail'ı düzenle"}
+                  </span>
                 </summary>
 
                 <div
@@ -33111,11 +33129,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 <strong>
                   {creatorPublishIsOutdated
                     ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
-                    : creatorPublishComplete
-                      ? uiLanguage === "en" ? "Current package is ready" : "Mevcut paket hazır"
                     : creatorReleaseReady
-                      ? uiLanguage === "en" ? "Release approved and ready to export" : "Yayın onaylandı ve dışa aktarıma hazır"
-                      : uiLanguage === "en" ? "Complete release validation before export" : "Dışa aktarımdan önce yayın doğrulamasını tamamla"}
+                      ? uiLanguage === "en" ? "Ready to export" : "Dışa aktarıma hazır"
+                      : uiLanguage === "en"
+                        ? `${creatorPublishAttentionItems.length} items need attention`
+                        : `${creatorPublishAttentionItems.length} öğe kontrol edilmeli`}
                 </strong>
                 <p>
                   {youtubeMetadataResult

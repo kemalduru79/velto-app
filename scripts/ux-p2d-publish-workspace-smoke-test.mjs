@@ -27,6 +27,12 @@ const page = requireNeedles("app/create/page.tsx", [
   "creatorVisibleWorkflowStep",
   "creatorPublishSystemChecks",
   "creatorReleaseConfirmationItems",
+  'attentionLabel: uiLanguage === "en" ? "Review final video"',
+  'attentionLabel: uiLanguage === "en" ? "Verify claims and facts"',
+  'attentionLabel: uiLanguage === "en" ? "Confirm usage rights"',
+  'attentionLabel: uiLanguage === "en" ? "Prepare publishing copy"',
+  ".map((item) => ({ key: `confirmation-${item.key}`, label: item.attentionLabel }))",
+  "creatorReleaseConfirmations[item.key]",
   "creatorPublishIsOutdated",
   'creatorProjectLifecycle?.status === "export_outdated"',
   "creatorFinalVideoNeedsRebuild",
@@ -41,7 +47,15 @@ const page = requireNeedles("app/create/page.tsx", [
   "handleGeneratePremiumYoutubeThumbnail",
   "handleSelectSceneAsYoutubeThumbnail",
   "setCreatorThumbnailChooserOpen((prev) => !prev)",
+  'className="creatorlab-publish-thumbnail-card creatorlabs-thumbnail-studio creatorlab-thumbnail-studio-details"',
+  'className="creatorlab-p2d-thumbnail-edit-action"',
+  '"Edit thumbnail"',
+  "creatorThumbnailStudio.focalX",
+  "creatorThumbnailStudio.textPosition",
+  "creatorThumbnailStudio.headline",
+  "handleSaveCreatorThumbnail",
   "requestCreatorCostGuardConfirmation",
+  "disabled={isDownloadingCreatorPackage || !creatorPackageReady}",
   "<CreatorCostGuard",
 ]);
 
@@ -67,7 +81,9 @@ if (/openai|replicate|fal\.ai|provider|generation signature|asset id|routing/i.t
 const p2dCss = requireNeedles("app/creatorlab-ux-p2d.css", [
   ".creatorlab-p2d-readiness",
   ".creatorlab-p2d-package-heading",
+  ".creatorlab-p2d-thumbnail-edit-action",
   ".creatorlab-publish-action-bar",
+  "position: sticky",
   "prefers-reduced-motion",
 ]);
 
