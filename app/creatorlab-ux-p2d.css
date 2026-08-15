@@ -522,3 +522,79 @@
     bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
+
+/* UX-P2D-4 — Copilot final visual polish. */
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-open {
+  visibility: hidden;
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-context-bar {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-chat.is-empty {
+  min-height: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-chat.is-empty .creatorlab-director-empty {
+  min-height: 104px;
+  padding: 16px 14px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-empty {
+  gap: 5px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  padding-bottom: 0;
+  overflow: visible;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button {
+  width: 100%;
+  max-width: none;
+  min-height: 38px;
+  padding: 7px 9px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-followups button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-composer textarea {
+  min-height: 76px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-safety-note {
+  margin-top: 7px;
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 360px) {
+  .creatorlab-uxp2a-shell .creatorlab-director-prompt-chips {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+}

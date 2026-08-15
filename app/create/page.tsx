@@ -18178,6 +18178,20 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                 uiLanguage === "en" ? "What should I verify before export?" : "Dışa aktarmadan önce neyi doğrulamalıyım?",
               ];
 
+  const creatorDirectorComposerPlaceholder = creatorDirectorMode === "help"
+    ? uiLanguage === "en"
+      ? "Ask how to use Velto Studio…"
+      : "Velto Studio’nun nasıl kullanılacağını sor…"
+    : creatorVisibleWorkflowStep === 1
+      ? uiLanguage === "en" ? "Ask about your brief or what to improve next…" : "Brief'in veya sırada neyi geliştireceğin hakkında sor…"
+      : creatorVisibleWorkflowStep === 2
+        ? uiLanguage === "en" ? "Ask about the strategy or creative direction…" : "Strateji veya yaratıcı yön hakkında sor…"
+        : creatorVisibleWorkflowStep === 3
+          ? uiLanguage === "en" ? "Ask about your production setup…" : "Üretim kurulumun hakkında sor…"
+          : creatorVisibleWorkflowStep === 4
+            ? uiLanguage === "en" ? "Ask about scenes, media or what needs attention…" : "Sahneler, medya veya dikkat gerekenler hakkında sor…"
+            : uiLanguage === "en" ? "Ask about readiness, metadata or export…" : "Hazırlık, metadata veya dışa aktarım hakkında sor…";
+
   const creatorWorkspaceGuidance = creatorWorkspaceStep === 1
     ? uiLanguage === "en" ? "Complete the brief, then analyze the content opportunity." : "Brief'i tamamla, ardından içerik fırsatını analiz et."
     : creatorWorkspaceStep === 2
@@ -27102,11 +27116,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
               <div className="creatorlab-director-context-bar">
                 <span>{uiLanguage === "en" ? "Current context" : "Mevcut bağlam"}</span>
                 <strong>{creatorDirectorContextLabel}</strong>
-                <small>
-                  {creatorDirectorMode === "project"
-                    ? uiLanguage === "en" ? "Creative context" : "Yaratıcı bağlam"
-                    : uiLanguage === "en" ? "Studio guidance" : "Studio rehberi"}
-                </small>
               </div>
 
               <div
@@ -27162,7 +27171,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
               <div
                 id="creatorlab-director-chat"
-                className="creatorlab-director-chat"
+                className={`creatorlab-director-chat ${creatorDirectorMessages.length === 0 ? "is-empty" : ""}`}
                 role="log"
                 aria-live="polite"
                 aria-relevant="additions text"
@@ -27183,8 +27192,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                     <p>
                       {creatorDirectorMode === "project"
                         ? uiLanguage === "en"
-                          ? "Ask your Creative Director for concise, project-aware guidance and one practical next step."
-                          : "Creative Director’dan projeye özel kısa yönlendirme ve uygulanabilir tek bir sonraki adım iste."
+                          ? "Ask your Creative Director for concise project-aware guidance and next steps."
+                          : "Creative Director’dan projeye özel kısa yönlendirme ve sonraki adımları iste."
                         : uiLanguage === "en"
                           ? "Get concise guidance about controls, workflow stages, quality levels and export requirements."
                           : "Kontroller, iş akışı, kalite seviyeleri ve dışa aktarım koşulları hakkında kısa destek al."}
@@ -27493,15 +27502,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   onChange={(event) => setCreatorDirectorInput(event.target.value)}
                   maxLength={2000}
                   rows={3}
-                  placeholder={
-                    creatorDirectorMode === "project"
-                      ? uiLanguage === "en"
-                        ? "Ask for direction on the brief, strategy, scenes, production or release…"
-                        : "Brief, strateji, sahneler, üretim veya yayın için yönlendirme iste…"
-                      : uiLanguage === "en"
-                        ? "Ask how to use Velto Studio…"
-                        : "Velto Studio’nun nasıl kullanılacağını sor…"
-                  }
+                  placeholder={creatorDirectorComposerPlaceholder}
                   onKeyDown={(event) => {
                     if (
                       event.key === "Enter" &&
@@ -27554,8 +27555,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
 
               <p id="creatorlab-director-safety-note" className="creatorlab-director-safety-note">
                 {uiLanguage === "en"
-                  ? "Velto Copilot can stage reversible project changes for approval. Paid media and release actions always require a second explicit confirmation."
-                  : "Velto Copilot geri alınabilir proje değişikliklerini onayına sunabilir. Ücretli medya ve yayın aksiyonları her zaman ikinci bir açık onay gerektirir."}
+                  ? "Changes require approval. Paid media and export require confirmation."
+                  : "Değişiklikler onay gerektirir. Ücretli medya ve dışa aktarım doğrulama gerektirir."}
               </p>
 
             </aside>
