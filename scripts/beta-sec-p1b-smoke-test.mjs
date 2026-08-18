@@ -37,7 +37,7 @@ assert.ok(videoRoute.includes('bucket: "videos"'));
 assert.ok(videoRoute.includes("MAX_CREATOR_VIDEO_BYTES"));
 assert.ok(videoRoute.includes("boundary.context.user.id"));
 assert.ok(videoRoute.includes("queueJobId"));
-assert.ok(videoRoute.includes("upsert: true"));
+assert.ok(videoRoute.includes("upsert: false"));
 assert.ok(!videoRoute.includes("randomUUID()") && !videoRoute.includes("safeRemoteMediaFetch("));
 
 for (const marker of [
@@ -92,8 +92,8 @@ assert.ok(createPage.includes('fetch("/api/creator-store-image"'));
 assert.ok(createPage.includes("Authorization: `Bearer ${accessToken}`"));
 
 const protectedHashes = {
-  "app/api/store-image/route.ts": "06a9948fda5ff1884f1076dce0ce99702dd2479b2afac316102487bb5ddf090b",
-  "app/api/store-video/route.ts": "a1b55827874b1304a832f14262016a40cf88fcfb232a241e9fe2525307c49160",
+  "app/api/store-image/route.ts": "a32a4275d88c11008c54002568328baeaccc188bfd1958bcac740301b3e6faee",
+  "app/api/store-video/route.ts": "bf362a7f7407db9b54bf54d0f5d41d313cb2540dc351777225f5d5b006b3ddad",
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
   "app/api/story/route.ts": "5559c4e40a9364865aa25353cfa1283f0e1a824e7513f125e75ec737ef97302f",

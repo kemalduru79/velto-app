@@ -8,6 +8,7 @@ import {
   safeRemoteMediaFetch,
   SafeMediaError,
 } from "@/lib/security/safeRemoteMediaFetch";
+import { consumeStorageAdmissionForMedia, StorageAdmissionError, storageAdmissionErrorResponse } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
     if (!boundary.ok) return boundary.response;
     const body = boundary.body;
     const image = typeof body?.image === "string" ? body.image.trim() : "";
+    const storageAdmissionId = typeof body?.storageAdmissionId === "string" ? body.storageAdmissionId.trim() : "";
 
     if (!image) {
       return NextResponse.json(
@@ -26,35 +28,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fileData = image.startsWith("data:")
-      ? decodeImageDataUrl(image, MAX_CREATOR_IMAGE_BYTES)
-      : image.startsWith("https://")
-        ? await safeRemoteMediaFetch({ rawUrl: image, kind: "image", maxBytes: MAX_CREATOR_IMAGE_BYTES })
-        : null;
-
-    if (!fileData) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "image must be a data URI or a public HTTPS URL",
-        },
-        { status: 400 },
-      );
-    }
-
-    const filePath = `storyverse/${boundary.user.id}/image/${randomUUID()}.${fileData.extension}`;
-    const services = getPersistenceServices();
-    const storedImage =
-      await services.objectStorage.uploadPublic({
-        bucket: "images",
-        path: filePath,
-        body: fileData.buffer,
-        contentType: fileData.mimeType,
-        upsert: false,
-      });
-    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.user.id,
-      bucket: storedImage.bucket, storagePath: storedImage.path, publicUrl: storedImage.publicUrl, mediaKind: "image",
-      mimeType: fileData.mimeType, body: fileData.buffer, metadata: { product: "storyverse" } });
+    const storedImage = await consumeStorageAdmissionForMedia({
+      ownerUserId: boundary.user.id,
+      storageAdmissionId,
+      mediaKind: "image",
+      purpose: "storyverse_generated_image",
+      operation: async (markDurableStorageStarted) => {
+        const fileData = image.startsWith("data:")
+          ? decodeImageDataUrl(image, MAX_CREATOR_IMAGE_BYTES)
+          : image.startsWith("https://")
+            ? await safeRemoteMediaFetch({ rawUrl: image, kind: "image", maxBytes: MAX_CREATOR_IMAGE_BYTES })
+            : null;
+        if (!fileData) throw new SafeMediaError(400, "image must be a data URI or a public HTTPS URL");
+        const filePath = `storyverse/${boundary.user.id}/image/${randomUUID()}.${fileData.extension}`;
+        const services = getPersistenceServices();
+        const uploaded = await services.objectStorage.uploadPublic({
+          bucket: "images", path: filePath, body: fileData.buffer, contentType: fileData.mimeType, upsert: false,
+        });
+        markDurableStorageStarted();
+        await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.user.id,
+          bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: "image",
+          mimeType: fileData.mimeType, body: fileData.buffer, metadata: { product: "storyverse" } });
+        return uploaded;
+      },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -62,6 +59,7 @@ export async function POST(req: NextRequest) {
       path: storedImage.path,
     });
   } catch (error) {
+    if (error instanceof StorageAdmissionError) return storageAdmissionErrorResponse(error);
     if (error instanceof SafeMediaError) {
       return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     }

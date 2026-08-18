@@ -22,6 +22,7 @@ import type { CreatorResolvedContinuityMode } from "../../../lib/creator/visualC
 import { buildCreatorGenerationContinuityContext } from "../../../lib/creator/sceneContinuity";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 // 3L SMART VISUALS V2
 // CONT-P1R SELECTIVE CONTINUITY
@@ -712,6 +713,13 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
 `;
 
     const imageProvider = getMediaProviderFacade().image();
+    const { storageAdmissionId } = await issueStorageAdmissionForOwner({
+      ownerUserId: principal.id,
+      mediaKind: "image",
+      purpose: isCreatorLab ? "creator_generated_image" : "storyverse_generated_image",
+      projectReference: typeof projectId === "string" ? projectId : null,
+      metadata: { imageUseCase: normalizedImageUseCase },
+    });
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_image",
@@ -767,6 +775,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
 
     return NextResponse.json({
       image: `data:image/png;base64,${image.base64}`,
+      storageAdmissionId,
       usage: image.usage || null,
       credits: creditResult
         ? { chargedCredits, account: creditResult.account }

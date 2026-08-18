@@ -123,14 +123,14 @@ assert.equal(createPage.split(videoTokenAfter).length - 1, 3);
 assert.equal((createPage.match(/Authorization: `Bearer \$\{storeAccessToken\}`/g) || []).length, 3);
 
 const protectedHashes = {
-  "app/api/store-audio/route.ts": "5b5b8839f303688eb12396d210cc3142ff0572325b9f7b8fe44772d0b2a61917",
-  "app/api/store-dialogue-audio/route.ts": "f330ba635f7c58b480148331e2c7dafab9b0c952d3bb203aa10c6a44460e2802",
-  "app/api/creator-store-image/route.ts": "e9499856b3f442e938b337002b94b0a2719364267815104cde5148a8b789997f",
+  "app/api/store-audio/route.ts": "3df1841f7ecb64bae6b8dbbee6ff37245c5cdbfc157aa3191042068389901c86",
+  "app/api/store-dialogue-audio/route.ts": "1f267242cd2a2b15357a6a2fd769c0d91840e183f74a8093e6e536bd0eeacbcc",
+  "app/api/creator-store-image/route.ts": "41257a586db6ecac9d748dfc4466bd677d00a414723c5464c0b8acc038e3e30c",
   "lib/security/creatorApiBoundary.ts": "c6eed64a7408cad1d6cfc5ae5d39c670f0f76728b4f303487f003b99d8196217",
   "lib/security/creatorMediaStoragePolicy.ts": "ff7524414d45ae630a81fca7751d84226a11139916b3df40e34d0c0d800c16e9",
   "lib/security/safeRemoteMediaFetch.ts": "f85004c90e8d3fc24c1a18d017ba09e39b6327328171f9b3e6d251d7a84b417e",
-  "lib/persistence/projects/supabaseProjectRepository.ts": "83cb306a51c31bc3d7ff40d29e757e5cdb760f0218cdf6aa31d07974f9ebdb87",
-  "lib/persistence/storage/supabaseObjectStorageRepository.ts": "4b73fa9e2a939fb210a85274ef1b91445369dadfbb93cd1484880915dfbd1e5c",
+  "lib/persistence/projects/supabaseProjectRepository.ts": "7f005548d4b61354fbf550cd5bef362c4586b3fd975fcf15cdba0b1ef6e478dc",
+  "lib/persistence/storage/supabaseObjectStorageRepository.ts": "37a5ed1705fb7fa33e04f77c2c9e58e17c1d100915c570751dafbea7da56ffed",
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
   "app/api/stitch-video/route.ts": "c9528eb59f580f2b1b5284fab6eb0f24a2503b2f6d083208502e54a97b12e945",

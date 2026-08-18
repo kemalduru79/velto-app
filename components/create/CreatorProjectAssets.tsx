@@ -44,6 +44,8 @@ type StorageStatus = {
   usedBytes: number;
   activeBytes: number;
   trashedBytes: number;
+  additionalEntitlementBytes: number;
+  effectiveLimitBytes: number | null;
   limitBytes: number | null;
   usageRatio: number | null;
   state: "NORMAL" | "APPROACHING" | "CRITICAL" | "FULL" | null;
@@ -184,6 +186,7 @@ export default function CreatorProjectAssets({
               <span className="text-slate-600">{formatBytes(storageStatus.usedBytes)}{storageStatus.configured && storageStatus.limitBytes ? ` ${language === "en" ? "of" : "/"} ${formatBytes(storageStatus.limitBytes)}` : ""}</span>
             </div>
             {storageStatus.configured && storageStatus.usageRatio !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(storageStatus.usageRatio * 100))}><span className={`block h-full rounded-full ${storageStatus.state === "FULL" || storageStatus.state === "CRITICAL" ? "bg-amber-600" : "bg-blue-600"}`} style={{ width: `${Math.min(100, storageStatus.usageRatio * 100)}%` }} /></div>}
+            {storageStatus.configured && storageStatus.additionalEntitlementBytes > 0 && <p className="mt-2 text-[11px] text-slate-500">{language === "en" ? `Includes ${formatBytes(storageStatus.additionalEntitlementBytes)} additional storage.` : `${formatBytes(storageStatus.additionalEntitlementBytes)} ek depolama dahil.`}</p>}
             {storageStatus.trashedBytes > 0 && <p className="mt-2 text-[11px] text-slate-500">{language === "en" ? `${formatBytes(storageStatus.trashedBytes)} in Trash still uses storage.` : `Çöp Kutusundaki ${formatBytes(storageStatus.trashedBytes)} hâlâ depolama kullanıyor.`}</p>}
             {storageStatus.decision === "BLOCKED_FULL" && <div className="mt-3 rounded-lg bg-amber-100 p-3 text-xs text-amber-950"><p>{language === "en" ? "Storage is full. New image and video generation is temporarily unavailable." : "Depolama alanı dolu. Yeni görsel ve video üretimi geçici olarak kullanılamıyor."}</p><button type="button" onClick={() => document.getElementById("creator-media-management")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="mt-2 rounded-lg border border-amber-400 px-3 py-2 font-semibold">{language === "en" ? "Manage storage" : "Depolamayı yönet"}</button></div>}
           </section>

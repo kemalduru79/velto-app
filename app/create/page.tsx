@@ -698,6 +698,7 @@ type Scene = {
   videoStatus?: "idle" | "processing" | "delayed" | "done" | "error";
   videoJobId?: string;
   videoQueueJobId?: string;
+  videoStorageAdmissionId?: string;
   videoDurationSeconds?: number;
   videoGenerationSignature?: string;
   videoPendingGenerationSignature?: string;
@@ -6792,6 +6793,7 @@ const generateSceneImage = async (
       },
       body: JSON.stringify({
         image: rawImage,
+        storageAdmissionId: imageData.storageAdmissionId,
         sceneId: scene.id,
         projectId: getProjectKey(),
       }),
@@ -7420,7 +7422,7 @@ const generateSceneImage = async (
     );
   };
 
-  const pollVideoStatus = (sceneId: number, taskId: string) => {
+  const pollVideoStatus = (sceneId: number, taskId: string, storageAdmissionId: string) => {
     if (isCreatorLabFlow) {
       failClosedLegacyCreatorVideo(sceneId);
       return;
@@ -7477,6 +7479,7 @@ const generateSceneImage = async (
             },
             body: JSON.stringify({
               videoUrl: data.videoUrl,
+              storageAdmissionId,
               sceneId,
               projectId: getProjectKey(),
             }),
@@ -7497,6 +7500,7 @@ const generateSceneImage = async (
                     videoStatus: "done",
                     videoUrl: storeData.videoUrl,
                     videoJobId: taskId,
+                    videoStorageAdmissionId: undefined,
                   }
                 : scene
             )
@@ -8630,6 +8634,7 @@ const generateSceneImage = async (
       const videoQueueJobId = isCreatorLabFlow
         ? String(data.queueJobId || "")
         : "";
+      const storageAdmissionId = isCreatorLabFlow ? "" : String(data.storageAdmissionId || "");
 
       if (isCreatorLabFlow && !isQueueJobId(videoQueueJobId)) {
         throw new Error(
@@ -8637,6 +8642,9 @@ const generateSceneImage = async (
             ? "Video tracking job could not be created."
             : "Video takip işi oluşturulamadı.",
         );
+      }
+      if (!isCreatorLabFlow && !storageAdmissionId) {
+        throw new Error("Video storage admission could not be created.");
       }
 
       setScenes((prev) =>
@@ -8646,6 +8654,7 @@ const generateSceneImage = async (
                 ...s,
                 videoJobId: isCreatorLabFlow ? videoQueueJobId : data.taskId,
                 videoQueueJobId: videoQueueJobId || undefined,
+                videoStorageAdmissionId: storageAdmissionId || undefined,
                 videoStatus: "processing",
                 videoDurationSeconds: Number(data.duration) || 0,
                 videoPendingGenerationSignature: generationSignature,
@@ -8659,7 +8668,7 @@ const generateSceneImage = async (
       if (isCreatorLabFlow) {
         pollVideoQueueJob(sceneId, videoQueueJobId, creatorSceneId, generationSignature);
       } else {
-        pollVideoStatus(sceneId, data.taskId);
+        pollVideoStatus(sceneId, data.taskId, storageAdmissionId);
       }
       return true;
     } catch (e: any) {
@@ -8695,7 +8704,7 @@ const generateSceneImage = async (
     });
   };
 
-  const waitForRunwayVideoAndStore = async (scene: Scene, taskId: string) => {
+  const waitForRunwayVideoAndStore = async (scene: Scene, taskId: string, storageAdmissionId: string) => {
     if (isCreatorLabFlow) {
       throw new Error(
         uiLanguage === "en"
@@ -8736,6 +8745,7 @@ const generateSceneImage = async (
           },
           body: JSON.stringify({
             videoUrl: data.videoUrl,
+            storageAdmissionId,
             sceneId: scene.id,
             projectId: getProjectKey(),
           }),
@@ -8933,6 +8943,10 @@ const generateSceneImage = async (
     ) {
       throw new Error(data?.error || "Video oluşturma başlatılamadı.");
     }
+    const storageAdmissionId = isCreatorLabFlow ? "" : String(data.storageAdmissionId || "");
+    if (!isCreatorLabFlow && !storageAdmissionId) {
+      throw new Error("Video storage admission could not be created.");
+    }
 
     setScenes((prev) =>
       prev.map((item) =>
@@ -8940,6 +8954,7 @@ const generateSceneImage = async (
           ? {
               ...item,
               videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
+              videoStorageAdmissionId: storageAdmissionId || undefined,
               videoStatus: "processing",
               videoDurationSeconds: Number(data.duration) || 0,
             }
@@ -8955,7 +8970,7 @@ const generateSceneImage = async (
           String(data.queueJobId || ""),
         )
       : {
-          videoUrl: await waitForRunwayVideoAndStore(scene, data.taskId),
+          videoUrl: await waitForRunwayVideoAndStore(scene, data.taskId, storageAdmissionId),
           videoQueueJobId: "",
         };
     const videoUrl = queuedVideo.videoUrl;
@@ -8969,6 +8984,7 @@ const generateSceneImage = async (
               videoUrl,
               videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
               videoQueueJobId: queuedVideo.videoQueueJobId || undefined,
+              videoStorageAdmissionId: undefined,
               videoDurationSeconds: Number(data.duration) || 0,
             }
           : item
@@ -14254,6 +14270,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       },
       body: JSON.stringify({
         image: imageData.image,
+        storageAdmissionId: imageData.storageAdmissionId,
         sceneId: "thumbnail",
         projectId: getProjectKey(),
       }),
@@ -16683,7 +16700,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
         );
         else failClosedLegacyCreatorVideo(scene.id, scene.creatorSceneId);
       } else if (scene.videoJobId) {
-        pollVideoStatus(scene.id, scene.videoJobId);
+        if (scene.videoStorageAdmissionId) pollVideoStatus(scene.id, scene.videoJobId, scene.videoStorageAdmissionId);
+        else failClosedLegacyCreatorVideo(scene.id);
       }
     });
   }, [scenes, isCreatorLabFlow]);

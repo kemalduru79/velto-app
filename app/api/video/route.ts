@@ -7,6 +7,7 @@ import {
 import { getMediaProviderFacade } from "../../../lib/providers";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 import { normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
 import {
   createVideoJobToken,
@@ -182,6 +183,13 @@ export async function POST(req: NextRequest) {
     }
 
     const requestedRatio = getRequestedRatio(body, isCreatorLabRequest);
+    const { storageAdmissionId } = await issueStorageAdmissionForOwner({
+      ownerUserId: principal.id,
+      mediaKind: "video",
+      purpose: "storyverse_generated_video",
+      projectReference: typeof body.projectId === "string" ? body.projectId : null,
+      metadata: { sceneId: body.sceneId ?? null },
+    });
     const task = await selection.provider.createTask({
       imageUrl: imageUrl as string,
       lastFrameUrl,
@@ -214,6 +222,7 @@ export async function POST(req: NextRequest) {
       requestedRatio,
       engineTier: selection.selectedTier,
       premiumFallbackUsed: selection.usedFallback,
+      storageAdmissionId,
     });
   } catch (error: unknown) {
     if (error instanceof AuthenticationError) {

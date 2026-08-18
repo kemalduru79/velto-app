@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPersistenceServices } from "@/lib/persistence/services";
 import { getStorageGenerationDecision, getStorageQuota, resolveStorageQuotaConfiguration, type StorageGenerationDecision, type StorageQuotaState } from "./quota";
 import type { MediaAssetRepository, MediaUsage } from "./types";
+import { getAdditionalStorageBytesForOwner } from "./storageEntitlement.server";
 
 export type OwnerStorageQuotaStatus = {
   configured: boolean;
@@ -14,6 +15,10 @@ export type OwnerStorageQuotaStatus = {
   assetCount: number;
   activeAssetCount: number;
   trashedAssetCount: number;
+  baseLimitBytes: number | null;
+  additionalEntitlementBytes: number;
+  effectiveLimitBytes: number | null;
+  /** Backward-compatible alias for effectiveLimitBytes. */
   limitBytes: number | null;
   remainingBytes: number | null;
   usageRatio: number | null;
@@ -22,7 +27,7 @@ export type OwnerStorageQuotaStatus = {
   decision: StorageGenerationDecision;
 };
 
-function unconfiguredStatus(usage: MediaUsage, enforcementEnabled: boolean): OwnerStorageQuotaStatus {
+function unconfiguredStatus(usage: MediaUsage, enforcementEnabled: boolean, additionalEntitlementBytes: number): OwnerStorageQuotaStatus {
   return {
     configured: false,
     enforcementEnabled,
@@ -33,6 +38,9 @@ function unconfiguredStatus(usage: MediaUsage, enforcementEnabled: boolean): Own
     assetCount: usage.assetCount,
     activeAssetCount: usage.activeAssetCount,
     trashedAssetCount: usage.trashedAssetCount,
+    baseLimitBytes: null,
+    additionalEntitlementBytes,
+    effectiveLimitBytes: null,
     limitBytes: null,
     remainingBytes: null,
     usageRatio: null,
@@ -46,13 +54,19 @@ export async function getOwnerStorageQuotaStatus(
   ownerUserId: string,
   repository: MediaAssetRepository = getPersistenceServices().mediaAssetRepository,
   env: NodeJS.ProcessEnv = process.env,
+  entitlementResolver: (ownerUserId: string) => Promise<number> = getAdditionalStorageBytesForOwner,
 ): Promise<OwnerStorageQuotaStatus> {
-  const usage = await repository.getUsageForOwner(ownerUserId);
+  const [usage, additionalEntitlementBytes] = await Promise.all([
+    repository.getUsageForOwner(ownerUserId),
+    entitlementResolver(ownerUserId),
+  ]);
   const config = resolveStorageQuotaConfiguration(env);
   if (!config.configured || config.limitBytes === null) {
-    return unconfiguredStatus(usage, config.enforcementEnabled);
+    return unconfiguredStatus(usage, config.enforcementEnabled, additionalEntitlementBytes);
   }
-  const quota = getStorageQuota(usage.totalPhysicalBytes, config.limitBytes);
+  const effectiveLimitBytes = config.limitBytes + additionalEntitlementBytes;
+  if (!Number.isSafeInteger(effectiveLimitBytes)) throw new Error("Effective storage limit exceeds the safe integer range.");
+  const quota = getStorageQuota(usage.totalPhysicalBytes, effectiveLimitBytes);
   const decision = getStorageGenerationDecision(true, config.enforcementEnabled, quota.state);
   const blocked = decision === "BLOCKED_FULL";
   return {
@@ -65,6 +79,9 @@ export async function getOwnerStorageQuotaStatus(
     assetCount: usage.assetCount,
     activeAssetCount: usage.activeAssetCount,
     trashedAssetCount: usage.trashedAssetCount,
+    baseLimitBytes: config.limitBytes,
+    additionalEntitlementBytes,
+    effectiveLimitBytes,
     limitBytes: quota.limitBytes,
     remainingBytes: quota.remainingBytes,
     usageRatio: quota.usageRatio,

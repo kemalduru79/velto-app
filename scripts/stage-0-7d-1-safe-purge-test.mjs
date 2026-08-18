@@ -122,9 +122,9 @@ assert.equal(usage(rows), 10, "successful complete frees physical quota");
 rows[1].state = "trashed";
 assert.equal(usage(rows), 30, "failed physical purge remains counted");
 
-assert.doesNotMatch(read("app/api/creator-store-image/route.ts"), /generationAdmission|checkStorageGenerationAllowance/);
-assert.doesNotMatch(read("app/api/store-image/route.ts"), /generationAdmission|checkStorageGenerationAllowance/);
-assert.doesNotMatch(read("app/api/store-video/route.ts"), /generationAdmission|checkStorageGenerationAllowance/);
+assert.match(read("app/api/creator-store-image/route.ts"), /consumeStorageAdmissionForMedia/);
+assert.match(read("app/api/store-image/route.ts"), /consumeStorageAdmissionForMedia/);
+assert.match(read("app/api/store-video/route.ts"), /consumeStorageAdmissionForMedia/);
 assert.match(read("app/api/creator-store-video/route.ts"), /validatePersistedVideoJobBinding/);
 assert.doesNotMatch(migration + orchestrator + recovery + api + ui, /cron|schedule|empty trash|bulk delete|checkout|stripe|subscription|payment/i);
 

@@ -35,7 +35,7 @@ for (const file of [
 ]) {
   requireText(file, "objectStorage.uploadPublic");
   forbidText(file, "@supabase/supabase-js");
-  forbidText(file, ".storage");
+  forbidText(file, ".storage.");
 }
 
 requireText("lib/persistence/factory.ts", "VELTO_DATABASE_DRIVER");

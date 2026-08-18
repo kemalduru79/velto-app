@@ -46,7 +46,7 @@ matches(page, /sceneOperationsDisabled=\{[\s\S]*scene\.videoStatus === "processi
 absent(poller + recovery, /POST[\s\S]*creator-video|handleGenerateVideo\(/, "19 recovery performs no automatic provider redispatch");
 check((dispatch.match(/fetch\(getVideoApiEndpoint\(\)/g) || []).length === 1, "20 one creator_video request/reservation path per action");
 matches(creatorRoute, /providerTaskAccepted[\s\S]*Do not release the reservation[\s\S]*settle/, "21 ambiguous dispatch never unsafely releases credit");
-matches(page, /const pollVideoStatus = \(sceneId: number, taskId: string\)[\s\S]*if \(isCreatorLabFlow\)/, "22 Storyverse polling remains separate");
+matches(page, /const pollVideoStatus = \(sceneId: number, taskId: string, storageAdmissionId: string\)[\s\S]*if \(isCreatorLabFlow\)/, "22 Storyverse polling remains separate and admission-bound");
 check(trimSmoke.includes("${checks}/68") && editor.includes("data-creator-trim-controls"), "23 0.5.3C trim behavior preserved");
 
 matches(creatorRoute, /queueJobId: queueJob\.id/, "dispatch returns durable queue identity");
