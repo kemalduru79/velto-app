@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getPersistenceServices } from "@/lib/persistence";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
 import { enforceLegacyMediaBoundary } from "@/lib/security/legacyMediaStorageBoundary";
 import { MAX_CREATOR_IMAGE_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
 import {
@@ -43,14 +43,18 @@ export async function POST(req: NextRequest) {
     }
 
     const filePath = `storyverse/${boundary.user.id}/image/${randomUUID()}.${fileData.extension}`;
+    const services = getPersistenceServices();
     const storedImage =
-      await getPersistenceServices().objectStorage.uploadPublic({
+      await services.objectStorage.uploadPublic({
         bucket: "images",
         path: filePath,
         body: fileData.buffer,
         contentType: fileData.mimeType,
         upsert: false,
       });
+    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.user.id,
+      bucket: storedImage.bucket, storagePath: storedImage.path, publicUrl: storedImage.publicUrl, mediaKind: "image",
+      mimeType: fileData.mimeType, body: fileData.buffer, metadata: { product: "storyverse" } });
 
     return NextResponse.json({
       ok: true,

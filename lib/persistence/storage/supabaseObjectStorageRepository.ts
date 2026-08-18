@@ -6,6 +6,7 @@ import type {
   PrivateObjectUploadResult,
   PublicObjectUploadInput,
   PublicObjectUploadResult,
+  ObjectStorageStat,
 } from "./types";
 
 function requireStorageName(value: string, field: "bucket" | "path") {
@@ -29,6 +30,28 @@ function requireStorageName(value: string, field: "bucket" | "path") {
 export class SupabaseObjectStorageRepository
   implements ObjectStorageRepository
 {
+  async stat(input: { bucket: string; path: string }): Promise<ObjectStorageStat> {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const storagePath = requireStorageName(input.path, "path");
+    const slash = storagePath.lastIndexOf("/");
+    const directory = slash >= 0 ? storagePath.slice(0, slash) : "";
+    const name = slash >= 0 ? storagePath.slice(slash + 1) : storagePath;
+    const { data, error } = await createServerSupabaseClient().storage.from(bucket).list(directory, {
+      limit: 2,
+      search: name,
+    });
+    if (error) throw new PersistenceError("Media metadata could not be read.", "STORAGE_STAT_FAILED", error);
+    const found = (data || []).find((item) => item.name === name);
+    const metadata = found?.metadata as Record<string, unknown> | undefined;
+    return {
+      bucket,
+      path: storagePath,
+      exists: Boolean(found),
+      sizeBytes: typeof metadata?.size === "number" ? metadata.size : null,
+      contentType: typeof metadata?.mimetype === "string" ? metadata.mimetype : null,
+    };
+  }
+
   async uploadPrivate(
     input: PrivateObjectUploadInput,
   ): Promise<PrivateObjectUploadResult> {

@@ -3,7 +3,7 @@ import {
   authenticateRequest,
   AuthenticationError,
 } from "@/lib/auth/server";
-import { getPersistenceServices } from "@/lib/persistence";
+import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
 
 export const runtime = "nodejs";
 
@@ -41,8 +41,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
 
+    const services = getPersistenceServices();
     const result =
-      await getPersistenceServices().projectRepository.saveForOwner({
+      await services.projectRepository.saveForOwner({
         projectId:
           typeof body.projectId === "string" && body.projectId.trim()
             ? body.projectId.trim()
@@ -76,6 +77,12 @@ export async function POST(req: Request) {
         sceneOptimizationSummary: body.sceneOptimizationSummary || null,
         refinedCreatorScenes: body.refinedCreatorScenes || null,
       });
+
+    await services.mediaAssetRepository.replaceProjectReferences(
+      principal.id,
+      result.project.id,
+      extractProjectMediaReferences(result.project),
+    );
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

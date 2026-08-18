@@ -3,6 +3,7 @@ import type { JobQueueRepository } from "./jobs";
 import type { ProjectRepository } from "./projects";
 import type { ObjectStorageRepository } from "./storage";
 import type { CreatorMusicEntitlementRepository, CreatorMusicUsageEventRepository } from "./music";
+import type { MediaAssetRepository } from "./media";
 
 export type PersistenceServices = {
   creditRepository: CreditRepository;
@@ -11,4 +12,5 @@ export type PersistenceServices = {
   projectRepository: ProjectRepository;
   creatorMusicEntitlementRepository: CreatorMusicEntitlementRepository;
   creatorMusicUsageEventRepository: CreatorMusicUsageEventRepository;
+  mediaAssetRepository: MediaAssetRepository;
 };

@@ -4,6 +4,8 @@ import { getPersistenceServices } from "@/lib/persistence";
 import type { CreatorMusicEntitlement, CreatorMusicEntitlementRepository } from "@/lib/persistence/music";
 import type { ObjectStorageRepository } from "@/lib/persistence/storage";
 import type { ProjectRepository } from "@/lib/persistence/projects";
+import type { MediaAssetRepository } from "@/lib/persistence/media";
+import { registerStoredAssetOrThrow } from "@/lib/persistence/media";
 import { getMusicProvider, type MusicProvider } from "@/lib/providers/music";
 import { isPremiumMusicAcquisitionEnabled, MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES, PREMIUM_MUSIC_CONTENT_TYPE } from "@/lib/providers/music/downloadSecurity";
 
@@ -36,6 +38,7 @@ export type CreatorMusicAcquisitionDependencies = {
   projectRepository: ProjectRepository;
   entitlementRepository: CreatorMusicEntitlementRepository;
   objectStorage: ObjectStorageRepository;
+  mediaAssetRepository?: MediaAssetRepository;
   provider: MusicProvider;
   acquisitionEnabled: boolean;
   privateBucket?: string;
@@ -47,6 +50,7 @@ function productionDependencies(): CreatorMusicAcquisitionDependencies {
     projectRepository: persistence.projectRepository,
     entitlementRepository: persistence.creatorMusicEntitlementRepository,
     objectStorage: persistence.objectStorage,
+    mediaAssetRepository: persistence.mediaAssetRepository,
     provider: getMusicProvider(),
     acquisitionEnabled: isPremiumMusicAcquisitionEnabled(),
     privateBucket: process.env.CREATOR_PREMIUM_MUSIC_BUCKET?.trim(),
@@ -183,6 +187,18 @@ export async function acquireCreatorPremiumMusic(
   const stored = await dependencies.objectStorage.uploadPrivate({
     bucket, path, body: downloaded.body, contentType: PREMIUM_MUSIC_CONTENT_TYPE, upsert: true,
   });
+  if (dependencies.mediaAssetRepository) {
+    await registerStoredAssetOrThrow({
+      repository: dependencies.mediaAssetRepository,
+      ownerUserId: input.userId,
+      bucket: stored.bucket,
+      storagePath: stored.path,
+      mediaKind: "music",
+      mimeType: PREMIUM_MUSIC_CONTENT_TYPE,
+      body: downloaded.body,
+      metadata: { projectId: input.projectId, entitlementId: entitlement.id },
+    });
+  }
   const staged = await dependencies.entitlementRepository.stageStoredAsset(entitlement.id, input.userId, {
     storageBucket: stored.bucket,
     storagePath: stored.path,

@@ -22,6 +22,14 @@ export type PrivateObjectUploadResult = {
   path: string;
 };
 
+export type ObjectStorageStat = {
+  bucket: string;
+  path: string;
+  exists: boolean;
+  sizeBytes: number | null;
+  contentType: string | null;
+};
+
 export interface ObjectStorageRepository {
   uploadPublic(
     input: PublicObjectUploadInput,
@@ -29,4 +37,5 @@ export interface ObjectStorageRepository {
   uploadPrivate(
     input: PrivateObjectUploadInput,
   ): Promise<PrivateObjectUploadResult>;
+  stat(input: { bucket: string; path: string }): Promise<ObjectStorageStat>;
 }

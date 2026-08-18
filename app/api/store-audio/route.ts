@@ -9,7 +9,8 @@ import {
   getCreatorVoiceProfileServerSelection,
   resolveCreatorVoiceProfileVoiceId,
 } from "@/lib/providers/voice/voiceProfileResolver";
-import { getPersistenceServices } from "@/lib/persistence";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { authenticateRequest } from "@/lib/auth/server";
 import {
   getCreditErrorResponse,
   releaseMeteredOperation,
@@ -110,6 +111,7 @@ async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
 
   try {
+    const principal = await authenticateRequest(req);
     const body = await req.json();
 
     const rawText = typeof body?.text === "string" ? body.text.trim() : "";
@@ -237,20 +239,24 @@ async function postHandler(req: NextRequest) {
     });
     const buffer = voiceResult.audio;
 
-    const { objectStorage } = getPersistenceServices();
+    const services = getPersistenceServices();
 
     const safeProjectKey = safeName(projectKey);
     const safeSceneId = safeName(sceneId);
 
     const filePath = `${safeProjectKey}/scene-${safeSceneId}-narration-${Date.now()}.mp3`;
 
-    const storedAudio = await objectStorage.uploadPublic({
+    const storedAudio = await services.objectStorage.uploadPublic({
       bucket: "audio",
       path: filePath,
       body: buffer,
       contentType: voiceResult.contentType,
       upsert: false,
     });
+    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: principal.id,
+      bucket: storedAudio.bucket, storagePath: storedAudio.path, publicUrl: storedAudio.publicUrl,
+      mediaKind: "narration_audio", mimeType: voiceResult.contentType, body: buffer,
+      metadata: { projectKey: safeProjectKey, sceneId: safeSceneId } });
     const clientSettingsKey =
       typeof body?.clientSettingsKey === "string" && body.clientSettingsKey.trim()
         ? body.clientSettingsKey.trim()

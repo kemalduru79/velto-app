@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getPersistenceServices } from "@/lib/persistence";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 import { MAX_CREATOR_IMAGE_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
 import { decodeImageDataUrl, safeRemoteMediaFetch, SafeMediaError } from "@/lib/security/safeRemoteMediaFetch";
@@ -17,9 +17,13 @@ export async function POST(req: NextRequest) {
       ? decodeImageDataUrl(image, MAX_CREATOR_IMAGE_BYTES)
       : await safeRemoteMediaFetch({ rawUrl: image, kind: "image", maxBytes: MAX_CREATOR_IMAGE_BYTES });
     const path = `creator/${boundary.context.user.id}/image/${randomUUID()}.${media.extension}`;
-    const stored = await getPersistenceServices().objectStorage.uploadPublic({
+    const services = getPersistenceServices();
+    const stored = await services.objectStorage.uploadPublic({
       bucket: "images", path, body: media.buffer, contentType: media.mimeType, upsert: false,
     });
+    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.context.user.id,
+      bucket: stored.bucket, storagePath: stored.path, publicUrl: stored.publicUrl, mediaKind: "image",
+      mimeType: media.mimeType, body: media.buffer });
     return NextResponse.json({ ok: true, imageUrl: stored.publicUrl, path: stored.path });
   } catch (error) {
     if (error instanceof SafeMediaError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
