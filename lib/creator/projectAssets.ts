@@ -41,14 +41,14 @@ export type RankedCreatorProjectAsset = CreatorProjectAsset & {
   matchReason: "shared_topic" | "related_context";
 };
 
-const CREATOR_ASSET_STOP_WORDS = new Set([
+const CREATOR_ASSET_STOP_WORD_SOURCE = [
   "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
   "has", "have", "he", "her", "his", "in", "is", "it", "its", "of", "on",
   "or", "she", "that", "the", "their", "this", "to", "was", "were", "with",
   "ve", "veya", "ile", "bir", "bu", "şu", "o", "da", "de", "için", "gibi",
   "çok", "daha", "olan", "olarak", "ama", "fakat", "ise", "mi", "mı", "mu",
   "mü", "ne", "her", "hem", "sonra", "önce", "diye",
-]);
+] as const;
 
 export function normalizeCreatorMatchText(value: string) {
   return value
@@ -59,6 +59,10 @@ export function normalizeCreatorMatchText(value: string) {
     .trim()
     .replace(/\s+/g, " ");
 }
+
+const CREATOR_ASSET_STOP_WORDS = new Set(
+  CREATOR_ASSET_STOP_WORD_SOURCE.map(normalizeCreatorMatchText),
+);
 
 export function tokenizeCreatorMatchText(value: string) {
   return normalizeCreatorMatchText(value)

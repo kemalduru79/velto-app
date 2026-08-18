@@ -54,6 +54,19 @@ const turkish = [
   { id: 3, creatorSceneId: "other", text: "Mutfakta sıcak ekmek pişiyor", image: "tr-other.jpg" },
 ];
 check(helper.rankCreatorProjectAssetsForScene({ scenes: turkish, targetCreatorSceneId: "target" })[0]?.url === "tr-match.jpg", "Turkish token overlap works");
+const turkishStopWordsOnly = [
+  { id: 1, creatorSceneId: "target", text: "Bu sahne için çok önemli olan bir an", image: "stop-target.jpg" },
+  { id: 2, creatorSceneId: "candidate", text: "Bu proje için çok farklı olan başka bir konu", image: "stop-candidate.jpg" },
+];
+check(helper.rankCreatorProjectAssetsForScene({ scenes: turkishStopWordsOnly, targetCreatorSceneId: "target" }).length === 0, "normalized Turkish stop-word-only overlap does not recommend");
+check(["bu", "icin", "cok", "olan", "bir"].every((token) => !helper.tokenizeCreatorMatchText(turkishStopWordsOnly[0].text).includes(token)), "Turkish stop words use content normalization representation");
+const turkishRealTopic = [
+  { id: 1, creatorSceneId: "target", text: "Bas gitar funk müziğinin ritmini değiştiriyor", image: "topic-target.jpg" },
+  { id: 2, creatorSceneId: "candidate", text: "Funk müziğinde bas gitar ve ritim öne çıkıyor", image: "topic-candidate.jpg" },
+];
+check(helper.rankCreatorProjectAssetsForScene({ scenes: turkishRealTopic, targetCreatorSceneId: "target" })[0]?.url === "topic-candidate.jpg", "real Turkish topic overlap still recommends");
+check(/topicalScore < 2/.test(helperSource), "matching threshold remains unchanged");
+check(JSON.stringify(rank()) === JSON.stringify(rank()), "ranking remains deterministic after stop-word normalization");
 check(!/fetch\(|XMLHttpRequest|WebSocket|Worker\(/.test(helperSource), "matcher requires no network, API, or worker");
 check(pageUnchanged, "existing 0.6A reuse handler and page integration remain unchanged");
 check(/rankCreatorProjectAssetsForScene/.test(component) && /onUseImage\(asset\.url, asset\.sourceCreatorSceneId\)/.test(component), "recommended image uses the existing 0.6A callback");
@@ -66,4 +79,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Stage 0.6B Local Smart Match passed (15 checks).");
+console.log("Stage 0.6B Local Smart Match passed (20 checks).");
