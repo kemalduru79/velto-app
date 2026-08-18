@@ -13,6 +13,7 @@ const storyStoreImage = read("app/api/store-image/route.ts");
 const storyStoreVideo = read("app/api/store-video/route.ts");
 const creatorStoreVideo = read("app/api/creator-store-video/route.ts");
 const page = read("app/create/page.tsx");
+const liveSmoke = read("scripts/stage-0-7d-2-live-entitlement-admission-smoke.mjs");
 
 const now = Date.parse("2026-08-18T12:00:00.000Z");
 const grants = [
@@ -103,5 +104,19 @@ assert.match(admission, /operation: \(markDurableStorageStarted/);
 assert.match(read(".env.container.example"), /VELTO_STORAGE_ADMISSION_TTL_MINUTES=60/);
 assert.match(read(".env.container.example"), /VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED=false/);
 assert.doesNotMatch(migration + admission + quota + page, /stripe|paddle|lemon|iyzico|checkout|pricing card|subscription/i);
+
+assert.match(liveSmoke, /args\.length !== 1 \|\| args\[0\] !== "--apply"/);
+assert.match(liveSmoke, /VELTO_LIVE_STORAGE_SMOKE_CONFIRM !== REQUIRED_CONFIRMATION/);
+assert.match(liveSmoke, /STAGE_0_7D_2_DISPOSABLE_ONLY/);
+assert.match(liveSmoke, /console\.log\("NO_MUTATION"\)/);
+assert.ok((liveSmoke.match(/randomUUID\(\)/g) || []).length >= 6, "live smoke generates all test identities internally");
+assert.doesNotMatch(liveSmoke, /\.storage\.from|\.upload\(|\.remove\(|uploadPublic|safeRemoteMediaFetch|generate\(|createTask\(|provider|reserveMeteredOperation|credit/i);
+assert.match(liveSmoke, /generatedIds = \{[\s\S]*entitlementId, duplicateEntitlementId[\s\S]*admissionId, expiredAdmissionId/);
+assert.match(liveSmoke, /verifyDisposableRows\(table, ids\)[\s\S]*ids\.includes\(row\.id\)[\s\S]*row\.owner_user_id === ownerUserId[\s\S]*row\.metadata\?\.stage === STAGE && row\.metadata\?\.disposable === true/);
+assert.match(liveSmoke, /\.delete\(\)[\s\S]*\.eq\("id", row\.id\)[\s\S]*\.eq\("owner_user_id", ownerUserId\)[\s\S]*\.contains\("metadata", disposableMetadata\)/);
+assert.match(liveSmoke, /additionalBytesAfter === additionalBytesBefore/);
+assert.match(liveSmoke, /status: "CLEANUP_REQUIRED"/);
+assert.match(liveSmoke, /STAGE_0_7D_2_LIVE_ENTITLEMENT_ADMISSION_SMOKE=PASS/);
+assert.doesNotMatch(liveSmoke, /velto_media_assets|velto_projects|credit_accounts|VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED|VELTO_PERMANENT_MEDIA_DELETE_ENABLED|db push|db reset|migration repair/i);
 
 console.log("stage-0.7d-2 storage entitlement/admission: all checks passed");
