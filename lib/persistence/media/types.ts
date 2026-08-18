@@ -31,9 +31,10 @@ export type StoredMediaAsset = {
   sizeBytes: number;
   lifecycleState: MediaLifecycleState;
   trashedAt: string | null;
+  purgeStartedAt: string | null;
 };
 
-export type RecordStoredAssetInput = Omit<StoredMediaAsset, "id" | "lifecycleState" | "trashedAt"> & {
+export type RecordStoredAssetInput = Omit<StoredMediaAsset, "id" | "lifecycleState" | "trashedAt" | "purgeStartedAt"> & {
   metadata?: Record<string, unknown>;
 };
 
@@ -64,6 +65,10 @@ export type MediaReferenceSummary = {
   createdAt: string;
 };
 
+export type BeginMediaPurgeResult =
+  | { status: "ready"; assetId: string; bucket: string; storagePath: string; purgeToken: string; sizeBytes: number; mediaKind: MediaKind }
+  | { status: "not_found" | "not_trashed" | "retention_not_met" | "in_use" | "purge_already_pending" };
+
 export interface MediaAssetRepository {
   recordStoredAsset(input: RecordStoredAssetInput): Promise<StoredMediaAsset>;
   findByStorageObject(ownerUserId: string, bucket: string, storagePath: string): Promise<StoredMediaAsset | null>;
@@ -75,5 +80,8 @@ export interface MediaAssetRepository {
   listReferencesForAsset(assetId: string, ownerUserId: string): Promise<ProjectMediaReference[]>;
   getReferenceSummaryForOwner(assetId: string, ownerUserId: string): Promise<MediaReferenceSummary[]>;
   trashForOwner(assetId: string, ownerUserId: string): Promise<"trashed" | "not_found" | "state_changed" | "in_use">;
-  restoreForOwner(assetId: string, ownerUserId: string): Promise<StoredMediaAsset | null>;
+  restoreForOwner(assetId: string, ownerUserId: string): Promise<"restored" | "not_found" | "state_changed" | "purge_pending">;
+  beginPurgeForOwner(assetId: string, ownerUserId: string, retentionDays: number): Promise<BeginMediaPurgeResult>;
+  completePurgeForOwner(assetId: string, ownerUserId: string, purgeToken: string): Promise<"purged" | "not_found" | "not_trashed" | "token_mismatch" | "in_use">;
+  abortPurgeForOwner(assetId: string, ownerUserId: string, purgeToken: string): Promise<"aborted" | "not_found" | "not_trashed" | "token_mismatch">;
 }

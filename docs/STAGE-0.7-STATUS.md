@@ -140,3 +140,21 @@ Storage completion is deliberately not gated. A request admitted below FULL may 
 Reuse, Smart Match, project open/edit/save, playback, polling, download, reports, Strategy, Brief, Director/Copilot text actions, metadata/planning, storage inventory, Trash, Restore, narration, dialogue, TTS, and premium music remain available. Trash still does not free capacity. The Project Assets disclosure shows real used storage, a configured progress state when available, retained Trash bytes, and—only for enforced FULL—a clear message and real Manage storage action.
 
 Hard enforcement remains OFF by default until Stage 0.7D supplies at least one recovery path: additional owner entitlement or safe physical purge. Stage 0.7C adds no billing, checkout, plans, subscriptions, permanent deletion, `purged` API, or paid infrastructure.
+
+The Stage 0.7C route audit, quota-state tests, disabled-enforcement behavior, Cost Guard ordering, authenticated usage API, UI warnings, regressions, and production build passed. Stage 0.7C is CLOSED / PASS; hard enforcement remains OFF.
+
+## 0.7D-1 — Safe Permanent Cleanup & Purge Recovery
+
+Permanent cleanup is manual, per item, and disabled by default. Active, referenced, history-only, retention-pending, wrong-owner, already-pending, and purged assets cannot begin purge. `VELTO_TRASH_RETENTION_DAYS` is a server-only non-negative integer with a conservative safety default of 30 days; zero exists only for controlled tests. `VELTO_PERMANENT_MEDIA_DELETE_ENABLED` must equal `true` before the API or UI exposes deletion. No production flag is enabled by this pass.
+
+The additive migration introduces `purge_started_at` plus a unique `purge_token` and service-role-only BEGIN, COMPLETE, ABORT, and locked Restore RPCs. BEGIN locks the owner asset, requires Trash with `trashed_at`, enforces retention, rechecks zero authoritative references, prevents parallel operations, and returns the exact registered bucket/path only to the server adapter. Restore and BEGIN serialize on the same asset row, so exactly one wins. Existing reference replacement still locks assets and accepts only active lifecycle rows.
+
+The purge orchestrator performs BEGIN → exact one-object Storage API removal → COMPLETE. Storage failure invokes ABORT, leaves the asset trashed, and keeps its bytes in quota. Once Storage removal succeeds, a COMPLETE failure is never aborted: the durable pending marker and structured recovery event preserve the crash window. The registry row is retained as a purged audit record with owner, original bucket/path, kind, and size; only lifecycle and purge timestamps change. Physical usage falls only after COMPLETE transitions the registry to `purged`.
+
+`stage-0-7d-1-purge-recovery.mjs` is dry-run by default. It classifies pending exact objects as `OBJECT_PRESENT`, `OBJECT_MISSING`, or `UNKNOWN_ERROR`; `--apply` can finalize only `OBJECT_MISSING`. It never deletes present objects, aborts ambiguous operations, performs prefix/bulk cleanup, or guesses. There is no cron, automatic retention cleanup, Empty Trash, or background purger.
+
+The authenticated purge API accepts only `{ "confirmPermanentDeletion": true }`, derives the owner from the session, never accepts bucket/path/owner, and never exposes the purge token. Trash shows the retained date and remaining retention; eligible deletion uses a two-step irreversible confirmation. Successful purge refreshes both media inventory and storage usage, and purged rows disappear from reusable/restorable inventory.
+
+Hard quota enforcement remains OFF. Completion-route activation audit: `creator-store-video` is bound to an owner-scoped succeeded reconciliation job created by the admitted Creator video flow, but `creator-store-image`, legacy `store-image`, and legacy `store-video` accept authenticated bounded media without cryptographic generation-admission proof. Those three routes are a quota bypass if hard enforcement is activated. A future generation-admission/job binding must close this gap before activation; 0.7D-1 does not introduce that broader state machine.
+
+No paid storage, entitlement, checkout, subscription, pricing, automatic payment, plan upgrade, or paid infrastructure is added. The migration file is review-only and no live database or Storage mutation is performed during implementation.

@@ -30,6 +30,8 @@ export type ObjectStorageStat = {
   contentType: string | null;
 };
 
+export type ObjectStorageRemoveInput = { bucket: string; path: string };
+
 export interface ObjectStorageRepository {
   uploadPublic(
     input: PublicObjectUploadInput,
@@ -38,4 +40,5 @@ export interface ObjectStorageRepository {
     input: PrivateObjectUploadInput,
   ): Promise<PrivateObjectUploadResult>;
   stat(input: { bucket: string; path: string }): Promise<ObjectStorageStat>;
+  removeObject(input: ObjectStorageRemoveInput): Promise<void>;
 }

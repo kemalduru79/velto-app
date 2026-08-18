@@ -7,6 +7,7 @@ import type {
   PublicObjectUploadInput,
   PublicObjectUploadResult,
   ObjectStorageStat,
+  ObjectStorageRemoveInput,
 } from "./types";
 
 function requireStorageName(value: string, field: "bucket" | "path") {
@@ -30,6 +31,13 @@ function requireStorageName(value: string, field: "bucket" | "path") {
 export class SupabaseObjectStorageRepository
   implements ObjectStorageRepository
 {
+  async removeObject(input: ObjectStorageRemoveInput): Promise<void> {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const path = requireStorageName(input.path, "path");
+    const { error } = await createServerSupabaseClient().storage.from(bucket).remove([path]);
+    if (error) throw new PersistenceError("Media object could not be permanently removed.", "STORAGE_REMOVE_FAILED", error);
+  }
+
   async stat(input: { bucket: string; path: string }): Promise<ObjectStorageStat> {
     const bucket = requireStorageName(input.bucket, "bucket");
     const storagePath = requireStorageName(input.path, "path");

@@ -30,6 +30,12 @@ type CleanupAsset = {
   blockingReferenceCount: number;
   historyReferenceCount: number;
   referenceSummary: Array<{ projectId: string; referenceType: string; referenceKey: string }>;
+  trashedAt: string | null;
+  purgePending: boolean;
+  permanentDeleteEnabled: boolean;
+  permanentDeleteEligible: boolean;
+  purgeEligibleAt: string | null;
+  purgeDaysRemaining: number | null;
 };
 
 type StorageStatus = {
@@ -59,6 +65,7 @@ export default function CreatorProjectAssets({
   const [cleanupError, setCleanupError] = useState("");
   const [pendingAssetId, setPendingAssetId] = useState("");
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [purgeConfirmAssetId, setPurgeConfirmAssetId] = useState("");
   const loadCleanupAssets = useCallback(async () => {
     setCleanupLoading(true);
     setCleanupError("");
@@ -77,6 +84,8 @@ export default function CreatorProjectAssets({
       setCleanupLoading(false);
     }
   }, [getAccessToken]);
+  // The inventory is external API state and must be synchronized when auth changes.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadCleanupAssets(); }, [loadCleanupAssets]);
   const assets = useMemo(() => deriveCreatorProjectAssets(scenes), [scenes]);
   const recommendations = useMemo(
@@ -115,7 +124,7 @@ export default function CreatorProjectAssets({
     if (type?.startsWith("scene_")) return language === "en" ? "Used in a scene" : "Bir sahnede kullanılıyor";
     return language === "en" ? "Used in project history" : "Proje geçmişinde kullanılıyor";
   };
-  const mutateAsset = async (asset: CleanupAsset, action: "trash" | "restore") => {
+  const mutateAsset = async (asset: CleanupAsset, action: "trash" | "restore" | "purge") => {
     if (action === "trash" && asset.cleanupState === "HISTORY_ONLY" && !window.confirm(
       language === "en" ? "Remove this media from project history and move it to Trash?" : "Bu medyayı proje geçmişinden çıkarıp Çöp Kutusuna taşımak istiyor musunuz?",
     )) return;
@@ -126,11 +135,16 @@ export default function CreatorProjectAssets({
       const response = await fetch(`/api/media-assets/${encodeURIComponent(asset.id)}/${action}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: action === "trash" && asset.cleanupState === "HISTORY_ONLY" ? JSON.stringify({ projectId }) : "{}",
+        body: action === "purge"
+          ? JSON.stringify({ confirmPermanentDeletion: true })
+          : action === "trash" && asset.cleanupState === "HISTORY_ONLY"
+            ? JSON.stringify({ projectId })
+            : "{}",
       });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Media lifecycle could not be changed.");
       if (action === "trash" && asset.cleanupState === "HISTORY_ONLY" && asset.publicUrl) onHistoryRemoved(asset.publicUrl);
+      if (action === "purge") setPurgeConfirmAssetId("");
       await loadCleanupAssets();
     } catch (error) {
       setCleanupError(error instanceof Error ? error.message : "Media lifecycle could not be changed.");
@@ -314,7 +328,14 @@ export default function CreatorProjectAssets({
               <p className="mt-2 text-xs leading-5 text-slate-500">{language === "en" ? "Items in Trash still use storage until permanently removed." : "Çöp Kutusundaki dosyalar kalıcı olarak kaldırılana kadar depolama alanı kullanmaya devam eder."}</p>
               {trashedAssets.length > 0 && <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{trashedAssets.map((asset) => <li key={asset.id} className="overflow-hidden rounded-lg border border-slate-200">
                 {asset.publicUrl && asset.mediaKind === "image" ? <img src={asset.publicUrl} alt="" className="aspect-video w-full bg-slate-100 object-cover" loading="lazy" /> : asset.publicUrl ? <video src={asset.publicUrl} preload="metadata" className="aspect-video w-full bg-slate-950 object-contain" /> : null}
-                <div className="p-3 text-xs"><span className="text-slate-500">{asset.mediaKind} · {formatBytes(asset.sizeBytes)}</span><button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "restore")} className="mt-2 w-full rounded-lg border border-blue-300 px-3 py-2 font-semibold text-blue-700 disabled:opacity-40">{language === "en" ? "Restore" : "Geri Yükle"}</button></div>
+                <div className="p-3 text-xs">
+                  <span className="text-slate-500">{asset.mediaKind} · {formatBytes(asset.sizeBytes)}</span>
+                  {asset.trashedAt && <span className="mt-1 block text-[11px] text-slate-500">{language === "en" ? "Trashed" : "Çöpe taşındı"}: {new Date(asset.trashedAt).toLocaleDateString(language)}</span>}
+                  {asset.purgePending ? <p className="mt-2 rounded bg-amber-50 p-2 text-amber-800">{language === "en" ? "Permanent deletion requires recovery." : "Kalıcı silme işlemi kurtarma gerektiriyor."}</p> : <button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "restore")} className="mt-2 w-full rounded-lg border border-blue-300 px-3 py-2 font-semibold text-blue-700 disabled:opacity-40">{language === "en" ? "Restore" : "Geri Yükle"}</button>}
+                  {!asset.purgePending && asset.purgeDaysRemaining !== null && asset.purgeDaysRemaining > 0 && <p className="mt-2 text-[11px] text-slate-500">{language === "en" ? `Permanent deletion available in ${asset.purgeDaysRemaining} days.` : `Kalıcı silme ${asset.purgeDaysRemaining} gün sonra kullanılabilir.`}</p>}
+                  {asset.permanentDeleteEnabled && asset.permanentDeleteEligible && purgeConfirmAssetId !== asset.id && <button type="button" onClick={() => setPurgeConfirmAssetId(asset.id)} className="mt-2 w-full rounded-lg border border-red-300 px-3 py-2 font-semibold text-red-700">{language === "en" ? "Delete permanently" : "Kalıcı olarak sil"}</button>}
+                  {asset.permanentDeleteEnabled && asset.permanentDeleteEligible && purgeConfirmAssetId === asset.id && <div className="mt-2 rounded-lg border border-red-300 bg-red-50 p-2 text-red-950"><p>{language === "en" ? "This permanently removes the file and cannot be undone." : "Bu işlem dosyayı kalıcı olarak kaldırır ve geri alınamaz."}</p><div className="mt-2 flex gap-2"><button type="button" onClick={() => setPurgeConfirmAssetId("")} className="rounded-lg border border-slate-300 px-2 py-2 font-semibold">{language === "en" ? "Cancel" : "İptal"}</button><button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "purge")} className="rounded-lg bg-red-700 px-2 py-2 font-semibold text-white disabled:opacity-40">{language === "en" ? "Confirm permanent deletion" : "Kalıcı silmeyi onayla"}</button></div></div>}
+                </div>
               </li>)}</ul>}
             </details>
           </section>

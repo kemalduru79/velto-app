@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ass
       return NextResponse.json({ error: "Media lifecycle state changed." }, { status: 409 });
     }
     const restored = await repository.restoreForOwner(assetId, principal.id);
-    if (!restored) return NextResponse.json({ error: "Media lifecycle state changed." }, { status: 409 });
+    if (restored !== "restored") return NextResponse.json({ error: restored === "purge_pending" ? "Permanent deletion is already pending." : "Media lifecycle state changed." }, { status: 409 });
     return NextResponse.json({ success: true, assetId, lifecycleState: "active" });
   } catch (error) {
     if (error instanceof AuthenticationError) {

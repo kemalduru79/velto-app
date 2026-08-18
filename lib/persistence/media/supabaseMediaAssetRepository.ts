@@ -6,6 +6,7 @@ import type {
   RecordStoredAssetInput,
   StoredMediaAsset,
   MediaReferenceSummary,
+  BeginMediaPurgeResult,
 } from "./types";
 
 type AssetRow = {
@@ -19,9 +20,16 @@ type AssetRow = {
   size_bytes: number | string;
   lifecycle_state: StoredMediaAsset["lifecycleState"];
   trashed_at: string | null;
+  purge_started_at?: string | null;
 };
 
-const ASSET_FIELDS = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state,trashed_at";
+const BASE_ASSET_FIELDS: string = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state,trashed_at";
+
+function assetFields() {
+  return process.env.VELTO_PERMANENT_MEDIA_DELETE_ENABLED === "true"
+    ? `${BASE_ASSET_FIELDS},purge_started_at`
+    : BASE_ASSET_FIELDS;
+}
 
 function asset(row: AssetRow): StoredMediaAsset {
   return {
@@ -35,6 +43,7 @@ function asset(row: AssetRow): StoredMediaAsset {
     sizeBytes: Number(row.size_bytes),
     lifecycleState: row.lifecycle_state,
     trashedAt: row.trashed_at,
+    purgeStartedAt: row.purge_started_at ?? null,
   };
 }
 
@@ -59,8 +68,8 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
       lifecycle_state: "active",
       metadata: input.metadata || {},
     };
-    const { data, error } = await client.from("velto_media_assets").insert(payload).select(ASSET_FIELDS).single();
-    if (!error && data) return asset(data as AssetRow);
+    const { data, error } = await client.from("velto_media_assets").insert(payload).select(assetFields()).single();
+    if (!error && data) return asset(data as unknown as AssetRow);
 
     // Physical identity is globally unique. An idempotent replay is allowed only
     // when the existing object's authoritative owner and metadata agree.
@@ -75,31 +84,31 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
 
   async findByStorageObject(ownerUserId: string, bucket: string, storagePath: string) {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .select(ASSET_FIELDS).eq("owner_user_id", requireOwner(ownerUserId)).eq("bucket", bucket)
+      .select(assetFields()).eq("owner_user_id", requireOwner(ownerUserId)).eq("bucket", bucket)
       .eq("storage_path", storagePath).maybeSingle();
     if (error) throw new Error(`Media asset could not be found: ${error.message}`);
-    return data ? asset(data as AssetRow) : null;
+    return data ? asset(data as unknown as AssetRow) : null;
   }
 
   async findByPublicUrl(ownerUserId: string, publicUrl: string) {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .select(ASSET_FIELDS).eq("owner_user_id", requireOwner(ownerUserId)).eq("public_url", publicUrl).maybeSingle();
+      .select(assetFields()).eq("owner_user_id", requireOwner(ownerUserId)).eq("public_url", publicUrl).maybeSingle();
     if (error) throw new Error(`Media asset could not be found: ${error.message}`);
-    return data ? asset(data as AssetRow) : null;
+    return data ? asset(data as unknown as AssetRow) : null;
   }
 
   async getForOwner(assetId: string, ownerUserId: string) {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .select(ASSET_FIELDS).eq("id", assetId).eq("owner_user_id", requireOwner(ownerUserId)).maybeSingle();
+      .select(assetFields()).eq("id", assetId).eq("owner_user_id", requireOwner(ownerUserId)).maybeSingle();
     if (error) throw new Error(`Media asset could not be read: ${error.message}`);
-    return data ? asset(data as AssetRow) : null;
+    return data ? asset(data as unknown as AssetRow) : null;
   }
 
   async listForOwner(ownerUserId: string) {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .select(ASSET_FIELDS).eq("owner_user_id", requireOwner(ownerUserId)).order("created_at", { ascending: false });
+      .select(assetFields()).eq("owner_user_id", requireOwner(ownerUserId)).order("created_at", { ascending: false });
     if (error) throw new Error(`Media inventory could not be listed: ${error.message}`);
-    return (data || []).map((row) => asset(row as AssetRow));
+    return (data || []).map((row) => asset(row as unknown as AssetRow));
   }
 
   async getUsageForOwner(ownerUserId: string): Promise<MediaUsage> {
@@ -187,11 +196,47 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
   }
 
   async restoreForOwner(assetId: string, ownerUserId: string) {
-    const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .update({ lifecycle_state: "active", trashed_at: null, updated_at: new Date().toISOString() })
-      .eq("id", assetId).eq("owner_user_id", requireOwner(ownerUserId)).eq("lifecycle_state", "trashed")
-      .select(ASSET_FIELDS).maybeSingle();
+    if (process.env.VELTO_PERMANENT_MEDIA_DELETE_ENABLED !== "true") {
+      const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
+        .update({ lifecycle_state: "active", trashed_at: null, updated_at: new Date().toISOString() })
+        .eq("id", assetId).eq("owner_user_id", requireOwner(ownerUserId)).eq("lifecycle_state", "trashed")
+        .select("id").maybeSingle();
+      if (error) throw new Error(`Media asset could not be restored: ${error.message}`);
+      return data ? "restored" as const : "state_changed" as const;
+    }
+    const { data, error } = await createServerSupabaseClient().rpc("velto_restore_media_asset", {
+      p_asset_id: assetId, p_owner_user_id: requireOwner(ownerUserId),
+    });
     if (error) throw new Error(`Media asset could not be restored: ${error.message}`);
-    return data ? asset(data as AssetRow) : null;
+    return data as "restored" | "not_found" | "state_changed" | "purge_pending";
+  }
+
+  async beginPurgeForOwner(assetId: string, ownerUserId: string, retentionDays: number): Promise<BeginMediaPurgeResult> {
+    const { data, error } = await createServerSupabaseClient().rpc("velto_begin_media_asset_purge", {
+      p_asset_id: assetId, p_owner_user_id: requireOwner(ownerUserId), p_retention_days: retentionDays,
+    });
+    if (error) throw new Error(`Media purge could not begin: ${error.message}`);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || row.status !== "ready") return { status: row?.status || "not_found" } as BeginMediaPurgeResult;
+    return {
+      status: "ready", assetId: row.asset_id, bucket: row.bucket, storagePath: row.storage_path,
+      purgeToken: row.purge_token, sizeBytes: Number(row.size_bytes), mediaKind: row.media_kind,
+    };
+  }
+
+  async completePurgeForOwner(assetId: string, ownerUserId: string, purgeToken: string) {
+    const { data, error } = await createServerSupabaseClient().rpc("velto_complete_media_asset_purge", {
+      p_asset_id: assetId, p_owner_user_id: requireOwner(ownerUserId), p_purge_token: purgeToken,
+    });
+    if (error) throw new Error(`Media purge could not be finalized: ${error.message}`);
+    return data as "purged" | "not_found" | "not_trashed" | "token_mismatch" | "in_use";
+  }
+
+  async abortPurgeForOwner(assetId: string, ownerUserId: string, purgeToken: string) {
+    const { data, error } = await createServerSupabaseClient().rpc("velto_abort_media_asset_purge", {
+      p_asset_id: assetId, p_owner_user_id: requireOwner(ownerUserId), p_purge_token: purgeToken,
+    });
+    if (error) throw new Error(`Media purge could not be aborted: ${error.message}`);
+    return data as "aborted" | "not_found" | "not_trashed" | "token_mismatch";
   }
 }

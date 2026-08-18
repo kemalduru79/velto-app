@@ -5,7 +5,8 @@ export class PersistenceError extends Error {
       | "INVALID_STORAGE_INPUT"
       | "STORAGE_UPLOAD_FAILED"
       | "STORAGE_PUBLIC_URL_FAILED"
-      | "STORAGE_STAT_FAILED",
+      | "STORAGE_STAT_FAILED"
+      | "STORAGE_REMOVE_FAILED",
     readonly cause?: unknown,
   ) {
     super(message);

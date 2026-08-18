@@ -51,7 +51,7 @@ export function getStorageQuota(usedBytes: number, limitBytes: number): StorageQ
     limitBytes,
     remainingBytes: Math.max(0, limitBytes - usedBytes),
     usageRatio,
-    // Foundation contract only. No endpoint consumes this value in Stage 0.7A.
+    // Stage 0.7C consumes the normalized state through the server quota guard.
     canCreateStorageIncreasingMedia: state !== "FULL",
   };
 }
