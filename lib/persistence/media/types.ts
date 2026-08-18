@@ -51,6 +51,13 @@ export type MediaUsage = {
   otherBytes: number;
 };
 
+export type MediaReferenceSummary = {
+  projectId: string;
+  referenceType: MediaReferenceType;
+  referenceKey: string;
+  createdAt: string;
+};
+
 export interface MediaAssetRepository {
   recordStoredAsset(input: RecordStoredAssetInput): Promise<StoredMediaAsset>;
   findByStorageObject(ownerUserId: string, bucket: string, storagePath: string): Promise<StoredMediaAsset | null>;
@@ -60,4 +67,5 @@ export interface MediaAssetRepository {
   getUsageForOwner(ownerUserId: string): Promise<MediaUsage>;
   replaceProjectReferences(ownerUserId: string, projectId: string, references: ProjectMediaReference[]): Promise<void>;
   listReferencesForAsset(assetId: string, ownerUserId: string): Promise<ProjectMediaReference[]>;
+  getReferenceSummaryForOwner(assetId: string, ownerUserId: string): Promise<MediaReferenceSummary[]>;
 }

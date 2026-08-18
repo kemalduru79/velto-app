@@ -86,3 +86,27 @@ The registry is the physical media inventory; references describe which saved pr
 Stage 0.7A-2 routes both final-movie flows through authenticated Next.js boundaries, resolves the project with `getForOwner`, requires an internal export-service token, stores new movies under `creator/{authenticatedUserId}/final/{projectId}/{uuid}.mp4`, and registers the physical object as `final_video` before success. Project save accepts a final URL only when the active registry asset belongs to the authenticated principal. Historical movie objects are not moved or rewritten.
 
 With the scoped reconciliation at zero unresolved candidates and future final movies owner-bound, Stage 0.7A can close and 0.7B design/implementation can start. Permanent physical deletion must still require reference checks, lifecycle safeguards, and a broader bucket inventory before operating beyond the reconciled scope.
+
+## 0.7B-0 — Existing Project Reference Backfill Gate
+
+Stage 0.7A reconciled historical physical objects into `velto_media_assets`, but that operation did not populate `velto_media_asset_references` for projects last saved before deployment. Consequently, an empty reference graph cannot yet be interpreted as proof that an active asset is unused.
+
+The Stage 0.7B-0 admin command reuses the exact `inspectProjectMediaReferences`/`extractProjectMediaReferences` runtime source, loads all saved projects and registered assets with pagination, resolves only exact public URLs owned by each project's `owner_user_id`, and classifies external, unknown, unregistered first-party, and cross-owner candidates. Apply mode calls only `velto_replace_project_media_references`; it does not mutate physical assets or lifecycle state. Any owner conflict blocks all apply RPCs before the first project is changed.
+
+Dry-run first:
+
+```sh
+node --env-file=.env.local scripts/stage-0-7b-backfill-media-references.mjs
+```
+
+After reviewing zero owner conflicts and expected counts, apply once:
+
+```sh
+node --env-file=.env.local scripts/stage-0-7b-backfill-media-references.mjs --apply
+```
+
+Then run the default dry-run again. Stable project/resolved counts, populated stored-reference counts, and identical before/after physical asset counts and bytes provide the gate evidence.
+
+No Delete action, Trash action, storage removal, lifecycle mutation, quota enforcement, or billing behavior is enabled by 0.7B-0. Cleanup UI must remain disabled until the live dry-run, apply, and second dry-run prove the historical graph is populated without owner conflicts. Active assets without references may be genuinely unused; they are candidates for later policy review, not automatic deletion.
+
+The pure cleanup-state helper classifies active assets with references as `IN_USE`, active assets without references as `UNREFERENCED`, and trashed assets as `TRASHED`. The repository also provides owner-filtered reference summaries (`projectId`, type, logical key, timestamp) so later UI can explain usage without exposing another user's project information.

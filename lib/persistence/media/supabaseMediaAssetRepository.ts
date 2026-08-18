@@ -5,6 +5,7 @@ import type {
   ProjectMediaReference,
   RecordStoredAssetInput,
   StoredMediaAsset,
+  MediaReferenceSummary,
 } from "./types";
 
 type AssetRow = {
@@ -147,5 +148,22 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
       const joined = row.velto_media_assets as unknown as { public_url?: string };
       return joined?.public_url ? [{ url: joined.public_url, referenceType: row.reference_type, referenceKey: row.reference_key }] : [];
     }) as ProjectMediaReference[];
+  }
+
+  async getReferenceSummaryForOwner(assetId: string, ownerUserId: string): Promise<MediaReferenceSummary[]> {
+    const owner = requireOwner(ownerUserId);
+    const ownedAsset = await this.getForOwner(assetId, owner);
+    if (!ownedAsset) return [];
+    const { data, error } = await createServerSupabaseClient().from("velto_media_asset_references")
+      .select("project_id,reference_type,reference_key,created_at")
+      .eq("asset_id", assetId).eq("owner_user_id", owner)
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(`Media reference summary could not be read: ${error.message}`);
+    return (data || []).map((row) => ({
+      projectId: row.project_id,
+      referenceType: row.reference_type,
+      referenceKey: row.reference_key,
+      createdAt: row.created_at,
+    })) as MediaReferenceSummary[];
   }
 }
