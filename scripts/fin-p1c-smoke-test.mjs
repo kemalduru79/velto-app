@@ -4,7 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const checks = [
   [
-    "supabase/migrations/20260730_fin_p1c_credit_reconciliation.sql",
+    "supabase/migrations/20260730120000_fin_p1c_credit_reconciliation.sql",
     [
       "velto_credit_expire_reservations",
       "velto_credit_mark_provider_dispatch",

@@ -42,6 +42,16 @@ export async function POST(req: Request) {
     }
 
     const services = getPersistenceServices();
+    const exportedMovieUrl =
+      typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl.trim()
+        ? body.exportedMovieUrl.trim()
+        : null;
+    if (exportedMovieUrl) {
+      const finalMovieAsset = await services.mediaAssetRepository.findByPublicUrl(principal.id, exportedMovieUrl);
+      if (!finalMovieAsset || finalMovieAsset.mediaKind !== "final_video" || finalMovieAsset.lifecycleState !== "active") {
+        return NextResponse.json({ error: "Final video is not available for this project owner." }, { status: 400 });
+      }
+    }
     const result =
       await services.projectRepository.saveForOwner({
         projectId:
@@ -59,10 +69,7 @@ export async function POST(req: Request) {
         visualBible: body.visualBible || {},
         characters: Array.isArray(body.characters) ? body.characters : [],
         scenes,
-        exportedMovieUrl:
-          typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl
-            ? body.exportedMovieUrl
-            : null,
+        exportedMovieUrl,
         exportedMovieResult: body.exportedMovieResult || null,
         exportSignature:
           typeof body.exportSignature === "string" && body.exportSignature

@@ -153,11 +153,11 @@ const protectedHashes = {
   "lib/security/publicStoryverseProjection.ts": "a7753dcab05b7737c1278edba7deb9cc3171ab70a0fca670ab7e081ff295ed18",
   "app/episode/public/[shareId]/page.tsx": "8571a245416e5b5b9f9f65197a988788c634b631941a3da817f29a2172630b55",
   "app/episode/[projectId]/page.tsx": "5bdfd767400592e91bb09c7773935dd666f467cd0febf72d9be7d578ca273cf9",
-  "supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
-  "supabase/migrations/20260730_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
-  "supabase/migrations/20260730_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
-  "supabase/migrations/20260730_scale_p1_job_queue.sql": "99ef660fb49f40a06d19a753a38110db086dc64eca5f206c15b9021be9e8dac3",
-  "supabase/migrations/20260731_scale_p1_worker_hardening.sql": "ee6ddff9756d1bc0ac7fcda86155078dc5c41aa354526ab37eb45ccfff230e73",
+  "supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
+  "supabase/migrations/20260730110000_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
+  "supabase/migrations/20260730120000_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
+  "supabase/migrations/20260730100000_scale_p1_job_queue.sql": "99ef660fb49f40a06d19a753a38110db086dc64eca5f206c15b9021be9e8dac3",
+  "supabase/migrations/20260731090000_scale_p1_worker_hardening.sql": "ee6ddff9756d1bc0ac7fcda86155078dc5c41aa354526ab37eb45ccfff230e73",
 };
 for (const [file, expected] of Object.entries(protectedHashes)) assert.equal(hash(file), expected, `${file} changed`);
 assert.equal(JSON.parse(read("package.json")).scripts["test:beta-data-p1b-3b-2a"], "node scripts/beta-data-p1b-3b-2a-smoke-test.mjs");

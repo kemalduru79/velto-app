@@ -59,7 +59,18 @@ Run a dry audit with:
 
 Add `--apply` only after reviewing unresolved output. The command uses exact first-party public URLs present in owner-scoped projects plus Storage metadata. It assigns an object only when exactly one project owner proves ownership. Multiple owners, missing objects, private/unknown conventions, and final movies without an authenticated binding remain unresolved. It is idempotent by physical identity and never deletes.
 
-This repository session did not have database credentials and did not run reconciliation, so actual tracked object count, unresolved object count, tracked bytes, and unresolved bytes are **not claimed**. The command prints all four measures when run. Its current scope is project-referenced public objects; a later privileged inventory pass is required to enumerate unreferenced objects and the private premium-music bucket.
+The live Stage 0.7A migration was manually applied because the linked project's remote migration history was discovered to be empty/drifted. Schema execution and migration-history normalization are deliberately separate; no remote repair or database push was performed by this pass.
+
+The reconciliation command was then run successfully and repeated as a dry-run with identical results:
+
+- Tracked physical assets: **49**
+- Tracked bytes: **87,296,537**
+- Provable project-referenced candidates: **49**
+- Provable candidate bytes: **87,296,537**
+- Unresolved candidates: **0**
+- Unresolved bytes: **0**
+
+These metrics cover the reconciliation script's project-referenced first-party public-media scope. They do **not** claim that every historical object in every Supabase Storage bucket has been attributed. No storage object was deleted, quota enforcement remained inactive, and no paid infrastructure was added.
 
 ### Backup and restore relationship
 
@@ -72,4 +83,6 @@ The registry is the physical media inventory; references describe which saved pr
 - 0.7D — Paid Storage Entitlement + Permanent Cleanup + Recovery Test.
 - 0.7E — Independent Security/Recovery Review, if warranted after implementation.
 
-0.7B is not safe to start deleting objects until the export service receives a server-authenticated owner/project binding and unresolved legacy counts are reviewed. The registry/reference foundation itself is ready for continued non-destructive work.
+Stage 0.7A-2 routes both final-movie flows through authenticated Next.js boundaries, resolves the project with `getForOwner`, requires an internal export-service token, stores new movies under `creator/{authenticatedUserId}/final/{projectId}/{uuid}.mp4`, and registers the physical object as `final_video` before success. Project save accepts a final URL only when the active registry asset belongs to the authenticated principal. Historical movie objects are not moved or rewritten.
+
+With the scoped reconciliation at zero unresolved candidates and future final movies owner-bound, Stage 0.7A can close and 0.7B design/implementation can start. Permanent physical deletion must still require reference checks, lifecycle safeguards, and a broader bucket inventory before operating beyond the reconciled scope.

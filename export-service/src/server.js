@@ -6,7 +6,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { createHash } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 
 const app = express();
 
@@ -14,7 +14,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id"],
   })
 );
 
@@ -23,7 +23,7 @@ app.options(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id"],
   })
 );
 
@@ -71,6 +71,19 @@ function getSupabaseAdmin() {
 
 function safeName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9-_]/g, "_");
+}
+
+function internalExportIdentity(req) {
+  const configuredToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim() || "";
+  const suppliedToken = req.get("x-velto-internal-export-token") || "";
+  const configuredBuffer = Buffer.from(configuredToken);
+  const suppliedBuffer = Buffer.from(suppliedToken);
+  const authenticated = configuredBuffer.length > 0 && configuredBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(configuredBuffer, suppliedBuffer);
+  const ownerUserId = req.get("x-velto-owner-user-id") || "";
+  const projectId = req.get("x-velto-project-id") || "";
+  if (!authenticated || !UUID_PATTERN.test(ownerUserId) || !UUID_PATTERN.test(projectId)) return null;
+  return { ownerUserId, projectId };
 }
 
 function resolveFfmpegBinary() {
@@ -1540,6 +1553,11 @@ app.post("/export-movie", async (req, res) => {
 
   try {
     const body = req.body || {};
+    const ownership = internalExportIdentity(req);
+    if (!ownership) {
+      return res.status(401).json({ ok: false, error: "Final video request is unauthorized." });
+    }
+    body.projectId = ownership.projectId;
     const selectedCreatorMusicRequested =
       body?.productProfile === "creatorlab" &&
       body?.backgroundMusic &&
@@ -1609,10 +1627,7 @@ app.post("/export-movie", async (req, res) => {
       isCreatorLabExport &&
       creatorMusic.mode === "selected" &&
       creatorMusic.autoDucking;
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp-project";
+    const projectId = ownership.projectId;
     const title =
       typeof body?.title === "string" && body.title.trim()
         ? body.title.trim()
@@ -1961,9 +1976,8 @@ app.post("/export-movie", async (req, res) => {
 
     const supabase = getSupabaseAdmin();
 
-    const safeProjectId = safeName(projectId);
     const safeTitle = safeName(title);
-    const moviePath = `${safeProjectId}/${safeTitle}-with-audio-${Date.now()}.mp4`;
+    const moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from("movies")
@@ -1988,6 +2002,8 @@ app.post("/export-movie", async (req, res) => {
       ok: true,
       movieUrl: publicData.publicUrl,
       downloadUrl: publicData.publicUrl,
+      storageBucket: "movies",
+      storagePath: moviePath,
       fileName,
       sizeBytes: stats.size,
       durationSeconds: duration,

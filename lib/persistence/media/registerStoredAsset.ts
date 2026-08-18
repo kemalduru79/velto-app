@@ -14,9 +14,14 @@ export async function registerStoredAssetOrThrow(input: {
   publicUrl?: string | null;
   mediaKind: MediaKind;
   mimeType: string;
-  body: Uint8Array | ArrayBuffer | Blob;
+  body?: Uint8Array | ArrayBuffer | Blob;
+  sizeBytes?: number;
   metadata?: Record<string, unknown>;
 }) {
+  const sizeBytes = input.body ? bodySizeBytes(input.body) : input.sizeBytes;
+  if (!Number.isSafeInteger(sizeBytes) || Number(sizeBytes) < 0) {
+    throw new Error("A reliable stored media byte size is required.");
+  }
   try {
     return await input.repository.recordStoredAsset({
       ownerUserId: input.ownerUserId,
@@ -25,7 +30,7 @@ export async function registerStoredAssetOrThrow(input: {
       publicUrl: input.publicUrl || null,
       mediaKind: input.mediaKind,
       mimeType: input.mimeType,
-      sizeBytes: bodySizeBytes(input.body),
+      sizeBytes: Number(sizeBytes),
       metadata: input.metadata,
     });
   } catch (error) {
@@ -33,7 +38,7 @@ export async function registerStoredAssetOrThrow(input: {
       ownerUserId: input.ownerUserId,
       bucket: input.bucket,
       storagePath: input.storagePath,
-      sizeBytes: bodySizeBytes(input.body),
+      sizeBytes: Number(sizeBytes),
       mediaKind: input.mediaKind,
       error: error instanceof Error ? error.message : "unknown",
     });

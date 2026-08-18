@@ -17,6 +17,12 @@ import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } 
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
+import { getPersistenceServices } from "@/lib/persistence";
+import {
+  getFinalMovieInternalToken,
+  ownedFinalMovieHeaders,
+  registerOwnedFinalMovieResponse,
+} from "@/lib/creator/finalMovieOwnership.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -80,11 +86,23 @@ export async function POST(request: Request) {
   let creditReservation: MeteredOperationReservation | null = null;
 
   try {
+    const principal = await authenticateRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
+    const requestedProjectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    if (!requestedProjectId) {
+      return NextResponse.json({ ok: false, error: "Project was not found.", creditReserved: false }, { status: 404 });
+    }
+    const project = await getPersistenceServices().projectRepository.getForOwner(requestedProjectId, principal.id);
+    if (!project) {
+      return NextResponse.json({ ok: false, error: "Project was not found.", creditReserved: false }, { status: 404 });
+    }
     const productProfile =
       body.productProfile === "creatorlab" ? "creatorlab" : "storyverse";
     const qualityMode = body.qualityMode;
     const exportPayload = { ...body };
+    exportPayload.projectId = project.id;
+    delete exportPayload.ownerUserId;
+    delete exportPayload.userId;
     delete exportPayload.qualityMode;
     delete exportPayload.musicEntitlement;
     delete exportPayload.musicAsset;
@@ -117,7 +135,7 @@ export async function POST(request: Request) {
         throw error;
       }
     }
-    let internalExportToken: string | undefined;
+    const internalExportToken = getFinalMovieInternalToken();
     let musicUsageIdentity: CreatorMusicUsageEventIdentity | null = null;
     if (productProfile === "creatorlab") {
       let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
@@ -131,19 +149,11 @@ export async function POST(request: Request) {
           { status: 409 },
         );
         if (!isPremiumMusicAcquisitionEnabled()) return blockPremiumMusicExport();
-        internalExportToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim();
-        if (!internalExportToken) return blockPremiumMusicExport();
-        let principal;
-        try {
-          principal = await authenticateRequest(request);
-        } catch {
-          return blockPremiumMusicExport();
-        }
         let musicEntitlement;
         try {
           musicEntitlement = await resolveCreatorPremiumMusicExportEntitlement({
             userId: principal.id,
-            projectId: body.projectId,
+            projectId: project.id,
             trackId: backgroundMusic.selectedTrackId,
           });
         } catch {
@@ -153,7 +163,7 @@ export async function POST(request: Request) {
         musicUsageIdentity = buildCreatorMusicUsageEventIdentity({
           entitlementId: musicEntitlement.entitlementId,
           userId: principal.id,
-          projectId: typeof body.projectId === "string" ? body.projectId : "",
+          projectId: project.id,
           trackId: musicEntitlement.trackId,
           exportIdempotencyKey: request.headers.get("x-idempotency-key"),
         });
@@ -186,12 +196,7 @@ export async function POST(request: Request) {
 
     const response = await fetch(`${exportApiBase}/export-movie`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(exportPayload.musicEntitlement && internalExportToken
-          ? { "x-velto-internal-export-token": internalExportToken }
-          : {}),
-      },
+      headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken),
       body: JSON.stringify(exportPayload),
       signal: AbortSignal.timeout(55_000),
     });
@@ -201,6 +206,8 @@ export async function POST(request: Request) {
     if (!response.ok || !data?.ok || !data?.movieUrl) {
       throw new Error(data?.error || "Film export işlemi başarısız oldu.");
     }
+
+    await registerOwnedFinalMovieResponse({ data, ownerUserId: principal.id, projectId: project.id });
 
     if (musicUsageIdentity) {
       await registerCreatorMusicExportUsage(musicUsageIdentity);

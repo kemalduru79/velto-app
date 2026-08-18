@@ -14,4 +14,4 @@
 /mnt/data/velto-foundation-p1/lib/credits/index.ts
 /mnt/data/velto-foundation-p1/lib/credits/supabaseCreditRepository.ts
 /mnt/data/velto-foundation-p1/lib/credits/types.ts
-/mnt/data/velto-foundation-p1/supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql
+/mnt/data/velto-foundation-p1/supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql

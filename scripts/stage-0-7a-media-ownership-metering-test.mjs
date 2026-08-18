@@ -10,7 +10,7 @@ async function loadTs(file) {
 
 const { getStorageQuota } = await loadTs("lib/persistence/media/quota.ts");
 const { extractProjectMediaReferences } = await loadTs("lib/persistence/media/projectReferences.ts");
-const migration = fs.readFileSync("supabase/migrations/20260818_stage_0_7a_media_ownership_metering.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260818100000_stage_0_7a_media_ownership_metering.sql", "utf8");
 const repository = fs.readFileSync("lib/persistence/media/supabaseMediaAssetRepository.ts", "utf8");
 const storage = fs.readFileSync("lib/persistence/storage/types.ts", "utf8");
 const factory = fs.readFileSync("lib/persistence/factory.ts", "utf8");

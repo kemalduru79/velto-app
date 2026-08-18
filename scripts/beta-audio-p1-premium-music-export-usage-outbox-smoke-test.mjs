@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-const migration = read("supabase/migrations/20260811_audio_p2_creator_music_usage_outbox.sql");
-const entitlementMigration = read("supabase/migrations/20260811_audio_p1_creator_music_entitlements.sql");
+const migration = read("supabase/migrations/20260811110000_audio_p2_creator_music_usage_outbox.sql");
+const entitlementMigration = read("supabase/migrations/20260811100000_audio_p1_creator_music_entitlements.sql");
 const types = read("lib/persistence/music/types.ts");
 const repository = read("lib/persistence/music/supabaseCreatorMusicUsageEventRepository.ts");
 const usage = read("lib/creator/musicUsage.ts");

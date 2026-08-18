@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-const migration = read("supabase/migrations/20260811_audio_p1_creator_music_entitlements.sql");
+const migration = read("supabase/migrations/20260811100000_audio_p1_creator_music_entitlements.sql");
 const types = read("lib/persistence/music/types.ts");
 const repository = read("lib/persistence/music/supabaseCreatorMusicEntitlementRepository.ts");
 const service = read("lib/creator/musicEntitlement.ts");
@@ -16,6 +16,7 @@ const exportRoute = read("app/api/creator-export/route.ts");
 const executableService = service
   .replace(/import \{ normalizeCreatorPremiumMusicTrackId \} from "\.\/musicLibrary";/, `const normalizeCreatorPremiumMusicTrackId = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/.test(value) ? value : undefined;`)
   .replace(/import \{ getPersistenceServices \} from "@\/lib\/persistence";/, "const getPersistenceServices = () => { throw new Error('unused'); };")
+  .replace(/import \{ registerStoredAssetOrThrow \} from "@\/lib\/persistence\/media";/, "const registerStoredAssetOrThrow = async () => { throw new Error('unused'); };")
   .replace(/import \{ getMusicProvider, type MusicProvider \} from "@\/lib\/providers\/music";/, "const getMusicProvider = () => { throw new Error('unused'); };")
   .replace(/import \{ isPremiumMusicAcquisitionEnabled, MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES, PREMIUM_MUSIC_CONTENT_TYPE \} from "@\/lib\/providers\/music\/downloadSecurity";/, `const isPremiumMusicAcquisitionEnabled = () => false; const MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES = 30 * 1024 * 1024; const PREMIUM_MUSIC_CONTENT_TYPE = "audio/mpeg";`);
 const transpiledService = ts.transpile(executableService, { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 });

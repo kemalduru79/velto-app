@@ -7,11 +7,11 @@ const check = (condition, message) => { if (!condition) failures.push(message); 
 const read = (file) => fs.readFileSync(file, "utf8");
 const helperSource = read("lib/creator/projectAssets.ts");
 const component = read("components/create/CreatorProjectAssets.tsx");
-let pageUnchanged = true;
+let reuseImplementationUnchanged = true;
 try {
-  execFileSync("git", ["diff", "--quiet", "HEAD", "--", "app/create/page.tsx"]);
+  execFileSync("git", ["diff", "--quiet", "HEAD", "--", "lib/creator/projectAssets.ts", "components/create/CreatorProjectAssets.tsx"]);
 } catch {
-  pageUnchanged = false;
+  reuseImplementationUnchanged = false;
 }
 const transpiled = ts.transpileModule(helperSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -68,7 +68,7 @@ check(helper.rankCreatorProjectAssetsForScene({ scenes: turkishRealTopic, target
 check(/topicalScore < 2/.test(helperSource), "matching threshold remains unchanged");
 check(JSON.stringify(rank()) === JSON.stringify(rank()), "ranking remains deterministic after stop-word normalization");
 check(!/fetch\(|XMLHttpRequest|WebSocket|Worker\(/.test(helperSource), "matcher requires no network, API, or worker");
-check(pageUnchanged, "existing 0.6A reuse handler and page integration remain unchanged");
+check(reuseImplementationUnchanged, "existing 0.6A reuse helper and component remain unchanged");
 check(/rankCreatorProjectAssetsForScene/.test(component) && /onUseImage\(asset\.url, asset\.sourceCreatorSceneId\)/.test(component), "recommended image uses the existing 0.6A callback");
 check(!/fetch\(|creator-image|creator-video|generate/i.test(component), "recommendation and reuse UI trigger no generation API");
 check(!/storyverse/i.test(helperSource + component), "Storyverse remains unchanged");

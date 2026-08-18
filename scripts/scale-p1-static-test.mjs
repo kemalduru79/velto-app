@@ -6,8 +6,8 @@ const requiredFiles = [
   "scripts/scale-worker.mjs",
   "scripts/scale-p1-smoke-test.mjs",
   "scripts/scale-p1-multi-worker-test.mjs",
-  "supabase/migrations/20260730_scale_p1_job_queue.sql",
-  "supabase/migrations/20260731_scale_p1_worker_hardening.sql",
+  "supabase/migrations/20260730100000_scale_p1_job_queue.sql",
+  "supabase/migrations/20260731090000_scale_p1_worker_hardening.sql",
   "app/api/jobs/health/route.ts",
 ];
 
@@ -19,7 +19,7 @@ for (const file of requiredFiles) {
 
 const worker = fs.readFileSync(path.join(root, "scripts/scale-worker.mjs"), "utf8");
 const migration = fs.readFileSync(
-  path.join(root, "supabase/migrations/20260731_scale_p1_worker_hardening.sql"),
+  path.join(root, "supabase/migrations/20260731090000_scale_p1_worker_hardening.sql"),
   "utf8",
 );
 const packageJson = JSON.parse(

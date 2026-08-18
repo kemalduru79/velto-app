@@ -55,11 +55,11 @@ const protectedHashes = {
   "app/api/projects/route.ts": "191fb4473a5316932cf6fb7c82b5ef8e3ba35a0053b4e674d49eb2bf55eb0f20",
   "app/api/jobs/route.ts": "848f262b3472e9a4bb83768b84daacb75f6302d9ebd04eaf5fd6c05eea924522",
   "lib/security/legacyMediaStorageBoundary.ts": "5647c6c5da4b9179a2b7ee6533d0f6d65f59aa646bf42273019dc433fc4d3cdd",
-  "supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
-  "supabase/migrations/20260730_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
-  "supabase/migrations/20260730_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
-  "supabase/migrations/20260730_scale_p1_job_queue.sql": "99ef660fb49f40a06d19a753a38110db086dc64eca5f206c15b9021be9e8dac3",
-  "supabase/migrations/20260731_scale_p1_worker_hardening.sql": "ee6ddff9756d1bc0ac7fcda86155078dc5c41aa354526ab37eb45ccfff230e73",
+  "supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
+  "supabase/migrations/20260730110000_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
+  "supabase/migrations/20260730120000_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
+  "supabase/migrations/20260730100000_scale_p1_job_queue.sql": "99ef660fb49f40a06d19a753a38110db086dc64eca5f206c15b9021be9e8dac3",
+  "supabase/migrations/20260731090000_scale_p1_worker_hardening.sql": "ee6ddff9756d1bc0ac7fcda86155078dc5c41aa354526ab37eb45ccfff230e73",
 };
 for (const [file, expected] of Object.entries(protectedHashes)) {
   assert.equal(hash(file), expected, `${file} changed`);

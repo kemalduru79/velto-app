@@ -134,8 +134,8 @@ const protectedHashes = {
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
   "app/api/stitch-video/route.ts": "c9528eb59f580f2b1b5284fab6eb0f24a2503b2f6d083208502e54a97b12e945",
-  "supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
-  "supabase/migrations/20260730_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
+  "supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
+  "supabase/migrations/20260730120000_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
 };
 for (const [file, expected] of Object.entries(protectedHashes)) assert.equal(hash(file), expected, `${file} changed`);
 assert.equal(fs.existsSync("prisma/migrations"), false);

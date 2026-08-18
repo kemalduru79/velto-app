@@ -10314,12 +10314,10 @@ const generateSceneImage = async (
     setSaveMessage("");
 
     try {
-      const exportAccessToken = isCreatorLabFlow
-        ? await getAccessTokenOrThrow()
-        : "";
+      const exportAccessToken = await getAccessTokenOrThrow();
       const exportEndpoint = isCreatorLabFlow
         ? "/api/creator-export"
-        : `${exportApiBase}/export-movie`;
+        : "/api/export-movie";
       const exportRequestKey = isCreatorLabFlow
         ? `${creatorExportOperationId}:export`
         : ["storyverse-export", getProjectKey(), Date.now()].join(":");
@@ -10329,12 +10327,8 @@ const generateSceneImage = async (
           method: "POST",
           headers: {
           "Content-Type": "application/json",
-          ...(isCreatorLabFlow
-            ? {
-                Authorization: `Bearer ${exportAccessToken}`,
-                ...creatorCostGuardHeaders(exportRequestKey),
-              }
-            : {}),
+          Authorization: `Bearer ${exportAccessToken}`,
+          ...(isCreatorLabFlow ? creatorCostGuardHeaders(exportRequestKey) : {}),
         },
           body: JSON.stringify({
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",

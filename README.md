@@ -6,7 +6,7 @@ Bu ZIP, mevcut `kemalduru79/velto-app` ana dalı incelenerek hazırlanmıştır.
 
 1. ZIP içindeki dosyaları repo köküne kopyalayın.
 2. Supabase SQL Editor veya migration pipeline üzerinden şu migration'ı çalıştırın:
-   - `supabase/migrations/20260728_foundation_p1_auth_credit_ledger.sql`
+   - `supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql`
 3. Supabase Authentication URL Configuration içinde aşağıdaki redirect URL'lerini ekleyin:
    - `https://<domain>/login`
    - `https://<domain>/reset-password`

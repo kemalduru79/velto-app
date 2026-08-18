@@ -34,7 +34,7 @@ npm run build
 Supabase Dashboard → SQL Editor içinde şu dosyanın tamamını çalıştırın:
 
 ```text
-supabase/migrations/20260730_scale_p1_job_queue.sql
+supabase/migrations/20260730100000_scale_p1_job_queue.sql
 ```
 
 SQL başarıyla tamamlanmadan worker başlatılmamalıdır.
