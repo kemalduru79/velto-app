@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import {
   canonicalCreatorMediaUrl,
   deriveCreatorProjectAssets,
+  rankCreatorProjectAssetsForScene,
   type CreatorProjectAssetScene,
 } from "@/lib/creator/projectAssets";
 
@@ -23,6 +24,10 @@ export default function CreatorProjectAssets({
   onUseImage,
 }: CreatorProjectAssetsProps) {
   const assets = useMemo(() => deriveCreatorProjectAssets(scenes), [scenes]);
+  const recommendations = useMemo(
+    () => rankCreatorProjectAssetsForScene({ scenes, targetCreatorSceneId }),
+    [scenes, targetCreatorSceneId],
+  );
   const targetScene = scenes.find((scene) => scene.creatorSceneId === targetCreatorSceneId);
   const targetImageKey = targetScene?.image
     ? canonicalCreatorMediaUrl(targetScene.image)
@@ -46,7 +51,10 @@ export default function CreatorProjectAssets({
     <details className="creatorlab-p2c-editor-disclosure" data-creator-project-assets="true">
       <summary>
         <span>{language === "en" ? "Use existing media" : "Mevcut medyayı kullan"}</span>
-        <small>{language === "en" ? "Project Assets" : "Proje Varlıkları"} · {assets.length}</small>
+        <small>
+          {recommendations.length > 0 && `${recommendations.length} ${language === "en" ? "matches" : "eşleşme"} · `}
+          {language === "en" ? "Project Assets" : "Proje Varlıkları"} · {assets.length}
+        </small>
       </summary>
       <div className="creatorlab-p2c-editor-disclosure-body">
         <div className="mb-4">
@@ -69,6 +77,43 @@ export default function CreatorProjectAssets({
               ? "No reusable project assets yet. Create or import media for another scene first."
               : "Henüz yeniden kullanılabilir proje varlığı yok. Önce başka bir sahne için medya oluşturun veya ekleyin."}
           </p>
+        )}
+
+        {hasAssets && <section className="mb-5" aria-labelledby="creator-project-recommendations-title" data-creator-smart-match="local">
+          <h4 id="creator-project-recommendations-title" className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+            {language === "en" ? "Recommended for this scene" : "Bu sahne için önerilenler"}
+          </h4>
+          {recommendations.length > 0 ? (
+            <ul className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {recommendations.map((asset) => (
+                <li key={`recommended:${asset.id}`} data-match-reason={asset.matchReason} className="min-w-0 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/40">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={asset.url} alt={`${language === "en" ? "Possible match" : "Olası eşleşme"} · ${sceneLabel(asset.sourceSceneNumber)}`} className="aspect-video w-full bg-slate-100 object-cover" loading="lazy" />
+                  <div className="p-3">
+                    <strong className="block text-xs text-slate-800">{sceneLabel(asset.sourceSceneNumber)}</strong>
+                    <span className="mt-1 block text-[11px] text-blue-700">
+                      {asset.matchReason === "shared_topic"
+                        ? language === "en" ? "Shared topic" : "Ortak konu"
+                        : language === "en" ? "Related scene context" : "İlgili sahne bağlamı"}
+                    </span>
+                    <button type="button" disabled={disabled} onClick={() => onUseImage(asset.url, asset.sourceCreatorSceneId)} className="mt-3 min-h-11 w-full rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                      {language === "en" ? "Use image" : "Görseli kullan"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {language === "en" ? "No strong project match found." : "Güçlü bir proje eşleşmesi bulunamadı."}
+            </p>
+          )}
+        </section>}
+
+        {hasAssets && (
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+            {language === "en" ? "All project assets" : "Tüm proje varlıkları"}
+          </h4>
         )}
 
         {images.length > 0 && (

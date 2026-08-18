@@ -34,10 +34,16 @@ Cross-scene video reuse is intentionally deferred. A stored video signature bind
 - No external stock provider, licensing flow, paid API, new database table/schema, new storage service, provider-routing change, generation change, queue/job change, export change, or dependency was added.
 - Storyverse is unchanged.
 
-## 0.6B — Local Smart Match (planned)
+## 0.6B — Local Smart Match
 
-Rank or recommend existing same-project assets for a focused scene using local project context. No matching engine is part of 0.6A.
+Local Smart Match is a synchronous, deterministic recommendation layer over the existing derived Project Assets collection. It uses only already-loaded scene text, narration, and dialogue. Text is Unicode-normalized and lowercased, punctuation and common English/Turkish stop words are removed, and meaningful target/source terms are compared for overlap. Longer shared terms contribute more relevance. Scene proximity and current-over-history status are deliberately tiny tie-breakers and cannot overcome topical relevance.
+
+The conservative threshold requires meaningful shared context. Unrelated images are not used to fill the two-to-three recommendation target; the UI instead says that no strong project match was found. Recommendations are image-only, exclude the focused scene (including its history), remain inside the same-project scene boundary, and never recommend cross-scene video.
+
+Recommendations are an optional shortcut above All Project Assets. They reuse the existing 0.6A image callback and do not block, replace, or alter media generation. Scores remain internal; visible reasons use creator-friendly language such as Shared topic or Related scene context.
+
+No external API, AI/LLM call, embedding, vector database, media analysis, network request, new persistence, or database change is involved. Incremental operating cost is €0. Storyverse remains unchanged.
 
 ## 0.6C — External Stock Source (conditional)
 
-Evaluate an external stock source only if reuse and local matching demonstrate a proven content gap.
+Evaluate an external stock source only if practical testing shows that Project Assets plus Local Smart Match frequently fail to supply suitable media for real CreatorLab projects. Stage 0.6C remains conditional and is not implemented.
