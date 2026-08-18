@@ -46,12 +46,12 @@ assert.match(saveRoute, /finalMovieAsset\.lifecycleState !== "active"/);
 
 // Migration versions are unique, normalized, deterministic, and SQL bytes are unchanged.
 const migrationFiles = fs.readdirSync("supabase/migrations").filter((file) => file.endsWith(".sql")).sort();
-assert.equal(migrationFiles.length, 10);
+assert.equal(migrationFiles.length, 11);
 for (const file of migrationFiles) assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/);
 const versions = migrationFiles.map((file) => file.slice(0, 14));
 assert.equal(new Set(versions).size, versions.length);
 assert.deepEqual(migrationFiles, [...migrationFiles].sort());
-assert.equal(migrationFiles.at(-1), "20260818200000_stage_0_7d_1_safe_media_purge.sql");
+assert.equal(migrationFiles.at(-1), "20260818203000_stage_0_7d_1_fix_purge_reference_ambiguity.sql");
 
 const expectedHashes = {
   "20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
@@ -62,6 +62,7 @@ const expectedHashes = {
   "20260811100000_audio_p1_creator_music_entitlements.sql": "4443276f2623ac02cc42192e2e8a3ab58af2d7ea6cb1e76ef5d18e3a54a6afac",
   "20260811110000_audio_p2_creator_music_usage_outbox.sql": "297d7bc15fb550055fdd47b3cdd80941db67133be8ae5da7630a8823885149c3",
   "20260818100000_stage_0_7a_media_ownership_metering.sql": "3e251bea8d0c98c0fea59b68bc0fcf8e4684b9ab9474f08cc51a4bdc670d68c4",
+  "20260818200000_stage_0_7d_1_safe_media_purge.sql": "bbc6bdd339625ebddc6ee90dd26a5eff660fce3c588cb436c44ec8d8818ecf0b",
 };
 for (const [file, expected] of Object.entries(expectedHashes)) assert.equal(hash(`supabase/migrations/${file}`), expected, `${file} SQL changed`);
 

@@ -10,6 +10,7 @@ async function loadTs(file) {
 const read = (file) => fs.readFileSync(file, "utf8");
 const policy = await loadTs("lib/persistence/media/purgePolicy.ts");
 const migration = read("supabase/migrations/20260818200000_stage_0_7d_1_safe_media_purge.sql");
+const correctiveMigration = read("supabase/migrations/20260818203000_stage_0_7d_1_fix_purge_reference_ambiguity.sql");
 const referenceMigration = read("supabase/migrations/20260818160000_stage_0_7b_safe_media_trash.sql");
 const mediaRepo = read("lib/persistence/media/supabaseMediaAssetRepository.ts");
 const storageRepo = read("lib/persistence/storage/supabaseObjectStorageRepository.ts");
@@ -44,6 +45,12 @@ assert.match(referenceMigration, /asset\.lifecycle_state <> 'active'/);
 for (const fn of ["velto_begin_media_asset_purge", "velto_complete_media_asset_purge", "velto_abort_media_asset_purge", "velto_restore_media_asset"]) {
   assert.match(migration, new RegExp(`revoke all on function public\\.${fn}[\\s\\S]*grant execute[\\s\\S]*service_role`));
 }
+const correctedBeginRpc = correctiveMigration.match(/create or replace function public\.velto_begin_media_asset_purge[\s\S]*?\n\$\$;/)?.[0] || "";
+const correctedReferenceCheck = correctedBeginRpc.match(/if exists \([\s\S]*?\) then/)?.[0] || "";
+assert.match(correctedReferenceCheck, /from public\.velto_media_asset_references r\s+where r\.asset_id = p_asset_id\s+and r\.owner_user_id = p_owner_user_id/);
+assert.doesNotMatch(correctedReferenceCheck, /where\s+asset_id = p_asset_id|and\s+owner_user_id = p_owner_user_id/);
+assert.match(correctiveMigration, /security definer\s+set search_path = public/);
+assert.match(correctiveMigration, /revoke all on function public\.velto_begin_media_asset_purge[\s\S]*grant execute[\s\S]*service_role/);
 
 assert.match(mediaRepo, /beginPurgeForOwner/);
 assert.match(mediaRepo, /completePurgeForOwner/);
