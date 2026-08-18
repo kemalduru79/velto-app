@@ -36,6 +36,9 @@ type CreatorEditorProps = {
   onRefreshVideo: (creatorSceneId: string) => void;
   onRestoreMedia: (creatorSceneId: string, assetId: string) => void;
   onUseProjectImage: (targetCreatorSceneId: string, url: string, sourceCreatorSceneId: string) => void;
+  projectId: string;
+  getAccessToken: () => Promise<string>;
+  onProjectHistoryRemoved: (url: string) => void;
   sceneOperationsDisabled?: boolean;
   language: "en" | "tr";
 };
@@ -59,6 +62,9 @@ export default function CreatorEditor({
   onRefreshVideo,
   onRestoreMedia,
   onUseProjectImage,
+  projectId,
+  getAccessToken,
+  onProjectHistoryRemoved,
   sceneOperationsDisabled = false,
   language,
 }: CreatorEditorProps) {
@@ -353,6 +359,9 @@ export default function CreatorEditor({
         onUseImage={(url, sourceCreatorSceneId) =>
           onUseProjectImage(selectedScene.creatorSceneId!, url, sourceCreatorSceneId)
         }
+        projectId={projectId}
+        getAccessToken={getAccessToken}
+        onHistoryRemoved={onProjectHistoryRemoved}
       />
 
       {(selectedScene.assetHistory || []).length > 0 && (

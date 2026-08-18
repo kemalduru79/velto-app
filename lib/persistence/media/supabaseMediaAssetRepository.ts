@@ -18,9 +18,10 @@ type AssetRow = {
   mime_type: string | null;
   size_bytes: number | string;
   lifecycle_state: StoredMediaAsset["lifecycleState"];
+  trashed_at: string | null;
 };
 
-const ASSET_FIELDS = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state";
+const ASSET_FIELDS = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state,trashed_at";
 
 function asset(row: AssetRow): StoredMediaAsset {
   return {
@@ -33,6 +34,7 @@ function asset(row: AssetRow): StoredMediaAsset {
     mimeType: row.mime_type,
     sizeBytes: Number(row.size_bytes),
     lifecycleState: row.lifecycle_state,
+    trashedAt: row.trashed_at,
   };
 }
 
@@ -102,13 +104,21 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
 
   async getUsageForOwner(ownerUserId: string): Promise<MediaUsage> {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-      .select("media_kind,size_bytes").eq("owner_user_id", requireOwner(ownerUserId)).eq("lifecycle_state", "active");
+      .select("media_kind,size_bytes,lifecycle_state").eq("owner_user_id", requireOwner(ownerUserId)).neq("lifecycle_state", "purged");
     if (error) throw new Error(`Media usage could not be calculated: ${error.message}`);
-    const usage: MediaUsage = { totalBytes: 0, assetCount: 0, imageBytes: 0, videoBytes: 0, audioBytes: 0, otherBytes: 0 };
+    const usage: MediaUsage = { totalBytes: 0, totalPhysicalBytes: 0, activeBytes: 0, trashedBytes: 0, assetCount: 0, activeAssetCount: 0, trashedAssetCount: 0, imageBytes: 0, videoBytes: 0, audioBytes: 0, otherBytes: 0 };
     for (const row of data || []) {
       const bytes = Number(row.size_bytes);
       usage.totalBytes += bytes;
+      usage.totalPhysicalBytes += bytes;
       usage.assetCount += 1;
+      if (row.lifecycle_state === "trashed") {
+        usage.trashedBytes += bytes;
+        usage.trashedAssetCount += 1;
+      } else {
+        usage.activeBytes += bytes;
+        usage.activeAssetCount += 1;
+      }
       if (row.media_kind === "image" || row.media_kind === "thumbnail") usage.imageBytes += bytes;
       else if (row.media_kind === "video" || row.media_kind === "final_video") usage.videoBytes += bytes;
       else if (row.media_kind === "narration_audio" || row.media_kind === "dialogue_audio" || row.media_kind === "music") usage.audioBytes += bytes;
@@ -165,5 +175,23 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
       referenceKey: row.reference_key,
       createdAt: row.created_at,
     })) as MediaReferenceSummary[];
+  }
+
+  async trashForOwner(assetId: string, ownerUserId: string) {
+    const { data, error } = await createServerSupabaseClient().rpc("velto_trash_media_asset_if_unreferenced", {
+      p_asset_id: assetId,
+      p_owner_user_id: requireOwner(ownerUserId),
+    });
+    if (error) throw new Error(`Media asset could not be moved to Trash: ${error.message}`);
+    return data as "trashed" | "not_found" | "state_changed" | "in_use";
+  }
+
+  async restoreForOwner(assetId: string, ownerUserId: string) {
+    const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
+      .update({ lifecycle_state: "active", trashed_at: null, updated_at: new Date().toISOString() })
+      .eq("id", assetId).eq("owner_user_id", requireOwner(ownerUserId)).eq("lifecycle_state", "trashed")
+      .select(ASSET_FIELDS).maybeSingle();
+    if (error) throw new Error(`Media asset could not be restored: ${error.message}`);
+    return data ? asset(data as AssetRow) : null;
   }
 }

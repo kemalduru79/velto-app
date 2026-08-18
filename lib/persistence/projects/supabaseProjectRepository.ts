@@ -7,6 +7,7 @@ import type {
   VeltoProjectApiRecord,
 } from "./types";
 import type { PublicStoryverseProjectSourceRecord } from "@/lib/security/publicStoryverseProjection";
+import { removeExactAssetHistoryUrl } from "./mediaHistoryCleanup";
 
 const PROJECT_LIST_FIELDS =
   "id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url, exported_movie_result, export_signature";
@@ -215,5 +216,24 @@ export class SupabaseProjectRepository implements ProjectRepository {
       shareId,
       project: asProjectRecord(data),
     };
+  }
+
+  async removeAssetHistoryUrlForOwner(
+    projectId: string,
+    ownerUserId: string,
+    registeredPublicUrl: string,
+  ) {
+    const existing = await this.getForOwner(projectId, ownerUserId);
+    if (!existing) return { status: "not_found" as const };
+    const cleanup = removeExactAssetHistoryUrl(existing.scenes, registeredPublicUrl);
+    if (cleanup.removedCount === 0) return { status: "changed" as const };
+    const { data, error } = await createServerSupabaseClient().from("velto_projects")
+      .update({ scenes: cleanup.scenes })
+      .eq("id", projectId).eq("owner_user_id", ownerUserId)
+      .eq("scenes", existing.scenes)
+      .select("*").maybeSingle();
+    if (error) throw new Error(`Project media history could not be updated: ${error.message}`);
+    if (!data) return { status: "changed" as const };
+    return { status: "updated" as const, project: asProjectRecord(data), removedCount: cleanup.removedCount };
   }
 }

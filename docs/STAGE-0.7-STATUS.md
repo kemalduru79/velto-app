@@ -39,9 +39,9 @@ After an owner-authenticated save succeeds, only URLs resolving to that same own
 
 Authoritative usage is:
 
-`SUM(size_bytes), COUNT(*) FROM velto_media_assets WHERE owner_user_id = authenticated principal AND lifecycle_state = 'active'`.
+`SUM(size_bytes), COUNT(*) FROM velto_media_assets WHERE owner_user_id = authenticated principal AND lifecycle_state <> 'purged'`.
 
-Images/thumbnails, videos/final videos, audio/music, and other kinds have truthful optional byte breakdowns. References and repeated project JSON URLs never add bytes.
+Both active and trashed objects remain physical and count toward the commercial/quota-relevant total. Images/thumbnails, videos/final videos, audio/music, and other kinds have truthful optional byte breakdowns. References and repeated project JSON URLs never add bytes.
 
 The pure quota helper returns remaining bytes, ratio, and `NORMAL` below 80%, `APPROACHING` from 80% through below 95%, `CRITICAL` from 95% through below 100%, and `FULL` at or above 100%. Its future `canCreateStorageIncreasingMedia` answer is not wired to any generation route. No final GB capacity, plan, pricing, or persisted quota state exists.
 
@@ -110,3 +110,17 @@ Then run the default dry-run again. Stable project/resolved counts, populated st
 No Delete action, Trash action, storage removal, lifecycle mutation, quota enforcement, or billing behavior is enabled by 0.7B-0. Cleanup UI must remain disabled until the live dry-run, apply, and second dry-run prove the historical graph is populated without owner conflicts. Active assets without references may be genuinely unused; they are candidates for later policy review, not automatic deletion.
 
 The pure cleanup-state helper classifies active assets with references as `IN_USE`, active assets without references as `UNREFERENCED`, and trashed assets as `TRASHED`. The repository also provides owner-filtered reference summaries (`projectId`, type, logical key, timestamp) so later UI can explain usage without exposing another user's project information.
+
+## 0.7B-1 — Safe Asset Cleanup, Trash & Restore
+
+Cleanup classification is intentionally fail-closed. Scene image/video, narration/dialogue, thumbnail, final-video, `other`, and every future unknown reference type are blocking and produce `IN_USE`. An active asset referenced only by `asset_history` is `HISTORY_ONLY`; an active asset with no reference is `UNREFERENCED`; a trashed asset is `TRASHED`; purged assets are unavailable. Blocking references always win when mixed with history.
+
+The authenticated media inventory returns only owner-scoped image/video/final-video registry rows and owner-scoped reference summaries. `UNREFERENCED` images and videos appear as compact Available media inside Project Assets; images retain the existing no-credit reuse flow, while cross-scene video reuse remains deferred. `IN_USE` media explains its usage and cannot be trashed. Trash is a secondary disclosure with preview, kind, size, and Restore. There is no top-level storage navigation or permanent-delete action.
+
+For `HISTORY_ONLY`, cleanup is restricted to one exact owner-owned project. If references span multiple projects, the operation stops. The project repository removes only history entries whose normalized URL exactly matches the registered asset URL, preserving current images/videos, narration, dialogue, scene identity, production state, and unrelated history. The server then persists the project, re-extracts/replaces authoritative references, verifies zero remaining references, and only then requests Trash. If the final lifecycle transition fails, the project history remains cleaned but the asset remains active; this is recoverable and cannot lose physical data.
+
+The service-role-only Trash function serializes against reference replacement, re-checks references while holding the asset lock, and permits only `active → trashed` with `trashed_at = now()`. Reference replacement now locks requested assets and accepts only active owner-owned rows, so a concurrent save and Trash cannot produce a saved reference to trashed media. Restore is the narrow owner-scoped optimistic transition `trashed → active`; it clears `trashed_at` but does not recreate former scene or history placements. Restored unreferenced media remains discoverable in Available media.
+
+Trash is reversible logical lifecycle management, not physical deletion. No Storage remove/delete call exists, no API can transition to `purged`, and bucket, path, URL, size, and owner remain unchanged. Physical usage counts both active and trashed objects and excludes only the future physically-removed `purged` state, so moving to Trash never creates fake capacity and restoring never double-counts bytes.
+
+Stage 0.7B-1 adds no quota generation gate, automatic cleanup, billing, paid storage, checkout, or paid infrastructure. Stage 0.7C owns quota UX and generation gating; Stage 0.7D owns permanent cleanup and recovery. No current live asset is transitioned during implementation.

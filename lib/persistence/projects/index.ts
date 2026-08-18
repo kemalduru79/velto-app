@@ -1,4 +1,5 @@
 export { SupabaseProjectRepository } from "./supabaseProjectRepository";
+export { normalizeRegisteredMediaUrl, removeExactAssetHistoryUrl } from "./mediaHistoryCleanup";
 export type {
   ProjectRepository,
   PublishVeltoProjectResult,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   canonicalCreatorMediaUrl,
   deriveCreatorProjectAssets,
@@ -14,6 +14,22 @@ type CreatorProjectAssetsProps = {
   disabled?: boolean;
   language: "en" | "tr";
   onUseImage: (url: string, sourceCreatorSceneId: string) => void;
+  projectId: string;
+  getAccessToken: () => Promise<string>;
+  onHistoryRemoved: (url: string) => void;
+};
+
+type CleanupAsset = {
+  id: string;
+  publicUrl: string | null;
+  mediaKind: "image" | "video" | "final_video";
+  sizeBytes: number;
+  lifecycleState: "active" | "trashed";
+  cleanupState: "IN_USE" | "HISTORY_ONLY" | "UNREFERENCED" | "TRASHED";
+  referenceCount: number;
+  blockingReferenceCount: number;
+  historyReferenceCount: number;
+  referenceSummary: Array<{ projectId: string; referenceType: string; referenceKey: string }>;
 };
 
 export default function CreatorProjectAssets({
@@ -22,7 +38,30 @@ export default function CreatorProjectAssets({
   disabled = false,
   language,
   onUseImage,
+  projectId,
+  getAccessToken,
+  onHistoryRemoved,
 }: CreatorProjectAssetsProps) {
+  const [cleanupAssets, setCleanupAssets] = useState<CleanupAsset[]>([]);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState("");
+  const [pendingAssetId, setPendingAssetId] = useState("");
+  const loadCleanupAssets = useCallback(async () => {
+    setCleanupLoading(true);
+    setCleanupError("");
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch("/api/media-assets", { headers: { Authorization: `Bearer ${accessToken}` } });
+      const payload = await response.json() as { assets?: CleanupAsset[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Media inventory is unavailable.");
+      setCleanupAssets(payload.assets || []);
+    } catch (error) {
+      setCleanupError(error instanceof Error ? error.message : "Media inventory is unavailable.");
+    } finally {
+      setCleanupLoading(false);
+    }
+  }, [getAccessToken]);
+  useEffect(() => { void loadCleanupAssets(); }, [loadCleanupAssets]);
   const assets = useMemo(() => deriveCreatorProjectAssets(scenes), [scenes]);
   const recommendations = useMemo(
     () => rankCreatorProjectAssetsForScene({ scenes, targetCreatorSceneId }),
@@ -46,6 +85,43 @@ export default function CreatorProjectAssets({
     version === "current"
       ? language === "en" ? "Current asset" : "Geçerli varlık"
       : language === "en" ? "Previous asset" : "Önceki varlık";
+  const unusedAssets = cleanupAssets.filter((asset) => asset.cleanupState === "UNREFERENCED" && asset.lifecycleState === "active");
+  const trashedAssets = cleanupAssets.filter((asset) => asset.cleanupState === "TRASHED");
+  const activeCleanupAssets = cleanupAssets.filter((asset) => asset.lifecycleState === "active" && asset.cleanupState !== "UNREFERENCED");
+  const formatBytes = (bytes: number) => bytes >= 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+  const usageLabel = (asset: CleanupAsset) => {
+    if (asset.referenceCount > 1) return language === "en" ? `Used in ${asset.referenceCount} places` : `${asset.referenceCount} yerde kullanılıyor`;
+    const type = asset.referenceSummary[0]?.referenceType;
+    if (type === "final_video") return language === "en" ? "Used as final video" : "Final video olarak kullanılıyor";
+    if (type === "thumbnail") return language === "en" ? "Used as thumbnail" : "Küçük resim olarak kullanılıyor";
+    if (type?.startsWith("scene_")) return language === "en" ? "Used in a scene" : "Bir sahnede kullanılıyor";
+    return language === "en" ? "Used in project history" : "Proje geçmişinde kullanılıyor";
+  };
+  const mutateAsset = async (asset: CleanupAsset, action: "trash" | "restore") => {
+    if (action === "trash" && asset.cleanupState === "HISTORY_ONLY" && !window.confirm(
+      language === "en" ? "Remove this media from project history and move it to Trash?" : "Bu medyayı proje geçmişinden çıkarıp Çöp Kutusuna taşımak istiyor musunuz?",
+    )) return;
+    setPendingAssetId(asset.id);
+    setCleanupError("");
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch(`/api/media-assets/${encodeURIComponent(asset.id)}/${action}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: action === "trash" && asset.cleanupState === "HISTORY_ONLY" ? JSON.stringify({ projectId }) : "{}",
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Media lifecycle could not be changed.");
+      if (action === "trash" && asset.cleanupState === "HISTORY_ONLY" && asset.publicUrl) onHistoryRemoved(asset.publicUrl);
+      await loadCleanupAssets();
+    } catch (error) {
+      setCleanupError(error instanceof Error ? error.message : "Media lifecycle could not be changed.");
+    } finally {
+      setPendingAssetId("");
+    }
+  };
 
   return (
     <details className="creatorlab-p2c-editor-disclosure" data-creator-project-assets="true">
@@ -158,6 +234,61 @@ export default function CreatorProjectAssets({
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {(cleanupLoading || cleanupError || cleanupAssets.length > 0) && (
+          <section className="mt-5 border-t border-slate-200 pt-4" data-media-cleanup-inventory="true">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                  {language === "en" ? "Available media" : "Kullanılabilir medya"}
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  {language === "en" ? "Stored media not currently placed in a project." : "Şu anda bir projede kullanılmayan kayıtlı medya."}
+                </p>
+              </div>
+              <button type="button" onClick={() => void loadCleanupAssets()} disabled={cleanupLoading} className="text-xs font-semibold text-blue-700 disabled:opacity-40">
+                {cleanupLoading ? "…" : language === "en" ? "Refresh" : "Yenile"}
+              </button>
+            </div>
+            {cleanupError && <p role="alert" className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{cleanupError}</p>}
+            {unusedAssets.length > 0 && (
+              <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {unusedAssets.map((asset) => <li key={asset.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  {asset.publicUrl && asset.mediaKind === "image" ? <img src={asset.publicUrl} alt="" className="aspect-video w-full bg-slate-100 object-cover" loading="lazy" /> : asset.publicUrl ? <video src={asset.publicUrl} preload="metadata" className="aspect-video w-full bg-slate-950 object-contain" /> : null}
+                  <div className="p-3 text-xs">
+                    <span className="text-slate-500">{asset.mediaKind === "image" ? language === "en" ? "Image" : "Görsel" : "Video"} · {formatBytes(asset.sizeBytes)}</span>
+                    {asset.mediaKind === "image" && asset.publicUrl && <button type="button" disabled={disabled} onClick={() => onUseImage(asset.publicUrl!, "available-media")} className="mt-3 min-h-11 w-full rounded-lg bg-blue-700 px-3 py-2 font-semibold text-white disabled:opacity-40">{language === "en" ? "Use image" : "Görseli kullan"}</button>}
+                    <button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "trash")} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-600 disabled:opacity-40">{language === "en" ? "Move to Trash" : "Çöp Kutusuna Taşı"}</button>
+                  </div>
+                </li>)}
+              </ul>
+            )}
+
+            {activeCleanupAssets.length > 0 && <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700">{language === "en" ? "Cleanup status" : "Temizlik durumu"} · {activeCleanupAssets.length}</summary>
+              <ul className="mt-3 space-y-2">
+                {activeCleanupAssets.map((asset) => {
+                  const historyProjects = new Set(asset.referenceSummary.map((reference) => reference.projectId));
+                  const canCleanHistory = asset.cleanupState === "HISTORY_ONLY" && historyProjects.size === 1 && historyProjects.has(projectId);
+                  return <li key={asset.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2 text-xs">
+                    <span><strong>{asset.mediaKind === "image" ? language === "en" ? "Image" : "Görsel" : "Video"}</strong><small className="ml-2 text-slate-500">{usageLabel(asset)}</small></span>
+                    {canCleanHistory && <button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "trash")} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-600 disabled:opacity-40">{language === "en" ? "Remove from history & move to Trash" : "Geçmişten çıkar ve Çöp Kutusuna taşı"}</button>}
+                    {asset.cleanupState === "HISTORY_ONLY" && !canCleanHistory && <small className="text-amber-700">{historyProjects.size > 1 ? language === "en" ? "Used in history of multiple projects." : "Birden fazla projenin geçmişinde kullanılıyor." : language === "en" ? "Managed from its project." : "Kendi projesinden yönetilir."}</small>}
+                  </li>;
+                })}
+              </ul>
+            </details>}
+
+            <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3" data-media-trash="true">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700">{language === "en" ? "Trash" : "Çöp Kutusu"} · {trashedAssets.length}</summary>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{language === "en" ? "Items in Trash still use storage until permanently removed." : "Çöp Kutusundaki dosyalar kalıcı olarak kaldırılana kadar depolama alanı kullanmaya devam eder."}</p>
+              {trashedAssets.length > 0 && <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{trashedAssets.map((asset) => <li key={asset.id} className="overflow-hidden rounded-lg border border-slate-200">
+                {asset.publicUrl && asset.mediaKind === "image" ? <img src={asset.publicUrl} alt="" className="aspect-video w-full bg-slate-100 object-cover" loading="lazy" /> : asset.publicUrl ? <video src={asset.publicUrl} preload="metadata" className="aspect-video w-full bg-slate-950 object-contain" /> : null}
+                <div className="p-3 text-xs"><span className="text-slate-500">{asset.mediaKind} · {formatBytes(asset.sizeBytes)}</span><button type="button" disabled={pendingAssetId === asset.id} onClick={() => void mutateAsset(asset, "restore")} className="mt-2 w-full rounded-lg border border-blue-300 px-3 py-2 font-semibold text-blue-700 disabled:opacity-40">{language === "en" ? "Restore" : "Geri Yükle"}</button></div>
+              </li>)}</ul>}
+            </details>
           </section>
         )}
       </div>

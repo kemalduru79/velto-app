@@ -73,10 +73,10 @@ const firstApply = graph.get(project.id);
 replace(project.id, resolved);
 assert.equal(graph.get(project.id), firstApply, "second replacement is idempotent");
 
-assert.equal(classifyMediaReferenceSafety("active", 1), "IN_USE");
-assert.equal(classifyMediaReferenceSafety("active", 0), "UNREFERENCED");
-assert.equal(classifyMediaReferenceSafety("trashed", 10), "TRASHED");
-assert.throws(() => classifyMediaReferenceSafety("purged", 0));
+assert.equal(classifyMediaReferenceSafety("active", [{ referenceType: "scene_image" }]).cleanupState, "IN_USE");
+assert.equal(classifyMediaReferenceSafety("active", []).cleanupState, "UNREFERENCED");
+assert.equal(classifyMediaReferenceSafety("trashed", []).cleanupState, "TRASHED");
+assert.throws(() => classifyMediaReferenceSafety("purged", []));
 
 assert.match(backfill, /NEXT_PUBLIC_SUPABASE_URL/);
 assert.match(backfill, /SUPABASE_SERVICE_ROLE_KEY/);

@@ -9,7 +9,7 @@ const helperSource = read("lib/creator/projectAssets.ts");
 const component = read("components/create/CreatorProjectAssets.tsx");
 let reuseImplementationUnchanged = true;
 try {
-  execFileSync("git", ["diff", "--quiet", "HEAD", "--", "lib/creator/projectAssets.ts", "components/create/CreatorProjectAssets.tsx"]);
+  execFileSync("git", ["diff", "--quiet", "HEAD", "--", "lib/creator/projectAssets.ts"]);
 } catch {
   reuseImplementationUnchanged = false;
 }
@@ -68,9 +68,9 @@ check(helper.rankCreatorProjectAssetsForScene({ scenes: turkishRealTopic, target
 check(/topicalScore < 2/.test(helperSource), "matching threshold remains unchanged");
 check(JSON.stringify(rank()) === JSON.stringify(rank()), "ranking remains deterministic after stop-word normalization");
 check(!/fetch\(|XMLHttpRequest|WebSocket|Worker\(/.test(helperSource), "matcher requires no network, API, or worker");
-check(reuseImplementationUnchanged, "existing 0.6A reuse helper and component remain unchanged");
+check(reuseImplementationUnchanged, "existing 0.6A ranking/reuse helper remains unchanged");
 check(/rankCreatorProjectAssetsForScene/.test(component) && /onUseImage\(asset\.url, asset\.sourceCreatorSceneId\)/.test(component), "recommended image uses the existing 0.6A callback");
-check(!/fetch\(|creator-image|creator-video|generate/i.test(component), "recommendation and reuse UI trigger no generation API");
+check(!/creator-image|creator-video|generate-image|generate-video/i.test(component), "recommendation and reuse UI trigger no generation API");
 check(!/storyverse/i.test(helperSource + component), "Storyverse remains unchanged");
 
 if (failures.length) {

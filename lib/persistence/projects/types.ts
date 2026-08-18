@@ -65,4 +65,12 @@ export interface ProjectRepository {
     projectId: string,
     ownerUserId: string,
   ): Promise<PublishVeltoProjectResult>;
+  removeAssetHistoryUrlForOwner(
+    projectId: string,
+    ownerUserId: string,
+    registeredPublicUrl: string,
+  ): Promise<
+    | { status: "updated"; project: VeltoProjectApiRecord; removedCount: number }
+    | { status: "not_found" | "changed" }
+  >;
 }

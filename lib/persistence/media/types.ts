@@ -30,9 +30,10 @@ export type StoredMediaAsset = {
   mimeType: string | null;
   sizeBytes: number;
   lifecycleState: MediaLifecycleState;
+  trashedAt: string | null;
 };
 
-export type RecordStoredAssetInput = Omit<StoredMediaAsset, "id" | "lifecycleState"> & {
+export type RecordStoredAssetInput = Omit<StoredMediaAsset, "id" | "lifecycleState" | "trashedAt"> & {
   metadata?: Record<string, unknown>;
 };
 
@@ -44,7 +45,12 @@ export type ProjectMediaReference = {
 
 export type MediaUsage = {
   totalBytes: number;
+  totalPhysicalBytes: number;
+  activeBytes: number;
+  trashedBytes: number;
   assetCount: number;
+  activeAssetCount: number;
+  trashedAssetCount: number;
   imageBytes: number;
   videoBytes: number;
   audioBytes: number;
@@ -68,4 +74,6 @@ export interface MediaAssetRepository {
   replaceProjectReferences(ownerUserId: string, projectId: string, references: ProjectMediaReference[]): Promise<void>;
   listReferencesForAsset(assetId: string, ownerUserId: string): Promise<ProjectMediaReference[]>;
   getReferenceSummaryForOwner(assetId: string, ownerUserId: string): Promise<MediaReferenceSummary[]>;
+  trashForOwner(assetId: string, ownerUserId: string): Promise<"trashed" | "not_found" | "state_changed" | "in_use">;
+  restoreForOwner(assetId: string, ownerUserId: string): Promise<StoredMediaAsset | null>;
 }

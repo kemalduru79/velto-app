@@ -28,7 +28,7 @@
 // X.7.21 Global Background Ownership Fix: create page owns visible pastel background layer inside main.
 // X.7.22 Section Blend & Depth Pass: section surfaces blended into the owned pastel background.
 // X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -4637,7 +4637,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
 
-  const getAccessTokenOrThrow = async () => {
+  const getAccessTokenOrThrow = useCallback(async () => {
     const {
       data: { session },
       error,
@@ -4648,7 +4648,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
 
     return session.access_token;
-  };
+  }, []);
 
   const notifyCreditAccountChanged = (credits?: { account?: unknown } | null) => {
     if (typeof window === "undefined") return;
@@ -8258,6 +8258,23 @@ const generateSceneImage = async (
         : `Başka bir sahnedeki proje görseli kullanıldı. Mevcut hareket yenilenmelidir.`,
     );
     void sourceCreatorSceneId;
+  };
+
+  const removeCreatorProjectHistoryUrl = (removedUrl: string) => {
+    const normalize = (value: string) => {
+      try {
+        const url = new URL(value.trim());
+        url.hash = "";
+        return url.toString();
+      } catch {
+        return value.trim();
+      }
+    };
+    const target = normalize(removedUrl);
+    setScenes((current) => current.map((scene) => ({
+      ...scene,
+      assetHistory: (scene.assetHistory || []).filter((asset) => normalize(asset.url) !== target),
+    })));
   };
 
   const setCreatorScenesRenderMode = (
@@ -30514,6 +30531,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       if (scene && asset) restoreCreatorSceneAsset(scene.id, asset);
                     }}
                     onUseProjectImage={reuseCreatorProjectImage}
+                    projectId={currentProjectId}
+                    getAccessToken={getAccessTokenOrThrow}
+                    onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}
                     sceneOperationsDisabled={
                       isBatchRendering ||
                       scenes.some((scene) =>
