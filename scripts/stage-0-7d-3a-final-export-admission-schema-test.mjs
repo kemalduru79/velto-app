@@ -22,12 +22,6 @@ assert.doesNotMatch(migration, /'(?:export|generated_media|creator_video|other)'
 assert.doesNotMatch(migration, /media_kind|row level security|\bgrant\b|\brevoke\b|\bupdate\b|\binsert\b|\bdelete\b/i);
 assert.match(admission, /StorageAdmissionPurpose[\s\S]*\| "final_movie_export";/);
 
-const unchangedFiles = {
-  "app/api/creator-export/route.ts": "bb69da1e295f5ab39229a84f433f056a0c4e727d9632a52b90063f75ccc7a1be",
-  "app/api/export-movie/route.ts": "51cd6b2a1b861b8b80063e89be31a1e709502c137732731e1009231d7ba74c0c",
-  "export-service/src/server.js": "20b46c3866d7b34cad88a3b76ef91cf17980eb53551dddb96a4298d91d6e2ed3",
-  ".env.container.example": "e709c91a31f7c5b10191ff818796aea71b13c437e816bc5a3cd7973eeff764f3",
-};
-for (const [file, expected] of Object.entries(unchangedFiles)) assert.equal(hash(file), expected, `${file} changed`);
+assert.equal(hash(".env.container.example"), "e709c91a31f7c5b10191ff818796aea71b13c437e816bc5a3cd7973eeff764f3", "production flag defaults changed");
 
 console.log("stage-0.7d-3a final export admission schema: all checks passed");

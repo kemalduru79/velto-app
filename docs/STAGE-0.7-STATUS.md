@@ -179,6 +179,16 @@ Hard quota enforcement remains OFF. No live entitlement or admission rows are cr
 
 The Stage 0.7D-3 durable-writer audit found one remaining unsafe image/video writer: both authenticated final movie/export entry paths ultimately create a new physical `movies/creator/{owner}/final/{project}/{uuid}.mp4` object without storage admission. Final export must not reuse an image or Storyverse video purpose because completion must retain exact-purpose validation.
 
-This code-only enablement pass adds the dedicated `final_movie_export` value to the `velto_storage_admissions` purpose constraint and the server-only `StorageAdmissionPurpose` union. The original three purposes remain unchanged. No route issues or consumes this purpose yet, no final movie/export implementation changed, and no migration was applied live.
+This enablement pass added the dedicated `final_movie_export` value to the `velto_storage_admissions` purpose constraint and the server-only `StorageAdmissionPurpose` union. The original three purposes remain unchanged. Stage 0.7D-3A passed CODE validation, and its schema migration was subsequently applied live with migration history repaired.
 
 Stage 0.7D-3A CODE can close after validation. Stage 0.7D-3, Stage 0.7D, and Stage 0.7 remain open until final export is quota-gated and admission-bound and the broader activation-readiness pass succeeds. Production quota enforcement and permanent deletion remain OFF.
+
+## 0.7D-3B — Final Movie / Export Quota Admission Wiring
+
+The final remaining durable image/video writer bypass is closed in code. Both authenticated export entry routes now resolve the owned project, complete their existing business/service validation, check owner physical quota, and issue an owner/project-bound `video` admission with exact purpose `final_movie_export` before Creator credit reservation or export dispatch. Enforced FULL returns `STORAGE_QUOTA_FULL` before credits, rendering, or physical writes; Storyverse remains non-billable.
+
+The opaque admission identifier travels only through the authenticated server-to-server `x-velto-storage-admission-id` header. Browser-supplied ownership, admission, token, bucket, and path fields are removed from export payloads. The export service requires a valid internal token plus UUID owner, project, and admission identities; verifies the admission's exact owner, video kind, purpose, and `project_reference`; and calls BEGIN before remote media preparation or rendering.
+
+Render and Storage failures before successful upload ABORT the exact admission. The durable boundary is only the successful `movies` upload. After that boundary, the service never aborts: it COMPLETEs the admission, and a completion failure preserves the object and pending coordination while logging `FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED` without secrets. A later application registry failure cannot reverse the consumed admission or delete the object; the existing orphan-registration recovery evidence remains authoritative.
+
+An export admitted below FULL does not rerun quota during completion and may finish after concurrent work makes the owner FULL. Stage 0.7D-3B closes the final known image/video durable-write bypass in code, but the broader Stage 0.7D-3 activation configuration, diagnostics, and no-cost readiness validation still remain. Production quota enforcement and permanent deletion remain OFF.

@@ -14,7 +14,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id", "x-velto-storage-admission-id"],
   })
 );
 
@@ -23,7 +23,7 @@ app.options(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id", "x-velto-storage-admission-id"],
   })
 );
 
@@ -82,8 +82,62 @@ function internalExportIdentity(req) {
     timingSafeEqual(configuredBuffer, suppliedBuffer);
   const ownerUserId = req.get("x-velto-owner-user-id") || "";
   const projectId = req.get("x-velto-project-id") || "";
-  if (!authenticated || !UUID_PATTERN.test(ownerUserId) || !UUID_PATTERN.test(projectId)) return null;
-  return { ownerUserId, projectId };
+  const storageAdmissionId = req.get("x-velto-storage-admission-id") || "";
+  if (!authenticated || !UUID_PATTERN.test(ownerUserId) || !UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(storageAdmissionId)) return null;
+  return { ownerUserId, projectId, storageAdmissionId };
+}
+
+class FinalMovieStorageAdmissionError extends Error {
+  constructor(message, status = 409) {
+    super(message);
+    this.name = "FinalMovieStorageAdmissionError";
+    this.status = status;
+  }
+}
+
+async function beginFinalMovieStorageAdmission(supabase, ownership) {
+  const { data: admission, error: lookupError } = await supabase
+    .from("velto_storage_admissions")
+    .select("id")
+    .eq("id", ownership.storageAdmissionId)
+    .eq("owner_user_id", ownership.ownerUserId)
+    .eq("media_kind", "video")
+    .eq("purpose", "final_movie_export")
+    .eq("project_reference", ownership.projectId)
+    .maybeSingle();
+  if (lookupError) throw new FinalMovieStorageAdmissionError("Final video storage admission is temporarily unavailable.", 503);
+  if (!admission) throw new FinalMovieStorageAdmissionError("Final video storage admission is invalid.");
+
+  const { data, error } = await supabase.rpc("velto_begin_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_media_kind: "video",
+    p_purpose: "final_movie_export",
+  });
+  if (error) throw new FinalMovieStorageAdmissionError("Final video storage admission is temporarily unavailable.", 503);
+  const result = Array.isArray(data) ? data[0] : null;
+  if (result?.status !== "ready" || !UUID_PATTERN.test(result?.consumption_token || "")) {
+    throw new FinalMovieStorageAdmissionError("Final video storage admission cannot be consumed.");
+  }
+  return result.consumption_token;
+}
+
+async function abortFinalMovieStorageAdmission(supabase, ownership, consumptionToken) {
+  const { data, error } = await supabase.rpc("velto_abort_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_consumption_token: consumptionToken,
+  });
+  if (error || data !== "aborted") throw new Error("Final movie storage admission abort failed.");
+}
+
+async function completeFinalMovieStorageAdmission(supabase, ownership, consumptionToken) {
+  const { data, error } = await supabase.rpc("velto_complete_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_consumption_token: consumptionToken,
+  });
+  if (error || data !== "consumed") throw new Error("Final movie storage admission completion failed.");
 }
 
 function resolveFfmpegBinary() {
@@ -1551,9 +1605,15 @@ app.post("/export-movie", async (req, res) => {
     path.join(os.tmpdir(), "velto-export-")
   );
 
+  let ownership = null;
+  let supabase = null;
+  let consumptionToken = null;
+  let durableStorageStarted = false;
+  let moviePath = "";
+
   try {
     const body = req.body || {};
-    const ownership = internalExportIdentity(req);
+    ownership = internalExportIdentity(req);
     if (!ownership) {
       return res.status(401).json({ ok: false, error: "Final video request is unauthorized." });
     }
@@ -1571,15 +1631,6 @@ app.post("/export-movie", async (req, res) => {
       });
     }
     if (body.musicEntitlement && !selectedCreatorMusicRequested) {
-      return res.status(403).json({
-        ok: false,
-        error: "Premium music entitlement is unavailable.",
-      });
-    }
-    let privateCreatorMusicPath = "";
-    try {
-      privateCreatorMusicPath = await resolvePrivateCreatorMusicAsset({ req, body, tempDir });
-    } catch {
       return res.status(403).json({
         ok: false,
         error: "Premium music entitlement is unavailable.",
@@ -1645,6 +1696,16 @@ app.post("/export-movie", async (req, res) => {
         ok: false,
         error: "Export için en az bir video veya image gerekli.",
       });
+    }
+
+    supabase = getSupabaseAdmin();
+    consumptionToken = await beginFinalMovieStorageAdmission(supabase, ownership);
+
+    let privateCreatorMusicPath = "";
+    try {
+      privateCreatorMusicPath = await resolvePrivateCreatorMusicAsset({ req, body, tempDir });
+    } catch {
+      throw new FinalMovieStorageAdmissionError("Premium music entitlement is unavailable.", 403);
     }
 
     const sceneClipPaths = [];
@@ -1974,10 +2035,11 @@ app.post("/export-movie", async (req, res) => {
 
     const outputBuffer = await fs.promises.readFile(finalOutputFilePath);
 
-    const supabase = getSupabaseAdmin();
-
     const safeTitle = safeName(title);
-    const moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
+    moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
+    const stats = await fs.promises.stat(finalOutputFilePath);
+    const duration = await getMediaDuration(finalOutputFilePath);
+    const fileName = `velto-${safeTitle}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from("movies")
@@ -1989,14 +2051,23 @@ app.post("/export-movie", async (req, res) => {
     if (uploadError) {
       throw uploadError;
     }
+    durableStorageStarted = true;
 
     const { data: publicData } = supabase.storage
       .from("movies")
       .getPublicUrl(moviePath);
 
-    const stats = await fs.promises.stat(finalOutputFilePath);
-    const duration = await getMediaDuration(finalOutputFilePath);
-    const fileName = `velto-${safeTitle}.mp4`;
+    try {
+      await completeFinalMovieStorageAdmission(supabase, ownership, consumptionToken);
+    } catch {
+      console.error("FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED", {
+        admissionId: ownership.storageAdmissionId,
+        ownerUserId: ownership.ownerUserId,
+        projectId: ownership.projectId,
+        storagePath: moviePath,
+      });
+      throw new FinalMovieStorageAdmissionError("Final video storage admission could not be finalized.", 503);
+    }
 
     return res.json({
       ok: true,
@@ -2048,11 +2119,24 @@ app.post("/export-movie", async (req, res) => {
       ambientMaxVolume: AMBIENT_MAX_VOLUME,
     });
   } catch (error) {
+    if (consumptionToken && !durableStorageStarted && supabase && ownership) {
+      try {
+        await abortFinalMovieStorageAdmission(supabase, ownership, consumptionToken);
+      } catch {
+        console.error("FINAL_MOVIE_STORAGE_ADMISSION_ABORT_FAILED", {
+          admissionId: ownership.storageAdmissionId,
+          ownerUserId: ownership.ownerUserId,
+          projectId: ownership.projectId,
+        });
+      }
+    }
     console.error("export-movie error:", error);
 
-    return res.status(500).json({
+    return res.status(error instanceof FinalMovieStorageAdmissionError ? error.status : 500).json({
       ok: false,
-      error: error?.message || "Film export işlemi başarısız oldu.",
+      error: error instanceof FinalMovieStorageAdmissionError
+        ? error.message
+        : "Film export işlemi başarısız oldu.",
     });
   } finally {
     try {

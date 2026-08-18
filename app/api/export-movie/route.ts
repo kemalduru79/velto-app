@@ -3,11 +3,14 @@ import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import {
   FinalMovieOwnershipError,
+  FinalMovieStorageAdmissionError,
   getFinalMovieExportApiBase,
   getFinalMovieInternalToken,
   ownedFinalMovieHeaders,
   registerOwnedFinalMovieResponse,
 } from "@/lib/creator/finalMovieOwnership.server";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,9 +28,29 @@ export async function POST(req: NextRequest) {
     const exportPayload: Record<string, unknown> = { ...body, productProfile: "storyverse", projectId: project.id };
     delete exportPayload.ownerUserId;
     delete exportPayload.userId;
-    const response = await fetch(`${getFinalMovieExportApiBase()}/export-movie`, {
+    delete exportPayload.storageAdmissionId;
+    delete exportPayload.consumptionToken;
+    delete exportPayload.storageBucket;
+    delete exportPayload.storagePath;
+    const exportApiBase = getFinalMovieExportApiBase();
+    const internalExportToken = getFinalMovieInternalToken();
+    let storageAdmissionId: string;
+    try {
+      const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+      if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
+      ({ storageAdmissionId } = await issueStorageAdmissionForOwner({
+        ownerUserId: principal.id,
+        mediaKind: "video",
+        purpose: "final_movie_export",
+        projectReference: project.id,
+        metadata: { productProfile: "storyverse", operation: "final_movie_export" },
+      }));
+    } catch {
+      throw new FinalMovieStorageAdmissionError();
+    }
+    const response = await fetch(`${exportApiBase}/export-movie`, {
       method: "POST",
-      headers: ownedFinalMovieHeaders(principal.id, project.id, getFinalMovieInternalToken()),
+      headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken, storageAdmissionId),
       body: JSON.stringify(exportPayload),
       signal: AbortSignal.timeout(55_000),
     });
@@ -39,6 +62,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    if (error instanceof FinalMovieStorageAdmissionError) {
+      return NextResponse.json(
+        { ok: false, code: "STORAGE_ADMISSION_UNAVAILABLE", error: error.message },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const status = error instanceof FinalMovieOwnershipError ? 503 : 500;
     console.error("export-movie proxy failed", error);
     return NextResponse.json({ ok: false, error: "Final video could not be created." }, { status });

@@ -19,10 +19,13 @@ import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import { getPersistenceServices } from "@/lib/persistence";
 import {
+  FinalMovieStorageAdmissionError,
   getFinalMovieInternalToken,
   ownedFinalMovieHeaders,
   registerOwnedFinalMovieResponse,
 } from "@/lib/creator/finalMovieOwnership.server";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -107,6 +110,10 @@ export async function POST(request: Request) {
     delete exportPayload.musicEntitlement;
     delete exportPayload.musicAsset;
     delete exportPayload.musicStorage;
+    delete exportPayload.storageAdmissionId;
+    delete exportPayload.consumptionToken;
+    delete exportPayload.storageBucket;
+    delete exportPayload.storagePath;
     if (productProfile === "creatorlab") {
       try {
         exportPayload.scenes = resolveCanonicalCreatorExportScenes(
@@ -138,7 +145,7 @@ export async function POST(request: Request) {
     const internalExportToken = getFinalMovieInternalToken();
     let musicUsageIdentity: CreatorMusicUsageEventIdentity | null = null;
     if (productProfile === "creatorlab") {
-      let backgroundMusic = normalizeCreatorBackgroundMusicConfig(
+      const backgroundMusic = normalizeCreatorBackgroundMusicConfig(
         body.backgroundMusic,
         [],
         isCreatorPremiumMusicTrackId,
@@ -180,6 +187,21 @@ export async function POST(request: Request) {
     // The service check intentionally runs before credit reservation.
     await assertExportServiceReady(exportApiBase);
 
+    let storageAdmissionId: string;
+    try {
+      const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+      if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
+      ({ storageAdmissionId } = await issueStorageAdmissionForOwner({
+        ownerUserId: principal.id,
+        mediaKind: "video",
+        purpose: "final_movie_export",
+        projectReference: project.id,
+        metadata: { productProfile, operation: "final_movie_export" },
+      }));
+    } catch {
+      throw new FinalMovieStorageAdmissionError();
+    }
+
     creditReservation = await reserveMeteredOperation(request, {
       operationType: "creator_export",
       qualityMode,
@@ -196,7 +218,7 @@ export async function POST(request: Request) {
 
     const response = await fetch(`${exportApiBase}/export-movie`, {
       method: "POST",
-      headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken),
+      headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken, storageAdmissionId),
       body: JSON.stringify(exportPayload),
       signal: AbortSignal.timeout(55_000),
     });
@@ -256,6 +278,13 @@ export async function POST(request: Request) {
           finalProductionGate: { version: "3Q", status: "blocked" },
         },
         { status: 503 },
+      );
+    }
+
+    if (error instanceof FinalMovieStorageAdmissionError) {
+      return NextResponse.json(
+        { ok: false, code: "STORAGE_ADMISSION_UNAVAILABLE", error: error.message, creditReserved: false },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
 

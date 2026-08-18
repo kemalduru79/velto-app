@@ -7,6 +7,13 @@ export class FinalMovieOwnershipError extends Error {
   }
 }
 
+export class FinalMovieStorageAdmissionError extends Error {
+  constructor() {
+    super("Final video storage admission is temporarily unavailable.");
+    this.name = "FinalMovieStorageAdmissionError";
+  }
+}
+
 export function getFinalMovieInternalToken() {
   const token = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim();
   if (!token) throw new FinalMovieOwnershipError("Final video service authentication is not configured.");
@@ -23,12 +30,13 @@ export function getFinalMovieExportApiBase() {
   return parsed.toString().replace(/\/$/, "");
 }
 
-export function ownedFinalMovieHeaders(ownerUserId: string, projectId: string, token: string) {
+export function ownedFinalMovieHeaders(ownerUserId: string, projectId: string, token: string, storageAdmissionId: string) {
   return {
     "Content-Type": "application/json",
     "x-velto-internal-export-token": token,
     "x-velto-owner-user-id": ownerUserId,
     "x-velto-project-id": projectId,
+    "x-velto-storage-admission-id": storageAdmissionId,
   };
 }
 
