@@ -124,3 +124,19 @@ The service-role-only Trash function serializes against reference replacement, r
 Trash is reversible logical lifecycle management, not physical deletion. No Storage remove/delete call exists, no API can transition to `purged`, and bucket, path, URL, size, and owner remain unchanged. Physical usage counts both active and trashed objects and excludes only the future physically-removed `purged` state, so moving to Trash never creates fake capacity and restoring never double-counts bytes.
 
 Stage 0.7B-1 adds no quota generation gate, automatic cleanup, billing, paid storage, checkout, or paid infrastructure. Stage 0.7C owns quota UX and generation gating; Stage 0.7D owns permanent cleanup and recovery. No current live asset is transitioned during implementation.
+
+The controlled live lifecycle smoke passed after deployment: owner-scoped inventory, unreferenced Trash, retained physical bytes, Restore without recreated references, in-use rejection, and baseline reference/physical metrics behaved as designed. Stage 0.7B-1 is CLOSED.
+
+## 0.7C — Storage Quota UX & Generation Gate
+
+Physical quota usage is the owner-scoped sum of all retained registry objects: active plus trashed. Only the reserved future `purged` lifecycle is excluded. Quota states are `NORMAL` below 80%, `APPROACHING` from 80% to below 95%, `CRITICAL` from 95% to below 100%, and `FULL` at or above 100%.
+
+No commercial GB allowance has been chosen. `VELTO_STORAGE_LIMIT_BYTES` is a server-only positive safe integer; missing or invalid configuration produces an explicit unconfigured state with real used bytes but no fake limit, percentage, or quota state. `VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED` enables the hard gate only when its exact value is `true` and defaults to false. The authenticated no-store `/api/storage-usage` response derives ownership from the session and exposes only safe usage totals and normalized quota status.
+
+The complete hard gate is installed before credit reservation, provider selection/dispatch, reference-image downloads, and job creation on the active image/video generation entries: image, character image, Creator thumbnail image, Creator video, and Storyverse video POST. A configured enforced `FULL` request returns HTTP 409 with `STORAGE_QUOTA_FULL`, reserves zero credits, calls zero media providers, and enqueues zero generation jobs. `FULL_BUT_NOT_ENFORCED` remains allowed while still powering warning UX.
+
+Storage completion is deliberately not gated. A request admitted below FULL may finish and persist even if another in-flight request crosses the threshold; blocking the completed output would orphan paid provider work. Two concurrent requests immediately below FULL may therefore cause a bounded overshoot during Controlled Alpha. Future requests observe registered physical usage and are blocked. No distributed reservation or paid infrastructure is introduced.
+
+Reuse, Smart Match, project open/edit/save, playback, polling, download, reports, Strategy, Brief, Director/Copilot text actions, metadata/planning, storage inventory, Trash, Restore, narration, dialogue, TTS, and premium music remain available. Trash still does not free capacity. The Project Assets disclosure shows real used storage, a configured progress state when available, retained Trash bytes, and—only for enforced FULL—a clear message and real Manage storage action.
+
+Hard enforcement remains OFF by default until Stage 0.7D supplies at least one recovery path: additional owner entitlement or safe physical purge. Stage 0.7C adds no billing, checkout, plans, subscriptions, permanent deletion, `purged` API, or paid infrastructure.

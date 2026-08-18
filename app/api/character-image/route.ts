@@ -11,6 +11,8 @@ import {
   normalizeCreatorQualityMode,
   type CreatorQualityMode,
 } from "../../../lib/creator/mediaRouting";
+import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 
 export const runtime = "nodejs";
 
@@ -77,6 +79,7 @@ export async function POST(req: Request) {
   let providerSucceeded = false;
 
   try {
+    const principal = await authenticateRequest(req);
     const {
       title,
       character,
@@ -115,6 +118,9 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
 
     const creatorRoute = getCreatorCharacterRoute(normalizedQualityMode);
 
@@ -298,6 +304,9 @@ Requirements:
       }
     }
 
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
     const creditErrorResponse = getCreditErrorResponse(error);
     if (creditErrorResponse) return creditErrorResponse;
 

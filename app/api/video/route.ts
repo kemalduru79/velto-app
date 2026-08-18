@@ -5,6 +5,8 @@ import {
   normalizeCreatorQualityMode,
 } from "../../../lib/creator/mediaRouting";
 import { getMediaProviderFacade } from "../../../lib/providers";
+import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 import { normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
 import {
   createVideoJobToken,
@@ -104,6 +106,7 @@ function publicVideoError(error: unknown, fallback: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const principal = await authenticateRequest(req);
     const body = (await req.json()) as Record<string, unknown>;
     const imageUrl = body.imageUrl;
     const isCreatorLabRequest = body.productProfile === "creatorlab";
@@ -137,6 +140,9 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
 
     const facade = getMediaProviderFacade();
     const selection =
@@ -210,6 +216,9 @@ export async function POST(req: NextRequest) {
       premiumFallbackUsed: selection.usedFallback,
     });
   } catch (error: unknown) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
     console.error("Video create error:", error);
     return NextResponse.json(
       {

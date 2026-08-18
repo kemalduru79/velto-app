@@ -20,6 +20,8 @@ import {
 import type { CreatorGenerationContinuityContext } from "../../../lib/creator/continuityContracts";
 import type { CreatorResolvedContinuityMode } from "../../../lib/creator/visualContinuity";
 import { buildCreatorGenerationContinuityContext } from "../../../lib/creator/sceneContinuity";
+import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 
 // 3L SMART VISUALS V2
 // CONT-P1R SELECTIVE CONTINUITY
@@ -433,6 +435,7 @@ async function postHandler(req: Request) {
   let reservation: MeteredOperationReservation | null = null;
 
   try {
+    const principal = await authenticateRequest(req);
     const {
       title,
       sceneText,
@@ -481,6 +484,9 @@ async function postHandler(req: Request) {
         { status: 400 },
       );
     }
+
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
 
     const normalizedProductProfile: ImageProductProfile =
       productProfile === "creatorlab" ? "creatorlab" : "storyverse";
@@ -806,6 +812,9 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
       });
     }
 
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
     const creditErrorResponse = getCreditErrorResponse(error);
     if (creditErrorResponse) return creditErrorResponse;
 

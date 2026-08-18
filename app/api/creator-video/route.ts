@@ -26,6 +26,7 @@ import {
 import {
   createVideoJobToken,
 } from "../../../lib/video/providers";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 import {
   buildCanonicalCreatorVideoQueueInput,
   validateCreatorVideoRequestBoundary,
@@ -203,6 +204,9 @@ async function postHandler(req: NextRequest) {
       }
       canonicalProjectId = ownedProject.id;
     }
+
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
 
     if (body.productProfile === "creatorlab") {
       const queueHealth = await services.jobQueue.getHealth(

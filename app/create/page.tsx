@@ -14829,16 +14829,16 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     setError("");
 
     try {
-      const accessToken = isCreatorLabFlow ? await getAccessTokenOrThrow() : "";
+      const accessToken = await getAccessTokenOrThrow();
       let res: Response;
       try {
         res = await fetch("/api/character-image", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
             ...(isCreatorLabFlow
               ? {
-                  Authorization: `Bearer ${accessToken}`,
                   ...creatorCostGuardHeaders(creatorOperationId),
                 }
               : {}),

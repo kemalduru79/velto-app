@@ -32,6 +32,18 @@ type CleanupAsset = {
   referenceSummary: Array<{ projectId: string; referenceType: string; referenceKey: string }>;
 };
 
+type StorageStatus = {
+  configured: boolean;
+  enforcementEnabled: boolean;
+  usedBytes: number;
+  activeBytes: number;
+  trashedBytes: number;
+  limitBytes: number | null;
+  usageRatio: number | null;
+  state: "NORMAL" | "APPROACHING" | "CRITICAL" | "FULL" | null;
+  decision: "UNCONFIGURED" | "ALLOWED" | "FULL_BUT_NOT_ENFORCED" | "BLOCKED_FULL";
+};
+
 export default function CreatorProjectAssets({
   scenes,
   targetCreatorSceneId,
@@ -46,6 +58,7 @@ export default function CreatorProjectAssets({
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupError, setCleanupError] = useState("");
   const [pendingAssetId, setPendingAssetId] = useState("");
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const loadCleanupAssets = useCallback(async () => {
     setCleanupLoading(true);
     setCleanupError("");
@@ -55,6 +68,9 @@ export default function CreatorProjectAssets({
       const payload = await response.json() as { assets?: CleanupAsset[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "Media inventory is unavailable.");
       setCleanupAssets(payload.assets || []);
+      const storageResponse = await fetch("/api/storage-usage", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+      const storagePayload = await storageResponse.json() as { storage?: StorageStatus };
+      if (storageResponse.ok) setStorageStatus(storagePayload.storage || null);
     } catch (error) {
       setCleanupError(error instanceof Error ? error.message : "Media inventory is unavailable.");
     } finally {
@@ -147,6 +163,18 @@ export default function CreatorProjectAssets({
           </p>
         </div>
 
+        {storageStatus && (
+          <section className={`mb-4 rounded-xl border p-3 ${storageStatus.state === "FULL" || storageStatus.state === "CRITICAL" ? "border-amber-300 bg-amber-50" : storageStatus.state === "APPROACHING" ? "border-blue-200 bg-blue-50/50" : "border-slate-200 bg-white"}`} data-storage-quota-state={storageStatus.state || "UNCONFIGURED"}>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <strong className="text-slate-800">{language === "en" ? "Used storage" : "Kullanılan depolama"}</strong>
+              <span className="text-slate-600">{formatBytes(storageStatus.usedBytes)}{storageStatus.configured && storageStatus.limitBytes ? ` ${language === "en" ? "of" : "/"} ${formatBytes(storageStatus.limitBytes)}` : ""}</span>
+            </div>
+            {storageStatus.configured && storageStatus.usageRatio !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(storageStatus.usageRatio * 100))}><span className={`block h-full rounded-full ${storageStatus.state === "FULL" || storageStatus.state === "CRITICAL" ? "bg-amber-600" : "bg-blue-600"}`} style={{ width: `${Math.min(100, storageStatus.usageRatio * 100)}%` }} /></div>}
+            {storageStatus.trashedBytes > 0 && <p className="mt-2 text-[11px] text-slate-500">{language === "en" ? `${formatBytes(storageStatus.trashedBytes)} in Trash still uses storage.` : `Çöp Kutusundaki ${formatBytes(storageStatus.trashedBytes)} hâlâ depolama kullanıyor.`}</p>}
+            {storageStatus.decision === "BLOCKED_FULL" && <div className="mt-3 rounded-lg bg-amber-100 p-3 text-xs text-amber-950"><p>{language === "en" ? "Storage is full. New image and video generation is temporarily unavailable." : "Depolama alanı dolu. Yeni görsel ve video üretimi geçici olarak kullanılamıyor."}</p><button type="button" onClick={() => document.getElementById("creator-media-management")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="mt-2 rounded-lg border border-amber-400 px-3 py-2 font-semibold">{language === "en" ? "Manage storage" : "Depolamayı yönet"}</button></div>}
+          </section>
+        )}
+
         {!hasAssets && (
           <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-600">
             {language === "en"
@@ -238,7 +266,7 @@ export default function CreatorProjectAssets({
         )}
 
         {(cleanupLoading || cleanupError || cleanupAssets.length > 0) && (
-          <section className="mt-5 border-t border-slate-200 pt-4" data-media-cleanup-inventory="true">
+          <section id="creator-media-management" className="mt-5 scroll-mt-6 border-t border-slate-200 pt-4" data-media-cleanup-inventory="true">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">

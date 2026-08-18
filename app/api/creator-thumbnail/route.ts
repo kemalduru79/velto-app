@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
+import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 
 export const runtime = "nodejs";
 
@@ -147,6 +148,8 @@ export async function POST(req: Request) {
     const secured = await enforceCreatorApiBoundary<any>(req, "creator-thumbnail");
     if (!secured.ok) return secured.response;
     const body = secured.context.body;
+    const storageAllowance = await checkStorageGenerationAllowance(secured.context.user.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
     const client = getOpenAIClient();
 
     const productionPackage = body?.package || {};
