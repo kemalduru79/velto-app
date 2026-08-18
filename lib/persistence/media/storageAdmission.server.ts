@@ -6,7 +6,8 @@ export type StorageAdmissionMediaKind = "image" | "video";
 export type StorageAdmissionPurpose =
   | "creator_generated_image"
   | "storyverse_generated_image"
-  | "storyverse_generated_video";
+  | "storyverse_generated_video"
+  | "final_movie_export";
 
 export class StorageAdmissionError extends Error {
   constructor(

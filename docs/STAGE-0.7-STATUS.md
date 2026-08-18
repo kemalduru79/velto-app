@@ -174,3 +174,11 @@ Caller audit found no legitimate direct user-upload/import use of `creator-store
 If physical upload fails before durable storage, admission coordination is aborted and remains reusable until expiry. Once upload succeeds, registry or admission-finalization failure never aborts; the pending admission plus existing orphan-registration log preserves recovery evidence and prevents replay or invisible success.
 
 Hard quota enforcement remains OFF. No live entitlement or admission rows are created, no paid storage amount is selected, and no checkout, pricing, subscription, payment webhook, vendor coupling, scheduled cleanup, or paid infrastructure is introduced. Live migration and activation smoke remain separate operational gates.
+
+## 0.7D-3A — Final Export Admission Schema Enablement
+
+The Stage 0.7D-3 durable-writer audit found one remaining unsafe image/video writer: both authenticated final movie/export entry paths ultimately create a new physical `movies/creator/{owner}/final/{project}/{uuid}.mp4` object without storage admission. Final export must not reuse an image or Storyverse video purpose because completion must retain exact-purpose validation.
+
+This code-only enablement pass adds the dedicated `final_movie_export` value to the `velto_storage_admissions` purpose constraint and the server-only `StorageAdmissionPurpose` union. The original three purposes remain unchanged. No route issues or consumes this purpose yet, no final movie/export implementation changed, and no migration was applied live.
+
+Stage 0.7D-3A CODE can close after validation. Stage 0.7D-3, Stage 0.7D, and Stage 0.7 remain open until final export is quota-gated and admission-bound and the broader activation-readiness pass succeeds. Production quota enforcement and permanent deletion remain OFF.
