@@ -12,7 +12,7 @@ import {
   type CreatorQualityMode,
 } from "../../../lib/creator/mediaRouting";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 
 export const runtime = "nodejs";
 
@@ -230,13 +230,13 @@ Requirements:
           prompt,
           size: "1024x1024",
           quality: "high",
-        };
+        } as const;
 
     const client = getOpenAIClient();
     const image = (await client.images.generate({
       ...request,
       stream: false,
-    } as any)) as unknown as ImageApiResponse;
+    })) as unknown as ImageApiResponse;
     const base64 = image.data?.[0]?.b64_json;
 
     if (!base64) {
@@ -263,7 +263,7 @@ Requirements:
 
     return NextResponse.json({
       image: `data:image/png;base64,${base64}`,
-      usage: (image as any).usage || null,
+      usage: image.usage || null,
       credits: creditResult
         ? { chargedCredits, account: creditResult.account }
         : { chargedCredits: 0 },
@@ -307,6 +307,7 @@ Requirements:
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     const creditErrorResponse = getCreditErrorResponse(error);
     if (creditErrorResponse) return creditErrorResponse;
 

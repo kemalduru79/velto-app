@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 
 export const runtime = "nodejs";
 
@@ -12,6 +12,23 @@ type ThumbnailPlan = {
   subHeadline: string;
   imagePrompt: string;
 };
+
+type JsonRecord = Record<string, unknown>;
+type ThumbnailRequest = JsonRecord & {
+  package?: JsonRecord;
+  metadata?: JsonRecord;
+  language?: unknown;
+  targetMarket?: unknown;
+  ageGroup?: unknown;
+  contentType?: unknown;
+  creatorFormat?: unknown;
+  targetPlatforms?: unknown;
+  videoDurationSec?: unknown;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -83,8 +100,8 @@ function getFallbackHeadline({
   metadata,
   language,
 }: {
-  productionPackage: any;
-  metadata: any;
+  productionPackage: JsonRecord;
+  metadata: JsonRecord;
   language: SupportedLanguage;
 }) {
   const source = safeString(
@@ -105,8 +122,8 @@ function buildFallbackPlan({
   metadata,
   language,
 }: {
-  productionPackage: any;
-  metadata: any;
+  productionPackage: JsonRecord;
+  metadata: JsonRecord;
   language: SupportedLanguage;
 }): ThumbnailPlan {
   const headline = getFallbackHeadline({ productionPackage, metadata, language });
@@ -131,10 +148,11 @@ function buildFallbackPlan({
   };
 }
 
-function normalizePlan(plan: any, fallback: ThumbnailPlan, language: SupportedLanguage): ThumbnailPlan {
-  const headline = normalizeHeadline(safeString(plan?.headline, fallback.headline), language);
-  const subHeadline = clampText(safeString(plan?.subHeadline, fallback.subHeadline), 48);
-  const imagePrompt = clampText(safeString(plan?.imagePrompt, fallback.imagePrompt), 1400);
+function normalizePlan(plan: unknown, fallback: ThumbnailPlan, language: SupportedLanguage): ThumbnailPlan {
+  const record = asRecord(plan);
+  const headline = normalizeHeadline(safeString(record.headline, fallback.headline), language);
+  const subHeadline = clampText(safeString(record.subHeadline, fallback.subHeadline), 48);
+  const imagePrompt = clampText(safeString(record.imagePrompt, fallback.imagePrompt), 1400);
 
   return {
     headline,
@@ -145,7 +163,7 @@ function normalizePlan(plan: any, fallback: ThumbnailPlan, language: SupportedLa
 
 export async function POST(req: Request) {
   try {
-    const secured = await enforceCreatorApiBoundary<any>(req, "creator-thumbnail");
+    const secured = await enforceCreatorApiBoundary<ThumbnailRequest>(req, "creator-thumbnail");
     if (!secured.ok) return secured.response;
     const body = secured.context.body;
     const storageAllowance = await checkStorageGenerationAllowance(secured.context.user.id);
@@ -309,13 +327,14 @@ premium professional creator thumbnail, cinematic editorial lighting, strong emo
         subHeadline: plan.subHeadline,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     console.error("creator-thumbnail error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Thumbnail generation failed.",
+        error: error instanceof Error ? error.message : "Thumbnail generation failed.",
       },
       { status: 500 }
     );

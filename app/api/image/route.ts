@@ -21,7 +21,7 @@ import type { CreatorGenerationContinuityContext } from "../../../lib/creator/co
 import type { CreatorResolvedContinuityMode } from "../../../lib/creator/visualContinuity";
 import { buildCreatorGenerationContinuityContext } from "../../../lib/creator/sceneContinuity";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 // 3L SMART VISUALS V2
@@ -824,6 +824,7 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     const creditErrorResponse = getCreditErrorResponse(error);
     if (creditErrorResponse) return creditErrorResponse;
 

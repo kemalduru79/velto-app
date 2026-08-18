@@ -24,7 +24,7 @@ import {
   ownedFinalMovieHeaders,
   registerOwnedFinalMovieResponse,
 } from "@/lib/creator/finalMovieOwnership.server";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
@@ -187,10 +187,10 @@ export async function POST(request: Request) {
     // The service check intentionally runs before credit reservation.
     await assertExportServiceReady(exportApiBase);
 
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
     let storageAdmissionId: string;
     try {
-      const storageAllowance = await checkStorageGenerationAllowance(principal.id);
-      if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
       ({ storageAdmissionId } = await issueStorageAdmissionForOwner({
         ownerUserId: principal.id,
         mediaKind: "video",
@@ -287,6 +287,8 @@ export async function POST(request: Request) {
         { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
+
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
 
     const creditResponse = getCreditErrorResponse(error);
     if (creditResponse) return creditResponse;

@@ -9,7 +9,7 @@ import {
   ownedFinalMovieHeaders,
   registerOwnedFinalMovieResponse,
 } from "@/lib/creator/finalMovieOwnership.server";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
@@ -34,10 +34,10 @@ export async function POST(req: NextRequest) {
     delete exportPayload.storagePath;
     const exportApiBase = getFinalMovieExportApiBase();
     const internalExportToken = getFinalMovieInternalToken();
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
     let storageAdmissionId: string;
     try {
-      const storageAllowance = await checkStorageGenerationAllowance(principal.id);
-      if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
       ({ storageAdmissionId } = await issueStorageAdmissionForOwner({
         ownerUserId: principal.id,
         mediaKind: "video",
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
         { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     const status = error instanceof FinalMovieOwnershipError ? 503 : 500;
     console.error("export-movie proxy failed", error);
     return NextResponse.json({ ok: false, error: "Final video could not be created." }, { status });

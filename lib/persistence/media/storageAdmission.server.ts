@@ -1,5 +1,7 @@
 import "server-only";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveStorageQuotaConfiguration } from "./quota";
+import { StorageQuotaOperationalError } from "./storageQuota.server";
 
 export const DEFAULT_STORAGE_ADMISSION_TTL_MINUTES = 60;
 export type StorageAdmissionMediaKind = "image" | "video";
@@ -21,9 +23,11 @@ export class StorageAdmissionError extends Error {
 }
 
 export function resolveStorageAdmissionTtlMinutes(env: Record<string, string | undefined>) {
-  const raw = env.VELTO_STORAGE_ADMISSION_TTL_MINUTES;
-  const parsed = typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN;
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_STORAGE_ADMISSION_TTL_MINUTES;
+  const config = resolveStorageQuotaConfiguration(env);
+  if (config.enforcementEnabled && !config.admissionTtlValid) {
+    throw new StorageQuotaOperationalError("STORAGE_QUOTA_CONFIGURATION_ERROR");
+  }
+  return config.admissionTtlMinutes || DEFAULT_STORAGE_ADMISSION_TTL_MINUTES;
 }
 
 export async function issueStorageAdmissionForOwner(input: {
@@ -47,7 +51,9 @@ export async function issueStorageAdmissionForOwner(input: {
     })
     .select("id")
     .single();
-  if (error || !data?.id) throw new Error(`Storage admission issuance failed: ${error?.message || "missing id"}`);
+  if (error || !data?.id) {
+    throw new StorageQuotaOperationalError("STORAGE_QUOTA_INFRASTRUCTURE_ERROR");
+  }
   return { storageAdmissionId: String(data.id), expiresAt };
 }
 

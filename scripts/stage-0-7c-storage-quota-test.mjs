@@ -27,11 +27,17 @@ for (const [used, expected] of [[0, "NORMAL"], [7999, "NORMAL"], [8000, "APPROAC
 assert.equal(quota.getStorageQuota(10000, 10000).canCreateStorageIncreasingMedia, false);
 assert.throws(() => quota.getStorageQuota(0, 0));
 
-assert.deepEqual(quota.resolveStorageQuotaConfiguration({}), { configured: false, limitBytes: null, enforcementEnabled: false });
+assert.deepEqual(
+  (({ configured, limitBytes, enforcementEnabled }) => ({ configured, limitBytes, enforcementEnabled }))(quota.resolveStorageQuotaConfiguration({})),
+  { configured: false, limitBytes: null, enforcementEnabled: false },
+);
 assert.equal(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "invalid" }).configured, false);
 assert.equal(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "0" }).configured, false);
 assert.equal(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: String(Number.MAX_SAFE_INTEGER + 1) }).configured, false);
-assert.deepEqual(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "1000", VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED: "false" }), { configured: true, limitBytes: 1000, enforcementEnabled: false });
+assert.deepEqual(
+  (({ configured, limitBytes, enforcementEnabled }) => ({ configured, limitBytes, enforcementEnabled }))(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "1000", VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED: "false" })),
+  { configured: true, limitBytes: 1000, enforcementEnabled: false },
+);
 assert.equal(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "1000", VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED: "TRUE" }).enforcementEnabled, false);
 assert.equal(quota.resolveStorageQuotaConfiguration({ VELTO_STORAGE_LIMIT_BYTES: "1000", VELTO_STORAGE_QUOTA_ENFORCEMENT_ENABLED: "true" }).enforcementEnabled, true);
 assert.equal(quota.getStorageGenerationDecision(false, true, null), "UNCONFIGURED");
@@ -48,10 +54,10 @@ assert.match(repository, /usage\.trashedBytes \+= bytes/);
 
 assert.match(service, /import "server-only"/);
 assert.match(service, /getUsageForOwner\(ownerUserId\)/);
-assert.match(service, /getStorageQuota\(usage\.totalPhysicalBytes/);
+assert.match(service, /evaluateStorageQuota\(usage\.totalPhysicalBytes/);
 assert.match(service, /"UNCONFIGURED"/);
 assert.match(service, /"BLOCKED_FULL"/);
-assert.match(service, /getStorageGenerationDecision\(true, config\.enforcementEnabled, quota\.state\)/);
+assert.match(service, /const \{ quota, decision, effectiveLimitBytes \} = evaluated/);
 assert.match(service, /code: "STORAGE_QUOTA_FULL"/);
 assert.match(service, /status: 409/);
 assert.doesNotMatch(service + envExample, /NEXT_PUBLIC_.*STORAGE/);

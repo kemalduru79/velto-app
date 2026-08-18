@@ -6,6 +6,7 @@ const migration = read("supabase/migrations/20260818220000_stage_0_7d_2_storage_
 const admission = read("lib/persistence/media/storageAdmission.server.ts");
 const entitlement = read("lib/persistence/media/storageEntitlement.server.ts");
 const quota = read("lib/persistence/media/storageQuota.server.ts");
+const quotaCore = read("lib/persistence/media/quota.ts");
 const image = read("app/api/image/route.ts");
 const video = read("app/api/video/route.ts");
 const creatorStoreImage = read("app/api/creator-store-image/route.ts");
@@ -42,7 +43,7 @@ assert.equal((migration.match(/security definer\s+set search_path = ''/g) || [])
 assert.match(migration, /revoke all on table public\.velto_storage_entitlements from public, anon, authenticated/);
 assert.doesNotMatch(migration, /grant (?:insert|update|delete|all)[^;]*authenticated|create policy/);
 assert.match(entitlement, /velto_get_additional_storage_bytes/);
-assert.match(quota, /config\.limitBytes \+ additionalEntitlementBytes/);
+assert.match(quotaCore, /config\.limitBytes \+ additionalEntitlementBytes/);
 assert.match(quota, /baseLimitBytes: null[\s\S]*additionalEntitlementBytes[\s\S]*effectiveLimitBytes: null/);
 
 assert.match(migration, /create table if not exists public\.velto_storage_admissions/);
@@ -63,7 +64,7 @@ for (const fn of ["velto_begin_storage_admission_consumption", "velto_complete_s
 }
 
 assert.match(admission, /DEFAULT_STORAGE_ADMISSION_TTL_MINUTES = 60/);
-assert.match(admission, /parsed > 0/);
+assert.match(admission, /config\.admissionTtlMinutes \|\| DEFAULT_STORAGE_ADMISSION_TTL_MINUTES/);
 assert.match(admission, /\.from\("velto_storage_admissions"\)[\s\S]*\.insert\(/);
 assert.doesNotMatch(admission, /NEXT_PUBLIC.*ADMISSION/);
 const durableBranch = admission.slice(admission.indexOf("if (durableStorageStarted)"), admission.indexOf("} else {", admission.indexOf("if (durableStorageStarted)")));

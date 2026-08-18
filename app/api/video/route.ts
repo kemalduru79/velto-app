@@ -6,7 +6,7 @@ import {
 } from "../../../lib/creator/mediaRouting";
 import { getMediaProviderFacade } from "../../../lib/providers";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 import { normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
 import {
@@ -228,6 +228,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     console.error("Video create error:", error);
     return NextResponse.json(
       {

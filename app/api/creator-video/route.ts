@@ -26,7 +26,7 @@ import {
 import {
   createVideoJobToken,
 } from "../../../lib/video/providers";
-import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import {
   buildCanonicalCreatorVideoQueueInput,
   validateCreatorVideoRequestBoundary,
@@ -390,6 +390,8 @@ async function postHandler(req: NextRequest) {
         { status: 401, headers: { "Cache-Control": "no-store" } },
       );
     }
+
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
 
     if (reservation) {
       if (providerTaskAccepted) {
