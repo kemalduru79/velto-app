@@ -18,7 +18,8 @@ const legacyVideo = read("app/api/video/route.ts");
 const character = read("app/api/character-image/route.ts");
 const thumbnail = read("app/api/creator-thumbnail/route.ts");
 const page = read("app/create/page.tsx");
-const ui = read("components/create/CreatorProjectAssets.tsx");
+const projectAssetsUi = read("components/create/CreatorProjectAssets.tsx");
+const storageUi = read("components/create/CreatorVisualStorageStatus.tsx");
 const envExample = read(".env.container.example");
 
 for (const [used, expected] of [[0, "NORMAL"], [7999, "NORMAL"], [8000, "APPROACHING"], [9499, "APPROACHING"], [9500, "CRITICAL"], [9999, "CRITICAL"], [10000, "FULL"], [12000, "FULL"]]) {
@@ -90,12 +91,18 @@ for (const route of ["app/api/creator-store-image/route.ts", "app/api/creator-st
   assert.doesNotMatch(read(route), /checkStorageGenerationAllowance/, `${route} deliberately remains ungated`);
 }
 assert.match(read("lib/security/jobProjectOwnershipBoundary.ts"), /jobType !== "runtime_probe"/);
-assert.match(read("components/create/CreatorProjectAssets.tsx"), /onUseImage/);
-assert.match(ui, /data-storage-quota-state/);
-assert.match(ui, /Storage is full\. New image and video generation is temporarily unavailable/);
-assert.match(ui, /Manage storage/);
-assert.match(ui, /Items in Trash still use storage/);
-assert.doesNotMatch(ui + service, /Buy storage|checkout|Stripe|subscription|payment/i);
+assert.match(projectAssetsUi, /onUseImage/);
+
+// Quota visibility remains available, but it is now a lightweight status strip inside the Visual tab.
+assert.match(storageUi, /fetch\("\/api\/storage-usage"/);
+assert.match(storageUi, /data-storage-quota-state/);
+assert.match(storageUi, /Storage is full\. New image and video generation is temporarily unavailable/);
+assert.match(storageUi, /Review media versions/);
+assert.match(storageUi, /in Trash still uses storage/);
+assert.match(page, /CreatorVisualStorageStatus/);
+assert.match(page, /data-visual-storage-status-mount="true"/);
+assert.doesNotMatch(projectAssetsUi, /data-storage-quota-state|Manage storage|Items in Trash still use storage/);
+assert.doesNotMatch(storageUi + service, /Buy storage|checkout|Stripe|subscription|payment/i);
 assert.doesNotMatch(service + image + creatorVideo + legacyVideo + character + thumbnail, /storage\.from\([^)]*\)\.(?:remove|delete)|lifecycle_state\s*[:=]\s*["']purged/i);
 
 console.log("stage-0.7c storage quota: all checks passed");
