@@ -64,8 +64,12 @@ assert.match(mediaRepository, /\.eq\("id", assetId\)\.eq\("owner_user_id", requi
 assert.match(mediaRepository, /\.neq\("lifecycle_state", "purged"\)/);
 assert.match(mediaRepository, /usage\.trashedBytes \+= bytes/);
 assert.match(projectRepository, /removeExactAssetHistoryUrl/);
-assert.match(projectRepository, /\.eq\("id", projectId\)\.eq\("owner_user_id", ownerUserId\)/);
-assert.match(projectRepository, /\.eq\("scenes", existing\.scenes\)/);
+assert.match(projectRepository, /\.eq\("id", projectId\)[\s\S]*\.eq\("owner_user_id", ownerUserId\)/);
+assert.match(projectRepository, /existingUpdatedAt/);
+assert.match(projectRepository, /\.eq\("updated_at", existingUpdatedAt\)/);
+assert.match(projectRepository, /\.update\(\{ scenes: cleanup\.scenes, updated_at: new Date\(\)\.toISOString\(\) \}\)/);
+assert.doesNotMatch(projectRepository, /\.eq\("scenes", existing\.scenes\)/);
+assert.match(projectRepository, /\.update\(\{ \.\.\.payload, updated_at: new Date\(\)\.toISOString\(\) \}\)/);
 assert.match(migration, /for update of asset/);
 assert.match(migration, /asset\.lifecycle_state <> 'active'/);
 assert.match(migration, /if exists[\s\S]*velto_media_asset_references[\s\S]*return 'in_use'/);
