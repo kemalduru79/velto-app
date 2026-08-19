@@ -26,7 +26,6 @@ export default function CreatorVisualStorageStatus({
 }) {
   const mountProbeRef = useRef<HTMLSpanElement | null>(null);
   const [storage, setStorage] = useState<StorageStatus | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -38,9 +37,8 @@ export default function CreatorVisualStorageStatus({
       const payload = await response.json() as { storage?: StorageStatus };
       if (!response.ok || !payload.storage) throw new Error("Storage status unavailable.");
       setStorage(payload.storage);
-      setUnavailable(false);
     } catch {
-      setUnavailable(true);
+      setStorage(null);
     }
   }, [getAccessToken]);
 
@@ -115,6 +113,14 @@ export default function CreatorVisualStorageStatus({
               ? "Storage usage is approaching its limit."
               : "Depolama kullanımı sınıra yaklaşıyor."}
         </p>
+
+        {storage.trashedBytes > 0 && (
+          <p className="mt-1 text-[10px] text-slate-500">
+            {language === "en"
+              ? `${formatBytes(storage.trashedBytes)} in Trash still uses storage.`
+              : `Çöp Kutusundaki ${formatBytes(storage.trashedBytes)} hâlâ depolama kullanıyor.`}
+          </p>
+        )}
 
         {blocked && (
           <button
