@@ -20,7 +20,8 @@ const liveSmoke = read("scripts/stage-0-7d-1-live-physical-purge-smoke.mjs");
 const api = read("app/api/media-assets/[assetId]/purge/route.ts");
 const restoreApi = read("app/api/media-assets/[assetId]/restore/route.ts");
 const inventory = read("app/api/media-assets/route.ts");
-const ui = read("components/create/CreatorProjectAssets.tsx");
+const visualCleanupUi = read("components/create/CreatorVisualAssetCleanupAction.tsx");
+const storageUi = read("components/create/CreatorVisualStorageStatus.tsx");
 
 assert.deepEqual(policy.resolveMediaPurgeConfiguration({}), { retentionDays: 30, permanentDeleteEnabled: false });
 assert.equal(policy.resolveMediaPurgeConfiguration({ VELTO_TRASH_RETENTION_DAYS: "bad" }).retentionDays, 30);
@@ -105,14 +106,12 @@ assert.match(restoreApi, /restored !== "restored"/);
 assert.match(inventory, /permanentDeleteEligible/);
 assert.match(inventory, /references\.length === 0/);
 
-assert.match(ui, /Permanent deletion available in \$\{asset\.purgeDaysRemaining\} days/);
-assert.match(ui, /asset\.permanentDeleteEnabled && asset\.permanentDeleteEligible/);
-assert.match(ui, /Delete permanently/);
-assert.match(ui, /This permanently removes the file and cannot be undone/);
-assert.match(ui, /Confirm permanent deletion/);
-assert.match(ui, /confirmPermanentDeletion: true/);
-assert.match(ui, /await loadCleanupAssets\(\)/);
-assert.match(ui, /Items in Trash still use storage/);
+// Permanent purge remains implemented and feature-flagged, but the Visuals UX exposes only safe Trash/Restore.
+// This avoids presenting irreversible deletion while VELTO_PERMANENT_MEDIA_DELETE_ENABLED remains OFF.
+assert.match(visualCleanupUi, /Move to Trash/);
+assert.match(visualCleanupUi, /Restore from Trash/);
+assert.doesNotMatch(visualCleanupUi, /\/purge|confirmPermanentDeletion|Delete permanently|Confirm permanent deletion/i);
+assert.match(storageUi, /in Trash still uses storage/);
 
 const usage = (rows) => rows.filter((row) => row.state !== "purged").reduce((sum, row) => sum + row.bytes, 0);
 const rows = [{ state: "active", bytes: 10 }, { state: "trashed", bytes: 20 }];
@@ -126,6 +125,6 @@ assert.match(read("app/api/creator-store-image/route.ts"), /consumeStorageAdmiss
 assert.match(read("app/api/store-image/route.ts"), /consumeStorageAdmissionForMedia/);
 assert.match(read("app/api/store-video/route.ts"), /consumeStorageAdmissionForMedia/);
 assert.match(read("app/api/creator-store-video/route.ts"), /validatePersistedVideoJobBinding/);
-assert.doesNotMatch(migration + orchestrator + recovery + api + ui, /cron|schedule|empty trash|bulk delete|checkout|stripe|subscription|payment/i);
+assert.doesNotMatch(migration + orchestrator + recovery + api + visualCleanupUi + storageUi, /cron|schedule|empty trash|bulk delete|checkout|stripe|subscription|payment/i);
 
 console.log("stage-0.7d-1 safe purge: all checks passed");
