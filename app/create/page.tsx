@@ -49,6 +49,8 @@ import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
 import type { CreatorProductionSubstep } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
+import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";
 import CreatorSceneProductionStatus, {
   deriveCreatorSceneTriageStatus,
   getCreatorSceneTriageLabel,
@@ -31467,6 +31469,12 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                 aria-labelledby={`scene-${scene.id}-visual-tab`}
                                 className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"
                               >
+                                        <div data-visual-storage-status-mount="true">
+                                          <CreatorVisualStorageStatus
+                                            language={uiLanguage === "en" ? "en" : "tr"}
+                                            getAccessToken={getAccessTokenOrThrow}
+                                          />
+                                        </div>
                                 <div className="space-y-3">
                                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
@@ -31748,6 +31756,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                                       >
                                                         {uiLanguage === "en" ? "Restore" : "Geri yükle"}
                                                       </button>
+                                                    </div>
+                                                    <div data-visual-media-cleanup="asset-version">
+                                                      <CreatorVisualAssetCleanupAction
+                                                        mediaUrl={asset.url}
+                                                        projectId={currentProjectId}
+                                                        language={uiLanguage === "en" ? "en" : "tr"}
+                                                        getAccessToken={getAccessTokenOrThrow}
+                                                        onHistoryRemoved={removeCreatorProjectHistoryUrl}
+                                                      />
                                                     </div>
                                                   </div>
                                                 </article>
