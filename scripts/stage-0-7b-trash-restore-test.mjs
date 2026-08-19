@@ -16,7 +16,9 @@ const restoreRoute = fs.readFileSync("app/api/media-assets/[assetId]/restore/rou
 const mediaRepository = fs.readFileSync("lib/persistence/media/supabaseMediaAssetRepository.ts", "utf8");
 const projectRepository = fs.readFileSync("lib/persistence/projects/supabaseProjectRepository.ts", "utf8");
 const migration = fs.readFileSync("supabase/migrations/20260818160000_stage_0_7b_safe_media_trash.sql", "utf8");
-const ui = fs.readFileSync("components/create/CreatorProjectAssets.tsx", "utf8");
+const visualCleanupUi = fs.readFileSync("components/create/CreatorVisualAssetCleanupAction.tsx", "utf8");
+const projectAssetsUi = fs.readFileSync("components/create/CreatorProjectAssets.tsx", "utf8");
+const createPage = fs.readFileSync("app/create/page.tsx", "utf8");
 
 const state = (lifecycle, ...types) => classifyMediaReferenceSafety(lifecycle, types.map((referenceType) => ({ referenceType })));
 for (const type of ["scene_image", "scene_video", "thumbnail", "final_video", "narration_audio", "dialogue_audio", "future_reference"]) {
@@ -70,12 +72,23 @@ assert.match(migration, /if exists[\s\S]*velto_media_asset_references[\s\S]*retu
 assert.match(migration, /lifecycle_state = 'trashed', trashed_at = now\(\)/);
 assert.match(migration, /revoke all on function public\.velto_trash_media_asset_if_unreferenced[\s\S]*grant execute[\s\S]*service_role/);
 assert.doesNotMatch(inventoryRoute + trashRoute + restoreRoute + mediaRepository + migration, /storage\.from\([^)]*\)\.(?:remove|delete)|objectStorage\.(?:remove|delete)|lifecycle_state\s*=\s*'purged'/i);
-assert.match(ui, /Available media/);
-assert.match(ui, /Remove from history & move to Trash/);
-assert.match(ui, /window\.confirm/);
-assert.match(ui, /Items in Trash still use storage/);
-assert.match(ui, /Restore/);
-assert.doesNotMatch(ui, /Permanent(?:ly)? delete|Delete forever/i);
+
+// Stage 0.7 trash/restore UX now lives with the media itself in each scene's Visual tab.
+assert.match(visualCleanupUi, /fetch\("\/api\/media-assets"/);
+assert.match(visualCleanupUi, /Move to Trash/);
+assert.match(visualCleanupUi, /Delete this version/);
+assert.match(visualCleanupUi, /window\.confirm/);
+assert.match(visualCleanupUi, /Restore from Trash/);
+assert.match(visualCleanupUi, /In use · protected from deletion/);
+assert.match(visualCleanupUi, /cleanupState === "IN_USE"/);
+assert.match(visualCleanupUi, /cleanupState === "HISTORY_ONLY"/);
+assert.match(visualCleanupUi, /cleanupState === "UNREFERENCED"/);
+assert.match(visualCleanupUi, /cleanupState === "TRASHED"/);
+assert.doesNotMatch(visualCleanupUi, /Permanent(?:ly)? delete|Delete forever/i);
+assert.match(createPage, /CreatorVisualAssetCleanupAction/);
+assert.match(createPage, /data-visual-media-cleanup="asset-version"/);
+assert.match(createPage, /onHistoryRemoved=\{removeCreatorProjectHistoryUrl\}/);
+assert.doesNotMatch(projectAssetsUi, /data-creator-media-storage|Available media|Cleanup status/);
 
 // Physical accounting is invariant across logical Trash/Restore.
 const physical = [{ state: "active", bytes: 10 }, { state: "trashed", bytes: 20 }, { state: "purged", bytes: 30 }];
