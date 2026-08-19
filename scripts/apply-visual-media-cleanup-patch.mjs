@@ -6,6 +6,7 @@ let next = source;
 
 const importAnchor = 'import CreatorEditor from "@/components/create/CreatorEditor";\n';
 const cleanupImport = 'import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";\n';
+const storageImport = 'import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";\n';
 
 if (!next.includes(cleanupImport)) {
   const importMatches = next.split(importAnchor).length - 1;
@@ -13,6 +14,26 @@ if (!next.includes(cleanupImport)) {
     throw new Error(`Expected exactly one CreatorEditor import anchor, found ${importMatches}.`);
   }
   next = next.replace(importAnchor, `${importAnchor}${cleanupImport}`);
+}
+if (!next.includes(storageImport)) {
+  next = next.replace(cleanupImport, `${cleanupImport}${storageImport}`);
+}
+
+const visualPanelAnchor = 'id={`scene-${scene.id}-visual-panel`}';
+const visualPanelIndex = next.indexOf(visualPanelAnchor);
+if (visualPanelIndex < 0) {
+  throw new Error("Could not find the scene Visual panel.");
+}
+if (next.indexOf(visualPanelAnchor, visualPanelIndex + visualPanelAnchor.length) >= 0) {
+  throw new Error("Scene Visual panel anchor is unexpectedly ambiguous.");
+}
+
+const storageMarker = 'data-visual-storage-status-mount="true"';
+if (!next.includes(storageMarker)) {
+  const visualOpenEnd = next.indexOf(">", visualPanelIndex + visualPanelAnchor.length);
+  if (visualOpenEnd < 0) throw new Error("Could not locate the opening Visual panel tag end.");
+  const storageMount = `\n                                        <div data-visual-storage-status-mount="true">\n                                          <CreatorVisualStorageStatus\n                                            language={uiLanguage === "en" ? "en" : "tr"}\n                                            getAccessToken={getAccessTokenOrThrow}\n                                          />\n                                        </div>`;
+  next = `${next.slice(0, visualOpenEnd + 1)}${storageMount}${next.slice(visualOpenEnd + 1)}`;
 }
 
 const restoreAnchor = 'onClick={() => restoreCreatorSceneAsset(scene.id, asset)}';
@@ -43,7 +64,7 @@ if (next === source) {
   process.exit(0);
 }
 
-if (!next.includes(cleanupImport) || !next.includes(cleanupMarker)) {
+if (!next.includes(cleanupImport) || !next.includes(storageImport) || !next.includes(cleanupMarker) || !next.includes(storageMarker)) {
   throw new Error("Visual media cleanup patch did not establish all required invariants.");
 }
 
