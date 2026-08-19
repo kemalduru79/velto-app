@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type StorageStatus = {
   configured: boolean;
@@ -24,6 +24,7 @@ export default function CreatorVisualStorageStatus({
   language: "en" | "tr";
   getAccessToken: () => Promise<string>;
 }) {
+  const mountProbeRef = useRef<HTMLSpanElement | null>(null);
   const [storage, setStorage] = useState<StorageStatus | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
@@ -57,58 +58,74 @@ export default function CreatorVisualStorageStatus({
     };
   }, [load]);
 
-  if (!storage) {
-    if (!unavailable) return null;
-    return (
-      <p className="mb-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-[11px] text-slate-500">
-        {language === "en" ? "Storage status unavailable." : "Depolama durumu kullanılamıyor."}
-      </p>
-    );
+  const warning = storage?.state === "FULL" || storage?.state === "CRITICAL";
+  const approaching = storage?.state === "APPROACHING";
+  const blocked = storage?.decision === "BLOCKED_FULL";
+  const shouldShowNotice = Boolean(warning || approaching || blocked);
+
+  useEffect(() => {
+    const mount = mountProbeRef.current?.parentElement;
+    if (!mount || mount.getAttribute("data-visual-storage-status-mount") !== "true") return;
+
+    // Storage is supporting information, not a primary Visuals grid card.
+    // Keep normal/unconfigured states out of the layout; surface only quota warnings.
+    mount.style.display = shouldShowNotice ? "block" : "none";
+    mount.style.gridColumn = shouldShowNotice ? "1 / -1" : "";
+
+    return () => {
+      mount.style.display = "";
+      mount.style.gridColumn = "";
+    };
+  }, [shouldShowNotice]);
+
+  if (!shouldShowNotice || !storage) {
+    return <span ref={mountProbeRef} className="hidden" aria-hidden="true" />;
   }
 
-  const warning = storage.state === "FULL" || storage.state === "CRITICAL";
-  const approaching = storage.state === "APPROACHING";
-
   return (
-    <section
-      className={`mb-3 rounded-xl border px-3 py-2.5 ${warning ? "border-amber-300 bg-amber-50" : approaching ? "border-blue-200 bg-blue-50/50" : "border-slate-200 bg-white/70"}`}
-      data-storage-quota-state={storage.state || "UNCONFIGURED"}
-      data-visual-storage-status="true"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-        <strong className="text-slate-700">{language === "en" ? "Storage" : "Depolama"}</strong>
-        <span className="text-slate-500">
-          {formatBytes(storage.usedBytes)}
-          {storage.configured && storage.limitBytes ? ` ${language === "en" ? "of" : "/"} ${formatBytes(storage.limitBytes)}` : ""}
-        </span>
-      </div>
-
-      {storage.configured && storage.usageRatio !== null && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(storage.usageRatio * 100))}>
-          <span className={`block h-full rounded-full ${warning ? "bg-amber-600" : "bg-blue-600"}`} style={{ width: `${Math.min(100, storage.usageRatio * 100)}%` }} />
+    <>
+      <span ref={mountProbeRef} className="hidden" aria-hidden="true" />
+      <section
+        className={`rounded-xl border px-3 py-2.5 ${warning ? "border-amber-300 bg-amber-50" : "border-blue-200 bg-blue-50/50"}`}
+        data-storage-quota-state={storage.state || "UNCONFIGURED"}
+        data-visual-storage-status="true"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <strong className="text-slate-700">
+            {language === "en" ? "Storage notice" : "Depolama uyarısı"}
+          </strong>
+          <span className="text-slate-500">
+            {formatBytes(storage.usedBytes)}
+            {storage.configured && storage.limitBytes ? ` ${language === "en" ? "of" : "/"} ${formatBytes(storage.limitBytes)}` : ""}
+          </span>
         </div>
-      )}
 
-      {storage.trashedBytes > 0 && (
-        <p className="mt-2 text-[10px] text-slate-500">
-          {language === "en"
-            ? `${formatBytes(storage.trashedBytes)} in Trash still uses storage.`
-            : `Çöp Kutusundaki ${formatBytes(storage.trashedBytes)} hâlâ depolama kullanıyor.`}
+        {storage.configured && storage.usageRatio !== null && (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(storage.usageRatio * 100))}>
+            <span className={`block h-full rounded-full ${warning ? "bg-amber-600" : "bg-blue-600"}`} style={{ width: `${Math.min(100, storage.usageRatio * 100)}%` }} />
+          </div>
+        )}
+
+        <p className={`mt-2 text-[11px] leading-5 ${warning ? "text-amber-950" : "text-slate-600"}`}>
+          {blocked
+            ? language === "en"
+              ? "Storage is full. New image and video generation is temporarily unavailable."
+              : "Depolama alanı dolu. Yeni görsel ve video üretimi geçici olarak kullanılamıyor."
+            : language === "en"
+              ? "Storage usage is approaching its limit."
+              : "Depolama kullanımı sınıra yaklaşıyor."}
         </p>
-      )}
 
-      {storage.decision === "BLOCKED_FULL" && (
-        <div className="mt-2 text-[11px] leading-5 text-amber-950">
-          <p>{language === "en" ? "Storage is full. New image and video generation is temporarily unavailable." : "Depolama alanı dolu. Yeni görsel ve video üretimi geçici olarak kullanılamıyor."}</p>
+        {blocked && (
           <button
             type="button"
             onClick={() => document.querySelector('[data-visual-media-cleanup="asset-version"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            className="mt-1 font-semibold text-amber-900 underline underline-offset-2"
+            className="mt-1 text-[11px] font-semibold text-amber-900 underline underline-offset-2"
           >
             {language === "en" ? "Review media versions" : "Medya sürümlerini gözden geçir"}
           </button>
-        </div>
-      )}
-    </section>
+        )}
+      </section>
+    </>
   );
 }
