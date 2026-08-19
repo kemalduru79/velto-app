@@ -110,7 +110,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
     if (input.projectId) {
       const { data, error } = await client
         .from("velto_projects")
-        .update(payload)
+        .update({ ...payload, updated_at: new Date().toISOString() })
         .eq("id", input.projectId)
         .eq("owner_user_id", input.ownerUserId)
         .select()
@@ -199,6 +199,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
         share_id: shareId,
         is_public: true,
         published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq("id", projectId)
       .eq("owner_user_id", ownerUserId)
@@ -227,11 +228,23 @@ export class SupabaseProjectRepository implements ProjectRepository {
     if (!existing) return { status: "not_found" as const };
     const cleanup = removeExactAssetHistoryUrl(existing.scenes, registeredPublicUrl);
     if (cleanup.removedCount === 0) return { status: "changed" as const };
+
+    const existingUpdatedAt = typeof existing.updated_at === "string" ? existing.updated_at.trim() : "";
+    if (!existingUpdatedAt) {
+      throw new Error("Project media history version is unavailable.");
+    }
+
+    // Use the compact update timestamp as the optimistic concurrency token.
+    // Filtering on the full scenes JSON serializes a potentially very large
+    // project payload into the PostgREST query string and can fail before the
+    // safe history cleanup reaches the database.
     const { data, error } = await createServerSupabaseClient().from("velto_projects")
-      .update({ scenes: cleanup.scenes })
-      .eq("id", projectId).eq("owner_user_id", ownerUserId)
-      .eq("scenes", existing.scenes)
-      .select("*").maybeSingle();
+      .update({ scenes: cleanup.scenes, updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .eq("updated_at", existingUpdatedAt)
+      .select("*")
+      .maybeSingle();
     if (error) throw new Error(`Project media history could not be updated: ${error.message}`);
     if (!data) return { status: "changed" as const };
     return { status: "updated" as const, project: asProjectRecord(data), removedCount: cleanup.removedCount };
