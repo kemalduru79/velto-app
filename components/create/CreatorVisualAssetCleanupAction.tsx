@@ -85,8 +85,7 @@ export default function CreatorVisualAssetCleanupAction({
   }, [getAccessToken, mediaUrl]);
 
   useEffect(() => {
-    // Defer the initial refresh to a task callback so the effect establishes
-    // its subscription before any local state transition is scheduled.
+    // Defer the initial refresh so the listener is ready before local state changes begin.
     const initialRefresh = window.setTimeout(() => {
       void refresh();
     }, 0);
