@@ -1,6 +1,45 @@
 import fs from "node:fs";
+import assert from "node:assert/strict";
+import { resolveCreatorMediaOutputState } from "../lib/creator/mediaOutputState.mjs";
 
 const failures = [];
+
+const recommendedVideo = resolveCreatorMediaOutputState({
+  recommendedOutput: "video",
+});
+assert.deepEqual(recommendedVideo, {
+  recommendedOutput: "video",
+  effectiveOutput: "video",
+  explicitOutput: null,
+  isUserOverride: false,
+});
+
+const recommendedImage = resolveCreatorMediaOutputState({
+  recommendedOutput: "image",
+});
+assert.equal(recommendedImage.effectiveOutput, "image");
+assert.equal(recommendedImage.isUserOverride, false);
+
+const imageOverride = resolveCreatorMediaOutputState({
+  recommendedOutput: "video",
+  explicitOutput: "image",
+});
+assert.equal(imageOverride.effectiveOutput, "image");
+assert.equal(imageOverride.isUserOverride, true);
+
+const videoOverride = resolveCreatorMediaOutputState({
+  recommendedOutput: "image",
+  explicitOutput: "video",
+});
+assert.equal(videoOverride.effectiveOutput, "video");
+assert.equal(videoOverride.isUserOverride, true);
+
+const returnedToRecommendation = resolveCreatorMediaOutputState({
+  recommendedOutput: "video",
+  explicitOutput: null,
+});
+assert.equal(returnedToRecommendation.effectiveOutput, "video");
+assert.equal(returnedToRecommendation.isUserOverride, false);
 
 const read = (file) => {
   if (!fs.existsSync(file)) {
@@ -29,6 +68,8 @@ requireNeedles("components/create/CreatorProductionSetupSummary.tsx", [
   "CreatorProductionSetupSummary",
   'onClick={onEdit}',
   '"Production Plan"',
+  "sceneCount",
+  'language === "en" ? "View plan" : "Planı görüntüle"',
 ]);
 
 requireNeedles("components/create/CreatorEditor.tsx", [
@@ -76,6 +117,8 @@ const sceneProductionStatus = requireNeedles("components/create/CreatorSceneProd
   "aria-current={focused ? \"true\" : undefined}",
   "contextualAction?: ReactNode",
   "creatorlab-p2c-scene-operations-action",
+  "creatorlab-p2c-all-scenes",
+  'language === "en" ? "All scenes" : "Tüm sahneler"',
   'language === "en" ? "Scene Production" : "Sahne Üretimi"',
 ]);
 
@@ -112,6 +155,7 @@ const page = requireNeedles("app/create/page.tsx", [
   "<ProductTopNavigation",
   "<UserAccountMenu",
   'data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}',
+  'activeSceneInspectorTab === "script" && index === 0',
   '"Select scenes for batch actions"',
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")',
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")',
@@ -133,6 +177,23 @@ const page = requireNeedles("app/create/page.tsx", [
   "onClick={() => setCreatorEditorOpen(true)}",
   '"Open Editor"',
   "contextualAction={!creatorEditorOpen",
+  'uiLanguage === "en" ? "Output" : "Çıktı"',
+  'uiLanguage === "en" ? "Velto recommended" : "Velto önerisi"',
+  'uiLanguage === "en" ? "Your choice" : "Senin seçimin"',
+  'uiLanguage === "en" ? "Velto recommends" : "Velto öneriyor"',
+  'uiLanguage === "en" ? "Change output" : "Çıktıyı değiştir"',
+  'uiLanguage === "en" ? "Use recommendation" : "Öneriyi kullan"',
+  "honorExplicitOverrides: false",
+  "returnCreatorSceneToRecommendedOutput(scene.id)",
+  "renderMode: undefined",
+  'uiLanguage === "en" ? "Production brief" : "Üretim özeti"',
+  'uiLanguage === "en" ? "Continuity" : "Devamlılık"',
+  'uiLanguage === "en" ? "Review in editor" : "Editörde kontrol et"',
+  'uiLanguage === "en" ? "Regenerate image" : "Görseli yeniden üret"',
+  'uiLanguage === "en" ? "Regenerate video" : "Videoyu yeniden üret"',
+  'uiLanguage === "en" ? "Used in scene" : "Sahnede kullanılıyor"',
+  "!isCurrentAsset && (",
+  '<CreatorVisualAssetCleanupAction',
 ]);
 
 if (page.includes("<CreatorProductionSubnav")) {
@@ -151,6 +212,10 @@ if (page.includes("Selected → Image") || page.includes("Selected → Video")) 
   failures.push("UX-P2C: stale selected-to-output batch copy remains visible");
 }
 
+if (page.includes("Choose explicitly. Velto Studio will not decide") || page.includes("Use Image") || page.includes("Use Video")) {
+  failures.push("UX-P2C: mandatory manual output-choice language remains visible");
+}
+
 requireNeedles("app/layout.tsx", ['import "./creatorlab-ux-p2c.css";']);
 
 const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
@@ -159,6 +224,7 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
   ".creatorlab-p2c-production-status",
   ".creatorlab-p2c-editor-surface",
   ".creatorlab-p2c-scene-operations",
+  ".creatorlab-p2c-all-scenes",
   ".creatorlab-p2c-focused-scene",
   ".creatorlab-p2c-scene-next-action",
   ".creatorlab-p2c-editor-layout",

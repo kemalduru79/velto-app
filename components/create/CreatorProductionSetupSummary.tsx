@@ -8,6 +8,7 @@ export default function CreatorProductionSetupSummary({
   castSummary,
   music,
   continuity,
+  sceneCount,
   onEdit,
   language,
 }: {
@@ -20,6 +21,7 @@ export default function CreatorProductionSetupSummary({
   castSummary: string;
   music: string;
   continuity: string;
+  sceneCount: number;
   onEdit: () => void;
   language: "tr" | "en";
 }) {
@@ -30,14 +32,20 @@ export default function CreatorProductionSetupSummary({
           <span className="creatorlab-p2c-production-plan-kicker">
             {language === "en" ? "Production Plan" : "Üretim Planı"}
           </span>
-          <h2>{title}</h2>
-          {premise && <p className="creatorlab-p2c-production-plan-premise">{premise}</p>}
           <p className="creatorlab-p2c-production-plan-primary-meta">
-            {format} · {runtime} · {quality}
+            {format} · {runtime} · {quality} · {sceneCount} {language === "en" ? "scenes" : "sahne"}
           </p>
           <p className="creatorlab-p2c-production-plan-secondary-meta">
-            {approach} · {castSummary} · {language === "en" ? "Music" : "Müzik"} {music} · {continuity}
+            {approach} · {language === "en" ? "Music" : "Müzik"} {music} · {continuity}
           </p>
+          <details className="creatorlab-p2c-production-plan-details">
+            <summary>{language === "en" ? "View plan" : "Planı görüntüle"}</summary>
+            <div>
+              <strong>{title}</strong>
+              {premise && <p className="creatorlab-p2c-production-plan-premise">{premise}</p>}
+              <small>{castSummary}</small>
+            </div>
+          </details>
         </div>
         <button
           type="button"

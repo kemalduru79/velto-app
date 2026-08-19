@@ -110,44 +110,50 @@ export default function CreatorSceneProductionStatus({
         )}
       </div>
 
-      <ol
-        className="creatorlab-p2c-scene-operations-list"
-        aria-label={language === "en" ? "Scenes requiring production attention" : "Üretim dikkati gerektiren sahneler"}
-      >
-        {scenes.map((scene) => {
-          const focused = focusedSceneId === scene.id;
-          return (
-            <li key={scene.id}>
-              <button
-                type="button"
-                aria-current={focused ? "true" : undefined}
-                data-status={scene.status}
-                data-focused={focused ? "true" : "false"}
-                onClick={() => onFocusScene(scene.id)}
-                className="creatorlab-p2c-scene-operation-row"
-              >
-                <span className="creatorlab-p2c-scene-operation-number">
-                  {String(scene.number).padStart(2, "0")}
-                </span>
-                <span className="creatorlab-p2c-scene-operation-copy">
-                  <strong>{scene.title}</strong>
-                  <small>
-                    {getCreatorSceneTriageLabel(scene.status, language)} · {scene.readySteps}/{scene.totalSteps} {language === "en" ? "steps ready" : "adım hazır"}
-                  </small>
-                </span>
-                <span className="creatorlab-p2c-scene-operation-progress" aria-hidden="true">
-                  {Array.from({ length: scene.totalSteps }, (_, index) => (
-                    <i key={index} data-ready={index < scene.readySteps ? "true" : "false"} />
-                  ))}
-                </span>
-                <span className="creatorlab-p2c-scene-operation-status">
-                  {getCreatorSceneTriageLabel(scene.status, language)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+      <details className="creatorlab-p2c-all-scenes">
+        <summary>
+          {language === "en" ? "All scenes" : "Tüm sahneler"}
+          <span>{language === "en" ? "Overview and management" : "Genel görünüm ve yönetim"}</span>
+        </summary>
+        <ol
+          className="creatorlab-p2c-scene-operations-list"
+          aria-label={language === "en" ? "All production scenes" : "Tüm üretim sahneleri"}
+        >
+          {scenes.map((scene) => {
+            const focused = focusedSceneId === scene.id;
+            return (
+              <li key={scene.id}>
+                <button
+                  type="button"
+                  aria-current={focused ? "true" : undefined}
+                  data-status={scene.status}
+                  data-focused={focused ? "true" : "false"}
+                  onClick={() => onFocusScene(scene.id)}
+                  className="creatorlab-p2c-scene-operation-row"
+                >
+                  <span className="creatorlab-p2c-scene-operation-number">
+                    {String(scene.number).padStart(2, "0")}
+                  </span>
+                  <span className="creatorlab-p2c-scene-operation-copy">
+                    <strong>{scene.title}</strong>
+                    <small>
+                      {getCreatorSceneTriageLabel(scene.status, language)} · {scene.readySteps}/{scene.totalSteps} {language === "en" ? "steps ready" : "adım hazır"}
+                    </small>
+                  </span>
+                  <span className="creatorlab-p2c-scene-operation-progress" aria-hidden="true">
+                    {Array.from({ length: scene.totalSteps }, (_, index) => (
+                      <i key={index} data-ready={index < scene.readySteps ? "true" : "false"} />
+                    ))}
+                  </span>
+                  <span className="creatorlab-p2c-scene-operation-status">
+                    {getCreatorSceneTriageLabel(scene.status, language)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </details>
     </section>
   );
 }

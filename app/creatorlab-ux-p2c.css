@@ -57,15 +57,14 @@
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan {
-  padding: 14px 15px;
-  background: color-mix(in srgb, var(--cl-surface-muted) 74%, white);
-  border: 1px solid var(--cl-border);
-  border-radius: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  border-block: 1px solid var(--cl-divider);
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-layout {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
 }
@@ -84,15 +83,6 @@
   text-transform: uppercase;
 }
 
-.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan h2 {
-  margin: 0;
-  color: var(--cl-text-strong);
-  font-family: var(--cl-font-display);
-  font-size: 1.12rem;
-  font-weight: 560;
-  line-height: 1.3;
-}
-
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-premise {
   display: -webkit-box;
   max-width: 760px;
@@ -107,7 +97,7 @@
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-primary-meta,
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-secondary-meta {
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   color: var(--cl-text);
   font-size: 0.67rem;
   font-weight: 680;
@@ -118,6 +108,38 @@
   margin-top: 3px;
   color: var(--cl-muted);
   font-weight: 500;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-details {
+  margin-top: 5px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-details > summary {
+  width: fit-content;
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 0;
+  color: var(--cl-accent);
+  font-size: 0.65rem;
+  font-weight: 690;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-details > div {
+  max-width: 760px;
+  padding: 7px 0 2px;
+  color: var(--cl-text);
+  font-size: 0.7rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-details small {
+  display: block;
+  margin-top: 5px;
+  color: var(--cl-muted);
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-plan-edit {
@@ -138,7 +160,11 @@
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-status {
   display: grid;
-  gap: 9px;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--cl-border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--cl-surface-muted) 58%, white);
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-status-heading {
@@ -160,7 +186,7 @@
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-status-heading h2 {
   margin: 2px 0 0;
   color: var(--cl-text-strong);
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 720;
 }
 
@@ -173,22 +199,94 @@
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-production-progress {
-  border-color: var(--cl-border) !important;
-  box-shadow: none !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  padding-top: 7px;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress > div {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--cl-muted);
+  font-size: 0.66rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress > div > div {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress strong {
+  color: var(--cl-text-strong);
+  font-weight: 700;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress > div > span {
+  order: -1;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--cl-border-strong);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress > div > span[data-state="complete"] {
+  background: var(--cl-success);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-progress > div > span[data-state="active"] {
+  background: var(--cl-accent);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-next-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-next-action strong {
+  color: var(--cl-text-strong);
+  font-size: 0.72rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-next-action p {
+  margin: 2px 0 0;
+  color: var(--cl-muted);
+  font-size: 0.65rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-next-action button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 12px;
+  color: white;
+  background: var(--cl-accent);
+  border-radius: 9px;
+  font-size: 0.67rem;
+  font-weight: 700;
 }
 
 .creatorlab-uxp2a-shell #creatorlab-production-action[data-production-compact-action="true"] {
-  padding: 11px 13px;
-  background: color-mix(in srgb, var(--cl-accent-soft) 46%, white);
-  border: 1px solid var(--cl-accent-border);
-  border-radius: 11px;
+  padding: 8px 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--cl-divider);
+  border-radius: 0;
 }
 
 .creatorlab-uxp2a-shell #creatorlab-production-action[data-production-compact-action="true"] button {
-  min-height: 42px;
+  min-height: 38px;
   color: #ffffff;
   background: var(--cl-accent);
-  box-shadow: 0 7px 16px rgba(23, 105, 224, 0.16);
+  box-shadow: none;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-editor-surface {
@@ -626,19 +724,85 @@
 }
 
 .creatorlab-uxp2a-shell .scene-production-navigator {
-  border-color: var(--cl-border-strong);
-  box-shadow: 0 8px 22px rgba(25, 42, 68, 0.08);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .scene-production-navigator__header {
+  justify-content: flex-end;
+  padding: 0 2px 7px;
+}
+
+.creatorlab-uxp2a-shell .scene-production-navigator__header > div {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .scene-production-navigator__progress {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  color: var(--cl-muted);
+}
+
+.creatorlab-uxp2a-shell .scene-production-navigator__tabs {
+  gap: 5px;
+  border: 1px solid var(--cl-border);
+  border-radius: 11px;
+  background: var(--cl-surface-elevated);
+  padding: 4px;
+}
+
+.creatorlab-uxp2a-shell .scene-production-tab {
+  min-height: 44px;
+  gap: 7px;
+  border-width: 1px !important;
+  border-radius: 8px;
+  padding: 6px 9px;
+  box-shadow: none !important;
+}
+
+.creatorlab-uxp2a-shell .scene-production-tab[data-state="active"] {
+  box-shadow: 0 3px 9px rgba(23, 105, 224, 0.18) !important;
+}
+
+.creatorlab-uxp2a-shell .scene-production-tab__icon {
+  flex-basis: 22px;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+.creatorlab-uxp2a-shell .scene-production-tab__title {
+  font-size: 0.72rem;
+}
+
+.creatorlab-uxp2a-shell .scene-production-tab__subtitle {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .creatorlab-uxp2a-shell .scene-production-navigator__tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .creatorlab-uxp2a-shell .scene-production-tab {
+    min-height: 44px;
+    justify-content: center;
+    padding-inline: 6px;
+  }
 }
 
 /* P2C-2: scene triage is presentational and never drives production state. */
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations {
   display: grid;
   gap: 10px;
-  margin-bottom: 14px;
-  padding: 13px;
-  background: color-mix(in srgb, var(--cl-surface-muted) 72%, white);
-  border: 1px solid var(--cl-border);
-  border-radius: 12px;
+  margin-bottom: 8px;
+  padding: 7px 2px;
+  background: transparent;
+  border-block: 1px solid var(--cl-divider);
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading {
@@ -652,7 +816,7 @@
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading h2 {
   margin: 0;
   color: var(--cl-text-strong);
-  font-size: 0.92rem;
+  font-size: 0.78rem;
   font-weight: 730;
 }
 
@@ -674,6 +838,50 @@
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-heading p span {
   color: var(--cl-border-strong);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes {
+  border-top: 1px solid var(--cl-border);
+  padding-top: 8px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary {
+  display: flex;
+  min-height: 38px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--cl-text);
+  font-size: 0.7rem;
+  font-weight: 720;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary::-webkit-details-marker {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary:hover,
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary:focus-visible {
+  background: var(--cl-surface-elevated);
+  outline: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary:focus-visible {
+  box-shadow: 0 0 0 2px var(--cl-accent-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes > summary span {
+  color: var(--cl-muted);
+  font-size: 0.62rem;
+  font-weight: 560;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-all-scenes[open] > summary {
+  margin-bottom: 8px;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations-list {
@@ -931,6 +1139,11 @@
 
   .creatorlab-uxp2a-shell .creatorlab-p2c-production-status-heading p {
     text-align: left;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-p2c-production-next-action {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .creatorlab-uxp2a-shell #creatorlab-production-action[data-production-compact-action="true"] button {

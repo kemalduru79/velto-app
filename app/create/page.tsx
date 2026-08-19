@@ -99,6 +99,7 @@ import {
   type CreatorMediaAction,
   type CreatorQualityMode,
 } from "@/lib/creator/mediaRouting";
+import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
   normalizeCreatorSceneContinuityMode,
@@ -8346,6 +8347,33 @@ const generateSceneImage = async (
     setCreatorScenesRenderMode([sceneId], renderMode);
   };
 
+  const returnCreatorSceneToRecommendedOutput = (sceneId: number) => {
+    const scene = scenes.find((item) => item.id === sceneId);
+    if (!scene || (scene.renderMode !== "image" && scene.renderMode !== "video")) {
+      return;
+    }
+
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en"
+        ? "Return to Velto recommendation"
+        : "Velto önerisine dön",
+    );
+    setScenes((current) =>
+      current.map((item) =>
+        item.id === sceneId
+          ? { ...item, renderMode: undefined }
+          : item,
+      ),
+    );
+    invalidateFinalVideoForProductionChange();
+    setError("");
+    setSaveMessage(
+      uiLanguage === "en"
+        ? "This scene now follows Velto's recommended output."
+        : "Bu sahne artık Velto'nun önerdiği çıktıyı kullanıyor.",
+    );
+  };
+
   const toggleCreatorSceneSelection = (sceneId: number) => {
     setCreatorSelectedSceneIds((prev) =>
       prev.includes(sceneId)
@@ -12005,10 +12033,15 @@ const generateSceneImage = async (
   };
   // 3K SMART MEDIA ROUTING V3 HELPERS END
 
-const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
-    const explicitVideoSceneIds = sourceScenes
-      .filter((scene) => scene.renderMode === "video")
-      .map((scene) => scene.id);
+const getCreatorLegacyRoutedVideoSceneIds = (
+    sourceScenes: Scene[],
+    { honorExplicitOverrides = true }: { honorExplicitOverrides?: boolean } = {},
+  ) => {
+    const explicitVideoSceneIds = honorExplicitOverrides
+      ? sourceScenes
+          .filter((scene) => scene.renderMode === "video")
+          .map((scene) => scene.id)
+      : [];
 
     if (!isCreatorLabFlow) {
       return explicitVideoSceneIds;
@@ -12025,15 +12058,22 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
       sceneIds: sourceScenes.map((scene) => scene.id),
       timelinePlan: getCreatorActiveTimelinePlan(),
       forceVideoSceneIds: explicitVideoSceneIds,
-      forceImageSceneIds: sourceScenes
-        .filter((scene) => scene.renderMode === "image")
-        .map((scene) => scene.id),
+      forceImageSceneIds: honorExplicitOverrides
+        ? sourceScenes
+            .filter((scene) => scene.renderMode === "image")
+            .map((scene) => scene.id)
+        : [],
     });
   };
 
   // 3K SMART MEDIA ROUTING V3 ROUTER START
-  const getCreatorRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
-    const legacyIds = getCreatorLegacyRoutedVideoSceneIds(sourceScenes);
+  const getCreatorRoutedVideoSceneIds = (
+    sourceScenes: Scene[],
+    { honorExplicitOverrides = true }: { honorExplicitOverrides?: boolean } = {},
+  ) => {
+    const legacyIds = getCreatorLegacyRoutedVideoSceneIds(sourceScenes, {
+      honorExplicitOverrides,
+    });
 
     if (
       !isCreatorLabFlow ||
@@ -12051,9 +12091,11 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
     const rankedScenes = sourceScenes
       .map((scene, sceneIndex) => ({
         sceneId: scene.id,
-        requestedMode: getCreatorSceneRequestedOutputMode(scene),
+        requestedMode: honorExplicitOverrides
+          ? getCreatorSceneRequestedOutputMode(scene)
+          : "auto" as const,
         score: getCreatorSmartMediaScore(
-          scene,
+          honorExplicitOverrides ? scene : { ...scene, renderMode: undefined },
           sceneIndex,
           sourceScenes.length,
           legacySet.has(Number(scene.id)),
@@ -17198,6 +17240,9 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
   ).length;
   const creatorRoutedMotionSceneIds = getCreatorRoutedVideoSceneIds(scenes);
   const creatorRoutedMotionSceneIdSet = new Set(creatorRoutedMotionSceneIds);
+  const creatorRecommendedMotionSceneIdSet = new Set(
+    getCreatorRoutedVideoSceneIds(scenes, { honorExplicitOverrides: false }),
+  );
   const creatorMotionRequired = creatorRoutedMotionSceneIds.length > 0;
   const creatorVideoSelectionBlockedByQuality =
     creatorMotionRequired &&
@@ -29494,6 +29539,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   castSummary={creatorCharacterVoiceSummary}
                   music={creatorMusicSummary}
                   continuity={creatorContinuitySummary}
+                  sceneCount={scenes.length}
                   onEdit={() => selectCreatorProductionSubstep("setup")}
                   language={uiLanguage === "en" ? "en" : "tr"}
                 />
@@ -30299,7 +30345,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                   </div>
                   <div
                     data-production-compact-progress="true"
-                    className={`creatorlab-p2c-production-progress grid overflow-hidden rounded-xl border border-slate-200 bg-white ${creatorMotionRequired ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+                    className="creatorlab-p2c-production-progress"
                     role="list"
                     aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
                   >
@@ -30353,16 +30399,48 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       key={item.number}
                       role="listitem"
                       aria-current={item.active ? "step" : undefined}
-                      className={`flex min-h-14 items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${item.active ? "bg-blue-50/60" : ""}`}
+                      className={item.active ? "is-active" : undefined}
                     >
-                      <div className="min-w-0">
-                        <strong className="block text-xs font-semibold text-slate-900">{item.label}</strong>
-                        <span className="mt-0.5 block text-[11px] text-slate-500">{item.detail}</span>
+                      <div>
+                        <strong>{item.label}</strong>
+                        <span>{item.detail}</span>
                       </div>
-                      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${item.complete ? "bg-emerald-500" : item.active ? "bg-blue-500" : "bg-slate-300"}`} />
+                      <span aria-hidden="true" data-state={item.complete ? "complete" : item.active ? "active" : "waiting"} />
                     </div>
                   ))}
                   </div>
+                  {!creatorProductionComplete && (
+                    <div id="creatorlab-production-action" data-production-compact-action="true" className="creatorlab-p2c-production-next-action">
+                      <div className="min-w-0" aria-live="polite">
+                        <strong>{creatorNextProductionAction.title}</strong>
+                        {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
+                          <p>{creatorNextProductionAction.description}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={continueCreatorProduction}
+                        disabled={
+                          creatorMediaPreflightLoading ||
+                          isBatchRendering ||
+                          isPreparingAudio ||
+                          isExportingMovie ||
+                          buildingStory ||
+                          (creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete && creatorMusicConfirmationRequired)
+                        }
+                      >
+                        {creatorMediaPreflightLoading
+                          ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
+                          : isBatchRendering
+                            ? uiLanguage === "en" ? "Producing media..." : "Medya üretiliyor..."
+                            : isPreparingAudio
+                              ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
+                              : isExportingMovie
+                                ? ui.creatingMovie
+                                : creatorNextProductionAction.buttonLabel}
+                      </button>
+                    </div>
+                  )}
                 </section>
 
                 {(creatorMediaPreflightLoading || creatorTimelineNeedsAttention) && (
@@ -30459,40 +30537,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       </button>
                     </div>
                   </section>
-                )}
-
-                {!creatorProductionComplete && (
-                  <div id="creatorlab-production-action" data-production-compact-action="true" className="flex flex-col gap-3 border-b border-slate-200 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0" aria-live="polite">
-                      <strong className="block text-sm font-semibold text-slate-950">{creatorNextProductionAction.title}</strong>
-                      {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{creatorNextProductionAction.description}</p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={continueCreatorProduction}
-                      disabled={
-                        creatorMediaPreflightLoading ||
-                        isBatchRendering ||
-                        isPreparingAudio ||
-                        isExportingMovie ||
-                        buildingStory ||
-                        (creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete && creatorMusicConfirmationRequired)
-                      }
-                      className={`min-h-10 shrink-0 rounded-xl px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed ${creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete ? "bg-blue-700 text-white shadow-md hover:bg-blue-800 disabled:bg-blue-200 disabled:text-blue-700 disabled:shadow-none" : "bg-slate-950 text-white hover:bg-slate-800 disabled:opacity-50"}`}
-                    >
-                      {creatorMediaPreflightLoading
-                        ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
-                        : isBatchRendering
-                          ? uiLanguage === "en" ? "Producing media..." : "Medya üretiliyor..."
-                          : isPreparingAudio
-                            ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
-                            : isExportingMovie
-                              ? ui.creatingMovie
-                        : creatorNextProductionAction.buttonLabel}
-                    </button>
-                  </div>
                 )}
 
                 {creatorEditorOpen && (
@@ -30800,8 +30844,15 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                         Boolean(scene.videoUrl) &&
                         scene.videoStatus === "done";
                       const motionFailed = motionRouted && scene.videoStatus === "error";
-                      const sceneOutputMode =
-                        getCreatorEffectiveSceneOutputMode(scene);
+                      const outputState = resolveCreatorMediaOutputState({
+                        recommendedOutput: creatorRecommendedMotionSceneIdSet.has(scene.id)
+                          ? "video"
+                          : "image",
+                        explicitOutput: scene.renderMode,
+                      });
+                      const veltoRecommendedOutputMode = outputState.recommendedOutput;
+                      const sceneOutputMode = outputState.effectiveOutput;
+                      const sceneOutputIsUserChoice = outputState.isUserOverride;
                       const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
                         narration: scene.narration || "",
                         dialogue: scene.dialogue || "",
@@ -30895,6 +30946,21 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                       const sceneOperationalSummary = creatorSceneProductionSummaries.find(
                         (item) => item.id === scene.id,
                       );
+                      const sceneContinuityWarning = getCreatorContinuityWarning(
+                        flowContinuityAudit?.scenes.find(
+                          (audit) => String(audit.id) === String(scene.id),
+                        ),
+                        uiLanguage === "en" ? "en" : "tr",
+                      );
+                      const sceneContinuitySelection = getCreatorSceneContinuityMode(scene);
+                      const sceneContinuityLabel =
+                        sceneContinuitySelection === "project"
+                          ? uiLanguage === "en" ? "Project default" : "Proje varsayılanı"
+                          : sceneContinuitySelection === "previous"
+                            ? uiLanguage === "en" ? "Continue previous" : "Önceki sahneyi devam ettir"
+                            : sceneContinuitySelection === "consistent"
+                              ? uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"
+                              : uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne";
                       const scenePrimaryTab: CreatorSceneInspectorTab =
                         sceneDraftHealth.status !== "ready"
                           ? "script"
@@ -31042,7 +31108,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                               </button>
                             </div>
 
-                            {index === 0 && creatorOpeningHookOptions.length > 0 && (
+                            {activeSceneInspectorTab === "script" && index === 0 && creatorOpeningHookOptions.length > 0 && (
                               <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
                                 <div>
                                   <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">
@@ -31068,33 +31134,6 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                 </div>
                               </div>
                             )}
-
-                            {/* Scene continuity control */}
-                            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
-                              <div>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{uiLanguage === "en" ? "Scene continuity" : "Sahne devamlılığı"}</span>
-                                <p className="mt-1 text-xs leading-5 text-slate-500">
-                                  {getCreatorResolvedContinuityMode(scene) === "previous"
-                                    ? uiLanguage === "en" ? "Directly continues the previous scene." : "Önceki sahnenin doğrudan devamıdır."
-                                    : getCreatorResolvedContinuityMode(scene) === "consistent"
-                                      ? uiLanguage === "en" ? "Keeps the recurring character and visual world." : "Tekrar eden karakteri ve görsel evreni korur."
-                                      : uiLanguage === "en" ? "Generated as an independent visual beat." : "Bağımsız bir görsel anlatım olarak üretilir."}
-                                </p>
-                              </div>
-                              <label className="min-w-0 md:w-[280px]">
-                                <span className="sr-only">{uiLanguage === "en" ? "Scene continuity mode" : "Sahne devamlılık modu"}</span>
-                                <select
-                                  value={getCreatorSceneContinuityMode(scene)}
-                                  onChange={(event) => updateCreatorSceneContinuityMode(scene.id, event.target.value as CreatorSceneContinuityMode)}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                >
-                                  <option value="project">{uiLanguage === "en" ? "Use project default" : "Proje varsayılanını kullan"}</option>
-                                  <option value="independent">{uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne"}</option>
-                                  <option value="consistent">{uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"}</option>
-                                  <option value="previous" disabled={index === 0}>{uiLanguage === "en" ? "Continue previous scene" : "Önceki sahneyi devam ettir"}</option>
-                                </select>
-                              </label>
-                            </div>
 
                             <div className="scene-production-navigator sticky top-4 z-20 mb-5">
                               <div className="scene-production-navigator__header">
@@ -31467,7 +31506,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                 id={`scene-${scene.id}-visual-panel`}
                                 role="tabpanel"
                                 aria-labelledby={`scene-${scene.id}-visual-tab`}
-                                className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]"
+                                className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(280px,1fr)] xl:items-start"
                               >
                                         <div data-visual-storage-status-mount="true">
                                           <CreatorVisualStorageStatus
@@ -31492,7 +31531,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                         {uiLanguage === "en" ? "Continue Production will generate this visual." : "Üretime Devam Et bu görseli oluşturacak."}
                                       </div>
                                     )}
-                                    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                                       <div>
                                         <strong className="text-xs text-slate-900">{simpleGuidance}</strong>
                                         <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -31501,129 +31540,106 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                             : "Süreklilik ve kalite kontrolleri arka planda otomatik çalışır."}
                                         </p>
                                       </div>
-                                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                        {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
-                                      </span>
+                                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                          {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
+                                        </span>
+                                        {sceneOutputMode === "image" ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (sceneImageDispatchCountdownActive) cancelPendingImageDispatch();
+                                              else void redrawSceneImage(scene);
+                                            }}
+                                            disabled={
+                                              !sceneImageDispatchCountdownActive &&
+                                              (redrawLoadingId === scene.id || Boolean(imageDispatchCountdown) || Boolean(videoDispatchCountdown))
+                                            }
+                                            title={
+                                              sceneImageDispatchCountdownActive
+                                                ? uiLanguage === "en" ? "Cancel before dispatch. No image credit has been used yet." : "Gönderimden önce iptal et. Henüz görsel kredisi kullanılmadı."
+                                                : uiLanguage === "en" ? "Generate or regenerate this scene image." : "Bu sahne görselini üret veya yeniden üret."
+                                            }
+                                            className={`min-h-10 rounded-lg border px-3 py-2 text-[11px] font-semibold disabled:opacity-50 ${
+                                              sceneImageDispatchCountdownActive
+                                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            {sceneImageDispatchCountdownActive
+                                              ? uiLanguage === "en" ? `Cancel · ${imageDispatchCountdown?.secondsRemaining}s` : `İptal · ${imageDispatchCountdown?.secondsRemaining} sn`
+                                              : redrawLoadingId === scene.id
+                                                ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
+                                                : scene.image
+                                                  ? uiLanguage === "en" ? "Regenerate image" : "Görseli yeniden üret"
+                                                  : uiLanguage === "en" ? "Generate image" : "Görsel üret"}
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (sceneVideoDispatchCountdownActive) cancelPendingVideoDispatch();
+                                              else void handleGenerateVideo(scene.id);
+                                            }}
+                                            disabled={
+                                              !sceneVideoDispatchCountdownActive &&
+                                              ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
+                                                !scene.image || creatorMediaPreflightLoading || creatorVideoSelectionBlockedByQuality ||
+                                                Boolean(videoDispatchCountdown) || Boolean(imageDispatchCountdown))
+                                            }
+                                            title={
+                                              sceneVideoDispatchCountdownActive
+                                                ? uiLanguage === "en" ? "Cancel before dispatch. No video credit has been used yet." : "Gönderimden önce iptal et. Henüz video kredisi kullanılmadı."
+                                                : !scene.image
+                                                  ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
+                                                  : creatorVideoSelectionBlockedByQuality
+                                                    ? getCreatorMediaRoutingError("ai_video_blocks")
+                                                    : uiLanguage === "en" ? "Generate or regenerate this scene video." : "Bu sahne videosunu üret veya yeniden üret."
+                                            }
+                                            className={`min-h-10 rounded-lg border px-3 py-2 text-[11px] font-semibold disabled:opacity-50 ${
+                                              sceneVideoDispatchCountdownActive
+                                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            {sceneVideoDispatchCountdownActive
+                                              ? uiLanguage === "en" ? `Cancel · ${videoDispatchCountdown?.secondsRemaining}s` : `İptal · ${videoDispatchCountdown?.secondsRemaining} sn`
+                                              : creatorMediaPreflightLoading
+                                                ? uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…"
+                                                : scene.videoStatus === "processing" ? ui.videoCreating
+                                                  : scene.videoStatus === "delayed"
+                                                    ? uiLanguage === "en" ? "Taking longer" : "Uzun sürüyor"
+                                                    : creatorVideoSelectionBlockedByQuality
+                                                      ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
+                                                      : scene.videoUrl && scene.videoStatus === "done"
+                                                        ? uiLanguage === "en" ? "Regenerate video" : "Videoyu yeniden üret"
+                                                        : ui.convertToVideo}
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => setCreatorAssetHistoryOpen((prev) => ({ ...prev, [scene.id]: !prev[scene.id] }))}
+                                          className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          {uiLanguage === "en" ? "Versions" : "Sürümler"} ({sceneAssetHistory.length})
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
 
-                                  {sceneOutputMode === "image" ? (
-                                    <div className="space-y-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (sceneImageDispatchCountdownActive) {
-                                          cancelPendingImageDispatch();
-                                        } else {
-                                          void redrawSceneImage(scene);
-                                        }
-                                      }}
-                                      disabled={
-                                        !sceneImageDispatchCountdownActive &&
-                                        (redrawLoadingId === scene.id ||
-                                          Boolean(imageDispatchCountdown) ||
-                                          Boolean(videoDispatchCountdown))
-                                      }
-                                      title={
-                                        sceneImageDispatchCountdownActive
-                                          ? uiLanguage === "en"
-                                            ? "Cancel before provider dispatch. No image credit has been used yet."
-                                            : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
-                                          : uiLanguage === "en"
-                                            ? "Generate or regenerate this scene image."
-                                            : "Bu sahne görselini üret veya yeniden üret."
-                                      }
-                                      className={`min-h-11 w-full rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50 ${
-                                        sceneImageDispatchCountdownActive
-                                          ? "border-rose-300 bg-rose-50 text-rose-700"
-                                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                      }`}
-                                    >
-                                      {sceneImageDispatchCountdownActive
-                                        ? uiLanguage === "en"
-                                          ? `Cancel start · ${imageDispatchCountdown?.secondsRemaining}s`
-                                          : `Başlatmayı iptal et · ${imageDispatchCountdown?.secondsRemaining} sn`
-                                        : redrawLoadingId === scene.id
-                                          ? uiLanguage === "en" ? "Generating image..." : "Görsel üretiliyor..."
-                                          : scene.image
-                                            ? uiLanguage === "en" ? "Regenerate Image" : "Görseli Yeniden Üret"
-                                            : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"}
-                                    </button>
-                                    {sceneImageDispatchCountdownActive && (
-                                      <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
-                                        {uiLanguage === "en"
-                                          ? "No provider request or Velto image credit yet. Dispatch and billing begin at zero."
-                                          : "Henüz servis talebi veya Velto görsel kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
-                                      </span>
-                                    )}
-                                    </div>
-                                  ) : sceneOutputMode === "video" ? (
-                                    <div className="space-y-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (sceneVideoDispatchCountdownActive) {
-                                            cancelPendingVideoDispatch();
-                                          } else {
-                                            void handleGenerateVideo(scene.id);
-                                          }
-                                        }}
-                                        disabled={
-                                          !sceneVideoDispatchCountdownActive &&
-                                          ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
-                                            !scene.image ||
-                                            creatorMediaPreflightLoading ||
-                                            creatorVideoSelectionBlockedByQuality ||
-                                            Boolean(videoDispatchCountdown) ||
-                                            Boolean(imageDispatchCountdown))
-                                        }
-                                        title={
-                                          sceneVideoDispatchCountdownActive
-                                            ? uiLanguage === "en"
-                                              ? "Cancel before provider dispatch. No video credit has been used yet."
-                                              : "Servise gönderilmeden iptal et. Henüz video kredisi kullanılmadı."
-                                            : !scene.image
-                                              ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
-                                              : creatorVideoSelectionBlockedByQuality
-                                                ? getCreatorMediaRoutingError("ai_video_blocks")
-                                                : uiLanguage === "en" ? "Generate a video block from this scene image." : "Bu sahne görselinden video bloğu üret."
-                                        }
-                                        className={`min-h-11 w-full rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50 ${
-                                          sceneVideoDispatchCountdownActive
-                                            ? "border-rose-300 bg-rose-50 text-rose-700"
-                                            : "border-blue-200 bg-blue-50 text-blue-800"
-                                        }`}
-                                      >
-                                        {sceneVideoDispatchCountdownActive
-                                          ? uiLanguage === "en"
-                                            ? `Cancel start · ${videoDispatchCountdown?.secondsRemaining}s`
-                                            : `Başlatmayı iptal et · ${videoDispatchCountdown?.secondsRemaining} sn`
-                                          : creatorMediaPreflightLoading
-                                            ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
-                                            : scene.videoStatus === "processing"
-                                              ? ui.videoCreating
-                                              : scene.videoStatus === "delayed"
-                                                ? uiLanguage === "en" ? "Taking longer · refresh to check" : "Uzun sürüyor · kontrol için yenile"
-                                              : creatorVideoSelectionBlockedByQuality
-                                                ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                                : scene.videoUrl && scene.videoStatus === "done"
-                                                  ? uiLanguage === "en" ? "Regenerate Video" : "Videoyu Yeniden Üret"
-                                                  : ui.convertToVideo}
-                                      </button>
-                                      {sceneVideoDispatchCountdownActive && (
-                                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
-                                          {uiLanguage === "en"
-                                            ? "No provider request or Velto video credit has been used yet. At zero, both dispatch and billing begin."
-                                            : "Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme birlikte başlar."}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800">
+                                  {sceneImageDispatchCountdownActive && (
+                                    <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
                                       {uiLanguage === "en"
-                                        ? "Choose Image or Video to unlock manual generation."
-                                        : "Manuel üretimi açmak için Görsel veya Video seç."}
-                                    </div>
+                                        ? "No provider request or Velto image credit yet. Dispatch and billing begin at zero."
+                                        : "Henüz servis talebi veya Velto görsel kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
+                                    </span>
+                                  )}
+                                  {sceneVideoDispatchCountdownActive && (
+                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
+                                      {uiLanguage === "en"
+                                        ? "No provider request or Velto video credit has been used yet. At zero, both dispatch and billing begin."
+                                        : "Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme birlikte başlar."}
+                                    </p>
                                   )}
 
                                   {(scene.videoStatus === "processing" || scene.videoStatus === "delayed") && scene.videoQueueJobId && (
@@ -31640,8 +31656,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                     </button>
                                   )}
 
-                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  {creatorAssetHistoryOpen[scene.id] && (
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                       <div>
                                         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                           {uiLanguage === "en" ? "Asset versions" : "Varlık sürümleri"}
@@ -31652,23 +31668,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                             : "Üretilen görseller ve tamamlanan video blokları karşılaştırma ve geri yükleme için korunur."}
                                         </p>
                                       </div>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setCreatorAssetHistoryOpen((prev) => ({
-                                            ...prev,
-                                            [scene.id]: !prev[scene.id],
-                                          }))
-                                        }
-                                        className="min-h-10 shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                                      >
-                                        {creatorAssetHistoryOpen[scene.id]
-                                          ? uiLanguage === "en" ? "Hide versions" : "Sürümleri gizle"
-                                          : `${uiLanguage === "en" ? "Show versions" : "Sürümleri göster"} · ${sceneAssetHistory.length}`}
-                                      </button>
-                                    </div>
 
-                                    {creatorAssetHistoryOpen[scene.id] && (
                                       <div className="mt-4 space-y-4">
                                         {sceneAssetHistory.length === 0 ? (
                                           <div className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
@@ -31730,7 +31730,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                                       </div>
                                                       {isCurrentAsset && (
                                                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
-                                                          {uiLanguage === "en" ? "Current" : "Aktif"}
+                                                          {uiLanguage === "en" ? "Used in scene" : "Sahnede kullanılıyor"}
                                                         </span>
                                                       )}
                                                     </div>
@@ -31757,15 +31757,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                                         {uiLanguage === "en" ? "Restore" : "Geri yükle"}
                                                       </button>
                                                     </div>
-                                                    <div data-visual-media-cleanup="asset-version">
-                                                      <CreatorVisualAssetCleanupAction
-                                                        mediaUrl={asset.url}
-                                                        projectId={currentProjectId}
-                                                        language={uiLanguage === "en" ? "en" : "tr"}
-                                                        getAccessToken={getAccessTokenOrThrow}
-                                                        onHistoryRemoved={removeCreatorProjectHistoryUrl}
-                                                      />
-                                                    </div>
+                                                    {!isCurrentAsset && (
+                                                      <div data-visual-media-cleanup="asset-version">
+                                                        <CreatorVisualAssetCleanupAction
+                                                          mediaUrl={asset.url}
+                                                          projectId={currentProjectId}
+                                                          language={uiLanguage === "en" ? "en" : "tr"}
+                                                          getAccessToken={getAccessTokenOrThrow}
+                                                          onHistoryRemoved={removeCreatorProjectHistoryUrl}
+                                                        />
+                                                      </div>
+                                                    )}
                                                   </div>
                                                 </article>
                                               );
@@ -31807,21 +31809,53 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                           </div>
                                         )}
                                       </div>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <aside className="space-y-3">
                                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                      {uiLanguage === "en" ? "Scene output" : "Sahne çıktısı"}
+                                      {uiLanguage === "en" ? "Output" : "Çıktı"}
                                     </span>
-                                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                                      {uiLanguage === "en"
-                                        ? "Choose explicitly. Velto Studio will not decide between a still image and a generated video block."
-                                        : "Açıkça seçim yap. Velto Studio sabit görsel ile üretilen video bloğu arasında otomatik karar vermeyecek."}
-                                    </p>
-                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                      <div>
+                                        <strong className="block text-base text-slate-950">
+                                          {uiLanguage === "en" ? "Using" : "Kullanılan"}: {sceneOutputMode === "video" ? "Video" : uiLanguage === "en" ? "Image" : "Görsel"}
+                                        </strong>
+                                        <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${sceneOutputIsUserChoice ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}>
+                                          {sceneOutputIsUserChoice
+                                            ? uiLanguage === "en" ? "Your choice" : "Senin seçimin"
+                                            : uiLanguage === "en" ? "Velto recommended" : "Velto önerisi"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className={`mt-3 border-t border-slate-100 pt-3 ${sceneOutputIsUserChoice ? "rounded-xl border border-blue-100 bg-blue-50/50 p-3" : ""}`}>
+                                      <strong className="text-[11px] text-slate-800">
+                                        {sceneOutputIsUserChoice
+                                          ? `${uiLanguage === "en" ? "Velto recommends" : "Velto öneriyor"} ${veltoRecommendedOutputMode === "video" ? "Video" : uiLanguage === "en" ? "Image" : "Görsel"}`
+                                          : uiLanguage === "en" ? "Why this" : "Neden bu"}
+                                      </strong>
+                                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                                        {veltoRecommendedOutputMode === "video"
+                                          ? uiLanguage === "en" ? "Motion strengthens this scene's visual beat." : "Hareket, bu sahnenin görsel etkisini güçlendirir."
+                                          : uiLanguage === "en" ? "A focused image keeps this scene clear and efficient." : "Odaklı bir görsel bu sahneyi net ve verimli tutar."}
+                                      </p>
+                                      {sceneOutputIsUserChoice && (
+                                        <button
+                                          type="button"
+                                          onClick={() => returnCreatorSceneToRecommendedOutput(scene.id)}
+                                          className="mt-2 min-h-10 rounded-lg border border-blue-200 bg-white px-3 py-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                                        >
+                                          {uiLanguage === "en" ? "Use recommendation" : "Öneriyi kullan"}
+                                        </button>
+                                      )}
+                                    </div>
+                                    <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                                      <summary className="min-h-10 cursor-pointer list-none px-3 py-2.5 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
+                                        {uiLanguage === "en" ? "Change output" : "Çıktıyı değiştir"}
+                                      </summary>
+                                      <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-2">
                                       <button
                                         type="button"
                                         onClick={() => setCreatorSceneRenderMode(scene.id, "image")}
@@ -31831,7 +31865,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
                                         }`}
                                       >
-                                        {uiLanguage === "en" ? "Use Image" : "Görsel Kullan"}
+                                        {uiLanguage === "en" ? "Image" : "Görsel"}
                                       </button>
                                       <button
                                         type="button"
@@ -31842,9 +31876,10 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
                                         }`}
                                       >
-                                        {uiLanguage === "en" ? "Use Video" : "Video Kullan"}
+                                        Video
                                       </button>
-                                    </div>
+                                      </div>
+                                    </details>
                                     {sceneOutputMode === "video" && creatorVideoSelectionBlockedByQuality && (
                                       <p className="mt-2 text-[11px] leading-4 text-amber-700">
                                         {uiLanguage === "en"
@@ -31857,39 +31892,86 @@ const getCreatorLegacyRoutedVideoSceneIds = (sourceScenes: Scene[]) => {
                                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Visual direction" : "Görsel yön"}
+                                        {uiLanguage === "en" ? "Production brief" : "Üretim özeti"}
                                       </span>
                                       <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
                                         {(scene.visualBlockPlan?.length || sceneDraftHealth.visualBlockCount)} {uiLanguage === "en" ? "beats" : "akış"}
                                       </span>
                                     </div>
-                                    <div className="mt-3 space-y-3">
-                                      <div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Camera" : "Kamera"}</span>
-                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.cameraDirection || "—"}</p>
+                                    <div className="mt-3 divide-y divide-slate-100">
+                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Camera" : "Kamera"}</span>
+                                        <p className="text-xs leading-5 text-slate-600">{scene.cameraDirection || "—"}</p>
                                       </div>
-                                      <div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Emotion" : "Duygu"}</span>
-                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.emotion || "—"}</p>
+                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Emotion" : "Duygu"}</span>
+                                        <p className="text-xs leading-5 text-slate-600">{scene.emotion || "—"}</p>
                                       </div>
-                                      <div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Motion" : "Hareket"}</span>
-                                        <p className="mt-1 text-xs leading-5 text-slate-600">{scene.motionHint || "—"}</p>
+                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Motion" : "Hareket"}</span>
+                                        <p className="text-xs leading-5 text-slate-600">{scene.motionHint || "—"}</p>
                                       </div>
+                                      <details className="group/continuity py-2">
+                                        <summary className="grid min-h-10 cursor-pointer list-none grid-cols-[72px_1fr_auto] items-center gap-3 rounded-lg text-left [&::-webkit-details-marker]:hidden">
+                                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</span>
+                                          <span className="text-xs leading-5 text-slate-600">{sceneContinuityLabel}</span>
+                                          <span className="text-xs text-slate-400 transition group-open/continuity:rotate-180" aria-hidden="true">⌄</span>
+                                        </summary>
+                                        <label className="mt-2 block">
+                                          <span className="sr-only">{uiLanguage === "en" ? "Scene continuity mode" : "Sahne devamlılık modu"}</span>
+                                          <select
+                                            value={sceneContinuitySelection}
+                                            onChange={(event) => updateCreatorSceneContinuityMode(scene.id, event.target.value as CreatorSceneContinuityMode)}
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                          >
+                                            <option value="project">{uiLanguage === "en" ? "Use project default" : "Proje varsayılanını kullan"}</option>
+                                            <option value="independent">{uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne"}</option>
+                                            <option value="consistent">{uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"}</option>
+                                            <option value="previous" disabled={index === 0}>{uiLanguage === "en" ? "Continue previous scene" : "Önceki sahneyi devam ettir"}</option>
+                                          </select>
+                                          <small className="mt-2 block text-[11px] leading-5 text-slate-500">
+                                            {getCreatorResolvedContinuityMode(scene) === "previous"
+                                              ? uiLanguage === "en" ? "Directly continues the previous scene." : "Önceki sahnenin doğrudan devamıdır."
+                                              : getCreatorResolvedContinuityMode(scene) === "consistent"
+                                                ? uiLanguage === "en" ? "Keeps the recurring character and visual world." : "Tekrar eden karakteri ve görsel evreni korur."
+                                                : uiLanguage === "en" ? "Generated as an independent visual beat." : "Bağımsız bir görsel anlatım olarak üretilir."}
+                                          </small>
+                                        </label>
+                                      </details>
                                     </div>
+                                    {sceneContinuityWarning && (
+                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3" role="status">
+                                        <strong className="text-[11px] text-amber-900">
+                                          {uiLanguage === "en" ? "Continuity needs attention" : "Devamlılık kontrol edilmeli"}
+                                        </strong>
+                                        <ul className="mt-1 space-y-1 text-[11px] leading-5 text-amber-800">
+                                          {sceneContinuityWarning.messages.map((message) => <li key={message}>{message}</li>)}
+                                        </ul>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (scene.creatorSceneId) setSelectedCreatorEditorSceneId(scene.creatorSceneId);
+                                            setCreatorEditorOpen(true);
+                                          }}
+                                          className="mt-2 min-h-10 rounded-lg border border-amber-300 bg-white px-3 py-2 text-[11px] font-semibold text-amber-900"
+                                        >
+                                          {uiLanguage === "en" ? "Review in editor" : "Editörde kontrol et"}
+                                        </button>
+                                      </div>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => void editCreatorSceneVisualDirectionWithAI(scene)}
                                       disabled={creatorVisualDirectionLoadingId !== null}
-                                      className="mt-4 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      className="mt-3 min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {creatorVisualDirectionLoadingId === scene.id
                                         ? uiLanguage === "en"
                                           ? "Improving direction..."
                                           : "Görsel yön geliştiriliyor..."
                                         : uiLanguage === "en"
-                                          ? "Edit direction with AI"
-                                          : "Yönü AI ile düzenle"}
+                                          ? "Edit direction"
+                                          : "Yönü düzenle"}
                                     </button>
                                   </div>
                                 </aside>
