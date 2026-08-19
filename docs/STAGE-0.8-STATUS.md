@@ -19,9 +19,9 @@ The current production target remains Vercel + Supabase + Railway. Azure deploym
 The ordered gates are:
 
 1. Full TypeScript typecheck (`tsc --noEmit`).
-2. Deterministic no-new-lint-debt validation for changed JavaScript/TypeScript source files. Full repository ESLint is not the 0.8A baseline because the existing whole-tree invocation exceeds a 4 GB Node heap; new violations remain hard failures.
+2. Deterministic no-new-lint-debt validation for changed JavaScript/TypeScript source **lines**. ESLint runs per touched file, but only error-level findings that overlap added/modified lines (plus fatal/parser/configuration failures) are new-debt failures. Existing findings outside the changed ranges do not become failures merely because a large legacy file was edited. The Stage 0.7 closure commit `704bc5fa449269244f717a3967dcbcb54f1bb42f` is the historical floor when `main` predates the 0.8A branch, preventing old branch history from being reclassified as new lint debt. Full repository ESLint is not the 0.8A baseline because the existing whole-tree invocation exceeds a 4 GB Node heap.
 3. A curated offline regression suite covering Stage 0.6 Smart Asset Reuse; Stage 0.7 ownership, metering, trash/restore, quota, purge, entitlement, admission, activation, migration, and export contracts; creator video lifecycle/replay safety; final video lifecycle; and Cost Guard.
-4. The Next.js production build.
+4. The Next.js production build. GitHub CI supplies only non-production public Supabase placeholders required by browser-client module initialization during prerender; they do not target a live project and are not credentials.
 5. A static CI contract self-test.
 
 The workflow has top-level `contents: read` permission and checkout credential persistence is disabled. It contains no production credentials or secret references. It performs no live Supabase or Storage operations, provider generation, credit-consuming calls, deployment, migration mutation, or cloud-resource creation.

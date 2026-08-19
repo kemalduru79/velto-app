@@ -4,6 +4,7 @@ import fs from "node:fs";
 const workflowPath = ".github/workflows/ci.yml";
 assert.ok(fs.existsSync(workflowPath), `${workflowPath} must exist`);
 const workflow = fs.readFileSync(workflowPath, "utf8");
+const lintGate = fs.readFileSync("scripts/stage-0-8a-changed-lint.mjs", "utf8");
 
 assert.match(workflow, /actions\/checkout@v6/);
 assert.match(workflow, /actions\/setup-node@v6/);
@@ -16,6 +17,16 @@ assert.match(workflow, /run:\s*npm run build/);
 assert.match(workflow, /persist-credentials:\s*false/);
 assert.match(workflow, /^permissions:\n\s+contents:\s+read\s*$/m);
 assert.doesNotMatch(workflow, /^\s*\w[\w-]*:\s*write\s*$/m);
+
+// NO_NEW_LINT_DEBT must inspect changed lines rather than reclassifying legacy
+// whole-file debt when a large existing source file is touched.
+assert.match(lintGate, /--unified=0/);
+assert.match(lintGate, /"--format", "json"/);
+assert.match(lintGate, /overlapsChangedLine/);
+assert.match(lintGate, /message\.fatal/);
+assert.match(lintGate, /PRE_0_8A_BASELINE/);
+assert.match(lintGate, /704bc5fa449269244f717a3967dcbcb54f1bb42f/);
+assert.doesNotMatch(lintGate, /eslint\.js", "--", \.\.\.targets/);
 
 const forbiddenSecrets = [
   "SUPABASE_SERVICE_ROLE_KEY", "RUNWAY_API_KEY", "VEO_API_KEY", "OPENAI_API_KEY",
