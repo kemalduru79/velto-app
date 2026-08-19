@@ -44,10 +44,17 @@ export default function CreatorVisualStorageStatus({
   }, [getAccessToken]);
 
   useEffect(() => {
-    void load();
+    // Schedule the first request after the subscription effect has committed;
+    // subsequent refreshes are driven by the media-inventory event callback.
+    const initialLoad = window.setTimeout(() => {
+      void load();
+    }, 0);
     const refresh = () => void load();
     window.addEventListener("velto:media-inventory-changed", refresh);
-    return () => window.removeEventListener("velto:media-inventory-changed", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("velto:media-inventory-changed", refresh);
+    };
   }, [load]);
 
   if (!storage) {

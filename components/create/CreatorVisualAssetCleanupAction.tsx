@@ -85,13 +85,20 @@ export default function CreatorVisualAssetCleanupAction({
   }, [getAccessToken, mediaUrl]);
 
   useEffect(() => {
-    void refresh();
+    // Defer the initial refresh to a task callback so the effect establishes
+    // its subscription before any local state transition is scheduled.
+    const initialRefresh = window.setTimeout(() => {
+      void refresh();
+    }, 0);
     const handleInventoryChange = () => {
       clearInventoryCache();
       void refresh();
     };
     window.addEventListener("velto:media-inventory-changed", handleInventoryChange);
-    return () => window.removeEventListener("velto:media-inventory-changed", handleInventoryChange);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.removeEventListener("velto:media-inventory-changed", handleInventoryChange);
+    };
   }, [refresh]);
 
   const mutate = async (action: "trash" | "restore") => {
