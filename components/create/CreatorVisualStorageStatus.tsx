@@ -44,7 +44,7 @@ export default function CreatorVisualStorageStatus({
   }, [getAccessToken]);
 
   useEffect(() => {
-    // Schedule the first request after the subscription effect has committed;
+    // Schedule the first request after the listener effect has committed;
     // subsequent refreshes are driven by the media-inventory event callback.
     const initialLoad = window.setTimeout(() => {
       void load();
