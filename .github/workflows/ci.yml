@@ -25,6 +25,11 @@ jobs:
     env:
       CI: true
       NEXT_TELEMETRY_DISABLED: 1
+      # Public, non-production placeholders used only so Next.js can prerender
+      # modules that initialize the browser Supabase client during build.
+      # They are not credentials and do not point to a live Supabase project.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-public-placeholder
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
