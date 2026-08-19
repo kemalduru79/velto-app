@@ -1,6 +1,9 @@
 name: Apply Visual Media Cleanup
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/stage-0-8-production-portability
@@ -20,6 +23,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Set up Node.js
