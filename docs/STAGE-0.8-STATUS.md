@@ -20,8 +20,8 @@ The current production target remains Vercel + Supabase + Railway. Azure deploym
 - 0.8D: CLOSED/PASS
 - 0.8E: CLOSED/PASS
 - 0.8F: IN PROGRESS
-  - 0.8F-A Health & Observability Consistency: current
-  - 0.8F-B Recovery & Operator Baseline: next
+  - 0.8F-A Health & Observability Consistency: CLOSED/PASS
+  - 0.8F-B Recovery & Operator Baseline: current
 
 Current production target remains Vercel + Supabase + Railway. Azure deployment is deferred. Azure cost remains €0.
 

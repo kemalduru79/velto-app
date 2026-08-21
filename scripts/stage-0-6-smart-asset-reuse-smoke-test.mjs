@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import ts from "typescript";
 
 const failures = [];
@@ -56,7 +56,11 @@ check(/getCreatorVideoState/.test(page) && /getCreatorNarrationAudioCurrentness/
 check(/No generation credits used/.test(component) && /Üretim kredisi kullanılmaz/.test(component), "zero-credit message is present");
 check(!/unsplash|pexels|pixabay|shutterstock|getty|storyblocks/i.test(helperSource + component), "no external stock provider introduced");
 check(!/supabase|create table|migration/i.test(helperSource + component), "no database or schema requirement introduced");
-check(Object.keys(packageJson.dependencies || {}).length > 0 && execFileSync("git", ["diff", "--", "package.json"], { encoding: "utf8" }) === "", "no package dependency introduced");
+check(
+  createHash("sha256").update(JSON.stringify(packageJson.dependencies || {})).digest("hex") ===
+    "a670e27e2b6e356c24ffa46a447496eb2ff287f37cbd503404f75ec2f715d2bd",
+  "no package dependency introduced",
+);
 check(!reuseBlock.includes("CreatorCostGuard"), "CreatorCostGuard remains outside zero-credit reuse");
 check(!/storyverse/i.test(helperSource + component + reuseBlock), "Storyverse is unaffected by Stage 0.6A implementation");
 

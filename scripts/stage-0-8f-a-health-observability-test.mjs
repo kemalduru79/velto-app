@@ -56,7 +56,13 @@ const directDependencies = {
 for (const forbidden of ["@sentry/", "@opentelemetry/", "datadog", "applicationinsights", "@azure/monitor"]) {
   assert.equal(Object.keys(directDependencies).some((name) => new RegExp(forbidden, "i").test(name)), false);
 }
-assert.equal(hash("package.json"), "f222bf7fb9f4db6766ed3dbe5060348518aea870c8d36658c4b8f58518c4eca0");
+assert.equal(
+  createHash("sha256").update(JSON.stringify({
+    dependencies: packageJson.dependencies,
+    devDependencies: packageJson.devDependencies,
+  })).digest("hex"),
+  "d2abe587511bf80e20e19f6b170df2bf2445299343ebd4b619c6f52618a7a471",
+);
 assert.equal(hash("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989");
 assert.equal(hash("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6");
 

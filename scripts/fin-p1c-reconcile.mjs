@@ -1,5 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-
 function integerArg(name, fallback, min, max) {
   const prefix = `--${name}=`;
   const raw = process.argv.find((value) => value.startsWith(prefix));
@@ -9,11 +7,31 @@ function integerArg(name, fallback, min, max) {
   return Math.max(min, Math.min(Math.round(parsed), max));
 }
 
+const batchLimit = integerArg("limit", 200, 1, 1000);
+const staleJobMinutes = integerArg("stale-minutes", 10, 1, 1440);
+const apply = process.argv.includes("--apply");
+
+if (!apply) {
+  console.log(
+    JSON.stringify(
+      {
+        mode: "NO_MUTATION",
+        mutation: "velto_fin_reconcile",
+        batchLimit,
+        staleJobMinutes,
+        requiredFlag: "--apply",
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+const { createClient } = await import("@supabase/supabase-js");
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const batchLimit = integerArg("limit", 200, 1, 1000);
-const staleJobMinutes = integerArg("stale-minutes", 10, 1, 1440);
 
 if (!supabaseUrl || !serviceRoleKey) {
   console.error(
