@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+const executableExtension = process.platform === "win32" ? ".exe" : "";
+const ffmpegExecutable = `./node_modules/ffmpeg-static/ffmpeg${executableExtension}`;
+const ffprobeExecutable = `./node_modules/ffprobe-static/bin/${process.platform}/${process.arch}/ffprobe${executableExtension}`;
+
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
@@ -7,8 +11,10 @@ const nextConfig: NextConfig = {
     "/api/store-dialogue-audio": ["./node_modules/ffmpeg-static/**/*"],
     "/api/export-movie": ["./node_modules/ffmpeg-static/**/*"],
     "/api/stitch-video": [
-      "./node_modules/ffmpeg-static/**/*",
-      "./node_modules/ffprobe-static/**/*",
+      ffmpegExecutable,
+      "./node_modules/ffprobe-static/index.js",
+      "./node_modules/ffprobe-static/package.json",
+      ffprobeExecutable,
     ],
   },
 };

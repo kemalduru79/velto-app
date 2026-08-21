@@ -17,10 +17,26 @@ function requireText(file, values) {
   }
 }
 
+function rejectText(file, values) {
+  const content = read(file);
+  for (const value of values) {
+    if (content.includes(value)) {
+      throw new Error(`${file} contains rejected marker: ${value}`);
+    }
+  }
+}
+
 requireText("next.config.ts", ['output: "standalone"']);
 requireText("next.config.ts", [
   '"/api/stitch-video"',
-  '"./node_modules/ffmpeg-static/**/*"',
+  "const ffmpegExecutable = `./node_modules/ffmpeg-static/ffmpeg${executableExtension}`",
+  "const ffprobeExecutable = `./node_modules/ffprobe-static/bin/${process.platform}/${process.arch}/ffprobe${executableExtension}`",
+  '"./node_modules/ffprobe-static/index.js"',
+  '"./node_modules/ffprobe-static/package.json"',
+  "ffmpegExecutable",
+  "ffprobeExecutable",
+]);
+rejectText("next.config.ts", [
   '"./node_modules/ffprobe-static/**/*"',
 ]);
 requireText("app/api/stitch-video/route.ts", [
