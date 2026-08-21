@@ -10,6 +10,7 @@ import {
   getReturnToFromSearch,
 } from "@/lib/auth/redirects";
 import { useLanguage, type Language } from "@/lib/useLanguage";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal/policy";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -26,7 +27,11 @@ const copy = {
     passwordPlaceholder: "En az 8 karakter",
     confirmPassword: "Şifreyi doğrula",
     confirmPasswordPlaceholder: "Şifreni tekrar gir",
-    terms: "Kullanım koşullarını ve gizlilik politikasını kabul ediyorum.",
+    termsPrefix: "",
+    termsLink: "Kullanım Koşulları'nı",
+    termsJoin: " ve ",
+    privacyLink: "Gizlilik Politikası'nı",
+    termsSuffix: " kabul ediyorum.",
     submit: "Kayıt Ol",
     submitting: "Hesap oluşturuluyor...",
     hasAccount: "Zaten hesabın var mı?",
@@ -55,7 +60,11 @@ const copy = {
     passwordPlaceholder: "At least 8 characters",
     confirmPassword: "Confirm password",
     confirmPasswordPlaceholder: "Enter your password again",
-    terms: "I accept the terms of use and privacy policy.",
+    termsPrefix: "I accept the ",
+    termsLink: "Terms of Use",
+    termsJoin: " and ",
+    privacyLink: "Privacy Policy",
+    termsSuffix: ".",
     submit: "Create Account",
     submitting: "Creating account...",
     hasAccount: "Already have an account?",
@@ -144,11 +153,16 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      const acceptedAt = new Date().toISOString();
       const result = await authService.signUp({
         email,
         password,
         displayName,
-        acceptedTermsAt: new Date().toISOString(),
+        acceptedTermsAt: acceptedAt,
+        acceptedPrivacyAt: acceptedAt,
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
+        policyLocale: language,
         emailRedirectTo: `${window.location.origin}${buildLocalizedAuthHref("/login")}`,
       });
 
@@ -289,7 +303,17 @@ export default function SignupPage() {
                 setTermsAccepted(event.target.checked)
               }
             />
-            <span>{t.terms}</span>
+            <span>
+              {t.termsPrefix}
+              <Link href={`/terms?lang=${language}`} className="font-semibold text-violet-700 underline underline-offset-2">
+                {t.termsLink}
+              </Link>
+              {t.termsJoin}
+              <Link href={`/privacy?lang=${language}`} className="font-semibold text-violet-700 underline underline-offset-2">
+                {t.privacyLink}
+              </Link>
+              {t.termsSuffix}
+            </span>
           </label>
 
           {error && (

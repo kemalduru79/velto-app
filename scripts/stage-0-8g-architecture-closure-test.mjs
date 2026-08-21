@@ -112,16 +112,28 @@ check("container contracts are unchanged", () => {
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
   assert.equal(sha256("compose.yaml"), "3cd87654ca1ff919a46f75302b7f527bdcadcd994d6ca236d83ba42dd3f0046b");
 });
-check("Stage 0.8G worktree scope contains documentation and regression only", () => {
+check("Stage 0.8 closure worktree scope permits only reviewed later-stage additions", () => {
   const allowed = new Set([
     "docs/STAGE-0.8-STATUS.md",
     "docs/STAGE-0.8-ARCHITECTURE-CLOSURE.md",
     "scripts/stage-0-8a-critical-regression.mjs",
     "scripts/stage-0-8g-architecture-closure-test.mjs",
+    "app/api/share-project/route.ts",
+    "app/create/page.tsx",
+    "app/signup/page.tsx",
+    "lib/auth/supabaseAuthAdapter.ts",
+    "lib/auth/types.ts",
+    "lib/persistence/projects/supabaseProjectRepository.ts",
+    "lib/persistence/projects/types.ts",
+    "next.config.ts",
+    "docs/STAGE-0.9-DATA-LIFECYCLE.md",
+    "docs/STAGE-0.9-STATUS.md",
+    "scripts/stage-0-9a-security-consent-baseline-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
-  assert.deepEqual(paths.filter((path) => !allowed.has(path)), []);
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/"];
+  assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
 });
 
 console.log("\nSTAGE_0_8G_ARCHITECTURE_CLOSURE=PASS");

@@ -51,6 +51,12 @@ export type PublishVeltoProjectResult =
   | { status: "unsupported_flow" }
   | { status: "share_id_exhausted" };
 
+export type UnpublishVeltoProjectResult =
+  | { status: "unpublished"; project: VeltoProjectApiRecord }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+  | { status: "unsupported_flow" };
+
 export interface ProjectRepository {
   listForOwner(ownerUserId: string): Promise<VeltoProjectApiRecord[]>;
   getForOwner(
@@ -65,6 +71,10 @@ export interface ProjectRepository {
     projectId: string,
     ownerUserId: string,
   ): Promise<PublishVeltoProjectResult>;
+  unpublishForOwner(
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<UnpublishVeltoProjectResult>;
   removeAssetHistoryUrlForOwner(
     projectId: string,
     ownerUserId: string,

@@ -1549,6 +1549,8 @@ const UI_TEXT = {
     createMovie: "🎬 Film Oluştur",
     shareLinkCreate: "🔗 Paylaşım Linki Oluştur",
     shareLinkCreating: "Link oluşturuluyor...",
+    stopSharing: "Paylaşımı durdur",
+    sharingStopped: "Paylaşım durduruldu ✅",
     copyLink: "📋 Linki Kopyala",
     copied: "✅ Kopyalandı",
     download: "⬇️ İndir",
@@ -1886,6 +1888,8 @@ const UI_TEXT = {
     createMovie: "🎬 Create Movie",
     shareLinkCreate: "🔗 Create Share Link",
     shareLinkCreating: "Creating link...",
+    stopSharing: "Stop sharing",
+    sharingStopped: "Sharing stopped ✅",
     copyLink: "📋 Copy Link",
     copied: "✅ Copied",
     download: "⬇️ Download",
@@ -10592,6 +10596,35 @@ const generateSceneImage = async (
       setSaveMessage(ui.shareCopied);
     } catch {
       setError("Link kopyalanamadı. Lütfen manuel kopyala.");
+    }
+  };
+
+  const handleStopSharing = async () => {
+    if (!currentProjectId || !shareUrl) return;
+    setShareLoading(true);
+    setError("");
+    setSaveMessage("");
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      const res = await fetch("/api/share-project", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ projectId: currentProjectId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || "Paylaşım durdurulamadı.");
+      }
+      setShareUrl("");
+      setShareCopied(false);
+      setSaveMessage(ui.sharingStopped);
+    } catch (e: any) {
+      setError(e?.message || "Paylaşım durdurulurken hata oluştu.");
+    } finally {
+      setShareLoading(false);
     }
   };
 
@@ -27854,6 +27887,17 @@ const getCreatorLegacyRoutedVideoSceneIds = (
         className="rounded-2xl border border-sky-200 px-4 py-2 text-sm text-sky-800"
       >
         {shareCopied ? ui.copied : ui.copyLink}
+      </button>
+    )}
+
+    {shareUrl && (
+      <button
+        type="button"
+        onClick={handleStopSharing}
+        disabled={shareLoading}
+        className="rounded-2xl border border-rose-200 px-4 py-2 text-sm text-rose-700 disabled:opacity-50"
+      >
+        {ui.stopSharing}
       </button>
     )}
 

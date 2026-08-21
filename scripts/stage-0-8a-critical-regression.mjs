@@ -23,6 +23,7 @@ const tests = [
   "scripts/stage-0-8f-a-health-observability-test.mjs",
   "scripts/stage-0-8f-b-recovery-operator-test.mjs",
   "scripts/stage-0-8g-architecture-closure-test.mjs",
+  "scripts/stage-0-9a-security-consent-baseline-test.mjs",
 ];
 
 for (const test of tests) {

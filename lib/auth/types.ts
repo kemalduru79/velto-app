@@ -17,6 +17,10 @@ export type SignUpInput = {
   password: string;
   displayName?: string;
   acceptedTermsAt: string;
+  acceptedPrivacyAt: string;
+  termsVersion: string;
+  privacyVersion: string;
+  policyLocale: "tr" | "en";
   emailRedirectTo?: string;
 };
 

@@ -104,6 +104,10 @@ export class SupabaseAuthAdapter implements AuthService {
         data: {
           display_name: input.displayName?.trim() || null,
           accepted_terms_at: input.acceptedTermsAt,
+          accepted_privacy_at: input.acceptedPrivacyAt,
+          terms_version: input.termsVersion,
+          privacy_version: input.privacyVersion,
+          policy_locale: input.policyLocale,
           product: "velto_studio",
         },
       },

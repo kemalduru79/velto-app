@@ -4,6 +4,7 @@ import type {
   PublishVeltoProjectResult,
   SaveVeltoProjectInput,
   SaveVeltoProjectResult,
+  UnpublishVeltoProjectResult,
   VeltoProjectApiRecord,
 } from "./types";
 import type { PublicStoryverseProjectSourceRecord } from "@/lib/security/publicStoryverseProjection";
@@ -217,6 +218,39 @@ export class SupabaseProjectRepository implements ProjectRepository {
       shareId,
       project: asProjectRecord(data),
     };
+  }
+
+  async unpublishForOwner(
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<UnpublishVeltoProjectResult> {
+    const client = createServerSupabaseClient();
+    const { data: existingProject, error: readError } = await client
+      .from("velto_projects")
+      .select("id, owner_user_id, flow_type")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(`Project sharing state could not be read: ${readError.message}`);
+    }
+    if (!existingProject) return { status: "not_found" };
+    if (existingProject.owner_user_id !== ownerUserId) return { status: "forbidden" };
+    if (existingProject.flow_type !== "storyverse") return { status: "unsupported_flow" };
+
+    const { data, error } = await client
+      .from("velto_projects")
+      .update({ is_public: false, updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .eq("flow_type", "storyverse")
+      .select("id, share_id, is_public, published_at")
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new Error(`Project could not be unpublished: ${error?.message || "unknown error"}`);
+    }
+    return { status: "unpublished", project: asProjectRecord(data) };
   }
 
   async removeAssetHistoryUrlForOwner(

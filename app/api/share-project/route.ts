@@ -81,3 +81,35 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const principal = await authenticateRequest(req);
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    const projectId = typeof body?.projectId === "string" ? body.projectId.trim() : "";
+    if (!projectId) {
+      return NextResponse.json({ error: "projectId zorunlu." }, { status: 400 });
+    }
+
+    const result = await getPersistenceServices().projectRepository.unpublishForOwner(
+      projectId,
+      principal.id,
+    );
+    if (result.status === "not_found") {
+      return NextResponse.json({ error: "Proje bulunamadı." }, { status: 404 });
+    }
+    if (result.status === "forbidden") {
+      return NextResponse.json({ error: "Bu projenin paylaşımını durdurma yetkin yok." }, { status: 403 });
+    }
+    if (result.status === "unsupported_flow") {
+      return NextResponse.json({ error: "Bu proje türü için paylaşım desteklenmiyor." }, { status: 409 });
+    }
+    return NextResponse.json({ success: true, project: result.project });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
+    }
+    console.error("share-project revoke error:", error);
+    return NextResponse.json({ error: "Paylaşım durdurulurken hata oluştu." }, { status: 500 });
+  }
+}
