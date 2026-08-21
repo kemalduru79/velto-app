@@ -23,14 +23,9 @@ FROM deps AS worker
 ENV NODE_ENV=production
 ENV HOME=/tmp
 ENV XDG_CACHE_HOME=/tmp/.cache
-ENV VELTO_QUEUE_POLL_MS=2000
-ENV VELTO_QUEUE_LEASE_SECONDS=60
-ENV VELTO_QUEUE_HEARTBEAT_MS=15000
-ENV VELTO_WORKER_HEARTBEAT_MS=15000
-ENV VELTO_QUEUE_RETRY_BASE_SECONDS=5
-ENV VELTO_QUEUE_RETRY_MAX_SECONDS=300
 COPY scripts/validate-runtime-env.mjs ./scripts/validate-runtime-env.mjs
 COPY scripts/scale-worker.mjs ./scripts/scale-worker.mjs
+COPY lib/runtime/coreEnvironment.mjs ./lib/runtime/coreEnvironment.mjs
 COPY lib/worker ./lib/worker
 USER node
 STOPSIGNAL SIGTERM
@@ -54,6 +49,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/validate-runtime-env.mjs ./scripts/validate-runtime-env.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/lib/runtime/coreEnvironment.mjs ./lib/runtime/coreEnvironment.mjs
 
 # ffprobe-static 3.1.0 does not ship every Linux architecture it resolves.
 # Keep the package binary where available and install the Debian fallback only

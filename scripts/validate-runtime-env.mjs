@@ -1,73 +1,25 @@
+import {
+  CORE_ENVIRONMENT_GROUPS,
+  SUPABASE_SERVER_ENVIRONMENT,
+  getCoreEnvironmentChecks,
+  isValidRuntimeUrl,
+  resolveConfiguredValue,
+} from "../lib/runtime/coreEnvironment.mjs";
+
 const mode = process.argv[2] === "worker" ? "worker" : "web";
 
-const groups = {
-  web: [
-    {
-      key: "supabaseUrl",
-      alternatives: ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
-    },
-    {
-      key: "supabaseAnonKey",
-      alternatives: ["SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
-    },
-    {
-      key: "supabaseServiceRole",
-      alternatives: ["SUPABASE_SERVICE_ROLE_KEY"],
-    },
-    {
-      key: "openAi",
-      alternatives: ["OPENAI_API_KEY"],
-    },
-  ],
-  worker: [
-    {
-      key: "supabaseUrl",
-      alternatives: ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
-    },
-    {
-      key: "supabaseServiceRole",
-      alternatives: ["SUPABASE_SERVICE_ROLE_KEY"],
-    },
-    {
-      key: "internalWorkerToken",
-      alternatives: ["VELTO_INTERNAL_WORKER_TOKEN"],
-    },
-  ],
-};
-
-function configured(names) {
-  return names.some((name) => Boolean(process.env[name]?.trim()));
-}
-
-function configuredValue(names) {
-  for (const name of names) {
-    const value = process.env[name]?.trim();
-    if (value) return value;
-  }
-  return "";
-}
-
-function validateUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-const requiredGroups = groups[mode];
-const missing = requiredGroups
-  .filter((group) => !configured(group.alternatives))
-  .map((group) => group.key);
+const checks = getCoreEnvironmentChecks(mode, process.env);
+const missing = CORE_ENVIRONMENT_GROUPS[mode]
+  .filter((group) => !checks[group.key])
+  .map(({ key }) => key);
 
 const invalid = [];
-const supabaseUrl = configuredValue([
-  "SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_URL",
-]);
+const supabaseUrl = resolveConfiguredValue(
+  process.env,
+  SUPABASE_SERVER_ENVIRONMENT.url,
+);
 
-if (supabaseUrl && !validateUrl(supabaseUrl)) {
+if (supabaseUrl && !isValidRuntimeUrl(supabaseUrl)) {
   invalid.push("supabaseUrl");
 }
 

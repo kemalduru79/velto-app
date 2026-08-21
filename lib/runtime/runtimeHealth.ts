@@ -1,36 +1,12 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import os from "node:os";
+import {
+  CORE_ENVIRONMENT_GROUPS,
+  getCoreEnvironmentChecks,
+} from "./coreEnvironment.mjs";
 
 export type RuntimeHealthMode = "live" | "ready";
-
-type EnvironmentGroup = {
-  key: string;
-  alternatives: readonly string[];
-};
-
-const CORE_ENVIRONMENT_GROUPS: readonly EnvironmentGroup[] = [
-  {
-    key: "supabaseUrl",
-    alternatives: ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
-  },
-  {
-    key: "supabaseAnonKey",
-    alternatives: ["SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
-  },
-  {
-    key: "supabaseServiceRole",
-    alternatives: ["SUPABASE_SERVICE_ROLE_KEY"],
-  },
-  {
-    key: "openAi",
-    alternatives: ["OPENAI_API_KEY"],
-  },
-];
-
-function hasConfiguredValue(names: readonly string[]) {
-  return names.some((name) => Boolean(process.env[name]?.trim()));
-}
 
 async function isTempDirectoryWritable() {
   try {
@@ -47,13 +23,17 @@ export function normalizeRuntimeHealthMode(
   return value === "ready" ? "ready" : "live";
 }
 
-export async function getRuntimeHealth(mode: RuntimeHealthMode) {
-  const environmentChecks = Object.fromEntries(
-    CORE_ENVIRONMENT_GROUPS.map((group) => [
-      group.key,
-      hasConfiguredValue(group.alternatives),
-    ]),
-  ) as Record<string, boolean>;
+export async function getRuntimeHealth(
+  mode: RuntimeHealthMode,
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  const environmentChecks = getCoreEnvironmentChecks(
+    "web",
+    environment,
+  ) as Record<
+    (typeof CORE_ENVIRONMENT_GROUPS.web)[number]["key"],
+    boolean
+  >;
   const tempWritable = await isTempDirectoryWritable();
   const checks = {
     ...environmentChecks,
@@ -64,9 +44,9 @@ export async function getRuntimeHealth(mode: RuntimeHealthMode) {
     .map(([key]) => key);
   const ready = missing.length === 0;
   const release =
-    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ||
-    process.env.GIT_COMMIT_SHA?.slice(0, 12) ||
-    process.env.NEXT_PUBLIC_APP_VERSION ||
+    environment.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ||
+    environment.GIT_COMMIT_SHA?.slice(0, 12) ||
+    environment.NEXT_PUBLIC_APP_VERSION ||
     "local";
 
   return {

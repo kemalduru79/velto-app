@@ -26,7 +26,11 @@ const checks = [
   ],
   [
     "lib/worker/runtime.mjs",
-    ["velto_fin_reconcile", "VELTO_FIN_RECONCILE_INTERVAL_MS"],
+    ["velto_fin_reconcile"],
+  ],
+  [
+    "lib/worker/runtimeConfig.mjs",
+    ["VELTO_FIN_RECONCILE_INTERVAL_MS"],
   ],
   ["scripts/fin-p1c-reconcile.mjs", ["admin_script"]],
 ];

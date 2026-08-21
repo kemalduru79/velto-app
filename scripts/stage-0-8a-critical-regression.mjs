@@ -16,6 +16,7 @@ const tests = [
   "scripts/beta-fin-p1-cost-guard-smoke-test.mjs",
   "scripts/stage-0-8c-slice-a-modularization-test.mjs",
   "scripts/stage-0-8c-slice-b-stitch-modularization-test.mjs",
+  "scripts/stage-0-8d-a-runtime-config-test.mjs",
 ];
 
 for (const test of tests) {

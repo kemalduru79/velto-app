@@ -48,15 +48,26 @@ services:
       context: .
       dockerfile: Dockerfile
       target: worker
-    env_file:
-      - .env.local
     environment:
-      NODE_ENV: production
-      HOME: "/tmp"
-      XDG_CACHE_HOME: "/tmp/.cache"
-      VELTO_INTERNAL_BASE_URL: "http://velto:3000"
-      VELTO_QUEUE_POLL_MS: "2000"
-      VELTO_QUEUE_LEASE_SECONDS: "60"
+      - NODE_ENV=production
+      - HOME=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
+      - SUPABASE_URL
+      - NEXT_PUBLIC_SUPABASE_URL
+      - SUPABASE_SERVICE_ROLE_KEY
+      - VELTO_INTERNAL_WORKER_TOKEN
+      - VELTO_INTERNAL_BASE_URL=${VELTO_INTERNAL_BASE_URL:-http://velto:3000}
+      - VELTO_WORKER_ID
+      - VELTO_QUEUE_POLL_MS
+      - VELTO_QUEUE_LEASE_SECONDS
+      - VELTO_QUEUE_HEARTBEAT_MS
+      - VELTO_WORKER_HEARTBEAT_MS
+      - VELTO_QUEUE_RETRY_BASE_SECONDS
+      - VELTO_QUEUE_RETRY_MAX_SECONDS
+      - VELTO_FIN_RECONCILE_INTERVAL_MS
+      - VELTO_FIN_RECONCILE_BATCH_LIMIT
+      - VELTO_FIN_STALE_JOB_MINUTES
+      - VELTO_RELEASE
     init: true
     read_only: true
     tmpfs:
