@@ -12,6 +12,18 @@
 
 The current production target remains Vercel + Supabase + Railway. Azure deployment is deferred. Stage 0.8 must preserve Azure portability while introducing no Azure resources and keeping Azure cost at €0.
 
+## Current status
+
+- 0.8A: CLOSED/PASS
+- 0.8B: CLOSED/PASS
+- 0.8C: CLOSED/PASS
+- 0.8D: CLOSED/PASS
+- 0.8E:
+  - 0.8E-A: CLOSED/PASS
+  - 0.8E-B: current implementation
+
+Current production target remains Vercel + Supabase + Railway. Azure deployment is deferred. Azure cost remains €0.
+
 ## 0.8A — CI/CD & Automated Quality Gates
 
 `Velto CI` runs for pull requests targeting `main`, pushes to `main` and `agent/**`, and manual dispatches. A single economical Ubuntu job uses Node.js 22, `npm ci`, npm lockfile caching, a 30-minute timeout, and concurrency cancellation.

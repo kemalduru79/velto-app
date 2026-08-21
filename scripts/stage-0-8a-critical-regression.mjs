@@ -19,6 +19,7 @@ const tests = [
   "scripts/stage-0-8d-a-runtime-config-test.mjs",
   "scripts/stage-0-8d-b-provider-environment-test.mjs",
   "scripts/stage-0-8e-a-export-runtime-test.mjs",
+  "scripts/stage-0-8e-b-cloud-portability-test.mjs",
 ];
 
 for (const test of tests) {

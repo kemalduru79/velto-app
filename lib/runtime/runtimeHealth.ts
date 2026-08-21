@@ -44,6 +44,7 @@ export async function getRuntimeHealth(
     .map(([key]) => key);
   const ready = missing.length === 0;
   const release =
+    environment.VELTO_RELEASE ||
     environment.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ||
     environment.GIT_COMMIT_SHA?.slice(0, 12) ||
     environment.NEXT_PUBLIC_APP_VERSION ||
