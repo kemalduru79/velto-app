@@ -179,11 +179,26 @@ const composeEnvironment = {
   YOUTUBE_API_KEY: secretSentinel,
   CREATOR_ACCESS_TOKEN: secretSentinel,
 };
-const compose = spawnSync(
-  "docker",
-  ["compose", "--env-file", ".env.local", "config", "--format", "json"],
-  { cwd: root, encoding: "utf8", env: composeEnvironment },
-);
+const localEnvironmentPath = `${root}/.env.local`;
+const createdLocalEnvironment = !fs.existsSync(localEnvironmentPath);
+let compose;
+
+try {
+  if (createdLocalEnvironment) {
+    fs.writeFileSync(localEnvironmentPath, "# CI-only Compose placeholder\n");
+  }
+
+  compose = spawnSync(
+    "docker",
+    ["compose", "--env-file", ".env.local", "config", "--format", "json"],
+    { cwd: root, encoding: "utf8", env: composeEnvironment },
+  );
+} finally {
+  if (createdLocalEnvironment) {
+    fs.rmSync(localEnvironmentPath);
+  }
+}
+
 assert.equal(compose.status, 0, "Compose config must resolve");
 const workerEnvironment = JSON.parse(compose.stdout).services.worker.environment;
 for (const required of [
