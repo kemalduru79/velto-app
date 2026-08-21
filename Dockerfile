@@ -31,6 +31,7 @@ ENV VELTO_QUEUE_RETRY_BASE_SECONDS=5
 ENV VELTO_QUEUE_RETRY_MAX_SECONDS=300
 COPY scripts/validate-runtime-env.mjs ./scripts/validate-runtime-env.mjs
 COPY scripts/scale-worker.mjs ./scripts/scale-worker.mjs
+COPY lib/worker ./lib/worker
 USER node
 STOPSIGNAL SIGTERM
 CMD ["sh", "-c", "node scripts/validate-runtime-env.mjs worker && exec node scripts/scale-worker.mjs"]

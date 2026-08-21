@@ -27,7 +27,7 @@ const {
 const [page, image, production, scriptPlan, flowAudit, costPolicy] = await Promise.all([
   read("app/create/page.tsx"),
   read("app/api/image/route.ts"),
-  read("app/api/creator-production/route.ts"),
+  read("lib/creator/services/creatorProduction.server.ts"),
   read("app/api/creator-script-plan/route.ts"),
   read("lib/video/flowContinuityAudit.ts"),
   read("lib/credits/operationPolicy.ts"),

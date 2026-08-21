@@ -7,7 +7,7 @@ const editor = read("components/create/CreatorEditor.tsx");
 const editorState = read("lib/creator/editorState.ts");
 const creatorRoute = read("app/api/creator-video/route.ts");
 const jobRoute = read("app/api/jobs/[jobId]/route.ts");
-const worker = read("scripts/scale-worker.mjs");
+const worker = read("lib/worker/jobHandlers.mjs");
 const trimSmoke = read("scripts/beta-edit-p1c-creator-editor-trim-preview-smoke-test.mjs");
 
 let checks = 0;

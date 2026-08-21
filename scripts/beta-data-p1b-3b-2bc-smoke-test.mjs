@@ -15,7 +15,7 @@ const storage = read("app/api/creator-store-video/route.ts");
 const boundedReader = read("lib/security/boundedVideoResponse.ts");
 const creatorBoundary = read("lib/security/creatorApiBoundary.ts");
 const safetySource = read("lib/security/videoJobPublicSafety.ts");
-const worker = read("scripts/scale-worker.mjs");
+const worker = read("lib/worker/jobHandlers.mjs");
 const page = read("app/create/page.tsx");
 const bindingSource = read("lib/security/persistedVideoJobBinding.ts");
 

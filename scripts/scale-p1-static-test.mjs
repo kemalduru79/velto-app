@@ -4,6 +4,8 @@ import path from "node:path";
 const root = process.cwd();
 const requiredFiles = [
   "scripts/scale-worker.mjs",
+  "lib/worker/runtime.mjs",
+  "lib/worker/jobHandlers.mjs",
   "scripts/scale-p1-smoke-test.mjs",
   "scripts/scale-p1-multi-worker-test.mjs",
   "supabase/migrations/20260730100000_scale_p1_job_queue.sql",
@@ -17,7 +19,11 @@ for (const file of requiredFiles) {
   }
 }
 
-const worker = fs.readFileSync(path.join(root, "scripts/scale-worker.mjs"), "utf8");
+const worker = [
+  "scripts/scale-worker.mjs",
+  "lib/worker/runtime.mjs",
+  "lib/worker/jobHandlers.mjs",
+].map((file) => fs.readFileSync(path.join(root, file), "utf8")).join("\n");
 const migration = fs.readFileSync(
   path.join(root, "supabase/migrations/20260731090000_scale_p1_worker_hardening.sql"),
   "utf8",

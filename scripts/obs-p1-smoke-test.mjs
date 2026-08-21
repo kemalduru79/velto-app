@@ -39,7 +39,7 @@ requireText("lib/providers/image/index.ts", ["observeProviderCall", "mediaType: 
 requireText("lib/providers/voice/index.ts", ["observeProviderCall", "mediaType: \"voice\""]);
 requireText("lib/video/providers/providerRegistry.ts", ["createObservedVideoProvider", "mediaType: \"video\""]);
 requireText("lib/credits/serverMetering.ts", ["observeCreditMutation", "credit.release"]);
-requireText("scripts/scale-worker.mjs", [
+requireText("lib/worker/runtime.mjs", [
   "velto_metric",
   "velto_worker_job_duration_ms",
   "activeTraceId",

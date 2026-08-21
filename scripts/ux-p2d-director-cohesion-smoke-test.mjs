@@ -65,7 +65,7 @@ const page = requireNeedles("app/create/page.tsx", [
   "handleDownloadCreatorPackage",
 ]);
 
-const route = requireNeedles("app/api/creator-director/route.ts", [
+const route = requireNeedles("lib/creator/services/creatorDirector.server.ts", [
   "navigate_workspace_stage",
   "const PAID_ACTION_TYPES",
   "visibleCurrentStep",

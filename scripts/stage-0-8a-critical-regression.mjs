@@ -14,6 +14,7 @@ const tests = [
   "scripts/beta-edit-regression-creator-video-generation-lifecycle-smoke-test.mjs",
   "scripts/beta-edit-p1e-final-video-lifecycle-smoke-test.mjs",
   "scripts/beta-fin-p1-cost-guard-smoke-test.mjs",
+  "scripts/stage-0-8c-slice-a-modularization-test.mjs",
 ];
 
 for (const test of tests) {

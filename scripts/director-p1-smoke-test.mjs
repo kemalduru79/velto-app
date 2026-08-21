@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const page = fs.readFileSync("app/create/page.tsx", "utf8");
-const route = fs.readFileSync("app/api/creator-director/route.ts", "utf8");
+const route = [
+  "app/api/creator-director/route.ts",
+  "lib/creator/services/creatorDirector.server.ts",
+].map((file) => fs.readFileSync(file, "utf8")).join("\n");
 
 assert.match(page, /DIRECTOR-P1 VELTO COPILOT/);
 assert.match(route, /DIRECTOR-P1 VELTO COPILOT/);
