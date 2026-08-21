@@ -28,6 +28,10 @@ const groups = {
       key: "supabaseServiceRole",
       alternatives: ["SUPABASE_SERVICE_ROLE_KEY"],
     },
+    {
+      key: "internalWorkerToken",
+      alternatives: ["VELTO_INTERNAL_WORKER_TOKEN"],
+    },
   ],
 };
 

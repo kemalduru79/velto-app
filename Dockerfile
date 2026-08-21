@@ -5,8 +5,8 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM base AS builder
 ARG NEXT_PUBLIC_SUPABASE_URL
@@ -53,6 +53,16 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/validate-runtime-env.mjs ./scripts/validate-runtime-env.mjs
+
+# ffprobe-static 3.1.0 does not ship every Linux architecture it resolves.
+# Keep the package binary where available and install the Debian fallback only
+# when the traced package has no executable for the image architecture.
+RUN FFPROBE_PATH="$(node -p "require('ffprobe-static').path")" \
+    && if [ ! -x "$FFPROBE_PATH" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends ffmpeg \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Next.js may use an image/cache directory at runtime. Keep that cache on the
 # ephemeral /tmp filesystem so the application root can remain read-only.

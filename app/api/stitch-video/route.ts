@@ -5,6 +5,8 @@ import fsSync from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 import {
   applyTimelineSyncPlanToScenes,
   type TimelineScenePlan,
@@ -71,9 +73,17 @@ const OUTPUT_SIZE = "960:960";
 const OUTPUT_FPS = String(STITCH_OUTPUT_FPS);
 const OUTPUT_AUDIO_SAMPLE_RATE = "44100";
 
+if (!ffmpegPath) {
+  throw new Error("ffmpeg-static does not provide a binary for this runtime.");
+}
+const ffmpegExecutable = ffmpegPath;
+const ffprobeExecutable = fsSync.existsSync(ffprobeStatic.path)
+  ? ffprobeStatic.path
+  : "/usr/bin/ffprobe";
+
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    execFile("ffmpeg", ["-y", ...args], (error, stdout, stderr) => {
+    execFile(ffmpegExecutable, ["-y", ...args], (error, stdout, stderr) => {
       if (error) {
         reject(
           new Error(
@@ -97,7 +107,7 @@ function runFfmpeg(args: string[]) {
 
 function runFfprobe(args: string[]) {
   return new Promise<string>((resolve, reject) => {
-    execFile("ffprobe", args, (error, stdout, stderr) => {
+    execFile(ffprobeExecutable, args, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(stderr || error.message));
         return;

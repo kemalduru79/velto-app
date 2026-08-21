@@ -18,6 +18,17 @@ function requireText(file, values) {
 }
 
 requireText("next.config.ts", ['output: "standalone"']);
+requireText("next.config.ts", [
+  '"/api/stitch-video"',
+  '"./node_modules/ffmpeg-static/**/*"',
+  '"./node_modules/ffprobe-static/**/*"',
+]);
+requireText("app/api/stitch-video/route.ts", [
+  'import ffmpegPath from "ffmpeg-static"',
+  'import ffprobeStatic from "ffprobe-static"',
+  "execFile(ffmpegExecutable",
+  "execFile(ffprobeExecutable",
+]);
 requireText("Dockerfile", [
   "AS builder",
   "AS runner",
@@ -29,12 +40,16 @@ requireText("Dockerfile", [
   "validate-runtime-env.mjs web",
   "validate-runtime-env.mjs worker",
   "/tmp/velto-next-cache",
+  "COPY package.json package-lock.json ./",
+  "RUN npm ci",
+  "require('ffprobe-static').path",
 ]);
 requireText("compose.yaml", [
   "read_only: true",
   "tmpfs:",
   "no-new-privileges:true",
   "stop_grace_period:",
+  "/api/runtime-health?mode=ready",
 ]);
 requireText("app/api/runtime-health/route.ts", [
   "await getRuntimeHealth(mode)",
@@ -51,6 +66,7 @@ requireText(".env.container.example", [
   "OPENAI_API_KEY=",
   "VELTO_DATABASE_DRIVER=supabase",
   "VELTO_STORAGE_DRIVER=supabase",
+  "VELTO_INTERNAL_WORKER_TOKEN=",
 ]);
 
 const baseEnv = {
@@ -59,6 +75,7 @@ const baseEnv = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
   OPENAI_API_KEY: "test-openai-key",
+  VELTO_INTERNAL_WORKER_TOKEN: "test-worker-token",
 };
 
 for (const mode of ["web", "worker"]) {
@@ -90,6 +107,27 @@ const invalid = spawnSync(
 
 if (invalid.status === 0) {
   throw new Error("Runtime validation accepted a missing service-role key.");
+}
+
+const invalidWorker = spawnSync(
+  process.execPath,
+  ["scripts/validate-runtime-env.mjs", "worker"],
+  {
+    cwd: root,
+    env: {
+      ...baseEnv,
+      VELTO_INTERNAL_WORKER_TOKEN: "",
+    },
+    encoding: "utf8",
+  },
+);
+
+if (invalidWorker.status === 0) {
+  throw new Error("Runtime validation accepted a missing internal worker token.");
+}
+
+if (invalidWorker.stderr.includes("test-worker-token")) {
+  throw new Error("Runtime validation exposed the internal worker token.");
 }
 
 console.log("RUN-P1 static verification passed.");

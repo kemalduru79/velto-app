@@ -24,6 +24,9 @@ Statik RUN-P1 kontrolü:
 npm run test:run-p1
 ```
 
+Production dependency kurulumu committed `package-lock.json` dosyasını zorunlu
+tutar ve yalnızca `npm ci` kullanır.
+
 Normal build:
 
 ```bash
@@ -36,19 +39,23 @@ npm run build
 Docker Desktop açıkken:
 
 ```bash
-npm run container:config
+node scripts/stage-0-8b-container-validation.mjs
+```
+
+Bu doğrulama Compose konfigürasyonunu ve iki image build'ini kontrol eder; web
+runtime'ını non-root/read-only olarak çalıştırır; `/tmp`, live/ready endpoint'leri,
+worker readiness sıralaması ve idle `SIGTERM` kapanışını doğrular. Runner içindeki
+`ffmpeg-static` ve `ffprobe-static` executable'ları ile `/tmp` altında küçük,
+deterministik bir medya üretme/probe işlemi de yapar. Docker daemon çalışmıyorsa
+komut başarısız olur; bu durum runtime doğrulamasının beklemede olduğu anlamına gelir.
+Validator boş bir lokal host portu seçer; normal Compose kullanımı varsayılan olarak
+`3000` portunu kullanır ve gerekirse `VELTO_HOST_PORT` ile değiştirilebilir.
+
+Manuel endpoint kontrolü gereken durumda:
+
+```bash
 npm run container:up
-```
-
-Ayrı terminalde:
-
-```bash
 npm run test:run-p1:runtime
-```
-
-Kapatma:
-
-```bash
 npm run container:down
 ```
 
@@ -61,12 +68,19 @@ npm run container:down
 - `GET /api/runtime-health?mode=live`: process liveness
 - `GET /api/runtime-health?mode=ready`: core environment ve writable temporary filesystem kontrolü
 
+Image-level healthcheck liveness kullanır. Compose worker başlangıç bağımlılığı
+ise web'in environment ve `/tmp` kontrollerinden geçen readiness sonucunu kullanır.
+
 Health response secret değerlerini döndürmez.
 
 ## Stateless runtime sözleşmesi
 
 - Kalıcı proje, kredi, job ve medya verisi repository/storage adapter'larında tutulur.
 - Geçici işleme dosyaları yalnızca `/tmp` altında oluşturulur.
+- Stitch runtime'ı image içinde trace edilen `ffmpeg-static` ve `ffprobe-static`
+  executable'larını kullanır. `ffprobe-static` paketinin binary sağlamadığı Linux
+  mimarilerinde image build'i Debian ffprobe fallback'ini koşullu olarak kurar;
+  runtime belirsiz bir sistem `PATH` değerine bağlı değildir.
 - Container root filesystem read-only çalışabilir.
 - Web container yeniden oluşturulduğunda kullanıcı verisi kaybolmaz.
 
