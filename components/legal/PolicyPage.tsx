@@ -15,7 +15,7 @@ const copy = {
       title: "Kullanım Koşulları",
       intro: "Bu koşullar, geliştirme aşamasındaki Velto Studio hizmetinin kullanımına ilişkin temel ürün kurallarını açıklar.",
       sections: [
-        ["Hesap sorumluluğu", "Hesap bilgilerinizin doğruluğundan, giriş bilgilerinizin güvenliğinden ve hesabınız üzerinden yapılan işlemlerden siz sorumlusunuz."],
+        ["Hesap ve yaş modeli", "Hesap oluşturma ve hesap yönetimi 18 yaş ve üzeri yetişkin hesap sahibine yöneliktir. Storyverse genç kullanıcı deneyimi, yetişkin tarafından yönetilen bu hesap altında kullanılabilir. Hesap bilgilerinizin doğruluğundan ve giriş bilgilerinizin güvenliğinden siz sorumlusunuz."],
         ["İçerik ve çıktılar", "Girdiğiniz içerik için gerekli hak ve izinlere sahip olmalısınız. Yapay zekâ ile üretilen sonuçlar hatalı, eksik veya uygunsuz olabilir; yayınlamadan ya da kullanmadan önce sonuçları incelemelisiniz."],
         ["Hizmet sağlayıcıları", "İstediğiniz üretim işlemini gerçekleştirmek için yapılandırılmış üçüncü taraf yapay zekâ, medya ve altyapı hizmetleri kullanılabilir."],
         ["Krediler", "Krediler ürün içindeki kullanım birimleridir. Mevcut kredi kuralları beta dönemindedir ve nihai ticari fiyatlandırma taahhüdü değildir."],
@@ -43,7 +43,7 @@ const copy = {
       title: "Terms of Use",
       intro: "These terms describe the baseline product rules for using the pre-release Velto Studio service.",
       sections: [
-        ["Account responsibility", "You are responsible for accurate account information, safeguarding your sign-in details, and activity performed through your account."],
+        ["Account and age model", "Creating and managing an account is intended for an adult account holder aged 18 or older. The Storyverse youth experience may be used under this adult-managed account. You are responsible for accurate account information and safeguarding your sign-in details."],
         ["Content and outputs", "You must have the rights and permissions needed for content you provide. AI-generated results may be inaccurate, incomplete, or unsuitable; review them before publishing or relying on them."],
         ["Service providers", "Configured third-party AI, media, and infrastructure services may be used to perform the generation operation you request."],
         ["Credits", "Credits are in-product usage units. Current credit rules are part of the beta product and are not a promise of final commercial pricing."],

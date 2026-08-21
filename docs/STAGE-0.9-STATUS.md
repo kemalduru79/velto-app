@@ -2,8 +2,8 @@
 
 ## Current
 
-- 0.9A Broad Security / Consent / Legal / Lifecycle Baseline: **IN PROGRESS**
-- 0.9B High-Risk Identity & Data Lifecycle: **DEFERRED / ONLY IF REQUIRED**
+- 0.9A Broad Security / Consent / Legal / Lifecycle Baseline: **CLOSED / PASS**
+- 0.9B High-Risk Identity & Data Lifecycle Decision Gate: **CLOSED / PASS**
 - 0.9C Closure: **NOT STARTED**
 
 ## 0.9A scope
@@ -34,3 +34,51 @@ Before implementation, product and legal review must decide the account-holder m
 ## Explicit non-actions
 
 No dependency, database migration, live data mutation, provider or credit call, deployment, Azure resource, provider routing, queue behavior, or Stage 0.7 media-lifecycle behavior is introduced.
+
+
+## 0.9B decision gate — CLOSED / PASS
+
+Stage 0.9B was resolved as a product and architecture decision gate rather than
+a destructive implementation sprint.
+
+### Account-wide erasure decision
+
+Automated account-wide deletion is **not implemented in Stage 0**.
+
+Repository evidence shows mixed deletion semantics across durable data:
+some user-owned records use `ON DELETE CASCADE`, while media ownership and
+storage entitlement/admission records use `ON DELETE RESTRICT`. The original
+`velto_projects` schema migration is also not available in this repository,
+so complete cascade behavior cannot be proven safely.
+
+Therefore account-wide erasure is an **external/public beta readiness blocker**.
+Before enabling it, Velto must verify the actual production schema and Storage
+inventory and define a fail-closed deletion orchestration covering projects,
+media, Storage objects, jobs, credits/financial records, entitlements, public
+shares, operational records, retention exceptions, confirmation, and recovery.
+
+No `auth.users` deletion, migration, cascade change, or live-data mutation is
+introduced by this decision.
+
+### Storyverse account model decision
+
+For Stage 0, Velto does **not** provide independent child accounts.
+
+The product account model is an adult account holder aged **18+**. Storyverse
+may provide a youth-oriented creative experience under an adult-managed account.
+
+This is a product-model decision, not a legal-compliance certification.
+Technical age verification and child/guardian identity persistence are not
+implemented in Stage 0.
+
+Before external/public Storyverse release, a dedicated legal/product gate must
+confirm:
+- account-holder eligibility wording,
+- whether technical age assurance is required,
+- guardian/parent consent requirements,
+- consent evidence and revocation requirements,
+- jurisdiction-specific obligations,
+- any required migration or enforcement mechanism.
+
+Until that gate is completed, Velto must not represent the current architecture
+as a verified child-account or guardian-consent system.

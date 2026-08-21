@@ -19,8 +19,8 @@ const repository = read("lib/persistence/projects/supabaseProjectRepository.ts")
 const publicRoute = read("app/api/public-project/[shareId]/route.ts");
 const projection = read("lib/security/publicStoryverseProjection.ts");
 
-assert.match(status, /0\.9A Broad Security \/ Consent \/ Legal \/ Lifecycle Baseline: \*\*IN PROGRESS\*\*/);
-assert.match(status, /0\.9B High-Risk Identity & Data Lifecycle: \*\*DEFERRED \/ ONLY IF REQUIRED\*\*/);
+assert.match(status, /0\.9A Broad Security \/ Consent \/ Legal \/ Lifecycle Baseline: \*\*CLOSED \/ PASS\*\*/);
+assert.match(status, /0\.9B High-Risk Identity & Data Lifecycle Decision Gate: \*\*CLOSED \/ PASS\*\*/);
 assert.ok(fs.existsSync("app/terms/page.tsx"));
 assert.ok(fs.existsSync("app/privacy/page.tsx"));
 assert.match(policy, /TERMS_VERSION\s*=\s*"[^"]+"/);
@@ -52,8 +52,18 @@ assert.match(repository, /\.eq\("is_public", true\)/);
 for (const marker of ["PUBLIC_STORYVERSE_LIMITS", "mapPublicStoryverseEpisode", "maxSerializedDtoBytes", "safeMediaUrl"]) {
   assert.ok(projection.includes(marker), `bounded projection missing ${marker}`);
 }
+
+assert.match(status, /Automated account-wide deletion is \*\*not implemented in Stage 0\*\*/);
+assert.match(status, /external\/public beta readiness blocker/);
+assert.match(status, /does \*\*not\*\* provide independent child accounts/);
+assert.match(status, /adult account holder aged \*\*18\+\*\*/);
+assert.match(status, /Technical age verification and child\/guardian identity persistence are not\s+implemented/);
+assert.match(status, /Before external\/public Storyverse release/);
+assert.match(lifecycle, /adult account holder aged 18\+/);
+assert.match(lifecycle, /Storyverse does not provide independent child accounts/);
+assert.match(lifecycle, /external\/public Storyverse release requires a separate legal\/product gate/);
 assert.match(lifecycle, /Trash is a recoverable logical state, still consumes storage/);
-assert.match(lifecycle, /Account-wide deletion is not implemented/);
+assert.match(lifecycle, /Automated account-wide deletion is not implemented in Stage 0/);
 assert.match(status, /Storyverse child \/ guardian consent/);
 assert.equal(changedFiles.some((file) => /azure|terraform|bicep/i.test(file)), false);
 assert.equal(changedFiles.includes("package-lock.json"), false);
