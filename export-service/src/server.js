@@ -2147,6 +2147,16 @@ app.post("/export-movie", async (req, res) => {
 
 const port = Number(process.env.PORT || 3001);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`velto-export-service running on port ${port}`);
 });
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => process.exit(0));
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
