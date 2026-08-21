@@ -8,6 +8,7 @@ const changedFiles = execFileSync("git", ["diff", "--name-only", STARTING_HEAD],
   .trim().split("\n").filter(Boolean);
 const status = read("docs/STAGE-0.9-STATUS.md");
 const lifecycle = read("docs/STAGE-0.9-DATA-LIFECYCLE.md");
+const closure = read("docs/STAGE-0.9-CLOSURE.md");
 const policy = read("lib/legal/policy.ts");
 const signup = read("app/signup/page.tsx");
 const authTypes = read("lib/auth/types.ts");
@@ -21,6 +22,18 @@ const projection = read("lib/security/publicStoryverseProjection.ts");
 
 assert.match(status, /0\.9A Broad Security \/ Consent \/ Legal \/ Lifecycle Baseline: \*\*CLOSED \/ PASS\*\*/);
 assert.match(status, /0\.9B High-Risk Identity & Data Lifecycle Decision Gate: \*\*CLOSED \/ PASS\*\*/);
+
+assert.ok(status.includes("- 0.9C Closure: **CLOSED / PASS**"));
+assert.ok(status.includes("- Stage 0.9 overall: **CLOSED / PASS**"));
+assert.ok(closure.includes("Stage 0.9 is **CLOSED / PASS**"));
+assert.ok(closure.includes("b6002f360a8e9741b6e450395ea44a80e759fc02"));
+assert.ok(closure.includes("32525477396"));
+assert.ok(closure.includes("04c2ccc7df2a4645f39c73018bb759b9f9849573"));
+assert.ok(closure.includes("32526589498"));
+assert.ok(closure.includes("external/public beta readiness"));
+assert.ok(closure.includes("adult account holder aged 18+"));
+assert.ok(closure.includes("Stage 0.7 media lifecycle remains authoritative"));
+
 assert.ok(fs.existsSync("app/terms/page.tsx"));
 assert.ok(fs.existsSync("app/privacy/page.tsx"));
 assert.match(policy, /TERMS_VERSION\s*=\s*"[^"]+"/);
@@ -77,3 +90,4 @@ for (const prefix of ["lib/providers/", "lib/credits/", "lib/queue/", "worker/"]
 }
 
 console.log("STAGE_0_9A_SECURITY_CONSENT_BASELINE=PASS");
+console.log("STAGE_0_9_CLOSURE=PASS");

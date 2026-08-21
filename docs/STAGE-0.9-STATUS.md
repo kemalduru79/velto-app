@@ -4,7 +4,8 @@
 
 - 0.9A Broad Security / Consent / Legal / Lifecycle Baseline: **CLOSED / PASS**
 - 0.9B High-Risk Identity & Data Lifecycle Decision Gate: **CLOSED / PASS**
-- 0.9C Closure: **NOT STARTED**
+- 0.9C Closure: **CLOSED / PASS**
+- Stage 0.9 overall: **CLOSED / PASS**
 
 ## 0.9A scope
 
@@ -82,3 +83,39 @@ confirm:
 
 Until that gate is completed, Velto must not represent the current architecture
 as a verified child-account or guardian-consent system.
+
+
+## 0.9C closure — CLOSED / PASS
+
+Stage 0.9 is globally **CLOSED / PASS**.
+
+Closure evidence:
+
+- Stage 0.9A implementation commit:
+  `b6002f360a8e9741b6e450395ea44a80e759fc02`
+- Stage 0.9A GitHub Actions:
+  run `32525477396` — SUCCESS
+- Stage 0.9A Vercel:
+  SUCCESS on the same commit
+
+- Stage 0.9B decision-gate commit:
+  `04c2ccc7df2a4645f39c73018bb759b9f9849573`
+- Stage 0.9B GitHub Actions:
+  run `32526589498` — SUCCESS
+- Stage 0.9B Vercel:
+  SUCCESS on the same commit
+
+No unresolved Stage 0.9 P0/P1 implementation blocker remains.
+
+Accepted deferred gates are not treated as completed capabilities:
+
+- automated account-wide erasure remains an external/public beta readiness blocker;
+- Storyverse independent child accounts are not part of Stage 0;
+- external/public Storyverse release requires legal/product review of age assurance and guardian-consent requirements;
+- strict Content Security Policy remains deferred until runtime/media compatibility is proven;
+- a dedicated immutable consent ledger remains deferred pending demonstrated need;
+- `share_id` rotation remains deferred because historical schema nullability is not proven.
+
+Stage 0.7 media lifecycle remains authoritative.
+No database migration, live mutation, provider change, credit change, queue change,
+Azure resource, or deployment architecture change is introduced by 0.9C.
