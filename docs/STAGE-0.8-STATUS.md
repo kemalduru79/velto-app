@@ -22,15 +22,15 @@ The current production target remains Vercel + Supabase + Railway. Azure deploym
 - 0.8F: CLOSED/PASS
   - 0.8F-A Health & Observability Consistency: CLOSED/PASS
   - 0.8F-B Recovery & Operator Baseline: CLOSED/PASS
-- 0.8G Stage 0.8 Closure & Architecture Validation: IN VALIDATION
+- 0.8G Stage 0.8 Closure & Architecture Validation: CLOSED/PASS
 
 Current production target remains Vercel + Supabase + Railway. Azure deployment is deferred. Azure cost remains €0.
 
 ## Stage 0.8 closure summary
 
-Stages 0.8A through 0.8F are closed with their required quality, container, modularization, configuration, portability, health, observability, recovery, and operator baselines in place. Stage 0.8G is validating the resulting architecture and its deterministic regression contract.
+Stages 0.8A through 0.8G are CLOSED/PASS with their required quality, container, modularization, configuration, portability, health, observability, recovery, operator, and architecture-validation baselines in place.
 
-Stage 0.8 is not yet globally closed. Closure requires the final regression suite to pass, the closure commit to pass GitHub CI and Vercel, the local and remote branch heads to be clean and aligned, and no unresolved P0/P1 issue.
+Stage 0.8 is globally CLOSED/PASS. Closure commit `2dd3548f7fe3fa0084cc27d045412cb6563775bf` passed the deterministic regression suite, GitHub CI and Vercel validation on the same SHA. The branch was clean and aligned at closure, with no unresolved P0/P1 blocker.
 
 ## 0.8A — CI/CD & Automated Quality Gates
 

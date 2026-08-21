@@ -61,4 +61,4 @@ Stage 0.8 does not split the modular monolith into microservices, redesign the e
 
 ## Closure decision
 
-The Stage 0.8 architecture is ready for final validation, but Stage 0.8 is not yet declared closed. Local deterministic validation alone is insufficient. Closure requires the final regression suite, a committed closure SHA with successful GitHub CI and Vercel status, a clean worktree with aligned local and remote branch heads, and no unresolved P0/P1 issue. Those post-commit conditions remain pending and are not claimed by this document.
+Stage 0.8 is **CLOSED / PASS**. The final deterministic regression suite passed, and closure commit `2dd3548f7fe3fa0084cc27d045412cb6563775bf` passed GitHub CI run `32522776885` and Vercel validation on the same SHA. The branch was clean and locally/remotely aligned at closure, and no unresolved P0/P1 architecture blocker remained. The current production target remains Vercel + Supabase + Railway; Azure deployment remains deferred with no Azure resources introduced.

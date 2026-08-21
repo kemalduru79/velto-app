@@ -27,8 +27,8 @@ for (const stage of ["A", "B", "C", "D", "E", "F"]) {
 }
 check("0.8F-A is closed", () => assert.match(status, /0\.8F-A[^\n]*CLOSED\/PASS/));
 check("0.8F-B is closed", () => assert.match(status, /0\.8F-B[^\n]*CLOSED\/PASS/));
-check("0.8G remains in validation", () => assert.match(status, /0\.8G[^\n]*IN VALIDATION/));
-check("overall closure is not prematurely claimed", () => assert.match(status, /Stage 0\.8 is not yet globally closed/));
+check("0.8G is closed", () => assert.match(status, /0\.8G[^\n]*CLOSED\/PASS/));
+check("overall Stage 0.8 closure is recorded", () => assert.match(status, /Stage 0\.8 is globally CLOSED\/PASS/));
 
 for (const heading of [
   "Objective", "Final runtime topology", "Architectural style", "Persistence",
@@ -74,10 +74,12 @@ check("Azure remains deferred at zero cost", () => {
 for (const stage of ["0.9", "0.10", "0.11", "0.12"]) {
   check(`${stage} is explicitly deferred`, () => assert.match(closure, new RegExp(`Stage ${stage.replace(".", "\\.")}`)));
 }
-check("closure conditions include committed CI and Vercel", () => {
-  assert.match(closure, /committed closure SHA with successful GitHub CI and Vercel status/);
-  assert.match(closure, /clean worktree with aligned local and remote branch heads/);
-  assert.match(closure, /no unresolved P0\/P1 issue/);
+check("closure evidence records committed CI and Vercel", () => {
+  assert.match(closure, /Stage 0\.8 is \*\*CLOSED \/ PASS\*\*/);
+  assert.match(closure, /2dd3548f7fe3fa0084cc27d045412cb6563775bf/);
+  assert.match(closure, /32522776885/);
+  assert.match(closure, /Vercel validation on the same SHA/);
+  assert.match(closure, /no unresolved P0\/P1 architecture blocker remained/);
 });
 
 check("CI uses Node 22", () => assert.match(workflow, /node-version:\s*["']?22/));
