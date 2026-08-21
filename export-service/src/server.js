@@ -7,6 +7,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
+import { resolveRuntimeRelease } from "./runtimeIdentity.js";
 
 const app = express();
 
@@ -1552,6 +1553,14 @@ app.get("/health", (_req, res) => {
     stitchContinuityVersion: "3N-4",
     finalProductionGateCompatible: true,
     freezeFrameFallbackDisabled: true,
+    release: resolveRuntimeRelease(),
+    checkedAt: new Date().toISOString(),
+    runtime: {
+      node: process.version,
+      uptimeSeconds: Math.round(process.uptime()),
+      stateless: true,
+      tempDirectory: os.tmpdir(),
+    },
   });
 });
 

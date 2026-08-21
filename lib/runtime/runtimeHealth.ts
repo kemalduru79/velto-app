@@ -5,6 +5,7 @@ import {
   CORE_ENVIRONMENT_GROUPS,
   getCoreEnvironmentChecks,
 } from "./coreEnvironment.mjs";
+import { resolveRuntimeRelease } from "./releaseIdentity.mjs";
 
 export type RuntimeHealthMode = "live" | "ready";
 
@@ -43,12 +44,7 @@ export async function getRuntimeHealth(
     .filter(([, configured]) => !configured)
     .map(([key]) => key);
   const ready = missing.length === 0;
-  const release =
-    environment.VELTO_RELEASE ||
-    environment.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ||
-    environment.GIT_COMMIT_SHA?.slice(0, 12) ||
-    environment.NEXT_PUBLIC_APP_VERSION ||
-    "local";
+  const release = resolveRuntimeRelease(environment);
 
   return {
     ok: mode === "live" ? true : ready,

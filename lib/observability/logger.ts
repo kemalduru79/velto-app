@@ -10,8 +10,9 @@ import type {
   ObservabilityLogLevel,
   ObservabilityMetadata,
 } from "./types";
+import { resolveRuntimeRelease } from "../runtime/releaseIdentity";
 
-const RELEASE = process.env.VELTO_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "local";
+const RELEASE = resolveRuntimeRelease();
 const SERVICE = process.env.VELTO_SERVICE_NAME || "velto-web";
 
 export type StructuredLogger = ReturnType<typeof createLogger>;

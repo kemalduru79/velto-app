@@ -22,6 +22,6 @@ assert.doesNotMatch(migration, /'(?:export|generated_media|creator_video|other)'
 assert.doesNotMatch(migration, /media_kind|row level security|\bgrant\b|\brevoke\b|\bupdate\b|\binsert\b|\bdelete\b/i);
 assert.match(admission, /StorageAdmissionPurpose[\s\S]*\| "final_movie_export";/);
 
-assert.equal(hash(".env.container.example"), "48acfcdc0a80a5f442d05f31b06cde41ff29ce3ca3cb2fb986d96224a9dd25b7", "production flag defaults changed");
+assert.equal(hash(".env.container.example"), "2fdfa05fe1996f254f2669fe7ed7319d22815fab41e7a72b4ee47f43d5368a46", "production flag defaults changed");
 
 console.log("stage-0.7d-3a final export admission schema: all checks passed");

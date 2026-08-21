@@ -11,6 +11,7 @@ import {
   setGauge,
   withObservedApiRoute,
 } from "@/lib/observability";
+import { resolveRuntimeRelease } from "@/lib/runtime/releaseIdentity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,8 +50,7 @@ async function getHandler(request: NextRequest) {
     const body = {
       ok: queue.healthy,
       service: process.env.VELTO_SERVICE_NAME || "velto-web",
-      release:
-        process.env.VELTO_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || "local",
+      release: resolveRuntimeRelease(),
       generatedAt: new Date().toISOString(),
       runtime: {
         node: process.version,

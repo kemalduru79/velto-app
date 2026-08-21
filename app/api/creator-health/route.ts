@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import { isProviderConfigured } from "../../../lib/runtime/providerEnvironment.mjs";
+import { resolveRuntimeRelease } from "@/lib/runtime/releaseIdentity";
 
 export const runtime = "nodejs";
 export const maxDuration = 15;
@@ -125,10 +126,7 @@ export async function GET(req: Request) {
           ? "ready"
           : "degraded";
     const checkedAt = new Date().toISOString();
-    const release =
-      process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ||
-      process.env.NEXT_PUBLIC_APP_VERSION ||
-      "local";
+    const release = resolveRuntimeRelease();
 
     return NextResponse.json(
       {
