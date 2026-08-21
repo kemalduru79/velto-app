@@ -13,6 +13,10 @@ import type {
   VoiceRole,
 } from "./types";
 import type { CreatorVoiceLibraryVoice } from "@/lib/creator/voiceLibrary";
+import {
+  isProviderConfigured,
+  resolveProviderEnvironmentValue,
+} from "@/lib/runtime/providerEnvironment.mjs";
 
 async function fetchWithTimeout(
   input: string,
@@ -126,7 +130,7 @@ export class ElevenLabsVoiceAdapter implements VoiceProvider {
   readonly tier = "primary" as const;
 
   isAvailable() {
-    return Boolean(process.env.ELEVENLABS_API_KEY?.trim());
+    return isProviderConfigured("elevenlabs");
   }
 
   getDefaultModelId() {
@@ -135,26 +139,20 @@ export class ElevenLabsVoiceAdapter implements VoiceProvider {
 
   getDefaultVoiceId(language: VoiceLanguage, role: VoiceRole) {
     if (role === "narrator") {
-      return (
-        (language === "en"
-          ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
-          : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID
-        )?.trim() || null
-      );
+      return resolveProviderEnvironmentValue(
+        "elevenlabs",
+        language === "en" ? "enNarratorVoiceId" : "trNarratorVoiceId",
+      ) || null;
     }
 
-    return (
-      (language === "en"
-        ? process.env.ELEVENLABS_EN_CHARACTER_VOICE_ID
-        : process.env.ELEVENLABS_TR_CHARACTER_VOICE_ID
-      )?.trim() ||
-      process.env.ELEVENLABS_VOICE_ID?.trim() ||
-      null
-    );
+    return resolveProviderEnvironmentValue(
+      "elevenlabs",
+      language === "en" ? "enCharacterVoiceId" : "trCharacterVoiceId",
+    ) || null;
   }
 
   private getApiKey() {
-    const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+    const apiKey = resolveProviderEnvironmentValue("elevenlabs", "apiKey");
     if (!apiKey) {
       throw new ProviderError("Voice provider is not configured.", {
         code: "not_configured",

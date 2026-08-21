@@ -92,7 +92,7 @@ check(/requirePrivateBucket\(dependencies\.privateBucket\)/.test(service), "miss
 check(/async uploadPublic[\s\S]*getPublicUrl/.test(storage), "public upload compatible");
 check(!/uploadPrivate/.test(read("app/api/image/route.ts")) && !/uploadPrivate/.test(read("app/api/creator-video/route.ts")), "existing media paths unchanged");
 
-check(/env\.CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED === "true"/.test(read("lib/providers/music/downloadSecurity.ts")), "disabled default");
+check(/resolveProviderEnvironmentValue\([\s\S]*"acquisitionEnabled"[\s\S]*\) === "true"/.test(read("lib/providers/music/downloadSecurity.ts")), "disabled default");
 check(disabledCounters.provider === 0, "disabled before provider");
 check(disabledCounters.storage === 0, "disabled before storage");
 check(!/providerKey/.test(route), "browser cannot set provider");

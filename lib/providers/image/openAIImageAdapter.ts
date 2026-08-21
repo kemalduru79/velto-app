@@ -8,6 +8,10 @@ import type {
   ImageProviderGenerateInput,
   ImageProviderResult,
 } from "./types";
+import {
+  isProviderConfigured,
+  resolveProviderEnvironmentValue,
+} from "@/lib/runtime/providerEnvironment.mjs";
 
 type ImageApiResponse = {
   data?: Array<{ b64_json?: string | null }>;
@@ -25,11 +29,11 @@ export class OpenAIImageAdapter implements ImageProvider {
   };
 
   isAvailable() {
-    return Boolean(process.env.OPENAI_API_KEY?.trim());
+    return isProviderConfigured("openai");
   }
 
   private getClient() {
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const apiKey = resolveProviderEnvironmentValue("openai", "apiKey");
 
     if (!apiKey) {
       throw new ProviderError("Image provider is not configured.", {

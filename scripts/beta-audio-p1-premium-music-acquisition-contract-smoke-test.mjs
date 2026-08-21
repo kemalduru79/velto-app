@@ -20,6 +20,13 @@ const executableSecurity = securitySource
   .replace(
     /import \{ isUnsafeNetworkAddress \} from "@\/lib\/security\/safeRemoteMediaFetch";/,
     "const isUnsafeNetworkAddress = () => true;",
+  )
+  .replace(
+    /import \{ resolveProviderEnvironmentValue \} from "@\/lib\/runtime\/providerEnvironment\.mjs";/,
+    `const resolveProviderEnvironmentValue = (_provider, _key, env) =>
+      typeof env.CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED === "string"
+        ? env.CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED.trim()
+        : "";`,
   );
 const transpiled = ts.transpile(executableSecurity, {
   module: ts.ModuleKind.ES2022,

@@ -17,6 +17,7 @@ const tests = [
   "scripts/stage-0-8c-slice-a-modularization-test.mjs",
   "scripts/stage-0-8c-slice-b-stitch-modularization-test.mjs",
   "scripts/stage-0-8d-a-runtime-config-test.mjs",
+  "scripts/stage-0-8d-b-provider-environment-test.mjs",
 ];
 
 for (const test of tests) {

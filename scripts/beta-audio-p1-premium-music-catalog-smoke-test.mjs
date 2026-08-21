@@ -10,6 +10,7 @@ const check = (name, fn) => { fn(); checks.push(name); };
 
 const librarySource = await read("lib/creator/musicLibrary.ts");
 const adapter = await read("lib/providers/music/epidemic.ts");
+const providerEnvironment = await read("lib/runtime/providerEnvironment.mjs");
 const types = await read("lib/providers/music/types.ts");
 const providerIndex = await read("lib/providers/music/index.ts");
 const route = await read("app/api/creator-music/route.ts");
@@ -28,7 +29,8 @@ check("product contract is normalized and provider-independent", () => {
   assert.doesNotMatch(types, /epidemic|downloadUrl|apiKey|providerUrl/i);
 });
 check("API key remains backend-only and cannot serialize", () => {
-  assert.match(adapter, /process\.env\.EPIDEMIC_SOUND_API_KEY/);
+  assert.match(providerEnvironment, /EPIDEMIC_SOUND_API_KEY/);
+  assert.match(adapter, /resolveProviderEnvironmentValue\("epidemic", "apiKey"\)/);
   assert.doesNotMatch(picker + page + types, /EPIDEMIC_SOUND_API_KEY/);
   assert.doesNotMatch(route, /EPIDEMIC_SOUND_API_KEY/);
 });

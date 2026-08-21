@@ -1,4 +1,8 @@
 import { createLogger } from "@/lib/observability";
+import {
+  isProviderConfigured,
+  resolveProviderEnvironmentValue,
+} from "@/lib/runtime/providerEnvironment.mjs";
 import type {
   VideoProvider,
   VideoProviderCreateInput,
@@ -34,7 +38,7 @@ function optionalString(value: unknown) {
 }
 
 function getApiKey() {
-  return process.env.VEO_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim() || "";
+  return resolveProviderEnvironmentValue("veo", "apiKey");
 }
 
 function getModel() {
@@ -242,7 +246,7 @@ export class VeoVideoProvider implements VideoProvider {
   };
 
   isAvailable() {
-    return Boolean(getApiKey());
+    return isProviderConfigured("veo");
   }
 
   normalizeDuration() {

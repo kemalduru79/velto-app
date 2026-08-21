@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { isProviderConfigured } from "../../../lib/runtime/providerEnvironment.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 15;
@@ -109,13 +110,9 @@ export async function GET(req: Request) {
       database:
         configured("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL") &&
         configured("NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"),
-      ai: configured("OPENAI_API_KEY"),
-      voice: configured("ELEVENLABS_API_KEY"),
-      video: configured(
-        "RUNWAYML_API_SECRET",
-        "RUNWAY_API_KEY",
-        "RUNWAYML_API_KEY",
-      ),
+      ai: isProviderConfigured("openai"),
+      voice: isProviderConfigured("elevenlabs"),
+      video: isProviderConfigured("runway"),
       export: exportService.ready,
     };
 

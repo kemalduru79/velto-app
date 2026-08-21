@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { ProviderError } from "@/lib/providers/core/providerError";
 import { isUnsafeNetworkAddress } from "@/lib/security/safeRemoteMediaFetch";
+import { resolveProviderEnvironmentValue } from "@/lib/runtime/providerEnvironment.mjs";
 
 // A five-minute 320 kbps MP3 is roughly 12 MiB. Thirty MiB leaves controlled
 // headroom without permitting an unbounded provider response in memory.
@@ -11,7 +12,11 @@ export const PREMIUM_MUSIC_CONTENT_TYPE = "audio/mpeg" as const;
 const PROVIDER_API_HOST = "partner-content-api.epidemicsound.com";
 
 export function isPremiumMusicAcquisitionEnabled(env = process.env) {
-  return env.CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED === "true";
+  return resolveProviderEnvironmentValue(
+    "epidemic",
+    "acquisitionEnabled",
+    env,
+  ) === "true";
 }
 
 export function validateProviderMusicUrl(rawUrl: string) {

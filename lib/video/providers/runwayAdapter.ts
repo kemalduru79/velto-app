@@ -1,6 +1,10 @@
 import RunwayML from "@runwayml/sdk";
 import { createLogger } from "@/lib/observability";
 import {
+  isProviderConfigured,
+  resolveProviderEnvironmentValue,
+} from "@/lib/runtime/providerEnvironment.mjs";
+import {
   normalizeVideoClipDuration,
   normalizeVideoQualityTier,
 } from "../timelineSync";
@@ -55,11 +59,7 @@ function optionalString(value: unknown) {
 }
 
 function getApiKey() {
-  return (
-    process.env.RUNWAY_API_KEY?.trim() ||
-    process.env.RUNWAYML_API_SECRET?.trim() ||
-    ""
-  );
+  return resolveProviderEnvironmentValue("runway", "apiKey");
 }
 
 function getClient() {
@@ -161,7 +161,7 @@ export class RunwayVideoProvider implements VideoProvider {
   };
 
   isAvailable() {
-    return Boolean(getApiKey());
+    return isProviderConfigured("runway");
   }
 
   normalizeDuration(requestedDuration: unknown, qualityMode: unknown) {

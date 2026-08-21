@@ -173,9 +173,11 @@ const composeEnvironment = {
   OPENAI_API_KEY: secretSentinel,
   RUNWAY_API_KEY: secretSentinel,
   RUNWAYML_API_SECRET: secretSentinel,
+  RUNWAYML_API_KEY: secretSentinel,
   VEO_API_KEY: secretSentinel,
   GEMINI_API_KEY: secretSentinel,
   ELEVENLABS_API_KEY: secretSentinel,
+  EPIDEMIC_SOUND_API_KEY: secretSentinel,
   YOUTUBE_API_KEY: secretSentinel,
   CREATOR_ACCESS_TOKEN: secretSentinel,
 };
@@ -213,9 +215,11 @@ for (const forbidden of [
   "OPENAI_API_KEY",
   "RUNWAY_API_KEY",
   "RUNWAYML_API_SECRET",
+  "RUNWAYML_API_KEY",
   "VEO_API_KEY",
   "GEMINI_API_KEY",
   "ELEVENLABS_API_KEY",
+  "EPIDEMIC_SOUND_API_KEY",
   "YOUTUBE_API_KEY",
   "CREATOR_ACCESS_TOKEN",
 ]) {

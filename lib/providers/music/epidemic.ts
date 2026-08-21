@@ -11,6 +11,10 @@ import type {
   MusicSearchResult,
 } from "./types";
 import { isPremiumMusicAcquisitionEnabled } from "./downloadSecurity";
+import {
+  isProviderConfigured,
+  resolveProviderEnvironmentValue,
+} from "@/lib/runtime/providerEnvironment.mjs";
 
 const API_BASE = "https://partner-content-api.epidemicsound.com";
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -57,11 +61,11 @@ export function normalizePremiumMusicTrack(value: unknown): CreatorPremiumMusicT
 
 export class EpidemicMusicAdapter implements MusicProvider {
   isAvailable() {
-    return Boolean(process.env.EPIDEMIC_SOUND_API_KEY?.trim());
+    return isProviderConfigured("epidemic");
   }
 
   private headers(partnerUserId: string) {
-    const apiKey = process.env.EPIDEMIC_SOUND_API_KEY?.trim();
+    const apiKey = resolveProviderEnvironmentValue("epidemic", "apiKey");
     if (!apiKey) throw new ProviderError("Music provider is not configured.", { code: "not_configured", retryable: false });
     return { Accept: "application/json", Authorization: `Bearer ${apiKey}`, "x-partner-user-id": partnerUserId };
   }
