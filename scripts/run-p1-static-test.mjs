@@ -39,11 +39,15 @@ requireText("next.config.ts", [
 rejectText("next.config.ts", [
   '"./node_modules/ffprobe-static/**/*"',
 ]);
-requireText("app/api/stitch-video/route.ts", [
+requireText("lib/video/stitching/nativeMedia.server.ts", [
   'import ffmpegPath from "ffmpeg-static"',
   'import ffprobeStatic from "ffprobe-static"',
   "execFile(ffmpegExecutable",
   "execFile(ffprobeExecutable",
+]);
+requireText("app/api/stitch-video/route.ts", [
+  "handleStitchVideoRequest",
+  "export async function POST",
 ]);
 requireText("Dockerfile", [
   "AS builder",

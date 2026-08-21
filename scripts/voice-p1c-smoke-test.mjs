@@ -9,7 +9,10 @@ const page = read("app/create/page.tsx");
 const matchingPath = path.join(root, "lib/video/audioDurationMatching.ts");
 const matching = fs.readFileSync(matchingPath, "utf8");
 const packageRoute = read("app/api/export-creator-package/route.ts");
-const stitchRoute = read("app/api/stitch-video/route.ts");
+const stitchRoute = [
+  read("lib/video/stitching/nativeMedia.server.ts"),
+  read("lib/video/stitching/stitchVideoService.server.ts"),
+].join("\n");
 
 const assertions = [
   ["VOICE-P1C marker", page.includes("VELTO_VOICE_P1C")],

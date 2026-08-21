@@ -133,7 +133,9 @@ const protectedHashes = {
   "lib/persistence/storage/supabaseObjectStorageRepository.ts": "37a5ed1705fb7fa33e04f77c2c9e58e17c1d100915c570751dafbea7da56ffed",
   "components/create/StoryverseCinematicIntro.tsx": "6ea5cde80881cf3506969b7d49c74542185af045c58360863d637f243031f9f2",
   "components/experience/StoryverseShell.tsx": "40507b790161a08d50eeed0909b786ef54bf82250cb619635ebbeaa5d9b93ac4",
-  "app/api/stitch-video/route.ts": "c9528eb59f580f2b1b5284fab6eb0f24a2503b2f6d083208502e54a97b12e945",
+  "app/api/stitch-video/route.ts": "bb693fa45e3d723b646a2160be632b5300820802e5033c20bee3e06b13c5da9a",
+  "lib/video/stitching/nativeMedia.server.ts": "4e5b834da3dc32146fd07c3c13669855d0a08f7b15407cb30684824430fc69eb",
+  "lib/video/stitching/stitchVideoService.server.ts": "57625f63e849cd022bb747301f305264b78aa8e14e1db231cd7b6eb4dce4d08a",
   "supabase/migrations/20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
   "supabase/migrations/20260730120000_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
 };
