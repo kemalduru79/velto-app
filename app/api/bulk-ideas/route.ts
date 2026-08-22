@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -146,6 +147,7 @@ ${JSON.stringify(topics, null, 2)}
         },
       ],
     });
+    await recordOpenAITextEconomics({ route: "/api/bulk-ideas", operationType: "legacy_bulk_ideas", model: "gpt-4.1-mini", response: completion });
 
     const raw = completion.choices?.[0]?.message?.content || "{}";
     let parsed: any = { ideas: [] };

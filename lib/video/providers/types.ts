@@ -22,6 +22,7 @@ export type VideoProviderDurationPolicy = {
   durationSec: number;
   reason: string;
 };
+export type VideoProviderRuntimeProfile = { model: string; resolution: string; audioMode: string };
 
 export type VideoProviderTask = {
   nativeTaskId: string;
@@ -44,6 +45,7 @@ export interface VideoProvider {
   readonly tier: VideoProviderTier;
   readonly capabilities: VideoProviderCapabilities;
   isAvailable(): boolean;
+  getRuntimeProfile(): VideoProviderRuntimeProfile;
   normalizeDuration(
     requestedDuration: unknown,
     qualityMode: unknown,

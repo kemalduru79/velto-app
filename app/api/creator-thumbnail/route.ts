@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
+import { recordOpenAITextEconomics, persistEconomicOperationBestEffort, unknownCost } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -257,6 +258,7 @@ Thumbnail text ideas: ${Array.isArray(metadata?.thumbnailTextIdeas) ? metadata.t
           },
         ],
       });
+      await recordOpenAITextEconomics({ route: "/api/creator-thumbnail", operationType: "creator_thumbnail_plan", model: "gpt-4.1-mini", response: planning });
 
       const parsed = extractJsonObject(planning.choices?.[0]?.message?.content || "{}");
       plan = normalizePlan(parsed, fallbackPlan, language);
@@ -309,6 +311,8 @@ premium professional creator thumbnail, cinematic editorial lighting, strong emo
       n: 1,
       prompt: finalImagePrompt,
     });
+    const thumbnailLogicalId = `creator-thumbnail:${image._request_id || crypto.randomUUID()}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${thumbnailLogicalId}:gpt-image-1:1`, logicalOperationId: thumbnailLogicalId, route: "/api/creator-thumbnail", operationType: "creator_thumbnail_image", provider: "openai", providerTier: "primary", model: "gpt-image-1", providerRequestId: image._request_id || null, state: "provider_billed", billingMoment: "provider_completed", quantities: { imageCount: 1, quality: "high", dimensions: "1536x1024", requestCount: 1 }, cost: unknownCost("GPT Image 1 has no verified Stage 0.10B pricing entry."), dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() });
 
     const b64 = image.data?.[0]?.b64_json;
 

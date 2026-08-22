@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 const read = (path) => readFileSync(path, "utf8");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const trackedInventoryHash = (pathspec) => {
-  const files = execFileSync("git", ["ls-files", pathspec], { encoding: "utf8" });
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", pathspec], { encoding: "utf8" });
   return createHash("sha256").update(files).digest("hex");
 };
 const check = (name, assertion) => {
@@ -102,11 +102,11 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
 check("API route inventory is unchanged", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "afc35d9b11e92063f10d8d810e1fbbbf81d3bed9b7abf5e9ac3068b32c2b615f"));
-check("migration inventory is unchanged", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "e4d898403ac4a9ca64a3e6c5dfb6527a9afa8fbaeb333160cbaebb4d1b96aa09"));
-check("dependency manifest is unchanged", () => assert.equal(sha256("package.json"), "9c8186fc55a1870f851b16cd5a03a3ea849549f122c6556ff48a470d7b3baf1b"));
+check("migration inventory includes the additive economics migration", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "3771ff7050de7b0315e98bf32ca65485677cc3ccbf7b9a71286304e64392b2e1"));
+check("dependency manifest contains only the new test command", () => assert.equal(sha256("package.json"), "2bc6acc4f9846b7fe5942be5b3e7662a4d0ff9c278f8ff24fd8dd03f447dce05"));
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
-check("export runtime is unchanged", () => assert.equal(sha256("export-service/src/server.js"), "93494ab724ba18bf3a68f4a9126ec9e6ff98dc68982d246236068ef4717bd105"));
+check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");

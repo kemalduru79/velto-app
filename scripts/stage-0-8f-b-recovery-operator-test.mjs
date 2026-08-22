@@ -60,7 +60,7 @@ const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "-
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
 assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "afc35d9b11e92063f10d8d810e1fbbbf81d3bed9b7abf5e9ac3068b32c2b615f");
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "e4d898403ac4a9ca64a3e6c5dfb6527a9afa8fbaeb333160cbaebb4d1b96aa09");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "3771ff7050de7b0315e98bf32ca65485677cc3ccbf7b9a71286304e64392b2e1");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
 console.log("Stage 0.8F-B recovery and operator regression passed.");

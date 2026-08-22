@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -375,6 +376,7 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
       ],
       temperature: 0.4,
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-mentor", operationType: "creator_mentor", model: "gpt-4.1-mini", response });
 
     const rawText = extractTextFromResponse(response);
 

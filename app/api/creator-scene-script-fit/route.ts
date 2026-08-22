@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import {
   creatorBriefRequestsDialogue,
@@ -203,6 +204,7 @@ export async function POST(req: Request) {
       ],
       temperature: 0.25,
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-scene-script-fit", operationType: "creator_scene_script_fit", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
     const parsed = parseJson(response.output_text || "");
     const normalizedScene = normalizeCreatorAdultScene(
       {

@@ -33,6 +33,7 @@ import {
 } from "@/lib/security/creatorVideoTaskBindingBoundary";
 import { CREATOR_VIDEO_WORKER_STALE_SECONDS } from "@/lib/creator/videoGeneration";
 import { buildCreatorVideoProviderPrompt } from "@/lib/creator/videoPromptPolicy";
+import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -118,6 +119,8 @@ async function postHandler(req: NextRequest) {
   let providerTaskAccepted = false;
   let providerTaskId = "";
   let providerKey = "";
+  let economicCost: EconomicCostResult | null = null;
+  let economicAttempt: EconomicOperationInput | null = null;
 
   try {
     const principal = await authenticateRequest(req);
@@ -281,6 +284,18 @@ async function postHandler(req: NextRequest) {
     providerTaskAccepted = true;
     providerTaskId = task.nativeTaskId;
     providerKey = selection.provider.key;
+    const profile = selection.provider.getRuntimeProfile();
+    economicCost = selection.provider.key === "runway" ? calculateRunwayCost(profile.model, durationPolicy.durationSec) : calculateVeoCost(profile.model);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `video:${task.nativeTaskId}`;
+    economicAttempt = {
+      attemptKey: `${logicalOperationId}:${selection.provider.key}:generation:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
+      userId: principal.id, projectId: canonicalProjectId, sceneId: body.sceneId == null ? null : String(body.sceneId), route: "/api/creator-video", operationType: "creator_video", productTier: qualityMode,
+      provider: selection.provider.key, providerTier: selection.selectedTier, model: profile.model, fallbackProvider: selection.usedFallback ? selection.provider.key : null,
+      providerRequestId: task.nativeTaskId, state: "provider_billed", billingMoment: "provider_dispatch", fallbackAttempt: selection.usedFallback,
+      quantities: { requestedSeconds: Number(body.duration) || 0, providerBilledSeconds: durationPolicy.durationSec, resolution: profile.resolution, audioMode: profile.audioMode, referenceCount: references.length + (lastFrameUrl ? 1 : 0), requestCount: 1 },
+      cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(),
+    };
+    await persistEconomicOperationBestEffort(economicAttempt!);
 
     // FIN-P1C — persist the provider-dispatch boundary before queue creation.
     // If the queue or immediate settlement path fails, reconciliation can still
@@ -344,6 +359,7 @@ async function postHandler(req: NextRequest) {
     if (reservation) {
       try {
         const settlement = await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
           providerRequestId: task.nativeTaskId,
           metadata: {
             route: "creator-video",
@@ -395,11 +411,13 @@ async function postHandler(req: NextRequest) {
 
     if (reservation) {
       if (providerTaskAccepted) {
+        if (economicAttempt) await persistEconomicOperationBestEffort({ ...economicAttempt, state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "startup_failure", failedAt: new Date().toISOString() });
         // A provider task was accepted, therefore provider cost may already
         // exist. Do not release the reservation. Settle best-effort so Velto
         // billing follows the provider dispatch boundary.
         try {
           await settleMeteredOperation(reservation, {
+            providerCostUsd: economicCost?.providerCostUsd ?? undefined,
             providerRequestId: providerTaskId || undefined,
             metadata: {
               route: "creator-video",

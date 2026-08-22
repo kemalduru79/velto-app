@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import {
   createTimelineSyncPlan,
@@ -473,6 +474,7 @@ async function reviseScenes({
     ],
     temperature: 0.3,
   });
+  await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_script_plan", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
 
   const parsed = parseModelJson(response.output_text || "");
   return normalizeModelScenes(parsed.scenes, sourceScenes, characters).map((scene, index) =>

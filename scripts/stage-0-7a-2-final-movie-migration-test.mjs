@@ -46,12 +46,12 @@ assert.match(saveRoute, /finalMovieAsset\.lifecycleState !== "active"/);
 
 // Migration versions are unique, normalized, deterministic, and SQL bytes are unchanged.
 const migrationFiles = fs.readdirSync("supabase/migrations").filter((file) => file.endsWith(".sql")).sort();
-assert.equal(migrationFiles.length, 13);
+assert.equal(migrationFiles.length, 14);
 for (const file of migrationFiles) assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/);
 const versions = migrationFiles.map((file) => file.slice(0, 14));
 assert.equal(new Set(versions).size, versions.length);
 assert.deepEqual(migrationFiles, [...migrationFiles].sort());
-assert.equal(migrationFiles.at(-1), "20260818230000_stage_0_7d_3_add_final_movie_export_admission_purpose.sql");
+assert.equal(migrationFiles.at(-1), "20260822100000_stage_0_10b_creator_economics.sql");
 
 const expectedHashes = {
   "20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",

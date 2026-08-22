@@ -15,6 +15,7 @@ function createObservedVideoProvider(raw: VideoProvider): VideoProvider {
     tier: raw.tier,
     capabilities: raw.capabilities,
     isAvailable: () => raw.isAvailable(),
+    getRuntimeProfile: () => raw.getRuntimeProfile(),
     normalizeDuration: (requestedDuration, qualityMode) =>
       raw.normalizeDuration(requestedDuration, qualityMode),
     createTask: (input) =>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -152,6 +153,7 @@ ${JSON.stringify(patternSummary, null, 2)}
         },
       ],
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-youtube-metadata", operationType: "creator_youtube_metadata", model: "gpt-4.1-mini", response: completion });
 
     const raw = completion.choices?.[0]?.message?.content || "";
     const parsed = parseJsonObject(raw);

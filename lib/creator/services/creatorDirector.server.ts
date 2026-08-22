@@ -6,6 +6,7 @@ import type {
 } from "openai/resources/responses/responses";
 import { createServerSupabaseClient } from "../../supabase/server";
 import { getOpenAIClient } from "../../openai";
+import { recordOpenAITextEconomics } from "../../economics";
 
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_HISTORY_MESSAGES = 16;
@@ -781,6 +782,7 @@ ${message}
         },
       },
     } as ResponseCreateParamsNonStreaming) as OpenAIResponse;
+    await recordOpenAITextEconomics({ route: "/api/creator-director", operationType: "creator_director", model, response });
 
     const rawOutput = response.output_text?.trim();
 

@@ -23,6 +23,7 @@ import { buildCreatorGenerationContinuityContext } from "../../../lib/creator/sc
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
+import { calculateOpenAIImageCost, normalizeOpenAIImageUsage, persistEconomicOperationBestEffort, unknownCost, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 
 // 3L SMART VISUALS V2
 // CONT-P1R SELECTIVE CONTINUITY
@@ -434,6 +435,9 @@ async function loadReferenceImageFiles(
 
 async function postHandler(req: Request) {
   let reservation: MeteredOperationReservation | null = null;
+  let providerAccepted = false;
+  let economicAttempt: EconomicOperationInput | null = null;
+  let economicCost: EconomicCostResult | null = null;
 
   try {
     const principal = await authenticateRequest(req);
@@ -757,10 +761,23 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
       referenceImages: referenceFiles,
       referenceFidelity: "high",
     });
+    providerAccepted = true;
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `image:${image.requestId || crypto.randomUUID()}`;
+    const normalizedUsage = normalizeOpenAIImageUsage(image.usage);
+    economicCost = image.usage ? calculateOpenAIImageCost(model, normalizedUsage) : unknownCost("The image provider did not return usage; reference estimates are not actual cost.");
+    economicAttempt = {
+      attemptKey: `${logicalOperationId}:openai-image:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
+      userId: principal.id, projectId: projectId || null, sceneId: sceneId ?? null, route: "/api/image", operationType: "creator_image", productTier: creatorVisualRoute?.qualityMode || null,
+      provider: imageProvider.key, providerTier: imageProvider.tier, model, providerRequestId: image.requestId || null, state: "provider_billed", billingMoment: "provider_completed",
+      quantities: { ...normalizedUsage, imageCount: 1, quality, dimensions: size, referenceCount: referenceFiles.length, requestCount: 1 }, cost: economicCost,
+      dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
     const chargedCredits = reservation?.reservedCredits || 0;
     const creditResult = reservation
       ? await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
           providerRequestId: image.requestId,
           metadata: {
             model,
@@ -816,9 +833,10 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
     });
   } catch (error) {
     if (reservation) {
-      await releaseMeteredOperation(reservation, "image_generation_failed", {
-        route: "image",
-      });
+      if (providerAccepted) {
+        await persistEconomicOperationBestEffort({ ...(economicAttempt || { attemptKey: `${reservation.reservationId}:openai-image:1`, logicalOperationId: reservation.reservationId, userId: reservation.userId, route: "/api/image", operationType: "creator_image", state: "application_failed_after_provider_cost" }), state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "downstream_failure", failedAt: new Date().toISOString() });
+        try { await settleMeteredOperation(reservation, { providerCostUsd: economicCost?.providerCostUsd ?? undefined, metadata: { applicationFailedAfterProviderCost: true } }); } catch {}
+      } else await releaseMeteredOperation(reservation, "image_generation_failed", { route: "image" });
     }
 
     if (error instanceof AuthenticationError) {

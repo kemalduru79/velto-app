@@ -164,6 +164,8 @@ export class RunwayVideoProvider implements VideoProvider {
     return isProviderConfigured("runway");
   }
 
+  getRuntimeProfile() { return { model: getModel(), resolution: "ratio_defined", audioMode: "no_audio" }; }
+
   normalizeDuration(requestedDuration: unknown, qualityMode: unknown) {
     return normalizeVideoClipDuration(
       requestedDuration,

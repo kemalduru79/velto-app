@@ -1610,6 +1610,8 @@ function fingerprintCreatorMedia(value) {
 }
 
 app.post("/export-movie", async (req, res) => {
+  const renderStartedAt = new Date().toISOString();
+  const renderStartedMs = Date.now();
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "velto-export-")
   );
@@ -2088,6 +2090,10 @@ app.post("/export-movie", async (req, res) => {
       sizeBytes: stats.size,
       durationSeconds: duration,
       sceneCount: sceneClipPaths.length,
+      economicExportId: typeof body.economicExportId === "string" ? body.economicExportId.slice(0, 240) : null,
+      renderStartedAt,
+      renderCompletedAt: new Date().toISOString(),
+      elapsedRuntimeMs: Date.now() - renderStartedMs,
       stitchContinuityVersion: "3N-4",
       stitchContinuityVerified: true,
       freezeFrameFallbackDisabled: true,

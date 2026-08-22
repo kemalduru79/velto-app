@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { NextResponse } from "next/server";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 
@@ -205,6 +206,7 @@ ${JSON.stringify(compactScenes, null, 2)}
         },
       ],
     });
+    await recordOpenAITextEconomics({ route: "/api/optimize-scenes-ai", operationType: "creator_optimize_scenes", model: "gpt-4.1-mini", response: completion });
 
     const raw = completion.choices?.[0]?.message?.content || "";
     const parsed = parseJson(raw);

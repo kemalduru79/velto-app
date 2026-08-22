@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../supabase/server";
 import { getOpenAIClient } from "../../openai";
+import { recordOpenAITextEconomics } from "../../economics";
 import { getCreatorVoiceScriptGuidance } from "../voiceRouting";
 
 type CreatorProductionScene = {
@@ -384,6 +385,7 @@ export async function handleCreatorRefineScenesRequest(req: Request) {
       ],
       temperature: 0.5,
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-refine-scenes", operationType: "creator_refine_scenes", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

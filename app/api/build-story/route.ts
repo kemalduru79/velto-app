@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -459,6 +460,7 @@ Tutarlılık kuralları: ${visualBible.consistencyRules}
 
 ${prompt}`,
     });
+    await recordOpenAITextEconomics({ route: "/api/build-story", operationType: "legacy_build_story", model: "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

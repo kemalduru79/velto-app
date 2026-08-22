@@ -9,6 +9,7 @@ import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 import { normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
+import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort } from "@/lib/economics";
 import {
   createVideoJobToken,
   parseVideoJobToken,
@@ -212,6 +213,10 @@ export async function POST(req: NextRequest) {
     if (!task.nativeTaskId) {
       throw new Error("Video service did not return a task identifier.");
     }
+    const profile = selection.provider.getRuntimeProfile();
+    const cost = selection.provider.key === "runway" ? calculateRunwayCost(profile.model, durationPolicy.durationSec) : calculateVeoCost(profile.model);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || `legacy-video:${task.nativeTaskId}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${logicalOperationId}:${selection.provider.key}:generation:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), userId: principal.id, projectId: typeof body.projectId === "string" ? body.projectId : null, sceneId: body.sceneId == null ? null : String(body.sceneId), route: "/api/video", operationType: "legacy_video", productTier: String(qualityTier), provider: selection.provider.key, providerTier: selection.selectedTier, model: profile.model, fallbackProvider: selection.usedFallback ? selection.provider.key : null, providerRequestId: task.nativeTaskId, state: "provider_billed", billingMoment: "provider_dispatch", fallbackAttempt: selection.usedFallback, quantities: { requestedSeconds: Number(body.duration) || 0, providerBilledSeconds: durationPolicy.durationSec, resolution: profile.resolution, audioMode: profile.audioMode, referenceCount: references.length + (lastFrameUrl ? 1 : 0), requestCount: 1 }, cost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString() });
 
     return NextResponse.json({
       ok: true,

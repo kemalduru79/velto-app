@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { createTimelineSyncPlan } from "../../../lib/video/timelineSync";
 
 export const runtime = "nodejs";
@@ -106,6 +107,7 @@ ${prompt.trim()}
       model: "gpt-4.1-mini",
       input: storyPrompt,
     });
+    await recordOpenAITextEconomics({ route: "/api/story", operationType: "legacy_story", model: "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

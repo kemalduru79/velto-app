@@ -49,7 +49,7 @@ for (const marker of ["accepted_terms_at", "accepted_privacy_at", "terms_version
   assert.ok(authAdapter.includes(marker), `user metadata missing ${marker}`);
 }
 assert.match(status, /not\*\* treated as the final authoritative immutable legal consent ledger/i);
-assert.equal(changedFiles.some((file) => file.startsWith("supabase/migrations/") || file.startsWith("prisma/migrations/")), false);
+assert.deepEqual(changedFiles.filter((file) => file.startsWith("supabase/migrations/") || file.startsWith("prisma/migrations/")), ["supabase/migrations/20260822100000_stage_0_10b_creator_economics.sql"]);
 assert.match(config, /X-Content-Type-Options[\s\S]*nosniff/);
 assert.match(config, /Referrer-Policy[\s\S]*strict-origin-when-cross-origin/);
 assert.match(config, /Permissions-Policy/);

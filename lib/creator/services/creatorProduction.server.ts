@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "../../supabase/server";
 import { getOpenAIClient } from "../../openai";
+import { recordOpenAITextEconomics } from "../../economics";
 import {
   createTimelineSyncPlan,
   normalizeVideoQualityTier,
@@ -688,6 +689,7 @@ export async function handleCreatorProductionRequest(req: Request) {
       ],
       temperature: 0.35,
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-production", operationType: "creator_production", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

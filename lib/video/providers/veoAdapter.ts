@@ -249,6 +249,8 @@ export class VeoVideoProvider implements VideoProvider {
     return isProviderConfigured("veo");
   }
 
+  getRuntimeProfile() { return { model: getModel(), resolution: getResolution(), audioMode: "runtime_unspecified" }; }
+
   normalizeDuration() {
     return {
       durationSec: 8,

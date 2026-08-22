@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 
 const YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search";
 const YOUTUBE_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos";
@@ -249,6 +250,7 @@ async function createResearchContext({
         },
       ],
     });
+    await recordOpenAITextEconomics({ route: "/api/youtube-research", operationType: "creator_youtube_research_synthesis", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
     const parsed = parseJsonObject(response.output_text || "");
 
     if (!parsed) return fallback;

@@ -16,6 +16,7 @@
     "fin:reconcile": "node scripts/fin-p1c-reconcile.mjs",
     "fin:reconcile:apply": "node --env-file=.env.local scripts/fin-p1c-reconcile.mjs --apply",
     "test:fin-p1c": "node scripts/fin-p1c-smoke-test.mjs",
+    "test:stage-0-10b": "node scripts/stage-0-10b-economics-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",

@@ -13,6 +13,7 @@ import {
 } from "../../../lib/creator/mediaRouting";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
+import { calculateOpenAIImageCost, normalizeOpenAIImageUsage, persistEconomicOperationBestEffort, unknownCost, type EconomicCostResult } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,7 @@ type ImageProductProfile = "storyverse" | "creatorlab";
 type ImageApiResponse = {
   data?: Array<{ b64_json?: string | null }>;
   usage?: unknown;
+  _request_id?: string;
 };
 
 function getOpenAIClient() {
@@ -77,6 +79,7 @@ function getCreatorCharacterRoute(qualityMode: CreatorQualityMode) {
 export async function POST(req: Request) {
   let reservation: MeteredOperationReservation | null = null;
   let providerSucceeded = false;
+  let economicCost: EconomicCostResult | null = null;
 
   try {
     const principal = await authenticateRequest(req);
@@ -247,9 +250,14 @@ Requirements:
     }
 
     providerSucceeded = true;
+    const normalizedUsage = normalizeOpenAIImageUsage(image.usage);
+    economicCost = image.usage ? calculateOpenAIImageCost(request.model, normalizedUsage) : unknownCost(`Image provider did not return usage for ${request.model}.`);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `character-image:${image._request_id || crypto.randomUUID()}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${logicalOperationId}:openai-image:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId, userId: principal.id, route: "/api/character-image", operationType: isCreatorLab ? "creator_character_image" : "legacy_character_image", productTier: isCreatorLab ? normalizedQualityMode : null, provider: "openai", providerTier: "primary", model: request.model, providerRequestId: image._request_id || null, state: "provider_billed", billingMoment: "provider_completed", quantities: { ...normalizedUsage, imageCount: 1, quality: request.quality, dimensions: request.size, requestCount: 1 }, cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() });
     const chargedCredits = reservation?.reservedCredits || 0;
     const creditResult = reservation
       ? await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
           metadata: {
             route: "character-image",
             purpose: "character_reference",
@@ -286,6 +294,7 @@ Requirements:
       if (providerSucceeded) {
         try {
           await settleMeteredOperation(reservation, {
+            providerCostUsd: economicCost?.providerCostUsd ?? undefined,
             metadata: {
               route: "character-image",
               purpose: "character_reference",

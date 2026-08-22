@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { calculateElevenLabsCost, persistEconomicOperationBestEffort } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -153,6 +154,9 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+    const requestId = elevenRes.headers.get("request-id") || elevenRes.headers.get("x-request-id");
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || `legacy-tts:${requestId || crypto.randomUUID()}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${logicalOperationId}:elevenlabs:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), route: "/api/tts", operationType: "legacy_tts", provider: "elevenlabs", providerTier: "primary", model: modelId, providerRequestId: requestId, state: "provider_billed", billingMoment: "provider_accepted", quantities: { characterCount: text.trim().length, requestCount: 1 }, cost: calculateElevenLabsCost(modelId, text.trim().length), dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString() });
 
     return new Response(elevenRes.body, {
       status: 200,

@@ -26,6 +26,7 @@ import {
 } from "@/lib/creator/finalMovieOwnership.server";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
+import { persistEconomicOperationBestEffort, unknownCost, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -87,6 +88,8 @@ async function assertExportServiceReady(baseUrl: string) {
 
 export async function POST(request: Request) {
   let creditReservation: MeteredOperationReservation | null = null;
+  let exportDispatched = false;
+  let economicAttempt: EconomicOperationInput | null = null;
 
   try {
     const principal = await authenticateRequest(request);
@@ -215,7 +218,13 @@ export async function POST(request: Request) {
       billable: productProfile === "creatorlab",
       requireCostGuardConfirmation: productProfile === "creatorlab",
     });
+    const logicalExportId = request.headers.get("x-idempotency-key")?.trim() || creditReservation?.reservationId || `export:${crypto.randomUUID()}`;
+    exportPayload.economicExportId = logicalExportId;
+    economicAttempt = { attemptKey: `${logicalExportId}:velto-export:1`, logicalOperationId: logicalExportId, idempotencyKey: request.headers.get("x-idempotency-key"), creditReservationId: creditReservation?.reservationId,
+      userId: principal.id, projectId: project.id, exportId: logicalExportId, route: "/api/creator-export", operationType: "creator_export", productTier: String(qualityMode || "standard"), provider: "velto-export", providerTier: "infrastructure", model: "ffmpeg-1280x720-25fps", state: "dispatch_attempted", billingMoment: "render_runtime", quantities: { sceneCount: Array.isArray(exportPayload.scenes) ? exportPayload.scenes.length : 0, requestCount: 1 }, cost: unknownCost("Railway runtime, Supabase storage, and egress rates are not approved."), dispatchedAt: new Date().toISOString() };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
+    exportDispatched = true;
     const response = await fetch(`${exportApiBase}/export-movie`, {
       method: "POST",
       headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken, storageAdmissionId),
@@ -230,6 +239,10 @@ export async function POST(request: Request) {
     }
 
     await registerOwnedFinalMovieResponse({ data, ownerUserId: principal.id, projectId: project.id });
+    economicAttempt = { ...economicAttempt, state: "provider_billed", providerRequestId: response.headers.get("x-request-id") || response.headers.get("request-id"), assetIdentity: data.storagePath,
+      quantities: { ...economicAttempt.quantities, sceneCount: Number(data.sceneCount || 0), timelineDurationSec: Number(data.durationSeconds || 0), outputBytes: Number(data.sizeBytes || 0), uploadBytes: Number(data.sizeBytes || 0), elapsedRuntimeMs: Number(data.elapsedRuntimeMs || 0), storageBytes: Number(data.sizeBytes || 0) },
+      providerAcceptedAt: data.renderStartedAt || new Date().toISOString(), completedAt: data.renderCompletedAt || new Date().toISOString() };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
     if (musicUsageIdentity) {
       await registerCreatorMusicExportUsage(musicUsageIdentity);
@@ -262,10 +275,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (creditReservation) {
-      await releaseMeteredOperation(
-        creditReservation,
-        error instanceof Error ? error.message : "creator export failed",
-      );
+      if (exportDispatched) {
+        if (economicAttempt) await persistEconomicOperationBestEffort({ ...economicAttempt, state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "export_dispatch_ambiguous", failedAt: new Date().toISOString() });
+        try { await settleMeteredOperation(creditReservation, { metadata: { applicationFailedAfterProviderCost: true, exportDispatchAmbiguous: true } }); } catch {}
+      } else await releaseMeteredOperation(creditReservation, error instanceof Error ? error.message : "creator export failed");
     }
 
     if (error instanceof ExportServiceUnavailableError) {

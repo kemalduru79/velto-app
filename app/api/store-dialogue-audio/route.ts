@@ -18,6 +18,7 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
+import { calculateElevenLabsCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -119,6 +120,9 @@ function getCharacterVoiceSettings(
 
 async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
+  let providerAccepted = false;
+  let economicCost: EconomicCostResult | null = null;
+  let economicAttempt: EconomicOperationInput | null = null;
 
   try {
     const principal = await authenticateRequest(req);
@@ -270,7 +274,15 @@ async function postHandler(req: NextRequest) {
       outputFormat: "mp3_44100_128",
       timeoutMs: 30_000,
     });
+    providerAccepted = true;
     const outputBuffer = voiceResult.audio;
+    economicCost = calculateElevenLabsCost(modelId, fullText.length);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `dialogue:${voiceResult.requestId || crypto.randomUUID()}`;
+    economicAttempt = { attemptKey: `${logicalOperationId}:elevenlabs-dialogue:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
+      userId: principal.id, projectId: projectKey, sceneId, route: "/api/store-dialogue-audio", operationType: "creator_dialogue_voice", productTier: creatorVoiceRoute?.qualityMode || null,
+      provider: voiceProvider.key, providerTier: voiceProvider.tier, model: modelId, providerRequestId: voiceResult.requestId || null, state: "provider_billed", billingMoment: "provider_completed",
+      quantities: { characterCount: fullText.length, audioBytes: outputBuffer.byteLength, requestCount: 1 }, cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
     const services = getPersistenceServices();
 
@@ -311,6 +323,7 @@ async function postHandler(req: NextRequest) {
     const chargedCredits = reservation?.reservedCredits || 0;
     const creditResult = reservation
       ? await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
           providerRequestId: voiceResult.requestId,
           metadata: { audioPath: storedAudio.path },
         })
@@ -346,9 +359,10 @@ async function postHandler(req: NextRequest) {
     });
   } catch (error: unknown) {
     if (reservation) {
-      await releaseMeteredOperation(reservation, "dialogue_voice_generation_failed", {
-        route: "store-dialogue-audio",
-      });
+      if (providerAccepted) {
+        await persistEconomicOperationBestEffort({ ...(economicAttempt || { attemptKey: `${reservation.reservationId}:elevenlabs-dialogue:1`, logicalOperationId: reservation.reservationId, userId: reservation.userId, route: "/api/store-dialogue-audio", operationType: "creator_dialogue_voice", state: "application_failed_after_provider_cost" }), state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "downstream_failure", failedAt: new Date().toISOString() });
+        try { await settleMeteredOperation(reservation, { providerCostUsd: economicCost?.providerCostUsd ?? undefined, metadata: { applicationFailedAfterProviderCost: true } }); } catch {}
+      } else await releaseMeteredOperation(reservation, "dialogue_voice_generation_failed", { route: "store-dialogue-audio" });
     }
 
     const creditErrorResponse = getCreditErrorResponse(error);
