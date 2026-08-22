@@ -3,7 +3,7 @@ import { isProviderConfigured } from "../runtime/providerEnvironment.mjs";
 
 export const CREATOR_VIDEO_ROUTING_POLICY = {
   proUpgrade: { productionPriority: 0.84, motionImportance: 0.78, continuityImportance: 0.72, visualImportance: 0.88 },
-  cinematicVeoFast: { productionPriority: 0.82, motionImportance: 0.76 },
+  cinematicVeoFast: { productionPriority: 0.82, motionImportance: 0.76, durationCompatibleSeconds: [7, 8] as const, materialReferenceCount: 2 },
   cinematicHero: { productionPriority: 0.94, visualImportance: 0.9, motionImportance: 0.85 },
 } as const;
 
@@ -46,7 +46,9 @@ export function selectCreatorVideoProfile(raw: CreatorVideoRoutingIntent, contex
     const h = CREATOR_VIDEO_ROUTING_POLICY.cinematicHero;
     const hero = intent.productionPriority >= h.productionPriority && intent.visualImportance >= h.visualImportance && intent.motionImportance >= h.motionImportance && ["hook", "climax", "demonstration"].includes(String(intent.sceneRole || ""));
     const v = CREATOR_VIDEO_ROUTING_POLICY.cinematicVeoFast;
-    const veoFit = intent.recommendedSeconds === 8 && intent.productionPriority >= v.productionPriority && intent.motionImportance >= v.motionImportance && (intent.lastFrameAvailable || intent.referenceAvailabilityCount > 0);
+    const durationFitsFixedEight = v.durationCompatibleSeconds.includes(intent.recommendedSeconds as 7 | 8);
+    const capabilityJustifiesDurationMismatch = intent.lastFrameAvailable || intent.referenceAvailabilityCount >= v.materialReferenceCount;
+    const veoFit = intent.productionPriority >= v.productionPriority && intent.motionImportance >= v.motionImportance && (durationFitsFixedEight || capabilityJustifiesDurationMismatch);
     keys = hero ? ["cinematic_hero_motion", "cinematic_fast_motion", "cinematic_precision_motion", "pro_efficient_motion"] : veoFit ? ["cinematic_fast_motion", "cinematic_precision_motion", "pro_efficient_motion"] : ["cinematic_precision_motion", "cinematic_fast_motion", "pro_efficient_motion"];
   }
   const selected = keys.map((key) => CREATOR_VIDEO_PROFILES[key]).find((profile) => available(profile, context) && capabilityFits(profile, intent)) || null;
