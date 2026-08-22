@@ -12,6 +12,7 @@ import type {
 
 const API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL = "veo-3.1-generate-preview";
+export const CREATOR_VEO_SUPPORTED_MODELS = ["veo-3.1-fast-generate-preview", "veo-3.1-generate-preview", "veo-3.1-lite-generate-preview"] as const;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const PREMIUM_RATIOS = ["16:9", "9:16"] as const;
 const SUPPORTED_IMAGE_MIME_TYPES = new Set([
@@ -49,6 +50,11 @@ function getModel() {
   }
 
   return DEFAULT_MODEL;
+}
+
+function validatedCreatorModel(value: unknown) {
+  if (CREATOR_VEO_SUPPORTED_MODELS.includes(value as (typeof CREATOR_VEO_SUPPORTED_MODELS)[number])) return value as (typeof CREATOR_VEO_SUPPORTED_MODELS)[number];
+  throw new Error("The selected internal Veo video profile is unsupported.");
 }
 
 function getResolution(): "720p" | "1080p" | "4k" {
@@ -249,7 +255,7 @@ export class VeoVideoProvider implements VideoProvider {
     return isProviderConfigured("veo");
   }
 
-  getRuntimeProfile() { return { model: getModel(), resolution: getResolution(), audioMode: "runtime_unspecified" }; }
+  getRuntimeProfile() { return { model: getModel(), resolution: getResolution(), audioMode: "generated_audio" }; }
 
   normalizeDuration() {
     return {
@@ -260,9 +266,12 @@ export class VeoVideoProvider implements VideoProvider {
   }
 
   async createTask(input: VideoProviderCreateInput): Promise<VideoProviderTask> {
+    const profile = input.runtimeProfile;
+    const model = profile ? validatedCreatorModel(profile.model) : getModel();
+    const resolution = profile?.resolution === "720p" || profile?.resolution === "1080p" || profile?.resolution === "4k" ? profile.resolution : getResolution();
     const instance = await buildGenerationInstance(input);
     const payload = await requestJson(
-      `${API_BASE_URL}/models/${getModel()}:predictLongRunning`,
+      `${API_BASE_URL}/models/${model}:predictLongRunning`,
       {
         method: "POST",
         body: JSON.stringify({
@@ -270,7 +279,7 @@ export class VeoVideoProvider implements VideoProvider {
           parameters: {
             aspectRatio: getAspectRatio(input.requestedRatio),
             durationSeconds: "8",
-            resolution: getResolution(),
+            resolution,
             numberOfVideos: 1,
             personGeneration: "allow_adult",
           },

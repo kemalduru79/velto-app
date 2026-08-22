@@ -4,8 +4,8 @@ import ts from "typescript";
 
 function loadTsModule(path) {
   let source = fs.readFileSync(path, "utf8")
-    .replace(/import \{ CREATOR_ECONOMICS_PRICING_AS_OF, CREATOR_ECONOMICS_PRICING_VERSION, CREATOR_PROVIDER_PRICING \} from "\.\/pricingCatalog";/, fs.readFileSync("lib/economics/pricingCatalog.ts", "utf8").replace(/export /g, ""))
-    .replace(/import type \{ EconomicCostResult \} from "\.\/types";/, "")
+    .replace(/import \{ CREATOR_ECONOMICS_PRICING_AS_OF, CREATOR_ECONOMICS_PRICING_VERSION, CREATOR_PROVIDER_PRICING \} from "\.\/pricingCatalog(?:\.ts)?";/, fs.readFileSync("lib/economics/pricingCatalog.ts", "utf8").replace(/export /g, ""))
+    .replace(/import type \{ EconomicCostResult \} from "\.\/types(?:\.ts)?";/, "")
     .replace(/export /g, "");
   source += "\nreturn { calculateOpenAITextCost, calculateOpenAIImageCost, calculateElevenLabsCost, calculateRunwayCost, calculateVeoCost, unknownCost };";
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.None, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -17,10 +17,11 @@ assert.equal(c.calculateOpenAITextCost("gpt-4.1-mini", { inputTokens: 1_000_000,
 assert.equal(c.calculateOpenAITextCost("gpt-5-mini", { inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 1_000_000 }).providerCostUsd, 2.25);
 assert.equal(c.calculateOpenAIImageCost("gpt-image-2", { textInputTokens: 1_000_000, imageInputTokens: 1_000_000, imageOutputTokens: 1_000_000 }).providerCostUsd, 43);
 assert.equal(c.calculateElevenLabsCost("eleven_multilingual_v2", 1000).providerCostUsd, 0.1);
-for (const seconds of [5, 7, 10]) assert.equal(c.calculateRunwayCost("gen4_turbo", seconds).providerCostUsd, seconds * 0.05);
-for (const seconds of [5, 7, 10]) assert.equal(c.calculateRunwayCost("gen4.5", seconds).providerCostUsd, seconds * 0.12);
-assert.equal(c.calculateRunwayCost("seedance2", 10).costStatus, "unknown");
-assert.equal(c.calculateVeoCost("veo-3.1-generate-preview").costStatus, "unknown");
+for (const seconds of [5, 7, 10]) assert.equal(c.calculateRunwayCost("gen4_turbo", seconds).providerCostUsd, Math.round(seconds * 0.05 * 1e6) / 1e6);
+for (const seconds of [5, 7, 10]) assert.equal(c.calculateRunwayCost("gen4.5", seconds).providerCostUsd, Math.round(seconds * 0.12 * 1e6) / 1e6);
+assert.equal(c.calculateRunwayCost("seedance2", 10, "1080p").providerCostUsd, 4);
+assert.equal(c.calculateVeoCost("veo-3.1-generate-preview").providerCostUsd, 3.2);
+assert.equal(c.calculateVeoCost("unsupported").costStatus, "unknown");
 
 const policy = fs.readFileSync("lib/credits/operationPolicy.ts", "utf8");
 for (const expected of [

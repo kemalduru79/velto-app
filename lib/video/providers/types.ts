@@ -16,13 +16,14 @@ export type VideoProviderCreateInput = {
   promptText: string;
   requestedRatio: unknown;
   durationSec: number;
+  runtimeProfile?: VideoProviderRuntimeProfile;
 };
 
 export type VideoProviderDurationPolicy = {
   durationSec: number;
   reason: string;
 };
-export type VideoProviderRuntimeProfile = { model: string; resolution: string; audioMode: string };
+export type VideoProviderRuntimeProfile = { model: string; resolution: string; audioMode: string; profileKey?: string; pricingVersion?: string };
 
 export type VideoProviderTask = {
   nativeTaskId: string;

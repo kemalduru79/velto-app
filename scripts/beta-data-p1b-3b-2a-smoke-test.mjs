@@ -142,7 +142,7 @@ const protectedHashes = {
   "app/api/video/route.ts": "42ca514236fa78839401bab1ce9c48b586aafd58c2bc1c23a8da8cae450f770c",
   "lib/video/providers/providerRegistry.ts": "792105370b1368da2608a9fd909999fc6331ee0c90d20c1553208238c4d591e8",
   "lib/video/providers/index.ts": "24503f121f2185064792d04e4109d9a5500e5238df4654142c3001c0179555ca",
-  "lib/video/providers/types.ts": "99236f7eac6222f0c36203b24cda3d4a48e2b2f57ad236aadfd1efb840fe6d62",
+  "lib/video/providers/types.ts": "a2d6a13d70563a2573b2818ce381e2d8fdc8a3be3047a9934cdc2274c99fffae",
   "lib/providers/mediaProviderFacade.ts": "6c7353d2d96ce24abf558ab23e6bf72382f0a728f291f0f25be4df70d629a46b",
   "lib/credits/serverMetering.ts": "fdda6744b9663da637668e526a7a022f9adb9a31ea6963e13f893cb83fdf4ec7",
   "lib/persistence/projects/types.ts": "c5113c0cd18dc387caf9ca8af27ca55fe89c325e038934e53614e32675bd3e50",

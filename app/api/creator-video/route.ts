@@ -25,6 +25,7 @@ import {
 } from "../../../lib/creator/mediaRouting";
 import {
   createVideoJobToken,
+  getVideoProvider,
 } from "../../../lib/video/providers";
 import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
 import {
@@ -34,6 +35,8 @@ import {
 import { CREATOR_VIDEO_WORKER_STALE_SECONDS } from "@/lib/creator/videoGeneration";
 import { buildCreatorVideoProviderPrompt } from "@/lib/creator/videoPromptPolicy";
 import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
+import { inferCreatorProductionSignals } from "@/lib/creator/productionIntelligence";
+import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/video/creatorSmartRouting";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -236,16 +239,48 @@ async function postHandler(req: NextRequest) {
       }
     }
 
-    const selection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
+    const legacySelection = getMediaProviderFacade().selectCreatorVideo(mediaRoute);
+    const ratio = String(requestedRatio(body));
+    const productionSignals = inferCreatorProductionSignals({
+      id: Number(body.sceneId) || 0,
+      text: [body.text, body.emotion].filter(Boolean).join(" "),
+      motionHint: String(body.motionHint || ""),
+      cameraDirection: String(body.cameraDirection || ""),
+      sceneRole: body.sceneRole as never,
+      visualImportance: body.visualImportance as number,
+      motionImportance: body.motionImportance as number,
+      continuityImportance: body.continuityImportance as number,
+      referenceAvailabilityCount: references.length + (lastFrameUrl ? 1 : 0),
+    });
+    const requestedSeconds = Number(body.duration) || 5;
+    const smartRoute = selectCreatorVideoProfile({
+      qualityTier: qualityMode,
+      visualImportance: productionSignals.visualImportance,
+      motionImportance: productionSignals.motionImportance,
+      continuityImportance: productionSignals.continuityImportance,
+      productionPriority: Math.round((productionSignals.visualImportance * 0.45 + productionSignals.motionImportance * 0.55) * 100) / 100,
+      recommendedSeconds: requestedSeconds,
+      referenceAvailabilityCount: references.length + (lastFrameUrl ? 1 : 0),
+      lastFrameAvailable: Boolean(lastFrameUrl),
+      requestedRatio: ratio,
+      sceneRole: productionSignals.sceneRole,
+    }, getCreatorVideoRuntimeContext());
+    const routedProfile = body.productProfile === "creatorlab" ? smartRoute.selectedProfile : null;
+    const selection = routedProfile ? {
+      provider: getVideoProvider(routedProfile.provider), requestedTier: qualityMode === "cinematic" ? "premium" as const : "primary" as const,
+      selectedTier: routedProfile.provider === "veo" ? "premium" as const : "primary" as const,
+      usedFallback: smartRoute.reasonCodes.includes("PRE_DISPATCH_FALLBACK"), available: true, fallbackReason: null,
+    } : legacySelection;
+
+    if (body.productProfile === "creatorlab" && !routedProfile) {
+      throw new Error("Video production service is not configured.");
+    }
 
     if (!selection.available) {
       throw new Error("Video production service is not configured.");
     }
 
-    const durationPolicy = selection.provider.normalizeDuration(
-      body.duration,
-      qualityMode,
-    );
+    const durationPolicy = routedProfile ? { durationSec: smartRoute.providerBilledDurationSec || requestedSeconds, reason: smartRoute.reasonCodes.join(",") } : selection.provider.normalizeDuration(body.duration, qualityMode);
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_video",
@@ -258,6 +293,9 @@ async function postHandler(req: NextRequest) {
         sceneId: body.sceneId ?? null,
         durationSec: durationPolicy.durationSec,
         engineTier: selection.selectedTier,
+        profileKey: routedProfile?.profileKey || null,
+        estimatedProviderCostUsd: smartRoute.estimatedProviderCostUsd,
+        pricingVersion: smartRoute.pricingVersion,
       },
       billable: true,
       requireCostGuardConfirmation: true,
@@ -272,6 +310,7 @@ async function postHandler(req: NextRequest) {
       promptText: buildCreatorVideoProviderPrompt(body),
       requestedRatio: requestedRatio(body),
       durationSec: durationPolicy.durationSec,
+      runtimeProfile: routedProfile ? { model: routedProfile.model, resolution: routedProfile.resolution, audioMode: routedProfile.audioMode, profileKey: routedProfile.profileKey, pricingVersion: smartRoute.pricingVersion || undefined } : undefined,
     });
 
     if (!task.nativeTaskId) {
@@ -284,15 +323,16 @@ async function postHandler(req: NextRequest) {
     providerTaskAccepted = true;
     providerTaskId = task.nativeTaskId;
     providerKey = selection.provider.key;
-    const profile = selection.provider.getRuntimeProfile();
-    economicCost = selection.provider.key === "runway" ? calculateRunwayCost(profile.model, durationPolicy.durationSec) : calculateVeoCost(profile.model);
+    const profile = routedProfile || selection.provider.getRuntimeProfile();
+    const calculatedCost = selection.provider.key === "runway" ? calculateRunwayCost(profile.model, durationPolicy.durationSec, profile.resolution) : calculateVeoCost(profile.model, profile.resolution, durationPolicy.durationSec);
+    economicCost = selection.provider.key === "veo" && calculatedCost.costStatus === "exact" ? { ...calculatedCost, costStatus: "estimated", reason: "Google Veo becomes actual COGS only after successful generation." } : calculatedCost;
     const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `video:${task.nativeTaskId}`;
     economicAttempt = {
       attemptKey: `${logicalOperationId}:${selection.provider.key}:generation:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
       userId: principal.id, projectId: canonicalProjectId, sceneId: body.sceneId == null ? null : String(body.sceneId), route: "/api/creator-video", operationType: "creator_video", productTier: qualityMode,
       provider: selection.provider.key, providerTier: selection.selectedTier, model: profile.model, fallbackProvider: selection.usedFallback ? selection.provider.key : null,
-      providerRequestId: task.nativeTaskId, state: "provider_billed", billingMoment: "provider_dispatch", fallbackAttempt: selection.usedFallback,
-      quantities: { requestedSeconds: Number(body.duration) || 0, providerBilledSeconds: durationPolicy.durationSec, resolution: profile.resolution, audioMode: profile.audioMode, referenceCount: references.length + (lastFrameUrl ? 1 : 0), requestCount: 1 },
+      providerRequestId: task.nativeTaskId, state: selection.provider.key === "veo" ? "provider_accepted" : "provider_billed", billingMoment: selection.provider.key === "veo" ? "successful_generation" : "provider_dispatch", fallbackAttempt: selection.usedFallback,
+      quantities: { profileKey: routedProfile?.profileKey || "legacy", requestedSeconds: Number(body.duration) || 0, providerBilledSeconds: durationPolicy.durationSec, resolution: profile.resolution, audioMode: profile.audioMode, referenceCount: references.length + (lastFrameUrl ? 1 : 0), requestCount: 1, routingReasonCodes: smartRoute.reasonCodes.join(","), fallbackChain: smartRoute.fallbackProfiles.join(",") },
       cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(),
     };
     await persistEconomicOperationBestEffort(economicAttempt!);
@@ -341,6 +381,7 @@ async function postHandler(req: NextRequest) {
       creditReservationId: reservation?.reservationId || null,
       reservedCredits: reservation?.reservedCredits || 0,
       traceId: getObservabilityContext().traceId || null,
+      runtimeProfile: { profileKey: routedProfile?.profileKey || "legacy", provider: selection.provider.key, model: profile.model, resolution: profile.resolution, audioMode: profile.audioMode, requestedDurationSec: Number(body.duration) || 0, providerBilledDurationSec: durationPolicy.durationSec, pricingVersion: economicCost.pricingVersion, estimatedProviderCostUsd: economicCost.providerCostUsd, economicAttemptKey: economicAttempt.attemptKey, logicalOperationId, creditReservationId: reservation?.reservationId || null, dispatchedAt: economicAttempt.dispatchedAt, providerAcceptedAt: economicAttempt.providerAcceptedAt, fallbackAttempt: selection.usedFallback },
     });
     const queueJob = await services.jobQueue.enqueue({
       userId: canonicalQueueInput.userId,
@@ -359,7 +400,7 @@ async function postHandler(req: NextRequest) {
     if (reservation) {
       try {
         const settlement = await settleMeteredOperation(reservation, {
-          providerCostUsd: economicCost.providerCostUsd ?? undefined,
+          providerCostUsd: selection.provider.key === "runway" ? economicCost.providerCostUsd ?? undefined : undefined,
           providerRequestId: task.nativeTaskId,
           metadata: {
             route: "creator-video",

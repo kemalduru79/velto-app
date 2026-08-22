@@ -6,6 +6,11 @@ export const CREATOR_VIDEO_RESERVED_CLIENT_FIELDS = [
   "nativeTaskId",
   "provider",
   "providerKey",
+  "model",
+  "profileKey",
+  "pricingVersion",
+  "providerCostUsd",
+  "estimatedProviderCostUsd",
   "providerRequestId",
   "queueJobId",
   "creditReservationId",
@@ -89,6 +94,7 @@ type CanonicalCreatorVideoQueueInput = {
   creditReservationId: string | null;
   reservedCredits: number;
   traceId: string | null;
+  runtimeProfile?: Record<string, unknown> | null;
 };
 
 export function buildCanonicalCreatorVideoQueueInput(
@@ -108,6 +114,7 @@ export function buildCanonicalCreatorVideoQueueInput(
       reservedCredits: input.reservedCredits,
       creditSettlementMode: "provider_dispatch",
       traceId: input.traceId,
+      runtimeProfile: input.runtimeProfile || null,
     },
   } as const;
 }

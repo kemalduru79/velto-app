@@ -1,4 +1,4 @@
-export const CREATOR_ECONOMICS_PRICING_VERSION = "creator-economics-2026-08-22";
+export const CREATOR_ECONOMICS_PRICING_VERSION = "creator-video-routing-2026-08-22";
 export const CREATOR_ECONOMICS_PRICING_AS_OF = "2026-08-22";
 
 export const CREATOR_PROVIDER_PRICING = {
@@ -21,5 +21,11 @@ export const CREATOR_PROVIDER_PRICING = {
   runway: {
     gen4_turbo: { perGeneratedSecond: 0.05 },
     "gen4.5": { perGeneratedSecond: 0.12 },
+    seedance2: { "720p": 0.36, "1080p": 0.4, "4k": 1.5 },
+  },
+  veo: {
+    "veo-3.1-generate-preview": { "720p": 0.4, "1080p": 0.4, "4k": 0.6 },
+    "veo-3.1-fast-generate-preview": { "720p": 0.1, "1080p": 0.12, "4k": 0.3 },
+    "veo-3.1-lite-generate-preview": { "720p": 0.05, "1080p": 0.08 },
   },
 } as const;

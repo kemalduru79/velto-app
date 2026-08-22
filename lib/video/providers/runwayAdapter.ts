@@ -15,7 +15,7 @@ import type {
   VideoProviderCancelResult,
 } from "./types";
 
-type RunwayVideoModel = "gen4_turbo" | "gen4.5" | "seedance2";
+export type RunwayVideoModel = "gen4_turbo" | "gen4.5" | "seedance2";
 
 type Gen4Ratio =
   | "1280:720"
@@ -80,6 +80,11 @@ function getModel(): RunwayVideoModel {
   }
 
   return "gen4_turbo";
+}
+
+function validatedModel(value: unknown): RunwayVideoModel {
+  if (value === "gen4_turbo" || value === "gen4.5" || value === "seedance2") return value;
+  throw new Error("The selected internal Runway video profile is unsupported.");
 }
 
 function getGen4Ratio(value: unknown): Gen4Ratio {
@@ -174,7 +179,8 @@ export class RunwayVideoProvider implements VideoProvider {
   }
 
   async createTask(input: VideoProviderCreateInput) {
-    const task = await createRunwayTask(getClient(), getModel(), input);
+    const model = input.runtimeProfile ? validatedModel(input.runtimeProfile.model) : getModel();
+    const task = await createRunwayTask(getClient(), model, input);
     const normalized = normalizeTask(task);
 
     return {

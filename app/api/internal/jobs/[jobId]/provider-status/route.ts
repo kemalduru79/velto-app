@@ -7,6 +7,7 @@ import {
   validatePersistedVideoJobBinding,
 } from "@/lib/security/persistedVideoJobBinding";
 import { canonicalProviderFailure } from "@/lib/security/videoJobPublicSafety";
+import { calculateVeoCost, persistEconomicOperationBestEffort } from "@/lib/economics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,36 @@ export async function POST(
       binding.nativeTaskId,
     );
     const status = canonicalProviderStatus(task.status);
+    const runtimeProfile = job.payload.runtimeProfile && typeof job.payload.runtimeProfile === "object" ? job.payload.runtimeProfile as Record<string, unknown> : {};
+    if (status === "SUCCEEDED" && binding.provider === "veo" && typeof runtimeProfile.economicAttemptKey === "string" && typeof runtimeProfile.logicalOperationId === "string") {
+      const model = String(runtimeProfile.model || "");
+      const resolution = String(runtimeProfile.resolution || "1080p");
+      const billedSeconds = Number(runtimeProfile.providerBilledDurationSec) || 8;
+      await persistEconomicOperationBestEffort({
+        attemptKey: runtimeProfile.economicAttemptKey,
+        logicalOperationId: runtimeProfile.logicalOperationId,
+        creditReservationId: typeof runtimeProfile.creditReservationId === "string" ? runtimeProfile.creditReservationId : null,
+        userId: job.userId,
+        projectId: job.projectId,
+        sceneId: job.payload.sceneId == null ? null : String(job.payload.sceneId),
+        route: "/api/creator-video",
+        operationType: "creator_video",
+        productTier: String(job.payload.qualityMode || "cinematic"),
+        provider: "veo",
+        providerTier: "premium",
+        model,
+        providerRequestId: binding.nativeTaskId,
+        state: "provider_billed",
+        billingMoment: "successful_generation",
+        fallbackAttempt: runtimeProfile.fallbackAttempt === true,
+        quantities: { profileKey: String(runtimeProfile.profileKey || "legacy"), requestedSeconds: Number(runtimeProfile.requestedDurationSec) || 0, providerBilledSeconds: billedSeconds, resolution, audioMode: String(runtimeProfile.audioMode || "generated_audio"), requestCount: 1 },
+        cost: calculateVeoCost(model, resolution, billedSeconds),
+        dispatchedAt: typeof runtimeProfile.dispatchedAt === "string" ? runtimeProfile.dispatchedAt : null,
+        providerAcceptedAt: typeof runtimeProfile.providerAcceptedAt === "string" ? runtimeProfile.providerAcceptedAt : null,
+        completedAt: new Date().toISOString(),
+        reconciledAt: new Date().toISOString(),
+      });
+    }
     const failed = status === "FAILED" || status === "CANCELLED";
     const failure = failed ? canonicalProviderFailure() : null;
     return json({

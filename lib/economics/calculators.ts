@@ -1,9 +1,9 @@
-import { CREATOR_ECONOMICS_PRICING_AS_OF, CREATOR_ECONOMICS_PRICING_VERSION, CREATOR_PROVIDER_PRICING } from "./pricingCatalog";
+import { CREATOR_ECONOMICS_PRICING_AS_OF, CREATOR_ECONOMICS_PRICING_VERSION, CREATOR_PROVIDER_PRICING } from "./pricingCatalog.ts";
 import type { EconomicCostResult } from "./types";
 
 const base = { pricingVersion: CREATOR_ECONOMICS_PRICING_VERSION, pricingAsOf: CREATOR_ECONOMICS_PRICING_AS_OF, currency: "USD" as const };
 const units = (value: unknown) => Math.max(0, Number(value) || 0);
-const exact = (components: Record<string, number>): EconomicCostResult => ({ ...base, costStatus: "exact", providerCostUsd: Object.values(components).reduce((sum, value) => sum + value, 0), components });
+const exact = (components: Record<string, number>): EconomicCostResult => ({ ...base, costStatus: "exact", providerCostUsd: Math.round(Object.values(components).reduce((sum, value) => sum + value, 0) * 1_000_000) / 1_000_000, components });
 export const unknownCost = (reason: string): EconomicCostResult => ({ ...base, costStatus: "unknown", providerCostUsd: null, reason, components: {} });
 
 export function calculateOpenAITextCost(model: string, usage: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number }): EconomicCostResult {
@@ -34,13 +34,17 @@ export function calculateElevenLabsCost(model: string, characterCount: number): 
   return rate ? exact({ characters: units(characterCount) * rate.per1KCharacters / 1000 }) : unknownCost(`No verified ElevenLabs pricing for ${model}.`);
 }
 
-export function calculateRunwayCost(model: string, generatedSeconds: number): EconomicCostResult {
+export function calculateRunwayCost(model: string, generatedSeconds: number, resolution = "720p"): EconomicCostResult {
   const rate = CREATOR_PROVIDER_PRICING.runway[model as keyof typeof CREATOR_PROVIDER_PRICING.runway];
-  return rate ? exact({ generatedSeconds: units(generatedSeconds) * rate.perGeneratedSecond }) : unknownCost(`No verified Runway pricing for ${model}.`);
+  if (!rate) return unknownCost(`No verified Runway pricing for ${model}.`);
+  const perSecond = "perGeneratedSecond" in rate ? rate.perGeneratedSecond : rate[resolution as keyof typeof rate];
+  return typeof perSecond === "number" ? exact({ generatedSeconds: units(generatedSeconds) * perSecond }) : unknownCost(`No verified Runway pricing for ${model} at ${resolution}.`);
 }
 
-export function calculateVeoCost(model: string): EconomicCostResult {
-  return unknownCost(`The runtime Veo profile ${model} has no verified pricing entry; it is not classified as Fast/no-audio.`);
+export function calculateVeoCost(model: string, resolution = "1080p", generatedSeconds = 8): EconomicCostResult {
+  const rates = CREATOR_PROVIDER_PRICING.veo[model as keyof typeof CREATOR_PROVIDER_PRICING.veo];
+  const perSecond = rates?.[resolution as keyof typeof rates];
+  return typeof perSecond === "number" ? exact({ generatedSeconds: units(generatedSeconds) * perSecond }) : unknownCost(`No verified Google Veo pricing for ${model} at ${resolution}.`);
 }
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" ? value as Record<string, unknown> : {}; }
