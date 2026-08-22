@@ -1,6 +1,7 @@
 import "server-only";
 import type { StockMediaCandidate, StockMediaProvider, StockMediaType, StockOrientation, StockRateLimit, StockRendition, StockSearchInput, StockSearchResult } from "./types";
 import { StockProviderError } from "./types";
+import { selectPexelsVideoPreview } from "./pexelsPreview";
 
 const API_BASE = "https://api.pexels.com/v1";
 const LICENSE = { id: "pexels-license", url: "https://www.pexels.com/license/", snapshotDate: "2026-08-22" } as const;
@@ -29,12 +30,13 @@ function videoCandidate(raw: Json): StockMediaCandidate {
   const files = recordArray(raw.video_files).filter((file) => text(file.file_type) === "video/mp4" && text(file.link));
   const renditions = files.map((file) => ({ id: String(file.id || `${number(file.width)}x${number(file.height)}`), url: text(file.link), mimeType: "video/mp4" as const, width: number(file.width), height: number(file.height), quality: "production" as const }));
   const pictures = recordArray(raw.video_pictures);
+  const preview = selectPexelsVideoPreview(files, pictures);
   const creator = (raw.user && typeof raw.user === "object" ? raw.user : {}) as Json;
   const creatorName = text(creator.name) || "Pexels creator";
   return { sourceType: "stock", mediaType: "video", provider: "pexels", providerMediaId: id,
     sourcePageUrl: text(raw.url), creatorName, creatorProfileUrl: text(creator.url) || null, license: LICENSE,
     width, height, orientation: orientation(width, height), durationSeconds: number(raw.duration) || null,
-    previewUrl: text(pictures[0]?.picture), renditions, averageColor: null,
+    previewUrl: preview.previewUrl || "", previewPosterUrl: preview.previewPosterUrl, renditions, averageColor: null,
     attributionText: `Video by ${creatorName} on Pexels`, metadataVersion: "2026-08-22" };
 }
 

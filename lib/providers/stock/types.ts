@@ -24,6 +24,7 @@ export type StockMediaCandidate = {
   orientation: StockOrientation;
   durationSeconds: number | null;
   previewUrl: string;
+  previewPosterUrl?: string | null;
   renditions: StockRendition[];
   averageColor: string | null;
   attributionText: string;

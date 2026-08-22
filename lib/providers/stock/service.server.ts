@@ -11,12 +11,13 @@ import type { StockMediaCandidate, StockMediaType, StockOrientation, StockSearch
 import { StockProviderError } from "./types";
 
 export const STOCK_SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const STOCK_SEARCH_CACHE_SCHEMA_VERSION = "pexels-video-preview-v2";
 const PEXELS_MEDIA_HOSTS = new Set(["images.pexels.com", "videos.pexels.com"]);
 const nonBillableCost = { costStatus: "not_billable" as const, providerCostUsd: 0, reason: "Pexels API usage is confirmed non-billable.", components: {}, pricingVersion: "pexels-2026-08-22", pricingAsOf: "2026-08-22", currency: "USD" as const };
 
 export function normalizeStockQuery(value: string) { return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US"); }
 export function stockSearchCacheKey(input: StockSearchInput) {
-  return createHash("sha256").update(JSON.stringify([normalizeStockQuery(input.query), input.mediaType, input.orientation || null, input.page, input.perPage])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([STOCK_SEARCH_CACHE_SCHEMA_VERSION, normalizeStockQuery(input.query), input.mediaType, input.orientation || null, input.page, input.perPage])).digest("hex");
 }
 export function validateStockSearch(raw: { query?: string | null; mediaType?: string | null; orientation?: string | null; page?: string | null; perPage?: string | null }): StockSearchInput {
   const query = normalizeStockQuery(raw.query || "");
