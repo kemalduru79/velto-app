@@ -101,8 +101,8 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes authenticated usage", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "81a6c728b1506e53ff174ec86409ac7fdf8c115d431025df223377c4dc1c66ff"));
-check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "c90581e0b2e03ac3f5f86512e74ddcc37d193697d3efeb386eb17a0f17d8a4e2"));
+check("API route inventory includes authenticated usage", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "8ecb2f203331a6ddf57f389f96bac133f4b0224363533d511f860af150bf21bb"));
+check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
 check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "99d58a7752263e1dc834673b1563aec075883ccaa7a5068d0f7a6eeb6d1df425"));
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));

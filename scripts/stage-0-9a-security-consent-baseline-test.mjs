@@ -53,6 +53,7 @@ assert.deepEqual(changedFiles.filter((file) => file.startsWith("supabase/migrati
   "supabase/migrations/20260822100000_stage_0_10b_creator_economics.sql",
   "supabase/migrations/20260822150000_stage_0_10c_pexels_safe_stock.sql",
   "supabase/migrations/20260822170000_stage_0_10d_stock_import_claims.sql",
+  "supabase/migrations/20260822200000_stage_0_10f_usage_indexes.sql",
 ].filter((file) => changedFiles.includes(file)));
 assert.match(config, /X-Content-Type-Options[\s\S]*nosniff/);
 assert.match(config, /Referrer-Policy[\s\S]*strict-origin-when-cross-origin/);
