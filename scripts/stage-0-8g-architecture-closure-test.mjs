@@ -103,7 +103,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
 });
 check("API route inventory includes authenticated usage", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "8ecb2f203331a6ddf57f389f96bac133f4b0224363533d511f860af150bf21bb"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
-check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "99d58a7752263e1dc834673b1563aec075883ccaa7a5068d0f7a6eeb6d1df425"));
+check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "e24ea72403ac13092764fd4ff3bba2b8e699a017bb68ac4b28b0175bda1e265c"));
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
 check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
@@ -174,6 +174,9 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/economics/usageService.server.ts",
     "scripts/stage-0-10f-usage-margin-controls-test.mjs",
     "supabase/migrations/20260822200000_stage_0_10f_usage_indexes.sql",
+    "docs/stage-0-10g-package-quality-closure.md",
+    "lib/economics/packageValidation.ts",
+    "scripts/stage-0-10g-package-quality-closure-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

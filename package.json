@@ -21,6 +21,7 @@
     "test:stage-0-10d": "node --experimental-strip-types scripts/stage-0-10d-production-intelligence-test.mjs",
     "test:stage-0-10e": "node --experimental-strip-types scripts/stage-0-10e-smart-premium-routing-test.mjs",
     "test:stage-0-10f": "node --experimental-strip-types scripts/stage-0-10f-usage-margin-controls-test.mjs",
+    "test:stage-0-10g": "node --experimental-strip-types scripts/stage-0-10g-package-quality-closure-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",
