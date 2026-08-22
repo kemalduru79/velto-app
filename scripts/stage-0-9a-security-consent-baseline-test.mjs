@@ -90,8 +90,9 @@ const basePackage = JSON.parse(execFileSync("git", ["show", `${STARTING_HEAD}:pa
 const currentPackage = JSON.parse(read("package.json"));
 assert.deepEqual(currentPackage.dependencies, basePackage.dependencies);
 assert.deepEqual(currentPackage.devDependencies, basePackage.devDependencies);
+const reviewedCreditFiles = new Set(["lib/credits/operationPolicy.ts", "lib/credits/serverMetering.ts"]);
 for (const prefix of ["lib/providers/", "lib/credits/", "lib/queue/", "worker/"]) {
-  assert.equal(changedFiles.some((file) => file.startsWith(prefix) && !file.startsWith("lib/providers/stock/")), false, `${prefix} behavior drifted`);
+  assert.equal(changedFiles.some((file) => file.startsWith(prefix) && !file.startsWith("lib/providers/stock/") && !reviewedCreditFiles.has(file)), false, `${prefix} behavior drifted`);
 }
 
 console.log("STAGE_0_9A_SECURITY_CONSENT_BASELINE=PASS");

@@ -3,14 +3,16 @@ import { CREATOR_VIDEO_PROFILES, estimateCreatorVideoProfileCost, getCreatorProf
 import { calculateElevenLabsCost, calculateOpenAIImageCost, calculateOpenAITextCost } from "./calculators.ts";
 import { CREATOR_MARGIN_BENCHMARKS, type CreatorBenchmarkTier } from "./marginBenchmark.ts";
 
-export const CREATOR_PACKAGE_VALIDATION_VERSION = "creator-package-validation-2026-08-22";
+export const CREATOR_PACKAGE_VALIDATION_VERSION = "creator-package-validation-2026-08-23";
 export type CreatorPackageScenarioKind = "stock_rich" | "typical" | "generation_heavy_p90" | "retry_stress";
 
 export type CreatorPackageScenario = {
   kind: CreatorPackageScenarioKind;
   finishedMinutes: number;
   scenesPerFinishedMinute: number;
-  stockReuseShare: number;
+  newStockPhotosPerFinishedMinute: number;
+  newStockVideosPerFinishedMinute: number;
+  reusedAssetsPerFinishedMinute: number;
   aiImagesPerFinishedMinute: number;
   voiceOperationsPerFinishedMinute: number;
   dialogueVoiceOperationsPerFinishedMinute: number;
@@ -28,7 +30,7 @@ const providerCost = (result: { providerCostUsd: number | null }) => { if (resul
 
 export function simulateCreatorPackageEconomics(input: { tier: CreatorBenchmarkTier; candidatePriceUsd?: number; scenario: CreatorPackageScenario }) {
   const { tier, scenario } = input; const benchmark = CREATOR_MARGIN_BENCHMARKS[tier]; const price = input.candidatePriceUsd ?? benchmark.benchmarkPriceUsd;
-  const minutes = Math.max(0, scenario.finishedMinutes); const images = count(scenario.aiImagesPerFinishedMinute, minutes); const voices = count(scenario.voiceOperationsPerFinishedMinute, minutes); const dialogueVoices = count(scenario.dialogueVoiceOperationsPerFinishedMinute, minutes); const exports = Math.ceil(Math.max(0, scenario.exports));
+  const minutes = Math.max(0, scenario.finishedMinutes); const images = count(scenario.aiImagesPerFinishedMinute, minutes); const voices = count(scenario.voiceOperationsPerFinishedMinute, minutes); const dialogueVoices = count(scenario.dialogueVoiceOperationsPerFinishedMinute, minutes); const stockPhotos = count(scenario.newStockPhotosPerFinishedMinute, minutes); const stockVideos = count(scenario.newStockVideosPerFinishedMinute, minutes); const reusedAssets = count(scenario.reusedAssetsPerFinishedMinute, minutes); const exports = Math.ceil(Math.max(0, scenario.exports));
   const imageCost = providerCost(calculateOpenAIImageCost("gpt-image-2", { textInputTokens: images * 250, imageOutputTokens: images * 3000 }));
   const voiceCost = providerCost(calculateElevenLabsCost("eleven_multilingual_v2", scenario.voiceCharactersPerFinishedMinute * minutes));
   const intelligenceCost = providerCost(calculateOpenAITextCost("gpt-5-mini", { inputTokens: scenario.intelligenceInputTokensPerFinishedMinute * minutes, cachedInputTokens: scenario.intelligenceInputTokensPerFinishedMinute * minutes * 0.2, outputTokens: scenario.intelligenceOutputTokensPerFinishedMinute * minutes }));
@@ -47,12 +49,15 @@ export function simulateCreatorPackageEconomics(input: { tier: CreatorBenchmarkT
     dialogueVoices: dialogueVoices * getOperationCreditCost("creator_dialogue_voice", tier),
     videos: videos * getOperationCreditCost("creator_video", tier),
     exports: exports * getOperationCreditCost("creator_export", tier),
+    stockPhotos: stockPhotos * getOperationCreditCost("creator_stock_photo", tier),
+    stockVideos: stockVideos * getOperationCreditCost("creator_stock_video", tier),
+    reusedAssets: 0,
   };
   const creditsRequired = Object.values(creditBurn).reduce((sum, value) => sum + value, 0); const p50Headroom = benchmark.p50CogsCeilingUsd - modeledProviderCogsUsd; const p90Headroom = benchmark.p90CogsCeilingUsd - modeledProviderCogsUsd; const stressHeadroom = benchmark.stressCogsCeilingUsd - modeledProviderCogsUsd;
   const dominantCreditConsumers = Object.entries(creditBurn).sort((a, b) => b[1] - a[1]).map(([operation, credits]) => ({ operation, credits })); const dominantProviderCosts = Object.entries({ video: videoCogsUsd, image: round(imageCost * retryMultiplier), voice: round(voiceCost * retryMultiplier), intelligence: round(intelligenceCost * retryMultiplier) }).sort((a, b) => b[1] - a[1]).map(([operation, costUsd]) => ({ operation, costUsd }));
   return {
     version: CREATOR_PACKAGE_VALIDATION_VERSION, tier, scenario: scenario.kind, candidatePriceUsd: price, finishedMinutes: minutes, scenesPerFinishedMinute: scenario.scenesPerFinishedMinute,
-    counts: { images, voices, dialogueVoices, videos, exports }, creditBurn, creditsRequired, creditsPerFinishedMinute: round(creditsRequired / minutes), dominantCreditConsumers, billedVideoSeconds,
+    counts: { images, voices, dialogueVoices, videos, stockPhotos, stockVideos, reusedAssets, exports }, creditBurn, creditsRequired, creditsPerFinishedMinute: round(creditsRequired / minutes), dominantCreditConsumers, billedVideoSeconds,
     providerCogs: { imageUsd: round(imageCost * retryMultiplier), voiceUsd: round(voiceCost * retryMultiplier), intelligenceUsd: round(intelligenceCost * retryMultiplier), videoUsd: videoCogsUsd, byVideoProfileUsd: videoCostByProfile, totalUsd: modeledProviderCogsUsd },
     retryProviderCogsUsd: round(baseProviderCogs * Math.max(0, scenario.retryRate)), dominantProviderCosts, providerCogsPerFinishedMinute: round(modeledProviderCogsUsd / minutes), salePricePerFinishedMinute: round(price / minutes),
     grossMarginEstimate: round((price - modeledProviderCogsUsd) / price), ceilings: { p50Usd: benchmark.p50CogsCeilingUsd, p90Usd: benchmark.p90CogsCeilingUsd, stressUsd: benchmark.stressCogsCeilingUsd },
@@ -63,27 +68,27 @@ export function simulateCreatorPackageEconomics(input: { tier: CreatorBenchmarkT
 }
 
 const scenario = (kind: CreatorPackageScenarioKind, tier: CreatorBenchmarkTier, overrides: Partial<CreatorPackageScenario>): CreatorPackageScenario => ({
-  kind, finishedMinutes: CREATOR_MARGIN_BENCHMARKS[tier].normalizedFinishedMinutes, scenesPerFinishedMinute: 8, stockReuseShare: 0.6, aiImagesPerFinishedMinute: 1.5, voiceOperationsPerFinishedMinute: 8, dialogueVoiceOperationsPerFinishedMinute: 0, voiceCharactersPerFinishedMinute: 900, intelligenceInputTokensPerFinishedMinute: 3000, intelligenceOutputTokensPerFinishedMinute: 1000, exports: 4, retryRate: 0.05, videoProfiles: {}, ...overrides,
+  kind, finishedMinutes: CREATOR_MARGIN_BENCHMARKS[tier].normalizedFinishedMinutes, scenesPerFinishedMinute: 8, newStockPhotosPerFinishedMinute: 0.5, newStockVideosPerFinishedMinute: 0.2, reusedAssetsPerFinishedMinute: 3, aiImagesPerFinishedMinute: 1.5, voiceOperationsPerFinishedMinute: 8, dialogueVoiceOperationsPerFinishedMinute: 0, voiceCharactersPerFinishedMinute: 900, intelligenceInputTokensPerFinishedMinute: 3000, intelligenceOutputTokensPerFinishedMinute: 1000, exports: 4, retryRate: 0.05, videoProfiles: {}, ...overrides,
 });
 
 export const CREATOR_PACKAGE_SCENARIOS: Record<CreatorBenchmarkTier, Record<CreatorPackageScenarioKind, CreatorPackageScenario>> = {
   standard: {
-    stock_rich: scenario("stock_rich", "standard", { stockReuseShare: 0.82, aiImagesPerFinishedMinute: 0.8, retryRate: 0.02 }),
-    typical: scenario("typical", "standard", { stockReuseShare: 0.7 }),
-    generation_heavy_p90: scenario("generation_heavy_p90", "standard", { stockReuseShare: 0.55, aiImagesPerFinishedMinute: 2.2, retryRate: 0.1 }),
-    retry_stress: scenario("retry_stress", "standard", { scenesPerFinishedMinute: 10, stockReuseShare: 0.45, aiImagesPerFinishedMinute: 3, voiceOperationsPerFinishedMinute: 10, retryRate: 0.25 }),
+    stock_rich: scenario("stock_rich", "standard", { newStockPhotosPerFinishedMinute: 1, newStockVideosPerFinishedMinute: 0.35, reusedAssetsPerFinishedMinute: 4.5, aiImagesPerFinishedMinute: 0.8, retryRate: 0.02 }),
+    typical: scenario("typical", "standard", { newStockPhotosPerFinishedMinute: 0.8, newStockVideosPerFinishedMinute: 0.25, reusedAssetsPerFinishedMinute: 4 }),
+    generation_heavy_p90: scenario("generation_heavy_p90", "standard", { newStockPhotosPerFinishedMinute: 0.55, newStockVideosPerFinishedMinute: 0.2, reusedAssetsPerFinishedMinute: 3, aiImagesPerFinishedMinute: 2.2, retryRate: 0.1 }),
+    retry_stress: scenario("retry_stress", "standard", { scenesPerFinishedMinute: 10, newStockPhotosPerFinishedMinute: 0.7, newStockVideosPerFinishedMinute: 0.25, reusedAssetsPerFinishedMinute: 3.5, aiImagesPerFinishedMinute: 3, voiceOperationsPerFinishedMinute: 10, retryRate: 0.25 }),
   },
   pro: {
-    stock_rich: scenario("stock_rich", "pro", { stockReuseShare: 0.72, aiImagesPerFinishedMinute: 1.5, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.2, requestedSeconds: 7 } }, retryRate: 0.03, exports: 4 }),
-    typical: scenario("typical", "pro", { stockReuseShare: 0.55, aiImagesPerFinishedMinute: 2.4, dialogueVoiceOperationsPerFinishedMinute: 0.2, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.42, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.08, requestedSeconds: 7 } }, exports: 4 }),
-    generation_heavy_p90: scenario("generation_heavy_p90", "pro", { stockReuseShare: 0.4, aiImagesPerFinishedMinute: 2.8, dialogueVoiceOperationsPerFinishedMinute: 0.3, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.48, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.17, requestedSeconds: 7 } }, retryRate: 0.12, exports: 5 }),
-    retry_stress: scenario("retry_stress", "pro", { scenesPerFinishedMinute: 10, stockReuseShare: 0.3, aiImagesPerFinishedMinute: 3.6, voiceOperationsPerFinishedMinute: 10, dialogueVoiceOperationsPerFinishedMinute: 0.4, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.5, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.3, requestedSeconds: 7 } }, retryRate: 0.3, exports: 6 }),
+    stock_rich: scenario("stock_rich", "pro", { newStockPhotosPerFinishedMinute: 0.8, newStockVideosPerFinishedMinute: 0.3, reusedAssetsPerFinishedMinute: 4, aiImagesPerFinishedMinute: 1.5, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.2, requestedSeconds: 7 } }, retryRate: 0.03, exports: 4 }),
+    typical: scenario("typical", "pro", { newStockPhotosPerFinishedMinute: 0.5, newStockVideosPerFinishedMinute: 0.2, reusedAssetsPerFinishedMinute: 3, aiImagesPerFinishedMinute: 2.4, dialogueVoiceOperationsPerFinishedMinute: 0.2, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.42, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.08, requestedSeconds: 7 } }, exports: 4 }),
+    generation_heavy_p90: scenario("generation_heavy_p90", "pro", { newStockPhotosPerFinishedMinute: 0.35, newStockVideosPerFinishedMinute: 0.15, reusedAssetsPerFinishedMinute: 2, aiImagesPerFinishedMinute: 2.8, dialogueVoiceOperationsPerFinishedMinute: 0.3, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.48, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.17, requestedSeconds: 7 } }, retryRate: 0.12, exports: 5 }),
+    retry_stress: scenario("retry_stress", "pro", { scenesPerFinishedMinute: 10, newStockPhotosPerFinishedMinute: 0.4, newStockVideosPerFinishedMinute: 0.2, reusedAssetsPerFinishedMinute: 2.5, aiImagesPerFinishedMinute: 3.6, voiceOperationsPerFinishedMinute: 10, dialogueVoiceOperationsPerFinishedMinute: 0.4, videoProfiles: { pro_efficient_motion: { clipsPerFinishedMinute: 0.5, requestedSeconds: 7 }, pro_quality_motion: { clipsPerFinishedMinute: 0.3, requestedSeconds: 7 } }, retryRate: 0.3, exports: 6 }),
   },
   cinematic: {
-    stock_rich: scenario("stock_rich", "cinematic", { stockReuseShare: 0.58, aiImagesPerFinishedMinute: 2, dialogueVoiceOperationsPerFinishedMinute: 0.3, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.35, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.12, requestedSeconds: 7 } }, retryRate: 0.04, exports: 4 }),
-    typical: scenario("typical", "cinematic", { stockReuseShare: 0.38, aiImagesPerFinishedMinute: 3, dialogueVoiceOperationsPerFinishedMinute: 0.5, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.55, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.25, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.015, requestedSeconds: 8 } }, exports: 4 }),
-    generation_heavy_p90: scenario("generation_heavy_p90", "cinematic", { stockReuseShare: 0.25, aiImagesPerFinishedMinute: 4, dialogueVoiceOperationsPerFinishedMinute: 0.7, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.7, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.42, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.025, requestedSeconds: 8 } }, retryRate: 0.15, exports: 5 }),
-    retry_stress: scenario("retry_stress", "cinematic", { scenesPerFinishedMinute: 10, stockReuseShare: 0.18, aiImagesPerFinishedMinute: 5, voiceOperationsPerFinishedMinute: 10, dialogueVoiceOperationsPerFinishedMinute: 1, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.8, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.55, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.04, requestedSeconds: 8 } }, retryRate: 0.3, exports: 6 }),
+    stock_rich: scenario("stock_rich", "cinematic", { newStockPhotosPerFinishedMinute: 0.7, newStockVideosPerFinishedMinute: 0.28, reusedAssetsPerFinishedMinute: 3.5, aiImagesPerFinishedMinute: 2, dialogueVoiceOperationsPerFinishedMinute: 0.3, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.35, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.12, requestedSeconds: 7 } }, retryRate: 0.04, exports: 4 }),
+    typical: scenario("typical", "cinematic", { newStockPhotosPerFinishedMinute: 0.35, newStockVideosPerFinishedMinute: 0.18, reusedAssetsPerFinishedMinute: 2.5, aiImagesPerFinishedMinute: 3, dialogueVoiceOperationsPerFinishedMinute: 0.5, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.55, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.25, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.015, requestedSeconds: 8 } }, exports: 4 }),
+    generation_heavy_p90: scenario("generation_heavy_p90", "cinematic", { newStockPhotosPerFinishedMinute: 0.2, newStockVideosPerFinishedMinute: 0.12, reusedAssetsPerFinishedMinute: 1.5, aiImagesPerFinishedMinute: 4, dialogueVoiceOperationsPerFinishedMinute: 0.7, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.7, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.42, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.025, requestedSeconds: 8 } }, retryRate: 0.15, exports: 5 }),
+    retry_stress: scenario("retry_stress", "cinematic", { scenesPerFinishedMinute: 10, newStockPhotosPerFinishedMinute: 0.25, newStockVideosPerFinishedMinute: 0.15, reusedAssetsPerFinishedMinute: 2, aiImagesPerFinishedMinute: 5, voiceOperationsPerFinishedMinute: 10, dialogueVoiceOperationsPerFinishedMinute: 1, videoProfiles: { cinematic_precision_motion: { clipsPerFinishedMinute: 0.8, requestedSeconds: 7 }, cinematic_fast_motion: { clipsPerFinishedMinute: 0.55, requestedSeconds: 7 }, cinematic_hero_motion: { clipsPerFinishedMinute: 0.04, requestedSeconds: 8 } }, retryRate: 0.3, exports: 6 }),
   },
 };
 

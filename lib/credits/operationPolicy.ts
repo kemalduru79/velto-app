@@ -5,7 +5,9 @@ export type MeteredOperationType =
   | "creator_voice"
   | "creator_dialogue_voice"
   | "creator_video"
-  | "creator_export";
+  | "creator_export"
+  | "creator_stock_photo"
+  | "creator_stock_video";
 
 export type CreatorOperationManifest = {
   images?: number;
@@ -13,6 +15,8 @@ export type CreatorOperationManifest = {
   dialogueVoices?: number;
   videos?: number;
   exports?: number;
+  stockPhotos?: number;
+  stockVideos?: number;
 };
 
 const OPERATION_CREDIT_POLICY: Record<
@@ -24,6 +28,8 @@ const OPERATION_CREDIT_POLICY: Record<
   creator_dialogue_voice: { draft: 0, standard: 1, pro: 2, cinematic: 3 },
   creator_video: { draft: 0, standard: 0, pro: 6, cinematic: 10 },
   creator_export: { draft: 0, standard: 1, pro: 2, cinematic: 3 },
+  creator_stock_photo: { draft: 1, standard: 1, pro: 1, cinematic: 1 },
+  creator_stock_video: { draft: 2, standard: 2, pro: 2, cinematic: 2 },
 };
 
 export function normalizeCreditQualityMode(value: unknown): CreditQualityMode {
@@ -52,6 +58,8 @@ export function estimateCreatorOperationManifest(
     dialogueVoices: Math.max(0, Math.trunc(Number(manifest.dialogueVoices) || 0)),
     videos: Math.max(0, Math.trunc(Number(manifest.videos) || 0)),
     exports: Math.max(0, Math.trunc(Number(manifest.exports) || 0)),
+    stockPhotos: Math.max(0, Math.trunc(Number(manifest.stockPhotos) || 0)),
+    stockVideos: Math.max(0, Math.trunc(Number(manifest.stockVideos) || 0)),
   };
 
   return {
@@ -62,6 +70,8 @@ export function estimateCreatorOperationManifest(
       counts.dialogueVoices *
         getOperationCreditCost("creator_dialogue_voice", qualityMode) +
       counts.videos * getOperationCreditCost("creator_video", qualityMode) +
-      counts.exports * getOperationCreditCost("creator_export", qualityMode),
+      counts.exports * getOperationCreditCost("creator_export", qualityMode) +
+      counts.stockPhotos * getOperationCreditCost("creator_stock_photo", qualityMode) +
+      counts.stockVideos * getOperationCreditCost("creator_stock_video", qualityMode),
   };
 }

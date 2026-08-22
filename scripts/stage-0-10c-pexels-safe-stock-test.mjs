@@ -13,7 +13,7 @@ assert.match(provider, /x-ratelimit/i); assert.match(provider, /response\.status
 assert.match(service, /PEXELS_MEDIA_HOSTS/); assert.match(service, /safeRemoteMediaFetch/); assert.match(importer, /"downloadUrl" in body \|\| "url" in body/); assert.match(service, /checkStorageGenerationAllowance/);
 assert.match(migration, /unique\(owner_user_id, project_id, reuse_identity\)/); assert.match(service, /getForOwner\(String\(existing\.asset_id\), input\.userId\)/); assert.match(service, /sourceMetadata/); assert.match(service, /licenseSnapshotDate/);
 assert.match(service, /costStatus: "not_billable"/); assert.match(service, /providerCostUsd: 0/); assert.match(service, /downloadedBytes/); assert.match(service, /storageBytes/); assert.match(service, /generated: false/);
-assert.match(picker, /Pexels/); assert.match(picker, /attributionText/); assert.match(picker, /separate rights/); assert.match(picker, /Import & use/);
+assert.match(picker, /Pexels/); assert.match(picker, /attributionText/); assert.match(picker, /separate rights/); assert.match(picker, /Use in scene/);
 const videoPreview = selectPexelsVideoPreview([
   { file_type: "video/mp4", link: "https://videos.pexels.com/video-files/42/42-hd_1920_1080_30fps.mp4", width: 1920, height: 1080 },
   { file_type: "video/mp4", link: "https://videos.pexels.com/video-files/42/42-sd_640_360_30fps.mp4", width: 640, height: 360 },

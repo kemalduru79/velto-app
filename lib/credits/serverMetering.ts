@@ -33,6 +33,7 @@ type ReserveMeteredOperationInput = {
   metadata?: Record<string, unknown>;
   billable?: boolean;
   requireCostGuardConfirmation?: boolean;
+  serverIdempotencyKey?: string;
 };
 
 export const CREATOR_COST_GUARD_VERSION = "creator-cost-guard-v1";
@@ -61,6 +62,7 @@ export async function reserveMeteredOperation(
   }
 
   const idempotencyKey =
+    input.serverIdempotencyKey?.trim() ||
     request.headers.get("x-idempotency-key")?.trim() ||
     `${input.operationType}:${randomUUID()}`;
 

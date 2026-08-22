@@ -2,9 +2,9 @@
 
 Status: **internal beta candidate; not billing truth**
 
-Contract: `creator-package-validation-2026-08-22`
+Contract: `creator-package-validation-2026-08-23`
 
-As of: 2026-08-22
+As of: 2026-08-23
 
 ## Decision
 
@@ -47,15 +47,15 @@ The modeled GM below uses known provider COGS only. It is not accounting gross m
 
 | Tier | Decision | Candidate credits | Indicative minutes | Typical provider COGS / GM | P90 provider COGS / GM | Stress provider COGS / GM | P90 unknown-cost headroom |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Standard | CONDITIONAL GO | 700 | ~60 | $14.46 / 75.5% | $19.36 / 67.2% | $27.48 / 53.4% | $4.24 |
-| Pro | CONDITIONAL GO | 2,600 | ~90 | $50.47 / 74.6% | $67.39 / 66.1% | $99.23 / 50.1% | $12.21 |
-| Cinematic | CONDITIONAL GO, invitation-only | 3,200 | ~60 | $70.67 / 82.3% | $108.21 / 72.9% | $148.89 / 62.7% | $51.39 |
+| Standard | CONDITIONAL GO | 800 | ~60 | $14.46 / 75.5% | $19.36 / 67.2% | $27.48 / 53.4% | $4.24 |
+| Pro | CONDITIONAL GO | 2,700 | ~90 | $50.47 / 74.6% | $67.39 / 66.1% | $99.23 / 50.1% | $12.21 |
+| Cinematic | CONDITIONAL GO, invitation-only | 3,300 | ~60 | $70.67 / 82.3% | $108.21 / 72.9% | $148.89 / 62.7% | $51.39 |
 
-Pools are derived as the typical manifest plus 15%, rounded upward to 100 credits: 574 → 700, 2,192 → 2,600, and 2,752 → 3,200. The Cinematic P90 manifest needs 3,241 credits and therefore naturally pauses at the included entitlement instead of creating hidden spend. The pool represents typical capacity, not a promise that every generation-heavy mix reaches the indicative minutes.
+Pools are derived as the typical manifest plus 15%, rounded upward to 100 credits: 652 → 800, 2,273 → 2,700, and 2,795 → 3,300. New stock acquisition is now explicit in those manifests; project reuse burns zero credits. The pool represents typical capacity, not a promise that every generation-heavy mix reaches the indicative minutes.
 
 ### Standard — professional stock-first production
 
-Standard's typical 574-credit mix is dominated by scene narration, then generated images and exports. It uses reuse, safe stock, imagery, and image motion, with zero automatic paid generative video. P90 known-provider COGS passes the 60% target but leaves only $4.24 for unpriced infrastructure, so infrastructure measurement is the primary risk. Stress remains above the 50% red line. This is not a low-quality tier: publishability, semantic fit, narration, attribution, and export completeness remain mandatory.
+Standard's typical 652-credit mix is dominated by scene narration, then generated images, first stock acquisition, and exports. It uses reuse, safe stock, imagery, and image motion, with zero automatic paid generative video. P90 known-provider COGS passes the 60% target but leaves only $4.24 for unpriced infrastructure, so infrastructure measurement is the primary risk. Stress remains above the 50% red line. This is not a low-quality tier: publishability, semantic fit, narration, attribution, and export completeness remain mandatory.
 
 ### Pro — selective professional generative motion
 
@@ -98,9 +98,9 @@ Automated tests can verify policy, routing eligibility, continuity capability, r
 
 | Product | Pricing/capacity approach | Stock/generative strategy | Pipeline context |
 |---|---|---|---|
-| CreatorLab Standard | $59 candidate; 700 credits; ~60 typical min | Stock/reuse-first, zero automatic paid video | Integrated Production Intelligence and publishing workflow |
-| CreatorLab Pro | $199 candidate; 2,600 credits; ~90 typical min | Selective professional motion | Scene-level routing, continuity-aware workflow, export |
-| CreatorLab Cinematic | $399 candidate; 3,200 credits; ~60 typical min | Selective premium/hero treatment | Premium scene-level quality, not maximum clip count |
+| CreatorLab Standard | $59 candidate; 800 credits; ~60 typical min | Stock/reuse-first, zero automatic paid video | Integrated Production Intelligence and publishing workflow |
+| CreatorLab Pro | $199 candidate; 2,700 credits; ~90 typical min | Selective professional motion | Scene-level routing, continuity-aware workflow, export |
+| CreatorLab Cinematic | $399 candidate; 3,300 credits; ~60 typical min | Selective premium/hero treatment | Premium scene-level quality, not maximum clip count |
 | InVideo | Plan credits; supplied modes span 2–160 credits/min | Stock-only through fully generative | Demonstrates the economic spread between modes |
 | VidRush | Credits mapped to broad finished-minute pipeline | High-quality pipeline comparator | ~$2.19/min Creator reference; broad production charge |
 | HeyGen | Lower-priced credit plans | Adjacent AI-video model | Useful adjacent reference, not equivalent long-form intelligence |
