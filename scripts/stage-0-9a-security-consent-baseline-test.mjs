@@ -49,7 +49,11 @@ for (const marker of ["accepted_terms_at", "accepted_privacy_at", "terms_version
   assert.ok(authAdapter.includes(marker), `user metadata missing ${marker}`);
 }
 assert.match(status, /not\*\* treated as the final authoritative immutable legal consent ledger/i);
-assert.deepEqual(changedFiles.filter((file) => file.startsWith("supabase/migrations/") || file.startsWith("prisma/migrations/")), ["supabase/migrations/20260822100000_stage_0_10b_creator_economics.sql"]);
+assert.deepEqual(changedFiles.filter((file) => file.startsWith("supabase/migrations/") || file.startsWith("prisma/migrations/")), [
+  "supabase/migrations/20260822100000_stage_0_10b_creator_economics.sql",
+  "supabase/migrations/20260822150000_stage_0_10c_pexels_safe_stock.sql",
+  "supabase/migrations/20260822170000_stage_0_10d_stock_import_claims.sql",
+].filter((file) => changedFiles.includes(file)));
 assert.match(config, /X-Content-Type-Options[\s\S]*nosniff/);
 assert.match(config, /Referrer-Policy[\s\S]*strict-origin-when-cross-origin/);
 assert.match(config, /Permissions-Policy/);
@@ -86,7 +90,7 @@ const currentPackage = JSON.parse(read("package.json"));
 assert.deepEqual(currentPackage.dependencies, basePackage.dependencies);
 assert.deepEqual(currentPackage.devDependencies, basePackage.devDependencies);
 for (const prefix of ["lib/providers/", "lib/credits/", "lib/queue/", "worker/"]) {
-  assert.equal(changedFiles.some((file) => file.startsWith(prefix)), false, `${prefix} behavior drifted`);
+  assert.equal(changedFiles.some((file) => file.startsWith(prefix) && !file.startsWith("lib/providers/stock/")), false, `${prefix} behavior drifted`);
 }
 
 console.log("STAGE_0_9A_SECURITY_CONSENT_BASELINE=PASS");

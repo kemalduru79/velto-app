@@ -101,9 +101,9 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes the additive stock routes", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "228a592cc11e0757c0f645b8b3c14c28367b6aad75cca19bef2be228b14df83f"));
-check("migration inventory includes the additive stock migration", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "16445bc26288d5b1d2a0b6ab4b0864ca4d4e1c8065b3cfa07a48ca59b32c8755"));
-check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "2a2822b30781db68aeab0e37ff4c638b5c85a5411552188142ce37b3296556d2"));
+check("API route inventory includes production intelligence", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "8d620031afd442c2c0aa8e83fed1334433cfcba02d030ae5e16224a849a72863"));
+check("migration inventory includes stock import claims", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "d78ad69008d79952a59c1615a51218651393130840226261d90462b0dcb0dd62"));
+check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "5710819eb583ac7f60f9497a3b91c7b9c4cad3462eb4c430d57c30857f9ff329"));
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
 check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
@@ -131,8 +131,10 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-9a-security-consent-baseline-test.mjs",
     ".env.container.example",
     "components/create/CreatorEditor.tsx",
+    "components/create/CreatorSceneProductionStatus.tsx",
     "components/create/CreatorStockPicker.tsx",
     "docs/STAGE-0.10C-PEXELS-SAFE-STOCK.md",
+    "docs/STAGE-0.10D-PRODUCTION-INTELLIGENCE.md",
     "lib/persistence/media/registerStoredAsset.ts",
     "package.json",
     "scripts/stage-0-7a-2-final-movie-migration-test.mjs",
@@ -140,10 +142,18 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-10c-pexels-safe-stock-test.mjs",
     "supabase/migrations/20260822150000_stage_0_10c_pexels_safe_stock.sql",
+    "lib/creator/mediaRouting.ts",
+    "lib/creator/productionIntelligence.ts",
+    "lib/creator/services/creatorProduction.server.ts",
+    "scripts/beta-edit-p1e-final-video-lifecycle-smoke-test.mjs",
+    "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
+    "scripts/stage-0-10d-production-intelligence-test.mjs",
+    "supabase/migrations/20260822170000_stage_0_10d_stock_import_claims.sql",
+    "app/api/creator-production-intelligence/route.ts",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
-  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "lib/providers/stock/"];
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "lib/providers/stock/"];
   assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
 });
 

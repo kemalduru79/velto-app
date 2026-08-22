@@ -13,6 +13,8 @@ export type CreatorSceneProductionSummary = {
   status: CreatorSceneTriageStatus;
   readySteps: number;
   totalSteps: 3;
+  productionTreatment?: string;
+  productionExplanation?: string;
 };
 
 export const deriveCreatorSceneTriageStatus = ({
@@ -139,6 +141,7 @@ export default function CreatorSceneProductionStatus({
                     <small>
                       {getCreatorSceneTriageLabel(scene.status, language)} · {scene.readySteps}/{scene.totalSteps} {language === "en" ? "steps ready" : "adım hazır"}
                     </small>
+                    {scene.productionTreatment && <small><strong>{scene.productionTreatment}</strong>{scene.productionExplanation ? ` · ${scene.productionExplanation}` : ""}</small>}
                   </span>
                   <span className="creatorlab-p2c-scene-operation-progress" aria-hidden="true">
                     {Array.from({ length: scene.totalSteps }, (_, index) => (

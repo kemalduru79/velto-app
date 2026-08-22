@@ -83,6 +83,11 @@ function clampNumber(
   return Math.min(Math.max(Math.round(numericValue), min), max);
 }
 
+function clampProductionSignal(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.min(1, Math.max(0, Math.round(numeric * 100) / 100)) : undefined;
+}
+
 function getPacingBlueprint(sceneCount: number) {
   if (sceneCount <= 3) {
     return {
@@ -365,6 +370,13 @@ function normalizeScenes(value: unknown, sceneCount: number) {
         asString(scene.visualPrompt, "Simple animated movement."),
       ),
       visualPrompt: asString(scene.visualPrompt),
+      ...(typeof scene.sceneRole === "string" ? { sceneRole: scene.sceneRole } : {}),
+      ...(typeof scene.contentNature === "string" ? { contentNature: scene.contentNature } : {}),
+      ...Object.fromEntries(["motionImportance", "visualImportance", "continuityImportance", "stockSuitability", "customGenerationNeed", "authenticityValue"].flatMap((key) => {
+        const normalized = clampProductionSignal(scene[key]);
+        return normalized === undefined ? [] : [[key, normalized]];
+      })),
+      ...(asString(scene.stockSearchQuery) ? { stockSearchQuery: asString(scene.stockSearchQuery).slice(0, 100) } : {}),
       ...(continuity ? { continuity } : {}),
     };
   });
@@ -620,6 +632,15 @@ export async function handleCreatorProductionRequest(req: Request) {
             emotion: "string",
             motionHint: "string",
             visualPrompt: "string",
+            sceneRole: "hook | exposition | demonstration | evidence | emotion | transition | climax | call_to_action | other",
+            contentNature: "real_world | person | product | location | process | abstract | data | interface | conceptual | mixed",
+            motionImportance: "optional number 0..1",
+            visualImportance: "optional number 0..1",
+            continuityImportance: "optional number 0..1",
+            stockSuitability: "optional number 0..1",
+            customGenerationNeed: "optional number 0..1",
+            authenticityValue: "optional number 0..1",
+            stockSearchQuery: "optional short concrete stock query",
             continuity: {
               charactersPresent: ["optional character/persona names"],
               location: "optional location",
@@ -659,6 +680,7 @@ export async function handleCreatorProductionRequest(req: Request) {
         "Dialogue may be empty if the format is narrator-led. If dialogue is used, keep it very short.",
         "Do not compensate with long dialogue. The total speech budget includes narration and dialogue together.",
         "Scenes must be visual and easy for AI image/video generation.",
+        "Without making a separate routing request, add optional normalized production signals for each scene. Scores must be numbers from 0 to 1 and stockSearchQuery must be a short concrete query. These signals are advisory and must not name providers or models.",
         "For each scene, include only continuity fields supported by the scene. Omit unknown values; never invent continuity facts merely to fill the object.",
         "Use continuityNotes to identify deliberate location, time, wardrobe, product-state, or editorial B-roll transitions.",
         "Set continuity.explicitChanges only when the current scene deliberately changes a structured continuity field relative to the prior scene; otherwise omit it.",

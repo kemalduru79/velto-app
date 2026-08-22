@@ -78,6 +78,7 @@ export type CreatorMediaRoute = {
     | "premium_ai_blocks";
   providerTarget: "none" | "current_primary" | "premium_primary";
   fallbackStrategy: "none" | "image_motion" | "primary_then_image_motion";
+  /** @deprecated Persisted-plan compatibility only. Runtime routing uses Production Intelligence. */
   videoBlockRatio: number;
   actions: Record<CreatorMediaAction, boolean>;
 };
@@ -215,6 +216,8 @@ function getDistributedSceneIds(sceneIds: number[], targetCount: number) {
 }
 
 /**
+ * @deprecated Stage 0.10D runtime uses planCreatorProjectProduction. This is
+ * retained only for historical plan/test compatibility.
  * Selects the scenes that should receive paid AI motion while preserving the
  * simple Production Quality UX. Explicit Image/Video choices are treated as
  * advanced overrides; every remaining scene is routed automatically.

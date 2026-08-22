@@ -47,7 +47,7 @@ check(/assetHistory/.test(saveRoute) === false && /scenes/.test(saveRoute), "sav
 check(/normalizeCreatorAssetHistory/.test(page) && /loadedProjectScenes/.test(page), "persisted asset history remains normalized after load");
 check(/onUseProjectImage=\{reuseCreatorProjectImage\}/.test(page), "focused-scene image reuse is wired independently");
 check(!/creatorSelectedSceneIds[\s\S]{0,250}reuseCreatorProjectImage/.test(page), "reuse does not use bulk selection");
-const reuseBlock = page.slice(page.indexOf("const reuseCreatorProjectImage"), page.indexOf("const setCreatorScenesRenderMode"));
+const reuseBlock = page.slice(page.indexOf("const reuseCreatorProjectImage"), page.indexOf("const acquireAutomaticStockForScene"));
 check(!/fetch\(|creator-image|creator-video|CreatorCostGuard/.test(reuseBlock), "reuse invokes no generation or cost API");
 check(/videoUrl: ""/.test(reuseBlock) && /videoGenerationSignature: undefined/.test(reuseBlock), "image reuse invalidates dependent video currentness");
 check(!/audioUrl:|dialogueAudioUrl:|creatorSceneId:/.test(reuseBlock), "image reuse preserves voice currentness and stable scene identity");

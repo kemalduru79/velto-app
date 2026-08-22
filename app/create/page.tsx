@@ -94,11 +94,16 @@ import {
 import {
   CREATOR_QUALITY_MODE_OPTIONS,
   getCreatorMediaRoute,
-  getCreatorVideoBlockSceneIds,
   isCreatorMediaActionAllowed,
   type CreatorMediaAction,
   type CreatorQualityMode,
 } from "@/lib/creator/mediaRouting";
+import {
+  CREATOR_PRODUCTION_TREATMENT_LABELS,
+  planCreatorProjectProduction,
+  rankStockCandidates,
+  type CreatorSceneProductionDecision,
+} from "@/lib/creator/productionIntelligence";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
@@ -715,6 +720,15 @@ type Scene = {
   scriptHealth?: CreatorScriptHealth;
   visualBlockPlan?: CreatorVisualBlockPlan[];
   assetHistory?: CreatorSceneAssetVersion[];
+  sceneRole?: import("@/lib/creator/productionIntelligence").CreatorSceneRole;
+  contentNature?: import("@/lib/creator/productionIntelligence").CreatorContentNature;
+  motionImportance?: number;
+  visualImportance?: number;
+  continuityImportance?: number;
+  stockSuitability?: number;
+  customGenerationNeed?: number;
+  authenticityValue?: number;
+  stockSearchQuery?: string;
 };
 
 type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
@@ -8289,6 +8303,30 @@ const generateSceneImage = async (
     setError(""); setSaveMessage(asset.attributionText);
   };
 
+  const acquireAutomaticStockForScene = async (
+    scene: Scene,
+    decision: CreatorSceneProductionDecision,
+  ): Promise<{ publicUrl: string; mediaType: "photo" | "video"; durationSeconds: number | null } | null> => {
+    if (!decision.stockIntent || !currentProjectId) return null;
+    try {
+      const token = await getAccessTokenOrThrow();
+      const params = new URLSearchParams({ query: decision.stockIntent.query, mediaType: decision.stockIntent.mediaType, orientation: decision.stockIntent.orientation, page: "1", perPage: "12" });
+      const searchResponse = await fetch(`/api/creator-stock/search?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      const searchData = await searchResponse.json();
+      if (!searchResponse.ok) return null;
+      const ranked = rankStockCandidates(decision, Array.isArray(searchData.candidates) ? searchData.candidates : []);
+      const selection = ranked[0];
+      if (!selection?.rendition) return null;
+      const importResponse = await fetch("/api/creator-stock/import", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId, mediaType: selection.candidate.mediaType, providerMediaId: selection.candidate.providerMediaId, renditionId: selection.rendition.id }) });
+      const imported = await importResponse.json();
+      if (!importResponse.ok || typeof imported.publicUrl !== "string") return null;
+      return { publicUrl: imported.publicUrl, mediaType: selection.candidate.mediaType, durationSeconds: selection.candidate.durationSeconds };
+    } catch (stockError) {
+      console.warn("CREATOR_AUTOMATIC_STOCK_FALLBACK", { sceneId: scene.id, treatment: decision.selectedTreatment, error: stockError instanceof Error ? stockError.message : "unknown" });
+      return null;
+    }
+  };
+
   const removeCreatorProjectHistoryUrl = (removedUrl: string) => {
     const normalize = (value: string) => {
       try {
@@ -9642,6 +9680,16 @@ const generateSceneImage = async (
     }
 
     const workingScenes: Scene[] = scenes.map((scene) => ({ ...scene }));
+    const productionPlan = isCreatorLabFlow ? getCreatorProductionPlan(workingScenes) : [];
+    const productionDecisionBySceneId = new Map(productionPlan.map((decision) => [decision.sceneId, decision]));
+    if (isCreatorLabFlow) {
+      try {
+        const token = await getAccessTokenOrThrow();
+        await fetch("/api/creator-production-intelligence", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId || undefined, qualityTier: creatorQualityMode, scenes: workingScenes }) });
+      } catch (planningTelemetryError) {
+        console.warn("CREATOR_PRODUCTION_PLAN_TELEMETRY_SKIPPED", planningTelemetryError);
+      }
+    }
     const routedVideoSceneIds = isCreatorLabFlow
       ? getCreatorRoutedVideoSceneIds(workingScenes)
       : workingScenes.map((scene) => scene.id);
@@ -9704,22 +9752,27 @@ const generateSceneImage = async (
           let nextImage = scene.image || "";
 
           if (!nextImage) {
-            setRedrawLoadingId(scene.id);
-            nextImage = await generateSceneImage(scene, {
-              skipDispatchCountdown: true,
-              creatorOperationId: batchOperationId,
-              batchChildOperationKey: getCreatorBatchChildOperationKey(
-                "image",
-                scene.id,
-                scene.id === 1 ? "hook" : "scene",
-              ),
-            });
+            const decision = productionDecisionBySceneId.get(scene.id);
+            const stock = decision && (decision.selectedTreatment === "stock_photo" || decision.selectedTreatment === "stock_video")
+              ? await acquireAutomaticStockForScene(scene, decision)
+              : null;
+            if (stock?.mediaType === "video") {
+              nextImage = "";
+              scene = { ...scene, renderMode: "video", videoUrl: stock.publicUrl, videoStatus: "done", videoDurationSeconds: stock.durationSeconds || 0 };
+            } else if (stock?.mediaType === "photo") {
+              nextImage = stock.publicUrl;
+            } else {
+              setRedrawLoadingId(scene.id);
+              nextImage = await generateSceneImage(scene, {
+                skipDispatchCountdown: true,
+                creatorOperationId: batchOperationId,
+                batchChildOperationKey: getCreatorBatchChildOperationKey("image", scene.id, scene.id === 1 ? "hook" : "scene"),
+              });
+            }
             scene = {
               ...scene,
               image: nextImage,
-              videoUrl: "",
-              videoStatus: "idle",
-              videoJobId: "",
+              ...(stock?.mediaType === "video" ? {} : { videoUrl: "", videoStatus: "idle" as const, videoJobId: "" }),
             };
             workingScenes[index] = scene;
 
@@ -12029,145 +12082,32 @@ const generateSceneImage = async (
     return "auto";
   };
 
-  const getCreatorSmartMediaScore = (
-    scene: Scene,
-    sceneIndex: number,
-    sceneCount: number,
-    legacySelected: boolean,
-  ) => {
-    const requestedMode = getCreatorSceneRequestedOutputMode(scene);
-    if (requestedMode === "video") return 1000;
-    if (requestedMode === "image") return -1000;
-
-    const continuityMode = getCreatorResolvedContinuityMode(scene);
-    const searchableText = [
-      scene.text,
-      scene.narration,
-      scene.dialogue,
-      scene.motionHint,
-      scene.cameraDirection,
-      scene.emotion,
-      scene.visualPrompt,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    const strongMotionMatches =
-      searchableText.match(
-        /\b(run|running|jump|jumping|chase|racing|dance|dancing|fight|fighting|explode|explosion|fly|flying|spin|spinning|crash|sprint|zoom|tracking shot|dolly|orbit|handheld|koş|koşuyor|zıpla|kovala|yarış|dans|dövüş|patla|uç|çarpış)\b/g,
-      )?.length || 0;
-    const softMotionMatches =
-      searchableText.match(
-        /\b(move|moving|walk|walking|turn|turning|reveal|transition|push in|pull out|pan|tilt|drift|gesture|approach|enter|exit|hareket|yürü|dönüş|geçiş|yaklaş|giriş|çıkış)\b/g,
-      )?.length || 0;
-
-    let score = 0;
-    score += Math.min(3.6, strongMotionMatches * 0.9);
-    score += Math.min(1.8, softMotionMatches * 0.35);
-    score += legacySelected ? 1.25 : 0;
-    score += continuityMode === "previous" ? 0.8 : 0;
-    score += continuityMode === "consistent" ? 0.35 : 0;
-    score += scene.dialogue?.trim() ? 0.25 : 0;
-    score += scene.image ? 0.15 : 0;
-    score += sceneIndex === 0 ? 0.45 : 0;
-    score += sceneIndex === sceneCount - 1 ? 0.2 : 0;
-
-    const plannedDuration = Number(
-      scene.timing?.plannedSceneDuration ||
-        scene.timing?.targetSceneDuration ||
-        0,
-    );
-    score += plannedDuration >= 5 ? 0.25 : 0;
-
-    return score;
-  };
   // 3K SMART MEDIA ROUTING V3 HELPERS END
-
-const getCreatorLegacyRoutedVideoSceneIds = (
+  const getCreatorProductionPlan = (
     sourceScenes: Scene[],
     { honorExplicitOverrides = true }: { honorExplicitOverrides?: boolean } = {},
-  ) => {
-    const explicitVideoSceneIds = honorExplicitOverrides
-      ? sourceScenes
-          .filter((scene) => scene.renderMode === "video")
-          .map((scene) => scene.id)
-      : [];
-
-    if (!isCreatorLabFlow) {
-      return explicitVideoSceneIds;
-    }
-
-    // Manual Video overrides remain visible even when the active quality mode
-    // cannot execute them, so the existing quality gate can guide the user.
-    if (!isCreatorMediaActionAllowed(creatorMediaRoute, "ai_video_blocks")) {
-      return explicitVideoSceneIds;
-    }
-
-    return getCreatorVideoBlockSceneIds({
-      route: creatorMediaRoute,
-      sceneIds: sourceScenes.map((scene) => scene.id),
-      timelinePlan: getCreatorActiveTimelinePlan(),
-      forceVideoSceneIds: explicitVideoSceneIds,
-      forceImageSceneIds: honorExplicitOverrides
-        ? sourceScenes
-            .filter((scene) => scene.renderMode === "image")
-            .map((scene) => scene.id)
-        : [],
-    });
+  ): CreatorSceneProductionDecision[] => {
+    const timeline = getCreatorActiveTimelinePlan();
+    return planCreatorProjectProduction(sourceScenes.map((scene) => ({
+      ...scene,
+      renderMode: honorExplicitOverrides && getCreatorSceneRequestedOutputMode(scene) === "image" ? "image" as const : honorExplicitOverrides && getCreatorSceneRequestedOutputMode(scene) === "video" ? "video" as const : undefined,
+      videoCurrent: getCreatorVideoState(scene) === "current",
+      imageCurrent: Boolean(scene.image),
+      referenceAvailabilityCount: scene.image ? 1 : 0,
+      continuityImportance: scene.continuityImportance ?? (getCreatorResolvedContinuityMode(scene) === "previous" ? 0.9 : getCreatorResolvedContinuityMode(scene) === "consistent" ? 0.7 : undefined),
+      timeline: timeline?.scenes.find((item) => Number(item.id) === Number(scene.id)) || null,
+      orientation: creatorFormat === "youtube_video" ? "landscape" : "portrait",
+    })), creatorQualityMode);
   };
 
-  // 3K SMART MEDIA ROUTING V3 ROUTER START
   const getCreatorRoutedVideoSceneIds = (
     sourceScenes: Scene[],
     { honorExplicitOverrides = true }: { honorExplicitOverrides?: boolean } = {},
   ) => {
-    const legacyIds = getCreatorLegacyRoutedVideoSceneIds(sourceScenes, {
-      honorExplicitOverrides,
-    });
-
-    if (
-      !isCreatorLabFlow ||
-      sourceScenes.length === 0 ||
-      legacyIds.length === 0 ||
-      creatorQualityMode === "draft" ||
-      creatorQualityMode === "standard"
-    ) {
-      return legacyIds;
-    }
-
-    const legacySet = new Set(legacyIds.map((sceneId) => Number(sceneId)));
-    const targetVideoCount = Math.min(sourceScenes.length, legacyIds.length);
-
-    const rankedScenes = sourceScenes
-      .map((scene, sceneIndex) => ({
-        sceneId: scene.id,
-        requestedMode: honorExplicitOverrides
-          ? getCreatorSceneRequestedOutputMode(scene)
-          : "auto" as const,
-        score: getCreatorSmartMediaScore(
-          honorExplicitOverrides ? scene : { ...scene, renderMode: undefined },
-          sceneIndex,
-          sourceScenes.length,
-          legacySet.has(Number(scene.id)),
-        ),
-        sceneIndex,
-      }))
-      .filter((item) => item.requestedMode !== "image")
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        return left.sceneIndex - right.sceneIndex;
-      });
-
-    const selectedIds = new Set(
-      rankedScenes
-        .slice(0, targetVideoCount)
-        .map((item) => Number(item.sceneId)),
-    );
-
-    return sourceScenes
-      .filter((scene) => selectedIds.has(Number(scene.id)))
-      .map((scene) => scene.id);
+    if (!isCreatorLabFlow) return sourceScenes.filter((scene) => scene.renderMode === "video").map((scene) => scene.id);
+    return getCreatorProductionPlan(sourceScenes, { honorExplicitOverrides })
+      .filter((decision) => decision.selectedTreatment === "ai_video")
+      .map((decision) => decision.sceneId);
   };
   // 3K SMART MEDIA ROUTING V3 ROUTER END
 
@@ -17294,6 +17234,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (
   const creatorRecommendedMotionSceneIdSet = new Set(
     getCreatorRoutedVideoSceneIds(scenes, { honorExplicitOverrides: false }),
   );
+  const creatorProductionPlan = getCreatorProductionPlan(scenes);
+  const creatorProductionDecisionBySceneId = new Map(creatorProductionPlan.map((decision) => [decision.sceneId, decision]));
   const creatorMotionRequired = creatorRoutedMotionSceneIds.length > 0;
   const creatorVideoSelectionBlockedByQuality =
     creatorMotionRequired &&
@@ -17315,6 +17257,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
   const creatorSceneProductionSummaries = scenes.map((scene, index) => {
+    const productionDecision = creatorProductionDecisionBySceneId.get(scene.id);
     const sceneDraft = sceneScriptDrafts[scene.id] || {
       narration: scene.narration || "",
       dialogue: scene.dialogue || "",
@@ -17375,6 +17318,8 @@ const getCreatorLegacyRoutedVideoSceneIds = (
       status,
       readySteps: [scriptHealth.status === "ready", visualReady, voiceReady].filter(Boolean).length,
       totalSteps: 3 as const,
+      productionTreatment: productionDecision ? CREATOR_PRODUCTION_TREATMENT_LABELS[productionDecision.selectedTreatment][uiLanguage === "en" ? "en" : "tr"] : undefined,
+      productionExplanation: productionDecision?.explanation,
     };
   });
   const creatorMusicConfirmationRequired =

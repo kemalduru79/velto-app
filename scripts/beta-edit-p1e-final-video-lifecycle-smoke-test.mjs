@@ -17,7 +17,7 @@ check(/assetHistory/.test(page) && /assetHistory/.test(editor), "history remains
 check(/assetHistory: _assetHistory/.test(exportScenes), "unselected history never enters export");
 check(/videoGenerationSignature: asset\.generationSignature/.test(page), "selected historical provenance is restored");
 check(/getCreatorVideoState\(scene\)/.test(page) && /videoCurrent: getCreatorVideoState/.test(page), "stale selected video remains blocked");
-const restoreBlock = page.slice(page.indexOf("const restoreCreatorSceneAsset"), page.indexOf("const setCreatorScenesRenderMode"));
+const restoreBlock = page.slice(page.indexOf("const restoreCreatorSceneAsset"), page.indexOf("const acquireAutomaticStockForScene"));
 check(!/credit|reserve|fetch\(/i.test(restoreBlock), "selection uses no credits or provider call");
 check(/!creatorProductionComplete/.test(page) && /Continue · Build Final Video/.test(page), "no final output exposes Build Final Video");
 check(/creatorHasFinalVideo[\s\S]*data-edit-current-final-video="true"/.test(page), "final output exposes Edit Video");

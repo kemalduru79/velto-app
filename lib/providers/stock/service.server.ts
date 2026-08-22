@@ -62,14 +62,29 @@ export async function importStock(input: { userId: string; projectId: string; me
   if (!allowance.allowed) throw new StockProviderError("STORAGE_QUOTA_FULL", 409, "Storage is full. Free space before importing stock media.");
   const reuseIdentity = createHash("sha256").update(`pexels:${input.mediaType}:${input.providerMediaId}:${input.renditionId}`).digest("hex");
   const client = createServerSupabaseClient();
-  const { data: existing } = await client.from("velto_stock_imports").select("asset_id,public_url,source_metadata").eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).maybeSingle();
+  const { data: existing } = await client.from("velto_stock_imports").select("asset_id,public_url,source_metadata,status,created_at").eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).maybeSingle();
   if (existing) {
+    if (existing.status === "pending") {
+      const stale = Date.now() - new Date(String(existing.created_at)).getTime() > 5 * 60_000;
+      if (!stale) throw new StockProviderError("STOCK_IMPORT_IN_PROGRESS", 409, "This stock asset is already being imported. Please retry shortly.");
+      await client.from("velto_stock_imports").delete().eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
+    }
     const owned = await services.mediaAssetRepository.getForOwner(String(existing.asset_id), input.userId);
     if (owned?.lifecycleState === "active" && owned.publicUrl === existing.public_url) {
       await recordImportEconomics(input, reuseIdentity, 0, true);
       return { assetId: owned.id, publicUrl: owned.publicUrl, reused: true, sourceMetadata: existing.source_metadata as Record<string, unknown> };
     }
   }
+  const { error: claimError } = await client.from("velto_stock_imports").insert({ owner_user_id: input.userId, project_id: input.projectId, asset_id: null, provider: "pexels", provider_media_id: input.providerMediaId, rendition_id: input.renditionId, reuse_identity: reuseIdentity, public_url: null, source_metadata: {}, status: "pending" });
+  if (claimError) {
+    const { data: winner } = await client.from("velto_stock_imports").select("asset_id,public_url,source_metadata,status").eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).maybeSingle();
+    if (winner?.status === "ready" && winner.asset_id && winner.public_url) {
+      const owned = await services.mediaAssetRepository.getForOwner(String(winner.asset_id), input.userId);
+      if (owned?.lifecycleState === "active" && owned.publicUrl === winner.public_url) return { assetId: owned.id, publicUrl: owned.publicUrl, reused: true, sourceMetadata: winner.source_metadata as Record<string, unknown> };
+    }
+    throw new StockProviderError("STOCK_IMPORT_IN_PROGRESS", 409, "This stock asset is already being imported. Please retry shortly.");
+  }
+  try {
   const candidate = await provider.getMedia(input.mediaType, input.providerMediaId);
   const rendition = provider.resolveImportRendition(candidate, input.renditionId);
   const trustedUrl = assertPexelsMediaUrl(rendition.url);
@@ -78,10 +93,14 @@ export async function importStock(input: { userId: string; projectId: string; me
   const uploaded = await services.objectStorage.uploadPublic({ bucket: input.mediaType === "photo" ? "images" : "videos", path, body: media.buffer, contentType: media.mimeType, cacheControl: "31536000", upsert: false });
   const metadata = sourceMetadata(candidate, rendition.id, rendition.width, rendition.height, media.buffer.byteLength, input.projectId, reuseIdentity);
   const asset = await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: input.userId, bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: input.mediaType === "photo" ? "image" : "video", mimeType: media.mimeType, body: media.buffer, metadata, generated: false });
-  const { error } = await client.from("velto_stock_imports").insert({ owner_user_id: input.userId, project_id: input.projectId, asset_id: asset.id, provider: "pexels", provider_media_id: input.providerMediaId, rendition_id: rendition.id, reuse_identity: reuseIdentity, public_url: uploaded.publicUrl, source_metadata: metadata });
+  const { error } = await client.from("velto_stock_imports").update({ asset_id: asset.id, rendition_id: rendition.id, public_url: uploaded.publicUrl, source_metadata: metadata, status: "ready" }).eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
   if (error) throw new StockProviderError("STOCK_REGISTRATION_FAILED", 500, "Stock media could not be registered.");
   await recordImportEconomics(input, reuseIdentity, media.buffer.byteLength, false, asset.id, rendition, candidate);
   return { assetId: asset.id, publicUrl: uploaded.publicUrl, reused: false, sourceMetadata: metadata };
+  } catch (error) {
+    await client.from("velto_stock_imports").delete().eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
+    throw error;
+  }
 }
 
 function sourceMetadata(candidate: StockMediaCandidate, renditionId: string, renditionWidth: number, renditionHeight: number, bytes: number, projectId: string, reuseIdentity: string) {
