@@ -37,6 +37,8 @@ import { buildCreatorVideoProviderPrompt } from "@/lib/creator/videoPromptPolicy
 import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 import { inferCreatorProductionSignals } from "@/lib/creator/productionIntelligence";
 import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/video/creatorSmartRouting";
+import { evaluateCreatorEconomicAdmission, getCreatorMarginEnforcementMode } from "@/lib/economics/economicAdmission";
+import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -281,6 +283,23 @@ async function postHandler(req: NextRequest) {
     }
 
     const durationPolicy = routedProfile ? { durationSec: smartRoute.providerBilledDurationSec || requestedSeconds, reason: smartRoute.reasonCodes.join(",") } : selection.provider.normalizeDuration(body.duration, qualityMode);
+
+    if (body.productProfile === "creatorlab") {
+      const usageSnapshot = await getCreatorEconomicUsageSnapshot({ userId: principal.id, projectId: canonicalProjectId, window: canonicalProjectId ? "project_lifetime" : "current_month", tier: qualityMode === "cinematic" ? "cinematic" : "pro" });
+      const admission = evaluateCreatorEconomicAdmission({
+        tier: qualityMode === "cinematic" ? "cinematic" : "pro", operationType: "creator_video", estimatedProviderCostUsd: smartRoute.estimatedProviderCostUsd,
+        currentKnownCogsUsd: usageSnapshot.usage.knownProviderCogsUsd, currentVideoCogsUsd: usageSnapshot.usage.byOperation.creator_video?.actualCogsUsd || 0,
+        finishedMinutes: usageSnapshot.duration.finishedMinutes, costCoverageStatus: usageSnapshot.usage.costCoverageStatus, origin: "automatic", enforcementMode: getCreatorMarginEnforcementMode(),
+      });
+      if (usageSnapshot.duration.denominatorSource === "unavailable" || usageSnapshot.usage.unknownCostOperations > 0) createLogger({ operation: "creator-video.economic-coverage" }).warn("Creator economic coverage is incomplete.", { missingDurationDenominator: usageSnapshot.duration.denominatorSource === "unavailable", unknownCostOperations: usageSnapshot.usage.unknownCostOperations, projectId: canonicalProjectId });
+      if (admission.mode !== "allowed") {
+        const admissionLogger = createLogger({ operation: "creator-video.economic-admission" });
+        const metadata = { mode: admission.mode, reasonCodes: admission.reasonCodes, projectId: canonicalProjectId };
+        if (admission.allowed) admissionLogger.warn("Creator video economic admission pressure.", metadata);
+        else admissionLogger.error("Creator video economic admission denied.", undefined, metadata);
+      }
+      if (!admission.allowed) return NextResponse.json({ ok: false, code: "CREATOR_PRODUCTION_ALLOWANCE_EXCEEDED", error: "Your current production allowance cannot cover this operation." }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
 
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_video",

@@ -101,9 +101,9 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes production intelligence", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "2e92d071df7f7d29e2439576b8675c6d18996730de026acc542447ff38d42177"));
-check("migration inventory includes stock import claims", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "d12457a6314dbd873980bf5712944dc442d97ff306633599149f92c333d56e31"));
-check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "4b61bba15687b6d7712461330c8118770338e1818cf44c3d262ace21447ab372"));
+check("API route inventory includes authenticated usage", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "81a6c728b1506e53ff174ec86409ac7fdf8c115d431025df223377c4dc1c66ff"));
+check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "c90581e0b2e03ac3f5f86512e74ddcc37d193697d3efeb386eb17a0f17d8a4e2"));
+check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "99d58a7752263e1dc834673b1563aec075883ccaa7a5068d0f7a6eeb6d1df425"));
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
 check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
@@ -165,10 +165,19 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-10b-economics-test.mjs",
     "scripts/stage-0-10e-smart-premium-routing-test.mjs",
     "tsconfig.json",
+    "app/api/creator-usage/route.ts",
+    "docs/stage-0-10f-usage-margin-controls.md",
+    "lib/economics/economicAdmission.ts",
+    "lib/economics/entitlementSnapshot.ts",
+    "lib/economics/marginBenchmark.ts",
+    "lib/economics/usageAggregation.ts",
+    "lib/economics/usageService.server.ts",
+    "scripts/stage-0-10f-usage-margin-controls-test.mjs",
+    "supabase/migrations/20260822200000_stage_0_10f_usage_indexes.sql",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
-  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "lib/providers/stock/"];
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/"];
   assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
 });
 

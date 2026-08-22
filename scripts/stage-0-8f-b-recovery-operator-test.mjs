@@ -59,8 +59,8 @@ assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
 const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "2e92d071df7f7d29e2439576b8675c6d18996730de026acc542447ff38d42177");
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "d12457a6314dbd873980bf5712944dc442d97ff306633599149f92c333d56e31");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "8ecb2f203331a6ddf57f389f96bac133f4b0224363533d511f860af150bf21bb");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
 console.log("Stage 0.8F-B recovery and operator regression passed.");
