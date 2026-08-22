@@ -6,6 +6,8 @@ import CreatorEditorTimeline, {
 } from "@/components/create/CreatorEditorTimeline";
 import CreatorVideoTrimControl from "@/components/create/CreatorVideoTrimControl";
 import CreatorProjectAssets from "@/components/create/CreatorProjectAssets";
+import CreatorStockPicker from "@/components/create/CreatorStockPicker";
+import type { StockMediaType } from "@/lib/providers/stock/types";
 import {
   type CreatorAudioCurrentness,
   normalizeCreatorSceneTrim,
@@ -36,6 +38,7 @@ type CreatorEditorProps = {
   onRefreshVideo: (creatorSceneId: string) => void;
   onRestoreMedia: (creatorSceneId: string, assetId: string) => void;
   onUseProjectImage: (targetCreatorSceneId: string, url: string, sourceCreatorSceneId: string) => void;
+  onUseStockMedia: (creatorSceneId: string, asset: { publicUrl: string; mediaType: StockMediaType; durationSeconds: number | null; attributionText: string }) => void;
   projectId: string;
   getAccessToken: () => Promise<string>;
   onProjectHistoryRemoved: (url: string) => void;
@@ -62,6 +65,7 @@ export default function CreatorEditor({
   onRefreshVideo,
   onRestoreMedia,
   onUseProjectImage,
+  onUseStockMedia,
   projectId,
   getAccessToken,
   onProjectHistoryRemoved,
@@ -363,6 +367,8 @@ export default function CreatorEditor({
         getAccessToken={getAccessToken}
         onHistoryRemoved={onProjectHistoryRemoved}
       />
+
+      <CreatorStockPicker projectId={projectId} disabled={sceneOperationsDisabled} language={language} getAccessToken={getAccessToken} onUse={(asset) => onUseStockMedia(selectedScene.creatorSceneId!, asset)} />
 
       {(selectedScene.assetHistory || []).length > 0 && (
         <details className="creatorlab-p2c-editor-disclosure" data-creator-media-history="true">

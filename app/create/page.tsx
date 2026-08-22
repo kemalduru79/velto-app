@@ -664,7 +664,7 @@ type CreatorSceneAssetVersion = {
   kind: CreatorSceneAssetKind;
   url: string;
   createdAt: string;
-  source: "generated" | "restored" | "loaded";
+  source: "generated" | "restored" | "loaded" | "stock";
   durationSec?: number;
   generationSignature?: string;
 };
@@ -8269,6 +8269,24 @@ const generateSceneImage = async (
         : `Başka bir sahnedeki proje görseli kullanıldı. Mevcut hareket yenilenmelidir.`,
     );
     void sourceCreatorSceneId;
+  };
+
+  const useCreatorStockMedia = (
+    targetCreatorSceneId: string,
+    asset: { publicUrl: string; mediaType: "photo" | "video"; durationSeconds: number | null; attributionText: string },
+  ) => {
+    const target = scenes.find((scene) => scene.creatorSceneId === targetCreatorSceneId);
+    if (!target || ["processing", "delayed"].includes(target.videoStatus || "")) return;
+    pushCreatorUndoSnapshot(uiLanguage === "en" ? `Use stock media in scene ${target.id}` : `Sahne ${target.id} içinde stok medya kullan`);
+    clearVideoPollForScene(target.id, targetCreatorSceneId);
+    setScenes((current) => current.map((scene) => scene.creatorSceneId !== targetCreatorSceneId ? scene : asset.mediaType === "photo" ? {
+      ...normalizeCreatorAssetHistory(scene), image: asset.publicUrl, renderMode: "image", videoUrl: "", videoStatus: "idle", videoJobId: "", videoQueueJobId: "", videoDurationSeconds: 0, videoGenerationSignature: undefined, videoPendingGenerationSignature: undefined, clipInSec: undefined, clipOutSec: undefined,
+      assetHistory: [...(scene.assetHistory || []), { id: `stock-${Date.now()}`, kind: "image", url: asset.publicUrl, createdAt: new Date().toISOString(), source: "stock" }],
+    } : {
+      ...normalizeCreatorAssetHistory(scene), renderMode: "video", videoUrl: asset.publicUrl, videoStatus: "done", videoJobId: "", videoQueueJobId: "", videoDurationSeconds: asset.durationSeconds || 0, videoGenerationSignature: undefined, videoPendingGenerationSignature: undefined, clipInSec: undefined, clipOutSec: undefined,
+      assetHistory: [...(scene.assetHistory || []), { id: `stock-${Date.now()}`, kind: "video", url: asset.publicUrl, createdAt: new Date().toISOString(), source: "stock", durationSec: asset.durationSeconds || undefined }],
+    }));
+    setError(""); setSaveMessage(asset.attributionText);
   };
 
   const removeCreatorProjectHistoryUrl = (removedUrl: string) => {
@@ -30639,6 +30657,7 @@ const getCreatorLegacyRoutedVideoSceneIds = (
                       if (scene && asset) restoreCreatorSceneAsset(scene.id, asset);
                     }}
                     onUseProjectImage={reuseCreatorProjectImage}
+                    onUseStockMedia={useCreatorStockMedia}
                     projectId={currentProjectId}
                     getAccessToken={getAccessTokenOrThrow}
                     onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}

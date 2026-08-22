@@ -1,0 +1,29 @@
+"use client";
+import { FormEvent, useState } from "react";
+import type { StockMediaCandidate, StockMediaType } from "@/lib/providers/stock/types";
+
+export default function CreatorStockPicker({ projectId, disabled, language, getAccessToken, onUse }: { projectId: string; disabled?: boolean; language: "en" | "tr"; getAccessToken: () => Promise<string>; onUse: (asset: { publicUrl: string; mediaType: StockMediaType; durationSeconds: number | null; attributionText: string }) => void }) {
+  const [open, setOpen] = useState(false); const [query, setQuery] = useState(""); const [mediaType, setMediaType] = useState<StockMediaType>("photo");
+  const [results, setResults] = useState<StockMediaCandidate[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [importing, setImporting] = useState("");
+  const search = async (event: FormEvent) => { event.preventDefault(); if (!query.trim()) return; setLoading(true); setError("");
+    try { const token = await getAccessToken(); const params = new URLSearchParams({ query, mediaType, page: "1", perPage: "20" }); const response = await fetch(`/api/creator-stock/search?${params}`, { headers: { Authorization: `Bearer ${token}` } }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Stock search failed."); setResults(data.candidates || []); }
+    catch (cause) { setResults([]); setError(cause instanceof Error ? cause.message : "Stock search failed."); } finally { setLoading(false); } };
+  const use = async (candidate: StockMediaCandidate) => { const rendition = candidate.renditions.find((item) => item.quality === "production") || candidate.renditions[0]; if (!rendition) return; setImporting(candidate.providerMediaId); setError("");
+    try { const token = await getAccessToken(); const response = await fetch("/api/creator-stock/import", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId, mediaType: candidate.mediaType, providerMediaId: candidate.providerMediaId, renditionId: rendition.id }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Stock import failed."); onUse({ publicUrl: data.publicUrl, mediaType: candidate.mediaType, durationSeconds: candidate.durationSeconds, attributionText: candidate.attributionText }); setOpen(false); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Stock import failed."); } finally { setImporting(""); } };
+  return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="creatorlab-p2c-editor-disclosure" data-creator-stock-picker="true">
+    <summary><span>{language === "en" ? "Stock media · Pexels" : "Stok medya · Pexels"}</span><small>{language === "en" ? "Search photos and videos" : "Fotoğraf ve video ara"}</small></summary>
+    <div className="creatorlab-p2c-editor-disclosure-body space-y-3">
+      <form onSubmit={search} className="flex flex-wrap gap-2"><input aria-label={language === "en" ? "Stock search" : "Stok arama"} value={query} maxLength={120} onChange={(e) => setQuery(e.target.value)} placeholder={language === "en" ? "Search Pexels" : "Pexels'ta ara"} className="min-h-11 min-w-48 flex-1 rounded-xl border border-slate-300 px-3 text-sm" />
+        <select value={mediaType} onChange={(e) => { setMediaType(e.target.value as StockMediaType); setResults([]); }} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm"><option value="photo">{language === "en" ? "Photos" : "Fotoğraflar"}</option><option value="video">Video</option></select>
+        <button disabled={disabled || loading} className="min-h-11 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{loading ? (language === "en" ? "Searching…" : "Aranıyor…") : (language === "en" ? "Search" : "Ara")}</button></form>
+      {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
+      {!loading && !error && query && results.length === 0 && <p className="text-xs text-slate-500">{language === "en" ? "No stock results yet." : "Henüz stok sonucu yok."}</p>}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{results.map((candidate) => <article key={`${candidate.mediaType}-${candidate.providerMediaId}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {candidate.mediaType === "video" ? <video src={candidate.previewUrl} controls preload="metadata" className="aspect-video w-full bg-black object-cover" /> : <img src={candidate.previewUrl} alt="" className="aspect-video w-full object-cover" />}
+        <div className="space-y-2 p-3"><p className="text-xs text-slate-600"><a href={candidate.creatorProfileUrl || candidate.sourcePageUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700">{candidate.attributionText}</a></p>
+          <button type="button" disabled={disabled || Boolean(importing)} onClick={() => void use(candidate)} className="min-h-10 w-full rounded-lg border border-blue-300 bg-blue-50 px-3 text-xs font-semibold text-blue-800 disabled:opacity-50">{importing === candidate.providerMediaId ? (language === "en" ? "Importing…" : "İçe aktarılıyor…") : (language === "en" ? "Import & use" : "İçe aktar ve kullan")}</button></div></article>)}</div>
+      <div className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-950"><a href="https://www.pexels.com" target="_blank" rel="noreferrer" className="font-semibold underline">Pexels</a> · {language === "en" ? "Stock media is licensed for commercial use under the source license. Depicted people, brands or trademarks may carry separate rights." : "Stok medya kaynak lisansı altında ticari kullanıma açıktır. Görünen kişiler, markalar veya ticari işaretler ayrı haklara tabi olabilir."}</div>
+    </div>
+  </details>;
+}
