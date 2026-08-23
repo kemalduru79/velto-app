@@ -7,6 +7,11 @@ import type {
   SignUpInput,
   SignUpResult,
 } from "./types";
+import {
+  createSingleFlight,
+  isLockAcquireTimeout,
+  retryLockAcquireOnce,
+} from "./singleFlight";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -81,6 +86,40 @@ async function clearInvalidLocalSession() {
   }
 }
 
+async function loadSession(): Promise<AuthSession | null> {
+  try {
+    const { data, error } = await retryLockAcquireOnce(async () => {
+      const result = await supabase.auth.getSession();
+      if (isLockAcquireTimeout(result.error)) throw result.error;
+      return result;
+    });
+
+    if (error) {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearInvalidLocalSession();
+        return null;
+      }
+
+      throw new Error(getErrorMessage(error, "Oturum bilgisi alınamadı."));
+    }
+
+    return data.session ? toAuthSession(data.session) : null;
+  } catch (error) {
+    if (isInvalidRefreshTokenError(error)) {
+      await clearInvalidLocalSession();
+      return null;
+    }
+    if (isLockAcquireTimeout(error)) {
+      throw new Error(getErrorMessage(error, "Oturum bilgisi alınamadı."), {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+const getSessionSingleFlight = createSingleFlight(loadSession);
+
 export class SupabaseAuthAdapter implements AuthService {
   async signIn(email: string, password: string): Promise<AuthSession> {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -152,18 +191,7 @@ export class SupabaseAuthAdapter implements AuthService {
   }
 
   async getSession(): Promise<AuthSession | null> {
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error) {
-      if (isInvalidRefreshTokenError(error)) {
-        await clearInvalidLocalSession();
-        return null;
-      }
-
-      throw new Error(getErrorMessage(error, "Oturum bilgisi alınamadı."));
-    }
-
-    return data.session ? toAuthSession(data.session) : null;
+    return getSessionSingleFlight();
   }
 
   async getCurrentUser(): Promise<AuthUser | null> {

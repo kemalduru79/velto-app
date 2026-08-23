@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authService } from "@/lib/auth";
+import { createTrailingSingleFlight } from "@/lib/auth/singleFlight";
 import type { AuthUser } from "@/lib/auth/types";
 import { buildAuthHref, getCurrentReturnTo } from "@/lib/auth/redirects";
 import { useLanguage } from "@/lib/useLanguage";
@@ -53,6 +54,10 @@ export default function UserAccountMenu({
   const { language } = useLanguage();
   const t = menuCopy[language];
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const mountedRef = useRef(false);
+  const accountLoaderRef = useRef<
+    ReturnType<typeof createTrailingSingleFlight<void>> | undefined
+  >(undefined);
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [account, setAccount] = useState<CreditAccount | null>(null);
@@ -60,9 +65,10 @@ export default function UserAccountMenu({
   const [action, setAction] = useState<"logout" | "switch" | null>(null);
   const [error, setError] = useState("");
 
-  const loadAccount = async () => {
+  const performAccountLoad = useCallback(async () => {
     try {
       const session = await authService.getSession();
+      if (!mountedRef.current) return;
       setUser(session?.user || null);
 
       if (!session?.accessToken) {
@@ -76,17 +82,23 @@ export default function UserAccountMenu({
       });
       const data = await response.json().catch(() => null);
 
-      if (response.ok && data?.account) {
+      if (mountedRef.current && response.ok && data?.account) {
         setAccount(data.account);
       }
     } catch (caughtError) {
       console.error("account menu load error:", caughtError);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+    const loadAccount = createTrailingSingleFlight(
+      performAccountLoad,
+      () => mountedRef.current,
+    );
+    accountLoaderRef.current = loadAccount;
     void loadAccount();
 
     const handleFocus = () => void loadAccount();
@@ -100,19 +112,21 @@ export default function UserAccountMenu({
         return;
       }
 
-      void loadAccount();
+      void loadAccount(true);
     };
     window.addEventListener("focus", handleFocus);
     window.addEventListener("velto:credits-changed", handleCreditChange);
 
     return () => {
+      mountedRef.current = false;
+      accountLoaderRef.current = undefined;
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("velto:credits-changed", handleCreditChange);
     };
-  }, []);
+  }, [performAccountLoad]);
 
   useEffect(() => {
-    if (open) void loadAccount();
+    if (open) void accountLoaderRef.current?.();
   }, [open]);
 
   useEffect(() => {
