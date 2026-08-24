@@ -54,3 +54,6 @@ cont_p1_repair_snapshot*.txt
 **/*.cont-p1r-*-backup
 **/*.voice-p1c-backup
 **/*.voice-p1c-final-backup
+
+# Local generated benchmark and probe artifacts
+/tmp/
