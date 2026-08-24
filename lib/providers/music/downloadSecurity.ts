@@ -10,6 +10,7 @@ export const MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES = 30 * 1024 * 1024;
 export const PREMIUM_MUSIC_DOWNLOAD_TIMEOUT_MS = 30_000;
 export const PREMIUM_MUSIC_CONTENT_TYPE = "audio/mpeg" as const;
 const PROVIDER_API_HOST = "partner-content-api.epidemicsound.com";
+const PROVIDER_MEDIA_HOST = "pdn.epidemicsound.com";
 
 export function isPremiumMusicAcquisitionEnabled(env = process.env) {
   return resolveProviderEnvironmentValue(
@@ -19,7 +20,7 @@ export function isPremiumMusicAcquisitionEnabled(env = process.env) {
   ) === "true";
 }
 
-export function validateProviderMusicUrl(rawUrl: string) {
+function validateProviderUrl(rawUrl: string, approvedHost: string) {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -40,7 +41,7 @@ export function validateProviderMusicUrl(rawUrl: string) {
     hostname.endsWith(".localhost") ||
     hostname.endsWith(".local") ||
     (isIP(hostname) !== 0 && isUnsafeNetworkAddress(hostname)) ||
-    hostname !== PROVIDER_API_HOST
+    hostname !== approvedHost
   ) {
     throw new ProviderError("Premium music acquisition is unavailable.", {
       code: "invalid_request",
@@ -49,6 +50,14 @@ export function validateProviderMusicUrl(rawUrl: string) {
   }
 
   return url;
+}
+
+export function validateProviderApiUrl(rawUrl: string) {
+  return validateProviderUrl(rawUrl, PROVIDER_API_HOST);
+}
+
+export function validateProviderMusicUrl(rawUrl: string) {
+  return validateProviderUrl(rawUrl, PROVIDER_MEDIA_HOST);
 }
 
 function normalizeContentType(value: string | null) {
@@ -171,4 +180,32 @@ export async function readBoundedPremiumMusicResponse(
     contentLength: total,
     checksum: createHash("sha256").update(body).digest("hex"),
   };
+}
+
+export async function fetchBoundedPremiumMusic(
+  rawUrl: string,
+  fetchImplementation: typeof fetch = fetch,
+) {
+  let currentUrl = validateProviderMusicUrl(rawUrl);
+  const maximumRedirects = 2;
+
+  for (let redirectCount = 0; redirectCount <= maximumRedirects; redirectCount += 1) {
+    const response = await fetchImplementation(currentUrl, {
+      method: "GET",
+      headers: { Accept: PREMIUM_MUSIC_CONTENT_TYPE },
+      redirect: "manual",
+      signal: AbortSignal.timeout(PREMIUM_MUSIC_DOWNLOAD_TIMEOUT_MS),
+    });
+    if (response.status < 300 || response.status >= 400) {
+      return readBoundedPremiumMusicResponse(response);
+    }
+
+    const location = response.headers.get("location");
+    if (!location || redirectCount === maximumRedirects) {
+      throw responseError(response.status);
+    }
+    currentUrl = validateProviderMusicUrl(new URL(location, currentUrl).toString());
+  }
+
+  throw responseError(502);
 }

@@ -10,7 +10,12 @@ import type {
   MusicSearchInput,
   MusicSearchResult,
 } from "./types";
-import { isPremiumMusicAcquisitionEnabled } from "./downloadSecurity";
+import {
+  fetchBoundedPremiumMusic,
+  isPremiumMusicAcquisitionEnabled,
+  validateProviderApiUrl,
+  validateProviderMusicUrl,
+} from "./downloadSecurity";
 import {
   isProviderConfigured,
   resolveProviderEnvironmentValue,
@@ -134,12 +139,52 @@ export class EpidemicMusicAdapter implements MusicProvider {
       });
     }
 
-    // The production acquisition endpoint and response contract have not been
-    // approved in this repository. Keep this method fail-closed rather than
-    // guessing a download URL or exposing a commercial provider operation.
-    throw new ProviderError("Premium music acquisition is unavailable.", {
-      code: "not_configured",
-      retryable: false,
-    });
+    const endpoint = validateProviderApiUrl(
+      `${API_BASE}/v0/tracks/${encodeURIComponent(trackId)}/download?format=mp3&quality=normal`,
+    );
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "GET",
+        headers: this.headers(input.partnerUserId),
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw classifyProviderError(error, "Premium music acquisition is unavailable.");
+    }
+    if (!response.ok) {
+      throw new ProviderError("Premium music acquisition is unavailable.", {
+        code: response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "authentication" : response.status === 400 ? "invalid_request" : "upstream",
+        retryable: response.status === 429 || response.status >= 500,
+        status: response.status,
+      });
+    }
+
+    const raw = await response.json().catch(() => null) as Record<string, unknown> | null;
+    const signedUrl = text(raw?.url, 2_000);
+    if (!signedUrl) {
+      throw new ProviderError("Premium music acquisition is unavailable.", {
+        code: "upstream",
+        retryable: true,
+        status: 502,
+      });
+    }
+    validateProviderMusicUrl(signedUrl);
+    const expires = text(raw?.expires, 80);
+    if (expires && !Number.isFinite(Date.parse(expires))) {
+      throw new ProviderError("Premium music acquisition is unavailable.", {
+        code: "upstream",
+        retryable: true,
+        status: 502,
+      });
+    }
+
+    try {
+      return await fetchBoundedPremiumMusic(signedUrl);
+    } catch (error) {
+      throw classifyProviderError(error, "Premium music acquisition is unavailable.");
+    }
   }
 }

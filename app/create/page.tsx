@@ -30229,13 +30229,52 @@ const generateSceneImage = async (
                   }}
                   onConfirmTrack={async (trackId) => {
                     if (creatorBackgroundMusic.selectedTrackId !== trackId) return false;
+                    if (!currentProjectId) {
+                      setError(
+                        uiLanguage === "en"
+                          ? "Save the project before confirming premium music."
+                          : "Premium müziği onaylamadan önce projeyi kaydet.",
+                      );
+                      return false;
+                    }
+                    setError("");
+                    try {
+                      const accessToken = await getAccessTokenOrThrow();
+                      const acquisitionResponse = await fetch("/api/creator-music/acquire", {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${accessToken}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          productProfile: "creatorlab",
+                          projectId: currentProjectId,
+                          trackId,
+                        }),
+                      });
+                      const acquisitionResult = await acquisitionResponse.json().catch(() => null);
+                      if (!acquisitionResponse.ok || acquisitionResult?.ok !== true) {
+                        setError(
+                          uiLanguage === "en"
+                            ? "Premium music could not be acquired. Try again."
+                            : "Premium müzik edinilemedi. Tekrar dene.",
+                        );
+                        return false;
+                      }
+                    } catch {
+                      setError(
+                        uiLanguage === "en"
+                          ? "Premium music could not be acquired. Try again."
+                          : "Premium müzik edinilemedi. Tekrar dene.",
+                      );
+                      return false;
+                    }
                     const confirmedMusic = normalizeCreatorBackgroundMusicConfig(
                       { ...creatorBackgroundMusic, confirmedTrackId: trackId },
                       [],
                       isCreatorPremiumMusicTrackId,
                     );
                     setCreatorBackgroundMusic(confirmedMusic);
-                    setError("");
                     try {
                       await persistProject(false, { backgroundMusic: confirmedMusic });
                       return true;

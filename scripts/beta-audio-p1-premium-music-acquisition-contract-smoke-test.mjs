@@ -82,7 +82,7 @@ await assert.rejects(security.readBoundedPremiumMusicResponse(response(null, { s
 await assert.rejects(security.readBoundedPremiumMusicResponse(response(null, { status: 503 })), (error) => error.code === "upstream" && error.retryable === true);
 
 await rejectsCode(security.readBoundedPremiumMusicResponse(response(null, { status: 302, headers: { location: "https://evil.example/song.mp3" } })), "invalid_request");
-for (const unsafe of ["http://partner-content-api.epidemicsound.com/song", "https://localhost/song", "https://127.0.0.1/song", "file:///song"]) {
+for (const unsafe of ["http://pdn.epidemicsound.com/song", "https://localhost/song", "https://127.0.0.1/song", "file:///song"]) {
   assert.throws(() => security.validateProviderMusicUrl(unsafe), (error) => error.code === "invalid_request");
 }
 
@@ -90,8 +90,8 @@ assert.equal(security.isPremiumMusicAcquisitionEnabled({}), false);
 assert.equal(security.isPremiumMusicAcquisitionEnabled({ CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED: "TRUE" }), false);
 assert.equal(security.isPremiumMusicAcquisitionEnabled({ CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED: "1" }), false);
 assert.equal(security.isPremiumMusicAcquisitionEnabled({ CREATOR_PREMIUM_MUSIC_ACQUISITION_ENABLED: "true" }), true);
-assert.match(adapter, /production acquisition endpoint and response contract have not been[\s\S]*Keep this method fail-closed/);
-assert.doesNotMatch(adapter, /this\.request\([^\n]*(?:download|acqui)/);
+assert.match(adapter, /\/download\?format=mp3&quality=normal/);
+assert.match(adapter, /fetchBoundedPremiumMusic\(signedUrl\)/);
 assert.match(route, /searchTracks/);
 assert.match(route, /getTrackPreview/);
 assert.doesNotMatch(route, /downloadTrack|acquisition/);
