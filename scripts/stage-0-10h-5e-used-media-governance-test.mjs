@@ -106,13 +106,19 @@ assert.equal(unresolved.summary.rightsReviewMediaCount, 2);
 assert.equal(unresolved.governance.status, "review");
 
 const route = fs.readFileSync("app/api/creator-project-governance/[projectId]/route.ts", "utf8");
-assert.match(route, /inspectProjectMediaReferences\(project\)/);
-assert.match(route, /reference\.referenceType === "scene_image"/);
-assert.match(route, /reference\.referenceType === "scene_video"/);
-assert.match(route, /findByPublicUrl\(principal\.id, url\)/);
+const serverResolver = fs.readFileSync("lib/creator/usedMediaGovernance.server.ts", "utf8");
+assert.match(route, /resolveCreatorProjectUsedMediaGovernance/);
+assert.match(route, /ownerUserId:\s*principal\.id/);
 assert.match(route, /governance:\s*result\.governance/);
 assert.match(route, /summary:\s*result\.summary/);
 assert.doesNotMatch(route, /provider\s*:/i);
 assert.doesNotMatch(route, /sourceMetadata\s*:/i);
+
+assert.match(serverResolver, /inspectProjectMediaReferences\(input\.project\)/);
+assert.match(serverResolver, /reference\.referenceType === "scene_image"/);
+assert.match(serverResolver, /reference\.referenceType === "scene_video"/);
+assert.match(serverResolver, /findByPublicUrl\(input\.ownerUserId, url\)/);
+assert.doesNotMatch(serverResolver, /provider\s*:/i);
+assert.doesNotMatch(serverResolver, /sourceMetadata\s*:/i);
 
 console.log("Stage 0.10H-5E used media governance tests passed.");
