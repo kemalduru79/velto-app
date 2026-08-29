@@ -32,6 +32,7 @@ export type CreatorEvidenceGovernanceInput = {
   sourceMedia?: readonly CreatorGovernedSourceMedia[] | null;
   missingSourceIds?: readonly string[] | null;
   mismatchedSourceIds?: readonly string[] | null;
+  rightsReviewRequiredIds?: readonly string[] | null;
   syntheticMediaUsed?: boolean;
   syntheticDisclosurePresent?: boolean;
 };
@@ -107,6 +108,15 @@ export function createCreatorEvidenceGovernanceReport(
       severity: "blocked",
       subjectId: sourceId,
       message: "A source does not match the referenced evidence and must be corrected before publication.",
+    });
+  }
+
+  for (const sourceId of uniqueIds(input.rightsReviewRequiredIds)) {
+    addIssue(issues, {
+      code: "RIGHTS_REVIEW_REQUIRED",
+      severity: "review",
+      subjectId: sourceId,
+      message: "Media provenance or source-rights metadata is unresolved and requires review before publication.",
     });
   }
 
