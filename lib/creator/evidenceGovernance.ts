@@ -129,7 +129,7 @@ export function createCreatorEvidenceGovernanceReport(
         code: "RIGHTS_REVIEW_REQUIRED",
         severity: "review",
         subjectId: sourceId,
-        message: "Source-media rights are unresolved and require review before publication.",
+        message: "This source-media rights state is unresolved and requires review before publication.",
       });
     }
 
