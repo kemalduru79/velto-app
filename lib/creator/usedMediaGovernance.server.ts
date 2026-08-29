@@ -11,7 +11,7 @@ import {
   getPersistenceServices,
   inspectProjectMediaReferences,
 } from "@/lib/persistence";
-import type { ProjectRecord } from "@/lib/persistence/projects/types";
+import type { VeltoProjectApiRecord } from "@/lib/persistence/projects/types";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -19,7 +19,7 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export function creatorProjectProductionPackage(project: ProjectRecord) {
+export function creatorProjectProductionPackage(project: VeltoProjectApiRecord) {
   return project.creator_production_package ?? project.creatorProductionPackage ?? null;
 }
 
@@ -39,7 +39,7 @@ export function creatorSyntheticDisclosurePresent(productionPackage: unknown) {
  */
 export async function resolveCreatorProjectUsedMediaGovernance(input: {
   ownerUserId: string;
-  project: ProjectRecord;
+  project: VeltoProjectApiRecord;
 }): Promise<CreatorUsedMediaGovernanceResult> {
   const services = getPersistenceServices();
   const references = inspectProjectMediaReferences(input.project).references.filter(
