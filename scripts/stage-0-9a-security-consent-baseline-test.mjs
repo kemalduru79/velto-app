@@ -91,7 +91,11 @@ const currentPackage = JSON.parse(read("package.json"));
 assert.deepEqual(currentPackage.dependencies, basePackage.dependencies);
 assert.deepEqual(currentPackage.devDependencies, basePackage.devDependencies);
 
-const reviewedProviderPrefixes = ["lib/providers/stock/", "lib/providers/research/"];
+const reviewedProviderPrefixes = [
+  "lib/providers/stock/",
+  "lib/providers/music/",
+  "lib/providers/research/",
+];
 for (const prefix of ["lib/providers/", "lib/credits/", "lib/queue/", "worker/"]) {
   const drifted = changedFiles.some((file) => {
     if (!file.startsWith(prefix)) return false;
