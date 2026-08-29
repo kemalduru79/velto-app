@@ -32,6 +32,7 @@ export type StoredMediaAsset = {
   lifecycleState: MediaLifecycleState;
   trashedAt: string | null;
   purgeStartedAt: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type RecordStoredAssetInput = Omit<StoredMediaAsset, "id" | "lifecycleState" | "trashedAt" | "purgeStartedAt"> & {
