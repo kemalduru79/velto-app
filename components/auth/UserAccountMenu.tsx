@@ -202,17 +202,6 @@ export default function UserAccountMenu({
         <span className="hidden max-w-28 truncate text-xs font-bold sm:inline">
           {displayName}
         </span>
-        {account && (
-          <span
-            className={
-              isDark
-                ? "rounded-full bg-emerald-400/15 px-2 py-1 text-[11px] font-black text-emerald-200"
-                : "rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700"
-            }
-          >
-            {account.availableCredits} {t.credits}
-          </span>
-        )}
         <span aria-hidden="true" className="px-0.5 text-xs opacity-60">
           ⌄
         </span>
