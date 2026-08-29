@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { persistEconomicOperationBestEffort } from "@/lib/economics";
 import { ExaResearchSearchProvider } from "@/lib/providers/research/exa.server";
 import { normalizeCreatorResearchSearchRequest } from "@/lib/research/searchRequest";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
@@ -16,12 +17,14 @@ export async function POST(request: Request) {
   try {
     const searchInput = normalizeCreatorResearchSearchRequest(secured.context.body);
     const providerAvailable = Boolean(ExaResearchSearchProvider);
+    const economicsAvailable = Boolean(persistEconomicOperationBestEffort);
     return NextResponse.json(
       {
         success: false,
         code: "RESEARCH_DIAGNOSTIC_ONLY",
         category: searchInput.category,
         providerAvailable,
+        economicsAvailable,
       },
       { status: 503 },
     );
