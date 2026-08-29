@@ -45,10 +45,15 @@ export function normalizeCreatorResearchSearchRequest(
   const query = clean(body.query, 800);
   if (!query) throw new Error("RESEARCH_QUERY_REQUIRED");
 
-  const category = RESEARCH_SEARCH_CATEGORIES.has(
-    body.category as ResearchSearchCategory,
-  )
-    ? body.category as ResearchSearchCategory
+  const requestedCategory = clean(body.category, 40);
+  if (
+    requestedCategory &&
+    !RESEARCH_SEARCH_CATEGORIES.has(requestedCategory as ResearchSearchCategory)
+  ) {
+    throw new Error("RESEARCH_CATEGORY_INVALID");
+  }
+  const category = requestedCategory
+    ? requestedCategory as ResearchSearchCategory
     : "web";
   const requestedMax = Number(body.maxResults);
   const maxResults = Number.isFinite(requestedMax)
