@@ -14072,13 +14072,16 @@ const generateSceneImage = async (
         thumbnailDesign: creatorThumbnailStudio,
         targetPlatforms: creatorTargetPlatforms,
       });
+      const accessToken = await getAccessTokenOrThrow();
 
       const res = await fetch("/api/export-creator-package", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
+          projectId: currentProjectId || undefined,
           title,
           videoUrl: finalVideoUrl,
           productionPackage: creatorProductionPackage,

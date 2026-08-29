@@ -114,4 +114,53 @@ assert.match(source, /issue\.code === "RIGHTS_REVIEW_REQUIRED"/);
 assert.doesNotMatch(source, /SYNTHETIC_DISCLOSURE_REQUIRED"\s*&&\s*confirmations/);
 assert.doesNotMatch(source, /ATTRIBUTION_REQUIRED"\s*&&\s*confirmations/);
 
+const createPage = fs.readFileSync(path.join(root, "app/create/page.tsx"), "utf8");
+const packageHandler = createPage.match(
+  /const handleDownloadCreatorPackage = async \(\) => \{[\s\S]*?\n  \};/,
+)?.[0];
+assert.ok(packageHandler, "Creator Package export handler must remain present.");
+assert.match(packageHandler, /const accessToken = await getAccessTokenOrThrow\(\)/);
+assert.match(packageHandler, /Authorization:\s*`Bearer \$\{accessToken\}`/);
+assert.match(packageHandler, /projectId:\s*currentProjectId \|\| undefined/);
+assert.match(
+  packageHandler,
+  /releaseChecklist:\s*\{\s*systemChecks:\s*creatorPublishSystemChecks,\s*userConfirmations:\s*creatorReleaseConfirmations,\s*readyToExport:\s*creatorReleaseReady,\s*\}/,
+);
+assert.doesNotMatch(packageHandler, /evidenceGovernance|sourceAssessments|claimGraph|rightsMetadata/);
+assert.doesNotMatch(createPage, /syntheticDisclosure|attributionSatisfied|attributionApplied/);
+assert.match(
+  createPage,
+  /type CreatorReleaseConfirmationKey =\s*\| "videoReviewed"\s*\| "claimsVerified"\s*\| "rightsConfirmed"\s*\| "thumbnailApproved";/,
+);
+
+const exportRoute = fs.readFileSync(
+  path.join(root, "app/api/export-creator-package/route.ts"),
+  "utf8",
+);
+assert.match(exportRoute, /authenticateRequest\(req\)/);
+assert.match(exportRoute, /typeof body\.projectId === "string"/);
+assert.match(exportRoute, /if \(!requestedProjectId\)/);
+assert.match(
+  exportRoute,
+  /projectRepository\.getForOwner\(\s*requestedProjectId,\s*principal\.id,\s*\)/,
+);
+assert.match(
+  exportRoute,
+  /project\.flow_type === "creator_lab"[\s\S]*?resolveCreatorProjectUsedMediaGovernance\(\{[\s\S]*?ownerUserId:\s*principal\.id,[\s\S]*?project,[\s\S]*?\}\)\)\.governance[\s\S]*?: undefined/,
+);
+assert.match(
+  exportRoute,
+  /createCreatorPublishReadyPackageReport\(\{[\s\S]*?evidenceGovernance,/,
+);
+assert.doesNotMatch(
+  exportRoute,
+  /body\??\.(?:governance|evidenceGovernance|sourceMedia|sourceAssessments|claimGraph|claims|rightsMetadata|attribution|syntheticDisclosure)/,
+);
+const publishReadyIndex = exportRoute.indexOf("createCreatorPublishReadyPackageReport({");
+assert.ok(publishReadyIndex > -1);
+assert.ok(
+  publishReadyIndex < exportRoute.indexOf("fetchPackageAsset(", publishReadyIndex),
+);
+assert.ok(publishReadyIndex < exportRoute.lastIndexOf("createZip(entries)"));
+
 console.log("Stage 0.10H-5G publish/release governance tests passed.");

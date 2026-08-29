@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
 import { createCreatorPublishReadyPackageReport } from "@/lib/creator/publishReadyPackage";
 import {
   createCreatorProjectPerformanceReportHtml,
   isCreatorProjectPerformanceReport,
 } from "@/lib/creator/projectPerformanceReport";
+import { resolveCreatorProjectUsedMediaGovernance } from "@/lib/creator/usedMediaGovernance.server";
+import { getPersistenceServices } from "@/lib/persistence";
 
 // 3R PUBLISH-READY PACKAGE
 
@@ -417,7 +423,33 @@ function createProductionSummary(input: {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const principal = await authenticateRequest(req);
+    const body = await req.json() as Record<string, unknown>;
+    const requestedProjectId = typeof body.projectId === "string"
+      ? body.projectId.trim()
+      : "";
+    if (!requestedProjectId) {
+      return NextResponse.json(
+        { ok: false, error: "Project was not found." },
+        { status: 404 },
+      );
+    }
+    const project = await getPersistenceServices().projectRepository.getForOwner(
+      requestedProjectId,
+      principal.id,
+    );
+    if (!project) {
+      return NextResponse.json(
+        { ok: false, error: "Project was not found." },
+        { status: 404 },
+      );
+    }
+    const evidenceGovernance = project.flow_type === "creator_lab"
+      ? (await resolveCreatorProjectUsedMediaGovernance({
+          ownerUserId: principal.id,
+          project,
+        })).governance
+      : undefined;
     const publishReadyReport = createCreatorPublishReadyPackageReport({
       productionPackage: body?.productionPackage,
       videoUrl: body?.videoUrl,
@@ -426,6 +458,7 @@ export async function POST(req: Request) {
       scenes: body?.scenes,
       targetPlatforms: body?.targetPlatforms,
       releaseChecklist: body?.releaseChecklist,
+      evidenceGovernance,
     });
 
     if (!publishReadyReport.canExport) {
@@ -791,6 +824,12 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
     console.error("export-creator-package error:", error);
 
     return NextResponse.json(
