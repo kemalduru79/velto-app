@@ -7,6 +7,7 @@ import { safeRemoteMediaFetch } from "@/lib/security/safeRemoteMediaFetch";
 import { MAX_CREATOR_IMAGE_BYTES, MAX_CREATOR_VIDEO_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
 import { checkStorageGenerationAllowance } from "@/lib/persistence/media/storageQuota.server";
 import { PexelsStockProvider } from "./pexels";
+import { createStockAssetMetadata } from "./sourceMetadata";
 import type { StockMediaCandidate, StockMediaType, StockOrientation, StockSearchInput, StockSearchResult } from "./types";
 import { StockProviderError } from "./types";
 
@@ -92,7 +93,7 @@ export async function importStock(input: { userId: string; projectId: string; me
   const media = await safeRemoteMediaFetch({ rawUrl: trustedUrl, kind: input.mediaType === "photo" ? "image" : "video", maxBytes: input.mediaType === "photo" ? MAX_CREATOR_IMAGE_BYTES : MAX_CREATOR_VIDEO_BYTES });
   const path = `creator/${input.userId}/stock/pexels/${input.projectId}/${input.providerMediaId}-${randomUUID()}.${media.extension}`;
   const uploaded = await services.objectStorage.uploadPublic({ bucket: input.mediaType === "photo" ? "images" : "videos", path, body: media.buffer, contentType: media.mimeType, cacheControl: "31536000", upsert: false });
-  const metadata = sourceMetadata(candidate, rendition.id, rendition.width, rendition.height, media.buffer.byteLength, input.projectId, reuseIdentity);
+  const metadata = createStockAssetMetadata({ candidate, renditionId: rendition.id, renditionWidth: rendition.width, renditionHeight: rendition.height, bytes: media.buffer.byteLength, projectId: input.projectId, reuseIdentity });
   const asset = await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: input.userId, bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: input.mediaType === "photo" ? "image" : "video", mimeType: media.mimeType, body: media.buffer, metadata, generated: false });
   const { error } = await client.from("velto_stock_imports").update({ asset_id: asset.id, rendition_id: rendition.id, public_url: uploaded.publicUrl, source_metadata: metadata, status: "ready" }).eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
   if (error) throw new StockProviderError("STOCK_REGISTRATION_FAILED", 500, "Stock media could not be registered.");
@@ -102,10 +103,6 @@ export async function importStock(input: { userId: string; projectId: string; me
     await client.from("velto_stock_imports").delete().eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
     throw error;
   }
-}
-
-function sourceMetadata(candidate: StockMediaCandidate, renditionId: string, renditionWidth: number, renditionHeight: number, bytes: number, projectId: string, reuseIdentity: string) {
-  return { generated: false, source: "stock", provider: "Pexels", providerMediaId: candidate.providerMediaId, sourcePageUrl: candidate.sourcePageUrl, creatorName: candidate.creatorName, creatorProfileUrl: candidate.creatorProfileUrl, mediaType: candidate.mediaType, licenseId: candidate.license.id, licenseUrl: candidate.license.url, licenseSnapshotDate: candidate.license.snapshotDate, importedAt: new Date().toISOString(), attributionText: candidate.attributionText, originalWidth: candidate.width, originalHeight: candidate.height, durationSeconds: candidate.durationSeconds, renditionId, renditionWidth, renditionHeight, downloadedBytes: bytes, projectId, reuseIdentity, metadataVersion: candidate.metadataVersion };
 }
 
 async function recordImportEconomics(input: { userId: string; projectId: string; mediaType: StockMediaType }, reuseIdentity: string, bytes: number, reused: boolean, assetIdentity?: string, rendition?: { id: string; width: number; height: number }, candidate?: StockMediaCandidate) {
