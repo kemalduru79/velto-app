@@ -52,6 +52,7 @@ const tests = [
   "scripts/stage-0-10h-5g-publish-release-governance-test.mjs",
   "scripts/stage-0-10h-5h-evidence-governance-closure-test.mjs",
   "scripts/stage-0-10h-6-native-repurposing-test.mjs",
+  "scripts/stage-0-10h-7-content-ready-acceptance-test.mjs",
 ];
 
 for (const test of tests) {

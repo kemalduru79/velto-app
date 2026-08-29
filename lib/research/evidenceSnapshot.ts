@@ -51,6 +51,15 @@ function fingerprintEvidencePackage(value: unknown) {
   return `H1C-${fnv1a64(canonical)}-${canonical.length}`;
 }
 
+export function hasResearchEvidenceSnapshotFingerprintIntegrity(
+  snapshot: ResearchEvidenceSnapshot,
+) {
+  return snapshot.fingerprint === fingerprintEvidencePackage({
+    graph: snapshot.graph,
+    sourceAssessments: snapshot.sourceAssessments,
+  });
+}
+
 /**
  * Freezes the editorial evidence package used by downstream script work.
  * The snapshot is intentionally lightweight: no vector database, no hidden
