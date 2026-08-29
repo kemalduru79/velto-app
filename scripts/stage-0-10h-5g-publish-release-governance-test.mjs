@@ -13,9 +13,12 @@ const compiled = ts.transpileModule(source, {
     target: ts.ScriptTarget.ES2022,
   },
 }).outputText;
-const module = { exports: {} };
-new Function("module", "exports", compiled)(module, module.exports);
-const { createCreatorPublishReadyPackageReport } = module.exports;
+const runtimeModule = { exports: {} };
+new Function("module", "exports", compiled)(
+  runtimeModule,
+  runtimeModule.exports,
+);
+const { createCreatorPublishReadyPackageReport } = runtimeModule.exports;
 
 const readyInput = {
   productionPackage: { title: "Grounded documentary", scenes: [{ id: 1 }] },
