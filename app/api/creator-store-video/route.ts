@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { withCreatorMediaOriginMetadata } from "@/lib/creator/mediaOrigin";
 import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
 import { MAX_CREATOR_VIDEO_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
@@ -80,7 +81,8 @@ export async function POST(req: NextRequest) {
     });
     await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.context.user.id,
       bucket: stored.bucket, storagePath: stored.path, publicUrl: stored.publicUrl, mediaKind: "video",
-      mimeType: media.mimeType, body: media.buffer, metadata: { queueJobId: input.queueJobId } });
+      mimeType: media.mimeType, body: media.buffer,
+      metadata: withCreatorMediaOriginMetadata({ queueJobId: input.queueJobId, generated: true }, "synthetic") });
     return json({ ok: true, videoUrl: stored.publicUrl, path: stored.path });
   } catch (error) {
     if (error instanceof SafeMediaError) {
