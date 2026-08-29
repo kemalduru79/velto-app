@@ -1,0 +1,14 @@
+/* Stage 0.10H-0A.1 — CreatorLab UX simplification.
+   Capability stays intact; implementation detail is kept backstage. */
+
+/* Velto is one contextual helper surface. Keep the existing project-aware
+   capability, but do not ask creators to choose between internal assistant modes. */
+.creatorlab-uxp2a-shell .creatorlab-director-mode-tabs {
+  display: none !important;
+}
+
+/* The generic contextual heading already explains the empty state. Removing the
+   internal Creative Director explanation avoids exposing assistant architecture. */
+.creatorlab-uxp2a-shell .creatorlab-director-empty > p {
+  display: none;
+}
