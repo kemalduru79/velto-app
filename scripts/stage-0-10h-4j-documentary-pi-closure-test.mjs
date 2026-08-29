@@ -157,7 +157,7 @@ const sceneAssembly = fs.readFileSync("lib/creator/sceneDocumentaryContext.ts", 
 assert.match(sceneAssembly, /traceabilityStatus\s*===\s*["']traceable["']/);
 assert.match(sceneAssembly, /supportingSourceIds/);
 assert.match(sceneAssembly, /sceneReferences\s*=\s*input\.sourceReferences\.filter/);
-assert.doesNotMatch(sceneAssembly, /global research pool[^\n]*copied wholesale/i);
+assert.match(sceneAssembly, /global research pool is never[\s\S]*?copied wholesale/i);
 
 const pipeline = fs.readFileSync("lib/research/creatorEditorialPipeline.client.ts", "utf8");
 assert.match(pipeline, /productionIntelligenceContexts/);
