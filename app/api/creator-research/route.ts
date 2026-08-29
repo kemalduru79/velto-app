@@ -1,13 +1,56 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { persistEconomicOperationBestEffort } from "@/lib/economics";
+import {
+  persistEconomicOperationBestEffort,
+  type EconomicCostResult,
+} from "@/lib/economics";
 import { ExaResearchSearchProvider } from "@/lib/providers/research/exa.server";
-import { ResearchProviderError } from "@/lib/providers/research/types";
+import {
+  ResearchProviderError,
+  type ResearchSearchResult,
+} from "@/lib/providers/research/types";
 import { normalizeCreatorResearchSearchRequest } from "@/lib/research/searchRequest";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+function providerNeutralSources(sources: ResearchSearchResult["sources"]) {
+  return sources.map((source) => ({
+    ...source,
+    sourceMetadata: Object.fromEntries(
+      Object.entries(source.sourceMetadata).filter(
+        ([key]) => key !== "provider" && key !== "resultId",
+      ),
+    ),
+  }));
+}
+
+function researchCost(providerCostUsd: number | null): EconomicCostResult {
+  const pricingAsOf = new Date().toISOString().slice(0, 10);
+
+  if (providerCostUsd === null) {
+    return {
+      costStatus: "unknown",
+      providerCostUsd: null,
+      reason: "Provider response did not include a request cost.",
+      components: {},
+      pricingVersion: "exa-response-cost-v1",
+      pricingAsOf,
+      currency: "USD",
+    };
+  }
+
+  return {
+    costStatus: "exact",
+    providerCostUsd,
+    reason: "Provider-reported request cost.",
+    components: { search: providerCostUsd },
+    pricingVersion: "exa-response-cost-v1",
+    pricingAsOf,
+    currency: "USD",
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -43,25 +86,23 @@ export async function POST(request: Request) {
       route: "creator-research",
       operationType: "grounded_research_search",
       provider: "exa",
+      providerTier: "research",
+      model: searchInput.category,
+      providerRequestId: result.providerRequestId,
       state: "settled",
+      billingMoment: "provider_response",
       generated: false,
       quantities: {
         requestCount: 1,
         returnedSourceCount: result.sources.length,
+        requestedResultCount: searchInput.maxResults || 8,
         category: searchInput.category,
       },
+      cost: researchCost(result.providerCostUsd),
       completedAt,
     });
 
-    const sources = result.sources.map((source) => ({
-      ...source,
-      sourceMetadata: Object.fromEntries(
-        Object.entries(source.sourceMetadata).filter(
-          ([key]) => key !== "provider" && key !== "resultId",
-        ),
-      ),
-    }));
-
+    const sources = providerNeutralSources(result.sources);
     return NextResponse.json({
       success: true,
       category: searchInput.category,
