@@ -15,6 +15,11 @@ export const CREATOR_API_POLICIES = {
     rateLimit: 20,
     windowMs: 60_000,
   },
+  "creator-research": {
+    maxBodyBytes: 64 * 1024,
+    rateLimit: 8,
+    windowMs: 60_000,
+  },
   "creator-youtube-metadata": {
     maxBodyBytes: 128 * 1024,
     rateLimit: 10,
