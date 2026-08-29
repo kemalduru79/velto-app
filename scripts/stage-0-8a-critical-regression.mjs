@@ -41,6 +41,7 @@ const tests = [
   "scripts/stage-0-10h-4f-production-intelligence-context-api-test.mjs",
   "scripts/stage-0-10h-4g-scene-documentary-context-test.mjs",
   "scripts/stage-0-10h-4h-editorial-pi-context-handoff-test.mjs",
+  "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
 ];
 
 for (const test of tests) {

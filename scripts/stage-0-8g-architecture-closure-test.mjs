@@ -186,6 +186,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "docs/stage-0-10g-package-quality-closure.md",
     "lib/economics/packageValidation.ts",
     "scripts/stage-0-10g-package-quality-closure-test.mjs",
+    "scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
+    "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

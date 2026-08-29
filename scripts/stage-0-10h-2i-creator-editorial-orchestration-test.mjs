@@ -171,7 +171,11 @@ assert.match(
 );
 assert.match(
   scriptPlanAdapter,
-  /\{ productionPackage: plannedPackage, scriptPlan \}/,
+  /productionPackage:\s*plannedPackage/,
+);
+assert.match(
+  scriptPlanAdapter,
+  /\bscriptPlan\b/,
 );
 assert.match(scriptPlanAdapter, /return plannedPackage as CreatorProductionPackage/);
 assert.doesNotMatch(scriptPlanAdapter, /fetch\(["']\/api\/creator-script-plan/);

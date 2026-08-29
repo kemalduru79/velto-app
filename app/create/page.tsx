@@ -192,6 +192,7 @@ import {
 import {
   CreatorEditorialPipelineError,
   runCreatorEditorialScriptPipeline,
+  type CreatorEditorialPipelineProductionIntelligenceContext,
 } from "@/lib/research/creatorEditorialPipeline.client";
 import { createCreatorProjectReadiness } from "@/lib/creator/projectReadiness";
 import {
@@ -3416,6 +3417,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
   const [creatorProductionPackage, setCreatorProductionPackage] =
     useState<CreatorProductionPackage | null>(null);
+  const creatorProductionIntelligenceContextsRef =
+    useRef<CreatorEditorialPipelineProductionIntelligenceContext[]>([]);
   const [creatorBackgroundMusic, setCreatorBackgroundMusic] =
     useState<CreatorBackgroundMusicConfig>(DEFAULT_CREATOR_BACKGROUND_MUSIC);
   const [creatorBackgroundMusicHydrationRevision, setCreatorBackgroundMusicHydrationRevision] =
@@ -6479,6 +6482,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setStorySetup(null);
     setCreatorMentorResult(null);
     setCreatorProductionPackage(null);
+    creatorProductionIntelligenceContextsRef.current = [];
     setCreatorProductionSubstep("setup");
     setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
     setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
@@ -9689,7 +9693,23 @@ const generateSceneImage = async (
     if (isCreatorLabFlow) {
       try {
         const token = await getAccessTokenOrThrow();
-        await fetch("/api/creator-production-intelligence", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId || undefined, qualityTier: creatorQualityMode, scenes: workingScenes }) });
+        const productionIntelligenceContextBySceneId = new Map(
+          creatorProductionIntelligenceContextsRef.current.map((context) => [
+            String(context.sceneId),
+            context,
+          ]),
+        );
+        const productionIntelligenceScenes = workingScenes.map((scene) => {
+          const context = productionIntelligenceContextBySceneId.get(String(scene.id));
+          if (!context) return scene;
+
+          return {
+            ...scene,
+            documentarySourceContext: context.documentarySourceContext,
+            evidenceVisualContext: context.evidenceVisualContext,
+          };
+        });
+        await fetch("/api/creator-production-intelligence", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId || undefined, qualityTier: creatorQualityMode, scenes: productionIntelligenceScenes }) });
       } catch (planningTelemetryError) {
         console.warn("CREATOR_PRODUCTION_PLAN_TELEMETRY_SKIPPED", planningTelemetryError);
       }
@@ -11607,6 +11627,7 @@ const generateSceneImage = async (
       }
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
+      creatorProductionIntelligenceContextsRef.current = [];
       setCreatorProductionSubstep(
         isCreatorProject
           ? getProductionSubstepFromUrl() ||
@@ -12872,7 +12893,11 @@ const generateSceneImage = async (
     };
 
     try {
-      const { productionPackage: plannedPackage, scriptPlan } =
+      const {
+        productionPackage: plannedPackage,
+        scriptPlan,
+        productionIntelligenceContexts,
+      } =
         await runCreatorEditorialScriptPipeline({
           accessToken,
           topic,
@@ -12888,6 +12913,8 @@ const generateSceneImage = async (
         );
       }
 
+      creatorProductionIntelligenceContextsRef.current =
+        productionIntelligenceContexts;
       void scriptPlan;
       return plannedPackage as CreatorProductionPackage;
     } catch (error) {
