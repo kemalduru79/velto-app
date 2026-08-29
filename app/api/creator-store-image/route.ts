@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { withCreatorMediaOriginMetadata } from "@/lib/creator/mediaOrigin";
 import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 import { MAX_CREATOR_IMAGE_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest) {
         markDurableStorageStarted();
         await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.context.user.id,
           bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: "image",
-          mimeType: media.mimeType, body: media.buffer });
+          mimeType: media.mimeType, body: media.buffer,
+          metadata: withCreatorMediaOriginMetadata({ generated: true }, "synthetic") });
         return uploaded;
       },
     });
