@@ -36,6 +36,7 @@ const tests = [
   "scripts/stage-0-10h-4a-documentary-treatment-taxonomy-test.mjs",
   "scripts/stage-0-10h-4b-documentary-source-context-test.mjs",
   "scripts/stage-0-10h-4c-authentic-source-first-routing-test.mjs",
+  "scripts/stage-0-10h-4d-evidence-visual-context-test.mjs",
 ];
 
 for (const test of tests) {
