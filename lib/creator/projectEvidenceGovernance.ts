@@ -59,13 +59,7 @@ function normalizeScriptQa(value: unknown): ScriptQaReport | null {
     const sceneId = typeof issue.sceneId === "number"
       ? issue.sceneId
       : clean(issue.sceneId, 240);
-    issues.push({
-      code,
-      severity,
-      statementId,
-      sceneId,
-      message: clean(issue.message, 1_000),
-    });
+    issues.push({ code, severity, statementId, sceneId, message: clean(issue.message, 1_000) });
   }
 
   const blockedIssueCount = issues.filter((issue) => issue.severity === "blocked").length;
@@ -90,10 +84,7 @@ type ProjectEvidenceBindingStatement = {
 
 function normalizeBindingStatements(value: unknown) {
   const binding = record(value);
-  if (!binding || binding.version !== "0.10H-2C" || !Array.isArray(binding.statements)) {
-    return null;
-  }
-
+  if (!binding || binding.version !== "0.10H-2C" || !Array.isArray(binding.statements)) return null;
   const statements: ProjectEvidenceBindingStatement[] = [];
   for (const rawStatement of binding.statements.slice(0, 160)) {
     const statement = record(rawStatement);
@@ -120,19 +111,12 @@ function normalizeBindingStatements(value: unknown) {
 
 function currentSceneSpeechById(productionPackage: Record<string, unknown>) {
   const byId = new Map<string, string>();
-  for (const rawScene of Array.isArray(productionPackage.scenes)
-    ? productionPackage.scenes.slice(0, 100)
-    : []) {
+  for (const rawScene of Array.isArray(productionPackage.scenes) ? productionPackage.scenes.slice(0, 100) : []) {
     const scene = record(rawScene);
     if (!scene) continue;
     const sceneId = clean(String(scene.id ?? ""), 240);
     if (!sceneId) continue;
-    byId.set(
-      sceneId,
-      clean([clean(scene.narration, 10_000), clean(scene.dialogue, 10_000)]
-        .filter(Boolean)
-        .join(" "), 20_000),
-    );
+    byId.set(sceneId, clean([clean(scene.narration, 10_000), clean(scene.dialogue, 10_000)].filter(Boolean).join(" "), 20_000));
   }
   return byId;
 }
@@ -141,16 +125,11 @@ export type CreatorProjectEvidenceGovernanceInput = {
   productionPackage: unknown;
   knownSourceIds?: readonly string[] | null;
   sourceMedia?: readonly CreatorGovernedSourceMedia[] | null;
+  rightsReviewRequiredIds?: readonly string[] | null;
   syntheticMediaUsed?: boolean;
   syntheticDisclosurePresent?: boolean;
 };
 
-/**
- * Adapts the existing CreatorLab production package into the H-5 evidence
- * governance contract. It does not create a second evidence store or a new
- * publish engine. A changed scene speech invalidates its prior evidence binding
- * until the source relationship is reviewed/rebuilt.
- */
 export function createCreatorProjectEvidenceGovernanceReport(
   input: CreatorProjectEvidenceGovernanceInput,
 ): CreatorEvidenceGovernanceReport {
@@ -182,14 +161,11 @@ export function createCreatorProjectEvidenceGovernanceReport(
         if (!knownSourceSet.has(sourceId)) missingSourceIds.push(sourceId);
       }
     }
-
     if (
       statement.evidenceMode === "required" &&
       statement.supportingSourceIds.length > 0 &&
       sceneSpeechById.get(statement.sceneId) !== statement.text
-    ) {
-      mismatchedSourceIds.push(...statement.supportingSourceIds);
-    }
+    ) mismatchedSourceIds.push(...statement.supportingSourceIds);
   }
 
   return createCreatorEvidenceGovernanceReport({
@@ -197,6 +173,7 @@ export function createCreatorProjectEvidenceGovernanceReport(
     sourceMedia: input.sourceMedia,
     missingSourceIds,
     mismatchedSourceIds,
+    rightsReviewRequiredIds: input.rightsReviewRequiredIds,
     syntheticMediaUsed: input.syntheticMediaUsed,
     syntheticDisclosurePresent: input.syntheticDisclosurePresent,
   });
