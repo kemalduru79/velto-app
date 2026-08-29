@@ -1,7 +1,9 @@
 import type {
   ClaimEvidenceStance,
-  ResearchClaimEvidenceGraph,
+  ResearchClaim,
+  ResearchClaimEvidenceLink,
   ResearchClaimType,
+  ResearchEvidence,
 } from "./claimEvidenceGraph.ts";
 
 export type ScriptStatementEvidenceMode = "required" | "not_required";
@@ -10,6 +12,12 @@ export type ScriptStatementTraceabilityStatus =
   | "partial"
   | "untraceable"
   | "not_required";
+
+export type ScriptEvidenceGraph = {
+  claims: ResearchClaim[];
+  evidence: ResearchEvidence[];
+  links: ResearchClaimEvidenceLink[];
+};
 
 export type ScriptEvidenceStatementInput = {
   statementId: string;
@@ -53,7 +61,7 @@ function unique(values: string[]) {
 }
 
 function evidenceForClaims(
-  graph: ResearchClaimEvidenceGraph,
+  graph: ScriptEvidenceGraph,
   claimIds: Set<string>,
   stance: ClaimEvidenceStance,
 ) {
@@ -64,7 +72,7 @@ function evidenceForClaims(
 }
 
 function sourceIdsForEvidence(
-  graph: ResearchClaimEvidenceGraph,
+  graph: ScriptEvidenceGraph,
   evidenceIds: string[],
 ) {
   const evidenceById = new Map(
@@ -83,7 +91,7 @@ function sourceIdsForEvidence(
  * editorial research graph; it does not claim that a linked statement is true.
  */
 export function createScriptEvidenceBindingMap(input: {
-  graph: ResearchClaimEvidenceGraph;
+  graph: ScriptEvidenceGraph;
   statements: ScriptEvidenceStatementInput[];
 }): ScriptEvidenceBindingMap {
   const claimById = new Map(
