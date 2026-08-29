@@ -14,7 +14,7 @@ const serverResolver = fs.readFileSync(
 const projectLookup = route.indexOf("projectRepository.getForOwner(requestedProjectId, principal.id)");
 const governanceResolve = route.indexOf("resolveCreatorProjectUsedMediaGovernance({");
 const blockedCheck = route.indexOf('evidenceGovernance?.status === "blocked"');
-const exportServiceCheck = route.indexOf("getExportApiBase()");
+const exportServiceCheck = route.indexOf("const exportApiBase = getExportApiBase();");
 const creditReservation = route.indexOf("creditReservation = await reserveMeteredOperation");
 
 assert.ok(projectLookup >= 0, "Creator export must resolve the owner-scoped project.");
