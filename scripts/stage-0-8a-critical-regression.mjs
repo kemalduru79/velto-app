@@ -26,6 +26,7 @@ const tests = [
   "scripts/stage-0-9a-security-consent-baseline-test.mjs",
   "scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
   "scripts/stage-0-10h-2h-script-planner-editorial-context-test.mjs",
+  "scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
 ];
 
 for (const test of tests) {
