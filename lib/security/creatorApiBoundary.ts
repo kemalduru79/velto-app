@@ -20,6 +20,11 @@ export const CREATOR_API_POLICIES = {
     rateLimit: 8,
     windowMs: 60_000,
   },
+  "creator-editorial-analysis": {
+    maxBodyBytes: 256 * 1024,
+    rateLimit: 6,
+    windowMs: 60_000,
+  },
   "creator-youtube-metadata": {
     maxBodyBytes: 128 * 1024,
     rateLimit: 10,
