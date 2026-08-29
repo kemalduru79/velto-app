@@ -7,6 +7,7 @@ import "./creatorlab-ux-p2a-final.css";
 import "./creatorlab-ux-p2b.css";
 import "./creatorlab-ux-p2c.css";
 import "./creatorlab-ux-p2d.css";
+import "./creatorlab-ux-h0a.css";
 import "./creatorlab-reports.css";
 
 const geistSans = Geist({
