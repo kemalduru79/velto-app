@@ -31,6 +31,7 @@ const tests = [
   "scripts/stage-0-10h-3b-source-metadata-read-surface-test.mjs",
   "scripts/stage-0-10h-3c-stock-source-media-canonicalization-test.mjs",
   "scripts/stage-0-10h-3d-research-source-media-reference-test.mjs",
+  "scripts/stage-0-10h-3e-source-media-trim-bridge-test.mjs",
 ];
 
 for (const test of tests) {
