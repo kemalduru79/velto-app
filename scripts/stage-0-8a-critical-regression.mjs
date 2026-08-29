@@ -33,6 +33,7 @@ const tests = [
   "scripts/stage-0-10h-3d-research-source-media-reference-test.mjs",
   "scripts/stage-0-10h-3e-source-media-trim-bridge-test.mjs",
   "scripts/stage-0-10h-3f-source-media-rights-closure-test.mjs",
+  "scripts/stage-0-10h-4a-documentary-treatment-taxonomy-test.mjs",
 ];
 
 for (const test of tests) {
