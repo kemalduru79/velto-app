@@ -36,6 +36,7 @@
     "test:stage-0-10h-2c": "node --experimental-strip-types scripts/stage-0-10h-2c-script-evidence-binding-test.mjs",
     "test:stage-0-10h-2d": "node --experimental-strip-types scripts/stage-0-10h-2d-lightweight-script-qa-test.mjs",
     "test:stage-0-10h-2e": "node --experimental-strip-types scripts/stage-0-10h-2e-editorial-script-context-test.mjs",
+    "test:stage-0-10h-2f": "node --experimental-strip-types scripts/stage-0-10h-2f-editorial-analysis-contract-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",
