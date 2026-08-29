@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ExaResearchSearchProvider } from "@/lib/providers/research/exa.server";
 import { normalizeCreatorResearchSearchRequest } from "@/lib/research/searchRequest";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
@@ -14,11 +15,13 @@ export async function POST(request: Request) {
 
   try {
     const searchInput = normalizeCreatorResearchSearchRequest(secured.context.body);
+    const providerAvailable = Boolean(ExaResearchSearchProvider);
     return NextResponse.json(
       {
         success: false,
         code: "RESEARCH_DIAGNOSTIC_ONLY",
         category: searchInput.category,
+        providerAvailable,
       },
       { status: 503 },
     );
