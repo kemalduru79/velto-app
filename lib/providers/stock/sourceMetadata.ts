@@ -1,3 +1,4 @@
+import { withCreatorMediaOriginMetadata } from "../../creator/mediaOrigin.ts";
 import { withCreatorSourceMediaMetadata } from "../../creator/sourceMedia.ts";
 import type { StockMediaCandidate } from "./types.ts";
 
@@ -39,7 +40,7 @@ export function createStockAssetMetadata(input: {
     metadataVersion: candidate.metadataVersion,
   };
 
-  return withCreatorSourceMediaMetadata(flatMetadata, {
+  const sourceMetadata = withCreatorSourceMediaMetadata(flatMetadata, {
     sourceMediaKind: candidate.mediaType === "photo" ? "image" : "video",
     sourceUrl: candidate.sourcePageUrl,
     publisher: "Pexels",
@@ -57,4 +58,6 @@ export function createStockAssetMetadata(input: {
     timecodeStartSec: null,
     timecodeEndSec: null,
   });
+
+  return withCreatorMediaOriginMetadata(sourceMetadata, "stock");
 }
