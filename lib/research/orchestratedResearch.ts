@@ -29,12 +29,12 @@ export type OrchestratedResearchResult = {
 };
 
 export class ResearchOrchestrationError extends Error {
-  constructor(
-    readonly laneId: string,
-    message: string,
-  ) {
+  readonly laneId: string;
+
+  constructor(laneId: string, message: string) {
     super(message);
     this.name = "ResearchOrchestrationError";
+    this.laneId = laneId;
   }
 }
 
