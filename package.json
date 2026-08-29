@@ -39,6 +39,7 @@
     "test:stage-0-10h-2f": "node --experimental-strip-types scripts/stage-0-10h-2f-editorial-analysis-contract-test.mjs",
     "test:stage-0-10h-2g": "node --experimental-strip-types scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
     "test:stage-0-10h-2h": "node --experimental-strip-types scripts/stage-0-10h-2h-script-planner-editorial-context-test.mjs",
+    "test:stage-0-10h-2i": "node --experimental-strip-types scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",
