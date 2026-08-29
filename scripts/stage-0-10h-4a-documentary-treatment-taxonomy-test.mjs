@@ -31,27 +31,22 @@ assert.match(
   "H-4A must expose the canonical documentary treatment taxonomy",
 );
 
-const routedTreatments = source.match(
-  /const routedTreatments: CreatorProductionTreatment\[\] = \[([^\]]+)\]/,
+const legacyTreatments = source.match(
+  /const (?:legacyRoutedTreatments|routedTreatments): CreatorProductionTreatment\[\] = \[([^\]]+)\]/,
 )?.[1] || "";
 
 for (const legacyTreatment of canonicalTreatments.slice(0, 6)) {
   assert.match(
-    routedTreatments,
+    legacyTreatments,
     new RegExp(`"${legacyTreatment}"`),
-    `Legacy automatic router must preserve ${legacyTreatment}`,
+    `Legacy Production Intelligence baseline must preserve ${legacyTreatment}`,
   );
 }
 for (const documentaryTreatment of canonicalTreatments.slice(6)) {
   assert.doesNotMatch(
-    routedTreatments,
+    legacyTreatments,
     new RegExp(`"${documentaryTreatment}"`),
-    `${documentaryTreatment} must not become automatically routable before later H-4 slices`,
-  );
-  assert.match(
-    source,
-    new RegExp(`${documentaryTreatment}: 0`),
-    `${documentaryTreatment} must have a neutral score until documentary routing is implemented`,
+    `${documentaryTreatment} must remain an extension rather than replacing the legacy treatment baseline`,
   );
 }
 
