@@ -10,8 +10,8 @@ import {
 import {
   getPersistenceServices,
   inspectProjectMediaReferences,
-  type ProjectRecord,
 } from "@/lib/persistence";
+import type { ProjectRecord } from "@/lib/persistence/projects/types";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
