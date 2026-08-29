@@ -1,3 +1,8 @@
+import type {
+  CreatorEvidenceGovernanceIssue,
+  CreatorEvidenceGovernanceReport,
+} from "./evidenceGovernance";
+
 export type CreatorPublishRequirementCode =
   | "production_package"
   | "final_video"
@@ -6,7 +11,8 @@ export type CreatorPublishRequirementCode =
   | "captions"
   | "target_platform"
   | "system_checks"
-  | "creator_confirmations";
+  | "creator_confirmations"
+  | "evidence_governance";
 
 export type CreatorPublishRequirement = {
   code: CreatorPublishRequirementCode;
@@ -32,6 +38,7 @@ type CreatorPublishReadyPackageInput = {
   scenes?: unknown;
   targetPlatforms?: unknown;
   releaseChecklist?: unknown;
+  evidenceGovernance?: CreatorEvidenceGovernanceReport | null;
 };
 
 const REQUIRED_CONFIRMATIONS = [
@@ -102,15 +109,40 @@ function hasReadySystemChecks(releaseChecklist: unknown) {
   );
 }
 
-function hasRequiredConfirmations(releaseChecklist: unknown) {
-  if (!isRecord(releaseChecklist)) return false;
-
-  const confirmations = isRecord(releaseChecklist.userConfirmations)
+function releaseConfirmations(releaseChecklist: unknown) {
+  if (!isRecord(releaseChecklist)) return {};
+  return isRecord(releaseChecklist.userConfirmations)
     ? releaseChecklist.userConfirmations
     : {};
+}
 
+function hasRequiredConfirmations(releaseChecklist: unknown) {
+  const confirmations = releaseConfirmations(releaseChecklist);
   return REQUIRED_CONFIRMATIONS.every(
     (key) => confirmations[key] === true,
+  );
+}
+
+function isReviewIssueResolvedByExistingConfirmation(
+  issue: CreatorEvidenceGovernanceIssue,
+  releaseChecklist: unknown,
+) {
+  const confirmations = releaseConfirmations(releaseChecklist);
+  return issue.code === "RIGHTS_REVIEW_REQUIRED" &&
+    confirmations.rightsConfirmed === true;
+}
+
+function hasReadyEvidenceGovernance(
+  governance: CreatorEvidenceGovernanceReport,
+  releaseChecklist: unknown,
+) {
+  if (governance.status === "ready") return true;
+  if (governance.status === "blocked") return false;
+
+  return governance.issues.length > 0 && governance.issues.every(
+    (issue) =>
+      issue.severity === "review" &&
+      isReviewIssueResolvedByExistingConfirmation(issue, releaseChecklist),
   );
 }
 
@@ -151,6 +183,17 @@ export function createCreatorPublishReadyPackageReport(
       ready: hasRequiredConfirmations(input.releaseChecklist),
     },
   ];
+
+  if (input.evidenceGovernance) {
+    requirements.push({
+      code: "evidence_governance",
+      ready: hasReadyEvidenceGovernance(
+        input.evidenceGovernance,
+        input.releaseChecklist,
+      ),
+    });
+  }
+
   const missingRequirementCodes = requirements
     .filter((requirement) => !requirement.ready)
     .map((requirement) => requirement.code);
