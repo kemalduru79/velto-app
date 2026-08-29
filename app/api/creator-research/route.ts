@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { persistEconomicOperationBestEffort } from "@/lib/economics";
 import { ExaResearchSearchProvider } from "@/lib/providers/research/exa.server";
 import { ResearchProviderError } from "@/lib/providers/research/types";
 import { normalizeCreatorResearchSearchRequest } from "@/lib/research/searchRequest";
@@ -31,6 +33,26 @@ export async function POST(request: Request) {
 
     const provider = new ExaResearchSearchProvider();
     const result = await provider.search(searchInput);
+    const completedAt = new Date().toISOString();
+    const operationId = result.providerRequestId || randomUUID();
+
+    await persistEconomicOperationBestEffort({
+      attemptKey: `research-search:${secured.context.user.id}:${operationId}`,
+      logicalOperationId: `research-search:${operationId}`,
+      userId: secured.context.user.id,
+      route: "creator-research",
+      operationType: "grounded_research_search",
+      provider: "exa",
+      state: "settled",
+      generated: false,
+      quantities: {
+        requestCount: 1,
+        returnedSourceCount: result.sources.length,
+        category: searchInput.category,
+      },
+      completedAt,
+    });
+
     const sources = result.sources.map((source) => ({
       ...source,
       sourceMetadata: Object.fromEntries(
