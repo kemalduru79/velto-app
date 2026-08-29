@@ -27,6 +27,7 @@
     "test:stage-0-10h-1b": "node --experimental-strip-types scripts/stage-0-10h-1b-claim-evidence-contract-test.mjs",
     "test:stage-0-10h-1c": "node --experimental-strip-types scripts/stage-0-10h-1c-evidence-freeze-test.mjs",
     "test:stage-0-10h-1d": "node --experimental-strip-types scripts/stage-0-10h-1d-grounded-search-provider-test.mjs",
+    "test:stage-0-10h-1e": "node --experimental-strip-types scripts/stage-0-10h-1e-creator-research-api-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",
