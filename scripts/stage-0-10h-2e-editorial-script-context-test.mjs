@@ -77,6 +77,6 @@ assert.throws(
 const noAssessment = createEditorialScriptContext({ profile, graph, sourceAssessments: [] });
 assert.equal(noAssessment.sources[0].directness, "unknown");
 assert.equal(noAssessment.sources[0].reviewStatus, "review");
-assert.equal(noAssessment.readiness.status, "review");
+assert.equal(noAssessment.readiness.status, "blocked");
 
 console.log("Stage 0.10H-2E editorial script context tests passed.");
