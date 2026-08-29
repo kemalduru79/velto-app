@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { parseCreatorProfile } from "@/lib/creator/creatorProfile";
 import { recordOpenAITextEconomics } from "@/lib/economics";
-import type { EditorialAnalysisProposal } from "@/lib/research/editorialAnalysisContract";
 import { createValidatedEditorialAnalysisWithOneRepair } from "@/lib/research/editorialGroundingRepair";
 import { normalizeEditorialAnalysisRequest } from "@/lib/research/editorialAnalysisRequest";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
@@ -168,12 +167,13 @@ export async function POST(request: Request) {
               {
                 role: "system",
                 content: [
-                  "Repair only grounding defects in an existing editorial evidence proposal.",
-                  "Use only the supplied sources and proposal. Do not add research, claims, evidence relationships, or source material.",
-                  "Change only invalid evidence excerpt or sourceId fields necessary for grounding.",
+                  "Return only grounding repair patches for invalid evidence in the supplied proposal.",
+                  "Use only the supplied sources and proposal. Do not add research or source material.",
+                  "Each repair must contain exactly evidenceId, sourceId, and excerpt.",
                   "Every non-empty excerpt must be an exact contiguous substring copied from the selected source summary.",
-                  "Preserve claim text, claim types, uncertainty labels, evidence ids, links, and stances unless a source reference must be corrected for exact grounding.",
-                  "Return the complete repaired proposal as strict JSON only.",
+                  "Include all grounding-invalid evidence you can identify in this one response.",
+                  "Do not return claims, links, context notes, or a complete proposal.",
+                  'Return strict JSON only in the shape {"repairs":[{"evidenceId":"...","sourceId":"...","excerpt":"..."}]}.',
                 ].join(" "),
               },
               {
@@ -194,9 +194,7 @@ export async function POST(request: Request) {
             response: repairResponse,
             userId: secured.context.user.id,
           });
-          return parseModelJson(
-            repairResponse.output_text || "",
-          ) as EditorialAnalysisProposal;
+          return parseModelJson(repairResponse.output_text || "");
         },
       });
     } catch (error) {
