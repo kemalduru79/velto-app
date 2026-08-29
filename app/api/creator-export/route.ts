@@ -17,6 +17,10 @@ import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } 
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
+import {
+  creatorGovernanceExportBlockResponse,
+  resolveCreatorProjectUsedMediaGovernance,
+} from "@/lib/creator/usedMediaGovernance.server";
 import { getPersistenceServices } from "@/lib/persistence";
 import {
   FinalMovieStorageAdmissionError,
@@ -102,9 +106,25 @@ export async function POST(request: Request) {
     if (!project) {
       return NextResponse.json({ ok: false, error: "Project was not found.", creditReserved: false }, { status: 404 });
     }
-    const productProfile =
-      body.productProfile === "creatorlab" ? "creatorlab" : "storyverse";
+    const productProfile = project.flow_type === "creator_lab"
+      ? "creatorlab"
+      : body.productProfile === "creatorlab"
+        ? "creatorlab"
+        : "storyverse";
     const qualityMode = body.qualityMode;
+    const evidenceGovernance = project.flow_type === "creator_lab"
+      ? (await resolveCreatorProjectUsedMediaGovernance({
+          ownerUserId: principal.id,
+          project,
+        })).governance
+      : null;
+    if (evidenceGovernance?.status === "blocked") {
+      return NextResponse.json(
+        creatorGovernanceExportBlockResponse(evidenceGovernance),
+        { status: 409, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
+
     const exportPayload = { ...body };
     exportPayload.projectId = project.id;
     delete exportPayload.ownerUserId;
@@ -187,7 +207,7 @@ export async function POST(request: Request) {
 
     const exportApiBase = getExportApiBase();
 
-    // The service check intentionally runs before credit reservation.
+    // The service and governance checks intentionally run before credit reservation.
     await assertExportServiceReady(exportApiBase);
 
     const storageAllowance = await checkStorageGenerationAllowance(principal.id);
@@ -214,6 +234,7 @@ export async function POST(request: Request) {
       metadata: {
         sceneCount: Array.isArray(exportPayload.scenes) ? exportPayload.scenes.length : 0,
         finalProductionGate: "3Q",
+        evidenceGovernanceStatus: evidenceGovernance?.status || "not_applicable",
       },
       billable: productProfile === "creatorlab",
       requireCostGuardConfirmation: productProfile === "creatorlab",
@@ -221,7 +242,7 @@ export async function POST(request: Request) {
     const logicalExportId = request.headers.get("x-idempotency-key")?.trim() || creditReservation?.reservationId || `export:${crypto.randomUUID()}`;
     exportPayload.economicExportId = logicalExportId;
     economicAttempt = { attemptKey: `${logicalExportId}:velto-export:1`, logicalOperationId: logicalExportId, idempotencyKey: request.headers.get("x-idempotency-key"), creditReservationId: creditReservation?.reservationId,
-      userId: principal.id, projectId: project.id, exportId: logicalExportId, route: "/api/creator-export", operationType: "creator_export", productTier: String(qualityMode || "standard"), provider: "velto-export", providerTier: "infrastructure", model: "ffmpeg-1280x720-25fps", state: "dispatch_attempted", billingMoment: "render_runtime", quantities: { sceneCount: Array.isArray(exportPayload.scenes) ? exportPayload.scenes.length : 0, requestCount: 1 }, cost: unknownCost("Railway runtime, Supabase storage, and egress rates are not approved."), dispatchedAt: new Date().toISOString() };
+      userId: principal.id, projectId: project.id, exportId: logicalExportId, route: "/api/creator-export", operationType: "creator_export", productTier: String(qualityMode || "standard"), provider: "velto-export", providerTier: "infrastructure", model: "ffmpeg-1280x720-25fps", state: "dispatch_attempted", billingMoment: "render_runtime", quantities: { sceneCount: Array.isArray(exportPayload.scenes) ? exportPayload.scenes.length : 0, requestCount: 1, evidenceGovernanceStatus: evidenceGovernance?.status || "not_applicable" }, cost: unknownCost("Railway runtime, Supabase storage, and egress rates are not approved."), dispatchedAt: new Date().toISOString() };
     await persistEconomicOperationBestEffort(economicAttempt);
 
     exportDispatched = true;
@@ -258,13 +279,27 @@ export async function POST(request: Request) {
             movieUrlCreated: true,
             sceneCount: data.sceneCount,
             finalProductionGate: "3Q",
+            evidenceGovernanceStatus: evidenceGovernance?.status || "not_applicable",
           },
         })
       : null;
 
     return NextResponse.json({
       ...data,
-      finalProductionGate: { version: "3Q", status: "passed" },
+      finalProductionGate: {
+        version: "3Q",
+        status: "passed",
+        evidenceGovernanceStatus: evidenceGovernance?.status || "not_applicable",
+      },
+      evidenceGovernance: evidenceGovernance
+        ? {
+            version: evidenceGovernance.version,
+            status: evidenceGovernance.status,
+            requiresManualReview: evidenceGovernance.requiresManualReview,
+            blockedIssueCount: evidenceGovernance.blockedIssueCount,
+            reviewIssueCount: evidenceGovernance.reviewIssueCount,
+          }
+        : null,
       creditAccount: creditResult?.account || null,
       creditUsage: creditReservation
         ? {
