@@ -44,6 +44,7 @@ const tests = [
   "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
   "scripts/stage-0-10h-4j-documentary-pi-closure-test.mjs",
   "scripts/stage-0-10h-5a-evidence-governance-contract-test.mjs",
+  "scripts/stage-0-10h-5b-final-production-governance-gate-test.mjs",
 ];
 
 for (const test of tests) {
