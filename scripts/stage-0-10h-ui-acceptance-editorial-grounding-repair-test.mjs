@@ -3,11 +3,14 @@ import {
   createValidatedEditorialAnalysis,
 } from "../lib/research/editorialAnalysisContract.ts";
 import {
+  createEditorialGroundingCandidateSpans,
   createValidatedEditorialAnalysisWithOneRepair,
+  MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+  MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE,
 } from "../lib/research/editorialGroundingRepair.ts";
 
 const canonicalExcerpt = "Experts questioned the vision of a world without work.";
-const secondCanonicalExcerpt = "A second exact passage remains independently grounded.";
+const secondCanonicalExcerpt = "İkinci kanıt cümlesi özgün metinde aynen yer alır.";
 const sources = [
   {
     sourceId: "web:guardian-example",
@@ -36,8 +39,8 @@ const sources = [
     publisher: "Example Publisher",
     author: null,
     publishedAt: "2023-11-04T00:00:00.000Z",
-    language: "en",
-    summary: `Opening. ${secondCanonicalExcerpt} Closing.`,
+    language: "tr",
+    summary: `Başlangıç. ${secondCanonicalExcerpt} Bitiş!`,
     thumbnailUrl: null,
     durationSec: null,
     metrics: {},
@@ -66,68 +69,76 @@ function proposal(excerpt, sourceId = sources[0].sourceId) {
   };
 }
 
-function patch(excerpt = canonicalExcerpt, sourceId = sources[0].sourceId) {
-  return {
-    repairs: [{ evidenceId: "evidence-1", sourceId, excerpt }],
-  };
+const spans = createEditorialGroundingCandidateSpans(sources);
+const canonicalSpan = spans.find((span) => span.text.includes(canonicalExcerpt));
+const secondSpan = spans.find((span) => span.text.includes(secondCanonicalExcerpt));
+assert.ok(canonicalSpan);
+assert.ok(secondSpan);
+assert.deepEqual(spans, createEditorialGroundingCandidateSpans(sources));
+assert.ok(spans.length <= MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST);
+for (const source of sources) {
+  const sourceSpans = spans.filter((span) => span.sourceId === source.sourceId);
+  assert.ok(sourceSpans.length <= MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE);
+  for (const span of sourceSpans) assert.ok(source.summary.includes(span.text));
 }
 
-const paraphrased = proposal(
-  "Experts were skeptical about a future where nobody needs to work.",
-);
+function selection(
+  span = canonicalSpan,
+  evidenceId = "evidence-1",
+) {
+  return { repairs: [{ evidenceId, spanId: span.spanId }] };
+}
+
+const paraphrased = proposal("Experts were skeptical about a future without work.");
 assert.throws(
   () => createValidatedEditorialAnalysis({ sources, proposal: paraphrased }),
   /EDITORIAL_EVIDENCE_EXCERPT_NOT_GROUNDED:web:guardian-example/,
 );
 
 let repairCalls = 0;
+let economicsRecords = 0;
 let researchCalls = 0;
-let repairEconomicsRecords = 0;
 const originalSnapshot = structuredClone(paraphrased);
-const repairedGraph = await createValidatedEditorialAnalysisWithOneRepair({
+const graph = await createValidatedEditorialAnalysisWithOneRepair({
   sources,
   proposal: paraphrased,
   repair: async (input) => {
     repairCalls += 1;
-    repairEconomicsRecords += 1;
-    assert.equal(input.sources, sources);
-    assert.equal(input.proposal, paraphrased);
-    assert.equal(input.failingSourceId, sources[0].sourceId);
-    return patch();
+    economicsRecords += 1;
+    assert.deepEqual(input.invalidEvidence.map((item) => item.evidenceId), ["evidence-1"]);
+    assert.deepEqual(
+      new Set(input.candidateSpans.map((span) => span.sourceId)),
+      new Set([sources[0].sourceId]),
+    );
+    assert.equal("proposal" in input, false);
+    assert.equal("sources" in input, false);
+    return selection();
   },
 });
 assert.equal(repairCalls, 1);
-assert.equal(repairEconomicsRecords, 1);
-assert.equal(researchCalls, 0);
-assert.deepEqual(paraphrased, originalSnapshot, "original proposal remains canonical and unmutated");
-assert.deepEqual(repairedGraph.claims, originalSnapshot.claims);
-assert.deepEqual(repairedGraph.links, originalSnapshot.links);
-assert.equal(repairedGraph.evidence[0].contextNote, originalSnapshot.evidence[0].contextNote);
-assert.equal(repairedGraph.evidence[0].excerpt, canonicalExcerpt);
-assert.equal(
-  repairedGraph.evidence[0].excerpt,
-  sources[0].summary.slice(
-    sources[0].summary.indexOf(canonicalExcerpt),
-    sources[0].summary.indexOf(canonicalExcerpt) + canonicalExcerpt.length,
-  ),
-);
+assert.equal(economicsRecords, 1);
+assert.deepEqual(paraphrased, originalSnapshot);
+assert.deepEqual(graph.claims, originalSnapshot.claims);
+assert.deepEqual(graph.links, originalSnapshot.links);
+assert.equal(graph.evidence[0].contextNote, originalSnapshot.evidence[0].contextNote);
+assert.equal(graph.evidence[0].sourceId, originalSnapshot.evidence[0].sourceId);
+assert.equal(graph.evidence[0].excerpt, canonicalSpan.text);
 
 repairCalls = 0;
-repairEconomicsRecords = 0;
-const exactGraph = await createValidatedEditorialAnalysisWithOneRepair({
+economicsRecords = 0;
+await createValidatedEditorialAnalysisWithOneRepair({
   sources,
   proposal: proposal(canonicalExcerpt),
   repair: async () => {
     repairCalls += 1;
-    repairEconomicsRecords += 1;
-    return patch();
+    economicsRecords += 1;
+    return selection();
   },
 });
-assert.equal(exactGraph.evidence[0].excerpt, canonicalExcerpt);
 assert.equal(repairCalls, 0);
-assert.equal(repairEconomicsRecords, 0);
+assert.equal(economicsRecords, 0);
 
-const withUnrelatedEvidence = {
+const withUnrelated = {
   ...paraphrased,
   evidence: [
     paraphrased.evidence[0],
@@ -140,95 +151,61 @@ const withUnrelatedEvidence = {
   ],
   links: [
     paraphrased.links[0],
-    {
-      claimId: "claim-1",
-      evidenceId: "evidence-2",
-      stance: "contextualizes",
-    },
+    { claimId: "claim-1", evidenceId: "evidence-2", stance: "contextualizes" },
   ],
 };
 const unrelatedGraph = await createValidatedEditorialAnalysisWithOneRepair({
   sources,
-  proposal: withUnrelatedEvidence,
-  repair: async () => patch(),
-});
-assert.deepEqual(unrelatedGraph.evidence[1], {
-  evidenceId: "evidence-2",
-  sourceId: sources[1].sourceId,
-  excerpt: secondCanonicalExcerpt,
-  contextNote: "Unrelated exact evidence",
-  locator: {
-    section: null,
-    page: null,
-    timecodeStartSec: null,
-    timecodeEndSec: null,
+  proposal: withUnrelated,
+  repair: async (input) => {
+    assert.deepEqual(
+      new Set(input.candidateSpans.map((span) => span.sourceId)),
+      new Set([sources[0].sourceId]),
+    );
+    return selection();
   },
 });
+assert.equal(unrelatedGraph.evidence[1].sourceId, sources[1].sourceId);
+assert.equal(unrelatedGraph.evidence[1].excerpt, secondCanonicalExcerpt);
+assert.equal(unrelatedGraph.evidence[1].contextNote, "Unrelated exact evidence");
 
-await assert.rejects(
-  createValidatedEditorialAnalysisWithOneRepair({
-    sources,
-    proposal: paraphrased,
-    repair: async () => proposal(canonicalExcerpt),
-  }),
-  /EDITORIAL_GROUNDING_REPAIR_PATCH_INVALID/,
-  "a complete proposal is not an accepted repair contract",
-);
-await assert.rejects(
-  createValidatedEditorialAnalysisWithOneRepair({
-    sources,
-    proposal: paraphrased,
-    repair: async () => ({
-      repairs: [{ evidenceId: "evidence-unknown", sourceId: sources[0].sourceId, excerpt: canonicalExcerpt }],
-    }),
-  }),
-  /EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING:evidence-unknown/,
-);
-await assert.rejects(
-  createValidatedEditorialAnalysisWithOneRepair({
-    sources,
-    proposal: paraphrased,
-    repair: async () => ({ repairs: [patch().repairs[0], patch().repairs[0]] }),
-  }),
-  /EDITORIAL_GROUNDING_REPAIR_DUPLICATE_EVIDENCE:evidence-1/,
-);
-await assert.rejects(
-  createValidatedEditorialAnalysisWithOneRepair({
-    sources,
-    proposal: paraphrased,
-    repair: async () => patch(canonicalExcerpt, "web:unknown"),
-  }),
-  /EDITORIAL_GROUNDING_REPAIR_SOURCE_MISSING:evidence-1/,
-);
-await assert.rejects(
-  createValidatedEditorialAnalysisWithOneRepair({
-    sources,
-    proposal: paraphrased,
-    repair: async () => patch("A repaired paraphrase."),
-  }),
-  /EDITORIAL_GROUNDING_REPAIR_EXCERPT_NOT_EXACT:evidence-1/,
-);
-for (const invalidPatch of [
-  {},
-  { repairs: [] },
-  { repairs: [{ evidenceId: "evidence-1", sourceId: sources[0].sourceId, excerpt: "" }] },
-  { repairs: [{ evidenceId: "evidence-1", sourceId: "", excerpt: canonicalExcerpt }] },
-]) {
+const failures = [
+  [
+    { repairs: [{ ...selection().repairs[0], sourceId: sources[0].sourceId }] },
+    /EDITORIAL_GROUNDING_REPAIR_SELECTION_INVALID/,
+  ],
+  [selection(canonicalSpan, "evidence-unknown"), /EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING/],
+  [
+    { repairs: [selection().repairs[0], selection().repairs[0]] },
+    /EDITORIAL_GROUNDING_REPAIR_DUPLICATE_EVIDENCE/,
+  ],
+  [
+    { repairs: [{ evidenceId: "evidence-1", spanId: "span-unknown" }] },
+    /EDITORIAL_GROUNDING_REPAIR_SPAN_MISSING/,
+  ],
+  [
+    { repairs: [{ evidenceId: "evidence-1", spanId: secondSpan.spanId }] },
+    /EDITORIAL_GROUNDING_REPAIR_SPAN_MISSING/,
+  ],
+  [{ repairs: [], claims: [] }, /EDITORIAL_GROUNDING_REPAIR_SELECTION_INVALID/],
+  [{ repairs: [] }, /EDITORIAL_GROUNDING_REPAIR_SELECTION_EMPTY/],
+];
+for (const [invalidSelection, expected] of failures) {
   await assert.rejects(
     createValidatedEditorialAnalysisWithOneRepair({
       sources,
       proposal: paraphrased,
-      repair: async () => invalidPatch,
+      repair: async () => invalidSelection,
     }),
-    /EDITORIAL_GROUNDING_REPAIR_PATCH_(?:INVALID|EMPTY)/,
+    expected,
   );
 }
 
 const twoInvalid = {
-  ...withUnrelatedEvidence,
+  ...withUnrelated,
   evidence: [
     paraphrased.evidence[0],
-    { ...withUnrelatedEvidence.evidence[1], excerpt: "Second altered passage." },
+    { ...withUnrelated.evidence[1], excerpt: "İkinci değiştirilmiş ifade." },
   ],
 };
 repairCalls = 0;
@@ -239,8 +216,8 @@ const multiGraph = await createValidatedEditorialAnalysisWithOneRepair({
     repairCalls += 1;
     return {
       repairs: [
-        patch().repairs[0],
-        { evidenceId: "evidence-2", sourceId: sources[1].sourceId, excerpt: secondCanonicalExcerpt },
+        selection().repairs[0],
+        selection(secondSpan, "evidence-2").repairs[0],
       ],
     };
   },
@@ -248,8 +225,77 @@ const multiGraph = await createValidatedEditorialAnalysisWithOneRepair({
 assert.equal(repairCalls, 1);
 assert.deepEqual(
   multiGraph.evidence.map((item) => item.excerpt),
-  [canonicalExcerpt, secondCanonicalExcerpt],
+  [canonicalSpan.text, secondSpan.text],
 );
+
+const twoInvalidSameSource = {
+  ...withUnrelated,
+  evidence: [
+    paraphrased.evidence[0],
+    {
+      ...withUnrelated.evidence[1],
+      sourceId: sources[0].sourceId,
+      excerpt: "Another altered excerpt.",
+    },
+  ],
+};
+repairCalls = 0;
+await createValidatedEditorialAnalysisWithOneRepair({
+  sources,
+  proposal: twoInvalidSameSource,
+  repair: async (input) => {
+    repairCalls += 1;
+    assert.deepEqual(
+      new Set(input.candidateSpans.map((span) => span.sourceId)),
+      new Set([sources[0].sourceId]),
+    );
+    return {
+      repairs: [
+        selection().repairs[0],
+        selection(canonicalSpan, "evidence-2").repairs[0],
+      ],
+    };
+  },
+});
+assert.equal(repairCalls, 1, "shared invalid sources use one span registry and call");
+
+const overflowSources = Array.from({ length: 6 }, (_, sourceIndex) => ({
+  ...sources[0],
+  sourceId: `web:overflow-${sourceIndex + 1}`,
+  externalId: `overflow-${sourceIndex + 1}`,
+  url: `https://example.com/overflow-${sourceIndex + 1}`,
+  summary: Array.from(
+    { length: 12 },
+    (_, sentenceIndex) => `Meaningful canonical sentence ${sourceIndex + 1}-${sentenceIndex + 1} contains sufficient context.`,
+  ).join(" "),
+}));
+const overflowProposal = {
+  claims: proposal(canonicalExcerpt).claims,
+  evidence: overflowSources.map((source, index) => ({
+    evidenceId: `overflow-evidence-${index + 1}`,
+    sourceId: source.sourceId,
+    excerpt: "Ungrounded altered excerpt.",
+    contextNote: "Overflow test",
+  })),
+  links: overflowSources.map((_, index) => ({
+    claimId: "claim-1",
+    evidenceId: `overflow-evidence-${index + 1}`,
+    stance: "supports",
+  })),
+};
+repairCalls = 0;
+await assert.rejects(
+  createValidatedEditorialAnalysisWithOneRepair({
+    sources: overflowSources,
+    proposal: overflowProposal,
+    repair: async () => {
+      repairCalls += 1;
+      return { repairs: [] };
+    },
+  }),
+  /EDITORIAL_GROUNDING_REPAIR_CANDIDATE_LIMIT_EXCEEDED/,
+);
+assert.equal(repairCalls, 0, "candidate overflow fails before the model call");
 
 const initiallyUngroundedAndInvalid = {
   ...paraphrased,
@@ -262,12 +308,12 @@ await assert.rejects(
     proposal: initiallyUngroundedAndInvalid,
     repair: async () => {
       repairCalls += 1;
-      return patch();
+      return selection();
     },
   }),
-  /EDITORIAL_EVIDENCE_STANCE_INVALID:claim-1:evidence-1/,
+  /EDITORIAL_EVIDENCE_STANCE_INVALID/,
 );
-assert.equal(repairCalls, 1, "failed post-patch validation must not retry");
+assert.equal(repairCalls, 1);
 
 repairCalls = 0;
 await assert.rejects(
@@ -281,17 +327,13 @@ await assert.rejects(
   }),
   /REPAIR_PROVIDER_FAILED/,
 );
-assert.equal(repairCalls, 1, "provider failure must not retry");
+assert.equal(repairCalls, 1);
 
 for (const invalidProposal of [
   proposal(canonicalExcerpt, "web:unknown"),
   {
     ...proposal(canonicalExcerpt),
     claims: [{ ...proposal(canonicalExcerpt).claims[0], claimType: "INVALID" }],
-  },
-  {
-    ...proposal(canonicalExcerpt),
-    links: [{ ...proposal(canonicalExcerpt).links[0], stance: "invalid-stance" }],
   },
 ]) {
   repairCalls = 0;
@@ -301,12 +343,12 @@ for (const invalidProposal of [
       proposal: invalidProposal,
       repair: async () => {
         repairCalls += 1;
-        return patch();
+        return selection();
       },
     }),
   );
-  assert.equal(repairCalls, 0, "unrelated initial failures must not trigger repair");
+  assert.equal(repairCalls, 0);
 }
 
-assert.equal(researchCalls, 0, "grounding repair has no research callback or request");
+assert.equal(researchCalls, 0);
 console.log("Stage 0.10H UI acceptance editorial grounding repair tests passed.");

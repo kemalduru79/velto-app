@@ -160,28 +160,32 @@ export async function POST(request: Request) {
       graph = await createValidatedEditorialAnalysisWithOneRepair({
         sources: normalized.sources,
         proposal,
-        repair: async ({ proposal: invalidProposal, failingSourceId }) => {
+        repair: async ({
+          invalidEvidence,
+          candidateSpans,
+          failingSourceId,
+        }) => {
           const repairResponse = await client.responses.create({
             model,
             input: [
               {
                 role: "system",
                 content: [
-                  "Return only grounding repair patches for invalid evidence in the supplied proposal.",
-                  "Use only the supplied sources and proposal. Do not add research or source material.",
-                  "Each repair must contain exactly evidenceId, sourceId, and excerpt.",
-                  "Every non-empty excerpt must be an exact contiguous substring copied from the selected source summary.",
+                  "Select only canonical grounding spans for the supplied invalid evidence.",
+                  "Use only the supplied candidate spans and evidence context. Do not add research or source material.",
+                  "Each repair must contain exactly evidenceId and spanId.",
+                  "Never write or return excerpt text. Select the span that actually supports the intended evidence or claim.",
                   "Include all grounding-invalid evidence you can identify in this one response.",
-                  "Do not return claims, links, context notes, or a complete proposal.",
-                  'Return strict JSON only in the shape {"repairs":[{"evidenceId":"...","sourceId":"...","excerpt":"..."}]}.',
+                  "Do not return source ids, claims, links, context notes, or proposal structures.",
+                  'Return strict JSON only in the shape {"repairs":[{"evidenceId":"...","spanId":"..."}]}.',
                 ].join(" "),
               },
               {
                 role: "user",
                 content: JSON.stringify({
                   failingSourceId,
-                  sources: sourceMaterial,
-                  proposal: invalidProposal,
+                  invalidEvidence,
+                  candidateSpans,
                 }),
               },
             ],
