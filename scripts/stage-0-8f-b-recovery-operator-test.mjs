@@ -59,9 +59,10 @@ assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
 const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
-// Stage 0.10H intentionally adds the authenticated CreatorLab research and editorial-analysis API routes.
-// Keep this inventory sentinel fail-closed so any later API surface change still requires explicit review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "1b611f8b708c44d8a84dcf660a8fb68faef2f99e4e5a5368659c4a4df853586b");
+// Stage 0.10H intentionally adds authenticated CreatorLab research/editorial routes and,
+// after explicit H-5E review, one owner-scoped project-governance route. Keep this
+// inventory sentinel fail-closed so every later API surface change requires review.
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "ce13ceb1441a7e9a46e55881ad6b329b6f6cc7ab74b353c7a937b8d867411555");
 assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
