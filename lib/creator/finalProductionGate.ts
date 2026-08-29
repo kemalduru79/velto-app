@@ -1,3 +1,4 @@
+import type { CreatorEvidenceGovernanceReport } from "./evidenceGovernance";
 import type { CreatorFinalVideoReadinessReport } from "./finalVideoReadiness";
 
 export type CreatorExportServiceGateStatus =
@@ -28,6 +29,7 @@ export type CreatorFinalProductionGateReport = {
     visuals: CreatorFinalProductionGateCheckStatus;
     voiceOver: CreatorFinalProductionGateCheckStatus;
     continuity: CreatorFinalProductionGateCheckStatus;
+    evidenceGovernance: CreatorFinalProductionGateCheckStatus;
     exportService: CreatorFinalProductionGateCheckStatus;
   };
   blockingSceneIds: Array<string | number>;
@@ -38,9 +40,11 @@ export type CreatorFinalProductionGateReport = {
 export function createCreatorFinalProductionGate({
   readiness,
   exportServiceStatus,
+  evidenceGovernance,
 }: {
   readiness: CreatorFinalVideoReadinessReport;
   exportServiceStatus: CreatorExportServiceGateStatus;
+  evidenceGovernance?: CreatorEvidenceGovernanceReport | null;
 }): CreatorFinalProductionGateReport {
   const timelineReady = ![
     "production_stage_required",
@@ -50,26 +54,30 @@ export function createCreatorFinalProductionGate({
   const voiceReady = readiness.missingVoiceSceneIds.length === 0;
   const continuityBlocked = readiness.status === "continuity_blocked";
   const continuityReview = readiness.status === "confirmation_required";
+  const evidenceBlocked = evidenceGovernance?.status === "blocked";
+  const evidenceReview = evidenceGovernance?.status === "review";
   const localBlocked = !readiness.canStartFinalVideo;
   const exportChecking =
     exportServiceStatus === "unchecked" || exportServiceStatus === "checking";
   const exportReady = exportServiceStatus === "ready";
-  const status: CreatorFinalProductionGateStatus = localBlocked
+  const canStartFinalVideo =
+    readiness.canStartFinalVideo && exportReady && !evidenceBlocked;
+  const reviewRequired = continuityReview || evidenceReview;
+  const status: CreatorFinalProductionGateStatus = localBlocked || evidenceBlocked
     ? "blocked"
     : exportChecking
       ? "checking"
       : !exportReady
         ? "blocked"
-        : continuityReview
+        : reviewRequired
           ? "review"
           : "ready";
 
   return {
     version: "3Q",
     status,
-    canStartFinalVideo: readiness.canStartFinalVideo && exportReady,
-    requiresManualConfirmation:
-      readiness.canStartFinalVideo && exportReady && continuityReview,
+    canStartFinalVideo,
+    requiresManualConfirmation: canStartFinalVideo && reviewRequired,
     checks: {
       timeline: timelineReady ? "ready" : "blocked",
       visuals: visualsReady ? "ready" : "blocked",
@@ -77,6 +85,11 @@ export function createCreatorFinalProductionGate({
       continuity: continuityBlocked
         ? "blocked"
         : continuityReview
+          ? "review"
+          : "ready",
+      evidenceGovernance: evidenceBlocked
+        ? "blocked"
+        : evidenceReview
           ? "review"
           : "ready",
       exportService: exportChecking
