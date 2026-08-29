@@ -1,3 +1,13 @@
+import {
+  normalizeCreatorDocumentarySourcePlanningContext,
+  normalizeCreatorEvidenceVisualPlanningContext,
+} from "../creator/productionIntelligenceRequest.ts";
+import { createCreatorSceneDocumentaryContext } from "../creator/sceneDocumentaryContext.ts";
+import type { ResearchClaimEvidenceGraph } from "./claimEvidenceGraph.ts";
+import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
+import { createResearchSourceMediaReference } from "./sourceMediaReference.ts";
+import type { ScriptEvidenceBindingMap } from "./scriptEvidenceBinding.ts";
+
 export type CreatorEditorialPipelineStage =
   | "research"
   | "editorial_analysis"
@@ -32,9 +42,20 @@ export type CreatorEditorialPipelineInput = {
   fetchImpl?: typeof fetch;
 };
 
+export type CreatorEditorialPipelineProductionIntelligenceContext = {
+  sceneId: string;
+  documentarySourceContext: NonNullable<
+    ReturnType<typeof normalizeCreatorDocumentarySourcePlanningContext>
+  >;
+  evidenceVisualContext: NonNullable<
+    ReturnType<typeof normalizeCreatorEvidenceVisualPlanningContext>
+  >;
+};
+
 export type CreatorEditorialPipelineResult = {
   productionPackage: unknown;
   scriptPlan: unknown;
+  productionIntelligenceContexts: CreatorEditorialPipelineProductionIntelligenceContext[];
   editorialSummary: {
     researchSourceCount: number;
     readinessStatus: string | null;
@@ -54,6 +75,97 @@ function asRecord(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as JsonRecord
     : null;
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asPositiveInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function hasEditorialGraph(value: unknown): value is ResearchClaimEvidenceGraph {
+  const graph = asRecord(value);
+  return Boolean(
+    graph &&
+    Array.isArray(graph.sources) &&
+    Array.isArray(graph.claims) &&
+    Array.isArray(graph.evidence) &&
+    Array.isArray(graph.links),
+  );
+}
+
+function hasScriptEvidenceBindings(value: unknown): value is ScriptEvidenceBindingMap {
+  const bindings = asRecord(value);
+  return Boolean(bindings && Array.isArray(bindings.statements));
+}
+
+function createProductionIntelligenceContexts(input: {
+  editorial: JsonRecord;
+  scriptPlan: JsonRecord;
+}): CreatorEditorialPipelineProductionIntelligenceContext[] {
+  const productionPackage = asRecord(input.scriptPlan.productionPackage);
+  const editorialEvidence = asRecord(productionPackage?.editorialEvidence);
+  const bindingsValue = editorialEvidence?.binding;
+
+  // Legacy/offline callers that do not contain the H-2H backstage binding remain
+  // valid. Normal grounded CreatorLab output includes this binding.
+  if (!hasScriptEvidenceBindings(bindingsValue)) return [];
+
+  if (!hasEditorialGraph(input.editorial.graph)) {
+    throw new CreatorEditorialPipelineError({
+      stage: "script_plan",
+      code: "EDITORIAL_PIPELINE_PI_GRAPH_MISSING",
+      message: "Grounded production context could not be assembled.",
+    });
+  }
+
+  const graph = input.editorial.graph;
+  const sourceAssessments = asArray(
+    input.editorial.sourceAssessments,
+  ) as ResearchSourceAssessment[];
+  const sourceReferences = graph.sources.map((source) =>
+    createResearchSourceMediaReference(source),
+  );
+  const sceneIds = [...new Set(
+    asArray(productionPackage?.scenes)
+      .map((scene) => asPositiveInteger(asRecord(scene)?.id))
+      .filter((sceneId): sceneId is number => sceneId !== null),
+  )];
+
+  return sceneIds.map((sceneId) => {
+    const sceneContext = createCreatorSceneDocumentaryContext({
+      sceneId,
+      bindings: bindingsValue,
+      graph,
+      sourceReferences,
+      sourceAssessments,
+    });
+    const documentarySourceContext =
+      normalizeCreatorDocumentarySourcePlanningContext(
+        sceneContext.documentarySourceContext,
+      );
+    const evidenceVisualContext = normalizeCreatorEvidenceVisualPlanningContext(
+      sceneContext.evidenceVisualContext,
+      sceneId,
+    );
+
+    if (!documentarySourceContext || !evidenceVisualContext) {
+      throw new CreatorEditorialPipelineError({
+        stage: "script_plan",
+        code: "EDITORIAL_PIPELINE_PI_CONTEXT_INVALID",
+        message: "Grounded production context could not be assembled.",
+      });
+    }
+
+    return {
+      sceneId: String(sceneId),
+      documentarySourceContext,
+      evidenceVisualContext,
+    };
+  });
 }
 
 async function parseJsonResponse(response: Response) {
@@ -176,6 +288,10 @@ export async function runCreatorEditorialScriptPipeline(
   return {
     productionPackage: scriptPlan.productionPackage,
     scriptPlan: scriptPlan.scriptPlan,
+    productionIntelligenceContexts: createProductionIntelligenceContexts({
+      editorial,
+      scriptPlan,
+    }),
     editorialSummary: {
       researchSourceCount: sources.length,
       readinessStatus: clean(readiness?.status, 40) || null,
