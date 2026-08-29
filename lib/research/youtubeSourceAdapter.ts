@@ -2,7 +2,7 @@ import {
   createResearchSourceId,
   type ResearchSource,
   type ResearchSourceLanguage,
-} from "./sourceContract";
+} from "./sourceContract.ts";
 
 export type YoutubeResearchCandidate = {
   id: string;
