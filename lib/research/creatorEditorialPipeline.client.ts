@@ -228,7 +228,7 @@ export async function runCreatorEditorialScriptPipeline(
       message: "A topic is required for grounded editorial production.",
     });
   }
-  const fetchImpl = input.fetchImpl || fetch;
+  const fetchImpl = input.fetchImpl || globalThis.fetch.bind(globalThis);
 
   const research = await postJson({
     stage: "research",
