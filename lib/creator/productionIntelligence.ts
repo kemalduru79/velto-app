@@ -1,4 +1,5 @@
 import type { CreatorQualityMode } from "./mediaRouting";
+import type { CreatorDocumentarySourceContext } from "./documentarySourceContext";
 import type { TimelineScenePlan } from "../video/timelineSync";
 import type { StockMediaCandidate, StockMediaType, StockOrientation } from "../providers/stock/types";
 
@@ -17,8 +18,8 @@ export type CreatorProductionTreatment =
 
 /**
  * Canonical documentary-production treatment taxonomy. H-4A exposes these
- * treatments without changing the legacy automatic routing policy; the five
- * evidence/source-aware treatments become routable in later H-4 slices.
+ * treatments while later H-4 slices progressively make them routable without
+ * replacing the existing Production Intelligence engine.
  */
 export const CREATOR_PRODUCTION_TREATMENTS: readonly CreatorProductionTreatment[] = [
   "reuse_existing",
@@ -46,8 +47,8 @@ export type CreatorSceneProductionDecision = {
   expectedPaidGeneration: boolean; expectedCreditOperation: "none" | "image" | "video"; providerCostCategory: "not_billable" | "known_estimate" | "unknown";
 };
 
-export type CreatorProductionSceneInput = Partial<CreatorProductionSignals> & { id: number; creatorSceneId?: string; text?: string; narration?: string; dialogue?: string; visualPrompt?: string; cameraDirection?: string; motionHint?: string; renderMode?: "image" | "video"; image?: string; videoUrl?: string; videoStatus?: string; videoCurrent?: boolean; imageCurrent?: boolean; assetPreserved?: boolean; referenceAvailabilityCount?: number; timeline?: TimelineScenePlan | null; orientation?: StockOrientation };
-const routedTreatments: CreatorProductionTreatment[] = ["reuse_existing", "stock_photo", "stock_video", "ai_image", "image_motion", "ai_video"];
+export type CreatorProductionSceneInput = Partial<CreatorProductionSignals> & { id: number; creatorSceneId?: string; text?: string; narration?: string; dialogue?: string; visualPrompt?: string; cameraDirection?: string; motionHint?: string; renderMode?: "image" | "video"; image?: string; videoUrl?: string; videoStatus?: string; videoCurrent?: boolean; imageCurrent?: boolean; assetPreserved?: boolean; referenceAvailabilityCount?: number; documentarySourceContext?: CreatorDocumentarySourceContext; timeline?: TimelineScenePlan | null; orientation?: StockOrientation };
+const legacyRoutedTreatments: CreatorProductionTreatment[] = ["reuse_existing", "stock_photo", "stock_video", "ai_image", "image_motion", "ai_video"];
 const clamp = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Math.min(1, Math.max(0, Number(value))) : fallback;
 const words = (text: string, pattern: RegExp) => (text.match(pattern) || []).length;
 const cleanQuery = (value: string) => value.trim().replace(/\s+/g, " ").slice(0, 100).toLocaleLowerCase("en-US");
@@ -73,6 +74,16 @@ export function inferCreatorProductionSignals(scene: CreatorProductionSceneInput
 
 export function planCreatorSceneProduction(scene: CreatorProductionSceneInput, qualityTier: CreatorQualityMode): CreatorSceneProductionDecision {
   const signals = inferCreatorProductionSignals(scene); const currentVideo = Boolean(scene.videoUrl && scene.videoStatus === "done" && scene.videoCurrent !== false); const currentImage = Boolean(scene.image && scene.imageCurrent !== false); const usableExisting = scene.assetPreserved === true || currentVideo || currentImage;
+  const documentaryContext = scene.documentarySourceContext;
+  const sourceClipAvailable = Number(documentaryContext?.sourceClipCandidateCount || 0) > 0;
+  const sourceImageAvailable = Number(documentaryContext?.sourceImageCandidateCount || 0) > 0;
+  const primarySourceClipAvailable = Number(documentaryContext?.primarySourceClipCandidateCount || 0) > 0;
+  const primarySourceImageAvailable = Number(documentaryContext?.primarySourceImageCandidateCount || 0) > 0;
+  const routedTreatments: CreatorProductionTreatment[] = [
+    ...legacyRoutedTreatments,
+    ...(sourceClipAvailable ? ["source_clip" as const] : []),
+    ...(sourceImageAvailable ? ["source_image" as const] : []),
+  ];
   const reuseScore = currentVideo ? 0.99 : scene.assetPreserved ? 0.98 : currentImage ? 0.72 + (1 - signals.motionImportance) * 0.2 : 0.02;
   const scores: Record<CreatorProductionTreatment, number> = {
     reuse_existing: reuseScore,
@@ -81,13 +92,13 @@ export function planCreatorSceneProduction(scene: CreatorProductionSceneInput, q
     ai_image: 0.28 + signals.customGenerationNeed * 0.42 + signals.continuityImportance * 0.28 - signals.motionImportance * 0.12,
     image_motion: 0.3 + signals.visualImportance * 0.2 + signals.continuityImportance * 0.2 + (1 - Math.abs(signals.motionImportance - 0.42)) * 0.2,
     ai_video: 0.08 + signals.motionImportance * 0.5 + signals.visualImportance * 0.22 + (signals.sceneRole === "climax" || signals.sceneRole === "demonstration" ? 0.12 : 0) + (signals.motionImportance > 0.82 && signals.visualImportance > 0.8 ? 0.18 : 0) - signals.stockSuitability * signals.authenticityValue * 0.18 - signals.continuityImportance * 0.08,
-    source_clip: 0,
-    source_image: 0,
+    source_clip: sourceClipAvailable ? 0.42 + signals.authenticityValue * 0.24 + signals.motionImportance * 0.12 + (signals.sceneRole === "evidence" ? 0.12 : 0) + (signals.contentNature === "person" ? 0.16 : 0) + (primarySourceClipAvailable ? 0.2 : 0) : -1,
+    source_image: sourceImageAvailable ? 0.4 + signals.authenticityValue * 0.24 + (1 - signals.motionImportance) * 0.1 + (signals.sceneRole === "evidence" ? 0.12 : 0) + (signals.contentNature === "person" ? 0.16 : 0) + (primarySourceImageAvailable ? 0.2 : 0) : -1,
     data_visual: 0,
     quote_card: 0,
     source_card: 0,
   };
-  if (qualityTier === "draft") for (const treatment of routedTreatments) scores[treatment] = treatment === "reuse_existing" && usableExisting ? 1 : treatment === "ai_image" ? 0.2 : 0;
+  if (qualityTier === "draft") for (const treatment of legacyRoutedTreatments) scores[treatment] = treatment === "reuse_existing" && usableExisting ? 1 : treatment === "ai_image" ? 0.2 : 0;
   if (qualityTier === "standard") scores.ai_video = -1;
   if (qualityTier === "pro") scores.ai_video -= 0.08;
   if (qualityTier === "cinematic") scores.ai_video += signals.motionImportance * 0.08;
@@ -96,17 +107,21 @@ export function planCreatorSceneProduction(scene: CreatorProductionSceneInput, q
   if (scene.assetPreserved && usableExisting) { selectedTreatment = "reuse_existing"; overrideState = "existing_asset_preserved"; }
   else if (scene.renderMode === "image") { selectedTreatment = currentImage ? "reuse_existing" : signals.motionImportance > 0.28 ? "image_motion" : "ai_image"; overrideState = "user_forced_image"; }
   else if (scene.renderMode === "video") { selectedTreatment = qualityTier === "pro" || qualityTier === "cinematic" ? (currentVideo ? "reuse_existing" : "ai_video") : (currentImage ? "reuse_existing" : "image_motion"); overrideState = "user_forced_video"; }
+  else if (signals.contentNature === "person" && primarySourceClipAvailable) selectedTreatment = "source_clip";
+  else if (signals.contentNature === "person" && primarySourceImageAvailable) selectedTreatment = "source_image";
   else selectedTreatment = routedTreatments.reduce((best, item) => scores[item] > scores[best] ? item : best, qualityTier === "draft" ? "ai_image" : "image_motion");
-  if (qualityTier === "draft" && !usableExisting) selectedTreatment = "ai_image";
+  if (qualityTier === "draft" && !usableExisting && selectedTreatment !== "source_clip" && selectedTreatment !== "source_image") selectedTreatment = "ai_image";
   const ranked = routedTreatments.filter((item) => item !== selectedTreatment && !(qualityTier === "standard" && item === "ai_video")).sort((a,b) => scores[b]-scores[a]);
-  const reasonCodes = selectedTreatment === "reuse_existing" ? ["CURRENT_ASSET_VALID"] : selectedTreatment.startsWith("stock") ? ["AUTHENTIC_REAL_WORLD_MATCH", signals.motionImportance > 0.45 ? "NATURAL_MOTION_VALUE" : "STATIC_STOCK_FIT"] : selectedTreatment === "ai_video" ? ["MOTION_MATERIALLY_IMPROVES_SCENE", "HIGH_PRODUCTION_VALUE"] : signals.continuityImportance > 0.55 ? ["CUSTOM_CONTINUITY_REQUIRED"] : signals.contentNature === "abstract" || signals.contentNature === "conceptual" ? ["CUSTOM_CONCEPTUAL_VISUAL"] : ["CONTROLLED_VISUAL_TREATMENT"];
-  const explanation = selectedTreatment === "reuse_existing" ? "The current scene asset remains valid and avoids unnecessary regeneration." : selectedTreatment === "stock_video" ? "Authentic real-world footage fits this scene better than generated motion." : selectedTreatment === "stock_photo" ? "A production-quality real-world still is a strong fit for this scene." : selectedTreatment === "ai_video" ? "Motion is important to communicate the action and production value." : selectedTreatment === "image_motion" ? "A controlled still with subtle motion communicates the scene well." : "Custom visual control is more important than stock availability.";
+  const sourceIsPrimary = selectedTreatment === "source_clip" ? primarySourceClipAvailable : selectedTreatment === "source_image" ? primarySourceImageAvailable : false;
+  const reasonCodes = selectedTreatment === "reuse_existing" ? ["CURRENT_ASSET_VALID"] : selectedTreatment === "source_clip" || selectedTreatment === "source_image" ? ["AUTHENTIC_SOURCE_AVAILABLE", sourceIsPrimary ? "PRIMARY_SOURCE_AVAILABLE" : "GROUNDED_SOURCE_AVAILABLE"] : selectedTreatment.startsWith("stock") ? ["AUTHENTIC_REAL_WORLD_MATCH", signals.motionImportance > 0.45 ? "NATURAL_MOTION_VALUE" : "STATIC_STOCK_FIT"] : selectedTreatment === "ai_video" ? ["MOTION_MATERIALLY_IMPROVES_SCENE", "HIGH_PRODUCTION_VALUE"] : signals.continuityImportance > 0.55 ? ["CUSTOM_CONTINUITY_REQUIRED"] : signals.contentNature === "abstract" || signals.contentNature === "conceptual" ? ["CUSTOM_CONCEPTUAL_VISUAL"] : ["CONTROLLED_VISUAL_TREATMENT"];
+  const explanation = selectedTreatment === "reuse_existing" ? "The current scene asset remains valid and avoids unnecessary regeneration." : selectedTreatment === "source_clip" ? "Relevant authentic source footage is preferred over generic or synthetic footage for this scene." : selectedTreatment === "source_image" ? "A relevant authentic source image is preferred over generic or synthetic imagery for this scene." : selectedTreatment === "stock_video" ? "Authentic real-world footage fits this scene better than generated motion." : selectedTreatment === "stock_photo" ? "A production-quality real-world still is a strong fit for this scene." : selectedTreatment === "ai_video" ? "Motion is important to communicate the action and production value." : selectedTreatment === "image_motion" ? "A controlled still with subtle motion communicates the scene well." : "Custom visual control is more important than stock availability.";
   const recommendedSeconds = scene.timeline?.recommendedClipSeconds || (signals.motionImportance > 0.8 ? 10 : signals.motionImportance > 0.55 ? 7 : 5);
   const selectedScore = scores[selectedTreatment]; const second = scores[ranked[0]];
+  const isNonBillableTreatment = selectedTreatment === "reuse_existing" || selectedTreatment.startsWith("stock") || selectedTreatment.startsWith("source_") || selectedTreatment === "data_visual" || selectedTreatment === "quote_card";
   return { sceneId: scene.id, creatorSceneId: scene.creatorSceneId || null, qualityTier, selectedTreatment, fallbackTreatments: ranked.slice(0, 2), signals, scores: Object.fromEntries(CREATOR_PRODUCTION_TREATMENTS.map((key) => [key, Math.round(Math.max(0, Math.min(1, scores[key])) * 1000) / 1000])) as Record<CreatorProductionTreatment, number>, confidence: Math.round(Math.max(0.5, Math.min(0.98, 0.62 + (selectedScore-second)*0.5))*100)/100, reasonCodes, explanation,
     stockIntent: selectedTreatment === "stock_photo" || selectedTreatment === "stock_video" ? { query: signals.stockSearchQuery, mediaType: selectedTreatment === "stock_video" ? "video" : "photo", orientation: scene.orientation || "landscape", minimumWidth: selectedTreatment === "stock_video" ? 1280 : 1600, minimumHeight: selectedTreatment === "stock_video" ? 720 : 900, minimumDurationSeconds: selectedTreatment === "stock_video" ? Math.min(recommendedSeconds, 5) : null } : null,
     videoIntent: selectedTreatment === "ai_video" ? { visualImportance: signals.visualImportance, motionImportance: signals.motionImportance, continuityImportance: signals.continuityImportance, sceneRole: signals.sceneRole, recommendedSeconds, qualityIntent: qualityTier === "cinematic" ? "premium" : "professional", referenceAvailabilityCount: Math.max(0, Number(scene.referenceAvailabilityCount || (currentImage ? 1 : 0))), fallbackTreatment: ranked.find((item) => item !== "ai_video") || "image_motion", productionPriority: Math.round((signals.visualImportance*0.45+signals.motionImportance*0.55)*100)/100 } : null,
-    overrideState, expectedPaidGeneration: qualityTier !== "draft" && (selectedTreatment === "ai_image" || selectedTreatment === "image_motion" || selectedTreatment === "ai_video"), expectedCreditOperation: qualityTier === "draft" ? "none" : selectedTreatment === "ai_video" ? "video" : selectedTreatment === "ai_image" || selectedTreatment === "image_motion" ? "image" : "none", providerCostCategory: qualityTier === "draft" || selectedTreatment.startsWith("stock") || selectedTreatment === "reuse_existing" ? "not_billable" : "known_estimate" };
+    overrideState, expectedPaidGeneration: qualityTier !== "draft" && (selectedTreatment === "ai_image" || selectedTreatment === "image_motion" || selectedTreatment === "ai_video"), expectedCreditOperation: qualityTier === "draft" ? "none" : selectedTreatment === "ai_video" ? "video" : selectedTreatment === "ai_image" || selectedTreatment === "image_motion" ? "image" : "none", providerCostCategory: qualityTier === "draft" || isNonBillableTreatment ? "not_billable" : "known_estimate" };
 }
 
 export function planCreatorProjectProduction(scenes: CreatorProductionSceneInput[], qualityTier: CreatorQualityMode) { return scenes.map((scene) => planCreatorSceneProduction(scene, qualityTier)); }
