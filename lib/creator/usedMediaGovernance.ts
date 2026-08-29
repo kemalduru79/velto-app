@@ -65,6 +65,7 @@ export function createCreatorUsedMediaGovernanceResult(input: {
 }): CreatorUsedMediaGovernanceResult {
   const media = uniqueResolutions(input.media);
   const projections: CreatorMediaGovernanceProjection[] = [];
+  const projectedAssetIds = new Set<string>();
   const rightsReviewRequiredIds: string[] = [];
 
   for (const item of media) {
@@ -73,6 +74,8 @@ export function createCreatorUsedMediaGovernanceResult(input: {
       rightsReviewRequiredIds.push(`media:${item.referenceType}:${item.referenceKey}`);
       continue;
     }
+    if (projectedAssetIds.has(asset.id)) continue;
+    projectedAssetIds.add(asset.id);
 
     const projection = createCreatorMediaGovernanceProjection({
       assetId: asset.id,
@@ -82,9 +85,7 @@ export function createCreatorUsedMediaGovernanceResult(input: {
     if (
       projection.originReviewRequired ||
       projection.sourceRightsMetadataStatus === "required_missing"
-    ) {
-      rightsReviewRequiredIds.push(asset.id);
-    }
+    ) rightsReviewRequiredIds.push(asset.id);
   }
 
   const sourceMedia = projections
