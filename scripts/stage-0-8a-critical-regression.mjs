@@ -49,6 +49,7 @@ const tests = [
   "scripts/stage-0-10h-5d-media-origin-governance-test.mjs",
   "scripts/stage-0-10h-5e-used-media-governance-test.mjs",
   "scripts/stage-0-10h-5f-export-governance-enforcement-test.mjs",
+  "scripts/stage-0-10h-5g-publish-release-governance-test.mjs",
 ];
 
 for (const test of tests) {
