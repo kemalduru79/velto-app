@@ -1,6 +1,109 @@
 /* Stage 0.10H-0A.1 — CreatorLab UX simplification.
    Capability stays intact; implementation detail is kept backstage. */
 
+/* Canonical creator-visible workflow: Brief → Strategy → Production → Publish.
+   The existing setup/create-review state machine remains intact underneath so we
+   do not rebuild stable production behavior. Only one production row is visible. */
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list:has(> .creatorlab-workflow-step:nth-of-type(4)[aria-current="step"]) > .creatorlab-workflow-step:nth-of-type(3),
+.creatorlab-uxp2a-shell .creatorlab-step-list:has(> .creatorlab-workflow-step:nth-of-type(4).is-complete) > .creatorlab-workflow-step:nth-of-type(3) {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list:has(> .creatorlab-workflow-step:nth-of-type(4)[aria-current="step"]) > .creatorlab-workflow-step:nth-of-type(4),
+.creatorlab-uxp2a-shell .creatorlab-step-list:has(> .creatorlab-workflow-step:nth-of-type(4).is-complete) > .creatorlab-workflow-step:nth-of-type(4) {
+  display: flex;
+}
+
+/* Both internal production substates present the same top-level stage name. */
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy strong,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy strong,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy span,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy span {
+  font-size: 0;
+}
+
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy strong::after,
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy strong::after {
+  content: "Production";
+}
+
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy strong::after,
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy strong::after {
+  content: "Üretim";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy strong::after,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy strong::after {
+  font-size: 0.78rem;
+}
+
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy span::after,
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy span::after {
+  content: "Set up, create and review";
+}
+
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy span::after,
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy span::after {
+  content: "Kur, üret ve incele";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(3) .creatorlab-step-copy span::after,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-copy span::after {
+  font-size: 0.68rem;
+}
+
+/* The internal fourth production substate is top-level step 3; Publish becomes 4. */
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-number,
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(5) .creatorlab-step-number {
+  font-size: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(4) .creatorlab-step-number::before {
+  content: "3";
+  font-size: 0.72rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list > .creatorlab-workflow-step:nth-of-type(5) .creatorlab-step-number::before {
+  content: "4";
+  font-size: 0.72rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-step-list .creatorlab-step-number .creatorlab-step-check {
+  font-size: 0.58rem;
+}
+
+/* Keep the workspace kicker aligned with the four-step mental model while the
+   existing production substep state continues to drive the actual controls. */
+.creatorlab-uxp2a-shell .creatorlab-production-kicker,
+.creatorlab-uxp2a-shell .creatorlab-publish-kicker {
+  font-size: 0;
+}
+
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-production-kicker::after {
+  content: "Step 3 · Production";
+}
+
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-production-kicker::after {
+  content: "Adım 3 · Üretim";
+}
+
+html[lang="en"] .creatorlab-uxp2a-shell .creatorlab-publish-kicker::after {
+  content: "Step 4 · Publish";
+}
+
+html[lang="tr"] .creatorlab-uxp2a-shell .creatorlab-publish-kicker::after {
+  content: "Adım 4 · Yayınla";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-production-kicker::after,
+.creatorlab-uxp2a-shell .creatorlab-publish-kicker::after {
+  font-size: 0.65rem;
+}
+
 /* Velto is one contextual helper surface. Keep the existing project-aware
    capability, but do not ask creators to choose between internal assistant modes. */
 .creatorlab-uxp2a-shell .creatorlab-director-mode-tabs {
