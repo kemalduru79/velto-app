@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { parseCreatorProfile } from "@/lib/creator/creatorProfile";
 import { recordOpenAITextEconomics } from "@/lib/economics";
-import { createValidatedEditorialAnalysis } from "@/lib/research/editorialAnalysisContract";
+import type { EditorialAnalysisProposal } from "@/lib/research/editorialAnalysisContract";
+import { createValidatedEditorialAnalysisWithOneRepair } from "@/lib/research/editorialGroundingRepair";
 import { normalizeEditorialAnalysisRequest } from "@/lib/research/editorialAnalysisRequest";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
 import { assessResearchSource } from "@/lib/research/sourceAssessment";
@@ -157,9 +158,46 @@ export async function POST(request: Request) {
     const proposal = parseModelJson(response.output_text || "");
     let graph;
     try {
-      graph = createValidatedEditorialAnalysis({
+      graph = await createValidatedEditorialAnalysisWithOneRepair({
         sources: normalized.sources,
         proposal,
+        repair: async ({ proposal: invalidProposal, failingSourceId }) => {
+          const repairResponse = await client.responses.create({
+            model,
+            input: [
+              {
+                role: "system",
+                content: [
+                  "Repair only grounding defects in an existing editorial evidence proposal.",
+                  "Use only the supplied sources and proposal. Do not add research, claims, evidence relationships, or source material.",
+                  "Change only invalid evidence excerpt or sourceId fields necessary for grounding.",
+                  "Every non-empty excerpt must be an exact contiguous substring copied from the selected source summary.",
+                  "Preserve claim text, claim types, uncertainty labels, evidence ids, links, and stances unless a source reference must be corrected for exact grounding.",
+                  "Return the complete repaired proposal as strict JSON only.",
+                ].join(" "),
+              },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  failingSourceId,
+                  sources: sourceMaterial,
+                  proposal: invalidProposal,
+                }),
+              },
+            ],
+            temperature: 0,
+          });
+          await recordOpenAITextEconomics({
+            route: "/api/creator-editorial-analysis",
+            operationType: "creator_editorial_grounding_repair",
+            model,
+            response: repairResponse,
+            userId: secured.context.user.id,
+          });
+          return parseModelJson(
+            repairResponse.output_text || "",
+          ) as EditorialAnalysisProposal;
+        },
       });
     } catch (error) {
       return NextResponse.json(

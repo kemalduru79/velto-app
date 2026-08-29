@@ -57,7 +57,7 @@ assert.throws(
 );
 
 assert.match(route, /enforceCreatorApiBoundary<Record<string, unknown>>\([\s\S]*"creator-editorial-analysis"/);
-assert.match(route, /createValidatedEditorialAnalysis\(/);
+assert.match(route, /createValidatedEditorialAnalysisWithOneRepair\(/);
 assert.match(route, /recordOpenAITextEconomics\(/);
 assert.match(route, /createEditorialScriptContext\(/);
 assert.match(route, /EDITORIAL_ANALYSIS_GROUNDING_FAILED/);
