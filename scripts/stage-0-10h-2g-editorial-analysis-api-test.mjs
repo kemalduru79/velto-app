@@ -61,8 +61,14 @@ assert.match(route, /createValidatedEditorialAnalysis\(/);
 assert.match(route, /recordOpenAITextEconomics\(/);
 assert.match(route, /createEditorialScriptContext\(/);
 assert.match(route, /EDITORIAL_ANALYSIS_GROUNDING_FAILED/);
-assert.equal(route.includes("providerRequestId"), false);
-assert.equal(route.includes("raw:"), false);
+for (const forbiddenMarker of [
+  "providerRequestId",
+  "rawProviderPayload",
+  "providerRawResponse",
+  "providerResponseBody",
+]) {
+  assert.equal(route.includes(forbiddenMarker), false, `provider metadata leaked: ${forbiddenMarker}`);
+}
 
 assert.match(boundary, /"creator-editorial-analysis":\s*\{[\s\S]*?maxBodyBytes:\s*256 \* 1024,[\s\S]*?rateLimit:\s*6,[\s\S]*?windowMs:\s*60_000/);
 
