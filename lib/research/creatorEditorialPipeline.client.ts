@@ -126,7 +126,7 @@ export async function runCreatorEditorialScriptPipeline(
     body: {
       mode: "orchestrated",
       subject: topic,
-      includeRecentContext: input.includeRecentContext !== false,
+      includeRecentContext: input.includeRecentContext === true,
       maxResultsPerLane: input.maxResultsPerLane ?? 5,
     },
   });

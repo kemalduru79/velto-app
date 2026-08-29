@@ -78,7 +78,7 @@ for (const call of calls) {
 }
 assert.equal(calls[0].body.mode, "orchestrated");
 assert.equal(calls[0].body.subject, "Automation and the future of work");
-assert.equal(calls[0].body.includeRecentContext, true);
+assert.equal(calls[0].body.includeRecentContext, false);
 assert.equal(calls[1].body.topic, "Automation and the future of work");
 assert.equal(calls[1].body.sources.length, 2);
 assert.deepEqual(calls[1].body.creatorProfile, { brandName: "Velto" });
@@ -148,6 +148,53 @@ assert.match(helper, /url: "\/api\/creator-editorial-analysis"/);
 assert.match(helper, /url: "\/api\/creator-script-plan"/);
 assert.match(helper, /scriptContext,/);
 assert.match(helper, /intentionally fails closed/);
+assert.match(
+  helper,
+  /includeRecentContext: input\.includeRecentContext === true/,
+);
 assert.doesNotMatch(helper, /providerRequestId|providerCostUsd|rawProviderPayload/);
+
+const createPage = fs.readFileSync("app/create/page.tsx", "utf8");
+assert.match(
+  createPage,
+  /import\s*\{[\s\S]*?runCreatorEditorialScriptPipeline[\s\S]*?\}\s*from\s*"@\/lib\/research\/creatorEditorialPipeline\.client"/,
+);
+
+const scriptPlanAdapter = createPage.match(
+  /const applyCreatorProfessionalScriptPlan = async \([\s\S]*?\n  \};/,
+)?.[0];
+assert.ok(scriptPlanAdapter, "CreatorLab script-plan adapter must remain present");
+assert.match(scriptPlanAdapter, /const scriptPlanRequest = \{/);
+assert.match(
+  scriptPlanAdapter,
+  /runCreatorEditorialScriptPipeline\(\{\s*accessToken,\s*topic,\s*creatorProfile,\s*scriptPlanRequest,\s*\}\)/,
+);
+assert.match(
+  scriptPlanAdapter,
+  /\{ productionPackage: plannedPackage, scriptPlan \}/,
+);
+assert.match(scriptPlanAdapter, /return plannedPackage as CreatorProductionPackage/);
+assert.doesNotMatch(scriptPlanAdapter, /fetch\(["']\/api\/creator-script-plan/);
+assert.doesNotMatch(scriptPlanAdapter, /catch[\s\S]*fetch\(["']\/api\/creator-script-plan/);
+assert.match(scriptPlanAdapter, /error instanceof CreatorEditorialPipelineError/);
+
+assert.equal(
+  (createPage.match(/applyCreatorProfessionalScriptPlan\(\{/g) || []).length,
+  2,
+  "Both existing CreatorLab production entry points must keep using the shared adapter",
+);
+assert.match(
+  createPage,
+  /const handleGenerateFullYoutubePackage[\s\S]*?if \(!isCreatorLabFlow\) \{\s*return;\s*\}/,
+);
+assert.doesNotMatch(
+  scriptPlanAdapter,
+  /claimId|evidenceId|providerName|researchLane|providerCost|rightsMetadata/,
+);
+assert.doesNotMatch(
+  createPage,
+  /editorialSummary|scriptContext|claimId|evidenceId|providerName|researchLane|providerCost|rightsMetadata/,
+  "Research, evidence, provider, and rights internals must remain backstage",
+);
 
 console.log("Stage 0.10H-2I CreatorLab editorial orchestration tests passed.");

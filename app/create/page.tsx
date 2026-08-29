@@ -189,6 +189,10 @@ import {
   parseCreatorProfile,
   type CreatorProfile,
 } from "@/lib/creator/creatorProfile";
+import {
+  CreatorEditorialPipelineError,
+  runCreatorEditorialScriptPipeline,
+} from "@/lib/research/creatorEditorialPipeline.client";
 import { createCreatorProjectReadiness } from "@/lib/creator/projectReadiness";
 import {
   createCreatorArtifactHistory,
@@ -12851,41 +12855,57 @@ const generateSceneImage = async (
       ...productionPackage,
       characters: normalizeCreatorLabCharacters(productionPackage.characters),
     };
-    const res = await fetch("/api/creator-script-plan", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
+    const scriptPlanRequest = {
+      topic,
+      contentType: getCreatorContentTypeLabel(),
+      format: creatorFormat,
+      durationSec: creatorVideoDurationSec,
+      sceneCount: getCreatorSceneCount(),
+      language,
+      qualityMode: creatorQualityMode,
+      dialogueRequested: creatorBriefRequestsDialogue({
         topic,
         contentType: getCreatorContentTypeLabel(),
         format: creatorFormat,
-        durationSec: creatorVideoDurationSec,
-        sceneCount: getCreatorSceneCount(),
-        language,
-        qualityMode: creatorQualityMode,
-        dialogueRequested: creatorBriefRequestsDialogue({
-          topic,
-          contentType: getCreatorContentTypeLabel(),
-          format: creatorFormat,
-        }),
-        productionPackage: productionPackageWithCharacterIds,
       }),
-    });
+      productionPackage: productionPackageWithCharacterIds,
+    };
 
-    const data = await res.json().catch(() => null);
+    try {
+      const { productionPackage: plannedPackage, scriptPlan } =
+        await runCreatorEditorialScriptPipeline({
+          accessToken,
+          topic,
+          creatorProfile,
+          scriptPlanRequest,
+        });
 
-    if (!res.ok || !data?.success || !data?.productionPackage) {
+      if (!plannedPackage) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "The professional script and timing pass could not be completed."
+            : "Profesyonel metin ve süre planı tamamlanamadı."
+        );
+      }
+
+      void scriptPlan;
+      return plannedPackage as CreatorProductionPackage;
+    } catch (error) {
+      if (error instanceof CreatorEditorialPipelineError) {
+        throw new Error(
+          uiLanguage === "en"
+            ? "Grounded editorial preparation could not be completed. Please try again."
+            : "Kaynaklara dayalı editoryal hazırlık tamamlanamadı. Lütfen tekrar dene."
+        );
+      }
+      const message = error instanceof Error ? error.message : "";
       throw new Error(
-        data?.error ||
+        message ||
           (uiLanguage === "en"
             ? "The professional script and timing pass could not be completed."
             : "Profesyonel metin ve süre planı tamamlanamadı.")
       );
     }
-
-    return data.productionPackage as CreatorProductionPackage;
   };
 
 
