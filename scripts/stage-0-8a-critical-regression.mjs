@@ -24,6 +24,8 @@ const tests = [
   "scripts/stage-0-8f-b-recovery-operator-test.mjs",
   "scripts/stage-0-8g-architecture-closure-test.mjs",
   "scripts/stage-0-9a-security-consent-baseline-test.mjs",
+  "scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
+  "scripts/stage-0-10h-2h-script-planner-editorial-context-test.mjs",
 ];
 
 for (const test of tests) {
