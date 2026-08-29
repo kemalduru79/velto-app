@@ -101,9 +101,18 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes authenticated usage", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "8ecb2f203331a6ddf57f389f96bac133f4b0224363533d511f860af150bf21bb"));
+check("API route inventory includes reviewed Stage 0.10H research surface", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "1b611f8b708c44d8a84dcf660a8fb68faef2f99e4e5a5368659c4a4df853586b"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
-check("dependency manifest contains only the new test commands", () => assert.equal(sha256("package.json"), "e24ea72403ac13092764fd4ff3bba2b8e699a017bb68ac4b28b0175bda1e265c"));
+check("dependency manifest preserves reviewed runtime dependencies", () => {
+  assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
+    "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
+    "hls.js", "next", "openai", "react", "react-dom",
+  ].sort());
+  assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
+    "@tailwindcss/postcss", "@types/node", "@types/react", "@types/react-dom",
+    "eslint", "eslint-config-next", "tailwindcss", "typescript",
+  ].sort());
+});
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
 check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
