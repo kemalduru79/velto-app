@@ -16,18 +16,38 @@ type Props = {
   onCancel: () => void;
 };
 
+// Standard CreatorLab actions cost 0–2 credits in the current policy. A 6-credit
+// threshold keeps routine production backstage while still requiring explicit
+// approval for premium video generation, larger batches and other material spend.
+export const CREATOR_COST_GUARD_CONFIRMATION_THRESHOLD = 6;
+
 export default function CreatorCostGuard({ request, language, onConfirm, onCancel }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLElement | null>(null);
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelRef = useRef(onCancel);
+  const autoConfirmedRequestRef = useRef<CreatorCostGuardRequest | null>(null);
+  const requiresExplicitConfirmation = Boolean(
+    request && request.estimatedCredits >= CREATOR_COST_GUARD_CONFIRMATION_THRESHOLD,
+  );
 
   useEffect(() => {
     cancelRef.current = onCancel;
   }, [onCancel]);
 
   useEffect(() => {
-    if (!request) return;
+    if (!request) {
+      autoConfirmedRequestRef.current = null;
+      return;
+    }
+    if (requiresExplicitConfirmation || autoConfirmedRequestRef.current === request) return;
+
+    autoConfirmedRequestRef.current = request;
+    onConfirm();
+  }, [onConfirm, request, requiresExplicitConfirmation]);
+
+  useEffect(() => {
+    if (!request || !requiresExplicitConfirmation) return;
 
     setSubmitting(false);
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -74,9 +94,9 @@ export default function CreatorCostGuard({ request, language, onConfirm, onCance
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [request]);
+  }, [request, requiresExplicitConfirmation]);
 
-  if (!request) return null;
+  if (!request || !requiresExplicitConfirmation) return null;
 
   const confirm = () => {
     if (submitting) return;
@@ -85,8 +105,8 @@ export default function CreatorCostGuard({ request, language, onConfirm, onCance
   };
 
   const description = language === "en"
-    ? "Review the estimated cost before starting this CreatorLab operation."
-    : "Bu CreatorLab işlemini başlatmadan önce tahmini maliyeti gözden geçir.";
+    ? "This operation has a material estimated cost. Review it before starting."
+    : "Bu işlemin tahmini maliyeti yüksek. Başlatmadan önce gözden geçir.";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 px-4 py-6 backdrop-blur-[3px] sm:px-6">
