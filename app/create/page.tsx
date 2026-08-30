@@ -17368,6 +17368,17 @@ const generateSceneImage = async (
       status,
       readySteps: [scriptHealth.status === "ready", visualReady, voiceReady].filter(Boolean).length,
       totalSteps: 3 as const,
+      durationSec: Math.max(
+        3,
+        Number(
+          scene.targetDurationSec ||
+            scene.scriptHealth?.targetDurationSec ||
+            scene.timing?.plannedSceneDuration ||
+            scene.timing?.targetSceneDuration ||
+            TARGET_SCENE_DURATION_SECONDS,
+        ),
+      ),
+      outputType: getCreatorEffectiveSceneOutputMode(scene),
       productionTreatment: productionDecision ? CREATOR_PRODUCTION_TREATMENT_LABELS[productionDecision.selectedTreatment][uiLanguage === "en" ? "en" : "tr"] : undefined,
       productionExplanation: productionDecision?.explanation,
     };
@@ -30435,8 +30446,8 @@ const generateSceneImage = async (
                     </div>
                     <p aria-live="polite">
                       {uiLanguage === "en"
-                        ? `${scenes.length} scenes · ${visualAssetReadyCount} visuals ready · ${audioReadyCount} voice tracks ready`
-                        : `${scenes.length} sahne · ${visualAssetReadyCount} görsel hazır · ${audioReadyCount} ses hazır`}
+                        ? `${scenes.length} scenes · ${getCreatorQualityModeLabel()} · Visuals ${visualAssetReadyCount}/${scenes.length} · Voice ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`
+                        : `${scenes.length} sahne · ${getCreatorQualityModeLabel()} · Görsel ${visualAssetReadyCount}/${scenes.length} · Ses ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`}
                     </p>
                   </div>
                   <div
@@ -30706,11 +30717,13 @@ const generateSceneImage = async (
                   />
                 )}
 
-                <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard">
+                <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard creatorlab-p2c-production-workspace">
                   <CreatorSceneProductionStatus
                     scenes={creatorSceneProductionSummaries}
                     focusedSceneId={creatorFocusedSceneId}
                     onFocusScene={setCreatorFocusedSceneId}
+                    selectedSceneIds={creatorSelectedSceneIdSet}
+                    onToggleSceneSelection={toggleCreatorSceneSelection}
                     language={uiLanguage === "en" ? "en" : "tr"}
                     contextualAction={!creatorEditorOpen ? (
                       <button
@@ -30724,18 +30737,8 @@ const generateSceneImage = async (
                     ) : undefined}
                   />
 
-                  <div className="mb-4 border-y border-slate-200 py-3 md:py-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          {uiLanguage === "en" ? "Mini timeline" : "Mini timeline"}
-                        </span>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {uiLanguage === "en"
-                            ? "Scan pacing, output choices and readiness. Select scenes for controlled bulk actions."
-                            : "Tempo, çıktı seçimi ve hazırlığı hızlıca gör. Kontrollü toplu aksiyonlar için sahneleri seç."}
-                        </p>
-                      </div>
+                  <div className="creatorlab-p2c-workspace-batch border-y border-slate-200 py-3 md:py-4">
+                    <div className="flex flex-col gap-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -30772,79 +30775,6 @@ const generateSceneImage = async (
                           {uiLanguage === "en" ? "Set all to Image" : "Tümünü Görsel yap"}
                         </button>
                       </div>
-                    </div>
-
-                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2" role="list" aria-label={uiLanguage === "en" ? "Scene mini timeline" : "Sahne mini timeline"}>
-                      {scenes.map((scene, index) => {
-                        const targetDurationSec = Math.max(
-                          3,
-                          Number(
-                            scene.targetDurationSec ||
-                              scene.scriptHealth?.targetDurationSec ||
-                              scene.timing?.plannedSceneDuration ||
-                              scene.timing?.targetSceneDuration ||
-                              TARGET_SCENE_DURATION_SECONDS,
-                          ),
-                        );
-                        const effectiveOutputMode =
-                          getCreatorEffectiveSceneOutputMode(scene);
-                        const sceneHasWarning =
-                          scene.scriptHealth?.status === "too_long" ||
-                          (effectiveOutputMode === "video" && scene.videoStatus === "error");
-                        const sceneReady =
-                          Boolean(scene.image) &&
-                          getSceneVoiceStatus(scene) &&
-                          (effectiveOutputMode === "image" ||
-                            (effectiveOutputMode === "video" && scene.videoStatus === "done"));
-                        const selected = creatorSelectedSceneIdSet.has(scene.id);
-
-                        return (
-                          <button
-                            key={`creator-mini-timeline-${scene.id}`}
-                            type="button"
-                            role="listitem"
-                            aria-pressed={selected}
-                            onClick={() => {
-                              toggleCreatorSceneSelection(scene.id);
-                              setCreatorFocusedSceneId(scene.id);
-                              window.setTimeout(() => focusCreatorScene(scene.id, "visual"), 0);
-                            }}
-                            className={`min-w-[116px] rounded-xl border px-3 py-2 text-left transition ${
-                              selected
-                                ? "border-blue-400 bg-blue-50 shadow-sm"
-                                : sceneHasWarning
-                                  ? "border-amber-200 bg-amber-50/70 hover:border-amber-400"
-                                  : "border-slate-200 bg-slate-50 hover:border-slate-400"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <strong className="text-xs text-slate-950">{String(index + 1).padStart(2, "0")}</strong>
-                              <span
-                                className={`h-2 w-2 rounded-full ${
-                                  sceneReady
-                                    ? "bg-emerald-500"
-                                    : sceneHasWarning
-                                      ? "bg-amber-500"
-                                      : "bg-slate-300"
-                                }`}
-                                aria-hidden="true"
-                              />
-                            </div>
-                            <span className="mt-2 block text-[11px] font-semibold text-slate-700">
-                              {targetDurationSec.toFixed(0)}s · {effectiveOutputMode === "video"
-                                ? uiLanguage === "en" ? "Video" : "Video"
-                                : uiLanguage === "en" ? "Image" : "Görsel"}
-                            </span>
-                            <span className="mt-1 block truncate text-[10px] text-slate-500">
-                              {sceneReady
-                                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                                : sceneHasWarning
-                                  ? uiLanguage === "en" ? "Review" : "Kontrol"
-                                  : uiLanguage === "en" ? "In progress" : "Hazırlanıyor"}
-                            </span>
-                          </button>
-                        );
-                      })}
                     </div>
 
                     <div
@@ -30930,7 +30860,7 @@ const generateSceneImage = async (
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="creatorlab-p2c-active-scene space-y-3">
                     {scenes.filter((scene) => scene.id === creatorFocusedSceneId).map((scene) => {
                       const index = scenes.findIndex((item) => item.id === scene.id);
                       const visualReady = Boolean(scene.image);
@@ -31360,7 +31290,7 @@ const generateSceneImage = async (
                                   </span>
                                   <span className="scene-production-tab__content">
                                     <strong className="scene-production-tab__title">
-                                      {uiLanguage === "en" ? "Audio" : "Ses"}
+                                      {uiLanguage === "en" ? "Voice" : "Ses"}
                                     </strong>
                                     <span className="scene-production-tab__subtitle">
                                       {voiceReady

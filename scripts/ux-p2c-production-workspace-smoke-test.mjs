@@ -117,8 +117,11 @@ const sceneProductionStatus = requireNeedles("components/create/CreatorSceneProd
   "aria-current={focused ? \"true\" : undefined}",
   "contextualAction?: ReactNode",
   "creatorlab-p2c-scene-operations-action",
-  "creatorlab-p2c-all-scenes",
-  'language === "en" ? "All scenes" : "Tüm sahneler"',
+  "creatorlab-p2c-scene-navigator-label",
+  "selectedSceneIds.has(scene.id)",
+  "onToggleSceneSelection(scene.id)",
+  "scene.durationSec.toFixed(0)",
+  "scene.outputType",
   'language === "en" ? "Scene Production" : "Sahne Üretimi"',
 ]);
 
@@ -142,6 +145,11 @@ const page = requireNeedles("app/create/page.tsx", [
   "deriveCreatorSceneTriageStatus",
   'data-focused-scene="true"',
   "<CreatorSceneProductionStatus",
+  "selectedSceneIds={creatorSelectedSceneIdSet}",
+  "onToggleSceneSelection={toggleCreatorSceneSelection}",
+  'className="creatorlab-production-storyboard creatorlab-p2c-production-workspace"',
+  'className="creatorlab-p2c-active-scene space-y-3"',
+  "scenes.filter((scene) => scene.id === creatorFocusedSceneId)",
   "creatorEditorWasOpenRef",
   "setSelectedCreatorEditorSceneId(focusedScene.creatorSceneId)",
   'className="scene-production-navigator sticky top-4 z-20 mb-5"',
@@ -200,6 +208,10 @@ if (page.includes("<CreatorProductionSubnav")) {
   failures.push("UX-P2C: nested Production Setup/Create & Review navigation is still rendered");
 }
 
+if (page.includes('uiLanguage === "en" ? "Mini timeline"')) {
+  failures.push("UX-P2C: duplicate mini timeline navigation remains rendered");
+}
+
 if (page.includes('"Generate visuals and voice"')) {
   failures.push("UX-P2C: old four-step Production rail copy remains visible");
 }
@@ -224,7 +236,9 @@ const p2cCss = requireNeedles("app/creatorlab-ux-p2c.css", [
   ".creatorlab-p2c-production-status",
   ".creatorlab-p2c-editor-surface",
   ".creatorlab-p2c-scene-operations",
-  ".creatorlab-p2c-all-scenes",
+  ".creatorlab-p2c-production-workspace",
+  ".creatorlab-p2c-active-scene",
+  ".creatorlab-p2c-scene-operation-select",
   ".creatorlab-p2c-focused-scene",
   ".creatorlab-p2c-scene-next-action",
   ".creatorlab-p2c-editor-layout",
@@ -246,7 +260,7 @@ requireNeedles("components/navigation/ProductTopNavigation.tsx", [
 requireNeedles("components/auth/UserAccountMenu.tsx", [
   "availableCredits",
   "reservedCredits",
-  "t.credits",
+  "credits:",
 ]);
 
 const p2cPresentationCopy = [

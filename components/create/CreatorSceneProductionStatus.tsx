@@ -13,6 +13,8 @@ export type CreatorSceneProductionSummary = {
   status: CreatorSceneTriageStatus;
   readySteps: number;
   totalSteps: 3;
+  durationSec: number;
+  outputType: "image" | "video";
   productionTreatment?: string;
   productionExplanation?: string;
 };
@@ -67,12 +69,16 @@ export default function CreatorSceneProductionStatus({
   onFocusScene,
   language,
   contextualAction,
+  selectedSceneIds,
+  onToggleSceneSelection,
 }: {
   scenes: readonly CreatorSceneProductionSummary[];
   focusedSceneId: number | null;
   onFocusScene: (sceneId: number) => void;
   language: "en" | "tr";
   contextualAction?: ReactNode;
+  selectedSceneIds: ReadonlySet<number>;
+  onToggleSceneSelection: (sceneId: number) => void;
 }) {
   const counts = scenes.reduce(
     (summary, scene) => ({
@@ -112,36 +118,44 @@ export default function CreatorSceneProductionStatus({
         )}
       </div>
 
-      <details className="creatorlab-p2c-all-scenes">
-        <summary>
-          {language === "en" ? "All scenes" : "Tüm sahneler"}
-          <span>{language === "en" ? "Overview and management" : "Genel görünüm ve yönetim"}</span>
-        </summary>
-        <ol
-          className="creatorlab-p2c-scene-operations-list"
-          aria-label={language === "en" ? "All production scenes" : "Tüm üretim sahneleri"}
-        >
+      <div className="creatorlab-p2c-scene-navigator-label">
+        <strong>{language === "en" ? "Scenes" : "Sahneler"}</strong>
+        <span>{language === "en" ? "Select a scene to review" : "İncelemek için sahne seç"}</span>
+      </div>
+      <ol
+        className="creatorlab-p2c-scene-operations-list"
+        aria-label={language === "en" ? "Production scene navigator" : "Üretim sahnesi navigasyonu"}
+      >
           {scenes.map((scene) => {
             const focused = focusedSceneId === scene.id;
             return (
               <li key={scene.id}>
-                <button
-                  type="button"
-                  aria-current={focused ? "true" : undefined}
+                <div
                   data-status={scene.status}
                   data-focused={focused ? "true" : "false"}
-                  onClick={() => onFocusScene(scene.id)}
                   className="creatorlab-p2c-scene-operation-row"
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedSceneIds.has(scene.id)}
+                    onChange={() => onToggleSceneSelection(scene.id)}
+                    aria-label={language === "en" ? `Select scene ${scene.number}` : `Sahne ${scene.number} seç`}
+                    className="creatorlab-p2c-scene-operation-select"
+                  />
+                  <button
+                    type="button"
+                    aria-current={focused ? "true" : undefined}
+                    onClick={() => onFocusScene(scene.id)}
+                    className="creatorlab-p2c-scene-operation-focus"
+                  >
                   <span className="creatorlab-p2c-scene-operation-number">
                     {String(scene.number).padStart(2, "0")}
                   </span>
                   <span className="creatorlab-p2c-scene-operation-copy">
                     <strong>{scene.title}</strong>
                     <small>
-                      {getCreatorSceneTriageLabel(scene.status, language)} · {scene.readySteps}/{scene.totalSteps} {language === "en" ? "steps ready" : "adım hazır"}
+                      {scene.durationSec.toFixed(0)}s · {scene.outputType === "video" ? "Video" : language === "en" ? "Image" : "Görsel"} · {getCreatorSceneTriageLabel(scene.status, language)}
                     </small>
-                    {scene.productionTreatment && <small><strong>{scene.productionTreatment}</strong>{scene.productionExplanation ? ` · ${scene.productionExplanation}` : ""}</small>}
                   </span>
                   <span className="creatorlab-p2c-scene-operation-progress" aria-hidden="true">
                     {Array.from({ length: scene.totalSteps }, (_, index) => (
@@ -151,12 +165,12 @@ export default function CreatorSceneProductionStatus({
                   <span className="creatorlab-p2c-scene-operation-status">
                     {getCreatorSceneTriageLabel(scene.status, language)}
                   </span>
-                </button>
+                  </button>
+                </div>
               </li>
             );
           })}
-        </ol>
-      </details>
+      </ol>
     </section>
   );
 }
