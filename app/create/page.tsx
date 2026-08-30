@@ -105,6 +105,11 @@ import {
   rankStockCandidates,
   type CreatorSceneProductionDecision,
 } from "@/lib/creator/productionIntelligence";
+import {
+  executeCreatorRecommendedVisualBatch,
+  estimateCreatorRecommendedVisualManifest,
+  hasCreatorUsableVisual,
+} from "@/lib/creator/recommendedVisualExecution";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
@@ -9233,6 +9238,103 @@ const generateSceneImage = async (
     );
   };
 
+  const runCreatorRecommendedVisualGeneration = async (
+    targetSceneIds: number[],
+  ) => {
+    const productionPlan = getCreatorProductionPlan(scenes);
+    const manifest = estimateCreatorRecommendedVisualManifest({
+      scenes,
+      decisions: productionPlan,
+      targetSceneIds,
+      qualityMode: creatorQualityMode,
+    });
+    const estimate = estimateCreatorOperationManifest(manifest, creatorQualityMode);
+    const batchOperationId = estimate.totalCredits > 0
+      ? (await requestCreatorCostGuardConfirmation({
+          operationName: uiLanguage === "en" ? "Generate recommended visuals" : "Önerilen görselleri üret",
+          estimatedCredits: estimate.totalCredits,
+          qualityLabel: getCreatorQualityModeLabel(),
+          summary: `${manifest.images} ${uiLanguage === "en" ? "image admissions" : "görsel işlemi"} · ${manifest.videos} video`,
+        })) || ""
+      : window.crypto.randomUUID();
+    if (!batchOperationId) return false;
+
+    setError("");
+    setSaveMessage("");
+    invalidateFinalVideoForProductionChange();
+    setIsBatchRendering(true);
+    setBatchRenderStartedAt(new Date().toISOString());
+    batchRenderCancelRef.current = false;
+    suspendAutosaveRef.current = true;
+    resetBatchRenderItems(scenes.filter((scene) => targetSceneIds.includes(scene.id)));
+
+    try {
+      const result = await executeCreatorRecommendedVisualBatch({
+        scenes,
+        decisions: productionPlan,
+        targetSceneIds,
+        qualityMode: creatorQualityMode,
+        isCancelled: () => batchRenderCancelRef.current,
+        acquireStock: acquireAutomaticStockForScene,
+        generateImage: async (scene) => {
+          setRedrawLoadingId(scene.id);
+          return generateSceneImage(scene, {
+            skipDispatchCountdown: true,
+            creatorOperationId: batchOperationId,
+            batchChildOperationKey: getCreatorBatchChildOperationKey(
+              "image",
+              scene.id,
+              scene.id === 1 ? "hook" : "scene",
+            ),
+          });
+        },
+        generateVideo: (scene) => generateSceneVideoAndWait(
+          scene,
+          batchOperationId,
+          getCreatorBatchChildOperationKey("video", scene.id),
+        ),
+        createHistoryId: (sceneId, kind) => createCreatorHistoryId(`stock-${kind}-${sceneId}`),
+        onSceneStart: (scene, decision) => {
+          updateBatchRenderItem(scene.id, {
+            status: "processing",
+            step: "route",
+            message: uiLanguage === "en"
+              ? `Preparing Velto Recommended visual (${CREATOR_PRODUCTION_TREATMENT_LABELS[decision.selectedTreatment].en})...`
+              : `Velto önerilen görseli hazırlanıyor (${CREATOR_PRODUCTION_TREATMENT_LABELS[decision.selectedTreatment].tr})...`,
+          });
+        },
+        onSceneSettled: (scene, outcome) => {
+          setScenes((current) => current.map((item) => item.id === scene.id ? scene : item));
+          updateBatchRenderItem(scene.id, {
+            status: outcome.status === "failed" ? "failed" : "done",
+            step: outcome.status === "failed" ? "route" : "complete",
+            message: outcome.status === "failed"
+              ? outcome.error || (uiLanguage === "en" ? "Recommended visual failed." : "Önerilen görsel başarısız oldu.")
+              : outcome.status === "preserved"
+                ? uiLanguage === "en" ? "Existing visual preserved." : "Mevcut görsel korundu."
+                : uiLanguage === "en" ? "Recommended visual ready." : "Önerilen görsel hazır.",
+          });
+        },
+      });
+
+      setScenes(result.scenes);
+      await persistProjectSnapshot(result.scenes);
+      const hasFailure = result.outcomes.some((outcome) => outcome.status === "failed");
+      if (batchRenderCancelRef.current) {
+        setSaveMessage(uiLanguage === "en" ? "Visual generation stopped." : "Görsel üretimi durduruldu.");
+      } else if (hasFailure) {
+        setError(uiLanguage === "en" ? "Some recommended visuals could not be prepared." : "Bazı önerilen görseller hazırlanamadı.");
+      } else {
+        setSaveMessage(uiLanguage === "en" ? "Velto Recommended visuals are ready." : "Velto önerilen görseller hazır.");
+      }
+      return !batchRenderCancelRef.current && !hasFailure;
+    } finally {
+      suspendAutosaveRef.current = false;
+      setIsBatchRendering(false);
+      setRedrawLoadingId(null);
+    }
+  };
+
   const generateAllSceneVisuals = async () => {
     if (scenes.length === 0) {
       setError(uiLanguage === "en" ? "Create the production stage first." : "Önce production stage oluşturmalısın.");
@@ -9245,6 +9347,13 @@ const generateSceneImage = async (
     }
 
     if (!(await prepareCreatorMediaAction("visuals"))) {
+      return;
+    }
+
+    if (isCreatorLabFlow) {
+      await runCreatorRecommendedVisualGeneration(
+        scenes.filter((scene) => !hasCreatorUsableVisual(scene)).map((scene) => scene.id),
+      );
       return;
     }
 
@@ -9361,7 +9470,9 @@ const generateSceneImage = async (
         : creatorSelectedSceneIds,
     );
     const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
-    const targetScenes = selectedScenes.filter((scene) => !scene.image);
+    const targetScenes = selectedScenes.filter((scene) =>
+      isCreatorLabFlow ? !hasCreatorUsableVisual(scene) : !scene.image,
+    );
 
     if (selectedScenes.length === 0) {
       setError(
@@ -9384,6 +9495,10 @@ const generateSceneImage = async (
 
     if (!(await prepareCreatorMediaAction("visuals"))) {
       return false;
+    }
+
+    if (isCreatorLabFlow) {
+      return runCreatorRecommendedVisualGeneration(targetScenes.map((scene) => scene.id));
     }
 
     let batchOperationId = "";
@@ -16876,7 +16991,9 @@ const generateSceneImage = async (
   const readyVideoCount = scenes.filter(
     (scene) => scene.videoUrl && scene.videoStatus === "done"
   ).length;
-  const visualAssetReadyCount = scenes.filter((scene) => Boolean(scene.image)).length;
+  const visualAssetReadyCount = scenes.filter((scene) =>
+    isCreatorLabFlow ? hasCreatorUsableVisual(scene) : Boolean(scene.image),
+  ).length;
   const readyExportCount = scenes.filter(
     (scene) => getSceneExportSource(scene) !== "none"
   ).length;
@@ -17336,7 +17453,7 @@ const generateSceneImage = async (
       language,
       qualityMode: creatorQualityMode,
     });
-    const visualReady = Boolean(scene.image);
+    const visualReady = hasCreatorUsableVisual(scene);
     const voiceReady = getSceneVoiceStatus(scene);
     const motionRequired = creatorRoutedMotionSceneIdSet.has(scene.id);
     const motionReady =

@@ -57,6 +57,7 @@ const tests = [
   "scripts/stage-0-10h-ui-acceptance-editorial-grounding-repair-test.mjs",
   "scripts/stage-0-10h-production-setup-ux-test.mjs",
   "scripts/stage-0-10h-autofit-hardening-test.mjs",
+  "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
 ];
 
 for (const test of tests) {

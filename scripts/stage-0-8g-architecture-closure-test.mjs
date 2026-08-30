@@ -209,6 +209,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "app/api/creator-scene-script-fit/route.ts",
     "lib/creator/sceneScriptFit.ts",
     "scripts/stage-0-10h-autofit-hardening-test.mjs",
+    "lib/creator/recommendedVisualExecution.ts",
+    "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
