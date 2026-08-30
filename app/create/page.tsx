@@ -48,6 +48,7 @@ import CreatorCostGuard, {
 import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
 import type { CreatorProductionSubstep } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
+import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
 import CreatorEditor from "@/components/create/CreatorEditor";
 import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
 import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";
@@ -18492,11 +18493,22 @@ const generateSceneImage = async (
     : creatorBackgroundMusic.mode === "auto"
       ? uiLanguage === "en" ? "Auto Match" : "Otomatik Eşleştir"
       : uiLanguage === "en" ? "Off" : "Kapalı";
+  const creatorNarratorSummary = narratorSettings.voiceSelection?.name ||
+    (uiLanguage === "en" ? "Velto default" : "Velto varsayılanı");
   const creatorContinuitySummary = creatorProjectContinuityMode === "consistent"
     ? uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru"
     : creatorProjectContinuityMode === "selective"
       ? uiLanguage === "en" ? "Choose per scene" : "Sahne başına seç"
       : uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler";
+  const creatorProductionSetupPresentation = createCreatorProductionSetupPresentation({
+    language: uiLanguage === "en" ? "en" : "tr",
+    presentation: creatorPresentationModeLabel,
+    narrator: creatorNarratorSummary,
+    music: creatorMusicSummary,
+    continuity: creatorContinuitySummary,
+    visualStyle: visualBible?.style,
+    musicConfirmationRequired: creatorMusicConfirmationRequired,
+  });
 
   const audioDurationMatchedCount = scenes.filter(
     (scene) =>
@@ -29615,11 +29627,67 @@ const generateSceneImage = async (
             )}
 
             {creatorProductionSubstep === "setup" && (
-              <div className="space-y-5" data-production-substep="setup">
+              <div className="creatorlab-setup-shell" data-production-substep="setup">
+                <section className="creatorlab-setup-recommendation" aria-labelledby="creatorlab-setup-recommendation-title">
+                  <div className="creatorlab-setup-recommendation-copy">
+                    <span className="creatorlab-setup-recommendation-kicker">
+                      {uiLanguage === "en" ? "Recommended setup" : "Önerilen kurulum"}
+                    </span>
+                    <h2 id="creatorlab-setup-recommendation-title">
+                      {creatorProductionSetupPresentation.headline}
+                    </h2>
+                    <p>
+                      {uiLanguage === "en"
+                        ? "Optimized for this format, quality mode and current project settings."
+                        : "Bu format, kalite modu ve mevcut proje ayarları için optimize edildi."}
+                    </p>
+                  </div>
+                  <div className="creatorlab-setup-summary-grid" aria-label={uiLanguage === "en" ? "Current production setup" : "Mevcut üretim kurulumu"}>
+                    <div><span>{uiLanguage === "en" ? "Presentation" : "Sunum"}</span><strong>{creatorPresentationModeLabel}</strong></div>
+                    <div><span>{uiLanguage === "en" ? "Narrator" : "Anlatıcı"}</span><strong>{creatorNarratorSummary}</strong></div>
+                    <div><span>{uiLanguage === "en" ? "Music" : "Müzik"}</span><strong>{creatorMusicSummary}</strong></div>
+                    <div><span>{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</span><strong>{creatorContinuitySummary}</strong></div>
+                    <div className="creatorlab-setup-summary-visual"><span>{uiLanguage === "en" ? "Visual style" : "Görsel stil"}</span><strong>{creatorProductionSetupPresentation.visualStyleSummary}</strong></div>
+                  </div>
+                  {creatorProductionSetupPresentation.actionRequired && (
+                    <div className="creatorlab-setup-action-required" role="alert">
+                      <strong>{uiLanguage === "en" ? "Action required" : "Aksiyon gerekli"}</strong>
+                      <span>{uiLanguage === "en" ? "Confirm the selected premium music before final production." : "Final üretimden önce seçilen premium müziği onayla."}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    data-production-primary-continue="true"
+                    onClick={() => selectCreatorProductionSubstep("create_review")}
+                    className="creatorlab-setup-primary-action"
+                  >
+                    {uiLanguage === "en" ? "Continue to Create & Review" : "Üret ve İncele'ye Devam Et"}
+                  </button>
+                </section>
+
+                <details
+                  id="creatorlab-production-customize"
+                  className={`creatorlab-setup-customize ${creatorMusicConfirmationRequired ? "has-action-required" : ""}`}
+                  open={creatorProductionSetupPresentation.customizeInitiallyOpen ? true : undefined}
+                >
+                  <summary>
+                    <div>
+                      <strong>{uiLanguage === "en" ? "Customize production" : "Üretimi özelleştir"}</strong>
+                      <span>{uiLanguage === "en" ? "Presentation, brand, voice, music and continuity" : "Sunum, marka, ses, müzik ve devamlılık"}</span>
+                    </div>
+                    <span className="creatorlab-setup-customize-status">
+                      {creatorProductionSetupPresentation.customizeStatus}
+                    </span>
+                  </summary>
+                  <div className="creatorlab-setup-customize-body">
                 <div id="creatorlab-cast-brand" className="space-y-5">
                   <div className="creatorlab-cast-brand-body">
 
-                <section className="creatorlab-cast-brand-section">
+                <section className="creatorlab-cast-brand-section creatorlab-setup-group" data-setup-group="presentation-cast">
+                  <div className="creatorlab-setup-group-label">
+                    <strong>{uiLanguage === "en" ? "Presentation & Cast" : "Sunum ve Kadro"}</strong>
+                    <span>{creatorPresentationModeLabel}</span>
+                  </div>
                   <div className="creatorlab-cast-brand-section-heading">
                     <div>
                       <span>{uiLanguage === "en" ? "Production approach" : "Üretim yaklaşımı"}</span>
@@ -29711,7 +29779,7 @@ const generateSceneImage = async (
                   )}
                 </section>
 
-                <section className="space-y-3">
+                <section className="creatorlab-setup-group space-y-3" data-setup-group="brand-visual">
                   <div>
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       {uiLanguage === "en" ? "Brand & Visual Direction" : "Marka ve Görsel Yön"}
@@ -29769,7 +29837,7 @@ const generateSceneImage = async (
                       />
                     </label>
                     <details className="creatorlab-cast-brand-nested-details">
-                      <summary>{uiLanguage === "en" ? "Camera and consistency guidance" : "Kamera ve tutarlılık yönlendirmesi"}</summary>
+                      <summary>{uiLanguage === "en" ? "Advanced" : "Gelişmiş"}</summary>
                       <div>
                         <label>
                           <span>{uiLanguage === "en" ? "Camera language" : "Kamera dili"}</span>
@@ -29793,7 +29861,11 @@ const generateSceneImage = async (
                   </div>
                 </section>
 
-                <section id="creatorlab-cast-voice" className="creatorlab-cast-brand-section creatorlab-voice-direction-section">
+                <section id="creatorlab-cast-voice" className="creatorlab-cast-brand-section creatorlab-voice-direction-section creatorlab-setup-group" data-setup-group="voice">
+                  <div className="creatorlab-setup-group-label">
+                    <strong>{uiLanguage === "en" ? "Voice" : "Ses"}</strong>
+                    <span>{creatorNarratorSummary}</span>
+                  </div>
                   <div className="creatorlab-cast-brand-section-heading">
                     <div>
                       <span>{uiLanguage === "en" ? "Cast & Voices" : "Kadro ve Sesler"}</span>
@@ -30074,7 +30146,7 @@ const generateSceneImage = async (
                   </details>
                 </section>
 
-                <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section">
+                <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section creatorlab-setup-group" data-setup-group="presentation-cast">
                   <div className="creatorlab-cast-brand-section-heading">
                     <div>
                       <span>{uiLanguage === "en" ? "Presenters and personas" : "Sunucular ve personalar"}</span>
@@ -30281,6 +30353,11 @@ const generateSceneImage = async (
                   </div>
                 </div>
 
+                <section className={`creatorlab-setup-group creatorlab-setup-music-group ${creatorMusicConfirmationRequired ? "has-action-required" : ""}`} data-setup-group="music">
+                  <div className="creatorlab-setup-group-label">
+                    <strong>{uiLanguage === "en" ? "Music" : "Müzik"}</strong>
+                    <span>{creatorMusicConfirmationRequired ? (uiLanguage === "en" ? "Action required" : "Aksiyon gerekli") : creatorMusicSummary}</span>
+                  </div>
                 <CreatorBackgroundMusic
                   key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
                   value={creatorBackgroundMusic}
@@ -30359,8 +30436,13 @@ const generateSceneImage = async (
                     visualStyle: visualBible?.style || "",
                   }}
                 />
+                </section>
 
-                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                <section className="creatorlab-setup-group rounded-3xl border border-slate-200 bg-white p-5" data-setup-group="continuity">
+                  <div className="creatorlab-setup-group-label">
+                    <strong>{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</strong>
+                    <span>{creatorContinuitySummary}</span>
+                  </div>
                   <div>
                     <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
                       {uiLanguage === "en" ? "Visual Continuity" : "Görsel Devamlılık"}
@@ -30401,16 +30483,8 @@ const generateSceneImage = async (
                   </div>
                 </section>
 
-                <div className="flex justify-end border-t border-slate-200 pt-5">
-                  <button
-                    type="button"
-                    data-production-primary-continue="true"
-                    onClick={() => selectCreatorProductionSubstep("create_review")}
-                    className="min-h-12 rounded-xl bg-blue-700 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                  >
-                    {uiLanguage === "en" ? "Continue to Create & Review →" : "Üret ve İncele'ye Devam Et →"}
-                  </button>
-                </div>
+                  </div>
+                </details>
               </div>
             )}
 

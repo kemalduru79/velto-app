@@ -143,6 +143,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "components/create/CreatorSceneProductionStatus.tsx",
     "app/creatorlab-ux-p2c.css",
     "scripts/ux-p2c-production-workspace-smoke-test.mjs",
+    "components/create/creatorProductionSetupPresentation.ts",
+    "scripts/stage-0-10h-production-setup-ux-test.mjs",
     "components/create/CreatorStockPicker.tsx",
     "docs/STAGE-0.10C-PEXELS-SAFE-STOCK.md",
     "docs/STAGE-0.10D-PRODUCTION-INTELLIGENCE.md",

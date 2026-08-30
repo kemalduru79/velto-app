@@ -795,6 +795,285 @@
   }
 }
 
+/* Stage 0.10H UI acceptance: recommended setup first, customization on demand. */
+.creatorlab-uxp2a-shell .creatorlab-setup-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-recommendation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px 24px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid #cbd5e1;
+  border-top: 3px solid #2563eb;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.07);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-recommendation-copy {
+  min-width: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-recommendation-kicker {
+  color: #1d4ed8;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-recommendation h2 {
+  margin-top: 7px;
+  color: #0f172a;
+  font-size: clamp(1.12rem, 2vw, 1.45rem);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-recommendation-copy p {
+  margin-top: 7px;
+  max-width: 720px;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > div {
+  min-width: 0;
+  padding: 11px 13px;
+  border-right: 1px solid #e2e8f0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > div:nth-child(4) {
+  border-right: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > .creatorlab-setup-summary-visual {
+  grid-column: 1 / -1;
+  border-top: 1px solid #e2e8f0;
+  border-right: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid span,
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid strong {
+  display: block;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid span {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-summary-grid strong {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #1e293b;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-primary-action {
+  min-height: 48px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 800;
+  box-shadow: 0 9px 22px rgba(29, 78, 216, 0.2);
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-primary-action:hover {
+  background: #1e40af;
+  box-shadow: 0 11px 26px rgba(29, 78, 216, 0.25);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-primary-action:focus-visible,
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-action-required {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 11px 13px;
+  border: 1px solid #f1cc82;
+  border-radius: 12px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.76rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize {
+  overflow: clip;
+  border: 1px solid #dbe2ea;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 17px;
+  color: #1e293b;
+  cursor: pointer;
+  list-style: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary::-webkit-details-marker {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary strong,
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary span {
+  display: block;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary strong {
+  font-size: 0.86rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize > summary div > span {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize[open] > summary {
+  border-bottom: 1px solid #dbeafe;
+  background: #f8faff;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.65rem;
+  font-weight: 750;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize.has-action-required > summary {
+  border-color: #f1cc82;
+  background: #fffbeb;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize.has-action-required .creatorlab-setup-customize-status {
+  border-color: #f1cc82;
+  background: #fff7db;
+  color: #92400e;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-customize-body {
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-group {
+  border-color: #dbe2ea !important;
+  background: #fff !important;
+  box-shadow: 0 7px 20px rgba(15, 23, 42, 0.045) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-group-label strong {
+  color: #0f172a;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-group-label span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-music-group {
+  padding: 16px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-setup-music-group.has-action-required {
+  border-color: #f1cc82 !important;
+  background: #fffdf7 !important;
+}
+
+@media (max-width: 760px) {
+  .creatorlab-uxp2a-shell .creatorlab-setup-recommendation {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 17px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > div,
+  .creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > div:nth-child(4) {
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > div:nth-child(odd) {
+    border-right: 1px solid #e2e8f0;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-summary-grid > .creatorlab-setup-summary-visual {
+    border-bottom: 0;
+    border-right: 0;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-primary-action {
+    width: 100%;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-customize > summary,
+  .creatorlab-uxp2a-shell .creatorlab-setup-group-label,
+  .creatorlab-uxp2a-shell .creatorlab-setup-action-required {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-setup-customize-body {
+    padding: 10px;
+  }
+}
+
 /* P2C-2: scene triage is presentational and never drives production state. */
 .creatorlab-uxp2a-shell .creatorlab-p2c-scene-operations {
   display: grid;
