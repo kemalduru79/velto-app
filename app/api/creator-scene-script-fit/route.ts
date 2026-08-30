@@ -6,6 +6,11 @@ import {
   creatorBriefRequestsDialogue,
   normalizeCreatorAdultScene,
 } from "../../../lib/creator/adultContentGuard";
+import {
+  runCreatorSceneScriptFitOnce,
+  validateCreatorSceneScriptFit,
+  type CreatorSceneScriptFitResult,
+} from "../../../lib/creator/sceneScriptFit";
 
 type SceneInput = {
   id?: unknown;
@@ -196,38 +201,61 @@ export async function POST(req: Request) {
     };
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify(userPrompt) },
-      ],
-      temperature: 0.25,
+    const fit: CreatorSceneScriptFitResult = await runCreatorSceneScriptFitOnce({
+      generate: () => client.responses.create({
+        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: JSON.stringify(userPrompt) },
+        ],
+        temperature: 0.25,
+      }),
+      recordEconomics: (response) => recordOpenAITextEconomics({
+        route: "/api/creator-scene-script-fit",
+        operationType: "creator_scene_script_fit",
+        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        response,
+      }),
+      validate: (response) => {
+        const parsed = parseJson(response.output_text || "");
+        const normalizedScene = normalizeCreatorAdultScene(
+          {
+            ...scene,
+            narration: asString(parsed.narration),
+            dialogue: asString(parsed.dialogue),
+          },
+          { language, isOpeningScene, allowDialogue },
+        );
+        return validateCreatorSceneScriptFit({
+          original: { narration: scene.narration, dialogue: scene.dialogue },
+          candidate: {
+            narration: asString(normalizedScene.narration),
+            dialogue: asString(normalizedScene.dialogue),
+          },
+          language,
+          targetDurationSec,
+          minWords,
+          targetWords,
+          maxWords,
+        });
+      },
     });
-    await recordOpenAITextEconomics({ route: "/api/creator-scene-script-fit", operationType: "creator_scene_script_fit", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
-    const parsed = parseJson(response.output_text || "");
-    const normalizedScene = normalizeCreatorAdultScene(
-      {
-        ...scene,
-        narration: asString(parsed.narration, scene.narration),
-        dialogue: asString(parsed.dialogue, scene.dialogue),
-      },
-      {
-        language,
-        isOpeningScene,
-        allowDialogue,
-      },
-    );
-    const narration = asString(normalizedScene.narration);
-    const dialogue = asString(normalizedScene.dialogue);
-    const wordCount = countWords([narration, dialogue].filter(Boolean).join(" "));
 
     return NextResponse.json({
       success: true,
-      narration,
-      dialogue,
-      wordCount,
-      targetWords,
+      result: fit.state,
+      reason: fit.reason,
+      narration: fit.state === "accepted" ? fit.narration : undefined,
+      dialogue: fit.state === "accepted" ? fit.dialogue : undefined,
+      wordCount: fit.wordCount,
+      estimatedSpeechSec: fit.estimatedSpeechSec,
+      targetDurationSec: fit.targetDurationSec,
+      minWords: fit.minWords,
+      acceptanceMinWords: fit.acceptanceMinWords,
+      targetWords: fit.targetWords,
+      maxWords: fit.maxWords,
+      suggestedDurationSec: fit.suggestedDurationSec,
+      recommendedSplitCount: fit.recommendedSplitCount,
       mode,
     });
   } catch (error: unknown) {

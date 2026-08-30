@@ -16071,6 +16071,23 @@ const generateSceneImage = async (
         );
       }
 
+      if (data.result !== "accepted") {
+        setSaveMessage(
+          data.result === "extend_duration"
+            ? uiLanguage === "en"
+              ? `The original script was preserved. Consider extending this scene to ${Number(data.suggestedDurationSec || assessment.targetDurationSec).toFixed(1)} seconds.`
+              : `Orijinal metin korundu. Bu sahneyi ${Number(data.suggestedDurationSec || assessment.targetDurationSec).toFixed(1)} saniyeye uzatmayı değerlendirin.`
+            : data.result === "split_recommended"
+              ? uiLanguage === "en"
+                ? "The original script was preserved. Split this scene to keep its meaning and pacing."
+                : "Orijinal metin korundu. Anlamı ve tempoyu korumak için bu sahneyi bölün."
+              : uiLanguage === "en"
+                ? "Autofit was rejected because the result did not preserve a healthy script fit. The original script was preserved."
+                : "Sonuç sağlıklı metin uyumunu korumadığı için Auto-fit reddedildi. Orijinal metin korundu.",
+        );
+        return;
+      }
+
       const normalizedFitScene = normalizeCreatorAdultScene(
         {
           ...scene,
