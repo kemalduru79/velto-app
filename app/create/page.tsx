@@ -972,6 +972,14 @@ type CreatorMentorResult = {
     reason: string;
   };
   productionPlan: string[];
+  marketEvidence?: {
+    videos: YoutubeResearchVideo[];
+    patternSummary: YoutubePatternSummary | null;
+  };
+  strategySelection?: {
+    directionId: string;
+    hook: string;
+  };
 };
 
 type CreatorProductionScene = {
@@ -3498,6 +3506,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [youtubePatternSummary, setYoutubePatternSummary] =
     useState<YoutubePatternSummary | null>(null);
   const [youtubePatternLoading, setYoutubePatternLoading] = useState(false);
+  const [creatorMarketEvidenceReviewOpen, setCreatorMarketEvidenceReviewOpen] = useState(false);
   const [youtubeMetadataResult, setYoutubeMetadataResult] =
     useState<YoutubeMetadataResult | null>(null);
   const [youtubeMetadataLoading, setYoutubeMetadataLoading] = useState(false);
@@ -11534,11 +11543,25 @@ const generateSceneImage = async (
       youtubeThumbnail?: YoutubeThumbnailResult | null;
       forceInvalidateFinalVideo?: boolean;
       backgroundMusic?: CreatorBackgroundMusicConfig;
+      creatorMentorResult?: CreatorMentorResult | null;
     } = {},
   ) => {
     const sourceScenes = lifecycleOverrides.sourceScenes || scenes;
+    const mentorResultForSave = lifecycleOverrides.creatorMentorResult ?? creatorMentorResult;
+    const persistedMentorResult = mentorResultForSave
+      ? {
+          ...mentorResultForSave,
+          strategySelection: {
+            directionId: creatorSelectedStrategyDirectionId,
+            hook: creatorSelectedHookPattern,
+          },
+        }
+      : null;
+    const persistedTitle = title.trim() ||
+      persistedMentorResult?.recommendedIdea?.title?.trim() ||
+      input.trim();
 
-    if (!title || sourceScenes.length === 0) {
+    if (!persistedTitle || (!isCreatorLabFlow && sourceScenes.length === 0)) {
       return;
     }
 
@@ -11562,7 +11585,7 @@ const generateSceneImage = async (
       ? ""
       : lifecycleOverrides.storedFinalVideoSignature ??
         (isCreatorLabFlow ? exportSignature : hasReusableExport() ? exportSignature : "");
-    const currentSourceSignature = buildExportSignature(title, sourceScenes);
+    const currentSourceSignature = buildExportSignature(persistedTitle, sourceScenes);
     const finalVideoCurrent =
       Boolean(candidateFinalVideoUrl) &&
       Boolean(candidateFinalVideoSignature) &&
@@ -11624,7 +11647,7 @@ const generateSceneImage = async (
       body: JSON.stringify({
         projectId: currentProjectId || undefined,
         childId: getProjectChildId(),
-        title,
+        title: persistedTitle,
         inputPrompt: input,
         flowKey: activeFlowKey,
         flowTitle: selectedFlow.title,
@@ -11664,6 +11687,7 @@ const generateSceneImage = async (
               },
             }
           : null,
+        creatorMentorResult: persistedMentorResult,
         youtubeMetadataResult:
           lifecycleOverrides.youtubeMetadata ??
           youtubeMetadataResult,
@@ -11704,7 +11728,7 @@ const generateSceneImage = async (
   };
 
   const saveProject = async () => {
-    if (!title || scenes.length === 0) {
+    if ((!title.trim() && !input.trim()) || (!isCreatorLabFlow && scenes.length === 0)) {
       setError("Kaydetmek için önce hikaye oluşturmalısın.");
       return;
     }
@@ -11937,7 +11961,25 @@ const generateSceneImage = async (
         loadedArtifactHistory.packageDownloaded,
       );
 
-      setCreatorMentorResult(project.creator_mentor_result || null);
+      const loadedMentorResult = project.creator_mentor_result as CreatorMentorResult | null;
+      setCreatorMentorResult(loadedMentorResult || null);
+      setCreatorSelectedStrategyDirectionId(
+        loadedMentorResult?.strategySelection?.directionId || "recommended",
+      );
+      setCreatorSelectedHookPattern(
+        loadedMentorResult?.strategySelection?.hook ||
+          loadedMentorResult?.hookPatterns?.[0] ||
+          "",
+      );
+      setYoutubeResearchVideos(
+        Array.isArray(loadedMentorResult?.marketEvidence?.videos)
+          ? loadedMentorResult.marketEvidence.videos
+          : [],
+      );
+      setYoutubePatternSummary(
+        loadedMentorResult?.marketEvidence?.patternSummary || null,
+      );
+      setCreatorMarketEvidenceReviewOpen(false);
 
       const savedVisualContinuity =
         savedCreatorPackage && typeof savedCreatorPackage === "object"
@@ -12879,6 +12921,19 @@ const generateSceneImage = async (
 
       const relevantVideos = Array.isArray(data.videos) ? data.videos : [];
       setYoutubeResearchVideos(relevantVideos);
+      const nextMentorResult = creatorMentorResult
+        ? {
+            ...creatorMentorResult,
+            marketEvidence: {
+              videos: relevantVideos,
+              patternSummary: null,
+            },
+          }
+        : null;
+      if (nextMentorResult) {
+        setCreatorMentorResult(nextMentorResult);
+        await persistProject(false, { creatorMentorResult: nextMentorResult });
+      }
       setSaveMessage(
         relevantVideos.length > 0
           ? uiLanguage === "en"
@@ -12941,7 +12996,21 @@ const generateSceneImage = async (
         );
       }
 
-      setYoutubePatternSummary(data.summary as YoutubePatternSummary);
+      const nextPatternSummary = data.summary as YoutubePatternSummary;
+      setYoutubePatternSummary(nextPatternSummary);
+      const nextMentorResult = creatorMentorResult
+        ? {
+            ...creatorMentorResult,
+            marketEvidence: {
+              videos: youtubeResearchVideos,
+              patternSummary: nextPatternSummary,
+            },
+          }
+        : null;
+      if (nextMentorResult) {
+        setCreatorMentorResult(nextMentorResult);
+        await persistProject(false, { creatorMentorResult: nextMentorResult });
+      }
     } catch (e: any) {
       console.error("handleYoutubePatternEngine error:", e);
       setError(
@@ -13875,6 +13944,13 @@ const generateSceneImage = async (
         },
         hookPatterns: approvedHookPatterns,
       };
+      const persistedStrategyResult: CreatorMentorResult = {
+        ...creatorMentorResult,
+        strategySelection: {
+          directionId: creatorSelectedStrategyDirectionId,
+          hook: creatorSelectedHookPattern,
+        },
+      };
 
       const res = await fetch("/api/creator-production", {
         method: "POST",
@@ -13940,6 +14016,7 @@ const generateSceneImage = async (
       };
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorMentorResult(persistedStrategyResult);
       setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "strategy_approved"));
       setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
@@ -17100,7 +17177,11 @@ const generateSceneImage = async (
   };
 
   const handleContinueStory = async () => {
-    if (!title || scenes.length === 0) {
+    if (
+      (!title.trim() && !input.trim()) ||
+      (!isCreatorLabFlow && scenes.length === 0) ||
+      (isCreatorLabFlow && !currentProjectId)
+    ) {
       setError("Önce bir hikaye oluşturmalısın.");
       return;
     }
@@ -17298,7 +17379,11 @@ const generateSceneImage = async (
       return;
     }
 
-    if (!title || scenes.length === 0) {
+    if (
+      isCreatorLabFlow
+        ? (!input.trim() && !title.trim()) || !creatorMentorResult
+        : !title || scenes.length === 0
+    ) {
       return;
     }
 
@@ -17329,6 +17414,7 @@ const generateSceneImage = async (
     scenes,
     narratorSettings,
     creatorProductionPackage,
+    creatorMentorResult,
     youtubeMetadataResult,
     youtubeThumbnailResult,
     creatorThumbnailStudio,
@@ -17337,6 +17423,8 @@ const generateSceneImage = async (
     creatorPackageSignature,
     creatorArtifactHistory,
     creatorPerformanceHistory,
+    currentProjectId,
+    isCreatorLabFlow,
   ]);
 
   useEffect(() => {
@@ -17614,7 +17702,7 @@ const generateSceneImage = async (
         : uiLanguage === "en" ? "Moderate competition" : "Orta rekabet"
     : youtubeResearchVideos.length > 0
       ? uiLanguage === "en" ? "Evidence available" : "Pazar kanıtı mevcut"
-      : uiLanguage === "en" ? "Research optional" : "Araştırma isteğe bağlı";
+      : uiLanguage === "en" ? "Not added" : "Eklenmedi";
 
   useEffect(() => {
     if (!isCreatorLabFlow || !creatorProjectLifecycle) {
@@ -17636,8 +17724,14 @@ const generateSceneImage = async (
       return;
     }
 
-    setCreatorSelectedStrategyDirectionId("recommended");
-    setCreatorSelectedHookPattern(creatorMentorResult.hookPatterns?.[0] || "");
+    setCreatorSelectedStrategyDirectionId(
+      creatorMentorResult.strategySelection?.directionId || "recommended",
+    );
+    setCreatorSelectedHookPattern(
+      creatorMentorResult.strategySelection?.hook ||
+        creatorMentorResult.hookPatterns?.[0] ||
+        "",
+    );
   }, [creatorMentorResult]);
 
   useEffect(() => {
@@ -18458,12 +18552,12 @@ const generateSceneImage = async (
             title: uiLanguage === "en" ? "YouTube insights" : "YouTube içgörüleri",
             description: youtubePatternSummary
               ? uiLanguage === "en" ? "Opportunity and competition signals are summarized." : "Fırsat ve rekabet sinyalleri özetlendi."
-              : uiLanguage === "en" ? "Research remains optional until additional market evidence is useful." : "Ek pazar kanıtı gerektiğinde araştırma kullanılabilir.",
+              : uiLanguage === "en" ? "Optional market and trend signals can strengthen positioning." : "İsteğe bağlı pazar ve trend sinyalleri konumlandırmayı güçlendirebilir.",
             status: youtubePatternSummary
               ? uiLanguage === "en" ? "Ready" : "Hazır"
               : youtubeResearchVideos.length > 0
                 ? uiLanguage === "en" ? "Research available" : "Araştırma mevcut"
-                : uiLanguage === "en" ? "Optional" : "İsteğe bağlı",
+                : uiLanguage === "en" ? "Not added" : "Eklenmedi",
             metric: youtubePatternSummary
               ? `${uiLanguage === "en" ? "Opportunity" : "Fırsat"} ${youtubePatternSummary.opportunityScore}/100 · ${youtubePatternSummary.competitionLevel}`
               : `${youtubeResearchVideos.length} ${uiLanguage === "en" ? "reference videos" : "referans video"}`,
@@ -27721,6 +27815,21 @@ const generateSceneImage = async (
                 </button>
               </div>
               <button
+                type="button"
+                className="creatorlab-topbar-tool-button"
+                data-creator-manual-save="true"
+                onClick={() => void saveProject()}
+                disabled={isSavingProject || (!input.trim() && !title.trim())}
+              >
+                <span>
+                  {isSavingProject
+                    ? uiLanguage === "en" ? "Saving…" : "Kaydediliyor…"
+                    : saveMessage === ui.projectSaved || saveMessage === ui.projectUpdated || saveMessage === ui.autoSaved
+                      ? uiLanguage === "en" ? "Saved" : "Kaydedildi"
+                      : uiLanguage === "en" ? "Save" : "Kaydet"}
+                </span>
+              </button>
+              <button
                 ref={creatorProjectsTriggerRef}
                 type="button"
                 className="creatorlab-topbar-tool-button"
@@ -29771,13 +29880,36 @@ const generateSceneImage = async (
               <div className="creatorlab-strategy-signal-card is-decision">
                 <span>{uiLanguage === "en" ? "Market evidence" : "Pazar kanıtı"}</span>
                 <strong>
-                  {youtubePatternSummary
-                    ? `${youtubePatternSummary.opportunityScore}/100`
-                    : youtubeResearchVideos.length > 0
-                      ? uiLanguage === "en" ? "Research ready" : "Araştırma hazır"
-                      : uiLanguage === "en" ? "Optional" : "İsteğe bağlı"}
+                  {youtubeResearchVideos.length > 0 || youtubePatternSummary
+                    ? uiLanguage === "en" ? "Included" : "Eklendi"
+                    : uiLanguage === "en" ? "Not added" : "Eklenmedi"}
                 </strong>
-                <p>{creatorCompetitionLabel}</p>
+                <p>
+                  {youtubeResearchVideos.length > 0 || youtubePatternSummary
+                    ? creatorCompetitionLabel
+                    : uiLanguage === "en"
+                      ? "Optional market and trend signals to strengthen positioning."
+                      : "Konumlandırmayı güçlendiren isteğe bağlı pazar ve trend sinyalleri."}
+                </p>
+                <button
+                  type="button"
+                  className="creatorlab-strategy-secondary-action"
+                  onClick={() => {
+                    setCreatorMarketEvidenceReviewOpen(true);
+                    if (youtubeResearchVideos.length === 0 && !youtubeResearchLoading) {
+                      void handleYoutubeResearch();
+                    } else {
+                      window.setTimeout(() => document.getElementById("creatorlab-strategy-youtube")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+                    }
+                  }}
+                  disabled={youtubeResearchLoading}
+                >
+                  {youtubeResearchLoading
+                    ? uiLanguage === "en" ? "Adding…" : "Ekleniyor…"
+                    : youtubeResearchVideos.length > 0 || youtubePatternSummary
+                      ? uiLanguage === "en" ? "Review" : "İncele"
+                      : uiLanguage === "en" ? "Add market evidence" : "Pazar kanıtı ekle"}
+                </button>
               </div>
               <div className="creatorlab-strategy-signal-card is-decision">
                 <span>{uiLanguage === "en" ? "Production scope" : "Üretim kapsamı"}</span>
@@ -29889,12 +30021,13 @@ const generateSceneImage = async (
               </section>
             </div>
 
+            {creatorMarketEvidenceReviewOpen && (
             <section id="creatorlab-strategy-youtube" className="creatorlab-strategy-panel creatorlab-strategy-youtube">
               <div className="creatorlab-strategy-panel-heading">
                 <div>
-                  <span>{uiLanguage === "en" ? "YouTube intelligence" : "YouTube zekâsı"}</span>
-                  <h3>{uiLanguage === "en" ? "Opportunity and pattern signals" : "Fırsat ve pattern sinyalleri"}</h3>
-                  <p>{uiLanguage === "en" ? "Research is optional, but available here when market evidence can strengthen the direction." : "Araştırma isteğe bağlıdır; pazar kanıtı yönü güçlendirecekse burada kullanılabilir."}</p>
+                  <span>{uiLanguage === "en" ? "Market evidence" : "Pazar kanıtı"}</span>
+                  <h3>{uiLanguage === "en" ? "Optional market and trend intelligence" : "İsteğe bağlı pazar ve trend içgörüleri"}</h3>
+                  <p>{uiLanguage === "en" ? "Additional strategic signals can strengthen positioning without changing the grounded evidence foundation." : "Ek stratejik sinyaller, kaynaklara dayalı kanıt temelini değiştirmeden konumlandırmayı güçlendirebilir."}</p>
                 </div>
                 <div className="creatorlab-strategy-youtube-actions">
                   <button
@@ -30056,6 +30189,7 @@ const generateSceneImage = async (
                 </details>
               )}
             </section>
+            )}
 
             <section className="creatorlab-strategy-panel">
               <div className="creatorlab-strategy-panel-heading">
