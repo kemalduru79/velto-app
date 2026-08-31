@@ -270,34 +270,73 @@ select {
 /* CreatorLab product workspace foundation
    Scope: CreatorLab only. Storyverse and Dashboard remain untouched. */
 .creatorlab-premium-surface {
-  --cl-page: #faf9f6;
-  --cl-page-top: #fffdf9;
-  --cl-surface: #fffefa;
-  --cl-surface-raised: #ffffff;
-  --cl-surface-muted: #f6f5f1;
-  --cl-surface-subtle: #f9f8f5;
-  --cl-border: #e5e2dc;
-  --cl-border-strong: #d8d5cf;
-  --cl-divider: #ece9e3;
-  --cl-text: #13243e;
-  --cl-text-strong: #0e203a;
-  --cl-muted: #5e6978;
-  --cl-soft: #7b8492;
-  --cl-disabled: #a3a9b2;
-  --cl-accent: #1769e0;
-  --cl-accent-hover: #125bc5;
-  --cl-accent-soft: #edf4ff;
-  --cl-accent-border: #bcd4fb;
+  /* Stage 0.10I canonical CreatorLab design tokens. */
+  --cl-bg: #f7f8fa;
+  --cl-surface: #ffffff;
+  --cl-surface-muted: #f3f5f8;
+  --cl-border: #dfe4eb;
+  --cl-text-primary: #14233b;
+  --cl-text-secondary: #475569;
+  --cl-text-muted: #64748b;
+  --cl-primary: #1769e0;
+  --cl-primary-hover: #125bc5;
   --cl-success: #18865b;
-  --cl-success-soft: #eff8f3;
   --cl-warning: #a76416;
-  --cl-warning-soft: #fff8eb;
   --cl-danger: #b83a45;
-  --cl-danger-soft: #fff3f4;
-  --cl-shadow-card: 0 8px 24px rgba(20, 34, 55, 0.045), 0 1px 2px rgba(20, 34, 55, 0.035);
-  --cl-shadow-floating: 0 14px 38px rgba(20, 34, 55, 0.08), 0 2px 6px rgba(20, 34, 55, 0.04);
-  --cl-font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --cl-font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --cl-info: var(--cl-primary);
+  --cl-success-soft: color-mix(in srgb, var(--cl-success) 9%, var(--cl-surface));
+  --cl-warning-soft: color-mix(in srgb, var(--cl-warning) 9%, var(--cl-surface));
+  --cl-danger-soft: color-mix(in srgb, var(--cl-danger) 8%, var(--cl-surface));
+  --cl-info-soft: color-mix(in srgb, var(--cl-info) 8%, var(--cl-surface));
+
+  --cl-space-1: 4px;
+  --cl-space-2: 8px;
+  --cl-space-3: 12px;
+  --cl-space-4: 16px;
+  --cl-space-6: 24px;
+  --cl-space-8: 32px;
+
+  --cl-radius-control: 8px;
+  --cl-radius-surface: 12px;
+  --cl-radius-workspace: 16px;
+  --cl-radius-pill: 999px;
+
+  --cl-control-compact: 36px;
+  --cl-control-default: 40px;
+  --cl-control-primary: 44px;
+
+  --cl-font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --cl-type-page: 30px;
+  --cl-type-stage: 24px;
+  --cl-type-section: 18px;
+  --cl-type-card: 15px;
+  --cl-type-body: 14px;
+  --cl-type-meta: 12px;
+  --cl-type-button: 14px;
+
+  --cl-shadow-subtle: 0 1px 2px rgb(15 23 42 / 5%);
+  --cl-shadow-surface: 0 8px 24px rgb(15 23 42 / 6%);
+  --cl-shadow-floating: 0 16px 40px rgb(15 23 42 / 12%);
+
+  /* Compatibility aliases consumed by the reviewed Stage 0.10H layers. */
+  --cl-page: var(--cl-bg);
+  --cl-page-top: var(--cl-surface);
+  --cl-surface-raised: var(--cl-surface);
+  --cl-surface-elevated: var(--cl-surface);
+  --cl-surface-subtle: var(--cl-surface-muted);
+  --cl-border-strong: var(--cl-border);
+  --cl-divider: var(--cl-border);
+  --cl-text: var(--cl-text-primary);
+  --cl-text-strong: var(--cl-text-primary);
+  --cl-muted: var(--cl-text-secondary);
+  --cl-soft: var(--cl-text-muted);
+  --cl-disabled: var(--cl-text-muted);
+  --cl-accent: var(--cl-primary);
+  --cl-accent-hover: var(--cl-primary-hover);
+  --cl-accent-soft: var(--cl-info-soft);
+  --cl-accent-border: color-mix(in srgb, var(--cl-primary) 28%, var(--cl-border));
+  --cl-shadow-card: var(--cl-shadow-surface);
+  --cl-font-display: var(--cl-font-ui);
 
   min-height: 100vh;
   background: var(--cl-page);
@@ -320,8 +359,8 @@ select {
 .creatorlab-premium-surface h2,
 .creatorlab-premium-surface h3 {
   color: var(--cl-text-strong) !important;
-  font-family: var(--cl-font-display);
-  font-weight: 500;
+  font-family: var(--cl-font-ui);
+  font-weight: 650;
   letter-spacing: -0.025em;
 }
 

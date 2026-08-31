@@ -1,0 +1,318 @@
+/* Stage 0.10I-B — CreatorLab token and chrome baseline.
+   Presentation only; all selectors remain scoped to CreatorLab. */
+
+.creatorlab-premium-surface {
+  background: var(--cl-bg);
+  color: var(--cl-text-primary);
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-body);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-ambient {
+  background: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-product-frame {
+  background: var(--cl-bg);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-main-column {
+  gap: var(--cl-space-6);
+}
+
+.creatorlab-premium-surface .creatorlab-workspace-topbar {
+  background: color-mix(in srgb, var(--cl-surface) 96%, transparent);
+  border-color: var(--cl-border);
+  box-shadow: var(--cl-shadow-subtle);
+}
+
+.creatorlab-premium-surface .creatorlab-brand-name {
+  color: var(--cl-text-primary);
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-card);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.creatorlab-premium-surface .creatorlab-project-name,
+.creatorlab-premium-surface .creatorlab-save-state,
+.creatorlab-premium-surface .creatorlab-readiness-copy > strong,
+.creatorlab-premium-surface .creatorlab-readiness-value,
+.creatorlab-premium-surface .creatorlab-step-copy span,
+.creatorlab-premium-surface .creatorlab-rail-kicker,
+.creatorlab-premium-surface .creatorlab-complete-badge,
+.creatorlab-premium-surface .creatorlab-language-toggle {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-project-name,
+.creatorlab-premium-surface .creatorlab-readiness-copy > strong {
+  color: var(--cl-text-secondary);
+}
+
+.creatorlab-premium-surface .creatorlab-save-state {
+  color: var(--cl-text-muted);
+}
+
+.creatorlab-premium-surface .creatorlab-save-state.is-saving {
+  color: var(--cl-info);
+}
+
+.creatorlab-premium-surface .creatorlab-save-state.is-saved {
+  color: var(--cl-success);
+}
+
+.creatorlab-premium-surface .creatorlab-save-state.is-error {
+  color: var(--cl-danger);
+}
+
+.creatorlab-premium-surface .creatorlab-readiness-block {
+  background: var(--cl-surface-muted);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-control);
+}
+
+.creatorlab-premium-surface .creatorlab-readiness-track {
+  background: color-mix(in srgb, var(--cl-border) 72%, var(--cl-surface));
+}
+
+.creatorlab-premium-surface .creatorlab-readiness-track > span {
+  background: var(--cl-primary);
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-rail {
+  background: var(--cl-surface-muted);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step {
+  min-height: 64px;
+  color: var(--cl-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step:hover:not(:disabled) {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="current"] {
+  color: var(--cl-primary);
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+  box-shadow: inset 3px 0 0 var(--cl-primary);
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="completed"] {
+  color: var(--cl-text-secondary);
+  background: transparent;
+  border-color: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="completed"] .creatorlab-step-number,
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="completed"] .creatorlab-step-check,
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="completed"] .creatorlab-complete-badge {
+  color: var(--cl-success);
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="available"],
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="future"] {
+  color: var(--cl-text-muted);
+  background: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="future"]:disabled {
+  color: var(--cl-text-muted);
+  opacity: 0.72;
+}
+
+.creatorlab-premium-surface .creatorlab-workflow-step[data-workflow-state="current"] .creatorlab-step-number {
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+  border-color: var(--cl-primary);
+}
+
+.creatorlab-premium-surface .creatorlab-topbar-tool-button,
+.creatorlab-premium-surface .creatorlab-button-secondary {
+  min-height: var(--cl-control-default);
+  padding-inline: var(--cl-space-3);
+  color: var(--cl-text-secondary);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-control);
+  box-shadow: var(--cl-shadow-subtle);
+  font-size: var(--cl-type-button);
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface .creatorlab-topbar-tool-button[data-creator-manual-save="true"] {
+  justify-content: center;
+  min-width: 84px;
+  color: var(--cl-text-secondary);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-primary-action,
+.creatorlab-premium-surface .creatorlab-publish-primary-action,
+.creatorlab-premium-surface .creatorlab-button-primary {
+  min-height: var(--cl-control-primary);
+  padding-inline: var(--cl-space-4);
+  color: var(--cl-surface) !important;
+  background: var(--cl-primary) !important;
+  border: 1px solid var(--cl-primary) !important;
+  border-radius: var(--cl-radius-control);
+  box-shadow: var(--cl-shadow-subtle) !important;
+  font-size: var(--cl-type-button);
+  font-weight: 680;
+}
+
+.creatorlab-premium-surface .creatorlab-primary-action:hover:not(:disabled),
+.creatorlab-premium-surface .creatorlab-publish-primary-action:hover:not(:disabled),
+.creatorlab-premium-surface .creatorlab-button-primary:hover:not(:disabled) {
+  background: var(--cl-primary-hover) !important;
+  border-color: var(--cl-primary-hover) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-button-ghost {
+  min-height: var(--cl-control-compact);
+  color: var(--cl-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--cl-radius-control);
+  font-size: var(--cl-type-button);
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface .creatorlab-button-destructive {
+  min-height: var(--cl-control-default);
+  color: var(--cl-danger);
+  background: var(--cl-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--cl-danger) 28%, var(--cl-border));
+  border-radius: var(--cl-radius-control);
+  font-size: var(--cl-type-button);
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface :where(
+  .creatorlab-primary-action,
+  .creatorlab-publish-primary-action,
+  .creatorlab-button-primary,
+  .creatorlab-button-secondary,
+  .creatorlab-button-ghost,
+  .creatorlab-button-destructive,
+  .creatorlab-topbar-tool-button
+):disabled {
+  color: var(--cl-text-muted) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: var(--cl-border) !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.creatorlab-premium-surface :where(
+  .creatorlab-primary-action,
+  .creatorlab-publish-primary-action,
+  .creatorlab-button-primary,
+  .creatorlab-button-secondary,
+  .creatorlab-button-ghost,
+  .creatorlab-button-destructive,
+  .creatorlab-topbar-tool-button
+)[aria-busy="true"],
+.creatorlab-premium-surface .is-loading {
+  min-width: var(--cl-control-primary);
+  cursor: wait;
+}
+
+.creatorlab-premium-surface .creatorlab-status,
+.creatorlab-premium-surface .creatorlab-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--cl-control-compact);
+  padding: var(--cl-space-1) var(--cl-space-2);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-pill);
+  font-size: var(--cl-type-meta);
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface :where(.creatorlab-status, .creatorlab-status-pill)[data-status="ready"],
+.creatorlab-premium-surface .creatorlab-status-pill.is-ready {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+}
+
+.creatorlab-premium-surface :where(.creatorlab-status, .creatorlab-status-pill)[data-status="in-progress"],
+.creatorlab-premium-surface .creatorlab-status-pill.is-in-progress {
+  color: var(--cl-info);
+  background: var(--cl-info-soft);
+}
+
+.creatorlab-premium-surface :where(.creatorlab-status, .creatorlab-status-pill)[data-status="review"],
+.creatorlab-premium-surface :where(.creatorlab-status, .creatorlab-status-pill)[data-status="action-required"],
+.creatorlab-premium-surface .creatorlab-status-pill.is-review,
+.creatorlab-premium-surface .creatorlab-status-pill.is-action-required {
+  color: var(--cl-warning);
+  background: var(--cl-warning-soft);
+}
+
+.creatorlab-premium-surface :where(.creatorlab-status, .creatorlab-status-pill)[data-status="blocked"],
+.creatorlab-premium-surface .creatorlab-status-pill.is-blocked {
+  color: var(--cl-danger);
+  background: var(--cl-danger-soft);
+}
+
+.creatorlab-premium-surface .creatorlab-surface-workspace {
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-surface-group {
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-surface-info,
+.creatorlab-premium-surface .creatorlab-surface-selected {
+  background: var(--cl-info-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-surface-alert {
+  background: var(--cl-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--cl-warning) 24%, var(--cl-border));
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface :where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--cl-primary) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--cl-info-soft) !important;
+}
+
+@media (max-width: 760px) {
+  .creatorlab-premium-surface .creatorlab-workspace-topbar {
+    padding: var(--cl-space-3);
+  }
+
+  .creatorlab-premium-surface .creatorlab-topbar-actions {
+    gap: var(--cl-space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-premium-surface :where(button, a, input, textarea, select, summary) {
+    transition: none !important;
+  }
+}

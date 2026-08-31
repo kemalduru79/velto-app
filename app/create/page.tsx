@@ -19370,33 +19370,6 @@ const generateSceneImage = async (
       <ActiveProductShell>
         {isCreatorLabFlow && (
           <style>{`
-.creatorlab-product-frame {
-  --cl-page: #f7f6f2;
-  --cl-surface: #fffdf9;
-  --cl-surface-raised: #ffffff;
-  --cl-surface-muted: #f5f4f0;
-  --cl-border: #e7e4de;
-  --cl-border-strong: #d8d4cc;
-  --cl-divider: #eeece7;
-  --cl-text-strong: #14233b;
-  --cl-text: #24344d;
-  --cl-muted: #667085;
-  --cl-soft: #7b8493;
-  --cl-disabled: #9ba2ad;
-  --cl-accent: #1769e0;
-  --cl-accent-hover: #1158c4;
-  --cl-accent-soft: #edf4ff;
-  --cl-accent-border: #c7daf8;
-  --cl-success: #18835b;
-  --cl-success-soft: #eef9f4;
-  --cl-warning: #b56a12;
-  --cl-warning-soft: #fff7e8;
-  --cl-danger: #b33a45;
-  --cl-danger-soft: #fff2f3;
-  --cl-font-display: Georgia, "Times New Roman", serif;
-  --cl-font-ui: Arial, Helvetica, sans-serif;
-  --cl-shadow-card: 0 8px 24px rgba(19, 36, 62, 0.055);
-}
 /* Velto Studio UX-R2 — product workspace shell
    The shell establishes the persistent workflow, project readiness and contextual AI areas.
    Existing product functions remain in the center canvas and are migrated step by step. */
@@ -27433,11 +27406,12 @@ const generateSceneImage = async (
 }
 
 @media (prefers-contrast: more) {
-  .creatorlab-product-frame {
-    --cl-border: #aaa49a;
-    --cl-border-strong: #777169;
-    --cl-muted: #485264;
-    --cl-soft: #566071;
+  .creatorlab-product-frame :where(button, a, input, textarea, select, summary) {
+    border-color: color-mix(in srgb, var(--cl-text-primary) 38%, var(--cl-surface));
+  }
+
+  .creatorlab-product-frame :where(p, small) {
+    color: var(--cl-text-secondary);
   }
 
   .creatorlab-product-frame :where(button, a, input, textarea, select, summary):focus-visible {

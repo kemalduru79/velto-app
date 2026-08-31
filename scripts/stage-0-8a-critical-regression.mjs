@@ -68,6 +68,7 @@ const tests = [
   "scripts/stage-0-10h-custom-upload-test.mjs",
   "scripts/stage-0-10h-production-publish-navigation-test.mjs",
   "scripts/stage-0-10h-publish-preflight-test.mjs",
+  "scripts/stage-0-10i-b-visual-system-test.mjs",
 ];
 
 for (const test of tests) {
