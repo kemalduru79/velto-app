@@ -94,8 +94,16 @@ function executionCandidates(decision: CreatorSceneProductionDecision) {
 export function estimateCreatorRecommendedVisualManifest(input: {
   scenes: CreatorRecommendedVisualScene[];
   decisions: CreatorSceneProductionDecision[];
-  targetSceneIds: number[];
+  targetSceneIds: readonly number[];
   qualityMode: CreatorQualityMode;
+  shouldPreserveExisting?: (
+    scene: CreatorRecommendedVisualScene,
+    decision: CreatorSceneProductionDecision,
+  ) => boolean;
+  allowFallback?: (
+    scene: CreatorRecommendedVisualScene,
+    decision: CreatorSceneProductionDecision,
+  ) => boolean;
 }) {
   const targetIds = new Set(input.targetSceneIds);
   const decisions = new Map(input.decisions.map((decision) => [decision.sceneId, decision]));
@@ -103,18 +111,22 @@ export function estimateCreatorRecommendedVisualManifest(input: {
   let videos = 0;
 
   for (const scene of input.scenes) {
-    if (!targetIds.has(scene.id) || hasCreatorUsableVisual(scene)) continue;
+    if (!targetIds.has(scene.id)) continue;
     const decision = decisions.get(scene.id);
     if (!decision) continue;
+    if (hasCreatorUsableVisual(scene) && (input.shouldPreserveExisting?.(scene, decision) ?? true)) continue;
     if (decision.selectedTreatment === "ai_video" && input.qualityMode !== "standard") {
       videos += 1;
     }
+    const fallbackAllowed = input.allowFallback?.(scene, decision) ?? true;
     if (
       decision.selectedTreatment === "ai_image" ||
       decision.selectedTreatment === "image_motion" ||
-      decision.selectedTreatment === "ai_video" ||
-      decision.selectedTreatment.startsWith("stock") ||
-      NON_GENERATIVE_TREATMENTS.has(decision.selectedTreatment)
+      (decision.selectedTreatment === "ai_video" && !scene.image) ||
+      (fallbackAllowed && (
+        decision.selectedTreatment.startsWith("stock") ||
+        NON_GENERATIVE_TREATMENTS.has(decision.selectedTreatment)
+      ))
     ) {
       // Stock/documentary routes may use the existing paid AI-image fallback.
       // Reserving admission here does not charge; only the invoked child route settles.
@@ -130,7 +142,7 @@ export async function executeCreatorRecommendedVisualBatch<
 >(input: {
   scenes: TScene[];
   decisions: CreatorSceneProductionDecision[];
-  targetSceneIds: number[];
+  targetSceneIds: readonly number[];
   qualityMode: CreatorQualityMode;
   acquireStock: (
     scene: TScene,
@@ -143,6 +155,8 @@ export async function executeCreatorRecommendedVisualBatch<
   isCancelled?: () => boolean;
   onSceneStart?: (scene: TScene, decision: CreatorSceneProductionDecision) => void;
   onSceneSettled?: (scene: TScene, outcome: CreatorRecommendedVisualOutcome) => void;
+  allowFallback?: (scene: TScene, decision: CreatorSceneProductionDecision) => boolean;
+  shouldPreserveExisting?: (scene: TScene, decision: CreatorSceneProductionDecision) => boolean;
 }) {
   const workingScenes = input.scenes.map((scene) => ({ ...scene } as TScene));
   const targetIds = new Set(input.targetSceneIds);
@@ -170,7 +184,7 @@ export async function executeCreatorRecommendedVisualBatch<
     }
 
     input.onSceneStart?.(scene, decision);
-    if (hasCreatorUsableVisual(scene)) {
+    if (hasCreatorUsableVisual(scene) && (input.shouldPreserveExisting?.(scene, decision) ?? true)) {
       const outcome: CreatorRecommendedVisualOutcome = {
         sceneId: scene.id,
         status: "preserved",
@@ -183,7 +197,10 @@ export async function executeCreatorRecommendedVisualBatch<
 
     try {
       let executedTreatment: CreatorProductionTreatment | null = null;
-      for (const treatment of executionCandidates(decision)) {
+      const candidates = input.allowFallback?.(scene, decision) === false
+        ? [decision.selectedTreatment]
+        : executionCandidates(decision);
+      for (const treatment of candidates) {
         if (treatment === "reuse_existing") continue;
         if (NON_GENERATIVE_TREATMENTS.has(treatment)) continue;
 

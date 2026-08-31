@@ -368,7 +368,9 @@ export default function CreatorEditor({
         onHistoryRemoved={onProjectHistoryRemoved}
       />
 
-      <CreatorStockPicker projectId={projectId} disabled={sceneOperationsDisabled} language={language} getAccessToken={getAccessToken} onUse={(asset) => onUseStockMedia(selectedScene.creatorSceneId!, asset)} />
+      {selectedScene.visualSourceMethod === "stock" && (
+        <CreatorStockPicker projectId={projectId} disabled={sceneOperationsDisabled} language={language} getAccessToken={getAccessToken} onUse={(asset) => onUseStockMedia(selectedScene.creatorSceneId!, asset)} />
+      )}
 
       {(selectedScene.assetHistory || []).length > 0 && (
         <details className="creatorlab-p2c-editor-disclosure" data-creator-media-history="true">

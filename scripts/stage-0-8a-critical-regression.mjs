@@ -58,6 +58,13 @@ const tests = [
   "scripts/stage-0-10h-production-setup-ux-test.mjs",
   "scripts/stage-0-10h-autofit-hardening-test.mjs",
   "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
+  "scripts/stage-0-10h-visual-source-selector-test.mjs",
+  "scripts/stage-0-10h-real-production-acceptance-test.mjs",
+  "scripts/stage-0-10h-countdown-bulk-ux-test.mjs",
+  "scripts/stage-0-10h-emergency-generation-scope-test.mjs",
+  "scripts/stage-0-10h-live-generation-status-test.mjs",
+  "scripts/stage-0-10h-scene-visual-cta-status-test.mjs",
+  "scripts/stage-0-10h-selected-scenes-toolbar-ux-test.mjs",
 ];
 
 for (const test of tests) {

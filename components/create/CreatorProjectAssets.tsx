@@ -70,7 +70,7 @@ export default function CreatorProjectAssets({
               : "Bu projede bulunan varlıkları yeniden kullanın. Medya temizliği doğrudan her sahnenin Görsel sekmesinden yönetilir."}
           </p>
           <p className="mt-1 text-xs font-medium text-emerald-700">
-            {language === "en" ? "No generation credits used" : "Üretim kredisi kullanılmaz"}
+            {language === "en" ? "No new generation" : "Yeni üretim yapılmaz"}
           </p>
         </div>
 

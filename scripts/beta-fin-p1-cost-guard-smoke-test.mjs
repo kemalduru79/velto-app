@@ -65,13 +65,11 @@ check("manifest estimator delegates every price to getOperationCreditCost", () =
   );
 });
 
-check("Cost Guard requires explicit positive confirmation and has no provider copy", () => {
-  assert.match(component, /Confirm & Start/);
-  assert.match(component, /onConfirm/);
-  assert.match(component, /onCancel/);
+check("pre-dispatch countdown replaces creator-facing credit confirmation", () => {
+  assert.doesNotMatch(page, /<CreatorCostGuard/);
+  assert.match(page, /finishVideoDispatchCountdown\(true\)/);
+  assert.match(page, /finishImageDispatchCountdown\(true\)/);
   assert.doesNotMatch(component, /OpenAI|ElevenLabs|Runway|provider/i);
-  assert.doesNotMatch(page, /finishVideoDispatchCountdown\(true\)/);
-  assert.doesNotMatch(page, /finishImageDispatchCountdown\(true\)/);
 });
 
 check("all five billable routes opt into the server protocol guard", () => {

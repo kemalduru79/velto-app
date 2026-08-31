@@ -18,6 +18,7 @@ export type CreatorEditorTimelineScene = {
     durationSec?: number; generationSignature?: string;
   }>;
   renderMode?: "video" | "image";
+  visualSourceMethod?: "recommended" | "stock" | "ai_image" | "ai_video" | "upload";
   clipInSec?: number;
   clipOutSec?: number;
   timing?: {

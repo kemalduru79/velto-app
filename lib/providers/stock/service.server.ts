@@ -56,6 +56,19 @@ export function assertPexelsMediaUrl(rawUrl: string) {
   return url.toString();
 }
 
+export async function acquireStockMediaBytes(input: {
+  url: string;
+  mediaType: StockMediaType;
+  fetchMedia?: typeof safeRemoteMediaFetch;
+}) {
+  const fetchMedia = input.fetchMedia || safeRemoteMediaFetch;
+  return fetchMedia({
+    rawUrl: assertPexelsMediaUrl(input.url),
+    kind: input.mediaType === "photo" ? "image" : "video",
+    maxBytes: input.mediaType === "photo" ? MAX_CREATOR_IMAGE_BYTES : MAX_CREATOR_VIDEO_BYTES,
+  });
+}
+
 export async function importStock(input: { userId: string; projectId: string; mediaType: StockMediaType; providerMediaId: string; renditionId: string }, provider = new PexelsStockProvider()) {
   const services = getPersistenceServices();
   const project = await services.projectRepository.getForOwner(input.projectId, input.userId);
@@ -89,8 +102,7 @@ export async function importStock(input: { userId: string; projectId: string; me
   try {
   const candidate = await provider.getMedia(input.mediaType, input.providerMediaId);
   const rendition = provider.resolveImportRendition(candidate, input.renditionId);
-  const trustedUrl = assertPexelsMediaUrl(rendition.url);
-  const media = await safeRemoteMediaFetch({ rawUrl: trustedUrl, kind: input.mediaType === "photo" ? "image" : "video", maxBytes: input.mediaType === "photo" ? MAX_CREATOR_IMAGE_BYTES : MAX_CREATOR_VIDEO_BYTES });
+  const media = await acquireStockMediaBytes({ url: rendition.url, mediaType: input.mediaType });
   const path = `creator/${input.userId}/stock/pexels/${input.projectId}/${input.providerMediaId}-${randomUUID()}.${media.extension}`;
   const uploaded = await services.objectStorage.uploadPublic({ bucket: input.mediaType === "photo" ? "images" : "videos", path, body: media.buffer, contentType: media.mimeType, cacheControl: "31536000", upsert: false });
   const metadata = createStockAssetMetadata({ candidate, renditionId: rendition.id, renditionWidth: rendition.width, renditionHeight: rendition.height, bytes: media.buffer.byteLength, projectId: input.projectId, reuseIdentity });

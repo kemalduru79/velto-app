@@ -128,7 +128,6 @@ const sceneProductionStatus = requireNeedles("components/create/CreatorSceneProd
 const page = requireNeedles("app/create/page.tsx", [
   "<CreatorProductionSetupSummary",
   "<CreatorEditor",
-  "<CreatorCostGuard",
   'creatorProductionSubstep === "setup"',
   'creatorProductionSubstep === "create_review"',
   "selectCreatorProductionSubstep",
@@ -164,7 +163,8 @@ const page = requireNeedles("app/create/page.tsx", [
   "<UserAccountMenu",
   'data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}',
   'activeSceneInspectorTab === "script" && index === 0',
-  '"Select scenes for batch actions"',
+  'data-creator-selected-scenes-toolbar="true"',
+  'creatorSelectedSceneIds.length',
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")',
   'setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")',
   "generateSelectedSceneVisuals()",
@@ -277,7 +277,10 @@ if (/choose\s+(?:an?\s+)?provider|provider\s+(?:choice|selection)|openai|replica
 }
 
 if (page && !page.includes("requestCreatorCostGuardConfirmation")) {
-  failures.push("CreatorCostGuard confirmation path is missing");
+  failures.push("internal operation admission path is missing");
+}
+if (page?.includes("<CreatorCostGuard")) {
+  failures.push("retired creator-facing credit confirmation is still rendered");
 }
 
 if (/storyverse/i.test(p2cCss)) {

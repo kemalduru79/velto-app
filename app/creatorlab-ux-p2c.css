@@ -1092,11 +1092,22 @@
   align-items: start;
 }
 
-.creatorlab-uxp2a-shell .creatorlab-p2c-production-workspace > .creatorlab-p2c-scene-operations {
+.creatorlab-uxp2a-shell .creatorlab-p2c-production-workspace > .creatorlab-p2c-scene-rail {
   position: sticky;
   top: 84px;
   grid-column: 1;
   grid-row: 1;
+  max-height: calc(100vh - 108px);
+  min-width: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-scene-rail > .creatorlab-p2c-batch-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-scene-rail > .creatorlab-p2c-scene-operations {
   max-height: calc(100vh - 108px);
 }
 
@@ -1567,7 +1578,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .creatorlab-uxp2a-shell .creatorlab-p2c-production-workspace > .creatorlab-p2c-scene-operations,
+  .creatorlab-uxp2a-shell .creatorlab-p2c-production-workspace > .creatorlab-p2c-scene-rail,
   .creatorlab-uxp2a-shell .creatorlab-p2c-workspace-batch,
   .creatorlab-uxp2a-shell .creatorlab-p2c-active-scene {
     position: static;
@@ -1631,6 +1642,33 @@
   border-top: 1px solid var(--cl-divider);
 }
 
+.creatorlab-uxp2a-shell .creatorlab-p2c-batch-toolbar-sticky {
+  position: sticky;
+  top: 8px;
+  z-index: 24;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cl-surface-elevated) 94%, transparent);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 8%);
+  backdrop-filter: blur(12px);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-countdown {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  color: var(--cl-text);
+  font-size: 0.72rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-countdown span {
+  flex: 1;
+  color: var(--cl-muted);
+}
+
 .creatorlab-uxp2a-shell .creatorlab-p2c-batch-empty,
 .creatorlab-uxp2a-shell .creatorlab-p2c-batch-selection {
   margin: 0;
@@ -1682,6 +1720,17 @@
   color: var(--cl-text-strong);
   background: var(--cl-surface-elevated);
   border-color: var(--cl-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-batch-mode-button[aria-pressed="true"] {
+  color: white;
+  background: var(--cl-primary);
+  border-color: var(--cl-primary);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2c-batch-action.is-secondary {
+  color: var(--cl-muted);
+  background: transparent;
 }
 
 .creatorlab-uxp2a-shell .creatorlab-p2c-batch-action {

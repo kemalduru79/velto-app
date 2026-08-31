@@ -6,6 +6,7 @@ import {
   CREATOR_MEDIA_CONNECTION_TIMEOUT_MS,
   CREATOR_MEDIA_TOTAL_TIMEOUT_MS,
 } from "@/lib/security/creatorMediaStoragePolicy";
+import { createPinnedDnsLookup } from "@/lib/security/pinnedDnsLookup";
 
 export type VerifiedMediaType =
   | "image/jpeg"
@@ -14,10 +15,31 @@ export type VerifiedMediaType =
   | "video/mp4"
   | "video/webm";
 
+export type SafeMediaFailureCategory =
+  | "unsafe_host"
+  | "dns_resolution_failed"
+  | "network_unreachable"
+  | "redirect_rejected"
+  | "remote_http_error"
+  | "invalid_content_type"
+  | "media_too_large";
+
+export type SafeMediaFailureDiagnostic = {
+  stage: "url_validation" | "dns_resolution" | "network" | "redirect_validation" | "response_validation";
+  hostname?: string;
+  addressFamily?: 4 | 6;
+  redirectCount?: number;
+  responseStatus?: number;
+  contentType?: string;
+  contentLength?: number;
+};
+
 export class SafeMediaError extends Error {
   constructor(
     public readonly status: 400 | 413 | 415 | 422 | 502 | 504,
     message: string,
+    public readonly category: SafeMediaFailureCategory = "network_unreachable",
+    public readonly diagnostic?: SafeMediaFailureDiagnostic,
   ) {
     super(message);
     this.name = "SafeMediaError";
@@ -84,12 +106,12 @@ export function isUnsafeNetworkAddress(address: string) {
 
 function parseSafeUrl(rawUrl: string) {
   let url: URL;
-  try { url = new URL(rawUrl); } catch { throw new SafeMediaError(400, "Media URL is invalid."); }
-  if (url.protocol !== "https:") throw new SafeMediaError(400, "Media URL must use HTTPS.");
-  if (url.username || url.password) throw new SafeMediaError(400, "Media URL credentials are not allowed.");
+  try { url = new URL(rawUrl); } catch { throw new SafeMediaError(400, "Media URL is invalid.", "unsafe_host", { stage: "url_validation" }); }
+  if (url.protocol !== "https:") throw new SafeMediaError(400, "Media URL must use HTTPS.", "unsafe_host", { stage: "url_validation", hostname: url.hostname });
+  if (url.username || url.password) throw new SafeMediaError(400, "Media URL credentials are not allowed.", "unsafe_host", { stage: "url_validation", hostname: url.hostname });
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
-    throw new SafeMediaError(400, "Media URL host is not allowed.");
+    throw new SafeMediaError(400, "Media URL host is not allowed.", "unsafe_host", { stage: "url_validation", hostname });
   }
   return url;
 }
@@ -99,11 +121,18 @@ async function resolveSafeAddress(hostname: string) {
   const records = literalFamily
     ? [{ address: hostname, family: literalFamily as 4 | 6 }]
     : await lookup(hostname, { all: true, verbatim: true }).catch(() => []);
-  if (!records.length) throw new SafeMediaError(502, "Remote media host could not be resolved.");
+  if (!records.length) throw new SafeMediaError(502, "Remote media host could not be resolved.", "dns_resolution_failed", { stage: "dns_resolution", hostname });
   if (records.some(({ address }) => isUnsafeNetworkAddress(address))) {
-    throw new SafeMediaError(400, "Media URL host is not allowed.");
+    throw new SafeMediaError(400, "Media URL host is not allowed.", "unsafe_host", { stage: "dns_resolution", hostname });
   }
-  return records[randomInt(records.length)];
+  // Container runtimes may resolve public CDNs to IPv6 even when their
+  // outbound network has no working IPv6 route. Prefer a verified public IPv4
+  // address when available instead of randomly selecting an unreachable AAAA
+  // record; retain IPv6 for IPv6-only hosts.
+  const routable = records.filter((record) => record.family === 4);
+  const candidates = routable.length > 0 ? routable : records;
+  const selected = candidates[randomInt(candidates.length)];
+  return { address: selected.address, family: selected.family as 4 | 6 };
 }
 
 async function resolveSafeAddressBeforeDeadline(hostname: string, deadline: number) {
@@ -142,10 +171,10 @@ export function verifyMediaBytes(buffer: Buffer, declaredType: string | undefine
   const verifiedType = detectMediaType(buffer);
   const normalized = normalizeDeclaredType(declaredType);
   if (!verifiedType || TYPE_DETAILS[verifiedType].kind !== kind || !(verifiedType in TYPE_DETAILS)) {
-    throw new SafeMediaError(415, "Media format is unsupported or could not be verified.");
+    throw new SafeMediaError(415, "Media format is unsupported or could not be verified.", "invalid_content_type", { stage: "response_validation", contentType: normalized });
   }
   if (normalized !== verifiedType && !(verifiedType === "image/jpeg" && normalized === "image/jpg")) {
-    throw new SafeMediaError(415, "Declared media type does not match its content.");
+    throw new SafeMediaError(415, "Declared media type does not match its content.", "invalid_content_type", { stage: "response_validation", contentType: normalized });
   }
   return { buffer, mimeType: verifiedType, extension: TYPE_DETAILS[verifiedType].extension };
 }
@@ -179,29 +208,29 @@ export async function safeRemoteMediaFetch({ rawUrl, kind, maxBytes, redirects =
       method: "GET", headers: { Accept: kind === "image" ? "image/jpeg,image/png,image/webp" : "video/mp4,video/webm", "User-Agent": "Velto-Media-Fetch/1.0" },
       agent: false,
       servername: url.hostname,
-      lookup: (_hostname, _options, callback) => callback(null, selected.address, selected.family),
+      lookup: createPinnedDnsLookup(selected),
     }, (response) => {
       const status = response.statusCode || 0;
       if ([301, 302, 303, 307, 308].includes(status)) {
         response.resume();
         clearTimeout(totalTimer);
-        if (redirects >= 3) return fail(new SafeMediaError(422, "Remote media redirect limit exceeded."));
+        if (redirects >= 3) return fail(new SafeMediaError(422, "Remote media redirect limit exceeded.", "redirect_rejected", { stage: "redirect_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects }));
         const location = response.headers.location;
-        if (!location) return fail(new SafeMediaError(502, "Remote media redirect is invalid."));
+        if (!location) return fail(new SafeMediaError(502, "Remote media redirect is invalid.", "redirect_rejected", { stage: "redirect_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status }));
         let next: URL;
-        try { next = new URL(location, url); } catch { return fail(new SafeMediaError(422, "Remote media redirect is invalid.")); }
+        try { next = new URL(location, url); } catch { return fail(new SafeMediaError(422, "Remote media redirect is invalid.", "redirect_rejected", { stage: "redirect_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status })); }
         settled = true;
         safeRemoteMediaFetch({ rawUrl: next.toString(), kind, maxBytes, redirects: redirects + 1, deadline }).then(resolve, reject);
         return;
       }
-      if (status < 200 || status >= 300) { response.resume(); clearTimeout(totalTimer); return fail(new SafeMediaError(502, "Remote media download failed.")); }
+      if (status < 200 || status >= 300) { response.resume(); clearTimeout(totalTimer); return fail(new SafeMediaError(502, "Remote media download failed.", "remote_http_error", { stage: "response_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status, contentType: normalizeDeclaredType(response.headers["content-type"]), contentLength: Number(response.headers["content-length"] || 0) || undefined })); }
       const length = Number(response.headers["content-length"] || 0);
-      if (Number.isFinite(length) && length > maxBytes) { response.destroy(); clearTimeout(totalTimer); return fail(new SafeMediaError(413, "Remote media exceeds the configured size limit.")); }
+      if (Number.isFinite(length) && length > maxBytes) { response.destroy(); clearTimeout(totalTimer); return fail(new SafeMediaError(413, "Remote media exceeds the configured size limit.", "media_too_large", { stage: "response_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status, contentType: normalizeDeclaredType(response.headers["content-type"]), contentLength: length })); }
       const chunks: Buffer[] = [];
       let total = 0;
       response.on("data", (chunk: Buffer) => {
         total += chunk.length;
-        if (total > maxBytes) { response.destroy(); clearTimeout(totalTimer); fail(new SafeMediaError(413, "Remote media exceeds the configured size limit.")); return; }
+        if (total > maxBytes) { response.destroy(); clearTimeout(totalTimer); fail(new SafeMediaError(413, "Remote media exceeds the configured size limit.", "media_too_large", { stage: "response_validation", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status, contentType: normalizeDeclaredType(response.headers["content-type"]), contentLength: total })); return; }
         chunks.push(chunk);
       });
       response.on("end", () => {
@@ -210,14 +239,14 @@ export async function safeRemoteMediaFetch({ rawUrl, kind, maxBytes, redirects =
         try { settled = true; resolve(verifyMediaBytes(Buffer.concat(chunks, total), response.headers["content-type"], kind)); }
         catch (error) { reject(error); }
       });
-      response.on("error", () => { clearTimeout(totalTimer); fail(new SafeMediaError(502, "Remote media download failed.")); });
+      response.on("error", () => { clearTimeout(totalTimer); fail(new SafeMediaError(502, "Remote media download failed.", "network_unreachable", { stage: "network", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects, responseStatus: status })); });
     });
     const totalTimer = setTimeout(() => request.destroy(new SafeMediaError(504, "Remote media fetch timed out.")), remainingMs);
     request.setTimeout(
       Math.min(CREATOR_MEDIA_CONNECTION_TIMEOUT_MS, remainingMs),
       () => request.destroy(new SafeMediaError(504, "Remote media connection timed out.")),
     );
-    request.on("error", (error) => { clearTimeout(totalTimer); fail(error instanceof SafeMediaError ? error : new SafeMediaError(502, "Remote media download failed.")); });
+    request.on("error", (error) => { clearTimeout(totalTimer); fail(error instanceof SafeMediaError ? error : new SafeMediaError(502, "Remote media download failed.", "network_unreachable", { stage: "network", hostname: url.hostname, addressFamily: selected.family, redirectCount: redirects })); });
     request.end();
   });
 }

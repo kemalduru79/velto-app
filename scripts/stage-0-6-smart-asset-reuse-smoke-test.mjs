@@ -53,7 +53,7 @@ check(/videoUrl: ""/.test(reuseBlock) && /videoGenerationSignature: undefined/.t
 check(!/audioUrl:|dialogueAudioUrl:|creatorSceneId:/.test(reuseBlock), "image reuse preserves voice currentness and stable scene identity");
 check(/data-cross-scene-video-reuse="deferred"/.test(component) && !/Use video|Videoyu kullan/.test(component), "cross-scene video safety guard exists");
 check(/getCreatorVideoState/.test(page) && /getCreatorNarrationAudioCurrentness/.test(page) && /getCreatorDialogueAudioCurrentness/.test(page), "existing video/audio currentness remains referenced");
-check(/No generation credits used/.test(component) && /Üretim kredisi kullanılmaz/.test(component), "zero-credit message is present");
+check(/No new generation/.test(component) && /Yeni üretim yapılmaz/.test(component), "zero-generation message is present");
 check(!/unsplash|pexels|pixabay|shutterstock|getty|storyblocks/i.test(helperSource + component), "no external stock provider introduced");
 check(!/supabase|create table|migration/i.test(helperSource + component), "no database or schema requirement introduced");
 check(

@@ -13,7 +13,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, code: "AUTH_REQUIRED", error: "A valid session is required." }, { status: 401 });
     if (error instanceof StockProviderError) return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });
-    if (error instanceof SafeMediaError) return NextResponse.json({ ok: false, code: "STOCK_DOWNLOAD_FAILED", error: error.message }, { status: error.status });
+    if (error instanceof SafeMediaError) {
+      console.error("CREATOR_STOCK_DOWNLOAD_FAILED", { category: error.category, ...error.diagnostic });
+      return NextResponse.json({ ok: false, code: "STOCK_DOWNLOAD_FAILED", error: "The selected stock media could not be downloaded safely. Try another result." }, { status: error.status });
+    }
     console.error("CREATOR_STOCK_IMPORT_FAILED", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ ok: false, code: "STOCK_IMPORT_FAILED", error: "Stock media could not be imported." }, { status: 500 });
   }

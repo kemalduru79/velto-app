@@ -42,14 +42,12 @@ import CreatorLabShell from "@/components/experience/CreatorLabShell";
 import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 import UserAccountMenu from "@/components/auth/UserAccountMenu";
 import CreatorOutcomeStart from "@/components/create/CreatorOutcomeStart";
-import CreatorCostGuard, {
-  type CreatorCostGuardRequest,
-} from "@/components/create/CreatorCostGuard";
 import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
 import type { CreatorProductionSubstep } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import CreatorStockPicker from "@/components/create/CreatorStockPicker";
 import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
 import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";
 import CreatorSceneProductionStatus, {
@@ -110,6 +108,25 @@ import {
   estimateCreatorRecommendedVisualManifest,
   hasCreatorUsableVisual,
 } from "@/lib/creator/recommendedVisualExecution";
+import {
+  applyCreatorVisualSourceOverride,
+  normalizeCreatorVisualSourceMethod,
+  persistedCreatorVisualSourceMethod,
+  type CreatorVisualSourceMethod,
+} from "@/lib/creator/visualSourceMethod";
+import {
+  assertCreatorVisualExecutionScope,
+  CreatorVisualGenerationScopeError,
+  resolveCreatorVisualGenerationScope,
+  type CreatorVisualGenerationMode,
+} from "@/lib/creator/visualGenerationScope";
+import {
+  getCreatorGeneratingSceneIds,
+  isCreatorSceneVisualActionBlocked,
+  isCreatorSceneVisualCountdown,
+  isCreatorSceneVisualGenerating,
+} from "@/lib/creator/visualGenerationStatus";
+import { creatorStageAfterSuccess } from "@/lib/creator/stageNavigation";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
@@ -351,6 +368,17 @@ type ImageDispatchCountdown = {
   sceneCount: number;
   secondsRemaining: number;
   totalSeconds: number;
+};
+
+type CreatorSceneVisualOperation = {
+  phase: "countdown" | "processing";
+  secondsRemaining: number;
+  mediaKind: "image" | "video";
+};
+
+type CreatorSceneVisualCountdownControl = {
+  timer: ReturnType<typeof setInterval>;
+  resolve: (proceed: boolean) => void;
 };
 
 const SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS = 5;
@@ -662,6 +690,12 @@ type CreatorSceneScriptDraft = {
   dialogue: string;
 };
 
+type CreatorSceneScriptFitFeedback = {
+  state: "accepted" | "extend_duration" | "split_recommended" | "rejected";
+  message: string;
+  suggestedDurationSec?: number;
+};
+
 type CreatorSceneInspectorTab = "script" | "visual" | "audio";
 
 type CreatorVoicePickerTarget =
@@ -687,6 +721,7 @@ type CreatorSceneAssetVersion = {
 
 type Scene = {
   renderMode?: "video" | "image";
+  visualSourceMethod?: CreatorVisualSourceMethod;
   projectContinuityMode?: CreatorProjectContinuityMode;
   continuityMode?: CreatorSceneContinuityMode;
   continuity?: CreatorSceneContinuityState;
@@ -3506,6 +3541,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const creatorVisualScenesRef = useRef<Scene[]>([]);
+
+  useEffect(() => {
+    creatorVisualScenesRef.current = scenes;
+  }, [scenes]);
 
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
@@ -3531,6 +3571,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorAssetCompareSelection, setCreatorAssetCompareSelection] = useState<Record<number, string[]>>({});
   const [creatorUndoStack, setCreatorUndoStack] = useState<CreatorUndoEntry[]>([]);
   const [sceneScriptFitLoadingId, setSceneScriptFitLoadingId] = useState<number | null>(null);
+  const [sceneScriptFitFeedback, setSceneScriptFitFeedback] = useState<Record<number, CreatorSceneScriptFitFeedback>>({});
   const [sceneLoadingId, setSceneLoadingId] = useState<number | null>(null);
 
   const [branchingSceneId, setBranchingSceneId] = useState<number | null>(null);
@@ -3548,6 +3589,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const [isBatchRendering, setIsBatchRendering] = useState(false);
   const [batchRenderItems, setBatchRenderItems] = useState<BatchRenderItem[]>([]);
+  const [activeVisualGenerationSceneIds, setActiveVisualGenerationSceneIds] = useState<readonly number[]>([]);
+  const [creatorSceneVisualOperations, setCreatorSceneVisualOperations] = useState<
+    Record<number, CreatorSceneVisualOperation>
+  >({});
+  const creatorSceneVisualOperationsRef = useRef(new Map<number, CreatorSceneVisualOperation>());
+  const creatorSceneVisualCountdownControlsRef = useRef(
+    new Map<number, CreatorSceneVisualCountdownControl>(),
+  );
   const [batchRenderStartedAt, setBatchRenderStartedAt] = useState<string>("");
   const [retryingSceneId, setRetryingSceneId] = useState<number | null>(null);
   // VELTO_CANCEL_P1 — provider-confirmed video job cancellation
@@ -3568,10 +3617,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useRef<ReturnType<typeof setInterval> | null>(null);
   const imageDispatchCountdownResolveRef =
     useRef<((proceed: boolean) => void) | null>(null);
-  const [creatorCostGuardRequest, setCreatorCostGuardRequest] = useState<
-    (CreatorCostGuardRequest & { operationId: string }) | null
-  >(null);
-  const creatorCostGuardResolveRef = useRef<((operationId: string | null) => void) | null>(null);
   const ambiguousCreatorOperationIdsRef = useRef(new Map<string, string>());
   const batchRenderCancelRef = useRef(false);
 
@@ -3602,32 +3647,25 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       imageDispatchCountdownResolveRef.current?.(false);
       imageDispatchCountdownResolveRef.current = null;
       imageDispatchCountdownRef.current = null;
-      creatorCostGuardResolveRef.current?.(null);
-      creatorCostGuardResolveRef.current = null;
+      for (const [sceneId, control] of creatorSceneVisualCountdownControlsRef.current) {
+        clearInterval(control.timer);
+        control.resolve(false);
+        creatorSceneVisualCountdownControlsRef.current.delete(sceneId);
+      }
+      creatorSceneVisualOperationsRef.current.clear();
     };
   }, []);
 
   const requestCreatorCostGuardConfirmation = (
-    request: CreatorCostGuardRequest,
+    request: { operationName: string; estimatedCredits: number; qualityLabel: string; summary?: string },
     operationKey?: string,
   ) => {
-    if (creatorCostGuardResolveRef.current) return Promise.resolve<string | null>(null);
+    void request;
     const operationId = operationKey
       ? ambiguousCreatorOperationIdsRef.current.get(operationKey) ||
         window.crypto.randomUUID()
       : window.crypto.randomUUID();
-    setCreatorCostGuardRequest({ ...request, operationId });
-    return new Promise<string | null>((resolve) => {
-      creatorCostGuardResolveRef.current = resolve;
-    });
-  };
-
-  const finishCreatorCostGuardConfirmation = (confirmed: boolean) => {
-    const pending = creatorCostGuardRequest;
-    const resolve = creatorCostGuardResolveRef.current;
-    creatorCostGuardResolveRef.current = null;
-    setCreatorCostGuardRequest(null);
-    resolve?.(confirmed && pending ? pending.operationId : null);
+    return Promise.resolve<string | null>(operationId);
   };
 
   const creatorCostGuardHeaders = (operationId: string) => ({
@@ -4319,6 +4357,23 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         updatedAt: new Date().toISOString(),
       }))
     );
+  };
+
+  const ensureBatchRenderItems = (nextScenes: Scene[]) => {
+    setBatchRenderItems((current) => {
+      const sceneIds = new Set(nextScenes.map((scene) => scene.id));
+      const retained = current.filter((item) => !sceneIds.has(item.sceneId));
+      return [
+        ...retained,
+        ...nextScenes.map((scene) => ({
+          sceneId: scene.id,
+          status: "pending" as const,
+          step: "waiting" as const,
+          message: "",
+          updatedAt: new Date().toISOString(),
+        })),
+      ];
+    });
   };
 
   const getBatchProgress = () => {
@@ -8421,6 +8476,30 @@ const generateSceneImage = async (
     setCreatorScenesRenderMode([sceneId], renderMode);
   };
 
+  const setCreatorScenesVisualSourceMethod = (
+    sceneIds: number[],
+    method: CreatorVisualSourceMethod,
+  ) => {
+    const selectedIds = new Set(sceneIds);
+    if (selectedIds.size === 0) return;
+    const persistedMethod = persistedCreatorVisualSourceMethod(method);
+    if (scenes.every((scene) =>
+      !selectedIds.has(scene.id) || scene.visualSourceMethod === persistedMethod
+    )) return;
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en" ? "Change visual source method" : "Görsel kaynak yöntemini değiştir",
+    );
+    setScenes((current) => current.map((scene) =>
+      selectedIds.has(scene.id)
+        ? { ...scene, visualSourceMethod: persistedMethod }
+        : scene,
+    ));
+    setError("");
+    setSaveMessage(uiLanguage === "en"
+      ? "Visual source updated. Existing media remains unchanged."
+      : "Görsel kaynağı güncellendi. Mevcut medya değişmeden kaldı.");
+  };
+
   const returnCreatorSceneToRecommendedOutput = (sceneId: number) => {
     const scene = scenes.find((item) => item.id === sceneId);
     if (!scene || (scene.renderMode !== "image" && scene.renderMode !== "video")) {
@@ -8475,6 +8554,74 @@ const generateSceneImage = async (
     }, 40);
   };
 
+  const setCreatorSceneVisualOperation = (
+    sceneId: number,
+    operation: CreatorSceneVisualOperation | null,
+  ) => {
+    if (operation) {
+      creatorSceneVisualOperationsRef.current.set(sceneId, operation);
+    } else {
+      creatorSceneVisualOperationsRef.current.delete(sceneId);
+    }
+    setCreatorSceneVisualOperations(Object.fromEntries(
+      creatorSceneVisualOperationsRef.current.entries(),
+    ));
+  };
+
+  const finishCreatorSceneVisualCountdown = (sceneId: number, proceed: boolean) => {
+    const control = creatorSceneVisualCountdownControlsRef.current.get(sceneId);
+    if (!control) return;
+    clearInterval(control.timer);
+    creatorSceneVisualCountdownControlsRef.current.delete(sceneId);
+    const current = creatorSceneVisualOperationsRef.current.get(sceneId);
+    setCreatorSceneVisualOperation(
+      sceneId,
+      proceed && current ? { ...current, phase: "processing", secondsRemaining: 0 } : null,
+    );
+    control.resolve(proceed);
+  };
+
+  const cancelCreatorSceneVisualCountdown = (sceneId: number) => {
+    if (!creatorSceneVisualCountdownControlsRef.current.has(sceneId)) return;
+    finishCreatorSceneVisualCountdown(sceneId, false);
+    setError("");
+    setSaveMessage(uiLanguage === "en"
+      ? `Scene ${sceneId} visual start cancelled before provider dispatch.`
+      : `Sahne ${sceneId} görsel başlangıcı servise gönderilmeden iptal edildi.`);
+  };
+
+  const startCreatorSceneVisualCountdown = async ({
+    sceneId,
+    seconds,
+    mediaKind,
+  }: {
+    sceneId: number;
+    seconds: number;
+    mediaKind: "image" | "video";
+  }) => {
+    if (creatorSceneVisualOperationsRef.current.has(sceneId)) return false;
+    setCreatorSceneVisualOperation(sceneId, {
+      phase: "countdown",
+      secondsRemaining: seconds,
+      mediaKind,
+    });
+    return new Promise<boolean>((resolve) => {
+      const timer = setInterval(() => {
+        const current = creatorSceneVisualOperationsRef.current.get(sceneId);
+        if (!current || current.phase !== "countdown") return;
+        if (current.secondsRemaining <= 1) {
+          finishCreatorSceneVisualCountdown(sceneId, true);
+          return;
+        }
+        setCreatorSceneVisualOperation(sceneId, {
+          ...current,
+          secondsRemaining: current.secondsRemaining - 1,
+        });
+      }, 1000);
+      creatorSceneVisualCountdownControlsRef.current.set(sceneId, { timer, resolve });
+    });
+  };
+
   const finishVideoDispatchCountdown = (proceed: boolean) => {
     if (videoDispatchCountdownTimerRef.current) {
       clearInterval(videoDispatchCountdownTimerRef.current);
@@ -8497,15 +8644,15 @@ const generateSceneImage = async (
     setSaveMessage(
       pending.scope === "batch"
         ? uiLanguage === "en"
-          ? "Batch video start cancelled before provider dispatch. No Velto video credit was used."
-          : "Toplu video başlangıcı servise gönderilmeden iptal edildi. Velto video kredisi kullanılmadı."
+          ? "Batch video start cancelled before provider dispatch."
+          : "Toplu video başlangıcı servise gönderilmeden iptal edildi."
         : uiLanguage === "en"
-          ? "Video start cancelled before provider dispatch. No Velto video credit was used."
-          : "Video başlangıcı servise gönderilmeden iptal edildi. Velto video kredisi kullanılmadı.",
+          ? "Video start cancelled before provider dispatch."
+          : "Video başlangıcı servise gönderilmeden iptal edildi.",
     );
   };
 
-  const startVideoDispatchCountdown = ({
+  const startVideoDispatchCountdown = async ({
     scope,
     sceneId = null,
     sceneCount = 1,
@@ -8518,10 +8665,28 @@ const generateSceneImage = async (
     seconds: number;
     operationKey?: string;
   }) => {
-    void seconds;
     const count = Math.max(1, sceneCount);
     const estimatedCredits = estimateCreatorOperationManifest({ videos: count }, creatorQualityMode).totalCredits;
     if (estimatedCredits <= 0) return Promise.resolve(window.crypto.randomUUID());
+    if (videoDispatchCountdownResolveRef.current) return null;
+    const initial: VideoDispatchCountdown = { scope, sceneId, sceneCount: count, secondsRemaining: seconds, totalSeconds: seconds };
+    videoDispatchCountdownRef.current = initial;
+    setVideoDispatchCountdown(initial);
+    const proceed = await new Promise<boolean>((resolve) => {
+      videoDispatchCountdownResolveRef.current = resolve;
+      videoDispatchCountdownTimerRef.current = setInterval(() => {
+        const current = videoDispatchCountdownRef.current;
+        if (!current) return;
+        if (current.secondsRemaining <= 1) {
+          finishVideoDispatchCountdown(true);
+          return;
+        }
+        const next = { ...current, secondsRemaining: current.secondsRemaining - 1 };
+        videoDispatchCountdownRef.current = next;
+        setVideoDispatchCountdown(next);
+      }, 1000);
+    });
+    if (!proceed) return null;
     return requestCreatorCostGuardConfirmation({
       operationName: uiLanguage === "en" ? (scope === "batch" ? "Create video blocks" : "Create video block") : (scope === "batch" ? "Video bloklarını üret" : "Video bloğu üret"),
       estimatedCredits,
@@ -8552,19 +8717,19 @@ const generateSceneImage = async (
     setSaveMessage(
       pending.scope === "batch"
         ? uiLanguage === "en"
-          ? "Batch image start cancelled before provider dispatch. No Velto image credit was used."
-          : "Toplu görsel başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı."
+          ? "Batch image start cancelled before provider dispatch."
+          : "Toplu görsel başlangıcı servise gönderilmeden iptal edildi."
         : pending.scope === "thumbnail"
           ? uiLanguage === "en"
-            ? "AI thumbnail start cancelled before provider dispatch. No Velto image credit was used."
-            : "AI thumbnail başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı."
+            ? "AI thumbnail start cancelled before provider dispatch."
+            : "AI thumbnail başlangıcı servise gönderilmeden iptal edildi."
           : uiLanguage === "en"
-            ? "Image start cancelled before provider dispatch. No Velto image credit was used."
-            : "Görsel başlangıcı servise gönderilmeden iptal edildi. Velto görsel kredisi kullanılmadı.",
+            ? "Image start cancelled before provider dispatch."
+            : "Görsel başlangıcı servise gönderilmeden iptal edildi.",
     );
   };
 
-  const startImageDispatchCountdown = ({
+  const startImageDispatchCountdown = async ({
     scope,
     sceneId = null,
     sceneCount = 1,
@@ -8577,10 +8742,28 @@ const generateSceneImage = async (
     seconds: number;
     operationKey?: string;
   }) => {
-    void seconds;
     const count = Math.max(1, sceneCount);
     const estimatedCredits = estimateCreatorOperationManifest({ images: count }, creatorQualityMode).totalCredits;
     if (estimatedCredits <= 0) return Promise.resolve(window.crypto.randomUUID());
+    if (imageDispatchCountdownResolveRef.current) return null;
+    const initial: ImageDispatchCountdown = { scope, sceneId, sceneCount: count, secondsRemaining: seconds, totalSeconds: seconds };
+    imageDispatchCountdownRef.current = initial;
+    setImageDispatchCountdown(initial);
+    const proceed = await new Promise<boolean>((resolve) => {
+      imageDispatchCountdownResolveRef.current = resolve;
+      imageDispatchCountdownTimerRef.current = setInterval(() => {
+        const current = imageDispatchCountdownRef.current;
+        if (!current) return;
+        if (current.secondsRemaining <= 1) {
+          finishImageDispatchCountdown(true);
+          return;
+        }
+        const next = { ...current, secondsRemaining: current.secondsRemaining - 1 };
+        imageDispatchCountdownRef.current = next;
+        setImageDispatchCountdown(next);
+      }, 1000);
+    });
+    if (!proceed) return null;
     return requestCreatorCostGuardConfirmation({
       operationName: uiLanguage === "en" ? (scope === "thumbnail" ? "Create AI thumbnail" : scope === "batch" ? "Create images" : "Create image") : (scope === "thumbnail" ? "AI thumbnail üret" : scope === "batch" ? "Görselleri üret" : "Görsel üret"),
       estimatedCredits,
@@ -9238,45 +9421,159 @@ const generateSceneImage = async (
     );
   };
 
-  const runCreatorRecommendedVisualGeneration = async (
-    targetSceneIds: number[],
-  ) => {
+  const runCreatorRecommendedVisualGeneration = async ({
+    mode,
+    sceneIds,
+  }: {
+    mode: CreatorVisualGenerationMode;
+    sceneIds: number[];
+  }) => {
+    let scopeAdmission;
+    try {
+      scopeAdmission = resolveCreatorVisualGenerationScope({
+        mode,
+        requestedSceneIds: sceneIds,
+        availableSceneIds: scenes.map((scene) => scene.id),
+      });
+      assertCreatorVisualExecutionScope({
+        admission: scopeAdmission,
+        executionSceneIds: scopeAdmission.sceneIds,
+      });
+    } catch (scopeError) {
+      if (scopeError instanceof CreatorVisualGenerationScopeError) {
+        setError(uiLanguage === "en"
+          ? "Visual generation was stopped because the requested scene scope was not safe."
+          : "İstenen sahne kapsamı güvenli olmadığı için görsel üretimi durduruldu.");
+        return false;
+      }
+      throw scopeError;
+    }
+    const scopedTargetSceneIds = scopeAdmission.sceneIds;
+    if (process.env.NODE_ENV === "development") {
+      console.info("CREATOR_VISUAL_SCOPE_ADMITTED", {
+        mode,
+        admittedSceneIds: scopedTargetSceneIds,
+      });
+    }
+    if (scenes.some((scene) =>
+      scopedTargetSceneIds.includes(scene.id) &&
+      normalizeCreatorVisualSourceMethod(scene.visualSourceMethod) === "upload"
+    )) {
+      setError(uiLanguage === "en"
+        ? "Uploaded-media scenes cannot enter automatic visual generation."
+        : "Yüklenen medya sahneleri otomatik görsel üretimine alınamaz.");
+      return false;
+    }
     const productionPlan = getCreatorProductionPlan(scenes);
+    const productionDecisionBySceneId = new Map(
+      productionPlan.map((decision) => [decision.sceneId, decision]),
+    );
+    const sourceMethodBySceneId = new Map(scenes.flatMap((scene) => {
+      const decision = productionDecisionBySceneId.get(scene.id);
+      return decision
+        ? [[scene.id, applyCreatorVisualSourceOverride({
+            scene,
+            decision,
+            qualityMode: creatorQualityMode,
+          })] as const]
+        : [];
+    }));
+    const blockedVideoScene = scenes.find((scene) =>
+      scopedTargetSceneIds.includes(scene.id) &&
+      normalizeCreatorVisualSourceMethod(scene.visualSourceMethod) === "ai_video" &&
+      creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic",
+    );
+    if (blockedVideoScene) {
+      setError(uiLanguage === "en"
+        ? "AI Video is unavailable for Standard quality. Choose Pro or Cinematic, or select another visual source."
+        : "AI Video Standart kalitede kullanılamaz. Pro veya Sinematik seç ya da başka bir görsel kaynağı kullan.");
+      return false;
+    }
+    const routedDecisions = productionPlan.map((decision) =>
+      sourceMethodBySceneId.get(decision.sceneId)?.decision || decision,
+    );
     const manifest = estimateCreatorRecommendedVisualManifest({
       scenes,
-      decisions: productionPlan,
-      targetSceneIds,
+      decisions: routedDecisions,
+      targetSceneIds: scopedTargetSceneIds,
       qualityMode: creatorQualityMode,
+      shouldPreserveExisting: (scene) =>
+        sourceMethodBySceneId.get(scene.id)?.preserveExisting ?? true,
+      allowFallback: (scene) =>
+        sourceMethodBySceneId.get(scene.id)?.method === "recommended",
     });
     const estimate = estimateCreatorOperationManifest(manifest, creatorQualityMode);
-    const batchOperationId = estimate.totalCredits > 0
-      ? (await requestCreatorCostGuardConfirmation({
-          operationName: uiLanguage === "en" ? "Generate recommended visuals" : "Önerilen görselleri üret",
-          estimatedCredits: estimate.totalCredits,
-          qualityLabel: getCreatorQualityModeLabel(),
-          summary: `${manifest.images} ${uiLanguage === "en" ? "image admissions" : "görsel işlemi"} · ${manifest.videos} video`,
-        })) || ""
-      : window.crypto.randomUUID();
-    if (!batchOperationId) return false;
+    assertCreatorVisualExecutionScope({
+      admission: scopeAdmission,
+      executionSceneIds: scopedTargetSceneIds,
+    });
+    const isBatchScope = mode !== "single";
+    let batchOperationId = "";
+    if (estimate.totalCredits <= 0) {
+      batchOperationId = window.crypto.randomUUID();
+    } else if (mode === "single") {
+      const sceneId = scopedTargetSceneIds[0];
+      const mediaKind = manifest.videos > 0 ? "video" : "image";
+      const proceeded = await startCreatorSceneVisualCountdown({
+        sceneId,
+        mediaKind,
+        seconds: mediaKind === "video"
+          ? SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS
+          : SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+      });
+      if (!proceeded) return false;
+      batchOperationId = (await requestCreatorCostGuardConfirmation({
+        operationName: uiLanguage === "en" ? "Create scene visual" : "Sahne görseli üret",
+        estimatedCredits: estimate.totalCredits,
+        qualityLabel: getCreatorQualityModeLabel(),
+        summary: `${uiLanguage === "en" ? "Scene" : "Sahne"} ${sceneId}`,
+      })) || "";
+    } else {
+      batchOperationId = ((manifest.videos > 0
+        ? await startVideoDispatchCountdown({
+            scope: "batch",
+            sceneCount: scopedTargetSceneIds.length,
+            seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS,
+          })
+        : await startImageDispatchCountdown({
+            scope: "batch",
+            sceneCount: scopedTargetSceneIds.length,
+            seconds: BATCH_IMAGE_DISPATCH_COUNTDOWN_SECONDS,
+          })) || "");
+    }
+    if (!batchOperationId) {
+      if (mode === "single") setCreatorSceneVisualOperation(scopedTargetSceneIds[0], null);
+      return false;
+    }
 
     setError("");
     setSaveMessage("");
     invalidateFinalVideoForProductionChange();
-    setIsBatchRendering(true);
+    if (isBatchScope) setIsBatchRendering(true);
+    setActiveVisualGenerationSceneIds((current) => Object.freeze(Array.from(
+      new Set([...current, ...scopedTargetSceneIds]),
+    )));
     setBatchRenderStartedAt(new Date().toISOString());
-    batchRenderCancelRef.current = false;
-    suspendAutosaveRef.current = true;
-    resetBatchRenderItems(scenes.filter((scene) => targetSceneIds.includes(scene.id)));
+    if (isBatchScope) {
+      batchRenderCancelRef.current = false;
+      suspendAutosaveRef.current = true;
+      resetBatchRenderItems(scenes.filter((scene) => scopedTargetSceneIds.includes(scene.id)));
+    } else {
+      ensureBatchRenderItems(scenes.filter((scene) => scopedTargetSceneIds.includes(scene.id)));
+    }
 
     try {
       const result = await executeCreatorRecommendedVisualBatch({
         scenes,
-        decisions: productionPlan,
-        targetSceneIds,
+        decisions: routedDecisions,
+        targetSceneIds: scopedTargetSceneIds,
         qualityMode: creatorQualityMode,
-        isCancelled: () => batchRenderCancelRef.current,
+        isCancelled: () => isBatchScope && batchRenderCancelRef.current,
         acquireStock: acquireAutomaticStockForScene,
         generateImage: async (scene) => {
+          if (process.env.NODE_ENV === "development") {
+            console.info("CREATOR_VISUAL_IMAGE_DISPATCH", { mode, sceneIds: [scene.id] });
+          }
           setRedrawLoadingId(scene.id);
           return generateSceneImage(scene, {
             skipDispatchCountdown: true,
@@ -9288,13 +9585,25 @@ const generateSceneImage = async (
             ),
           });
         },
-        generateVideo: (scene) => generateSceneVideoAndWait(
-          scene,
-          batchOperationId,
-          getCreatorBatchChildOperationKey("video", scene.id),
-        ),
+        generateVideo: (scene) => {
+          if (process.env.NODE_ENV === "development") {
+            console.info("CREATOR_VISUAL_VIDEO_DISPATCH", { mode, sceneIds: [scene.id] });
+          }
+          return generateSceneVideoAndWait(
+            scene,
+            batchOperationId,
+            getCreatorBatchChildOperationKey("video", scene.id),
+          );
+        },
         createHistoryId: (sceneId, kind) => createCreatorHistoryId(`stock-${kind}-${sceneId}`),
+        allowFallback: (scene) =>
+          sourceMethodBySceneId.get(scene.id)?.method === "recommended",
+        shouldPreserveExisting: (scene) =>
+          sourceMethodBySceneId.get(scene.id)?.preserveExisting ?? true,
         onSceneStart: (scene, decision) => {
+          if (process.env.NODE_ENV === "development") {
+            console.info("CREATOR_VISUAL_SCENE_PROCESSING", { mode, sceneIds: [scene.id] });
+          }
           updateBatchRenderItem(scene.id, {
             status: "processing",
             step: "route",
@@ -9317,20 +9626,39 @@ const generateSceneImage = async (
         },
       });
 
-      setScenes(result.scenes);
-      await persistProjectSnapshot(result.scenes);
+      const completedSceneById = new Map(
+        result.scenes
+          .filter((scene) => scopedTargetSceneIds.includes(scene.id))
+          .map((scene) => [scene.id, scene]),
+      );
+      const mergedScenes = isBatchScope
+        ? result.scenes
+        : creatorVisualScenesRef.current.map((scene) =>
+            completedSceneById.get(scene.id) || scene
+          );
+      creatorVisualScenesRef.current = mergedScenes;
+      setScenes(mergedScenes);
+      await persistProjectSnapshot(mergedScenes);
       const hasFailure = result.outcomes.some((outcome) => outcome.status === "failed");
-      if (batchRenderCancelRef.current) {
+      if (isBatchScope && batchRenderCancelRef.current) {
         setSaveMessage(uiLanguage === "en" ? "Visual generation stopped." : "Görsel üretimi durduruldu.");
       } else if (hasFailure) {
         setError(uiLanguage === "en" ? "Some recommended visuals could not be prepared." : "Bazı önerilen görseller hazırlanamadı.");
       } else {
         setSaveMessage(uiLanguage === "en" ? "Velto Recommended visuals are ready." : "Velto önerilen görseller hazır.");
       }
-      return !batchRenderCancelRef.current && !hasFailure;
+      return !(isBatchScope && batchRenderCancelRef.current) && !hasFailure;
     } finally {
-      suspendAutosaveRef.current = false;
-      setIsBatchRendering(false);
+      if (isBatchScope) {
+        suspendAutosaveRef.current = false;
+        setIsBatchRendering(false);
+      }
+      setActiveVisualGenerationSceneIds((current) => Object.freeze(
+        current.filter((sceneId) => !scopedTargetSceneIds.includes(sceneId)),
+      ));
+      if (mode === "single") {
+        setCreatorSceneVisualOperation(scopedTargetSceneIds[0], null);
+      }
       setRedrawLoadingId(null);
     }
   };
@@ -9351,9 +9679,13 @@ const generateSceneImage = async (
     }
 
     if (isCreatorLabFlow) {
-      await runCreatorRecommendedVisualGeneration(
-        scenes.filter((scene) => !hasCreatorUsableVisual(scene)).map((scene) => scene.id),
-      );
+      await runCreatorRecommendedVisualGeneration({
+        mode: "project",
+        sceneIds: scenes.filter((scene) => {
+          const method = normalizeCreatorVisualSourceMethod(scene.visualSourceMethod);
+          return method !== "upload" && (method !== "recommended" || !hasCreatorUsableVisual(scene));
+        }).map((scene) => scene.id),
+      });
       return;
     }
 
@@ -9471,7 +9803,10 @@ const generateSceneImage = async (
     );
     const selectedScenes = scenes.filter((scene) => selectedSceneIdSet.has(scene.id));
     const targetScenes = selectedScenes.filter((scene) =>
-      isCreatorLabFlow ? !hasCreatorUsableVisual(scene) : !scene.image,
+      isCreatorLabFlow
+        ? normalizeCreatorVisualSourceMethod(scene.visualSourceMethod) !== "upload" &&
+          (normalizeCreatorVisualSourceMethod(scene.visualSourceMethod) !== "recommended" || !hasCreatorUsableVisual(scene))
+        : !scene.image,
     );
 
     if (selectedScenes.length === 0) {
@@ -9498,7 +9833,10 @@ const generateSceneImage = async (
     }
 
     if (isCreatorLabFlow) {
-      return runCreatorRecommendedVisualGeneration(targetScenes.map((scene) => scene.id));
+      return runCreatorRecommendedVisualGeneration({
+        mode: "selected",
+        sceneIds: selectedScenes.map((scene) => scene.id),
+      });
     }
 
     let batchOperationId = "";
@@ -11535,6 +11873,9 @@ const generateSceneImage = async (
                   : scene.renderMode === "image"
                     ? "image"
                     : undefined,
+              visualSourceMethod: persistedCreatorVisualSourceMethod(
+                normalizeCreatorVisualSourceMethod(scene.visualSourceMethod),
+              ),
               timing: scene.timing || buildSceneTiming(0, 0),
             }))
           : []
@@ -13435,6 +13776,8 @@ const generateSceneImage = async (
       }
 
       setCreatorMentorResult(data.analysis as CreatorMentorResult);
+      setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "brief_completed"));
+      setCreatorBriefEditorOpen(false);
       setSaveMessage(
         uiLanguage === "en"
           ? "Creator mentor analysis is ready ✅"
@@ -13597,6 +13940,7 @@ const generateSceneImage = async (
       };
 
       setCreatorProductionPackage(nextPackage);
+      setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "strategy_approved"));
       setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
@@ -16187,8 +16531,7 @@ const generateSceneImage = async (
       }
 
       if (data.result !== "accepted") {
-        setSaveMessage(
-          data.result === "extend_duration"
+        const message = data.result === "extend_duration"
             ? uiLanguage === "en"
               ? `The original script was preserved. Consider extending this scene to ${Number(data.suggestedDurationSec || assessment.targetDurationSec).toFixed(1)} seconds.`
               : `Orijinal metin korundu. Bu sahneyi ${Number(data.suggestedDurationSec || assessment.targetDurationSec).toFixed(1)} saniyeye uzatmayı değerlendirin.`
@@ -16198,8 +16541,16 @@ const generateSceneImage = async (
                 : "Orijinal metin korundu. Anlamı ve tempoyu korumak için bu sahneyi bölün."
               : uiLanguage === "en"
                 ? "Autofit was rejected because the result did not preserve a healthy script fit. The original script was preserved."
-                : "Sonuç sağlıklı metin uyumunu korumadığı için Auto-fit reddedildi. Orijinal metin korundu.",
-        );
+                : "Sonuç sağlıklı metin uyumunu korumadığı için Auto-fit reddedildi. Orijinal metin korundu.";
+        setSceneScriptFitFeedback((current) => ({
+          ...current,
+          [sceneId]: {
+            state: data.result === "extend_duration" || data.result === "split_recommended" ? data.result : "rejected",
+            message,
+            ...(Number(data.suggestedDurationSec) > 0 ? { suggestedDurationSec: Number(data.suggestedDurationSec) } : {}),
+          },
+        }));
+        setSaveMessage(message);
         return;
       }
 
@@ -16227,6 +16578,15 @@ const generateSceneImage = async (
         [sceneId]: {
           narration: String(normalizedFitScene.narration || ""),
           dialogue: String(normalizedFitScene.dialogue || ""),
+        },
+      }));
+      setSceneScriptFitFeedback((current) => ({
+        ...current,
+        [sceneId]: {
+          state: "accepted",
+          message: uiLanguage === "en"
+            ? "Autofit applied. Review the updated narration and timing."
+            : "Auto-fit uygulandı. Güncellenen anlatımı ve zamanlamayı kontrol et.",
         },
       }));
       setSaveMessage(
@@ -17409,11 +17769,20 @@ const generateSceneImage = async (
   const creatorAllScenesSelected =
     scenes.length > 0 && creatorSelectedSceneIds.length === scenes.length;
   const creatorSelectedMissingVisualCount = scenes.filter(
-    (scene) => creatorSelectedSceneIdSet.has(scene.id) && !scene.image,
+    (scene) => creatorSelectedSceneIdSet.has(scene.id) && !hasCreatorUsableVisual(scene),
   ).length;
   const creatorSelectedMissingVoiceCount = scenes.filter(
     (scene) => creatorSelectedSceneIdSet.has(scene.id) && !getSceneVoiceStatus(scene),
   ).length;
+  const creatorSelectedVisualSourceMethods = Array.from(new Set(
+    scenes
+      .filter((scene) => creatorSelectedSceneIdSet.has(scene.id))
+      .map((scene) => normalizeCreatorVisualSourceMethod(scene.visualSourceMethod)),
+  ));
+  const creatorSelectedVisualSourceMethod = creatorSelectedVisualSourceMethods.length === 1
+    ? creatorSelectedVisualSourceMethods[0]
+    : null;
+  const creatorVisualDispatchCountdown = videoDispatchCountdown || imageDispatchCountdown;
   const creatorRoutedMotionSceneIds = getCreatorRoutedVideoSceneIds(scenes);
   const creatorRoutedMotionSceneIdSet = new Set(creatorRoutedMotionSceneIds);
   const creatorRecommendedMotionSceneIdSet = new Set(
@@ -17441,6 +17810,22 @@ const generateSceneImage = async (
     !creatorMotionRequired ||
     creatorRoutedMotionSceneIds.length === 0 ||
     creatorMotionReadyCount >= creatorRoutedMotionSceneIds.length;
+  const creatorProcessingVisualSceneIds = batchRenderItems
+    .filter((item) => item.status === "processing")
+    .map((item) => item.sceneId);
+  const creatorSceneVisualCountdownSceneIds = Object.entries(creatorSceneVisualOperations)
+    .filter(([, operation]) => operation.phase === "countdown")
+    .map(([sceneId]) => Number(sceneId));
+  const creatorVisualGenerationPhase = imageDispatchCountdown || videoDispatchCountdown
+    ? "countdown" as const
+    : activeVisualGenerationSceneIds.length > 0
+      ? "processing" as const
+      : "idle" as const;
+  const creatorGeneratingVisualSceneIds = getCreatorGeneratingSceneIds({
+    phase: creatorVisualGenerationPhase,
+    admittedSceneIds: activeVisualGenerationSceneIds,
+    processingSceneIds: creatorProcessingVisualSceneIds,
+  });
   const creatorSceneProductionSummaries = scenes.map((scene, index) => {
     const productionDecision = creatorProductionDecisionBySceneId.get(scene.id);
     const sceneDraft = sceneScriptDrafts[scene.id] || {
@@ -17468,15 +17853,19 @@ const generateSceneImage = async (
       continuityAudit,
       uiLanguage === "en" ? "en" : "tr",
     );
+    const sceneVisualGenerating = isCreatorSceneVisualGenerating({
+      sceneId: scene.id,
+      phase: creatorVisualGenerationPhase,
+      admittedSceneIds: activeVisualGenerationSceneIds,
+      processingSceneIds: creatorProcessingVisualSceneIds,
+    });
     const generating =
       redrawLoadingId === scene.id ||
       loadingAudioSceneId === scene.id ||
       loadingDialogueSceneId === scene.id ||
       scene.videoStatus === "processing" ||
       scene.videoStatus === "delayed" ||
-      (isBatchRendering && creatorSelectedSceneIdSet.has(scene.id)) ||
-      (imageDispatchCountdown?.scope === "scene" && imageDispatchCountdown.sceneId === scene.id) ||
-      (videoDispatchCountdown?.scope === "scene" && videoDispatchCountdown.sceneId === scene.id);
+      sceneVisualGenerating;
     const status = deriveCreatorSceneTriageStatus({
       generating,
       failed: scene.videoStatus === "error",
@@ -29031,13 +29420,9 @@ const generateSceneImage = async (
                     <label>{ui.creatorQualityTitle}</label>
                     <p>
                       {uiLanguage === "en"
-                        ? "One quality and credit decision controls the whole project. Provider routing remains internal."
-                        : "Tek kalite ve kredi kararı tüm projeyi yönetir. Sağlayıcı yönlendirmesi sistem içinde kalır."}
+                        ? "One quality decision controls the whole project. Provider routing remains internal."
+                        : "Tek kalite kararı tüm projeyi yönetir. Sağlayıcı yönlendirmesi sistem içinde kalır."}
                     </p>
-                  </div>
-                  <div className="creatorlab-credit-profile">
-                    <span>{ui.creditProfile}</span>
-                    <strong>{getCreatorQualityCreditTier()}</strong>
                   </div>
                 </div>
                 <div className="creatorlab-quality-options">
@@ -29057,22 +29442,15 @@ const generateSceneImage = async (
                     );
                   })}
                 </div>
-                {(() => {
-                  const estimate = getCreatorQualityEstimate();
-                  return (
+                {(() => (
                     <div className="creatorlab-quality-summary">
-                      <div className="creatorlab-quality-metric">
-                        <span>{uiLanguage === "en" ? "Projected policy estimate" : "Politikaya dayalı öngörü"}</span>
-                        <strong>{estimate.estimatedCredits} {uiLanguage === "en" ? "credits" : "kredi"}</strong>
-                      </div>
                       <div className="creatorlab-quality-metric">
                         <span>{uiLanguage === "en" ? "Selected quality" : "Seçilen kalite"}</span>
                         <strong>{getCreatorQualityModeLabel()}</strong>
                       </div>
                       <p>{getCreatorQualityModeGuidance()}</p>
                     </div>
-                  );
-                })()}
+                ))()}
               </div>
 
               <div className="creatorlab-brief-strategy-note">
@@ -30146,16 +30524,16 @@ const generateSceneImage = async (
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <strong>
-                        {uiLanguage === "en" ? "Voice credit estimate" : "Ses kredi tahmini"}
+                        {uiLanguage === "en" ? "Voice generation" : "Ses üretimi"}
                       </strong>
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-violet-800">
-                        {getCreatorVoiceCreditEstimate(scenes).totalCredits} {uiLanguage === "en" ? "credits" : "kredi"}
+                        {getCreatorVoiceCreditEstimate(scenes).totalTracks} {uiLanguage === "en" ? "missing" : "eksik"}
                       </span>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-violet-800">
                       {uiLanguage === "en"
-                        ? `${getCreatorVoiceCreditEstimate(scenes).totalTracks} missing voice track(s). Credits are charged only when generation starts.`
-                        : `${getCreatorVoiceCreditEstimate(scenes).totalTracks} eksik ses kaydı var. Kredi yalnızca üretim başladığında kullanılır.`}
+                        ? `${getCreatorVoiceCreditEstimate(scenes).totalTracks} missing voice track(s).`
+                        : `${getCreatorVoiceCreditEstimate(scenes).totalTracks} eksik ses kaydı var.`}
                     </p>
                   </div>
 
@@ -30925,7 +31303,88 @@ const generateSceneImage = async (
                   />
                 )}
 
-                <section id="creatorlab-production-storyboard" className="creatorlab-production-storyboard creatorlab-p2c-production-workspace">
+                <section
+                  id="creatorlab-production-storyboard"
+                  className="creatorlab-production-storyboard creatorlab-p2c-production-workspace"
+                  data-admitted-visual-scene-ids={activeVisualGenerationSceneIds.join(",")}
+                  data-generating-visual-scene-ids={creatorGeneratingVisualSceneIds.join(",")}
+                >
+                  <div className="creatorlab-p2c-scene-rail">
+                  {(creatorSelectedSceneIds.length > 0 || creatorVisualDispatchCountdown) && (
+                    <div
+                      className="creatorlab-p2c-batch-toolbar creatorlab-p2c-batch-toolbar-sticky"
+                      data-creator-selected-scenes-toolbar="true"
+                      data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}
+                    >
+                      {creatorVisualDispatchCountdown ? (
+                        <div className="creatorlab-p2c-countdown" role="status" aria-live="assertive">
+                          <strong>
+                            {creatorVisualDispatchCountdown.scope === "batch"
+                              ? `${creatorVisualDispatchCountdown.sceneCount} ${uiLanguage === "en" ? "scenes selected" : "sahne seçili"} · `
+                              : ""}
+                            {uiLanguage === "en" ? "Starting in" : "Başlıyor"} {creatorVisualDispatchCountdown.secondsRemaining}s
+                          </strong>
+                          <span>{uiLanguage === "en" ? "No generation request has been dispatched." : "Henüz üretim talebi gönderilmedi."}</span>
+                          <button
+                            type="button"
+                            onClick={videoDispatchCountdown ? cancelPendingVideoDispatch : cancelPendingImageDispatch}
+                            className="creatorlab-p2c-batch-action is-cancel"
+                          >
+                            {uiLanguage === "en" ? "Cancel" : "İptal"}
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="creatorlab-p2c-batch-selection" aria-live="polite">
+                            <strong>{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "scenes selected" : "sahne seçili"}
+                            <span>{` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals" : "görsel"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}</span>
+                          </div>
+                          <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Visual source" : "Görsel kaynağı"}>
+                            <span>{uiLanguage === "en" ? "Source" : "Kaynak"}</span>
+                            <div className="creatorlab-p2c-batch-segmented">
+                              {([
+                                ["recommended", uiLanguage === "en" ? "Velto Recommended" : "Velto Önerilen"],
+                                ["stock", uiLanguage === "en" ? "Stock" : "Stok"],
+                                ["ai_image", uiLanguage === "en" ? "AI Image" : "AI Görsel"],
+                                ["ai_video", "AI Video"],
+                              ] as const).map(([method, label]) => (
+                                <button
+                                  key={method}
+                                  type="button"
+                                  aria-pressed={creatorSelectedVisualSourceMethod === method}
+                                  onClick={() => setCreatorScenesVisualSourceMethod(creatorSelectedSceneIds, method)}
+                                  disabled={method === "ai_video" && creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic"}
+                                  className="creatorlab-p2c-batch-mode-button"
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {creatorSelectedVisualSourceMethod === "stock" && (
+                            <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Stock type" : "Stok türü"}>
+                              <span>{uiLanguage === "en" ? "Stock type" : "Stok türü"}</span>
+                              <div className="creatorlab-p2c-batch-segmented">
+                                <button type="button" onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")} className="creatorlab-p2c-batch-mode-button">{uiLanguage === "en" ? "Photos" : "Fotoğraflar"}</button>
+                                <button type="button" onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")} className="creatorlab-p2c-batch-mode-button">{uiLanguage === "en" ? "Videos" : "Videolar"}</button>
+                              </div>
+                            </div>
+                          )}
+                          <div className="creatorlab-p2c-batch-actions">
+                            <button type="button" onClick={() => void generateSelectedSceneVisuals()} disabled={isBatchRendering || creatorMediaPreflightLoading} className="creatorlab-p2c-batch-action">
+                              {uiLanguage === "en" ? "Generate Visuals" : "Görselleri Üret"}
+                            </button>
+                            <button type="button" onClick={() => void prepareSelectedSceneAudio()} disabled={isPreparingAudio || creatorMediaPreflightLoading} className="creatorlab-p2c-batch-action">
+                              {isPreparingAudio ? (uiLanguage === "en" ? "Preparing voice..." : "Ses hazırlanıyor...") : (uiLanguage === "en" ? "Generate Voice" : "Ses Üret")}
+                            </button>
+                            <button type="button" onClick={() => setCreatorSelectedSceneIds([])} className="creatorlab-p2c-batch-action is-secondary">
+                              {uiLanguage === "en" ? "Clear selection" : "Seçimi temizle"}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <CreatorSceneProductionStatus
                     scenes={creatorSceneProductionSummaries}
                     focusedSceneId={creatorFocusedSceneId}
@@ -30944,134 +31403,12 @@ const generateSceneImage = async (
                       </button>
                     ) : undefined}
                   />
-
-                  <div className="creatorlab-p2c-workspace-batch border-y border-slate-200 py-3 md:py-4">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={undoLastCreatorChange}
-                          disabled={creatorUndoStack.length === 0}
-                          title={
-                            creatorUndoStack.length > 0
-                              ? creatorUndoStack[creatorUndoStack.length - 1]?.label
-                              : uiLanguage === "en" ? "No reversible change yet" : "Henüz geri alınabilir değişiklik yok"
-                          }
-                          className="min-h-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {uiLanguage === "en" ? "Undo" : "Geri al"}
-                          {creatorUndoStack.length > 0 ? ` · ${creatorUndoStack.length}` : ""}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCreatorSelectedSceneIds(
-                              creatorAllScenesSelected ? [] : scenes.map((scene) => scene.id),
-                            )
-                          }
-                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          {creatorAllScenesSelected
-                            ? uiLanguage === "en" ? "Clear selection" : "Seçimi temizle"
-                            : uiLanguage === "en" ? "Select all" : "Tümünü seç"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreatorScenesRenderMode(scenes.map((scene) => scene.id), "image")}
-                          className="min-h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-                        >
-                          {uiLanguage === "en" ? "Set all to Image" : "Tümünü Görsel yap"}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      className="creatorlab-p2c-batch-toolbar"
-                      data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}
-                    >
-                      {creatorSelectedSceneIds.length === 0 ? (
-                        <p className="creatorlab-p2c-batch-empty" aria-live="polite">
-                          {uiLanguage === "en" ? "Select scenes for batch actions" : "Toplu işlemler için sahneleri seçin"}
-                        </p>
-                      ) : (
-                        <>
-                          <div className="creatorlab-p2c-batch-selection" aria-live="polite">
-                            <strong>{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "selected" : "seçili"}
-                            <span>
-                              {` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals missing" : "görsel eksik"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}
-                            </span>
-                          </div>
-                          <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Output mode" : "Çıktı modu"}>
-                            <span>{uiLanguage === "en" ? "Output" : "Çıktı"}</span>
-                            <div className="creatorlab-p2c-batch-segmented">
-                        <button
-                          type="button"
-                          onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")}
-                          className="creatorlab-p2c-batch-mode-button"
-                        >
-                          {uiLanguage === "en" ? "Image" : "Görsel"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")}
-                          className="creatorlab-p2c-batch-mode-button"
-                        >
-                          Video
-                        </button>
-                            </div>
-                          </div>
-                          <div className="creatorlab-p2c-batch-actions">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (imageDispatchCountdown?.scope === "batch") {
-                              cancelPendingImageDispatch();
-                            } else {
-                              void generateSelectedSceneVisuals();
-                            }
-                          }}
-                          disabled={
-                            imageDispatchCountdown?.scope !== "batch" &&
-                            (creatorSelectedSceneIds.length === 0 ||
-                              isBatchRendering ||
-                              creatorMediaPreflightLoading ||
-                              Boolean(imageDispatchCountdown) ||
-                              Boolean(videoDispatchCountdown))
-                          }
-                          className={`creatorlab-p2c-batch-action ${
-                            imageDispatchCountdown?.scope === "batch"
-                              ? "is-cancel"
-                              : ""
-                          }`}
-                        >
-                          {imageDispatchCountdown?.scope === "batch"
-                            ? uiLanguage === "en"
-                              ? `Cancel image start · ${imageDispatchCountdown.secondsRemaining}s`
-                              : `Görsel başlangıcını iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
-                            : isBatchRendering
-                              ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
-                              : uiLanguage === "en" ? "Generate visuals" : "Görselleri üret"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void prepareSelectedSceneAudio()}
-                          disabled={creatorSelectedSceneIds.length === 0 || isPreparingAudio || creatorMediaPreflightLoading}
-                          className="creatorlab-p2c-batch-action"
-                        >
-                          {isPreparingAudio
-                            ? uiLanguage === "en" ? "Preparing voice..." : "Ses hazırlanıyor..."
-                            : uiLanguage === "en" ? "Generate voice" : "Ses üret"}
-                        </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
                   </div>
 
                   <div className="creatorlab-p2c-active-scene space-y-3">
                     {scenes.filter((scene) => scene.id === creatorFocusedSceneId).map((scene) => {
                       const index = scenes.findIndex((item) => item.id === scene.id);
-                      const visualReady = Boolean(scene.image);
+                      const visualReady = hasCreatorUsableVisual(scene);
                       const voiceReady = getSceneVoiceStatus(scene);
                       const motionRouted = creatorRoutedMotionSceneIdSet.has(scene.id);
                       const motionReady =
@@ -31088,10 +31425,17 @@ const generateSceneImage = async (
                       const veltoRecommendedOutputMode = outputState.recommendedOutput;
                       const sceneOutputMode = outputState.effectiveOutput;
                       const sceneOutputIsUserChoice = outputState.isUserOverride;
+                      const sceneVisualSourceMethod = normalizeCreatorVisualSourceMethod(
+                        scene.visualSourceMethod,
+                      );
+                      const sceneExplicitAiVideoBlocked =
+                        sceneVisualSourceMethod === "ai_video" &&
+                        creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic";
                       const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
                         narration: scene.narration || "",
                         dialogue: scene.dialogue || "",
                       };
+                      const sceneFitFeedback = sceneScriptFitFeedback[scene.id];
                       const sceneDraftHealth = assessCreatorSceneScriptDraft({
                         scene,
                         draft: sceneScriptDraft,
@@ -31146,9 +31490,24 @@ const generateSceneImage = async (
                       const sceneVideoDispatchCountdownActive =
                         videoDispatchCountdown?.scope === "scene" &&
                         videoDispatchCountdown.sceneId === scene.id;
-                      const sceneImageDispatchCountdownActive =
-                        imageDispatchCountdown?.scope === "scene" &&
-                        imageDispatchCountdown.sceneId === scene.id;
+                      const creatorSceneVisualOperation = creatorSceneVisualOperations[scene.id];
+                      const sceneVisualCountdownActive = isCreatorSceneVisualCountdown({
+                        sceneId: scene.id,
+                        countdownSceneIds: creatorSceneVisualCountdownSceneIds,
+                      });
+                      const sceneVisualGenerating = isCreatorSceneVisualGenerating({
+                        sceneId: scene.id,
+                        phase: creatorVisualGenerationPhase,
+                        admittedSceneIds: activeVisualGenerationSceneIds,
+                        processingSceneIds: creatorProcessingVisualSceneIds,
+                      });
+                      const sceneVisualActionBlocked = isCreatorSceneVisualActionBlocked({
+                        sceneId: scene.id,
+                        countdownSceneIds: creatorSceneVisualCountdownSceneIds,
+                        phase: creatorVisualGenerationPhase,
+                        admittedSceneIds: activeVisualGenerationSceneIds,
+                        processingSceneIds: creatorProcessingVisualSceneIds,
+                      });
                       const sceneProductionReadyCount = [
                         sceneDraftHealth.status === "ready",
                         visualReady,
@@ -31220,8 +31579,10 @@ const generateSceneImage = async (
                         sceneDraftHealth.status === "ready" &&
                         (!visualReady || !voiceReady || (motionRouted && !motionReady));
                       const sceneAttentionSummary =
-                        scene.videoStatus === "processing" || scene.videoStatus === "delayed"
-                          ? uiLanguage === "en" ? "Video generation is in progress." : "Video üretimi devam ediyor."
+                        sceneVisualGenerating
+                          ? uiLanguage === "en" ? "Visual generation is in progress." : "Görsel üretimi devam ediyor."
+                          : scene.videoStatus === "processing" || scene.videoStatus === "delayed"
+                            ? uiLanguage === "en" ? "Video generation is in progress." : "Video üretimi devam ediyor."
                           : motionFailed
                             ? uiLanguage === "en" ? "Video generation failed and can be retried." : "Video üretimi başarısız oldu ve yeniden denenebilir."
                             : sceneDraftHealth.status !== "ready"
@@ -31234,13 +31595,20 @@ const generateSceneImage = async (
                                     ? uiLanguage === "en" ? "The scene image is ready for video generation." : "Sahne görseli video üretimine hazır."
                                     : uiLanguage === "en" ? "All required scene assets are ready for review." : "Gerekli tüm sahne varlıkları kontrole hazır.";
                       const runCreatorScenePrimaryAction = () => {
+                        if (sceneVisualCountdownActive) {
+                          cancelCreatorSceneVisualCountdown(scene.id);
+                          return;
+                        }
                         setCreatorSceneInspectorTabs((current) => ({
                           ...current,
                           [scene.id]: scenePrimaryTab,
                         }));
                         if (sceneDraftHealth.status !== "ready") return;
                         if (!visualReady) {
-                          void redrawSceneImage(scene);
+                          void runCreatorRecommendedVisualGeneration({
+                            mode: "single",
+                            sceneIds: [scene.id],
+                          });
                           return;
                         }
                         if (!voiceReady) {
@@ -31320,24 +31688,30 @@ const generateSceneImage = async (
                                 </span>
                                 <strong>{sceneAttentionSummary}</strong>
                                 {scenePrimaryActionUsesCredits && (
-                                  <small>{uiLanguage === "en" ? "Uses credits · confirmation before generation" : "Kredi kullanır · üretimden önce onaylanır"}</small>
+                                  <small>{uiLanguage === "en" ? "Generation starts after a short cancel window" : "Üretim kısa bir iptal süresinden sonra başlar"}</small>
                                 )}
                               </div>
                               <button
                                 type="button"
                                 onClick={runCreatorScenePrimaryAction}
                                 disabled={
+                                  sceneVisualGenerating ||
                                   scene.videoStatus === "processing" ||
                                   scene.videoStatus === "delayed" ||
                                   redrawLoadingId === scene.id ||
                                   loadingAudioSceneId === scene.id ||
                                   loadingDialogueSceneId === scene.id ||
+                                  isBatchRendering ||
                                   creatorMediaPreflightLoading ||
                                   Boolean(imageDispatchCountdown) ||
                                   Boolean(videoDispatchCountdown)
                                 }
                               >
-                                {scene.videoStatus === "processing" || scene.videoStatus === "delayed"
+                                {sceneVisualCountdownActive
+                                  ? uiLanguage === "en"
+                                    ? `Cancel · ${creatorSceneVisualOperation?.secondsRemaining}s`
+                                    : `İptal · ${creatorSceneVisualOperation?.secondsRemaining} sn`
+                                  : sceneVisualGenerating || scene.videoStatus === "processing" || scene.videoStatus === "delayed"
                                   ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
                                   : scenePrimaryActionLabel}
                               </button>
@@ -31708,6 +32082,45 @@ const generateSceneImage = async (
                                       </button>
                                     </div>
 
+                                    {sceneFitFeedback && (
+                                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950" role="status" aria-live="polite">
+                                        <strong className="block">
+                                          {sceneFitFeedback.state === "split_recommended"
+                                            ? uiLanguage === "en" ? "Split recommended" : "Bölme önerilir"
+                                            : sceneFitFeedback.state === "extend_duration"
+                                              ? uiLanguage === "en" ? "Extend duration" : "Süreyi uzat"
+                                              : sceneFitFeedback.state === "accepted"
+                                                ? uiLanguage === "en" ? "Autofit applied" : "Auto-fit uygulandı"
+                                                : uiLanguage === "en" ? "Autofit kept the original" : "Auto-fit orijinali korudu"}
+                                        </strong>
+                                        <span>{sceneFitFeedback.message}</span>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {sceneFitFeedback.state === "extend_duration" && sceneFitFeedback.suggestedDurationSec && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const duration = sceneFitFeedback.suggestedDurationSec!;
+                                                setScenes((current) => current.map((item) => item.id === scene.id ? {
+                                                  ...item,
+                                                  targetDurationSec: duration,
+                                                  timing: item.timing ? { ...item.timing, targetSceneDuration: duration, plannedSceneDuration: duration } : item.timing,
+                                                } : item));
+                                                setSaveMessage(uiLanguage === "en" ? `Scene duration updated to ${duration.toFixed(1)} seconds.` : `Sahne süresi ${duration.toFixed(1)} saniyeye güncellendi.`);
+                                              }}
+                                              className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800"
+                                            >
+                                              {uiLanguage === "en" ? "Apply duration" : "Süreyi uygula"}
+                                            </button>
+                                          )}
+                                          {sceneFitFeedback.state === "split_recommended" && (
+                                            <button type="button" onClick={() => splitCreatorScene(scene.id)} className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800">
+                                              {uiLanguage === "en" ? "Split scene" : "Sahneyi böl"}
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
                                     <details className="rounded-xl border border-blue-100 bg-white">
                                       <summary className="cursor-pointer list-none px-3 py-3 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
                                         {uiLanguage === "en" ? "Improve this scene with AI" : "Bu sahneyi AI ile geliştir"}
@@ -31750,6 +32163,54 @@ const generateSceneImage = async (
                                           />
                                         </div>
                                 <div className="space-y-3">
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3" data-creator-visual-source-selector="true">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                      {uiLanguage === "en" ? "Visual source" : "Görsel kaynağı"}
+                                    </span>
+                                    <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={uiLanguage === "en" ? "Visual source method" : "Görsel kaynak yöntemi"}>
+                                      {([
+                                        ["recommended", uiLanguage === "en" ? "Velto Recommended" : "Velto Önerilen"],
+                                        ["stock", uiLanguage === "en" ? "Stock" : "Stok"],
+                                        ["ai_image", uiLanguage === "en" ? "AI Image" : "AI Görsel"],
+                                        ["ai_video", "AI Video"],
+                                      ] as const).map(([method, label]) => {
+                                        const blocked = method === "ai_video" && creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic";
+                                        return (
+                                          <button
+                                            key={method}
+                                            type="button"
+                                            aria-pressed={sceneVisualSourceMethod === method}
+                                            disabled={blocked}
+                                            title={blocked
+                                              ? (uiLanguage === "en" ? "AI Video unavailable for Standard quality" : "AI Video Standart kalitede kullanılamaz")
+                                              : undefined}
+                                            onClick={() => setCreatorScenesVisualSourceMethod([scene.id], method)}
+                                            className={`min-h-9 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                                              sceneVisualSourceMethod === method
+                                                ? "border-blue-600 bg-blue-600 text-white"
+                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            {label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    {sceneExplicitAiVideoBlocked && (
+                                      <p className="mt-2 text-xs text-amber-700" role="status">
+                                        {uiLanguage === "en" ? "AI Video unavailable for Standard quality." : "AI Video Standart kalitede kullanılamaz."}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {sceneVisualSourceMethod === "stock" && currentProjectId && (
+                                    <CreatorStockPicker
+                                      projectId={currentProjectId}
+                                      disabled={isBatchRendering || creatorMediaPreflightLoading}
+                                      language={uiLanguage === "en" ? "en" : "tr"}
+                                      getAccessToken={getAccessTokenOrThrow}
+                                      onUse={(asset) => useCreatorStockMedia(scene.creatorSceneId!, asset)}
+                                    />
+                                  )}
                                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
                                       <video
@@ -31779,76 +32240,50 @@ const generateSceneImage = async (
                                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                                           {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
                                         </span>
-                                        {sceneOutputMode === "image" ? (
+                                        {sceneVisualSourceMethod !== "stock" && (
                                           <button
                                             type="button"
                                             onClick={() => {
-                                              if (sceneImageDispatchCountdownActive) cancelPendingImageDispatch();
-                                              else void redrawSceneImage(scene);
+                                              if (sceneVisualCountdownActive) {
+                                                cancelCreatorSceneVisualCountdown(scene.id);
+                                                return;
+                                              }
+                                              void runCreatorRecommendedVisualGeneration({
+                                                mode: "single",
+                                                sceneIds: [scene.id],
+                                              });
                                             }}
                                             disabled={
-                                              !sceneImageDispatchCountdownActive &&
-                                              (redrawLoadingId === scene.id || Boolean(imageDispatchCountdown) || Boolean(videoDispatchCountdown))
+                                              (sceneVisualActionBlocked && !sceneVisualCountdownActive) ||
+                                              scene.videoStatus === "processing" ||
+                                              scene.videoStatus === "delayed" ||
+                                              creatorMediaPreflightLoading ||
+                                              sceneExplicitAiVideoBlocked
                                             }
                                             title={
-                                              sceneImageDispatchCountdownActive
-                                                ? uiLanguage === "en" ? "Cancel before dispatch. No image credit has been used yet." : "Gönderimden önce iptal et. Henüz görsel kredisi kullanılmadı."
-                                                : uiLanguage === "en" ? "Generate or regenerate this scene image." : "Bu sahne görselini üret veya yeniden üret."
+                                              sceneExplicitAiVideoBlocked
+                                                ? uiLanguage === "en" ? "AI Video unavailable for Standard quality" : "AI Video Standart kalitede kullanılamaz"
+                                                : undefined
                                             }
-                                            className={`min-h-10 rounded-lg border px-3 py-2 text-[11px] font-semibold disabled:opacity-50 ${
-                                              sceneImageDispatchCountdownActive
-                                                ? "border-rose-300 bg-rose-50 text-rose-700"
-                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                            }`}
+                                            className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                                           >
-                                            {sceneImageDispatchCountdownActive
-                                              ? uiLanguage === "en" ? `Cancel · ${imageDispatchCountdown?.secondsRemaining}s` : `İptal · ${imageDispatchCountdown?.secondsRemaining} sn`
-                                              : redrawLoadingId === scene.id
-                                                ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
-                                                : scene.image
+                                            {sceneVisualCountdownActive
+                                              ? uiLanguage === "en"
+                                                ? `Cancel · ${creatorSceneVisualOperation?.secondsRemaining}s`
+                                                : `İptal · ${creatorSceneVisualOperation?.secondsRemaining} sn`
+                                              : sceneVisualGenerating
+                                              ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
+                                              : sceneVisualSourceMethod === "ai_image"
+                                                ? scene.image
                                                   ? uiLanguage === "en" ? "Regenerate image" : "Görseli yeniden üret"
-                                                  : uiLanguage === "en" ? "Generate image" : "Görsel üret"}
-                                          </button>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (sceneVideoDispatchCountdownActive) cancelPendingVideoDispatch();
-                                              else void handleGenerateVideo(scene.id);
-                                            }}
-                                            disabled={
-                                              !sceneVideoDispatchCountdownActive &&
-                                              ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
-                                                !scene.image || creatorMediaPreflightLoading || creatorVideoSelectionBlockedByQuality ||
-                                                Boolean(videoDispatchCountdown) || Boolean(imageDispatchCountdown))
-                                            }
-                                            title={
-                                              sceneVideoDispatchCountdownActive
-                                                ? uiLanguage === "en" ? "Cancel before dispatch. No video credit has been used yet." : "Gönderimden önce iptal et. Henüz video kredisi kullanılmadı."
-                                                : !scene.image
-                                                  ? uiLanguage === "en" ? "Generate the scene image first." : "Önce sahne görselini üret."
-                                                  : creatorVideoSelectionBlockedByQuality
-                                                    ? getCreatorMediaRoutingError("ai_video_blocks")
-                                                    : uiLanguage === "en" ? "Generate or regenerate this scene video." : "Bu sahne videosunu üret veya yeniden üret."
-                                            }
-                                            className={`min-h-10 rounded-lg border px-3 py-2 text-[11px] font-semibold disabled:opacity-50 ${
-                                              sceneVideoDispatchCountdownActive
-                                                ? "border-rose-300 bg-rose-50 text-rose-700"
-                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                            }`}
-                                          >
-                                            {sceneVideoDispatchCountdownActive
-                                              ? uiLanguage === "en" ? `Cancel · ${videoDispatchCountdown?.secondsRemaining}s` : `İptal · ${videoDispatchCountdown?.secondsRemaining} sn`
-                                              : creatorMediaPreflightLoading
-                                                ? uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…"
-                                                : scene.videoStatus === "processing" ? ui.videoCreating
-                                                  : scene.videoStatus === "delayed"
-                                                    ? uiLanguage === "en" ? "Taking longer" : "Uzun sürüyor"
-                                                    : creatorVideoSelectionBlockedByQuality
-                                                      ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                                      : scene.videoUrl && scene.videoStatus === "done"
-                                                        ? uiLanguage === "en" ? "Regenerate video" : "Videoyu yeniden üret"
-                                                        : ui.convertToVideo}
+                                                  : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"
+                                                : sceneVisualSourceMethod === "ai_video"
+                                                  ? sceneExplicitAiVideoBlocked
+                                                    ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
+                                                    : scene.videoUrl && scene.videoStatus === "done"
+                                                      ? uiLanguage === "en" ? "Regenerate video" : "Videoyu yeniden üret"
+                                                      : uiLanguage === "en" ? "Generate Video" : "Video Üret"
+                                                  : uiLanguage === "en" ? "Generate Visual" : "Görsel Üret"}
                                           </button>
                                         )}
                                         <button
@@ -31862,18 +32297,18 @@ const generateSceneImage = async (
                                     </div>
                                   </div>
 
-                                  {sceneImageDispatchCountdownActive && (
+                                  {sceneVisualCountdownActive && (
                                     <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
                                       {uiLanguage === "en"
-                                        ? "No provider request or Velto image credit yet. Dispatch and billing begin at zero."
-                                        : "Henüz servis talebi veya Velto görsel kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
+                                        ? `Starting in ${creatorSceneVisualOperation?.secondsRemaining}s · No generation request has been dispatched yet.`
+                                        : `${creatorSceneVisualOperation?.secondsRemaining} sn içinde başlıyor · Henüz üretim talebi gönderilmedi.`}
                                     </span>
                                   )}
                                   {sceneVideoDispatchCountdownActive && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
                                       {uiLanguage === "en"
-                                        ? "No provider request or Velto video credit has been used yet. At zero, both dispatch and billing begin."
-                                        : "Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme birlikte başlar."}
+                                        ? "No generation request has been dispatched yet."
+                                        : "Henüz üretim talebi gönderilmedi."}
                                     </p>
                                   )}
 
@@ -32521,7 +32956,7 @@ const generateSceneImage = async (
                                           : narrationReady
                                             ? uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"
                                             : uiLanguage === "en"
-                                              ? `Generate narrator · ${getOperationCreditCost("creator_voice", creatorQualityMode)} credits`
+                                              ? "Generate narrator"
                                               : `Anlatıcı üret · ${getOperationCreditCost("creator_voice", creatorQualityMode)} kredi`}
                                     </button>
                                   </div>
@@ -32563,7 +32998,7 @@ const generateSceneImage = async (
                                             : dialogueReady
                                               ? uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"
                                               : uiLanguage === "en"
-                                                ? `Generate dialogue · ${getOperationCreditCost("creator_dialogue_voice", creatorQualityMode)} credits`
+                                                ? "Generate dialogue"
                                                 : `Diyalog üret · ${getOperationCreditCost("creator_dialogue_voice", creatorQualityMode)} kredi`}
                                       </button>
                                     </div>
@@ -32659,7 +33094,7 @@ const generateSceneImage = async (
                                         {uiLanguage === "en" ? "Estimated generation cost" : "Tahmini üretim maliyeti"}
                                       </strong>
                                       <span>
-                                        {sceneVoiceCreditEstimate.totalCredits} {uiLanguage === "en" ? "credits" : "kredi"} · {sceneVoiceCreditEstimate.totalTracks} {uiLanguage === "en" ? "missing track(s)" : "eksik ses kaydı"}
+                                        {sceneVoiceCreditEstimate.totalTracks} {uiLanguage === "en" ? "missing track(s)" : "eksik ses kaydı"}
                                       </span>
                                     </div>
                                   </div>
@@ -34486,8 +34921,8 @@ const generateSceneImage = async (
                     </strong>
                     <p className="mt-1 text-xs leading-5 text-amber-800">
                       {uiLanguage === "en"
-                        ? `${imageDispatchCountdown.sceneCount} image task(s) are pending. No provider request or Velto image credit has been used yet. At zero, dispatch and billing begin.`
-                        : `${imageDispatchCountdown.sceneCount} görsel görevi bekliyor. Henüz servis talebi gönderilmedi ve Velto görsel kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar.`}
+                        ? `${imageDispatchCountdown.sceneCount} image task(s) are pending. Generation begins when the countdown reaches zero.`
+                        : `${imageDispatchCountdown.sceneCount} görsel görevi bekliyor. Sayaç sıfıra ulaştığında üretim başlar.`}
                     </p>
                   </div>
                   <button
@@ -34512,8 +34947,8 @@ const generateSceneImage = async (
                     </strong>
                     <p className="mt-1 text-xs leading-5 text-amber-800">
                       {uiLanguage === "en"
-                        ? `${videoDispatchCountdown.sceneCount} video task(s) are pending. No provider request or Velto video credit has been used yet. At zero, dispatch and billing begin.`
-                        : `${videoDispatchCountdown.sceneCount} video görevi bekliyor. Henüz servis talebi gönderilmedi ve Velto video kredisi kullanılmadı. Sayaç sıfırlandığında gönderim ve ücretlendirme başlar.`}
+                        ? `${videoDispatchCountdown.sceneCount} video task(s) are pending. Generation begins when the countdown reaches zero.`
+                        : `${videoDispatchCountdown.sceneCount} video görevi bekliyor. Sayaç sıfıra ulaştığında üretim başlar.`}
                     </p>
                   </div>
                   <button
@@ -35957,14 +36392,6 @@ const generateSceneImage = async (
           </div>
         )}
       </ActiveProductShell>
-      {isCreatorLabFlow && (
-        <CreatorCostGuard
-          request={creatorCostGuardRequest}
-          language={uiLanguage}
-          onConfirm={() => finishCreatorCostGuardConfirmation(true)}
-          onCancel={() => finishCreatorCostGuardConfirmation(false)}
-        />
-      )}
     </WorldProvider>
   );
 }
