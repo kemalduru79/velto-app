@@ -133,6 +133,7 @@ import {
   isCreatorSceneVisualGenerating,
 } from "@/lib/creator/visualGenerationStatus";
 import { creatorStageAfterSuccess } from "@/lib/creator/stageNavigation";
+import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
@@ -11108,6 +11109,7 @@ const generateSceneImage = async (
       setCreatorPackageDownloaded(false);
       setCreatorArtifactHistory(nextArtifactHistory);
 
+      let finalProductionPersisted = false;
       try {
         await persistProject(false, {
           finalVideoUrl: nextExportResult.movieUrl,
@@ -11118,8 +11120,15 @@ const generateSceneImage = async (
           artifactHistory: nextArtifactHistory,
           publishReady: false,
         });
+        finalProductionPersisted = true;
       } catch (saveError) {
         console.error("export cache save error:", saveError);
+      }
+
+      if (isCreatorLabFlow && finalProductionPersisted) {
+        setCreatorSelectedWorkspaceStep((current) =>
+          creatorStageAfterSuccess(current, "production_setup_continued"),
+        );
       }
 
       setSaveMessage(ui.movieCreated);
@@ -11994,6 +12003,11 @@ const generateSceneImage = async (
       setCreatorPackageDownloaded(
         loadedArtifactHistory.packageDownloaded,
       );
+      if (savedExportedMovieUrl && project.export_signature) {
+        setCreatorSelectedWorkspaceStep((current) =>
+          creatorStageAfterSuccess(current, "production_setup_continued"),
+        );
+      }
 
       const loadedMentorResult = project.creator_mentor_result as CreatorMentorResult | null;
       setCreatorMentorResult(loadedMentorResult || null);
@@ -18362,6 +18376,31 @@ const generateSceneImage = async (
     (item) => creatorReleaseConfirmations[item.key],
   );
   const creatorReleaseReady = creatorPublishSystemReady && creatorReleaseConfirmed;
+  const creatorPublishPreflight = createCreatorPublishPreflight({
+    contentReady: Boolean(creatorProductionPackage && creatorPublishCaptionReady),
+    visualsReady: creatorProjectReadiness?.visuals === "ready",
+    voiceReady: creatorProjectReadiness?.voiceOver === "ready",
+    evidenceVerified: creatorReleaseConfirmations.claimsVerified,
+    rightsConfirmed: creatorReleaseConfirmations.rightsConfirmed,
+    outputReady: Boolean(
+      creatorProductionComplete &&
+        creatorPublishSystemChecks.find((item) => item.key === "ratio")?.ready,
+    ),
+  });
+  const creatorPublishPreflightLabels = {
+    content: uiLanguage === "en" ? "Content" : "İçerik",
+    visuals: uiLanguage === "en" ? "Visuals" : "Görseller",
+    voice: uiLanguage === "en" ? "Voice" : "Ses",
+    evidence: uiLanguage === "en" ? "Evidence" : "Kanıt",
+    rights: uiLanguage === "en" ? "Rights" : "Haklar",
+    output: uiLanguage === "en" ? "Output" : "Çıktı",
+  } as const;
+  const creatorPublishPreflightStatusLabels = {
+    ready: uiLanguage === "en" ? "Ready" : "Hazır",
+    review: uiLanguage === "en" ? "Review" : "Kontrol et",
+    action_required: uiLanguage === "en" ? "Action required" : "İşlem gerekli",
+    blocked: uiLanguage === "en" ? "Blocked" : "Engellendi",
+  } as const;
   const creatorPublishIsOutdated =
     creatorFinalVideoNeedsRebuild ||
     creatorProjectLifecycle?.status === "export_outdated";
@@ -33324,6 +33363,28 @@ const generateSceneImage = async (
                     : `${creatorPublishAttentionItems.length} ${uiLanguage === "en" ? "items need attention" : "öğe kontrol edilmeli"}`}
               </span>
             </div>
+
+            <section
+              className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6"
+              aria-label={uiLanguage === "en" ? "Publish preflight" : "Yayın ön kontrolü"}
+              data-creator-publish-preflight
+            >
+              {creatorPublishPreflight.map((item) => (
+                <div
+                  key={item.category}
+                  className="rounded-2xl border border-orange-200/24 bg-white/74 px-4 py-3"
+                  data-preflight-category={item.category}
+                  data-preflight-status={item.status}
+                >
+                  <strong className="block text-sm text-slate-900">
+                    {creatorPublishPreflightLabels[item.category]}
+                  </strong>
+                  <span className="mt-1 block text-xs text-slate-600">
+                    {creatorPublishPreflightStatusLabels[item.status]}
+                  </span>
+                </div>
+              ))}
+            </section>
 
             <section
               className="creatorlab-p2d-readiness"
