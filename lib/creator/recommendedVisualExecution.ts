@@ -9,7 +9,7 @@ export type CreatorRecommendedAssetHistoryItem = {
   kind: "image" | "video";
   url: string;
   createdAt: string;
-  source: "generated" | "restored" | "loaded" | "stock";
+  source: "generated" | "restored" | "loaded" | "stock" | "uploaded";
   durationSec?: number;
 };
 

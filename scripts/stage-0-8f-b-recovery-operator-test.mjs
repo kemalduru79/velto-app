@@ -60,9 +60,10 @@ const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "-
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
 // Stage 0.10H intentionally adds authenticated CreatorLab research/editorial routes and,
-// after explicit H-5E review, one owner-scoped project-governance route. Keep this
+// after explicit H-5E review, one owner-scoped project-governance route, and the
+// authenticated owner-scoped CreatorLab upload route. Keep this
 // inventory sentinel fail-closed so every later API surface change requires review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "ce13ceb1441a7e9a46e55881ad6b329b6f6cc7ab74b353c7a937b8d867411555");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "e9ede43f6e06505bfacc3fa4ba5d8f4326e10c9e99676fef59fb7376c1f0dcd7");
 assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 

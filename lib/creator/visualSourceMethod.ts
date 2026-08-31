@@ -32,7 +32,7 @@ export function persistedCreatorVisualSourceMethod(method: CreatorVisualSourceMe
 }
 
 export function isCreatorVisualSourceMethodExecutable(method: CreatorVisualSourceMethod) {
-  return method !== "upload";
+  return true;
 }
 
 function stockTreatment(scene: CreatorVisualSourceScene, decision: CreatorSceneProductionDecision) {
@@ -72,7 +72,7 @@ export function applyCreatorVisualSourceOverride(input: {
     return { method, decision: input.decision, preserveExisting: true, executable: true };
   }
   if (method === "upload") {
-    return { method, decision: input.decision, preserveExisting: true, executable: false };
+    return { method, decision: input.decision, preserveExisting: true, executable: true };
   }
 
   const treatment: CreatorProductionTreatment = method === "stock"

@@ -48,6 +48,7 @@ import CreatorProductionSetupSummary from "@/components/create/CreatorProduction
 import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
 import CreatorEditor from "@/components/create/CreatorEditor";
 import CreatorStockPicker from "@/components/create/CreatorStockPicker";
+import CreatorUploadPicker from "@/components/create/CreatorUploadPicker";
 import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
 import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";
 import CreatorSceneProductionStatus, {
@@ -114,6 +115,11 @@ import {
   persistedCreatorVisualSourceMethod,
   type CreatorVisualSourceMethod,
 } from "@/lib/creator/visualSourceMethod";
+import {
+  bindCreatorUploadedMedia,
+  detachCreatorUploadedMedia,
+  type CreatorUploadedMedia,
+} from "@/lib/creator/uploadedMedia";
 import {
   assertCreatorVisualExecutionScope,
   CreatorVisualGenerationScopeError,
@@ -714,7 +720,7 @@ type CreatorSceneAssetVersion = {
   kind: CreatorSceneAssetKind;
   url: string;
   createdAt: string;
-  source: "generated" | "restored" | "loaded" | "stock";
+  source: "generated" | "restored" | "loaded" | "stock" | "uploaded";
   durationSec?: number;
   generationSignature?: string;
 };
@@ -8379,6 +8385,34 @@ const generateSceneImage = async (
       assetHistory: [...(scene.assetHistory || []), { id: `stock-${Date.now()}`, kind: "video", url: asset.publicUrl, createdAt: new Date().toISOString(), source: "stock", durationSec: asset.durationSeconds || undefined }],
     }));
     setError(""); setSaveMessage(asset.attributionText);
+  };
+
+  const useCreatorUploadedMedia = (sceneId: number, asset: CreatorUploadedMedia) => {
+    const target = scenes.find((scene) => scene.id === sceneId);
+    if (!target || ["processing", "delayed"].includes(target.videoStatus || "")) return;
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en" ? `Use uploaded media in scene ${sceneId}` : `Sahne ${sceneId} içinde yüklenen medyayı kullan`,
+    );
+    clearVideoPollForScene(sceneId, target.creatorSceneId);
+    setScenes((current) => bindCreatorUploadedMedia({
+      scenes: current.map((scene) => scene.id === sceneId ? normalizeCreatorAssetHistory(scene) : scene),
+      sceneId,
+      asset,
+    }).scenes as Scene[]);
+    setError("");
+    setSaveMessage(uiLanguage === "en" ? "Uploaded media is now used in this scene." : "Yüklenen medya artık bu sahnede kullanılıyor.");
+  };
+
+  const removeCreatorUploadedMediaFromScene = (sceneId: number) => {
+    const target = scenes.find((scene) => scene.id === sceneId);
+    if (!target || normalizeCreatorVisualSourceMethod(target.visualSourceMethod) !== "upload") return;
+    pushCreatorUndoSnapshot(
+      uiLanguage === "en" ? `Remove uploaded media from scene ${sceneId}` : `Yüklenen medyayı sahne ${sceneId} içinden kaldır`,
+    );
+    clearVideoPollForScene(sceneId, target.creatorSceneId);
+    setScenes((current) => detachCreatorUploadedMedia(current, sceneId) as Scene[]);
+    setError("");
+    setSaveMessage(uiLanguage === "en" ? "Uploaded media was removed from the scene. Its version remains available." : "Yüklenen medya sahneden kaldırıldı. Sürümü kullanılabilir durumda kaldı.");
   };
 
   const acquireAutomaticStockForScene = async (
@@ -32307,6 +32341,7 @@ const generateSceneImage = async (
                                         ["stock", uiLanguage === "en" ? "Stock" : "Stok"],
                                         ["ai_image", uiLanguage === "en" ? "AI Image" : "AI Görsel"],
                                         ["ai_video", "AI Video"],
+                                        ["upload", uiLanguage === "en" ? "Upload" : "Yükle"],
                                       ] as const).map(([method, label]) => {
                                         const blocked = method === "ai_video" && creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic";
                                         return (
@@ -32345,6 +32380,23 @@ const generateSceneImage = async (
                                       onUse={(asset) => useCreatorStockMedia(scene.creatorSceneId!, asset)}
                                     />
                                   )}
+                                  {sceneVisualSourceMethod === "upload" && currentProjectId && (
+                                    <CreatorUploadPicker
+                                      projectId={currentProjectId}
+                                      sceneId={scene.id}
+                                      disabled={isBatchRendering || creatorMediaPreflightLoading}
+                                      language={uiLanguage === "en" ? "en" : "tr"}
+                                      hasBoundUpload={
+                                        scene.assetHistory?.some((asset) =>
+                                          asset.source === "uploaded" &&
+                                          (asset.url === scene.image || asset.url === scene.videoUrl)
+                                        ) === true
+                                      }
+                                      getAccessToken={getAccessTokenOrThrow}
+                                      onUse={(asset) => useCreatorUploadedMedia(scene.id, asset)}
+                                      onRemove={() => removeCreatorUploadedMediaFromScene(scene.id)}
+                                    />
+                                  )}
                                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
                                       <video
@@ -32374,7 +32426,7 @@ const generateSceneImage = async (
                                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                                           {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
                                         </span>
-                                        {sceneVisualSourceMethod !== "stock" && (
+                                        {sceneVisualSourceMethod !== "stock" && sceneVisualSourceMethod !== "upload" && (
                                           <button
                                             type="button"
                                             onClick={() => {

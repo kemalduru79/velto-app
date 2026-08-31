@@ -101,7 +101,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed Stage 0.10H governance surface", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "ce13ceb1441a7e9a46e55881ad6b329b6f6cc7ab74b353c7a937b8d867411555"));
+check("API route inventory includes reviewed Stage 0.10H governance surface", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "775e789c06ddd863f29cf177def91780e65e81dc13c112f7f3939a8d6dde8205"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
@@ -233,6 +233,13 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-10h-manual-project-save-test.mjs",
     "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
     "scripts/stage-0-10h-strategy-backward-navigation-persistence-test.mjs",
+    "app/api/creator-upload/route.ts",
+    "app/api/creator-upload/",
+    "components/create/CreatorUploadPicker.tsx",
+    "lib/creator/mediaOrigin.ts",
+    "lib/creator/uploadedMedia.ts",
+    "scripts/stage-0-10h-custom-upload-test.mjs",
+    "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-10c-pexels-safe-stock-test.mjs",
     "components/create/CreatorEditor.tsx",
     "components/create/CreatorEditorTimeline.tsx",

@@ -9,6 +9,7 @@ export type CreatorMediaOrigin =
   | "synthetic"
   | "stock"
   | "source_media"
+  | "uploaded"
   | "unknown";
 
 export type CreatorMediaOriginMetadata = {
@@ -31,6 +32,7 @@ const ORIGINS = new Set<CreatorMediaOrigin>([
   "synthetic",
   "stock",
   "source_media",
+  "uploaded",
   "unknown",
 ]);
 
@@ -124,7 +126,9 @@ export function createCreatorMediaGovernanceProjection(input: {
     version: CREATOR_MEDIA_ORIGIN_METADATA_VERSION,
     assetId,
     origin,
-    originReviewRequired: origin === "unknown",
+    originReviewRequired:
+      origin === "unknown" ||
+      (origin === "uploaded" && record(metadata.creatorRightsConfirmation)?.confirmed !== true),
     syntheticDisclosureRequired: origin === "synthetic",
     sourceRightsMetadataRequired,
     sourceRightsMetadataStatus: sourceRightsMetadataRequired

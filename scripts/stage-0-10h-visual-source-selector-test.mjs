@@ -92,7 +92,7 @@ assert.equal(normalizeCreatorVisualSourceMethod(undefined), "recommended");
 assert.equal(normalizeCreatorVisualSourceMethod("invalid"), "recommended");
 assert.equal(persistedCreatorVisualSourceMethod("recommended"), undefined);
 assert.equal(persistedCreatorVisualSourceMethod("stock"), "stock");
-assert.equal(isCreatorVisualSourceMethodExecutable("upload"), false);
+assert.equal(isCreatorVisualSourceMethodExecutable("upload"), true);
 assert.equal(isCreatorVisualSourceMethodExecutable("ai_image"), true);
 
 const recommended = await execute({ scene: { id: 1 }, method: "recommended" });
