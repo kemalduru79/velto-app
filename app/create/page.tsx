@@ -3467,6 +3467,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<1 | 2 | 3 | 4>(1);
   const [creatorProductionSubstep, setCreatorProductionSubstep] =
     useState<CreatorProductionSubstep>("setup");
+  const [creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen] =
+    useState(true);
   const selectCreatorProductionSubstep = (substep: CreatorProductionSubstep) => {
     setCreatorProductionSubstep(substep);
     replaceProductionSubstepUrl(substep);
@@ -30357,16 +30359,16 @@ const generateSceneImage = async (
                 <details
                   id="creatorlab-production-customize"
                   className={`creatorlab-setup-customize ${creatorMusicConfirmationRequired ? "has-action-required" : ""}`}
-                  open={creatorProductionSetupPresentation.customizeInitiallyOpen ? true : undefined}
+                  open={creatorProductionCustomizeOpen}
+                  onToggle={(event) =>
+                    setCreatorProductionCustomizeOpen(event.currentTarget.open)
+                  }
                 >
                   <summary>
                     <div>
                       <strong>{uiLanguage === "en" ? "Customize production" : "Üretimi özelleştir"}</strong>
                       <span>{uiLanguage === "en" ? "Presentation, brand, voice, music and continuity" : "Sunum, marka, ses, müzik ve devamlılık"}</span>
                     </div>
-                    <span className="creatorlab-setup-customize-status">
-                      {creatorProductionSetupPresentation.customizeStatus}
-                    </span>
                   </summary>
                   <div className="creatorlab-setup-customize-body">
                 <div id="creatorlab-cast-brand" className="space-y-5">

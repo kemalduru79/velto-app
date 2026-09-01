@@ -48,11 +48,21 @@ for (const group of ["presentation-cast", "brand-visual", "voice", "music", "con
 }
 
 assert.match(page, /<details[\s\S]*id="creatorlab-production-customize"/);
-assert.match(page, /open=\{creatorProductionSetupPresentation\.customizeInitiallyOpen \? true : undefined\}/);
+assert.match(
+  page,
+  /\[creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen\][\s\S]*?useState\(true\)/,
+  "Customize Production must start expanded",
+);
+assert.match(page, /open=\{creatorProductionCustomizeOpen\}/);
+assert.match(
+  page,
+  /onToggle=\{\(event\) =>[\s\S]*?setCreatorProductionCustomizeOpen\(event\.currentTarget\.open\)/,
+  "the native disclosure state must preserve a manual collapse",
+);
 assert.match(page, /data-production-primary-continue="true"[\s\S]*selectCreatorProductionSubstep\("create_review"\)/);
 assert.equal((page.match(/data-production-primary-continue="true"/g) || []).length, 1, "Production Setup must have one dominant Continue CTA");
 
-// Existing handlers remain authoritative; the setup pass must not introduce parallel state.
+// Existing handlers remain authoritative; the disclosure state is presentation-only.
 for (const handlerContract of [
   /setCreatorNoCastMode\("faceless"\)/,
   /clearAllSceneAudioData\(\)/,
@@ -63,7 +73,15 @@ for (const handlerContract of [
 ]) {
   assert.match(page, handlerContract);
 }
-assert.doesNotMatch(page, /useState[^\n]*(?:setupCustomize|productionCustomize|recommendedSetup)/i);
+const customizeDisclosure = page.slice(
+  page.indexOf('id="creatorlab-production-customize"'),
+  page.indexOf('id="creatorlab-production-customize"') + 560,
+);
+assert.doesNotMatch(
+  customizeDisclosure,
+  /fetch\(|\/api\/|generate|research|saveCreator|setCreatorProductionPackage/i,
+  "opening or collapsing Customize Production must have no workflow side effects",
+);
 
 for (const responsiveContract of [
   ".creatorlab-setup-recommendation",

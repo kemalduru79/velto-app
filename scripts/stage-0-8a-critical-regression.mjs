@@ -72,6 +72,7 @@ const tests = [
   "scripts/stage-0-10i-c-stage-polish-test.mjs",
   "scripts/stage-0-10i-c-creator-production-package-test.mjs",
   "scripts/stage-0-10i-c-stage-isolation-test.mjs",
+  "scripts/stage-0-10i-d-create-review-visual-test.mjs",
 ];
 
 for (const test of tests) {

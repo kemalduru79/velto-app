@@ -1,0 +1,527 @@
+/* Stage 0.10I-D — Create & Review visual polish.
+   Presentation only. Stage 0.10I-B remains the sole token authority. */
+
+/* Project-level progress stays concise so the selected scene remains dominant. */
+.creatorlab-premium-surface .creatorlab-p2c-production-status {
+  gap: var(--cl-space-2);
+  padding: var(--cl-space-3) var(--cl-space-4);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-progress {
+  gap: var(--cl-space-2) var(--cl-space-4);
+  border-top-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-next-action {
+  border-top-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-production-storyboard.creatorlab-p2c-production-workspace {
+  grid-template-columns: minmax(252px, 292px) minmax(0, 1fr);
+  gap: var(--cl-space-5);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* Scene Navigator: compact, scannable, and distinct from batch selection. */
+.creatorlab-premium-surface .creatorlab-p2c-scene-rail {
+  min-width: 0;
+  padding: var(--cl-space-2);
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations {
+  gap: var(--cl-space-2);
+  margin: 0;
+  padding: var(--cl-space-2) 0 0;
+  border: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-heading {
+  align-items: flex-start;
+  padding: var(--cl-space-1) var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-heading h2 {
+  font-size: var(--cl-type-card);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-heading p,
+.creatorlab-premium-surface .creatorlab-p2c-scene-navigator-label span {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-navigator-label {
+  padding-inline: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-list {
+  gap: var(--cl-space-1);
+  padding: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--cl-space-2);
+  min-height: 54px;
+  padding: var(--cl-space-2);
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--cl-radius-control);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row:hover {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-focused="true"] {
+  color: var(--cl-text-primary);
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+  box-shadow: inset 3px 0 0 var(--cl-primary);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-select {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--cl-primary);
+  opacity: 0.72;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-select:checked,
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-select:focus-visible {
+  opacity: 1;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-focus {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-number {
+  width: 28px;
+  height: 28px;
+  color: var(--cl-text-muted);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-control);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-focused="true"] .creatorlab-p2c-scene-operation-number {
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+  border-color: var(--cl-primary);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-copy strong {
+  color: var(--cl-text-primary);
+  font-size: var(--cl-type-body);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-copy small,
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-status {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-progress {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-status {
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-status="ready"] .creatorlab-p2c-scene-operation-status {
+  color: var(--cl-success);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-status="generating"] .creatorlab-p2c-scene-operation-status {
+  color: var(--cl-info);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-status="review"] .creatorlab-p2c-scene-operation-status,
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row[data-status="needs_action"] .creatorlab-p2c-scene-operation-status {
+  color: var(--cl-warning);
+}
+
+/* Batch toolbar: batch context is clear without overpowering scene actions. */
+.creatorlab-premium-surface .creatorlab-p2c-batch-toolbar-sticky {
+  gap: var(--cl-space-2);
+  margin-bottom: var(--cl-space-2);
+  padding: var(--cl-space-2);
+  background: var(--cl-surface);
+  border-color: var(--cl-accent-border);
+  border-radius: var(--cl-radius-surface);
+  box-shadow: var(--cl-shadow-subtle);
+  backdrop-filter: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-selection {
+  width: 100%;
+  color: var(--cl-text-secondary);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-selection strong {
+  color: var(--cl-primary);
+  font-size: var(--cl-type-section);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-mode {
+  width: 100%;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: var(--cl-space-1);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-segmented {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-mode-button {
+  flex: 1 0 auto;
+  min-height: var(--cl-control-compact);
+  color: var(--cl-text-secondary);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-mode-button[aria-pressed="true"] {
+  color: var(--cl-primary);
+  background: var(--cl-surface);
+  border-color: var(--cl-accent-border);
+  box-shadow: var(--cl-shadow-subtle);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-actions {
+  width: 100%;
+  gap: var(--cl-space-1);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-action {
+  flex: 1;
+  min-height: var(--cl-control-default);
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+  border-color: var(--cl-primary);
+  border-radius: var(--cl-radius-control);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-batch-action.is-secondary {
+  flex: 0 0 auto;
+  color: var(--cl-text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+/* Selected scene: one quiet shell, one clear contextual action, one workflow. */
+.creatorlab-premium-surface .creatorlab-p2c-active-scene {
+  min-width: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene {
+  overflow: hidden;
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-workspace) !important;
+  box-shadow: var(--cl-shadow-subtle) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > summary {
+  min-height: 72px;
+  padding: var(--cl-space-4) var(--cl-space-5) !important;
+  background: var(--cl-surface);
+  border-bottom: 1px solid var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-completion {
+  color: var(--cl-text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-status {
+  color: var(--cl-text-secondary);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > div {
+  padding: var(--cl-space-5) !important;
+  background: var(--cl-surface) !important;
+  border-top: 0 !important;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-next-action {
+  margin-bottom: var(--cl-space-4);
+  padding: var(--cl-space-3) var(--cl-space-4);
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-next-action span {
+  color: var(--cl-primary);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-next-action button {
+  min-height: var(--cl-control-primary);
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+  border-color: var(--cl-primary);
+  border-radius: var(--cl-radius-control);
+  box-shadow: var(--cl-shadow-subtle);
+  font-size: var(--cl-type-button);
+}
+
+/* Script / Visual / Voice reads as a professional segmented workflow. */
+.creatorlab-premium-surface .scene-production-navigator {
+  position: static;
+  margin-bottom: var(--cl-space-5) !important;
+  padding: var(--cl-space-2);
+  background: var(--cl-surface-muted);
+  border: 0;
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .scene-production-navigator__header {
+  padding: var(--cl-space-1) var(--cl-space-2) var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .scene-production-navigator__description,
+.creatorlab-premium-surface .scene-production-tab__subtitle {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .scene-production-navigator__tabs {
+  gap: var(--cl-space-1);
+  padding: var(--cl-space-1);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-control);
+}
+
+.creatorlab-premium-surface .scene-production-tab {
+  min-height: 50px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--cl-radius-control);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .scene-production-tab[data-state="active"] {
+  color: var(--cl-primary);
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .scene-production-tab__icon {
+  color: var(--cl-text-muted);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+}
+
+.creatorlab-premium-surface .scene-production-tab[data-state="active"] .scene-production-tab__icon {
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+}
+
+/* Panels use whitespace and dividers; nested cards become quiet grouped surfaces. */
+.creatorlab-premium-surface [role="tabpanel"] {
+  gap: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface [role="tabpanel"] > .rounded-2xl,
+.creatorlab-premium-surface [role="tabpanel"] > .grid > .rounded-2xl,
+.creatorlab-premium-surface [role="tabpanel"] aside > .rounded-2xl {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-surface) !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface [role="tabpanel"] .bg-slate-50,
+.creatorlab-premium-surface [role="tabpanel"] .bg-slate-50\/60,
+.creatorlab-premium-surface [role="tabpanel"] .bg-slate-50\/70 {
+  background: var(--cl-surface-muted) !important;
+}
+
+.creatorlab-premium-surface [role="tabpanel"] .text-emerald-700 {
+  color: var(--cl-success) !important;
+}
+
+.creatorlab-premium-surface [role="tabpanel"] .text-amber-700,
+.creatorlab-premium-surface [role="tabpanel"] .text-amber-800,
+.creatorlab-premium-surface [role="tabpanel"] .text-amber-900 {
+  color: var(--cl-warning) !important;
+}
+
+.creatorlab-premium-surface [role="tabpanel"] .text-rose-700 {
+  color: var(--cl-danger) !important;
+}
+
+/* Opening choices remain available but secondary to narration and timing. */
+.creatorlab-premium-surface .creatorlab-p2c-scene-next-action + .rounded-2xl.border-blue-200 {
+  padding: var(--cl-space-3) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-surface) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-next-action + .rounded-2xl.border-blue-200 button {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-control);
+}
+
+/* Visual: preview first, neutral method control, intelligence by disclosure. */
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] {
+  padding: var(--cl-space-2) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-surface) !important;
+}
+
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] [role="group"] {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(max-content, 1fr));
+  gap: var(--cl-space-1);
+  overflow-x: auto;
+}
+
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] button {
+  min-height: var(--cl-control-compact);
+  color: var(--cl-text-secondary) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-control) !important;
+}
+
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] button[aria-pressed="true"] {
+  color: var(--cl-primary) !important;
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-accent-border) !important;
+  box-shadow: var(--cl-shadow-subtle);
+}
+
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] + * + .overflow-hidden,
+.creatorlab-premium-surface [data-creator-visual-source-selector="true"] + .overflow-hidden {
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-workspace) !important;
+  box-shadow: var(--cl-shadow-surface);
+}
+
+.creatorlab-premium-surface [role="tabpanel"] aside {
+  color: var(--cl-text-secondary);
+}
+
+.creatorlab-premium-surface [role="tabpanel"] aside details {
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+}
+
+/* Voice controls lose feature-specific color and keep generation contextual. */
+.creatorlab-premium-surface [id$="-audio-panel"] label {
+  color: var(--cl-text-secondary) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-surface) !important;
+}
+
+.creatorlab-premium-surface [id$="-audio-panel"] label > span {
+  color: var(--cl-text-secondary) !important;
+}
+
+.creatorlab-premium-surface [id$="-audio-panel"] select {
+  color: var(--cl-text-primary) !important;
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-control) !important;
+}
+
+/* Final-video lifecycle remains visible as a quiet project-level summary. */
+.creatorlab-premium-surface [data-creator-final-video-lifecycle] {
+  background: var(--cl-surface-muted) !important;
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-surface) !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 1180px) {
+  .creatorlab-premium-surface #creatorlab-production-storyboard.creatorlab-p2c-production-workspace {
+    grid-template-columns: minmax(232px, 272px) minmax(0, 1fr);
+    gap: var(--cl-space-4);
+  }
+}
+
+@media (max-width: 1023px) {
+  .creatorlab-premium-surface #creatorlab-production-storyboard.creatorlab-p2c-production-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creatorlab-premium-surface .creatorlab-p2c-scene-rail {
+    position: static;
+    max-height: none;
+  }
+
+  .creatorlab-premium-surface .creatorlab-p2c-scene-operations-list {
+    grid-auto-columns: minmax(218px, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .creatorlab-premium-surface .creatorlab-p2c-focused-scene > summary,
+  .creatorlab-premium-surface .creatorlab-p2c-focused-scene > div {
+    padding: var(--cl-space-3) !important;
+  }
+
+  .creatorlab-premium-surface .creatorlab-p2c-batch-actions,
+  .creatorlab-premium-surface .creatorlab-p2c-scene-next-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-premium-surface .creatorlab-p2c-batch-action,
+  .creatorlab-premium-surface .creatorlab-p2c-scene-next-action button {
+    width: 100%;
+  }
+
+  .creatorlab-premium-surface .scene-production-navigator__header {
+    display: none;
+  }
+
+  .creatorlab-premium-surface .scene-production-tab__subtitle {
+    display: none;
+  }
+
+  .creatorlab-premium-surface [data-creator-visual-source-selector="true"] [role="group"] {
+    grid-template-columns: repeat(5, minmax(108px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-premium-surface .creatorlab-p2c-scene-operation-row,
+  .creatorlab-premium-surface .creatorlab-p2c-batch-action,
+  .creatorlab-premium-surface .creatorlab-p2c-scene-next-action button,
+  .creatorlab-premium-surface .scene-production-tab {
+    transition: none !important;
+  }
+}
