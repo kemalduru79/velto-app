@@ -9,6 +9,7 @@ import {
 } from "../../video/timelineSync";
 import { getCreatorVoiceScriptGuidance } from "../voiceRouting";
 import { normalizeCreatorSceneContinuityState } from "../sceneContinuity";
+import { parseCreatorProductionJson } from "../creatorProductionJson";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -279,50 +280,6 @@ function normalizeScenesWithBudget(
       speechWordCount: countWords(combinedSpeech),
     };
   });
-}
-
-function extractJsonObject(raw: string) {
-  const cleaned = raw
-    .replace(/```json/g, "")
-    .replace(/```/g, "")
-    .trim();
-
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-
-  if (firstBrace === -1 || lastBrace === -1) {
-    return cleaned;
-  }
-
-  return cleaned.slice(firstBrace, lastBrace + 1);
-}
-
-function repairCommonJsonIssues(value: string) {
-  return value
-    .replace(/[“”]/g, "'")
-    .replace(/[‘’]/g, "'")
-    .replace(/,\s*([}\]])/g, "$1")
-    .replace(/',\s*"([A-Za-z][A-Za-z0-9_]*)"\s*:/g, `',"$1":`)
-    .trim();
-}
-
-function parseCreatorProductionJson(raw: string) {
-  const extracted = extractJsonObject(raw);
-
-  try {
-    return JSON.parse(extracted);
-  } catch {
-    const repaired = repairCommonJsonIssues(extracted);
-
-    try {
-      return JSON.parse(repaired);
-    } catch (secondError) {
-      console.error("creator-production JSON parse error:", raw);
-      console.error("creator-production repaired JSON parse error:", repaired);
-
-      throw secondError;
-    }
-  }
 }
 
 function normalizeCharacters(value: unknown) {
@@ -709,6 +666,7 @@ export async function handleCreatorProductionRequest(req: Request) {
           content: JSON.stringify(userPrompt),
         },
       ],
+      text: { format: { type: "json_object" } },
       temperature: 0.35,
     });
     await recordOpenAITextEconomics({ route: "/api/creator-production", operationType: "creator_production", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
@@ -721,7 +679,10 @@ export async function handleCreatorProductionRequest(req: Request) {
       parsed = parseCreatorProductionJson(rawText) as CreatorProductionModelOutput;
     } catch {
       return NextResponse.json(
-        { error: "Creator production çıktısı JSON olarak parse edilemedi." },
+        {
+          code: "CREATOR_PRODUCTION_MODEL_JSON_INVALID",
+          error: "Creator production çıktısı JSON olarak parse edilemedi.",
+        },
         { status: 500 },
       );
     }

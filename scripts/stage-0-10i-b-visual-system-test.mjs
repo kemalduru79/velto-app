@@ -64,9 +64,17 @@ const changed = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8
 const allowed = new Set([
   "app/create/page.tsx",
   "app/creatorlab-ux-i-b.css",
+  "app/creatorlab-ux-i-c.css",
   "app/globals.css",
   "app/layout.tsx",
   "scripts/stage-0-10i-b-visual-system-test.mjs",
+  "scripts/stage-0-10i-c-stage-polish-test.mjs",
+  "lib/creator/creatorProductionJson.ts",
+  "lib/creator/stageNavigation.ts",
+  "lib/creator/services/creatorProduction.server.ts",
+  "scripts/stage-0-10i-c-creator-production-package-test.mjs",
+  "scripts/stage-0-10i-c-stage-isolation-test.mjs",
+  "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
   "scripts/stage-0-8a-critical-regression.mjs",
   "scripts/stage-0-8g-architecture-closure-test.mjs",
 ]);

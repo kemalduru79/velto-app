@@ -1,0 +1,534 @@
+/* Stage 0.10I-C — Brief, Strategy and Production Setup polish.
+   Presentation only. Tokens remain owned by the Stage 0.10I-B baseline. */
+
+/* Brief: outcome, idea, then a single coherent production specification. */
+.creatorlab-premium-surface :where(
+  #creatorlab-brief-canvas,
+  #creatorlab-strategy-canvas,
+  #creatorlab-production-canvas,
+  #creatorlab-publish-canvas
+).hidden,
+.creatorlab-premium-surface :where(
+  #creatorlab-brief-canvas,
+  #creatorlab-strategy-canvas,
+  #creatorlab-production-canvas,
+  #creatorlab-publish-canvas
+)[hidden] {
+  display: none !important;
+}
+
+.creatorlab-premium-surface .creatorlab-brief-experience {
+  gap: var(--cl-space-6);
+}
+
+.creatorlab-premium-surface .creatorlab-brief-heading,
+.creatorlab-premium-surface .creatorlab-strategy-heading,
+.creatorlab-premium-surface .creatorlab-production-heading {
+  padding-inline: var(--cl-space-1);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card {
+  padding: var(--cl-space-6);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-subtle);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-copy {
+  margin-bottom: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice {
+  grid-template-columns: var(--cl-control-compact) minmax(0, 1fr);
+  gap: var(--cl-space-3);
+  min-height: 88px;
+  padding: var(--cl-space-3) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-surface) !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice:hover {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  box-shadow: var(--cl-shadow-subtle) !important;
+  transform: none;
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice.is-selected,
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice[data-selected="true"] {
+  background: var(--cl-info-soft) !important;
+  border-color: var(--cl-accent-border) !important;
+  box-shadow: inset 3px 0 0 var(--cl-primary) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice-mark {
+  width: var(--cl-control-compact);
+  height: var(--cl-control-compact);
+  color: var(--cl-text-muted);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-control);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice.is-selected .creatorlab-format-choice-mark,
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice[data-selected="true"] .creatorlab-format-choice-mark {
+  color: var(--cl-primary);
+  background: var(--cl-surface);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice strong {
+  font-size: var(--cl-type-card);
+}
+
+.creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice small {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-topic-card {
+  padding: var(--cl-space-6);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-surface) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-topic-header label {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-section);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface .creatorlab-topic-textarea {
+  min-height: 144px;
+  padding: var(--cl-space-4) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+  border-radius: var(--cl-radius-surface) !important;
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-body);
+  line-height: 1.65;
+}
+
+.creatorlab-premium-surface .creatorlab-topic-textarea:focus {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-accent-border) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-brand-memory {
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-brand-memory[open] {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-brand-memory > summary {
+  min-height: 56px;
+  padding: var(--cl-space-3) var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-brand-memory-title-row > strong {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-card);
+}
+
+.creatorlab-premium-surface .creatorlab-brand-memory-optional {
+  color: var(--cl-text-muted);
+  background: transparent;
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-brief-settings.creatorlab-brief-card-v2 {
+  gap: var(--cl-space-6);
+  padding: var(--cl-space-6);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-subtle) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-brief-settings .creatorlab-brief-section-heading {
+  padding-bottom: var(--cl-space-4);
+  border-bottom-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-brief-core-grid {
+  gap: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-brief-decision-section {
+  gap: var(--cl-space-3);
+  padding-top: var(--cl-space-6);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-format-choice-grid,
+.creatorlab-premium-surface .creatorlab-duration-choice-row {
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface #creatorlab-brief-settings .creatorlab-format-choice,
+.creatorlab-premium-surface #creatorlab-brief-settings .creatorlab-duration-choice {
+  background: var(--cl-surface-muted) !important;
+  border-color: transparent !important;
+}
+
+.creatorlab-premium-surface #creatorlab-brief-settings .creatorlab-format-choice.is-selected,
+.creatorlab-premium-surface #creatorlab-brief-settings .creatorlab-duration-choice.is-selected {
+  background: var(--cl-info-soft) !important;
+  border-color: var(--cl-accent-border) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-brief-action.creatorlab-brief-action-bar,
+.creatorlab-premium-surface #creatorlab-strategy-action.creatorlab-strategy-action-bar {
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  background: color-mix(in srgb, var(--cl-surface) 96%, transparent);
+  box-shadow: var(--cl-shadow-floating) !important;
+}
+
+/* Strategy: a restrained recommendation anchor with related hook selection. */
+.creatorlab-premium-surface #creatorlab-strategy-canvas.creatorlab-strategy-experience {
+  gap: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-brief-strip {
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-recommendation {
+  gap: var(--cl-space-6);
+  padding: var(--cl-space-6);
+  background: var(--cl-surface);
+  border-color: var(--cl-accent-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-surface) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-recommendation.is-selected {
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+  box-shadow: inset 3px 0 0 var(--cl-primary), var(--cl-shadow-subtle) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-recommendation h2 {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-stage);
+  font-weight: 720;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-recommendation-aside {
+  border-left-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-signal-grid {
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-signal-card {
+  padding: var(--cl-space-3);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-grid {
+  gap: var(--cl-space-3);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-panel {
+  padding: var(--cl-space-4);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-subtle) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-hook-selector {
+  margin-top: var(--cl-space-4);
+  padding: var(--cl-space-4);
+  background: var(--cl-info-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-hook-option {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  border-radius: var(--cl-radius-control) !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-hook-option.is-selected {
+  background: var(--cl-info-soft) !important;
+  border-color: var(--cl-primary) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-idea-list {
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-idea-card {
+  min-height: 0;
+  padding: var(--cl-space-3);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-idea-card.is-selected {
+  background: var(--cl-info-soft);
+  border-color: var(--cl-accent-border);
+}
+
+.creatorlab-premium-surface #creatorlab-strategy-youtube.creatorlab-strategy-panel {
+  background: var(--cl-surface-muted);
+  border-color: var(--cl-border);
+  border-style: solid;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface #creatorlab-strategy-youtube .creatorlab-strategy-panel-heading > div > span {
+  color: var(--cl-text-muted) !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-details {
+  background: transparent;
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-empty-state {
+  max-width: 720px;
+  padding: var(--cl-space-6);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-empty-state strong {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-section);
+}
+
+.creatorlab-premium-surface .creatorlab-strategy-empty-state button {
+  min-height: var(--cl-control-primary);
+  color: var(--cl-surface) !important;
+  background: var(--cl-primary) !important;
+  border-color: var(--cl-primary) !important;
+  border-radius: var(--cl-radius-control) !important;
+  font-size: var(--cl-type-button) !important;
+}
+
+.creatorlab-premium-surface [data-project-load-feedback="true"] {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--cl-space-2) var(--cl-space-3) !important;
+  color: var(--cl-success) !important;
+  background: var(--cl-success-soft) !important;
+  border-color: color-mix(in srgb, var(--cl-success) 22%, var(--cl-border)) !important;
+  border-radius: var(--cl-radius-pill) !important;
+  font-size: var(--cl-type-meta);
+}
+
+/* Production Setup: recommendation first; customization stays quiet until opened. */
+.creatorlab-premium-surface .creatorlab-setup-shell {
+  gap: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-recommendation {
+  gap: var(--cl-space-4) var(--cl-space-6);
+  padding: var(--cl-space-6);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-accent-border);
+  border-top: 1px solid var(--cl-accent-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-recommendation-kicker {
+  color: var(--cl-primary);
+  font-size: var(--cl-type-meta);
+  letter-spacing: 0.06em;
+}
+
+.creatorlab-premium-surface .creatorlab-setup-recommendation h2 {
+  color: var(--cl-text-primary);
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-stage);
+  font-weight: 720;
+}
+
+.creatorlab-premium-surface .creatorlab-setup-recommendation-copy p {
+  color: var(--cl-text-secondary);
+  font-size: var(--cl-type-body);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-summary-grid {
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-summary-grid > div {
+  padding: var(--cl-space-3) var(--cl-space-4);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-summary-grid span {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.creatorlab-premium-surface .creatorlab-setup-summary-grid strong {
+  color: var(--cl-text-primary);
+  font-size: var(--cl-type-body);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-primary-action {
+  min-height: var(--cl-control-primary);
+  color: var(--cl-surface);
+  background: var(--cl-primary);
+  border-radius: var(--cl-radius-control);
+  box-shadow: var(--cl-shadow-subtle);
+  font-size: var(--cl-type-button);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-primary-action:hover {
+  background: var(--cl-primary-hover);
+  box-shadow: var(--cl-shadow-subtle);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize {
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-workspace);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize > summary {
+  min-height: 56px;
+  color: var(--cl-text-secondary);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize[open] {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize[open] > summary {
+  background: var(--cl-surface-muted);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize-status {
+  color: var(--cl-text-muted);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-customize-body {
+  padding: var(--cl-space-4);
+  background: var(--cl-surface-muted);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-group {
+  background: var(--cl-surface) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .creatorlab-setup-group + .creatorlab-setup-group {
+  margin-top: var(--cl-space-3);
+}
+
+.creatorlab-premium-surface .creatorlab-setup-group-label {
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-rail-promise {
+  align-items: flex-start;
+}
+
+.creatorlab-premium-surface .creatorlab-rail-promise p {
+  max-width: 15ch;
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+@media (max-width: 1100px) {
+  .creatorlab-premium-surface .creatorlab-uxp2a-outcome-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .creatorlab-premium-surface .creatorlab-uxp2a-outcome-card,
+  .creatorlab-premium-surface .creatorlab-topic-card,
+  .creatorlab-premium-surface #creatorlab-brief-settings.creatorlab-brief-card-v2,
+  .creatorlab-premium-surface .creatorlab-strategy-recommendation,
+  .creatorlab-premium-surface .creatorlab-setup-recommendation {
+    padding: var(--cl-space-4);
+  }
+
+  .creatorlab-premium-surface .creatorlab-strategy-recommendation-aside {
+    border-left: 0;
+    border-top: 1px solid var(--cl-border);
+  }
+
+  .creatorlab-premium-surface .creatorlab-setup-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .creatorlab-premium-surface .creatorlab-uxp2a-outcome-grid,
+  .creatorlab-premium-surface .creatorlab-setup-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-premium-surface .creatorlab-uxp2a-outcome-card .creatorlab-format-choice {
+    min-height: 76px;
+  }
+
+  .creatorlab-premium-surface .creatorlab-setup-summary-grid > div {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--cl-border);
+  }
+
+  .creatorlab-premium-surface .creatorlab-setup-summary-grid > div:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-premium-surface :where(
+    .creatorlab-format-choice,
+    .creatorlab-strategy-hook-option,
+    .creatorlab-strategy-idea-card,
+    .creatorlab-setup-primary-action
+  ) {
+    transition: none !important;
+  }
+}

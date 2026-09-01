@@ -10,8 +10,8 @@ const researchHandler = page.slice(
   page.indexOf("const handleYoutubePatternEngine = async"),
 );
 const strategySection = page.slice(
-  page.indexOf('{isCreatorLabFlow && creatorWorkspaceStep === 2 && creatorMentorResult'),
-  page.indexOf('{isCreatorLabFlow && creatorWorkspaceStep === 3'),
+  page.indexOf('{isCreatorLabFlow && creatorStageVisibility.strategy && creatorMentorResult'),
+  page.indexOf('{isCreatorLabFlow && (creatorStageVisibility.production_setup'),
 );
 const approvalAction = strategySection.slice(
   strategySection.indexOf("onClick={handleCreatorProductionPackage}") - 180,

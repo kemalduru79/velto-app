@@ -132,7 +132,10 @@ import {
   isCreatorSceneVisualCountdown,
   isCreatorSceneVisualGenerating,
 } from "@/lib/creator/visualGenerationStatus";
-import { creatorStageAfterSuccess } from "@/lib/creator/stageNavigation";
+import {
+  creatorStageAfterSuccess,
+  resolveCreatorStageVisibility,
+} from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
@@ -3469,7 +3472,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     replaceProductionSubstepUrl(substep);
   };
   const creatorLastAutoStepRef = useRef<1 | 2 | 3 | 4>(1);
-  const [creatorBriefEditorOpen, setCreatorBriefEditorOpen] = useState(false);
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
   const [creatorProductionPackage, setCreatorProductionPackage] =
     useState<CreatorProductionPackage | null>(null);
@@ -13894,7 +13896,6 @@ const generateSceneImage = async (
 
       setCreatorMentorResult(data.analysis as CreatorMentorResult);
       setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "brief_completed"));
-      setCreatorBriefEditorOpen(false);
       setSaveMessage(
         uiLanguage === "en"
           ? "Creator mentor analysis is ready ✅"
@@ -17590,10 +17591,11 @@ const generateSceneImage = async (
         ? 2
         : 1;
   const creatorWorkspaceStep: 1 | 2 | 3 | 4 = creatorSelectedWorkspaceStep;
-  const creatorBriefCanvasVisible =
-    !isCreatorLabFlow ||
-    creatorWorkspaceStep === 1 ||
-    (creatorWorkspaceStep === 2 && creatorBriefEditorOpen);
+  const creatorStageVisibility = resolveCreatorStageVisibility({
+    workspaceStep: creatorWorkspaceStep,
+    productionSubstep: creatorProductionSubstep,
+  });
+  const creatorBriefCanvasVisible = !isCreatorLabFlow || creatorStageVisibility.brief;
   const creatorReadinessPercent =
     creatorProjectLifecycle?.progress || 0;
   const creatorRawProjectTitle =
@@ -17797,9 +17799,6 @@ const generateSceneImage = async (
       setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
         current < automaticTargetStep ? automaticTargetStep : current,
       );
-      if (automaticTargetStep > previousProgressStep) {
-        setCreatorBriefEditorOpen(false);
-      }
     } else if (creatorProgressStep < previousProgressStep) {
       setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
         current > creatorProgressStep ? creatorProgressStep : current,
@@ -17833,7 +17832,6 @@ const generateSceneImage = async (
     }
 
     setCreatorSelectedWorkspaceStep(step);
-    setCreatorBriefEditorOpen(false);
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -18211,7 +18209,6 @@ const generateSceneImage = async (
       }
 
       setCreatorSelectedWorkspaceStep(targetStep);
-      setCreatorBriefEditorOpen(false);
     }
 
     window.setTimeout(() => {
@@ -29758,6 +29755,7 @@ const generateSceneImage = async (
             role={isCreatorLabFlow ? "status" : undefined}
             aria-live={isCreatorLabFlow ? "polite" : undefined}
             data-autosave-status={isCreatorLabFlow && saveMessage === ui.autoSaved ? "saved" : undefined}
+            data-project-load-feedback={isCreatorLabFlow && saveMessage === ui.projectLoaded ? "true" : undefined}
             className={
               isCreatorLabFlow && saveMessage === ui.autoSaved
                 ? "creatorlab-autosave-status"
@@ -29781,7 +29779,7 @@ const generateSceneImage = async (
           </div>
         )}
 
-        {isCreatorLabFlow && creatorWorkspaceStep === 2 && !creatorMentorResult && (
+        {isCreatorLabFlow && creatorStageVisibility.strategy && !creatorMentorResult && (
           <section id="creatorlab-strategy-canvas" className="creatorlab-strategy-experience">
             <header className="creatorlab-strategy-heading">
               <div>
@@ -29810,7 +29808,7 @@ const generateSceneImage = async (
           </section>
         )}
 
-        {isCreatorLabFlow && creatorWorkspaceStep === 2 && creatorMentorResult && (
+        {isCreatorLabFlow && creatorStageVisibility.strategy && creatorMentorResult && (
           <section id="creatorlab-strategy-canvas" className="creatorlab-strategy-experience">
             <header className="creatorlab-strategy-heading">
               <div>
@@ -29849,11 +29847,9 @@ const generateSceneImage = async (
               <button
                 type="button"
                 className="creatorlab-strategy-edit-button"
-                onClick={() => setCreatorBriefEditorOpen((current) => !current)}
+                onClick={() => navigateCreatorWorkspaceStep(1)}
               >
-                {creatorBriefEditorOpen
-                  ? uiLanguage === "en" ? "Close brief editor" : "Brief düzenleyiciyi kapat"
-                  : uiLanguage === "en" ? "Review or edit brief" : "Brief'i incele veya düzenle"}
+                {uiLanguage === "en" ? "Review or edit brief" : "Brief'i incele veya düzenle"}
               </button>
             </div>
 
@@ -30276,7 +30272,7 @@ const generateSceneImage = async (
           </section>
         )}
 
-        {isCreatorLabFlow && creatorWorkspaceStep === 3 && creatorProductionPackage && (
+        {isCreatorLabFlow && (creatorStageVisibility.production_setup || creatorStageVisibility.create_review) && creatorProductionPackage && (
           <section id="creatorlab-production-canvas" className="creatorlab-production-experience">
             <header className="creatorlab-production-heading">
               <div>
@@ -30300,7 +30296,7 @@ const generateSceneImage = async (
               </span>
             </header>
 
-            {creatorProductionSubstep === "create_review" && (
+            {creatorStageVisibility.create_review && (
               <>
                 <CreatorProductionSetupSummary
                   title={creatorProductionPackage.title}
@@ -30319,7 +30315,7 @@ const generateSceneImage = async (
               </>
             )}
 
-            {creatorProductionSubstep === "setup" && (
+            {creatorStageVisibility.production_setup && (
               <div className="creatorlab-setup-shell" data-production-substep="setup">
                 <section className="creatorlab-setup-recommendation" aria-labelledby="creatorlab-setup-recommendation-title">
                   <div className="creatorlab-setup-recommendation-copy">
@@ -31181,7 +31177,7 @@ const generateSceneImage = async (
               </div>
             )}
 
-            {creatorProductionSubstep === "create_review" && (scenes.length === 0 ? (
+            {creatorStageVisibility.create_review && (scenes.length === 0 ? (
               <div className="creatorlab-production-empty">
                 <div className="creatorlab-production-empty-icon" aria-hidden="true">▤</div>
                 <div>
@@ -33312,7 +33308,7 @@ const generateSceneImage = async (
           </section>
         )}
 
-        {isCreatorLabFlow && creatorWorkspaceStep === 4 && creatorProductionPackage && (
+        {isCreatorLabFlow && creatorStageVisibility.publish && creatorProductionPackage && (
           <section id="creatorlab-publish-canvas" className="creatorlab-publish-experience">
             <div className="creatorlab-publish-heading">
               <div>
