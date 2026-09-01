@@ -1,0 +1,487 @@
+/* Stage 0.10I-E — Publish, responsive and accessibility polish.
+   Presentation only. Stage 0.10I-B remains the sole token authority. */
+
+/* Publish opens as a calm release workspace with preflight as its visual anchor. */
+.creatorlab-premium-surface #creatorlab-publish-canvas.creatorlab-publish-experience {
+  gap: var(--cl-space-6);
+  max-width: 1480px;
+  margin-inline: auto;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-heading {
+  align-items: center;
+  padding: 0 0 var(--cl-space-4);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-heading h1 {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-stage);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-stage-badge {
+  min-height: var(--cl-control-compact);
+  padding: var(--cl-space-2) var(--cl-space-3);
+  border-radius: var(--cl-radius-pill);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface [data-creator-publish-preflight] {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--cl-space-2);
+}
+
+.creatorlab-premium-surface [data-creator-publish-preflight] > [data-preflight-category] {
+  min-width: 0;
+  min-height: 76px;
+  padding: var(--cl-space-3) !important;
+  color: var(--cl-text-secondary);
+  background: var(--cl-surface) !important;
+  border: 1px solid var(--cl-border) !important;
+  border-radius: var(--cl-radius-surface) !important;
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface [data-creator-publish-preflight] strong {
+  color: var(--cl-text-primary) !important;
+  font-size: var(--cl-type-body) !important;
+  line-height: 1.3;
+}
+
+.creatorlab-premium-surface [data-creator-publish-preflight] [data-preflight-status] span::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: var(--cl-space-2);
+  border-radius: 50%;
+  content: "";
+}
+
+.creatorlab-premium-surface [data-creator-publish-preflight] [data-preflight-status] span {
+  margin-top: var(--cl-space-2) !important;
+  color: var(--cl-text-secondary) !important;
+  font-size: var(--cl-type-meta) !important;
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface [data-preflight-status="ready"] span::before {
+  background: var(--cl-success);
+}
+
+.creatorlab-premium-surface :where([data-preflight-status="in_progress"], [data-preflight-status="in-progress"]) span::before {
+  background: var(--cl-info);
+}
+
+.creatorlab-premium-surface :where([data-preflight-status="review"], [data-preflight-status="action_required"]) span::before {
+  background: var(--cl-warning);
+}
+
+.creatorlab-premium-surface [data-preflight-status="blocked"] span::before {
+  background: var(--cl-danger);
+}
+
+/* The readiness summary connects status to the next creator actions without another banner. */
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness {
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
+  gap: var(--cl-space-3) var(--cl-space-6);
+  padding: var(--cl-space-3) var(--cl-space-4);
+  background: var(--cl-surface-muted);
+  border-color: transparent;
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness-summary > span {
+  color: var(--cl-text-secondary);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness-summary small,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness-actions,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-package-heading small {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness-actions {
+  justify-content: flex-start;
+  gap: var(--cl-space-1) var(--cl-space-4);
+}
+
+/* Final video leads; thumbnail stays visibly related but secondary. */
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-package-heading {
+  margin-top: 0;
+  padding-top: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-package-heading span,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-card-heading span {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-package-heading h2 {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-section);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas :where(
+  .creatorlab-publish-video-card,
+  .creatorlab-publish-thumbnail-card,
+  .creatorlab-publish-metadata-card,
+  .creatorlab-publish-platform-card,
+  .creatorlab-publish-checklist-card,
+  .creatorlab-publish-package-card
+) {
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-subtle) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid {
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.65fr);
+  gap: var(--cl-space-4);
+  align-items: start;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-video-card {
+  box-shadow: var(--cl-shadow-surface) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-thumbnail-card {
+  background: var(--cl-surface-muted);
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-card-heading {
+  min-height: 58px;
+  padding: var(--cl-space-3) var(--cl-space-4);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-card-heading strong {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-card);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-card-heading small,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-video-meta,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-thumbnail-summary-copy small {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-video-meta a,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-thumbnail-edit-action {
+  min-height: var(--cl-control-default);
+}
+
+/* Canonical copy leads on the left; channel adaptations remain quieter on the right. */
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-content-grid {
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
+  gap: var(--cl-space-4);
+  align-items: start;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-metadata-section {
+  padding: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-metadata-section span,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-metadata-section p,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-platform-item span,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-platform-item p {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-metadata-section strong {
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-body);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-copy-button {
+  min-width: 52px;
+  min-height: var(--cl-control-compact);
+  color: var(--cl-text-secondary) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  font-size: var(--cl-type-meta) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-platform-list {
+  gap: 0;
+  padding: 0 var(--cl-space-4) var(--cl-space-2);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-platform-item {
+  padding: var(--cl-space-3) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--cl-border);
+  border-radius: 0;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-platform-item:last-child {
+  border-bottom: 0;
+}
+
+/* Release Validation is a secondary detail layer, not a green dashboard. */
+.creatorlab-premium-surface #creatorlab-publish-checklist.creatorlab-publish-checklist-card {
+  padding-bottom: var(--cl-space-2);
+  background: var(--cl-surface-muted);
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-release-validation-grid {
+  gap: var(--cl-space-6);
+  padding: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-checklist {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-check,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-release-confirmations label {
+  min-height: 52px;
+  padding: var(--cl-space-2) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--cl-border);
+  border-radius: 0;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-release-confirmations label.is-confirmed {
+  background: transparent;
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas :where(
+  .creatorlab-release-validation-heading strong,
+  .creatorlab-release-validation-heading span,
+  .creatorlab-publish-check strong,
+  .creatorlab-publish-check small,
+  .creatorlab-release-confirmations strong,
+  .creatorlab-release-confirmations small
+) {
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-release-confirmations input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--cl-primary);
+}
+
+/* Package contents are compact tertiary inventory. */
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-card {
+  background: var(--cl-surface-muted);
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 var(--cl-space-4) var(--cl-space-3);
+  background: var(--cl-surface);
+  border-radius: var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item {
+  min-height: 72px;
+  padding: var(--cl-space-3);
+  background: transparent;
+  border-right: 1px solid var(--cl-border);
+  border-bottom: 1px solid var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item.is-ready {
+  background: transparent;
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item > span,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item strong,
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item small {
+  font-size: var(--cl-type-meta);
+}
+
+/* The sole release CTA stays stable, eligible or disabled, and clears floating UI. */
+.creatorlab-premium-surface #creatorlab-publish-action.creatorlab-publish-action-bar {
+  bottom: calc(var(--cl-space-3) + env(safe-area-inset-bottom));
+  gap: var(--cl-space-6);
+  padding: var(--cl-space-3) var(--cl-space-4);
+  background: var(--cl-surface);
+  border-color: var(--cl-border-strong);
+  border-radius: var(--cl-radius-workspace);
+  box-shadow: var(--cl-shadow-floating) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-action .creatorlab-publish-action-copy strong {
+  color: var(--cl-text-primary) !important;
+  font-family: var(--cl-font-ui);
+  font-size: var(--cl-type-card);
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-action .creatorlab-publish-action-copy p {
+  color: var(--cl-text-secondary) !important;
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface #creatorlab-publish-action .creatorlab-publish-primary-action {
+  min-width: 260px;
+  min-height: var(--cl-control-primary);
+  font-size: var(--cl-type-button) !important;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-action .creatorlab-publish-primary-action:disabled {
+  color: var(--cl-text-muted) !important;
+  background: var(--cl-surface-muted) !important;
+  border-color: var(--cl-border) !important;
+  opacity: 1;
+}
+
+.creatorlab-premium-surface .creatorlab-copilot-launcher.is-publish-context {
+  bottom: calc(112px + env(safe-area-inset-bottom));
+}
+
+.creatorlab-premium-surface .creatorlab-copilot-floating-layer.is-publish-context {
+  bottom: calc(176px + env(safe-area-inset-bottom));
+}
+
+/* Shared laptop/tablet consolidation uses the established I-C/I-D breakpoint family. */
+@media (max-width: 1180px) {
+  .creatorlab-premium-surface [data-creator-publish-preflight] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid,
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-content-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  }
+}
+
+@media (max-width: 1023px) {
+  .creatorlab-premium-surface .creatorlab-main-column {
+    padding-inline: var(--cl-space-4);
+  }
+
+  .creatorlab-premium-surface .creatorlab-workspace-topbar,
+  .creatorlab-premium-surface .creatorlab-topbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .creatorlab-premium-surface .creatorlab-workflow-rail {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .creatorlab-premium-surface .creatorlab-workflow-step {
+    flex: 0 0 min(210px, 42vw);
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-readiness,
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid,
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-content-grid,
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-release-validation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-action.creatorlab-publish-action-bar {
+    position: static;
+    box-shadow: var(--cl-shadow-surface) !important;
+  }
+
+  .creatorlab-premium-surface .creatorlab-copilot-launcher.is-publish-context {
+    bottom: calc(var(--cl-space-3) + env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-premium-surface .creatorlab-copilot-floating-layer.is-publish-context {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 720px) {
+  .creatorlab-premium-surface .creatorlab-main-column {
+    padding-inline: var(--cl-space-3);
+    padding-bottom: calc(var(--cl-space-8) + env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-premium-surface .creatorlab-workflow-step {
+    flex-basis: min(190px, 72vw);
+  }
+
+  .creatorlab-premium-surface :where(
+    .creatorlab-p2c-batch-segmented,
+    [role="tablist"],
+    [data-creator-visual-source-selector="true"] [role="group"]
+  ) {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .creatorlab-premium-surface [data-creator-publish-preflight] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .creatorlab-premium-surface [data-creator-publish-preflight] > [data-preflight-category] {
+    min-height: 68px;
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-heading,
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-p2d-package-heading,
+  .creatorlab-premium-surface #creatorlab-publish-action.creatorlab-publish-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-package-item {
+    border-right: 0;
+  }
+
+  .creatorlab-premium-surface #creatorlab-publish-action .creatorlab-publish-primary-action {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    white-space: normal;
+  }
+
+  .creatorlab-premium-surface .creatorlab-p2c-batch-toolbar-sticky {
+    max-height: min(46dvh, 360px);
+    overflow-y: auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .creatorlab-premium-surface [data-preflight-category],
+  .creatorlab-premium-surface #creatorlab-publish-action,
+  .creatorlab-premium-surface .creatorlab-publish-check,
+  .creatorlab-premium-surface .creatorlab-release-confirmations label {
+    border: 1px solid CanvasText !important;
+  }
+
+  .creatorlab-premium-surface [data-preflight-status] span::before {
+    background: CanvasText !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-premium-surface #creatorlab-publish-canvas *,
+  .creatorlab-premium-surface .creatorlab-workflow-rail,
+  .creatorlab-premium-surface .creatorlab-p2c-batch-toolbar-sticky {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
