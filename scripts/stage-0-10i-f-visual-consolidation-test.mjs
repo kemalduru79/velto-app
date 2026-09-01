@@ -118,6 +118,8 @@ const presentationOnly = new Set([
   "docs/STAGE-0.11D-SCALE-ECONOMICS.md",
   "lib/economics/scaleEnvelope.ts",
   "scripts/stage-0-11d-scale-economics-test.mjs",
+  "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
+  "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

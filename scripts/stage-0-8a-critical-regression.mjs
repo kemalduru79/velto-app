@@ -78,6 +78,7 @@ const tests = [
   "scripts/stage-0-11b-load-concurrency-test.mjs",
   "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
   "scripts/stage-0-11d-scale-economics-test.mjs",
+  "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
 ];
 
 for (const test of tests) {

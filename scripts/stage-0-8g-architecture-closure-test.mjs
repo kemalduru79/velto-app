@@ -248,6 +248,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "docs/STAGE-0.11D-SCALE-ECONOMICS.md",
     "lib/economics/scaleEnvelope.ts",
     "scripts/stage-0-11d-scale-economics-test.mjs",
+    "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
+    "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
     "lib/creator/recommendedVisualExecution.ts",
     "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
     "lib/creator/visualSourceMethod.ts",
