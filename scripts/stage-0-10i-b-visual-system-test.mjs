@@ -106,6 +106,9 @@ const allowed = new Set([
   "scripts/stage-0-10h-custom-upload-test.mjs",
   "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
   "docs/STAGE-0.11C-RELIABILITY.md",
+  "docs/STAGE-0.11D-SCALE-ECONOMICS.md",
+  "lib/economics/scaleEnvelope.ts",
+  "scripts/stage-0-11d-scale-economics-test.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 
