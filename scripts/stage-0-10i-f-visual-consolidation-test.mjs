@@ -106,6 +106,15 @@ const presentationOnly = new Set([
   "scripts/stage-0-8f-b-recovery-operator-test.mjs",
   "scripts/stage-0-11b-load-concurrency-test.mjs",
   "scripts/stage-0-11b-load-harness.mjs",
+  "components/create/CreatorUploadPicker.tsx",
+  "lib/creator/directUpload.ts",
+  "lib/performance/reliabilityHarness.ts",
+  "lib/persistence/storage/supabaseObjectStorageRepository.ts",
+  "lib/persistence/storage/persistenceError.ts",
+  "lib/persistence/storage/types.ts",
+  "scripts/stage-0-10h-custom-upload-test.mjs",
+  "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
+  "docs/STAGE-0.11C-RELIABILITY.md",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

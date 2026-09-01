@@ -8,6 +8,7 @@ import type {
   PublicObjectUploadResult,
   ObjectStorageStat,
   ObjectStorageRemoveInput,
+  SignedPublicUploadResult,
 } from "./types";
 
 function requireStorageName(value: string, field: "bucket" | "path") {
@@ -31,6 +32,40 @@ function requireStorageName(value: string, field: "bucket" | "path") {
 export class SupabaseObjectStorageRepository
   implements ObjectStorageRepository
 {
+  async createSignedPublicUpload(input: {
+    bucket: string;
+    path: string;
+  }): Promise<SignedPublicUploadResult> {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const path = requireStorageName(input.path, "path");
+    const { data, error } = await createServerSupabaseClient().storage
+      .from(bucket)
+      .createSignedUploadUrl(path, { upsert: false });
+    if (error || !data?.token) {
+      throw new PersistenceError("A secure upload target could not be created.", "STORAGE_SIGNED_UPLOAD_FAILED", error);
+    }
+    return { bucket, path, token: data.token };
+  }
+
+  async downloadPublic(input: { bucket: string; path: string }) {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const path = requireStorageName(input.path, "path");
+    const { data, error } = await createServerSupabaseClient().storage.from(bucket).download(path);
+    if (error || !data) {
+      throw new PersistenceError("Uploaded media could not be verified.", "STORAGE_DOWNLOAD_FAILED", error);
+    }
+    return new Uint8Array(await data.arrayBuffer());
+  }
+
+  getPublicUrl(input: { bucket: string; path: string }) {
+    const bucket = requireStorageName(input.bucket, "bucket");
+    const path = requireStorageName(input.path, "path");
+    const { data } = createServerSupabaseClient().storage.from(bucket).getPublicUrl(path);
+    const publicUrl = data?.publicUrl?.trim();
+    if (!publicUrl) throw new PersistenceError("Stored media asset does not have a public URL.", "STORAGE_PUBLIC_URL_FAILED");
+    return publicUrl;
+  }
+
   async removeObject(input: ObjectStorageRemoveInput): Promise<void> {
     const bucket = requireStorageName(input.bucket, "bucket");
     const path = requireStorageName(input.path, "path");

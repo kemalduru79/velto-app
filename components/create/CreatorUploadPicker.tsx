@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CreatorUploadedMedia } from "@/lib/creator/uploadedMedia";
+import { supabase } from "@/lib/supabase/client";
 
 type PreviewMetadata = { width: number | null; height: number | null; durationSeconds: number | null };
 
@@ -51,18 +52,36 @@ export default function CreatorUploadPicker({
     setError("");
     try {
       const token = await getAccessToken();
-      const body = new FormData();
-      body.set("projectId", projectId);
-      body.set("mediaKind", file.type.startsWith("video/") ? "video" : "image");
-      body.set("rightsConfirmed", "true");
-      body.set("file", file);
-      if (metadata.width) body.set("width", String(metadata.width));
-      if (metadata.height) body.set("height", String(metadata.height));
-      if (metadata.durationSeconds) body.set("durationSeconds", String(metadata.durationSeconds));
+      const authorization = { Authorization: `Bearer ${token}` };
+      const initiateResponse = await fetch("/api/creator-upload", {
+        method: "POST",
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "initiate",
+          projectId,
+          originalFilename: file.name,
+          mediaKind: file.type.startsWith("video/") ? "video" : "image",
+          mimeType: file.type,
+          sizeBytes: file.size,
+          rightsConfirmed: true,
+          width: metadata.width,
+          height: metadata.height,
+          durationSeconds: metadata.durationSeconds,
+        }),
+      });
+      const initiate = await initiateResponse.json().catch(() => null);
+      if (!initiateResponse.ok || !initiate?.upload) throw new Error(initiate?.error || "Upload failed.");
+      const { error: storageError } = await supabase.storage
+        .from(initiate.upload.bucket)
+        .uploadToSignedUrl(initiate.upload.path, initiate.upload.token, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+      if (storageError) throw new Error("The upload was interrupted. Try again.");
       const response = await fetch("/api/creator-upload", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body,
+        headers: { ...authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finalize", intentToken: initiate.upload.intentToken }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.asset) throw new Error(result?.error || "Upload failed.");

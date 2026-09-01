@@ -76,6 +76,7 @@ const tests = [
   "scripts/stage-0-10i-e-publish-responsive-accessibility-test.mjs",
   "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
   "scripts/stage-0-11b-load-concurrency-test.mjs",
+  "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
 ];
 
 for (const test of tests) {

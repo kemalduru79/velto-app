@@ -8,6 +8,13 @@ import {
 } from "@/lib/creator/uploadedMedia";
 import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
 import { observePersistenceOperation, recordMediaTransfer } from "@/lib/observability";
+import {
+  CreatorDirectUploadError,
+  createCreatorDirectUploadIntent,
+  finalizeCreatorDirectUpload,
+  verifyCreatorDirectUploadIntent,
+} from "@/lib/creator/directUpload";
+import { resolveServerSupabaseEnvironment } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -25,10 +32,95 @@ function optionalNumber(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+async function handleDirectUpload(request: Request, principalId: string) {
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const secret = resolveServerSupabaseEnvironment().serviceRoleKey;
+  if (!body || !secret) return json({ ok: false, code: "upload_unavailable", error: "Secure upload is unavailable." }, 503);
+  const services = getPersistenceServices();
+
+  if (body.action === "initiate") {
+    const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+    if (!PROJECT_ID.test(projectId)) return json({ ok: false, code: "invalid_upload", error: "Upload request is invalid." }, 400);
+    const project = await services.projectRepository.getForOwner(projectId, principalId);
+    if (!project || project.flow_type !== "creator_lab") {
+      return json({ ok: false, code: "project_not_found", error: "Project was not found." }, 404);
+    }
+    const intent = createCreatorDirectUploadIntent({
+      ownerUserId: principalId,
+      projectId,
+      originalFilename: body.originalFilename,
+      mediaKind: body.mediaKind,
+      mimeType: body.mimeType,
+      sizeBytes: body.sizeBytes,
+      rightsConfirmed: body.rightsConfirmed,
+      width: body.width,
+      height: body.height,
+      durationSeconds: body.durationSeconds,
+    }, secret);
+    const target = await services.objectStorage.createSignedPublicUpload({
+      bucket: intent.payload.bucket,
+      path: intent.payload.path,
+    });
+    return json({
+      ok: true,
+      upload: {
+        bucket: target.bucket,
+        path: target.path,
+        token: target.token,
+        intentToken: intent.intentToken,
+      },
+    });
+  }
+
+  if (body.action === "finalize" && typeof body.intentToken === "string") {
+    const verified = verifyCreatorDirectUploadIntent(body.intentToken, { ownerUserId: principalId, secret });
+    const project = await services.projectRepository.getForOwner(verified.projectId, principalId);
+    if (!project || project.flow_type !== "creator_lab") {
+      return json({ ok: false, code: "project_not_found", error: "Project was not found." }, 404);
+    }
+    const result = await finalizeCreatorDirectUpload({
+      intentToken: body.intentToken,
+      ownerUserId: principalId,
+      secret,
+    }, {
+      stat: (location) => services.objectStorage.stat(location),
+      download: (location) => services.objectStorage.downloadPublic(location),
+      remove: (location) => services.objectStorage.removeObject(location),
+      publicUrl: (location) => services.objectStorage.getPublicUrl(location),
+      findExisting: (ownerUserId, bucket, path) => services.mediaAssetRepository.findByStorageObject(ownerUserId, bucket, path),
+      register: async (input) => registerStoredAssetOrThrow({
+        repository: services.mediaAssetRepository,
+        ownerUserId: input.ownerUserId,
+        bucket: input.bucket,
+        storagePath: input.path,
+        publicUrl: input.publicUrl,
+        mediaKind: input.mediaKind,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        metadata: input.metadata,
+        generated: false,
+      }),
+    });
+    recordMediaTransfer({
+      operation: "creator_direct_upload",
+      direction: "upload",
+      bytes: result.payload.sizeBytes,
+      durationMs: Date.now() - result.payload.issuedAt,
+      outcome: "success",
+    });
+    return json({ ok: true, asset: result.asset, reused: result.reused });
+  }
+
+  return json({ ok: false, code: "invalid_upload", error: "Upload request is invalid." }, 400);
+}
+
 export async function POST(request: Request) {
   try {
     const principal = await authenticateRequest(request);
     const contentType = request.headers.get("content-type") || "";
+    if (contentType.toLowerCase().startsWith("application/json")) {
+      return await handleDirectUpload(request, principal.id);
+    }
     if (!contentType.toLowerCase().startsWith("multipart/form-data;")) {
       return json({ ok: false, code: "unsupported_content_type", error: "Upload request must use multipart form data." }, 415);
     }
@@ -117,6 +209,10 @@ export async function POST(request: Request) {
     }
     if (error instanceof CreatorUploadValidationError) {
       return json({ ok: false, code: error.code, error: error.message }, error.code === "file_too_large" ? 413 : 400);
+    }
+    if (error instanceof CreatorDirectUploadError) {
+      const status = error.code === "intent_expired" ? 410 : error.code === "upload_missing" ? 409 : 400;
+      return json({ ok: false, code: error.code, error: error.message }, status);
     }
     console.error("CREATOR_UPLOAD_FAILED", { error: error instanceof Error ? error.message : "unknown" });
     return json({ ok: false, code: "upload_failed", error: "The media could not be uploaded. Try again." }, 500);
