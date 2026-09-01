@@ -64,7 +64,7 @@ assert.equal(
   "d2abe587511bf80e20e19f6b170df2bf2445299343ebd4b619c6f52618a7a471",
 );
 assert.equal(hash("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989");
-assert.equal(hash("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6");
+assert.equal(hash("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226");
 
 const runtimeHealth = read("lib/runtime/runtimeHealth.ts");
 const creatorHealth = read("app/api/creator-health/route.ts");

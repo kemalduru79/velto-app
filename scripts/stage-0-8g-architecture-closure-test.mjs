@@ -114,7 +114,7 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
   ].sort());
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
-check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6"));
+check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226"));
 check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
@@ -126,6 +126,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "docs/STAGE-0.8-STATUS.md",
     "docs/STAGE-0.8-ARCHITECTURE-CLOSURE.md",
     "scripts/stage-0-8a-critical-regression.mjs",
+    "scripts/stage-0-8f-a-health-observability-test.mjs",
+    "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-8g-architecture-closure-test.mjs",
     "app/api/share-project/route.ts",
     "app/create/page.tsx",
@@ -223,6 +225,17 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "app/api/creator-scene-script-fit/route.ts",
     "lib/creator/sceneScriptFit.ts",
     "scripts/stage-0-10h-autofit-hardening-test.mjs",
+    "app/api/creator-upload/route.ts",
+    "docs/STAGE-0.11B-CAPACITY-BASELINE.md",
+    "lib/observability/capacity.ts",
+    "lib/observability/index.ts",
+    "lib/performance/loadHarness.ts",
+    "lib/performance/",
+    "lib/persistence/jobs/supabaseJobQueueRepository.ts",
+    "lib/providers/stock/service.server.ts",
+    "lib/worker/runtime.mjs",
+    "scripts/stage-0-11b-load-concurrency-test.mjs",
+    "scripts/stage-0-11b-load-harness.mjs",
     "lib/creator/recommendedVisualExecution.ts",
     "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
     "lib/creator/visualSourceMethod.ts",

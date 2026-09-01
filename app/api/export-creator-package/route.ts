@@ -10,6 +10,7 @@ import {
 } from "@/lib/creator/projectPerformanceReport";
 import { resolveCreatorProjectUsedMediaGovernance } from "@/lib/creator/usedMediaGovernance.server";
 import { getPersistenceServices } from "@/lib/persistence";
+import { startResourceMeasurement } from "@/lib/observability";
 
 // 3R PUBLISH-READY PACKAGE
 
@@ -422,6 +423,8 @@ function createProductionSummary(input: {
 }
 
 export async function POST(req: Request) {
+  const finishMeasurement = startResourceMeasurement("creator_package");
+  let measurementOutcome: "success" | "error" = "error";
   try {
     const principal = await authenticateRequest(req);
     const body = await req.json() as Record<string, unknown>;
@@ -811,6 +814,7 @@ export async function POST(req: Request) {
 
     const zipBuffer = createZip(entries);
 
+    measurementOutcome = "success";
     return new NextResponse(zipBuffer, {
       status: 200,
       headers: {
@@ -841,5 +845,7 @@ export async function POST(req: Request) {
       },
       { status: 500 },
     );
+  } finally {
+    finishMeasurement(measurementOutcome);
   }
 }

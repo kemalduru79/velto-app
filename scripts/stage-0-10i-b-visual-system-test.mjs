@@ -83,6 +83,20 @@ const allowed = new Set([
   "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
   "scripts/stage-0-8a-critical-regression.mjs",
   "scripts/stage-0-8g-architecture-closure-test.mjs",
+  "scripts/stage-0-8f-a-health-observability-test.mjs",
+  "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+  "app/api/creator-upload/route.ts",
+  "app/api/export-creator-package/route.ts",
+  "docs/STAGE-0.11B-CAPACITY-BASELINE.md",
+  "lib/observability/capacity.ts",
+  "lib/observability/index.ts",
+  "lib/performance/loadHarness.ts",
+  "lib/performance/",
+  "lib/persistence/jobs/supabaseJobQueueRepository.ts",
+  "lib/providers/stock/service.server.ts",
+  "lib/worker/runtime.mjs",
+  "scripts/stage-0-11b-load-concurrency-test.mjs",
+  "scripts/stage-0-11b-load-harness.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 

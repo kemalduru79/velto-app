@@ -7,6 +7,7 @@ import {
   validateCreatorUploadedMedia,
 } from "@/lib/creator/uploadedMedia";
 import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { observePersistenceOperation, recordMediaTransfer } from "@/lib/observability";
 
 export const runtime = "nodejs";
 
@@ -70,12 +71,20 @@ export async function POST(request: Request) {
       durationSeconds: optionalNumber(form.get("durationSeconds")),
     });
     const path = `creator/${principal.id}/${projectId}/upload/${randomUUID()}.${validated.extension}`;
-    const stored = await services.objectStorage.uploadPublic({
+    const uploadStartedAt = performance.now();
+    const stored = await observePersistenceOperation("storage", "creator_upload", () => services.objectStorage.uploadPublic({
       bucket: validated.mediaKind === "image" ? "images" : "videos",
       path,
       body: bytes,
       contentType: validated.mimeType,
       upsert: false,
+    }));
+    recordMediaTransfer({
+      operation: "creator_upload",
+      direction: "upload",
+      bytes: bytes.byteLength,
+      durationMs: performance.now() - uploadStartedAt,
+      outcome: "success",
     });
     const asset = await registerStoredAssetOrThrow({
       repository: services.mediaAssetRepository,

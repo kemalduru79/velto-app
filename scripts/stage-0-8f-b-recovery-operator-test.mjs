@@ -46,7 +46,7 @@ for (const marker of [
 ]) assert.ok(runbook.includes(marker), `runbook missing: ${marker}`);
 
 assert.equal(hash("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989");
-assert.equal(hash("lib/worker/runtime.mjs"), "e213b71c819e6cc26572dc0cb1d5be37c912d6b20b5d9e6318c05d07b1cbfaf6");
+assert.equal(hash("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226");
 assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
   "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
   "hls.js", "next", "openai", "react", "react-dom",

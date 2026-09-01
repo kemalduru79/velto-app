@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { incrementCounter, setGauge } from "@/lib/observability";
+import { incrementCounter, observePersistenceOperation, setGauge } from "@/lib/observability";
 import type {
   CancelVeltoJobInput,
   EnqueueVeltoJobInput,
@@ -110,7 +110,7 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
 
   async enqueue(input: EnqueueVeltoJobInput): Promise<VeltoJobRecord> {
     const client = createServerSupabaseClient();
-    const { data, error } = await client.rpc("velto_job_enqueue", {
+    const { data, error } = await observePersistenceOperation("rpc", "job_enqueue", () => client.rpc("velto_job_enqueue", {
       p_job_type: input.jobType,
       p_payload: input.payload || {},
       p_user_id: input.userId || null,
@@ -119,7 +119,7 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
       p_max_attempts: input.maxAttempts ?? 5,
       p_available_at: input.availableAt || new Date().toISOString(),
       p_idempotency_key: input.idempotencyKey || null,
-    });
+    }));
 
     if (error) {
       throw new Error(`Job could not be queued: ${error.message}`);
@@ -142,9 +142,9 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
   async getHealth(workerStaleSeconds = 90): Promise<VeltoQueueHealth> {
     const client = createServerSupabaseClient();
     const safeStaleSeconds = Math.max(15, Math.min(Math.round(workerStaleSeconds), 3600));
-    const { data, error } = await client.rpc("velto_job_queue_health", {
+    const { data, error } = await observePersistenceOperation("rpc", "job_queue_health", () => client.rpc("velto_job_queue_health", {
       p_worker_stale_seconds: safeStaleSeconds,
-    });
+    }));
 
     if (error) {
       throw new Error(`Queue health could not be read: ${error.message}`);
@@ -164,12 +164,12 @@ export class SupabaseJobQueueRepository implements JobQueueRepository {
     userId: string,
   ): Promise<VeltoJobRecord | null> {
     const client = createServerSupabaseClient();
-    const { data, error } = await client
+    const { data, error } = await observePersistenceOperation("query", "job_get_for_user", () => client
       .from("velto_jobs")
       .select("*")
       .eq("id", jobId)
       .eq("user_id", userId)
-      .maybeSingle();
+      .maybeSingle());
 
     if (error) {
       throw new Error(`Job could not be read: ${error.message}`);

@@ -10,6 +10,7 @@ import { PexelsStockProvider } from "./pexels";
 import { createStockAssetMetadata } from "./sourceMetadata";
 import type { StockMediaCandidate, StockMediaType, StockOrientation, StockSearchInput, StockSearchResult } from "./types";
 import { StockProviderError } from "./types";
+import { observePersistenceOperation, recordMediaTransfer } from "@/lib/observability";
 
 export const STOCK_SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const STOCK_SEARCH_CACHE_SCHEMA_VERSION = "pexels-video-preview-v2";
@@ -102,9 +103,13 @@ export async function importStock(input: { userId: string; projectId: string; me
   try {
   const candidate = await provider.getMedia(input.mediaType, input.providerMediaId);
   const rendition = provider.resolveImportRendition(candidate, input.renditionId);
+  const downloadStartedAt = performance.now();
   const media = await acquireStockMediaBytes({ url: rendition.url, mediaType: input.mediaType });
+  recordMediaTransfer({ operation: "stock_import", direction: "download", bytes: media.buffer.byteLength, durationMs: performance.now() - downloadStartedAt, outcome: "success" });
   const path = `creator/${input.userId}/stock/pexels/${input.projectId}/${input.providerMediaId}-${randomUUID()}.${media.extension}`;
-  const uploaded = await services.objectStorage.uploadPublic({ bucket: input.mediaType === "photo" ? "images" : "videos", path, body: media.buffer, contentType: media.mimeType, cacheControl: "31536000", upsert: false });
+  const uploadStartedAt = performance.now();
+  const uploaded = await observePersistenceOperation("storage", "stock_import", () => services.objectStorage.uploadPublic({ bucket: input.mediaType === "photo" ? "images" : "videos", path, body: media.buffer, contentType: media.mimeType, cacheControl: "31536000", upsert: false }));
+  recordMediaTransfer({ operation: "stock_import", direction: "upload", bytes: media.buffer.byteLength, durationMs: performance.now() - uploadStartedAt, outcome: "success" });
   const metadata = createStockAssetMetadata({ candidate, renditionId: rendition.id, renditionWidth: rendition.width, renditionHeight: rendition.height, bytes: media.buffer.byteLength, projectId: input.projectId, reuseIdentity });
   const asset = await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: input.userId, bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: input.mediaType === "photo" ? "image" : "video", mimeType: media.mimeType, body: media.buffer, metadata, generated: false });
   const { error } = await client.from("velto_stock_imports").update({ asset_id: asset.id, rendition_id: rendition.id, public_url: uploaded.publicUrl, source_metadata: metadata, status: "ready" }).eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
