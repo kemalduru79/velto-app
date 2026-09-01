@@ -78,6 +78,7 @@ const allowed = new Set([
   "scripts/stage-0-10i-c-stage-isolation-test.mjs",
   "scripts/stage-0-10i-d-create-review-visual-test.mjs",
   "scripts/stage-0-10i-e-publish-responsive-accessibility-test.mjs",
+  "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
   "scripts/stage-0-10h-production-setup-ux-test.mjs",
   "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
   "scripts/stage-0-8a-critical-regression.mjs",

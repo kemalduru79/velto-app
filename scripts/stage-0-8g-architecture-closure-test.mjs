@@ -257,6 +257,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-10i-c-stage-isolation-test.mjs",
     "scripts/stage-0-10i-d-create-review-visual-test.mjs",
     "scripts/stage-0-10i-e-publish-responsive-accessibility-test.mjs",
+    "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
     "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-10c-pexels-safe-stock-test.mjs",
     "components/create/CreatorEditor.tsx",

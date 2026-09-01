@@ -301,18 +301,12 @@
   box-shadow: 0 0 0 3px var(--cl-info-soft) !important;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .creatorlab-premium-surface .creatorlab-workspace-topbar {
     padding: var(--cl-space-3);
   }
 
   .creatorlab-premium-surface .creatorlab-topbar-actions {
     gap: var(--cl-space-2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .creatorlab-premium-surface :where(button, a, input, textarea, select, summary) {
-    transition: none !important;
   }
 }

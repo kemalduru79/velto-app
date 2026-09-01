@@ -477,13 +477,13 @@
   text-wrap: balance;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .creatorlab-premium-surface .creatorlab-uxp2a-outcome-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .creatorlab-premium-surface .creatorlab-uxp2a-outcome-card,
   .creatorlab-premium-surface .creatorlab-topic-card,
   .creatorlab-premium-surface #creatorlab-brief-settings.creatorlab-brief-card-v2,
@@ -500,9 +500,7 @@
   .creatorlab-premium-surface .creatorlab-setup-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 520px) {
   .creatorlab-premium-surface .creatorlab-uxp2a-outcome-grid,
   .creatorlab-premium-surface .creatorlab-setup-summary-grid {
     grid-template-columns: 1fr;
@@ -519,16 +517,5 @@
 
   .creatorlab-premium-surface .creatorlab-setup-summary-grid > div:last-child {
     border-bottom: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .creatorlab-premium-surface :where(
-    .creatorlab-format-choice,
-    .creatorlab-strategy-hook-option,
-    .creatorlab-strategy-idea-card,
-    .creatorlab-setup-primary-action
-  ) {
-    transition: none !important;
   }
 }
