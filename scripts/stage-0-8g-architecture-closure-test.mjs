@@ -262,6 +262,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/beta-data-p1b-1-smoke-test.mjs",
     "scripts/beta-fin-p1-character-reference-cost-guard-smoke-test.mjs",
     "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+    "docs/STAGE-0.11F-CLOSURE-GO-NO-GO.md",
+    "scripts/stage-0-11f-closure-go-no-go-test.mjs",
     "lib/creator/recommendedVisualExecution.ts",
     "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
     "lib/creator/visualSourceMethod.ts",

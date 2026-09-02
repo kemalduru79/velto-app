@@ -134,6 +134,8 @@ const presentationOnly = new Set([
   "scripts/beta-data-p1b-1-smoke-test.mjs",
   "scripts/beta-fin-p1-character-reference-cost-guard-smoke-test.mjs",
   "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+  "docs/STAGE-0.11F-CLOSURE-GO-NO-GO.md",
+  "scripts/stage-0-11f-closure-go-no-go-test.mjs",
   "scripts/stage-0-9a-security-consent-baseline-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
