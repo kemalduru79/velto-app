@@ -738,6 +738,16 @@ ${isCreatorLab ? "professional publish-ready creator asset" : "premium child-saf
       },
       billable: isCreatorLab,
       requireCostGuardConfirmation: isCreatorLab,
+      admissionMode: isCreatorLab ? "creator_accounting" : "balance_backed",
+      accounting: isCreatorLab ? {
+        attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:openai-image:1`,
+        route: "/api/image",
+        operationType: "creator_image",
+        productTier: creatorVisualRoute?.qualityMode || null,
+        providerTier: imageProvider.tier,
+        projectId: projectId || null,
+        sceneId: sceneId ?? null,
+      } : undefined,
     });
 
     const model = creatorVisualRoute?.imageModel || "gpt-image-1";

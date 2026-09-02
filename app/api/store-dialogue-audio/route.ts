@@ -264,6 +264,17 @@ async function postHandler(req: NextRequest) {
       },
       billable: isCreatorLab,
       requireCostGuardConfirmation: isCreatorLab,
+      admissionMode: isCreatorLab ? "creator_accounting" : "balance_backed",
+      accounting: isCreatorLab ? {
+        attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:elevenlabs-dialogue:1`,
+        route: "/api/store-dialogue-audio",
+        operationType: "creator_dialogue_voice",
+        productTier: creatorVoiceRoute?.qualityMode || null,
+        providerTier: voiceProvider.tier,
+        model: modelId,
+        projectId: projectKey,
+        sceneId,
+      } : undefined,
     });
 
     const voiceResult = await voiceProvider.synthesize({

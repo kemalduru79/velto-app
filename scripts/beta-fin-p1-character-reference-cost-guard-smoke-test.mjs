@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { getOperationCreditCost } from "../lib/credits/operationPolicy.ts";
+import { aggregateCreatorEconomicUsage } from "../lib/economics/usageAggregation.ts";
 
 const route = fs.readFileSync(
   new URL("../app/api/character-image/route.ts", import.meta.url),
@@ -29,9 +30,23 @@ assert.match(route, /providerSucceeded = true;[\s\S]*settleMeteredOperation\(res
 assert.match(route, /if \(providerSucceeded\)[\s\S]*settleMeteredOperation[\s\S]*else \{[\s\S]*releaseMeteredOperation/);
 assert.match(route, /getCreditErrorResponse\(error\)/);
 assert.doesNotMatch(route, /body\.(?:credits|creditCost|estimatedCredits)/);
-assert.doesNotMatch(route, /operationType:\s*"creator_(?:character|persona|reference)/);
+assert.match(route, /accounting: \{[\s\S]*operationType: "creator_character_image"/);
+assert.match(route, /operationType: isCreatorLab \? "creator_character_image" : "legacy_character_image"/);
 assert.match(route, /metadata: \{[\s\S]*purpose: "character_reference"/);
 assert.doesNotMatch(route, /metadata: \{[^}]*?(?:prompt|appearance|base64|apiKey)/s);
+
+const characterUsage = aggregateCreatorEconomicUsage([
+  {
+    operation_type: "creator_character_image",
+    provider: "openai",
+    model: "gpt-image-2-2026-04-21",
+    state: "provider_billed",
+    actual_provider_cost_usd: 0.12,
+    cost_status: "exact",
+  },
+]);
+assert.equal(characterUsage.byOperation.creator_character_image.operations, 1);
+assert.equal(characterUsage.byOperation.creator_character_image.actualCogsUsd, 0.12);
 
 const serverReserve = route.indexOf("reserveMeteredOperation(req");
 const serverDispatch = route.indexOf("client.images.generate");

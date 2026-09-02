@@ -12,17 +12,26 @@ import {
 } from "./operationPolicy";
 import type { CreditAccount } from "./types";
 import { createLogger, observeCreditMutation } from "@/lib/observability";
+import {
+  claimEconomicOperation,
+  EconomicOperationClaimError,
+  releaseEconomicOperationClaim,
+  unknownCost,
+} from "@/lib/economics";
+import { createCreatorAccountingAdmission } from "./creatorAccountingAdmission";
 
 const creditEngine = new CreditEngine(
   getPersistenceServices().creditRepository,
 );
 
 export type MeteredOperationReservation = {
+  mode: "balance_backed" | "creator_accounting";
   userId: string;
   reservationId: string;
   operationType: MeteredOperationType;
   reservedCredits: number;
-  accountAfterReserve: CreditAccount;
+  accountAfterReserve: CreditAccount | null;
+  accountingAttemptKey?: string;
 };
 
 type ReserveMeteredOperationInput = {
@@ -33,6 +42,17 @@ type ReserveMeteredOperationInput = {
   metadata?: Record<string, unknown>;
   billable?: boolean;
   requireCostGuardConfirmation?: boolean;
+  admissionMode?: "balance_backed" | "creator_accounting";
+  accounting?: {
+    attemptKey: string;
+    route: string;
+    operationType: string;
+    productTier?: string | null;
+    providerTier?: string | null;
+    model?: string | null;
+    projectId?: string | null;
+    sceneId?: string | number | null;
+  };
 };
 
 export const CREATOR_COST_GUARD_VERSION = "creator-cost-guard-v1";
@@ -63,6 +83,43 @@ export async function reserveMeteredOperation(
   const idempotencyKey =
     request.headers.get("x-idempotency-key")?.trim() ||
     `${input.operationType}:${randomUUID()}`;
+
+  if (input.admissionMode === "creator_accounting") {
+    if (!input.accounting) {
+      throw new CreditEngineError("Creator accounting metadata is required.", "INVALID_INPUT");
+    }
+    const accounting = input.accounting;
+    try {
+      const accountingReservation = await createCreatorAccountingAdmission({
+        attemptKey: accounting.attemptKey,
+        logicalOperationId: idempotencyKey,
+        userId: principal.id,
+        route: accounting.route,
+        operationType: accounting.operationType,
+      }, async () => claimEconomicOperation({
+        attemptKey: accounting.attemptKey,
+        logicalOperationId: idempotencyKey,
+        idempotencyKey,
+        userId: principal.id,
+        projectId: accounting.projectId,
+        sceneId: accounting.sceneId,
+        route: accounting.route,
+        operationType: accounting.operationType,
+        productTier: accounting.productTier,
+        provider: input.provider,
+        providerTier: accounting.providerTier,
+        model: accounting.model,
+        state: "reserved",
+        cost: unknownCost("Provider cost is recorded after dispatch."),
+      }).then(() => undefined));
+      return { ...accountingReservation, operationType: input.operationType };
+    } catch (error) {
+      if (error instanceof EconomicOperationClaimError && error.code === "DUPLICATE_OPERATION") {
+        throw new CreditEngineError("This production request has already been claimed.", "IDEMPOTENCY_REQUEST_IN_PROGRESS");
+      }
+      throw new CreditEngineError("Creator accounting admission failed.", "CREDIT_OPERATION_FAILED");
+    }
+  }
 
   const result = await observeCreditMutation(
     "reserve",
@@ -96,6 +153,7 @@ export async function reserveMeteredOperation(
   }
 
   return {
+    mode: "balance_backed",
     userId: principal.id,
     reservationId: result.reservation.id,
     operationType: input.operationType,
@@ -109,6 +167,7 @@ export async function markMeteredOperationProviderDispatch(
   providerRequestId: string,
   metadata?: Record<string, unknown>,
 ) {
+  if (reservation.mode === "creator_accounting") return null;
   return observeCreditMutation(
     "dispatch",
     reservation.operationType,
@@ -130,6 +189,7 @@ export async function settleMeteredOperation(
     metadata?: Record<string, unknown>;
   },
 ) {
+  if (reservation.mode === "creator_accounting") return null;
   return observeCreditMutation(
     "settle",
     reservation.operationType,
@@ -151,6 +211,12 @@ export async function releaseMeteredOperation(
   metadata?: Record<string, unknown>,
 ) {
   try {
+    if (reservation.mode === "creator_accounting") {
+      if (reservation.accountingAttemptKey) {
+        await releaseEconomicOperationClaim(reservation.accountingAttemptKey, reason);
+      }
+      return null;
+    }
     return await observeCreditMutation(
       "release",
       reservation.operationType,

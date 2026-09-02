@@ -53,7 +53,7 @@ const publicMutationRoutes = sourceFiles.filter((path) => {
 assert.deepEqual(publicMutationRoutes, [], "No alternate browser/public POST /api/credits caller may exist");
 
 const accountMenu = read("components/auth/UserAccountMenu.tsx");
-assert.match(accountMenu, /fetch\(["']\/api\/credits["']/, "Browser balance GET must remain present");
+assert.doesNotMatch(accountMenu, /fetch\(["']\/api\/credits["']/, "Retired creator-facing balances must not be polled");
 assert.doesNotMatch(accountMenu, /method\s*:\s*["']POST["']/, "Browser balance caller must remain GET-only");
 
 const metering = read("lib/credits/serverMetering.ts");

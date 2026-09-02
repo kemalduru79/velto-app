@@ -310,7 +310,10 @@ async function postHandler(req: NextRequest) {
       metadata: {
         productProfile: "creatorlab",
         projectId: canonicalProjectId,
-        sceneId: body.sceneId ?? null,
+        sceneId:
+          typeof body.sceneId === "string" || typeof body.sceneId === "number"
+            ? body.sceneId
+            : null,
         durationSec: durationPolicy.durationSec,
         engineTier: selection.selectedTier,
         profileKey: routedProfile?.profileKey || null,
@@ -319,6 +322,20 @@ async function postHandler(req: NextRequest) {
       },
       billable: true,
       requireCostGuardConfirmation: true,
+      admissionMode: "creator_accounting",
+      accounting: {
+        attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:${selection.provider.key}:generation:1`,
+        route: "/api/creator-video",
+        operationType: "creator_video",
+        productTier: qualityMode,
+        providerTier: selection.selectedTier,
+        model: (routedProfile || selection.provider.getRuntimeProfile()).model,
+        projectId: canonicalProjectId,
+        sceneId:
+          typeof body.sceneId === "string" || typeof body.sceneId === "number"
+            ? body.sceneId
+            : null,
+      },
     });
 
     // Do not reject an HTTPS asset based on a HEAD request. Some signed storage
@@ -429,7 +446,7 @@ async function postHandler(req: NextRequest) {
             provider: selection.provider.key,
           },
         });
-        creditAccount = settlement.account;
+        creditAccount = settlement?.account || null;
       } catch {
         // The provider task and reconciliation job already exist. Keep the
         // reservation attached to the job; the worker repeats the idempotent

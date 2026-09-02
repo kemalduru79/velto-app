@@ -6,6 +6,13 @@ const STARTING_HEAD = "f8030a723ba13cfb488db1ddbf3e577ae92ef3ee";
 const read = (file) => fs.readFileSync(file, "utf8");
 const changedFiles = execFileSync("git", ["diff", "--name-only", STARTING_HEAD], { encoding: "utf8" })
   .trim().split("\n").filter(Boolean);
+const approvedAzureReadinessArtifacts = new Set([
+  "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
+  "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
+]);
+const isUnapprovedAzureArtifact = (file) =>
+  /azure|terraform|bicep/i.test(file) &&
+  !approvedAzureReadinessArtifacts.has(file);
 const status = read("docs/STAGE-0.9-STATUS.md");
 const lifecycle = read("docs/STAGE-0.9-DATA-LIFECYCLE.md");
 const closure = read("docs/STAGE-0.9-CLOSURE.md");
@@ -83,7 +90,13 @@ assert.match(lifecycle, /external\/public Storyverse release requires a separate
 assert.match(lifecycle, /Trash is a recoverable logical state, still consumes storage/);
 assert.match(lifecycle, /Automated account-wide deletion is not implemented in Stage 0/);
 assert.match(status, /Storyverse child \/ guardian consent/);
-assert.equal(changedFiles.some((file) => /azure|terraform|bicep/i.test(file)), false);
+assert.equal(changedFiles.some(isUnapprovedAzureArtifact), false);
+assert.equal(isUnapprovedAzureArtifact("docs/STAGE-0.11E-AZURE-READINESS-GATE.md"), false);
+assert.equal(isUnapprovedAzureArtifact("scripts/stage-0-11e-azure-readiness-gate-test.mjs"), false);
+assert.equal(isUnapprovedAzureArtifact("infra/azure/container-app.ts"), true);
+assert.equal(isUnapprovedAzureArtifact("infra/terraform/main.tf"), true);
+assert.equal(isUnapprovedAzureArtifact("infra/main.bicep"), true);
+assert.equal(isUnapprovedAzureArtifact("config/azure-runtime.json"), true);
 assert.equal(changedFiles.includes("package-lock.json"), false);
 
 const basePackage = JSON.parse(execFileSync("git", ["show", `${STARTING_HEAD}:package.json`], { encoding: "utf8" }));
@@ -96,12 +109,17 @@ const reviewedProviderPrefixes = [
   "lib/providers/music/",
   "lib/providers/research/",
 ];
+const reviewedCreditFiles = new Set([
+  "lib/credits/creatorAccountingAdmission.ts",
+  "lib/credits/serverMetering.ts",
+]);
 for (const prefix of ["lib/providers/", "lib/credits/", "lib/queue/", "worker/"]) {
   const drifted = changedFiles.some((file) => {
     if (!file.startsWith(prefix)) return false;
     if (prefix === "lib/providers/") {
       return !reviewedProviderPrefixes.some((allowedPrefix) => file.startsWith(allowedPrefix));
     }
+    if (prefix === "lib/credits/") return !reviewedCreditFiles.has(file);
     return true;
   });
   assert.equal(drifted, false, `${prefix} behavior drifted`);

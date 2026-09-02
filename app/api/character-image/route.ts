@@ -143,6 +143,15 @@ export async function POST(req: Request) {
         },
         billable: true,
         requireCostGuardConfirmation: true,
+        admissionMode: "creator_accounting",
+        accounting: {
+          attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:openai-image:1`,
+          route: "/api/character-image",
+          operationType: "creator_character_image",
+          productTier: normalizedQualityMode,
+          providerTier: "primary",
+          model: creatorRoute.model,
+        },
       });
     }
 

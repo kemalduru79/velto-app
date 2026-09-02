@@ -238,6 +238,16 @@ export async function POST(request: Request) {
       },
       billable: productProfile === "creatorlab",
       requireCostGuardConfirmation: productProfile === "creatorlab",
+      admissionMode: productProfile === "creatorlab" ? "creator_accounting" : "balance_backed",
+      accounting: productProfile === "creatorlab" ? {
+        attemptKey: `${request.headers.get("x-idempotency-key")!.trim()}:velto-export:1`,
+        route: "/api/creator-export",
+        operationType: "creator_export",
+        productTier: String(qualityMode || "standard"),
+        providerTier: "infrastructure",
+        model: "ffmpeg-1280x720-25fps",
+        projectId: project.id,
+      } : undefined,
     });
     const logicalExportId = request.headers.get("x-idempotency-key")?.trim() || creditReservation?.reservationId || `export:${crypto.randomUUID()}`;
     exportPayload.economicExportId = logicalExportId;

@@ -120,6 +120,21 @@ const presentationOnly = new Set([
   "scripts/stage-0-11d-scale-economics-test.mjs",
   "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
   "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
+  "app/api/character-image/route.ts",
+  "app/api/creator-export/route.ts",
+  "app/api/creator-video/route.ts",
+  "app/api/image/route.ts",
+  "app/api/store-audio/route.ts",
+  "app/api/store-dialogue-audio/route.ts",
+  "app/create/page.tsx",
+  "components/auth/UserAccountMenu.tsx",
+  "lib/credits/serverMetering.ts",
+  "lib/credits/creatorAccountingAdmission.ts",
+  "lib/economics/repository.ts",
+  "scripts/beta-data-p1b-1-smoke-test.mjs",
+  "scripts/beta-fin-p1-character-reference-cost-guard-smoke-test.mjs",
+  "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+  "scripts/stage-0-9a-security-consent-baseline-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

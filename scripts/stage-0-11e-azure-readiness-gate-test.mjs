@@ -47,6 +47,21 @@ const allowed = new Set([
   "scripts/stage-0-8g-architecture-closure-test.mjs",
   "scripts/stage-0-10i-b-visual-system-test.mjs",
   "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
+  "app/api/character-image/route.ts",
+  "app/api/creator-export/route.ts",
+  "app/api/creator-video/route.ts",
+  "app/api/image/route.ts",
+  "app/api/store-audio/route.ts",
+  "app/api/store-dialogue-audio/route.ts",
+  "app/create/page.tsx",
+  "components/auth/UserAccountMenu.tsx",
+  "lib/credits/creatorAccountingAdmission.ts",
+  "lib/credits/serverMetering.ts",
+  "lib/economics/repository.ts",
+  "scripts/beta-data-p1b-1-smoke-test.mjs",
+  "scripts/beta-fin-p1-character-reference-cost-guard-smoke-test.mjs",
+  "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+  "scripts/stage-0-9a-security-consent-baseline-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
 

@@ -10,12 +10,6 @@ import { useLanguage } from "@/lib/useLanguage";
 
 type Tone = "light" | "dark";
 
-type CreditAccount = {
-  availableCredits: number;
-  reservedCredits: number;
-  balanceCredits: number;
-};
-
 type Props = {
   tone?: Tone;
   className?: string;
@@ -24,9 +18,6 @@ type Props = {
 const menuCopy = {
   tr: {
     account: "Hesap",
-    credits: "kredi",
-    available: "Kullanılabilir",
-    reserved: "Rezerve",
     switchUser: "Kullanıcı değiştir",
     switching: "Hazırlanıyor…",
     signOut: "Çıkış yap",
@@ -35,9 +26,6 @@ const menuCopy = {
   },
   en: {
     account: "Account",
-    credits: "credits",
-    available: "Available",
-    reserved: "Reserved",
     switchUser: "Switch user",
     switching: "Preparing…",
     signOut: "Sign out",
@@ -60,7 +48,6 @@ export default function UserAccountMenu({
   >(undefined);
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [account, setAccount] = useState<CreditAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<"logout" | "switch" | null>(null);
   const [error, setError] = useState("");
@@ -71,20 +58,6 @@ export default function UserAccountMenu({
       if (!mountedRef.current) return;
       setUser(session?.user || null);
 
-      if (!session?.accessToken) {
-        setAccount(null);
-        return;
-      }
-
-      const response = await fetch("/api/credits", {
-        headers: { Authorization: `Bearer ${session.accessToken}` },
-        cache: "no-store",
-      });
-      const data = await response.json().catch(() => null);
-
-      if (mountedRef.current && response.ok && data?.account) {
-        setAccount(data.account);
-      }
     } catch (caughtError) {
       console.error("account menu load error:", caughtError);
     } finally {
@@ -102,26 +75,12 @@ export default function UserAccountMenu({
     void loadAccount();
 
     const handleFocus = () => void loadAccount();
-    const handleCreditChange = (event: Event) => {
-      const nextAccount = (
-        event as CustomEvent<{ account?: CreditAccount | null }>
-      ).detail?.account;
-
-      if (nextAccount) {
-        setAccount(nextAccount);
-        return;
-      }
-
-      void loadAccount(true);
-    };
     window.addEventListener("focus", handleFocus);
-    window.addEventListener("velto:credits-changed", handleCreditChange);
 
     return () => {
       mountedRef.current = false;
       accountLoaderRef.current = undefined;
       window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("velto:credits-changed", handleCreditChange);
     };
   }, [performAccountLoad]);
 
@@ -233,48 +192,6 @@ export default function UserAccountMenu({
             >
               {user?.email}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div
-                className={
-                  isDark
-                    ? "rounded-2xl border border-white/10 bg-white/[0.05] p-3"
-                    : "rounded-2xl border border-slate-200 bg-white p-3"
-                }
-              >
-                <p
-                  className={
-                    isDark
-                      ? "text-[10px] font-bold uppercase tracking-[0.12em] text-white/45"
-                      : "text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400"
-                  }
-                >
-                  {t.available}
-                </p>
-                <p className="mt-1 text-xl font-black">
-                  {account?.availableCredits ?? "—"}
-                </p>
-              </div>
-              <div
-                className={
-                  isDark
-                    ? "rounded-2xl border border-white/10 bg-white/[0.05] p-3"
-                    : "rounded-2xl border border-slate-200 bg-white p-3"
-                }
-              >
-                <p
-                  className={
-                    isDark
-                      ? "text-[10px] font-bold uppercase tracking-[0.12em] text-white/45"
-                      : "text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400"
-                  }
-                >
-                  {t.reserved}
-                </p>
-                <p className="mt-1 text-xl font-black">
-                  {account?.reservedCredits ?? "—"}
-                </p>
-              </div>
-            </div>
           </div>
 
           <div className="mt-2 grid gap-1">

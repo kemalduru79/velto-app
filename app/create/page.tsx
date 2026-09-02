@@ -1863,22 +1863,22 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Video linki, başlık, açıklama, hashtag, ilk yorum, thumbnail ve sahne datasını ZIP paketi olarak indirir.",
     downloadCreatorPackage: "Creator Package İndir",
     downloadingCreatorPackage: "Paket hazırlanıyor...",
-    costOptimizationEngine: "Credit Efficiency Advisor",
-    costOptimizationDesc: "Mevcut sahne planı için daha kredi-verimli medya yönlendirmesi önerir. Toplam kredi tahmini Production Quality alanında kalır.",
-    costPricingNote: "Not: Bu alan yeni bir kredi tahmini üretmez; yalnızca seçilen üretim planını daha verimli hale getirecek önerileri gösterir.",
+    costOptimizationEngine: "Production Efficiency Advisor",
+    costOptimizationDesc: "Mevcut sahne planı için daha verimli medya yönlendirmesi önerir.",
+    costPricingNote: "Not: Bu alan seçilen üretim planını daha verimli hale getirecek önerileri gösterir.",
     optimizeScenes: "Sahneleri Optimize Et",
     optimizingScenes: "Sahneler optimize ediliyor...",
     costSummary: "Verimlilik Özeti",
     recommendedVideoScenes: "Premium Video Blokları",
     recommendedImageScenes: "Image-motion Blokları",
-    estimatedCost: "Kredi Rotası",
+    estimatedCost: "Üretim Rotası",
     estimatedSavings: "Verimlilik Kazancı",
     applyOptimization: "Önerileri Uygula",
     optimizationApplied: "Optimizasyon önerileri uygulandı ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimize ediyor...",
     youtubeAutoMode: "YouTube Auto Mode",
-    youtubeAutoModeDesc: "Konu fikrinden production package, metadata, thumbnail, kredi verimliliği önerileri ve kayıt adımlarını tek akışta hazırlar. Video üretmez; premium render kararı sende kalır.",
+    youtubeAutoModeDesc: "Konu fikrinden production package, metadata, thumbnail, üretim verimliliği önerileri ve kayıt adımlarını tek akışta hazırlar. Video üretmez; premium render kararı sende kalır.",
     generateFullYoutubePackage: "Full YouTube Package Üret",
     generatingFullYoutubePackage: "Full package hazırlanıyor...",
     fullYoutubePackageReady: "Full YouTube package hazır ✅",
@@ -1886,7 +1886,7 @@ const UI_TEXT = {
     productionBridgeDesc: "Velto Studio paketi hazır. Önce paketi düzenlenebilir üretim sahnelerine dönüştür; görsel, ses, video ve export adımları ayrı kontrol edilir.",
     productionBridgeButton: "🎬 Production Stage Oluştur",
     productionBridgeReady: "Velto Studio paketi hazır. Henüz düzenlenebilir üretim sahnesi oluşturulmadı.",
-    productionBridgeCostNote: "Not: Bu adım yalnızca metin tabanlı sahne yapısını oluşturur; görsel, ses, video veya export kredi kullanımı başlatmaz.",
+    productionBridgeCostNote: "Not: Bu adım yalnızca metin tabanlı sahne yapısını oluşturur; görsel, ses, video veya export üretimi başlatmaz.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Birden fazla video fikrini hızlıca analiz eder. Bu aşamada video veya thumbnail üretmez; sadece seçilebilir fikir kartları oluşturur.",
     bulkTopicsLabel: "Her satıra bir video fikri yaz",
@@ -1930,10 +1930,10 @@ const UI_TEXT = {
     patternAngle: "Önerilen İçerik Açısı",
     patternReasoning: "Gerekçe",
     creatorDurationTitle: "Hedef Süre",
-    creatorDurationDesc: "Format ve süre seçimi sahne sayısını, anlatım uzunluğunu, timeline riskini ve kredi verimliliği önerilerini yönlendirir. Custom süre seçerek özgürce hedef belirleyebilirsin.",
+    creatorDurationDesc: "Format ve süre seçimi sahne sayısını, anlatım uzunluğunu, timeline riskini ve üretim verimliliği önerilerini yönlendirir. Custom süre seçerek özgürce hedef belirleyebilirsin.",
     creatorQualityTitle: "Üretim Kalitesi",
-    creatorQualityDesc: "Kalite modu; kredi tüketimini, görsel/video yönlendirmesini ve render aşamasında hangi üretim hattının kullanılacağını belirler.",
-    creditProfile: "Kredi Profili",
+    creatorQualityDesc: "Kalite modu; görsel/video yönlendirmesini ve render aşamasında hangi üretim hattının kullanılacağını belirler.",
+    creditProfile: "Üretim Profili",
     mediaRouting: "Medya Yönlendirme",
     customDuration: "Custom Süre",
     customDurationSeconds: "Süre (saniye)",
@@ -2202,22 +2202,22 @@ const UI_TEXT = {
     exportCreatorPackageDesc: "Downloads video link, title, description, hashtags, first comment, thumbnail, and scene data as a ZIP package.",
     downloadCreatorPackage: "Download Creator Package",
     downloadingCreatorPackage: "Preparing package...",
-    costOptimizationEngine: "Credit Efficiency Advisor",
-    costOptimizationDesc: "Recommends a more credit-efficient media route for the current scene plan. The total credit estimate stays in Production Quality.",
-    costPricingNote: "Note: This area does not create a second credit estimate; it only suggests ways to make the selected production plan more efficient.",
+    costOptimizationEngine: "Production Efficiency Advisor",
+    costOptimizationDesc: "Recommends a more efficient media route for the current scene plan.",
+    costPricingNote: "Note: This area suggests ways to make the selected production plan more efficient.",
     optimizeScenes: "Optimize Scenes",
     optimizingScenes: "Optimizing scenes...",
     costSummary: "Efficiency Summary",
     recommendedVideoScenes: "Premium Video Blocks",
     recommendedImageScenes: "Image-motion Blocks",
-    estimatedCost: "Credit Route",
+    estimatedCost: "Production Route",
     estimatedSavings: "Efficiency Gain",
     applyOptimization: "Apply Recommendations",
     optimizationApplied: "Optimization recommendations applied ✅",
     aiOptimizeScenes: "AI Optimize",
     aiOptimizingScenes: "AI optimizing...",
     youtubeAutoMode: "YouTube Auto Mode",
-    youtubeAutoModeDesc: "Builds production package, metadata, thumbnail, credit-efficiency recommendations, and save steps from one topic. It does not render video; premium rendering remains under your control.",
+    youtubeAutoModeDesc: "Builds production package, metadata, thumbnail, production-efficiency recommendations, and save steps from one topic. It does not render video; premium rendering remains under your control.",
     generateFullYoutubePackage: "Create Ready-to-Share Package",
     generatingFullYoutubePackage: "Preparing full package...",
     fullYoutubePackageReady: "Full YouTube package is ready ✅",
@@ -2225,7 +2225,7 @@ const UI_TEXT = {
     productionBridgeDesc: "The Velto Studio production package is ready. Convert it into editable production scenes first; image, voice, video and export actions remain separate.",
     productionBridgeButton: "🎬 Create Production Stage",
     productionBridgeReady: "Velto Studio package is ready. No editable production scenes have been created yet.",
-    productionBridgeCostNote: "Note: This step creates a text-only scene structure; it does not start image, voice, video or export credit usage.",
+    productionBridgeCostNote: "Note: This step creates a text-only scene structure; it does not start image, voice, video or export generation.",
     bulkGeneratorTitle: "Idea Machine",
     bulkGeneratorDesc: "Quickly turns multiple video ideas into simple idea cards you can choose from.",
     bulkTopicsLabel: "Write one video idea per line",
@@ -2269,10 +2269,10 @@ const UI_TEXT = {
     patternAngle: "Recommended Content Angle",
     patternReasoning: "Reasoning",
     creatorDurationTitle: "Target Duration",
-    creatorDurationDesc: "Format and duration guide scene count, narration length, timeline risk and credit-efficiency recommendations. Choose a preset or set a custom duration freely.",
+    creatorDurationDesc: "Format and duration guide scene count, narration length, timeline risk and production-efficiency recommendations. Choose a preset or set a custom duration freely.",
     creatorQualityTitle: "Production Quality",
-    creatorQualityDesc: "Quality mode controls credit usage, visual/video routing and which production path is used during rendering.",
-    creditProfile: "Credit Profile",
+    creatorQualityDesc: "Quality mode controls visual/video routing and which production path is used during rendering.",
+    creditProfile: "Production Profile",
     mediaRouting: "Media Routing",
     customDuration: "Custom Duration",
     customDurationSeconds: "Duration (seconds)",
@@ -9358,8 +9358,8 @@ const generateSceneImage = async (
     if (options.confirm !== false) {
       const confirmed = window.confirm(
         uiLanguage === "en"
-          ? "Stop this video production? The provider request has already been dispatched, so the Velto video credit will not be refunded."
-          : "Bu video üretimi durdurulsun mu? Servis talebi zaten gönderildiği için Velto video kredisi iade edilmez.",
+          ? "Stop this video production? The provider request has already been dispatched and may still complete."
+          : "Bu video üretimi durdurulsun mu? Servis talebi zaten gönderildi ve tamamlanabilir.",
       );
       if (!confirmed) return false;
     }
@@ -9418,8 +9418,8 @@ const generateSceneImage = async (
       if (!options.silent) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Video production stopped. The provider request was already dispatched, so the Velto video credit was not refunded."
-            : "Video üretimi durduruldu. Servis talebi daha önce gönderildiği için Velto video kredisi iade edilmedi.",
+            ? "Video production stopped. The provider request was already dispatched and may still complete."
+            : "Video üretimi durduruldu. Servis talebi daha önce gönderildi ve tamamlanabilir.",
         );
       }
 
@@ -9461,8 +9461,8 @@ const generateSceneImage = async (
     setSaveMessage(
       activeVideoScenes.length > 0
         ? uiLanguage === "en"
-          ? "Batch render stopped. Active provider tasks were asked to stop; dispatched video credits are not refunded."
-          : "Toplu üretim durduruldu. Aktif servis görevleri için durdurma istendi; gönderilmiş video kredileri iade edilmez."
+          ? "Batch render stopped. Active provider tasks were asked to stop; dispatched operations may still complete."
+          : "Toplu üretim durduruldu. Aktif servis görevleri için durdurma istendi; gönderilmiş işlemler tamamlanabilir."
         : uiLanguage === "en"
           ? "Batch render stop requested."
           : "Batch render durdurma isteği alındı.",
@@ -10082,8 +10082,8 @@ const generateSceneImage = async (
             step: "route",
             message:
               uiLanguage === "en"
-                ? "Image-motion route selected; no AI video credit used."
-                : "Image-motion rotası seçildi; AI video kredisi kullanılmadı.",
+                ? "Image-motion route selected; no AI video generation was dispatched."
+                : "Image-motion rotası seçildi; AI video üretimi gönderilmedi.",
           });
           continue;
         }
@@ -10656,8 +10656,8 @@ const generateSceneImage = async (
               step: "route",
               message:
                 uiLanguage === "en"
-                  ? "Retry uses the image-motion route; no AI video credit used."
-                  : "Retry image-motion rotasını kullanıyor; AI video kredisi kullanılmadı.",
+                  ? "Retry uses the image-motion route; no AI video generation was dispatched."
+                  : "Retry image-motion rotasını kullanıyor; AI video üretimi gönderilmedi.",
             });
           }
 
@@ -10826,8 +10826,8 @@ const generateSceneImage = async (
 
     if (gate.checks.exportService === "blocked") {
       return uiLanguage === "en"
-        ? "Final video service is unavailable or not on the required continuity release. No export credit was used."
-        : "Final video servisi kullanılamıyor veya gerekli devamlılık sürümünde değil. Export kredisi kullanılmadı.";
+        ? "Final video service is unavailable or not on the required continuity release. Export was not dispatched."
+        : "Final video servisi kullanılamıyor veya gerekli devamlılık sürümünde değil. Export gönderilmedi.";
     }
 
     if (gate.status === "blocked") {
@@ -12507,8 +12507,8 @@ const generateSceneImage = async (
         mediaPathTr: "Ağırlıklı görsel, ses ve hafif hareket",
         timelineGateEn: "Timeline should be reviewed before asset generation.",
         timelineGateTr: "Asset üretiminden önce timeline kontrol edilmeli.",
-        exportReadinessEn: "Usable creator package with controlled credit use",
-        exportReadinessTr: "Kontrollü kredi kullanımıyla hazırlanabilir creator paketi",
+        exportReadinessEn: "Usable creator package with controlled production",
+        exportReadinessTr: "Kontrollü üretimle hazırlanabilir creator paketi",
       },
       pro: {
         videoRatio: 0.45,
@@ -12580,8 +12580,8 @@ const generateSceneImage = async (
   const getCreatorMediaRoutingError = (action: CreatorMediaAction) => {
     if (creatorQualityMode === "draft") {
       return uiLanguage === "en"
-        ? "Draft is a text-only planning mode. Select Standard, Pro or Cinematic before using media credits."
-        : "Draft yalnızca metin tabanlı planlama modudur. Medya kredisi kullanmadan önce Standard, Pro veya Cinematic seç.";
+        ? "Draft is a text-only planning mode. Select Standard, Pro or Cinematic before generating media."
+        : "Draft yalnızca metin tabanlı planlama modudur. Medya üretmeden önce Standard, Pro veya Cinematic seç.";
     }
 
     if (action === "ai_video_blocks" && creatorQualityMode === "standard") {
@@ -12761,8 +12761,8 @@ const generateSceneImage = async (
   const getCreatorTimelineGateError = () =>
     creatorTimelineMediaGate.message ||
     (uiLanguage === "en"
-      ? "Run and approve the Velto Studio timeline before using media credits."
-      : "Medya kredisi kullanmadan önce Velto Studio timeline kontrolünü çalıştır ve onayla.");
+      ? "Run and approve the Velto Studio timeline before generating media."
+      : "Medya üretmeden önce Velto Studio timeline kontrolünü çalıştır ve onayla.");
 
   const getCreatorMediaActionError = (
     action: CreatorMediaAction = "paid_media",
@@ -13422,11 +13422,11 @@ const generateSceneImage = async (
       setSaveMessage(
         optimizedScenes !== sourceScenes
           ? uiLanguage === "en"
-            ? "Timeline optimized the editable scene narration. No image, video, voice, or export credit usage was triggered."
-            : "Timeline, düzenlenebilir sahne anlatımlarını kısalttı. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
+            ? "Timeline optimized the editable scene narration. No image, video, voice, or export generation was triggered."
+            : "Timeline, düzenlenebilir sahne anlatımlarını kısalttı. Görsel, video, ses veya export üretimi tetiklenmedi."
           : uiLanguage === "en"
-            ? "Timeline checked against actual editable scenes. No image, video, voice, or export credit usage was triggered."
-            : "Timeline, gerçek düzenlenebilir sahnelere göre kontrol edildi. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
+            ? "Timeline checked against actual editable scenes. No image, video, voice, or export generation was triggered."
+            : "Timeline, gerçek düzenlenebilir sahnelere göre kontrol edildi. Görsel, video, ses veya export üretimi tetiklenmedi."
       );
     } catch (e: any) {
       console.error("handleOptimizeCreatorTimeline error:", e);
@@ -13940,8 +13940,8 @@ const generateSceneImage = async (
       setCreatorEditPlan(null);
       setSaveMessage(
         uiLanguage === "en"
-          ? "Dry-run timeline preview is ready. No video, image, voice, or export credit usage was triggered."
-          : "Dry-run timeline önizlemesi hazır. Video, görsel, ses veya export kredi kullanımı tetiklenmedi."
+          ? "Dry-run timeline preview is ready. No video, image, voice, or export generation was triggered."
+          : "Dry-run timeline önizlemesi hazır. Video, görsel, ses veya export üretimi tetiklenmedi."
       );
     } catch (e: any) {
       console.error("handleCreatorTimelinePreviewOnly error:", e);
@@ -15099,8 +15099,8 @@ const generateSceneImage = async (
     );
     setCreatorReleaseConfirmations((prev) => ({ ...prev, thumbnailApproved: false }));
     setSaveMessage(uiLanguage === "en"
-      ? "Previous thumbnail restored without using credits ✅"
-      : "Önceki thumbnail kredi kullanılmadan geri yüklendi ✅");
+      ? "Previous thumbnail restored without generating again ✅"
+      : "Önceki thumbnail yeniden üretilmeden geri yüklendi ✅");
   };
 
   const getThumbnailRefinementInstruction = (preset: CreatorThumbnailRefinementPreset) => {
@@ -15665,8 +15665,8 @@ const generateSceneImage = async (
         setScenes(packageScenes);
         setSaveMessage(
           uiLanguage === "en"
-            ? "Editable production scenes are ready. No image, video, voice, or export credit usage was triggered."
-            : "Düzenlenebilir production sahneleri hazır. Görsel, video, ses veya export kredi kullanımı tetiklenmedi."
+            ? "Editable production scenes are ready. No image, video, voice, or export generation was triggered."
+            : "Düzenlenebilir production sahneleri hazır. Görsel, video, ses veya export üretimi tetiklenmedi."
         );
       } finally {
         setBuildingStory(false);
@@ -18589,7 +18589,7 @@ const generateSceneImage = async (
         },
         {
           title: uiLanguage === "en" ? "Production quality" : "Üretim kalitesi",
-          description: uiLanguage === "en" ? "The single authoritative quality and credit decision." : "Tek yetkili kalite ve kredi kararı.",
+          description: uiLanguage === "en" ? "The single authoritative quality and production decision." : "Tek yetkili kalite ve üretim kararı.",
           status: getCreatorQualityModeLabel(),
           metric: getCreatorQualityCreditTier(),
           targetId: "creatorlab-quality-panel",
@@ -18655,7 +18655,7 @@ const generateSceneImage = async (
           },
           {
             title: uiLanguage === "en" ? "Audience signal" : "Kitle sinyali",
-            description: creatorMentorAudienceInsights[0] || (uiLanguage === "en" ? "Audience fit is checked before production credits are used." : "Üretim kredileri kullanılmadan önce kitle uyumu kontrol edilir."),
+            description: creatorMentorAudienceInsights[0] || (uiLanguage === "en" ? "Audience fit is checked before production begins." : "Üretim başlamadan önce kitle uyumu kontrol edilir."),
             status: creatorMentorResult
               ? uiLanguage === "en" ? "Available" : "Mevcut"
               : uiLanguage === "en" ? "Pending" : "Bekliyor",
@@ -28095,8 +28095,8 @@ const generateSceneImage = async (
                                 const impactLabel =
                                   action.impact === "credit_variable"
                                     ? uiLanguage === "en"
-                                      ? "Variable credit impact"
-                                      : "Değişken kredi etkisi"
+                                      ? "Variable production impact"
+                                      : "Değişken üretim etkisi"
                                     : action.impact === "release"
                                       ? uiLanguage === "en"
                                         ? "Release action"
@@ -28167,8 +28167,8 @@ const generateSceneImage = async (
                                         <strong>
                                           {action.impact === "credit_variable"
                                             ? uiLanguage === "en"
-                                              ? "This action may use media-generation credits."
-                                              : "Bu aksiyon medya üretim kredisi kullanabilir."
+                                              ? "This action starts media generation."
+                                              : "Bu aksiyon medya üretimini başlatır."
                                             : uiLanguage === "en"
                                               ? "This will export the current release package."
                                               : "Bu işlem mevcut yayın paketini dışa aktaracak."}
@@ -28176,8 +28176,8 @@ const generateSceneImage = async (
                                         <p>
                                           {action.impact === "credit_variable"
                                             ? uiLanguage === "en"
-                                              ? "Final credit usage is variable and will be recorded by the production workflow. Completed generation cannot be undone."
-                                              : "Nihai kredi kullanımı değişkendir ve üretim akışı tarafından kaydedilecektir. Tamamlanan üretim geri alınamaz."
+                                              ? "Provider usage is recorded by the production workflow. Completed generation cannot be undone."
+                                              : "Servis kullanımı üretim akışı tarafından kaydedilir. Tamamlanan üretim geri alınamaz."
                                             : uiLanguage === "en"
                                               ? "Velto Studio will recheck release readiness before downloading the package."
                                               : "Velto Studio paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
@@ -29226,8 +29226,8 @@ const generateSceneImage = async (
                   <h1>{uiLanguage === "en" ? "Project Brief" : "Proje Brief'i"}</h1>
                   <p>
                     {uiLanguage === "en"
-                      ? "Define the idea and essential production choices. Velto Studio will use this brief to validate the opportunity before media credits are spent."
-                      : "Fikri ve temel üretim tercihlerini tanımla. Velto Studio, medya kredileri kullanılmadan önce içerik fırsatını bu brief üzerinden doğrular."}
+                      ? "Define the idea and essential production choices. Velto Studio will use this brief to validate the opportunity before production begins."
+                      : "Fikri ve temel üretim tercihlerini tanımla. Velto Studio, üretim başlamadan önce içerik fırsatını bu brief üzerinden doğrular."}
                   </p>
                 </div>
                 <span className="creatorlab-brief-step-badge">{uiLanguage === "en" ? "Draft stage" : "Taslak aşaması"}</span>
@@ -30997,7 +30997,7 @@ const generateSceneImage = async (
                             <div className="creatorlab-cast-reference-row">
                               <div>
                                 <strong>{uiLanguage === "en" ? "Visual reference" : "Görsel referans"}</strong>
-                                <p>{uiLanguage === "en" ? "Generate once the name and visual direction are clear. This may use media credits." : "Ad ve görsel yön netleştiğinde üret. Bu işlem medya kredisi kullanabilir."}</p>
+                                <p>{uiLanguage === "en" ? "Generate once the name and visual direction are clear." : "Ad ve görsel yön netleştiğinde üret."}</p>
                               </div>
                               <button
                                 type="button"
@@ -31186,8 +31186,8 @@ const generateSceneImage = async (
                   <strong>{uiLanguage === "en" ? "Prepare the editable scene plan" : "Düzenlenebilir sahne planını hazırla"}</strong>
                   <p>
                     {uiLanguage === "en"
-                      ? "This creates the storyboard structure only. Visual and voice credits are not used until you start media generation."
-                      : "Bu işlem yalnızca storyboard yapısını oluşturur. Medya üretimini başlatana kadar görsel veya ses kredisi kullanılmaz."}
+                      ? "This creates the storyboard structure only. Visual and voice generation starts later in Create & Review."
+                      : "Bu işlem yalnızca storyboard yapısını oluşturur. Görsel ve ses üretimi daha sonra Oluştur ve İncele aşamasında başlar."}
                   </p>
                 </div>
                 <button
@@ -32514,7 +32514,7 @@ const generateSceneImage = async (
                                       type="button"
                                       onClick={() => void requestCancelSceneVideo(scene)}
                                       disabled={cancellingVideoSceneId === scene.id}
-                                      title={uiLanguage === "en" ? "Stop the provider task. Dispatched video credit is not refunded." : "Servis görevini durdur. Gönderilmiş video kredisi iade edilmez."}
+                                      title={uiLanguage === "en" ? "Stop the provider task. A dispatched operation may still complete." : "Servis görevini durdur. Gönderilmiş işlem tamamlanabilir."}
                                       className="min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {cancellingVideoSceneId === scene.id
@@ -33154,7 +33154,7 @@ const generateSceneImage = async (
                                             ? uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"
                                             : uiLanguage === "en"
                                               ? "Generate narrator"
-                                              : `Anlatıcı üret · ${getOperationCreditCost("creator_voice", creatorQualityMode)} kredi`}
+                                              : "Anlatıcı üret"}
                                     </button>
                                   </div>
 
@@ -33196,7 +33196,7 @@ const generateSceneImage = async (
                                               ? uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"
                                               : uiLanguage === "en"
                                                 ? "Generate dialogue"
-                                                : `Diyalog üret · ${getOperationCreditCost("creator_dialogue_voice", creatorQualityMode)} kredi`}
+                                                : "Diyalog üret"}
                                       </button>
                                     </div>
                                   )}
@@ -33500,11 +33500,11 @@ const generateSceneImage = async (
                     title={
                       imageDispatchCountdown?.scope === "thumbnail"
                         ? uiLanguage === "en"
-                          ? "Cancel before generation starts. No image credit has been used yet."
-                          : "Üretim başlamadan iptal et. Henüz görsel kredisi kullanılmadı."
+                          ? "Cancel before generation starts."
+                          : "Üretim başlamadan iptal et."
                         : uiLanguage === "en"
-                          ? "Uses image-generation credits based on the selected quality tier"
-                          : "Seçili kalite seviyesine göre görsel üretim kredisi kullanır"
+                          ? "Generates an image using the selected quality tier"
+                          : "Seçili kalite seviyesini kullanarak görsel üretir"
                     }
                   >
                     {imageDispatchCountdown?.scope === "thumbnail"
@@ -33514,8 +33514,8 @@ const generateSceneImage = async (
                       : youtubeThumbnailLoading
                         ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
                         : uiLanguage === "en"
-                          ? "Generate new AI thumbnail · Credits apply"
-                          : "Yeni AI thumbnail üret · Kredi kullanır"}
+                          ? "Generate new AI thumbnail"
+                          : "Yeni AI thumbnail üret"}
                   </button>
                 </div>
               </div>
@@ -33897,7 +33897,7 @@ const generateSceneImage = async (
                         : uiLanguage === "en" ? "Thumbnail saved" : "Thumbnail kaydedildi"}
                     </strong>
                     <span className="text-xs text-slate-500">
-                      {uiLanguage === "en" ? "Saving does not use credits." : "Kaydetme işlemi kredi kullanmaz."}
+                      {uiLanguage === "en" ? "Saving does not start generation." : "Kaydetme işlemi üretimi başlatmaz."}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -33934,8 +33934,8 @@ const generateSceneImage = async (
                         </strong>
                         <p className="mt-1 text-xs leading-5 text-amber-800">
                           {uiLanguage === "en"
-                            ? "No image credit has been used yet. At zero, generation and credit use begin."
-                            : "Henüz görsel kredisi kullanılmadı. Sayaç sıfırlandığında üretim ve kredi kullanımı başlar."}
+                            ? "Generation starts when the countdown reaches zero."
+                            : "Sayaç sıfıra ulaştığında üretim başlar."}
                         </p>
                       </div>
                       <button type="button" onClick={cancelPendingImageDispatch} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700">
@@ -33981,15 +33981,15 @@ const generateSceneImage = async (
                       : youtubeThumbnailLoading
                         ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
                         : uiLanguage === "en"
-                          ? "Generate new AI thumbnail · Credits apply"
-                          : "Yeni AI thumbnail üret · Kredi kullanır"}
+                          ? "Generate new AI thumbnail"
+                          : "Yeni AI thumbnail üret"}
                   </button>
                 </div>
 
                 {creatorPublishThumbnailUrl && (
                   <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <strong className="text-sm text-slate-950">{uiLanguage === "en" ? "AI quick refinements" : "AI hızlı iyileştirmeler"}</strong>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each refinement generates a new variation and uses the applicable image credits." : "Her iyileştirme yeni bir varyasyon üretir ve geçerli görsel kredisini kullanır."}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each refinement generates a new image variation." : "Her iyileştirme yeni bir görsel varyasyonu üretir."}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {([
                         ["focus", uiLanguage === "en" ? "Strengthen focus" : "Odağı güçlendir"],
@@ -34011,7 +34011,7 @@ const generateSceneImage = async (
                     <div className="flex items-end justify-between gap-4">
                       <div>
                         <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Thumbnail history" : "Thumbnail geçmişi"}</strong>
-                        <span className="text-xs text-slate-500">{uiLanguage === "en" ? "Restore any of the last 10 AI variations without using credits." : "Son 10 AI varyasyonundan birini kredi kullanmadan geri yükle."}</span>
+                        <span className="text-xs text-slate-500">{uiLanguage === "en" ? "Restore any of the last 10 AI variations without generating again." : "Son 10 AI varyasyonundan birini yeniden üretmeden geri yükle."}</span>
                       </div>
                       <button type="button" className="text-xs font-semibold text-slate-500 hover:text-slate-950" onClick={() => setCreatorThumbnailHistory([])}>{uiLanguage === "en" ? "Clear" : "Temizle"}</button>
                     </div>
@@ -35689,8 +35689,8 @@ const generateSceneImage = async (
                         title={
                           sceneVideoDispatchCountdownActive
                             ? uiLanguage === "en"
-                              ? "Cancel before provider dispatch. No video credit has been used yet."
-                              : "Servise gönderilmeden iptal et. Henüz video kredisi kullanılmadı."
+                              ? "Cancel before provider dispatch."
+                              : "Servise gönderilmeden iptal et."
                             : !scene.image
                               ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
                               : isCreatorActionBlocked("ai_video_blocks")
@@ -35725,8 +35725,8 @@ const generateSceneImage = async (
                       {sceneVideoDispatchCountdownActive && (
                         <span className="basis-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
                           {uiLanguage === "en"
-                            ? "No provider request or Velto video credit yet. Dispatch and billing begin at zero."
-                            : "Henüz servis talebi veya Velto video kredisi yok. Gönderim ve ücretlendirme sıfırda başlar."}
+                            ? "No provider request has been sent yet. Dispatch begins at zero."
+                            : "Henüz servis talebi gönderilmedi. Gönderim sıfırda başlar."}
                         </span>
                       )}
 
@@ -35735,7 +35735,7 @@ const generateSceneImage = async (
                           type="button"
                           onClick={() => void requestCancelSceneVideo(scene)}
                           disabled={cancellingVideoSceneId === scene.id}
-                          title={uiLanguage === "en" ? "Stop the provider task. Dispatched video credit is not refunded." : "Servis görevini durdur. Gönderilmiş video kredisi iade edilmez."}
+                          title={uiLanguage === "en" ? "Stop the provider task. A dispatched operation may still complete." : "Servis görevini durdur. Gönderilmiş işlem tamamlanabilir."}
                           className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {cancellingVideoSceneId === scene.id
@@ -35788,8 +35788,8 @@ const generateSceneImage = async (
                         title={
                           sceneImageDispatchCountdownActive
                             ? uiLanguage === "en"
-                              ? "Cancel before provider dispatch. No image credit has been used yet."
-                              : "Servise gönderilmeden iptal et. Henüz görsel kredisi kullanılmadı."
+                              ? "Cancel before provider dispatch."
+                              : "Servise gönderilmeden iptal et."
                             : isCreatorActionBlocked("visuals") || isCreatorMediaGenerationBlocked
                               ? getCreatorMediaActionError("visuals")
                               : (uiLanguage === "en" ? "Regenerate this scene visual." : "Bu sahne görselini yeniden üret.")
@@ -36354,8 +36354,8 @@ const generateSceneImage = async (
                   </h2>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
                     {uiLanguage === "en"
-                      ? "Search, filter and preview ElevenLabs voices without copying a voice ID. Preview playback does not use Velto credits."
-                      : "Voice ID kopyalamadan ElevenLabs seslerini ara, filtrele ve önizle. Önizleme Velto kredisi kullanmaz."}
+                      ? "Search, filter and preview ElevenLabs voices without copying a voice ID. Preview playback does not start generation."
+                      : "Voice ID kopyalamadan ElevenLabs seslerini ara, filtrele ve önizle. Önizleme üretimi başlatmaz."}
                   </p>
                 </div>
                 <button
