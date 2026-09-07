@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { resolveCreatorWorkspaceTarget } from "../lib/creator/stageNavigation.ts";
 
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const loadRoute = fs.readFileSync(
@@ -44,7 +45,10 @@ assert.match(page, /substep === "create_review" \? "review" : "setup"/);
 assert.match(page, /url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
 assert.match(page, /const selectCreatorProductionSubstep = \(substep: CreatorProductionSubstep\) => \{[\s\S]*setCreatorProductionSubstep\(substep\)[\s\S]*replaceProductionSubstepUrl\(substep\)/);
 assert.match(page, /onClick=\{\(\) => selectCreatorProductionSubstep\("create_review"\)\}/);
-assert.match(page, /selectCreatorProductionSubstep\(step === 3 \? "setup" : "create_review"\)/);
+assert.match(page, /const target = resolveCreatorWorkspaceTarget\(step\)/);
+assert.deepEqual(resolveCreatorWorkspaceTarget(3), { workspaceStep: 3, productionSubstep: "setup" });
+assert.deepEqual(resolveCreatorWorkspaceTarget(4), { workspaceStep: 3, productionSubstep: "create_review" });
+assert.deepEqual(resolveCreatorWorkspaceTarget(5), { workspaceStep: 4 });
 assert.match(page, /onEdit=\{\(\) => selectCreatorProductionSubstep\("setup"\)\}/);
 assert.match(page, /getProductionSubstepFromUrl\(\) \|\|[\s\S]*loadedProjectScenes\.length > 0 \? "create_review" : "setup"/);
 assert.match(page, /const url = new URL\(window\.location\.href\);[\s\S]*url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);

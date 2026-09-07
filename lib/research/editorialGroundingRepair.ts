@@ -174,6 +174,9 @@ function parseRepairSelection(value: unknown): EditorialGroundingRepairSelection
   if (!Array.isArray(selection.repairs) || selection.repairs.length === 0) {
     throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_EMPTY");
   }
+  if (selection.repairs.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
+    throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_LIMIT_EXCEEDED");
+  }
   return {
     repairs: selection.repairs.map((value) => {
       const repair = objectRecord(value);
@@ -204,10 +207,15 @@ function applyRepairSelection(input: {
   const spanBySourceAndId = new Map(
     input.candidateSpans.map((span) => [`${span.sourceId}\0${span.spanId}`, span]),
   );
+  const selectedSpanByEvidenceId = new Map<string, string>();
   const excerptsByEvidenceId = new Map<string, string>();
   for (const repair of selection.repairs) {
-    if (excerptsByEvidenceId.has(repair.evidenceId)) {
-      throw new Error(`EDITORIAL_GROUNDING_REPAIR_DUPLICATE_EVIDENCE:${repair.evidenceId}`);
+    const previousSpanId = selectedSpanByEvidenceId.get(repair.evidenceId);
+    if (previousSpanId === repair.spanId) {
+      continue;
+    }
+    if (previousSpanId) {
+      throw new Error(`EDITORIAL_GROUNDING_REPAIR_CONFLICTING_SPANS:${repair.evidenceId}`);
     }
     const original = evidenceById.get(repair.evidenceId);
     if (!original) {
@@ -219,6 +227,7 @@ function applyRepairSelection(input: {
     if (!span) {
       throw new Error(`EDITORIAL_GROUNDING_REPAIR_SPAN_MISSING:${repair.evidenceId}`);
     }
+    selectedSpanByEvidenceId.set(repair.evidenceId, repair.spanId);
     excerptsByEvidenceId.set(repair.evidenceId, span.text);
   }
   return {

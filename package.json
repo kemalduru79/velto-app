@@ -42,6 +42,8 @@
     "test:stage-0-10h-2i": "node --experimental-strip-types scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
     "test:stage-0-13a": "node --experimental-strip-types scripts/stage-0-13a-creator-project-state-persistence-test.mjs",
     "test:stage-0-13b": "node --experimental-strip-types scripts/stage-0-13b-full-script-review-test.mjs",
+    "test:post-0-13b-workflow": "node --experimental-strip-types scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
+    "test:post-0-13b-evidence": "node --experimental-strip-types scripts/post-0-13b-duplicate-evidence-hotfix-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
     "test:port-p2": "node scripts/port-p2-smoke-test.mjs",
     "test:run-p1": "node scripts/run-p1-static-test.mjs",

@@ -134,6 +134,10 @@ import {
 } from "@/lib/creator/visualGenerationStatus";
 import {
   creatorStageAfterSuccess,
+  CREATOR_VISIBLE_WORKFLOW_STAGES,
+  resolveCreatorVisibleWorkflowProgress,
+  resolveCreatorVisibleWorkflowStep,
+  resolveCreatorWorkspaceTarget,
   resolveCreatorStageVisibility,
 } from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
@@ -18182,8 +18186,6 @@ const generateSceneImage = async (
     productionSubstep: creatorProductionSubstep,
   });
   const creatorBriefCanvasVisible = !isCreatorLabFlow || creatorStageVisibility.brief;
-  const creatorReadinessPercent =
-    creatorProjectLifecycle?.progress || 0;
   const creatorRawProjectTitle =
     creatorProductionPackage?.title || title || input.trim() ||
     (uiLanguage === "en" ? "Untitled creator project" : "İsimsiz içerik projesi");
@@ -18429,12 +18431,14 @@ const generateSceneImage = async (
     }
   };
 
-  const creatorVisibleWorkflowStep: 1 | 2 | 3 | 4 | 5 =
-    creatorWorkspaceStep === 3
-      ? creatorProductionSubstep === "setup" ? 3 : 4
-      : creatorWorkspaceStep === 4
-        ? 5
-        : creatorWorkspaceStep;
+  const creatorVisibleWorkflowStep = resolveCreatorVisibleWorkflowStep({
+    workspaceStep: creatorWorkspaceStep,
+    productionSubstep: creatorProductionSubstep,
+  });
+  const creatorReadinessPercent = resolveCreatorVisibleWorkflowProgress(
+    creatorVisibleWorkflowStep,
+    creatorProjectLifecycle?.progress || 0,
+  );
 
   const creatorCanOpenVisibleWorkflowStep = (step: 1 | 2 | 3 | 4 | 5) =>
     step === 1 || step === 2
@@ -18446,47 +18450,41 @@ const generateSceneImage = async (
   const navigateCreatorVisibleWorkflowStep = (step: 1 | 2 | 3 | 4 | 5) => {
     if (!creatorCanOpenVisibleWorkflowStep(step)) return;
 
-    if (step === 3 || step === 4) {
-      selectCreatorProductionSubstep(step === 3 ? "setup" : "create_review");
-      navigateCreatorWorkspaceStep(3);
-      return;
-    }
-
-    navigateCreatorWorkspaceStep(step === 5 ? 4 : step);
+    const target = resolveCreatorWorkspaceTarget(step);
+    if (target.productionSubstep) selectCreatorProductionSubstep(target.productionSubstep);
+    navigateCreatorWorkspaceStep(target.workspaceStep);
   };
 
-  const creatorWorkflowSteps = [
-    {
-      id: 1 as const,
-      title: "Brief",
-      description: uiLanguage === "en" ? "Define the project" : "Projeyi tanımla",
-      complete: creatorBriefComplete,
-    },
-    {
-      id: 2 as const,
-      title: uiLanguage === "en" ? "Strategy" : "Strateji",
-      description: uiLanguage === "en" ? "Validate the direction" : "Yönü doğrula",
-      complete: creatorStrategyComplete,
-    },
-    {
-      id: 3 as const,
-      title: uiLanguage === "en" ? "Production Setup" : "Üretim Kurulumu",
-      description: uiLanguage === "en" ? "Configure look, sound and production" : "Görsel, ses ve üretimi yapılandır",
-      complete: creatorProductionSubstep === "create_review",
-    },
-    {
-      id: 4 as const,
-      title: uiLanguage === "en" ? "Create & Review" : "Üret ve İncele",
-      description: uiLanguage === "en" ? "Produce, review and refine scenes" : "Sahneleri üret, kontrol et ve geliştir",
-      complete: creatorProductionComplete,
-    },
-    {
-      id: 5 as const,
-      title: uiLanguage === "en" ? "Publish" : "Yayınla",
-      description: uiLanguage === "en" ? "Finalize and package" : "Son kontrolleri ve paketi tamamla",
-      complete: creatorPublishComplete,
-    },
-  ];
+  const creatorWorkflowSteps = CREATOR_VISIBLE_WORKFLOW_STAGES.map((stage) => ({
+    ...stage,
+    title: stage.id === 1
+      ? "Brief"
+      : stage.id === 2
+        ? uiLanguage === "en" ? "Strategy" : "Strateji"
+        : stage.id === 3
+          ? uiLanguage === "en" ? "Production Setup" : "Üretim Kurulumu"
+          : stage.id === 4
+            ? uiLanguage === "en" ? "Create & Review" : "Üret ve İncele"
+            : uiLanguage === "en" ? "Publish" : "Yayınla",
+    description: stage.id === 1
+      ? uiLanguage === "en" ? "Define the project" : "Projeyi tanımla"
+      : stage.id === 2
+        ? uiLanguage === "en" ? "Validate the direction" : "Yönü doğrula"
+        : stage.id === 3
+          ? uiLanguage === "en" ? "Configure look, sound and production" : "Görsel, ses ve üretimi yapılandır"
+          : stage.id === 4
+            ? uiLanguage === "en" ? "Produce, review and refine scenes" : "Sahneleri üret, kontrol et ve geliştir"
+            : uiLanguage === "en" ? "Finalize and package" : "Son kontrolleri ve paketi tamamla",
+    complete: stage.id === 1
+      ? creatorBriefComplete
+      : stage.id === 2
+        ? creatorStrategyComplete
+        : stage.id === 3
+          ? creatorProductionSubstep === "create_review"
+          : stage.id === 4
+            ? creatorProductionComplete
+            : creatorPublishComplete,
+  }));
   const creatorVisibleWorkflowTitle =
     creatorWorkflowSteps.find((step) => step.id === creatorVisibleWorkflowStep)?.title || null;
   const creatorVisualsComplete = scenes.length > 0 && visualAssetReadyCount >= scenes.length;
@@ -27067,7 +27065,7 @@ const generateSceneImage = async (
 
   .creatorlab-step-list {
     display: grid;
-    grid-template-columns: repeat(4, minmax(118px, 1fr));
+    grid-template-columns: repeat(5, minmax(118px, 1fr));
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 2px;

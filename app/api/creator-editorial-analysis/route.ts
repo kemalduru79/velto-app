@@ -202,11 +202,14 @@ export async function POST(request: Request) {
         },
       });
     } catch (error) {
+      const diagnostic = error instanceof Error ? error.message : "Editorial analysis grounding failed.";
+      console.error("CREATOR_EDITORIAL_GROUNDING_FAILED", { diagnostic });
       return NextResponse.json(
         {
           success: false,
           code: "EDITORIAL_ANALYSIS_GROUNDING_FAILED",
-          error: error instanceof Error ? error.message : "Editorial analysis grounding failed.",
+          error: "Evidence validation could not be completed. Please retry.",
+          detailCode: diagnostic,
         },
         { status: 422 },
       );

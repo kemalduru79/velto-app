@@ -23,7 +23,7 @@ const sources = [
     author: null,
     publishedAt: "2023-11-03T00:00:00.000Z",
     language: "en",
-    summary: `Context before. ${canonicalExcerpt} Context after.`,
+    summary: `Introductory context contains enough detail for review. ${canonicalExcerpt} Additional verified context explains the surrounding discussion. Another canonical sentence records the response from specialists. Final context closes the source summary clearly.`,
     thumbnailUrl: null,
     durationSec: null,
     metrics: {},
@@ -72,8 +72,10 @@ function proposal(excerpt, sourceId = sources[0].sourceId) {
 const spans = createEditorialGroundingCandidateSpans(sources);
 const canonicalSpan = spans.find((span) => span.text.includes(canonicalExcerpt));
 const secondSpan = spans.find((span) => span.text.includes(secondCanonicalExcerpt));
+const alternateCanonicalSpan = spans.find((span) => span.sourceId === sources[0].sourceId && span.spanId !== canonicalSpan?.spanId);
 assert.ok(canonicalSpan);
 assert.ok(secondSpan);
+assert.ok(alternateCanonicalSpan);
 assert.deepEqual(spans, createEditorialGroundingCandidateSpans(sources));
 assert.ok(spans.length <= MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST);
 for (const source of sources) {
@@ -176,8 +178,8 @@ const failures = [
   ],
   [selection(canonicalSpan, "evidence-unknown"), /EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING/],
   [
-    { repairs: [selection().repairs[0], selection().repairs[0]] },
-    /EDITORIAL_GROUNDING_REPAIR_DUPLICATE_EVIDENCE/,
+    { repairs: [selection().repairs[0], selection(alternateCanonicalSpan).repairs[0]] },
+    /EDITORIAL_GROUNDING_REPAIR_CONFLICTING_SPANS/,
   ],
   [
     { repairs: [{ evidenceId: "evidence-1", spanId: "span-unknown" }] },
@@ -200,6 +202,13 @@ for (const [invalidSelection, expected] of failures) {
     expected,
   );
 }
+
+const exactDuplicateGraph = await createValidatedEditorialAnalysisWithOneRepair({
+  sources,
+  proposal: paraphrased,
+  repair: async () => ({ repairs: [selection().repairs[0], selection().repairs[0]] }),
+});
+assert.equal(exactDuplicateGraph.evidence[0].excerpt, canonicalSpan.text);
 
 const twoInvalid = {
   ...withUnrelated,

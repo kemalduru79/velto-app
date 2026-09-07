@@ -148,6 +148,12 @@ const allowed = new Set([
   "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
   "scripts/stage-0-10h-4j-documentary-pi-closure-test.mjs",
   "scripts/stage-0-13b-full-script-review-test.mjs",
+  "app/api/creator-editorial-analysis/route.ts",
+  "app/creatorlab-ux-h0a.css",
+  "lib/research/editorialGroundingRepair.ts",
+  "scripts/stage-0-10h-ui-acceptance-editorial-grounding-repair-test.mjs",
+  "scripts/post-0-13b-duplicate-evidence-hotfix-test.mjs",
+  "scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 

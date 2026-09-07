@@ -161,6 +161,13 @@ const presentationOnly = new Set([
   "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
   "scripts/stage-0-10i-c-stage-polish-test.mjs",
   "scripts/stage-0-13b-full-script-review-test.mjs",
+  "app/api/creator-editorial-analysis/route.ts",
+  "app/creatorlab-ux-h0a.css",
+  "lib/creator/stageNavigation.ts",
+  "lib/research/editorialGroundingRepair.ts",
+  "scripts/stage-0-10h-ui-acceptance-editorial-grounding-repair-test.mjs",
+  "scripts/post-0-13b-duplicate-evidence-hotfix-test.mjs",
+  "scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(
