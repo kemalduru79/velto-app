@@ -137,6 +137,17 @@ const presentationOnly = new Set([
   "docs/STAGE-0.11F-CLOSURE-GO-NO-GO.md",
   "scripts/stage-0-11f-closure-go-no-go-test.mjs",
   "scripts/stage-0-9a-security-consent-baseline-test.mjs",
+  "app/api/save-project/route.ts",
+  "lib/persistence/projects/supabaseProjectRepository.ts",
+  "lib/persistence/projects/types.ts",
+  "package.json",
+  "lib/creator/projectState.ts",
+  "lib/creator/projectSaveCoordinator.ts",
+  "lib/persistence/projects/projectPatch.ts",
+  "scripts/stage-0-13a-creator-project-state-persistence-test.mjs",
+  "scripts/beta-project-p1-refresh-restoration-smoke-test.mjs",
+  "scripts/stage-0-10h-manual-project-save-test.mjs",
+  "scripts/stage-0-10h-strategy-backward-navigation-persistence-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

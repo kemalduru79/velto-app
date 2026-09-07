@@ -23,13 +23,14 @@ assert.match(repository, /\.eq\("id", projectId\)[\s\S]*\.eq\("owner_user_id", o
 
 assert.match(page, /const isHydratingRef = useRef\(true\)/);
 assert.match(page, /if \(isHydratingRef\.current\) \{\s*return;\s*\}/);
-assert.match(page, /finally \{\s*isHydratingRef\.current = false;\s*skipAutosaveRef\.current = false;/);
+assert.match(page, /window\.requestAnimationFrame\(\(\) => \{[\s\S]*window\.requestAnimationFrame\(\(\) => \{[\s\S]*isHydratingRef\.current = false;[\s\S]*skipAutosaveRef\.current = false;/);
 assert.match(page, /await persistProject\(false\)/);
 
-assert.match(page, /if \(data\?\.project\?\.id\) \{[\s\S]*replaceProjectUrlIdentity\(data\.project\.id\)/);
+assert.match(page, /if \(data\?\.project\?\.id && !lifecycleOverrides\.forceNewProject\) \{[\s\S]*replaceProjectUrlIdentity\(data\.project\.id\)/);
 assert.match(page, /window\.history\.replaceState\(null, "",/);
 assert.doesNotMatch(page, /window\.location\.(?:assign|replace)\([^)]*PROJECT_URL_PARAM/);
-assert.match(page, /projectId: currentProjectId \|\| undefined/);
+assert.match(page, /projectId: lifecycleOverrides\.forceNewProject \? undefined : effectiveProjectId \|\| undefined/);
+assert.match(page, /projectGenerationRef\.current !== loadGeneration/);
 
 assert.match(page, /const PROJECT_ID_PATTERN = \/\^\[A-Za-z0-9_-\]/);
 assert.match(page, /Project could not be opened\./);
@@ -42,8 +43,8 @@ assert.match(page, /return null;/);
 assert.match(page, /substep === "create_review" \? "review" : "setup"/);
 assert.match(page, /url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
 assert.match(page, /const selectCreatorProductionSubstep = \(substep: CreatorProductionSubstep\) => \{[\s\S]*setCreatorProductionSubstep\(substep\)[\s\S]*replaceProductionSubstepUrl\(substep\)/);
-assert.match(page, /onChange=\{selectCreatorProductionSubstep\}/);
 assert.match(page, /onClick=\{\(\) => selectCreatorProductionSubstep\("create_review"\)\}/);
+assert.match(page, /selectCreatorProductionSubstep\(step === 3 \? "setup" : "create_review"\)/);
 assert.match(page, /onEdit=\{\(\) => selectCreatorProductionSubstep\("setup"\)\}/);
 assert.match(page, /getProductionSubstepFromUrl\(\) \|\|[\s\S]*loadedProjectScenes\.length > 0 \? "create_review" : "setup"/);
 assert.match(page, /const url = new URL\(window\.location\.href\);[\s\S]*url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);

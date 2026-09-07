@@ -4,6 +4,10 @@ import {
   AuthenticationError,
 } from "@/lib/auth/server";
 import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
+import {
+  attachCreatorProjectState,
+  type CreatorProjectStateSnapshot,
+} from "@/lib/creator/projectState";
 
 export const runtime = "nodejs";
 
@@ -12,10 +16,15 @@ export async function POST(req: Request) {
     const principal = await authenticateRequest(req);
     const body = (await req.json()) as Record<string, unknown>;
 
+    const projectId = typeof body.projectId === "string" && body.projectId.trim()
+      ? body.projectId.trim()
+      : null;
     const title = typeof body.title === "string" ? body.title.trim() : "";
-    const scenes = Array.isArray(body.scenes) ? body.scenes : null;
+    const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
+    const hasScenes = Object.prototype.hasOwnProperty.call(body, "scenes");
+    const scenes = Array.isArray(body.scenes) ? body.scenes : body.scenes === null ? null : undefined;
 
-    if (!title || !scenes) {
+    if ((!projectId && (!title || !Array.isArray(scenes))) || (hasTitle && !title) || (hasScenes && scenes === undefined)) {
       return NextResponse.json(
         { error: "title ve scenes zorunlu" },
         { status: 400 },
@@ -42,47 +51,52 @@ export async function POST(req: Request) {
     }
 
     const services = getPersistenceServices();
-    const exportedMovieUrl =
-      typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl.trim()
-        ? body.exportedMovieUrl.trim()
-        : null;
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
+    const exportedMovieUrl = typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl.trim()
+      ? body.exportedMovieUrl.trim()
+      : body.exportedMovieUrl === null ? null : undefined;
     if (exportedMovieUrl) {
       const finalMovieAsset = await services.mediaAssetRepository.findByPublicUrl(principal.id, exportedMovieUrl);
       if (!finalMovieAsset || finalMovieAsset.mediaKind !== "final_video" || finalMovieAsset.lifecycleState !== "active") {
         return NextResponse.json({ error: "Final video is not available for this project owner." }, { status: 400 });
       }
     }
+    const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
+      ? attachCreatorProjectState(
+          body.exportedMovieResult,
+          body.creatorProjectState as CreatorProjectStateSnapshot,
+        )
+      : body.exportedMovieResult;
+    const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
+      ? body.expectedUpdatedAt.trim()
+      : null;
     const result =
       await services.projectRepository.saveForOwner({
-        projectId:
-          typeof body.projectId === "string" && body.projectId.trim()
-            ? body.projectId.trim()
-            : null,
+        projectId,
         ownerUserId: principal.id,
         childId,
-        title,
-        inputPrompt:
-          typeof body.inputPrompt === "string" ? body.inputPrompt : "",
-        storyPremise:
-          typeof body.storyPremise === "string" ? body.storyPremise : "",
-        language: body.language === "en" ? "en" : "tr",
-        visualBible: body.visualBible || {},
-        characters: Array.isArray(body.characters) ? body.characters : [],
-        scenes,
-        exportedMovieUrl,
-        exportedMovieResult: body.exportedMovieResult || null,
-        exportSignature:
-          typeof body.exportSignature === "string" && body.exportSignature
-            ? body.exportSignature
-            : null,
+        ...(hasTitle ? { title } : {}),
         flowType,
-        creatorMentorResult: body.creatorMentorResult || null,
-        creatorProductionPackage: body.creatorProductionPackage || null,
-        youtubeMetadataResult: body.youtubeMetadataResult || null,
-        youtubeThumbnailResult: body.youtubeThumbnailResult || null,
-        sceneOptimizationResult: body.sceneOptimizationResult || null,
-        sceneOptimizationSummary: body.sceneOptimizationSummary || null,
-        refinedCreatorScenes: body.refinedCreatorScenes || null,
+        ...(has("inputPrompt") ? { inputPrompt: typeof body.inputPrompt === "string" ? body.inputPrompt : "" } : {}),
+        ...(has("storyPremise") ? { storyPremise: typeof body.storyPremise === "string" ? body.storyPremise : "" } : {}),
+        ...(has("language") ? { language: body.language === "en" ? "en" as const : "tr" as const } : {}),
+        ...(has("visualBible") ? { visualBible: body.visualBible } : {}),
+        ...(has("characters") ? { characters: body.characters as unknown[] | null } : {}),
+        ...(hasScenes ? { scenes } : {}),
+        ...(has("exportedMovieUrl") ? { exportedMovieUrl } : {}),
+        ...(has("exportedMovieResult") ? { exportedMovieResult } : {}),
+        ...(has("exportSignature") ? { exportSignature: typeof body.exportSignature === "string" && body.exportSignature ? body.exportSignature : null } : {}),
+        ...(has("creatorMentorResult") ? { creatorMentorResult: body.creatorMentorResult } : {}),
+        ...(has("creatorProductionPackage") ? { creatorProductionPackage: body.creatorProductionPackage } : {}),
+        ...(has("youtubeMetadataResult") ? { youtubeMetadataResult: body.youtubeMetadataResult } : {}),
+        ...(has("youtubeThumbnailResult") ? { youtubeThumbnailResult: body.youtubeThumbnailResult } : {}),
+        ...(has("sceneOptimizationResult") ? { sceneOptimizationResult: body.sceneOptimizationResult } : {}),
+        ...(has("sceneOptimizationSummary") ? { sceneOptimizationSummary: body.sceneOptimizationSummary } : {}),
+        ...(has("refinedCreatorScenes")
+          ? { refinedCreatorScenes: body.refinedCreatorScenes }
+          : {}),
+        expectedUpdatedAt,
       });
 
     await services.mediaAssetRepository.replaceProjectReferences(
@@ -95,6 +109,27 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
+    }
+
+    if (error instanceof Error && error.message === "PROJECT_SAVE_CONFLICT") {
+      return NextResponse.json(
+        { error: "Project changed after this editor snapshot was loaded.", code: "PROJECT_SAVE_CONFLICT" },
+        { status: 409 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "PROJECT_FLOW_TYPE_MISMATCH") {
+      return NextResponse.json(
+        { error: "Existing project flow type cannot be changed.", code: "PROJECT_FLOW_TYPE_MISMATCH" },
+        { status: 409 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "PROJECT_REVISION_REQUIRED") {
+      return NextResponse.json(
+        { error: "A current project revision is required.", code: "PROJECT_REVISION_REQUIRED" },
+        { status: 409 },
+      );
     }
 
     console.error("save-project error:", error);

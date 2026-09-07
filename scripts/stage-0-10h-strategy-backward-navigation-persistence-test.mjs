@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const page = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 
 const persistProject = page.slice(
-  page.indexOf("const persistProject = async"),
+  page.indexOf("const executePersistProject = async"),
   page.indexOf("const saveProject = async"),
 );
 const productionHandler = page.slice(
@@ -20,19 +20,20 @@ const navigation = page.slice(
   page.indexOf("const creatorWorkflowSteps"),
 );
 const hydration = page.slice(
-  page.indexOf("const loadedMentorResult = project.creator_mentor_result"),
+  page.indexOf("const loadedMentorResult ="),
   page.indexOf("const savedVisualContinuity", page.indexOf("const loadedMentorResult")),
 );
 
 assert.match(persistProject, /creatorMentorResult:\s*persistedMentorResult/);
-assert.match(persistProject, /projectId:\s*currentProjectId \|\| undefined/);
+assert.match(persistProject, /projectId:\s*lifecycleOverrides\.forceNewProject \? undefined : effectiveProjectId \|\| undefined/);
 assert.match(persistProject, /strategySelection:\s*\{\s*directionId: creatorSelectedStrategyDirectionId,\s*hook: creatorSelectedHookPattern/);
 
 assert.match(productionHandler, /const persistedStrategyResult:[\s\S]*strategySelection:/);
 assert.match(productionHandler, /setCreatorProductionPackage\(nextPackage\);\s*setCreatorMentorResult\(persistedStrategyResult\);/);
 assert.doesNotMatch(productionHandler, /setCreatorMentorResult\(null\)/);
 
-assert.match(autosaveEffect, /isCreatorLabFlow[\s\S]*!creatorMentorResult/);
+assert.match(autosaveEffect, /isCreatorLabFlow[\s\S]*!input\.trim\(\) && !title\.trim\(\)/);
+assert.doesNotMatch(autosaveEffect, /\|\| !creatorMentorResult/);
 assert.match(autosaveEffect, /await persistProject\(false\)/);
 assert.match(autosaveEffect, /}, 2000\)/);
 

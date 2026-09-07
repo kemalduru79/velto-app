@@ -137,6 +137,19 @@ import {
   resolveCreatorStageVisibility,
 } from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
+import {
+  buildCreatorProjectState,
+  readCreatorProjectState,
+  type CreatorProjectStateSnapshot,
+} from "@/lib/creator/projectState";
+import {
+  advanceCreatorProjectSaveBinding,
+  createCreatorProjectSaveBinding,
+  creatorProjectStateRequestFields,
+  isCreatorProjectOperationActive,
+  isCreatorProjectSaveBindingActive,
+  type CreatorProjectSaveBinding,
+} from "@/lib/creator/projectSaveCoordinator";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
 import {
   CREATOR_VISUAL_CONTINUITY_STORAGE_KEY,
@@ -4145,6 +4158,19 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const skipAutosaveRef = useRef(true);
   const isHydratingRef = useRef(true);
   const suspendAutosaveRef = useRef(false);
+  const projectUpdatedAtRef = useRef("");
+  const currentProjectIdRef = useRef("");
+  const projectSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const projectGenerationRef = useRef(0);
+
+  const invalidateProjectPersistence = () => {
+    projectGenerationRef.current += 1;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    return projectGenerationRef.current;
+  };
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const voiceLibraryAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -6556,6 +6582,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const resetStoryFlow = () => {
+    invalidateProjectPersistence();
     clearAllVideoPolls();
     delayedVideoPollKeysRef.current.clear();
     stopDialoguePlayback();
@@ -6598,6 +6625,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setRedrawLoadingId(null);
     setSaveMessage("");
     setCurrentProjectId("");
+    currentProjectIdRef.current = "";
+    projectUpdatedAtRef.current = "";
     setLoadProjectId("");
     replaceProjectUrlIdentity("");
     setIsBatchRendering(false);
@@ -11574,8 +11603,8 @@ const generateSceneImage = async (
     }
   };
 
-  const persistProject = async (
-    showManualMessage = false,
+  const executePersistProject = async (
+    showManualMessage: boolean,
     lifecycleOverrides: {
       sourceScenes?: Scene[];
       finalVideoUrl?: string;
@@ -11591,10 +11620,32 @@ const generateSceneImage = async (
       forceInvalidateFinalVideo?: boolean;
       backgroundMusic?: CreatorBackgroundMusicConfig;
       creatorMentorResult?: CreatorMentorResult | null;
-    } = {},
+      creatorProductionPackage?: CreatorProductionPackage | null;
+      refinedCreatorScenes?: CreatorProductionScene[];
+      sceneOptimizationResult?: SceneOptimizationResult[];
+      sceneOptimizationSummary?: SceneOptimizationSummary | null;
+      persistedTitle?: string;
+      inputPrompt?: string;
+      storyPremise?: string;
+      characters?: Character[];
+      visualBible?: VisualBible | null;
+      forceNewProject?: boolean;
+    },
+    binding: CreatorProjectSaveBinding,
   ) => {
-    const sourceScenes = lifecycleOverrides.sourceScenes || scenes;
-    const mentorResultForSave = lifecycleOverrides.creatorMentorResult ?? creatorMentorResult;
+    if (binding.generation !== projectGenerationRef.current) return;
+    const requestBinding = advanceCreatorProjectSaveBinding(binding, {
+      projectId: currentProjectIdRef.current,
+      expectedUpdatedAt: projectUpdatedAtRef.current,
+      generation: projectGenerationRef.current,
+    });
+    if (!requestBinding) return;
+    const effectiveProjectId = requestBinding.projectId;
+    const sourceScenes = lifecycleOverrides.sourceScenes ?? scenes;
+    const mentorResultForSave = Object.prototype.hasOwnProperty.call(
+      lifecycleOverrides,
+      "creatorMentorResult",
+    ) ? lifecycleOverrides.creatorMentorResult ?? null : creatorMentorResult;
     const persistedMentorResult = mentorResultForSave
       ? {
           ...mentorResultForSave,
@@ -11604,7 +11655,7 @@ const generateSceneImage = async (
           },
         }
       : null;
-    const persistedTitle = title.trim() ||
+    const persistedTitle = lifecycleOverrides.persistedTitle?.trim() || title.trim() ||
       persistedMentorResult?.recommendedIdea?.title?.trim() ||
       input.trim();
 
@@ -11684,6 +11735,41 @@ const generateSceneImage = async (
       : finalVideoCurrent
         ? candidateFinalVideoResult
         : null;
+    const sourceProductionPackage = Object.prototype.hasOwnProperty.call(
+      lifecycleOverrides,
+      "creatorProductionPackage",
+    ) ? lifecycleOverrides.creatorProductionPackage : creatorProductionPackage;
+    const persistedProductionPackage = sourceProductionPackage
+      ? {
+          ...sourceProductionPackage,
+          outcome: creatorOutcome,
+          format: creatorFormat,
+          contentType: creatorContentType,
+          durationPreset: creatorDurationPreset,
+          durationSec: creatorVideoDurationSec,
+          qualityMode: creatorQualityMode,
+          targetPlatforms: creatorTargetPlatforms,
+          platformOutputPlan: creatorPlatformOutputPlan,
+          backgroundMusic:
+            lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
+          visualContinuity: getCreatorVisualContinuitySnapshot(),
+          voicePreferences: {
+            narratorProfileId: getEffectiveNarratorVoiceProfileId(),
+            dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
+            voiceId: narratorSettings.voiceId || "",
+            voiceSelection: narratorSettings.voiceSelection,
+            dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
+            dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
+            modelId: narratorSettings.modelId,
+            stability: narratorSettings.stability,
+            similarityBoost: narratorSettings.similarityBoost,
+            style: narratorSettings.style,
+            speed: narratorSettings.speed,
+            advancedTuning: narratorSettings.advancedTuning === true,
+          },
+        }
+      : null;
+    const creatorProjectState = binding.creatorProjectState;
 
     const res = await fetch("/api/save-project", {
       method: "POST",
@@ -11692,57 +11778,40 @@ const generateSceneImage = async (
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        projectId: currentProjectId || undefined,
+        projectId: lifecycleOverrides.forceNewProject ? undefined : effectiveProjectId || undefined,
+        expectedUpdatedAt: effectiveProjectId
+          && !lifecycleOverrides.forceNewProject ? requestBinding.expectedUpdatedAt || undefined
+          : undefined,
         childId: getProjectChildId(),
         title: persistedTitle,
-        inputPrompt: input,
+        inputPrompt: lifecycleOverrides.inputPrompt ?? input,
         flowKey: activeFlowKey,
         flowTitle: selectedFlow.title,
         flowType: activeFlowKey || "storyverse",
         language,
-        storyPremise: storySetup?.storyPremise || "",
-        characters,
-        visualBible,
+        storyPremise: lifecycleOverrides.storyPremise ?? storySetup?.storyPremise ?? "",
+        characters: lifecycleOverrides.characters ?? characters,
+        visualBible: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "visualBible")
+          ? lifecycleOverrides.visualBible
+          : visualBible,
         scenes: sourceScenes,
-        creatorProductionPackage: creatorProductionPackage
-          ? {
-              ...creatorProductionPackage,
-              outcome: creatorOutcome,
-              format: creatorFormat,
-              contentType: creatorContentType,
-              durationPreset: creatorDurationPreset,
-              durationSec: creatorVideoDurationSec,
-              qualityMode: creatorQualityMode,
-              targetPlatforms: creatorTargetPlatforms,
-              platformOutputPlan: creatorPlatformOutputPlan,
-              backgroundMusic:
-                lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
-              visualContinuity: getCreatorVisualContinuitySnapshot(),
-              voicePreferences: {
-                narratorProfileId: getEffectiveNarratorVoiceProfileId(),
-                dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
-                voiceId: narratorSettings.voiceId || "",
-                voiceSelection: narratorSettings.voiceSelection,
-                dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
-                dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
-                modelId: narratorSettings.modelId,
-                stability: narratorSettings.stability,
-                similarityBoost: narratorSettings.similarityBoost,
-                style: narratorSettings.style,
-                speed: narratorSettings.speed,
-                advancedTuning: narratorSettings.advancedTuning === true,
-              },
-            }
-          : null,
+        creatorProductionPackage: persistedProductionPackage,
+        ...creatorProjectStateRequestFields(
+          isCreatorLabFlow ? "creator_lab" : "storyverse",
+          creatorProjectState,
+        ),
+        refinedCreatorScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes,
         creatorMentorResult: persistedMentorResult,
-        youtubeMetadataResult:
-          lifecycleOverrides.youtubeMetadata ??
-          youtubeMetadataResult,
-        youtubeThumbnailResult:
-          lifecycleOverrides.youtubeThumbnail ??
-          youtubeThumbnailResult,
-        sceneOptimizationResult,
-        sceneOptimizationSummary,
+        youtubeMetadataResult: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "youtubeMetadata")
+          ? lifecycleOverrides.youtubeMetadata ?? null
+          : youtubeMetadataResult,
+        youtubeThumbnailResult: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "youtubeThumbnail")
+          ? lifecycleOverrides.youtubeThumbnail ?? null
+          : youtubeThumbnailResult,
+        sceneOptimizationResult: lifecycleOverrides.sceneOptimizationResult ?? sceneOptimizationResult,
+        sceneOptimizationSummary: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "sceneOptimizationSummary")
+          ? lifecycleOverrides.sceneOptimizationSummary
+          : sceneOptimizationSummary,
         exportedMovieUrl: isCreatorLabFlow
           ? candidateFinalVideoUrl || null
           : finalVideoCurrent ? candidateFinalVideoUrl : null,
@@ -11755,23 +11824,153 @@ const generateSceneImage = async (
 
     const data = await res.json();
 
+    if (!isCreatorProjectSaveBindingActive(requestBinding, {
+      projectId: currentProjectIdRef.current,
+      generation: projectGenerationRef.current,
+    })) return;
+
     if (!res.ok) {
       throw new Error(data.error || "Kaydedilemedi.");
     }
 
-    if (data?.project?.id) {
+    if (data?.project?.id && !lifecycleOverrides.forceNewProject) {
       setCurrentProjectId(data.project.id);
+      currentProjectIdRef.current = data.project.id;
       setLoadProjectId(data.project.id);
       replaceProjectUrlIdentity(data.project.id);
+      projectUpdatedAtRef.current = String(data.project.updated_at || "");
     }
 
     await fetchProjects();
+
+    if (!isCreatorProjectSaveBindingActive(requestBinding, {
+      projectId: currentProjectIdRef.current,
+      generation: projectGenerationRef.current,
+    })) return;
 
     if (showManualMessage) {
       setSaveMessage(
         data.mode === "created" ? ui.projectSaved : ui.projectUpdated
       );
     }
+  };
+
+  const persistProject = async (
+    showManualMessage = false,
+    lifecycleOverrides: Parameters<typeof executePersistProject>[1] = {},
+  ) => {
+    const sourceScenes = lifecycleOverrides.sourceScenes ?? scenes;
+    const mentorResultForSave = Object.prototype.hasOwnProperty.call(
+      lifecycleOverrides,
+      "creatorMentorResult",
+    ) ? lifecycleOverrides.creatorMentorResult ?? null : creatorMentorResult;
+    const persistedMentorResult = mentorResultForSave
+      ? {
+          ...mentorResultForSave,
+          strategySelection: {
+            directionId: creatorSelectedStrategyDirectionId,
+            hook: creatorSelectedHookPattern,
+          },
+        }
+      : null;
+    const sourceProductionPackage = Object.prototype.hasOwnProperty.call(
+      lifecycleOverrides,
+      "creatorProductionPackage",
+    ) ? lifecycleOverrides.creatorProductionPackage : creatorProductionPackage;
+    const persistedProductionPackage = sourceProductionPackage
+      ? {
+          ...sourceProductionPackage,
+          outcome: creatorOutcome,
+          format: creatorFormat,
+          contentType: creatorContentType,
+          durationPreset: creatorDurationPreset,
+          durationSec: creatorVideoDurationSec,
+          qualityMode: creatorQualityMode,
+          targetPlatforms: creatorTargetPlatforms,
+          platformOutputPlan: creatorPlatformOutputPlan,
+          backgroundMusic: lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
+          visualContinuity: getCreatorVisualContinuitySnapshot(),
+          voicePreferences: {
+            narratorProfileId: getEffectiveNarratorVoiceProfileId(),
+            dialogueProfileId: getEffectiveDialogueVoiceProfileId(),
+            voiceId: narratorSettings.voiceId || "",
+            voiceSelection: narratorSettings.voiceSelection,
+            dialogueVoiceId: narratorSettings.dialogueVoiceId || "",
+            dialogueVoiceSelection: narratorSettings.dialogueVoiceSelection,
+            modelId: narratorSettings.modelId,
+            stability: narratorSettings.stability,
+            similarityBoost: narratorSettings.similarityBoost,
+            style: narratorSettings.style,
+            speed: narratorSettings.speed,
+            advancedTuning: narratorSettings.advancedTuning === true,
+          },
+        }
+      : null;
+    const capturedCreatorProjectState = isCreatorLabFlow
+      ? buildCreatorProjectState({
+          brief: {
+            topic: lifecycleOverrides.inputPrompt ?? input,
+            language,
+            country: creatorCountry,
+            ageGroup: creatorAgeGroup,
+            contentType: creatorContentType, ...(creatorOutcome ? { outcome: creatorOutcome } : {}),
+            format: creatorFormat, durationPreset: creatorDurationPreset,
+            durationSec: creatorVideoDurationSec, customDurationSec: creatorCustomDurationSec,
+            qualityMode: creatorQualityMode, targetPlatforms: creatorTargetPlatforms,
+          },
+          strategy: {
+            mentorResult: persistedMentorResult,
+            selectedDirectionId: creatorSelectedStrategyDirectionId,
+            selectedHook: creatorSelectedHookPattern,
+          },
+          production: {
+            package: persistedProductionPackage,
+            refinedScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes,
+            backgroundMusic: lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
+            projectContinuityMode: creatorProjectContinuityMode,
+            sceneContinuityModes: creatorSceneContinuityModes,
+            voicePreferences: persistedProductionPackage?.voicePreferences || null,
+          },
+          createReview: { scenes: sourceScenes },
+          publish: {
+            metadata: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "youtubeMetadata")
+              ? lifecycleOverrides.youtubeMetadata ?? null
+              : youtubeMetadataResult,
+            thumbnail: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "youtubeThumbnail")
+              ? lifecycleOverrides.youtubeThumbnail ?? null
+              : youtubeThumbnailResult,
+            thumbnailDesign: creatorThumbnailStudio,
+            confirmations: creatorReleaseConfirmations,
+            packageDownloaded: lifecycleOverrides.packageDownloaded ?? creatorPackageDownloaded,
+            packageSignature: lifecycleOverrides.storedPublishPackageSignature ?? creatorPackageSignature,
+            finalVideoUrl: lifecycleOverrides.forceInvalidateFinalVideo
+              ? ""
+              : lifecycleOverrides.finalVideoUrl ?? exportedMovieUrl,
+            finalVideoSignature: lifecycleOverrides.forceInvalidateFinalVideo
+              ? ""
+              : lifecycleOverrides.storedFinalVideoSignature ?? exportSignature,
+          },
+        })
+      : null;
+    const binding = createCreatorProjectSaveBinding({
+      originProjectId: currentProjectIdRef.current || currentProjectId,
+      projectId: lifecycleOverrides.forceNewProject
+        ? ""
+        : currentProjectIdRef.current || currentProjectId,
+      expectedUpdatedAt: projectUpdatedAtRef.current,
+      generation: projectGenerationRef.current,
+      creatorProjectState: capturedCreatorProjectState,
+    });
+    setSaveMessage("");
+    const queuedSave = projectSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => executePersistProject(showManualMessage, lifecycleOverrides, binding))
+      .catch((saveError) => {
+        if (binding.generation !== projectGenerationRef.current) return;
+        throw saveError;
+      });
+    projectSaveQueueRef.current = queuedSave;
+    await queuedSave;
   };
 
   const saveProject = async () => {
@@ -11788,11 +11987,22 @@ const generateSceneImage = async (
     setIsSavingProject(true);
     setError("");
     setSaveMessage("");
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
 
     try {
       await persistProject(true);
     } catch (e: any) {
-      setError(e?.message || "Kaydetme sırasında hata oluştu.");
+      setSaveMessage("");
+      setError(
+        typeof e?.message === "string" && e.message.includes("changed")
+          ? (uiLanguage === "en"
+              ? "This project changed elsewhere. Reload before retrying; your local work is still here."
+              : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.")
+          : e?.message || "Kaydetme sırasında hata oluştu.",
+      );
     } finally {
       setIsSavingProject(false);
     }
@@ -11808,11 +12018,14 @@ const generateSceneImage = async (
       return;
     }
 
+    const previousProjectId = currentProjectIdRef.current;
+    const previousUpdatedAt = projectUpdatedAtRef.current;
+    let loadSucceeded = false;
+    const loadGeneration = invalidateProjectPersistence();
     isHydratingRef.current = true;
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    }
+    skipAutosaveRef.current = true;
+    currentProjectIdRef.current = projectIdToLoad;
+    projectUpdatedAtRef.current = "";
     setIsLoadingProject(true);
     setError("");
     setSaveMessage("");
@@ -11829,6 +12042,8 @@ const generateSceneImage = async (
 
       const data = await res.json();
 
+      if (projectGenerationRef.current !== loadGeneration) return;
+
       if (!res.ok) {
         setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
         return;
@@ -11836,7 +12051,10 @@ const generateSceneImage = async (
 
       const project = data.project;
       const isCreatorProject = project.flow_type === "creator_lab";
-      const savedCreatorPackage = project.creator_production_package || null;
+      const canonicalCreatorState = isCreatorProject
+        ? readCreatorProjectState(project)
+        : null;
+      const savedCreatorPackage = (canonicalCreatorState?.production.package ?? null) as CreatorProductionPackage | null;
       const loadedContentLanguage: ContentLanguage =
         project.language === "en" ? "en" : "tr";
       const loadedDialogueRequested = creatorBriefRequestsDialogue({
@@ -11857,8 +12075,9 @@ const generateSceneImage = async (
       const loadedCharacters = isCreatorProject
         ? normalizeCreatorLabCharacters(project.characters)
         : withDefaultGuideCharacter(project.characters);
-      const loadedProjectScenesBeforeIdentity = Array.isArray(project.scenes)
-        ? project.scenes.map((scene: Scene, index: number) =>
+      const persistedCreatorScenes = canonicalCreatorState?.createReview.scenes ?? project.scenes;
+      const loadedProjectScenesBeforeIdentity = Array.isArray(persistedCreatorScenes)
+        ? persistedCreatorScenes.map((scene: Scene, index: number) =>
             isCreatorProject
               ? normalizeCreatorAdultScene(scene, {
                   language: loadedContentLanguage,
@@ -11891,6 +12110,8 @@ const generateSceneImage = async (
       stopStoryPlayback();
 
       setCurrentProjectId(project.id || "");
+      currentProjectIdRef.current = project.id || "";
+      projectUpdatedAtRef.current = String(project.updated_at || "");
       setLoadProjectId(project.id || projectIdToLoad);
       setSelectedFlowKey(isCreatorProject ? "creator_lab" : "storyverse");
       replaceProjectUrlIdentity(
@@ -11902,6 +12123,12 @@ const generateSceneImage = async (
       setInput(project.input_prompt || "");
       // SADECE content language güncellensin
       setLanguage(project.language === "en" ? "en" : "tr");
+      if (canonicalCreatorState) {
+        setInput(canonicalCreatorState.brief.topic);
+        setLanguage(canonicalCreatorState.brief.language);
+        setCreatorCountry(canonicalCreatorState.brief.country);
+        setCreatorAgeGroup(canonicalCreatorState.brief.ageGroup as CreatorAgeGroup);
+      }
       setCharacters(loadedCharacters);
       setVisualBible(project.visual_bible || emptyVisualBible);
       setCreatorUndoStack([]);
@@ -12013,13 +12240,15 @@ const generateSceneImage = async (
         );
       }
 
-      const loadedMentorResult = project.creator_mentor_result as CreatorMentorResult | null;
+      const loadedMentorResult = canonicalCreatorState?.strategy.mentorResult as CreatorMentorResult | null;
       setCreatorMentorResult(loadedMentorResult || null);
       setCreatorSelectedStrategyDirectionId(
-        loadedMentorResult?.strategySelection?.directionId || "recommended",
+        canonicalCreatorState?.strategy.selectedDirectionId ||
+          loadedMentorResult?.strategySelection?.directionId || "recommended",
       );
       setCreatorSelectedHookPattern(
-        loadedMentorResult?.strategySelection?.hook ||
+        canonicalCreatorState?.strategy.selectedHook ||
+          loadedMentorResult?.strategySelection?.hook ||
           loadedMentorResult?.hookPatterns?.[0] ||
           "",
       );
@@ -12053,6 +12282,7 @@ const generateSceneImage = async (
         normalizeCreatorVisualContinuitySettings({
           ...savedContinuityRecord,
           projectMode:
+            canonicalCreatorState?.production.projectContinuityMode ||
             savedContinuityRecord.projectMode ||
             loadedProjectScenes[0]?.projectContinuityMode ||
             "independent",
@@ -12061,6 +12291,7 @@ const generateSceneImage = async (
             typeof savedContinuityRecord.sceneModes === "object"
               ? savedContinuityRecord.sceneModes as Record<string, unknown>
               : {}),
+            ...(canonicalCreatorState?.production.sceneContinuityModes || {}),
             ...loadedSceneContinuityModes,
           },
         });
@@ -12070,13 +12301,16 @@ const generateSceneImage = async (
       setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
       setCreatorBackgroundMusic(
         normalizeCreatorBackgroundMusicConfig(
-          isCreatorProject ? savedCreatorPackage?.backgroundMusic : undefined,
+          isCreatorProject
+            ? canonicalCreatorState?.production.backgroundMusic ?? savedCreatorPackage?.backgroundMusic
+            : undefined,
           [],
           isCreatorPremiumMusicTrackId,
         ),
       );
 
-      const savedQualityMode = normalizedSavedCreatorPackage?.qualityMode;
+      const savedQualityMode =
+        canonicalCreatorState?.brief.qualityMode || normalizedSavedCreatorPackage?.qualityMode;
       if (
         savedQualityMode === "draft" ||
         savedQualityMode === "standard" ||
@@ -12086,12 +12320,16 @@ const generateSceneImage = async (
         setCreatorQualityMode(savedQualityMode);
       }
       if (
-        typeof savedCreatorPackage?.durationSec === "number" &&
-        Number.isFinite(savedCreatorPackage.durationSec) &&
-        savedCreatorPackage.durationSec > 0
+        typeof canonicalCreatorState?.brief.durationSec === "number" ||
+        (typeof savedCreatorPackage?.durationSec === "number" &&
+          Number.isFinite(savedCreatorPackage.durationSec) &&
+          savedCreatorPackage.durationSec > 0)
       ) {
-        setCreatorVideoDurationSec(savedCreatorPackage.durationSec);
-        setCreatorCustomDurationSec(savedCreatorPackage.durationSec);
+        const loadedDuration = canonicalCreatorState?.brief.durationSec || savedCreatorPackage?.durationSec || 60;
+        setCreatorVideoDurationSec(loadedDuration);
+        setCreatorCustomDurationSec(
+          canonicalCreatorState?.brief.customDurationSec || loadedDuration,
+        );
       }
 
       const savedVoicePreferences = normalizedSavedCreatorPackage?.voicePreferences;
@@ -12149,7 +12387,8 @@ const generateSceneImage = async (
         setNarratorSettings(defaultNarratorSettings);
       }
 
-      const savedFormat = normalizedSavedCreatorPackage?.format;
+      const savedFormat =
+        canonicalCreatorState?.brief.format || normalizedSavedCreatorPackage?.format;
       const restoredFormat: CreatorFormat =
         savedFormat === "short_form" || savedFormat === "youtube_video"
           ? savedFormat
@@ -12160,14 +12399,16 @@ const generateSceneImage = async (
         setCreatorFormat(savedFormat);
       }
 
-      const savedContentType = normalizedSavedCreatorPackage?.contentType;
+      const savedContentType =
+        canonicalCreatorState?.brief.contentType || normalizedSavedCreatorPackage?.contentType;
       if (
         CREATOR_CONTENT_TYPE_OPTIONS.some((option) => option.value === savedContentType)
       ) {
         setCreatorContentType(savedContentType as CreatorContentType);
       }
 
-      const savedDurationPreset = normalizedSavedCreatorPackage?.durationPreset;
+      const savedDurationPreset =
+        canonicalCreatorState?.brief.durationPreset || normalizedSavedCreatorPackage?.durationPreset;
       const savedDurationPresetValid =
         savedDurationPreset === "custom" ||
         getCreatorDurationOptionsByFormat(restoredFormat).some(
@@ -12185,28 +12426,48 @@ const generateSceneImage = async (
               (loadedProjectScenes.length > 0 ? "create_review" : "setup")
           : "setup",
       );
-      setCreatorOutcome(normalizeCreatorOutcome(normalizedSavedCreatorPackage?.outcome));
+      setCreatorOutcome(
+        normalizeCreatorOutcome(
+          canonicalCreatorState?.brief.outcome ?? normalizedSavedCreatorPackage?.outcome,
+        ),
+      );
       setCreatorTargetPlatforms(
         normalizeCreatorTargetPlatforms(
-          normalizedSavedCreatorPackage?.targetPlatforms,
+          canonicalCreatorState?.brief.targetPlatforms.length
+            ? canonicalCreatorState.brief.targetPlatforms
+            : normalizedSavedCreatorPackage?.targetPlatforms,
           restoredFormat,
         ),
       );
-      setYoutubeMetadataResult(project.youtube_metadata || null);
-      setYoutubeThumbnailResult(project.youtube_thumbnail || null);
-      setCreatorThumbnailStudio(
-        normalizeCreatorThumbnailStudioState(project.youtube_thumbnail?.design),
+      setYoutubeMetadataResult(
+        canonicalCreatorState?.publish.metadata as YoutubeMetadataResult | null,
       );
-      setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
+      setYoutubeThumbnailResult(
+        canonicalCreatorState?.publish.thumbnail as YoutubeThumbnailResult | null,
+      );
+      setCreatorThumbnailStudio(
+        normalizeCreatorThumbnailStudioState(
+          canonicalCreatorState?.publish.thumbnailDesign ?? project.youtube_thumbnail?.design,
+        ),
+      );
+      setCreatorThumbnailSavedDesign(
+        normalizeCreatorThumbnailStudioState(
+          canonicalCreatorState?.publish.thumbnailDesign ?? project.youtube_thumbnail?.design,
+        ),
+      );
+      setCreatorReleaseConfirmations({
+        ...CREATOR_RELEASE_CONFIRMATION_DEFAULTS,
+        ...(canonicalCreatorState?.publish.confirmations || {}),
+      } as Record<CreatorReleaseConfirmationKey, boolean>);
       setSceneOptimizationResult(
         Array.isArray(project.scene_optimization) ? project.scene_optimization : []
       );
       setSceneOptimizationSummary(project.scene_optimization_summary || null);
       setRefinedCreatorScenes(
-        Array.isArray(project.refined_creator_scenes)
+        Array.isArray(canonicalCreatorState?.production.refinedScenes)
           ? synchronizeCreatorSceneProjectionIds(
               loadedProjectScenes,
-              project.refined_creator_scenes.map(
+              (canonicalCreatorState.production.refinedScenes as CreatorProductionScene[]).map(
                 (scene: CreatorProductionScene, index: number) =>
                   isCreatorProject
                     ? normalizeCreatorAdultScene(scene, {
@@ -12242,14 +12503,32 @@ const generateSceneImage = async (
         visualBible: project.visual_bible || emptyVisualBible,
       });
 
+      loadSucceeded = true;
       setSaveMessage(ui.projectLoaded);
 
     } catch (e: any) {
-      setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
+      if (projectGenerationRef.current === loadGeneration) {
+        setError(uiLanguage === "en" ? "Project could not be opened." : "Proje açılamadı.");
+      }
     } finally {
-      isHydratingRef.current = false;
-      skipAutosaveRef.current = false;
-      setIsLoadingProject(false);
+      if (projectGenerationRef.current === loadGeneration) {
+        setIsLoadingProject(false);
+      }
+      if (!loadSucceeded && projectGenerationRef.current === loadGeneration) {
+        invalidateProjectPersistence();
+        currentProjectIdRef.current = previousProjectId;
+        projectUpdatedAtRef.current = previousUpdatedAt;
+        isHydratingRef.current = false;
+        skipAutosaveRef.current = false;
+      }
+      window.requestAnimationFrame(() => {
+        if (projectGenerationRef.current !== loadGeneration) return;
+        window.requestAnimationFrame(() => {
+          if (projectGenerationRef.current !== loadGeneration) return;
+          isHydratingRef.current = false;
+          skipAutosaveRef.current = false;
+        });
+      });
     }
   };
 
@@ -13520,6 +13799,15 @@ const generateSceneImage = async (
   ) => {
     const topic = (topicOverride || input).trim();
     const forceNewProject = Boolean(options?.forceNewProject);
+    const operationOrigin = Object.freeze({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+    const fullPackageOperationIsActive = () =>
+      isCreatorProjectOperationActive(operationOrigin, {
+        projectId: currentProjectIdRef.current || currentProjectId,
+        generation: projectGenerationRef.current,
+      });
 
     if (!isCreatorLabFlow) {
       return;
@@ -13540,6 +13828,7 @@ const generateSceneImage = async (
 
     try {
       const guardPlan = await fetchCreatorTimelinePreviewPlan(topic);
+      if (!fullPackageOperationIsActive()) return;
       setCreatorTimelinePreviewPlan(guardPlan);
 
       if (creatorTimelineNeedsEditPlan(guardPlan)) {
@@ -13554,6 +13843,7 @@ const generateSceneImage = async (
 
       setCreatorEditPlan(null);
     } catch (e: any) {
+      if (!fullPackageOperationIsActive()) return;
       console.error("pre-render timeline guard error:", e);
       setError(
         e?.message ||
@@ -13563,7 +13853,9 @@ const generateSceneImage = async (
       );
       return;
     } finally {
-      setCreatorTimelinePreviewLoading(false);
+      if (fullPackageOperationIsActive()) {
+        setCreatorTimelinePreviewLoading(false);
+      }
     }
 
     setIsGeneratingFullYoutubePackage(true);
@@ -13578,6 +13870,7 @@ const generateSceneImage = async (
 
     try {
       const accessToken = await getAccessTokenOrThrow();
+      if (!fullPackageOperationIsActive()) return;
 
       // 1) Mentor analysis
       const mentorRes = await fetch("/api/creator-mentor", {
@@ -13598,8 +13891,10 @@ const generateSceneImage = async (
           creatorProfile,
         }),
       });
+      if (!fullPackageOperationIsActive()) return;
 
       const mentorData = await mentorRes.json().catch(() => null);
+      if (!fullPackageOperationIsActive()) return;
 
       if (!mentorRes.ok || !mentorData?.success || !mentorData?.analysis) {
         throw new Error(
@@ -13635,8 +13930,10 @@ const generateSceneImage = async (
           creatorProfile,
         }),
       });
+      if (!fullPackageOperationIsActive()) return;
 
       const productionData = await productionRes.json().catch(() => null);
+      if (!fullPackageOperationIsActive()) return;
 
       if (
         !productionRes.ok ||
@@ -13657,6 +13954,7 @@ const generateSceneImage = async (
         topic,
         accessToken,
       });
+      if (!fullPackageOperationIsActive()) return;
       const nextPackage = {
         ...normalizeCreatorLabGeneratedPackage(
           scriptPlannedPackage,
@@ -13729,8 +14027,10 @@ const generateSceneImage = async (
           patternSummary: youtubePatternSummary,
         }),
       });
+      if (!fullPackageOperationIsActive()) return;
 
       const metadataData = await metadataRes.json().catch(() => null);
+      if (!fullPackageOperationIsActive()) return;
 
       if (!metadataRes.ok || !metadataData?.metadata) {
         throw new Error(metadataData?.error || "YouTube metadata üretilemedi.");
@@ -13765,8 +14065,10 @@ const generateSceneImage = async (
           storyPremise: nextPackage.storyPremise || "",
         }),
       });
+      if (!fullPackageOperationIsActive()) return;
 
       const optimizeData = await optimizeRes.json().catch(() => null);
+      if (!fullPackageOperationIsActive()) return;
 
       if (!optimizeRes.ok) {
         throw new Error(optimizeData?.error || "AI scene optimization failed.");
@@ -13779,54 +14081,29 @@ const generateSceneImage = async (
       setSceneOptimizationSummary(nextOptimizationSummary);
       setSceneOptimizationAILoading(false);
 
-      // 6) Persist without rendering video/image/audio.
-      const saveRes = await fetch("/api/save-project", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          projectId: forceNewProject ? undefined : currentProjectId || undefined,
-          childId: getProjectChildId(),
-          title: nextPackage.title || topic,
-          inputPrompt: topic,
-          flowKey: activeFlowKey,
-          flowTitle: selectedFlow.title,
-          flowType: activeFlowKey || "storyverse",
-          language,
-          storyPremise: nextPackage.storyPremise || "",
-          characters: nextCharacters,
-          visualBible: nextVisualBible,
-          scenes: [],
-          creatorMentorResult: nextMentorResult,
-          creatorProductionPackage: attachCreatorVisualContinuity(nextPackage),
-          youtubeMetadataResult: nextMetadata,
-          youtubeThumbnailResult: nextThumbnail,
-          sceneOptimizationResult: nextOptimizationResult,
-          sceneOptimizationSummary: nextOptimizationSummary,
-          exportedMovieUrl: null,
-          exportedMovieResult: null,
-          exportSignature: null,
-        }),
+      // 6) Persist through the same project/generation-bound queue as all other saves.
+      if (!fullPackageOperationIsActive()) return;
+      await persistProject(false, {
+        sourceScenes: [],
+        forceNewProject,
+        forceInvalidateFinalVideo: true,
+        persistedTitle: nextPackage.title || topic,
+        inputPrompt: topic,
+        storyPremise: nextPackage.storyPremise || "",
+        characters: nextCharacters,
+        visualBible: nextVisualBible,
+        creatorMentorResult: nextMentorResult,
+        creatorProductionPackage: attachCreatorVisualContinuity(nextPackage),
+        refinedCreatorScenes: [],
+        youtubeMetadata: nextMetadata,
+        youtubeThumbnail: nextThumbnail,
+        sceneOptimizationResult: nextOptimizationResult,
+        sceneOptimizationSummary: nextOptimizationSummary,
       });
-
-      const saveData = await saveRes.json().catch(() => null);
-
-      if (!saveRes.ok) {
-        throw new Error(saveData?.error || "Auto mode package kaydedilemedi.");
-      }
-
-      if (saveData?.project?.id && !forceNewProject) {
-        setCurrentProjectId(saveData.project.id);
-        setLoadProjectId(saveData.project.id);
-        replaceProjectUrlIdentity(saveData.project.id);
-      }
-
-      await fetchProjects();
-
+      if (!fullPackageOperationIsActive()) return;
       setSaveMessage(ui.fullYoutubePackageReady);
     } catch (e: any) {
+      if (!fullPackageOperationIsActive()) return;
       console.error("handleGenerateFullYoutubePackage error:", e);
       setError(
         e?.message ||
@@ -13835,13 +14112,15 @@ const generateSceneImage = async (
             : "YouTube Auto Mode sırasında hata oluştu.")
       );
     } finally {
-      setIsGeneratingFullYoutubePackage(false);
-      setCreatorMentorLoading(false);
-      setCreatorProductionLoading(false);
-      setYoutubeMetadataLoading(false);
-      setYoutubeThumbnailLoading(false);
-      setSceneOptimizationAILoading(false);
-      setLoadingSetup(false);
+      if (fullPackageOperationIsActive()) {
+        setIsGeneratingFullYoutubePackage(false);
+        setCreatorMentorLoading(false);
+        setCreatorProductionLoading(false);
+        setYoutubeMetadataLoading(false);
+        setYoutubeThumbnailLoading(false);
+        setSceneOptimizationAILoading(false);
+        setLoadingSetup(false);
+      }
     }
   };
 
@@ -17432,7 +17711,7 @@ const generateSceneImage = async (
 
     if (
       isCreatorLabFlow
-        ? (!input.trim() && !title.trim()) || !creatorMentorResult
+        ? !input.trim() && !title.trim()
         : !title || scenes.length === 0
     ) {
       return;
@@ -17443,11 +17722,19 @@ const generateSceneImage = async (
     }
 
     autosaveTimerRef.current = setTimeout(async () => {
+      const autosaveGeneration = projectGenerationRef.current;
       try {
         await persistProject(false);
+        if (autosaveGeneration !== projectGenerationRef.current) return;
         setSaveMessage(ui.autoSaved);
-      } catch {
-        setError("Otomatik kaydetme sırasında hata oluştu.");
+      } catch (saveError) {
+        if (autosaveGeneration !== projectGenerationRef.current) return;
+        setSaveMessage("");
+        setError(
+          saveError instanceof Error && saveError.message.includes("changed")
+            ? (uiLanguage === "en" ? "This project changed elsewhere. Reload before retrying; your local work is still here." : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.")
+            : "Otomatik kaydetme sırasında hata oluştu.",
+        );
       }
     }, 2000);
 
@@ -17466,10 +17753,26 @@ const generateSceneImage = async (
     narratorSettings,
     creatorProductionPackage,
     creatorMentorResult,
+    creatorSelectedStrategyDirectionId,
+    creatorSelectedHookPattern,
+    creatorCountry,
+    creatorAgeGroup,
+    creatorContentType,
+    creatorOutcome,
+    creatorFormat,
+    creatorDurationPreset,
+    creatorVideoDurationSec,
+    creatorCustomDurationSec,
+    creatorQualityMode,
     youtubeMetadataResult,
     youtubeThumbnailResult,
     creatorThumbnailStudio,
     creatorTargetPlatforms,
+    creatorBackgroundMusic,
+    creatorProjectContinuityMode,
+    creatorSceneContinuityModes,
+    refinedCreatorScenes,
+    creatorReleaseConfirmations,
     creatorPackageDownloaded,
     creatorPackageSignature,
     creatorArtifactHistory,
