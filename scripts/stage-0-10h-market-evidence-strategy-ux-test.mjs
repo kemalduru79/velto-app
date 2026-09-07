@@ -34,7 +34,7 @@ assert.match(page, /loadedMentorResult\?\.marketEvidence\?\.videos/);
 assert.match(page, /loadedMentorResult\?\.marketEvidence\?\.patternSummary/);
 
 assert.match(strategySection, /onClick=\{handleCreatorProductionPackage\}/);
-assert.match(strategySection, /Approve Strategy & Build Scenes/);
+assert.match(strategySection, /Approve Strategy & Build Script/);
 assert.doesNotMatch(approvalAction, /youtubeResearchVideos|youtubePatternSummary/);
 assert.match(page, /creatorStageAfterSuccess\(current, "brief_completed"\)/);
 assert.match(page, /creatorStageAfterSuccess\(current, "strategy_approved"\)/);

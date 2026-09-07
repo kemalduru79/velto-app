@@ -137,6 +137,17 @@ import {
   resolveCreatorStageVisibility,
 } from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
+import CreatorScriptReview from "@/components/create/CreatorScriptReview";
+import {
+  acceptGeneratedCreatorScript,
+  approveCreatorScript,
+  canBuildScenesFromCreatorScript,
+  createCreatorStrategyFingerprint,
+  editCreatorScriptSection,
+  normalizeCreatorScript,
+  shouldSurfaceCreatorScriptOperationFailure,
+  type CreatorScript,
+} from "@/lib/creator/creatorScript";
 import {
   buildCreatorProjectState,
   readCreatorProjectState,
@@ -144,6 +155,7 @@ import {
 } from "@/lib/creator/projectState";
 import {
   advanceCreatorProjectSaveBinding,
+  advanceCreatorProjectOperationOrigin,
   createCreatorProjectSaveBinding,
   creatorProjectStateRequestFields,
   isCreatorProjectOperationActive,
@@ -798,6 +810,10 @@ type Scene = {
   customGenerationNeed?: number;
   authenticityValue?: number;
   stockSearchQuery?: string;
+  scriptRevision?: number;
+  scriptSectionId?: string;
+  scriptSegmentIndex?: number;
+  editorialClaimIds?: string[];
 };
 
 type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
@@ -1024,6 +1040,10 @@ type CreatorProductionScene = {
   visualBlockPlan?: CreatorVisualBlockPlan[];
   clipInSec?: number;
   clipOutSec?: number;
+  scriptRevision?: number;
+  scriptSectionId?: string;
+  scriptSegmentIndex?: number;
+  editorialClaimIds?: string[];
 };
 
 type CreatorProductionPackage = {
@@ -3473,6 +3493,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
+  const [creatorScript, setCreatorScript] = useState<CreatorScript | null>(null);
+  const creatorScriptRef = useRef<CreatorScript | null>(null);
+  const [creatorScriptBusySectionId, setCreatorScriptBusySectionId] = useState<string | null>(null);
+  useEffect(() => {
+    creatorScriptRef.current = creatorScript;
+  }, [creatorScript]);
   const [creatorSelectedStrategyDirectionId, setCreatorSelectedStrategyDirectionId] =
     useState("recommended");
   const [creatorSelectedHookPattern, setCreatorSelectedHookPattern] = useState("");
@@ -6589,6 +6615,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     stopStoryPlayback();
     setStorySetup(null);
     setCreatorMentorResult(null);
+    setCreatorScript(null);
+    setCreatorScriptBusySectionId(null);
     setCreatorProductionPackage(null);
     creatorProductionIntelligenceContextsRef.current = [];
     setCreatorProductionSubstep("setup");
@@ -11620,6 +11648,7 @@ const generateSceneImage = async (
       forceInvalidateFinalVideo?: boolean;
       backgroundMusic?: CreatorBackgroundMusicConfig;
       creatorMentorResult?: CreatorMentorResult | null;
+      creatorScript?: CreatorScript | null;
       creatorProductionPackage?: CreatorProductionPackage | null;
       refinedCreatorScenes?: CreatorProductionScene[];
       sceneOptimizationResult?: SceneOptimizationResult[];
@@ -11922,6 +11951,9 @@ const generateSceneImage = async (
             mentorResult: persistedMentorResult,
             selectedDirectionId: creatorSelectedStrategyDirectionId,
             selectedHook: creatorSelectedHookPattern,
+            script: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "creatorScript")
+              ? lifecycleOverrides.creatorScript ?? null
+              : creatorScript,
           },
           production: {
             package: persistedProductionPackage,
@@ -12242,6 +12274,7 @@ const generateSceneImage = async (
 
       const loadedMentorResult = canonicalCreatorState?.strategy.mentorResult as CreatorMentorResult | null;
       setCreatorMentorResult(loadedMentorResult || null);
+      setCreatorScript(canonicalCreatorState?.strategy.script || null);
       setCreatorSelectedStrategyDirectionId(
         canonicalCreatorState?.strategy.selectedDirectionId ||
           loadedMentorResult?.strategySelection?.directionId || "recommended",
@@ -13720,6 +13753,41 @@ const generateSceneImage = async (
     }
   };
 
+  const creatorStrategyFingerprint = useMemo(
+    () => createCreatorStrategyFingerprint({
+      topic: input,
+      selectedDirectionId: creatorSelectedStrategyDirectionId,
+      selectedHook: creatorSelectedHookPattern,
+      language,
+      country: creatorCountry,
+      audience: creatorAgeGroup,
+      contentType: creatorContentType,
+      format: creatorFormat,
+      targetDurationSec: creatorVideoDurationSec,
+      creatorProfile,
+      mentorResult: creatorMentorResult ? {
+        audienceInsight: creatorMentorResult.audienceInsight,
+        hookPatterns: creatorMentorResult.hookPatterns,
+        videoIdeas: creatorMentorResult.videoIdeas,
+        recommendedIdea: creatorMentorResult.recommendedIdea,
+        productionPlan: creatorMentorResult.productionPlan,
+      } : null,
+    }),
+    [
+      input,
+      creatorSelectedStrategyDirectionId,
+      creatorSelectedHookPattern,
+      language,
+      creatorCountry,
+      creatorAgeGroup,
+      creatorContentType,
+      creatorFormat,
+      creatorVideoDurationSec,
+      creatorProfile,
+      creatorMentorResult,
+    ],
+  );
+
   const applyCreatorProfessionalScriptPlan = async ({
     productionPackage,
     topic,
@@ -13821,6 +13889,13 @@ const generateSceneImage = async (
       );
       return;
     }
+
+    setError(
+      uiLanguage === "en"
+        ? "Full-package automation now requires the Strategy script review and explicit approval gate."
+        : "Tam paket otomasyonu artık Strateji metin incelemesi ve açık onay kapısından ilerler.",
+    );
+    return;
 
     setCreatorTimelinePreviewLoading(true);
     setError("");
@@ -14246,13 +14321,123 @@ const generateSceneImage = async (
       return;
     }
 
+    let operationOrigin = Object.freeze({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+    const operationIsActive = () => isCreatorProjectOperationActive(operationOrigin, {
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+
+    setCreatorProductionLoading(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      if (!operationIsActive()) return;
+      const persistedStrategyResult: CreatorMentorResult = {
+        ...creatorMentorResult,
+        strategySelection: {
+          directionId: creatorSelectedStrategyDirectionId,
+          hook: creatorSelectedHookPattern,
+        },
+      };
+      const result = await runCreatorEditorialScriptPipeline({
+        accessToken,
+        topic: input,
+        creatorProfile,
+        scriptPlanRequest: {
+          operation: "generate_full_script",
+          title: creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title,
+          contentType: getCreatorContentTypeLabel(),
+          format: creatorFormat,
+          durationSec: creatorVideoDurationSec,
+          language,
+          strategyFingerprint: creatorStrategyFingerprint,
+          strategy: {
+            selectedDirection: creatorSelectedStrategyDirection || creatorMentorRecommendedIdea,
+            selectedHook: creatorSelectedStrategyHook || creatorSelectedHookPattern,
+            mentorAnalysis: persistedStrategyResult,
+          },
+        },
+      });
+      if (!operationIsActive()) return;
+      const accepted = acceptGeneratedCreatorScript({
+        generatedScript: result.creatorScript,
+        origin: operationOrigin,
+        active: {
+          projectId: currentProjectIdRef.current || currentProjectId,
+          generation: projectGenerationRef.current,
+        },
+        workspaceStep: creatorSelectedWorkspaceStep,
+        scenes,
+      });
+      if (!accepted) return;
+      const nextScript = accepted.script;
+      setCreatorMentorResult(persistedStrategyResult);
+      creatorScriptRef.current = nextScript;
+      setCreatorScript(nextScript);
+      await persistProject(false, {
+        creatorMentorResult: persistedStrategyResult,
+        creatorScript: nextScript,
+      });
+      const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
+        projectId: currentProjectIdRef.current || currentProjectId,
+        generation: projectGenerationRef.current,
+      });
+      if (!advancedOrigin) return;
+      operationOrigin = advancedOrigin;
+      if (!operationIsActive()) return;
+      setSaveMessage(uiLanguage === "en" ? "Full script ready for review." : "Tam metin incelemeye hazır.");
+    } catch (error) {
+      if (!operationIsActive()) return;
+      setError(error instanceof Error ? error.message : uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı.");
+    } finally {
+      if (operationIsActive()) setCreatorProductionLoading(false);
+    }
+  };
+
+  const handleApproveCreatorScriptAndBuildScenes = async () => {
+    if (!creatorMentorResult || !creatorScript) {
+      setError(uiLanguage === "en" ? "Generate and review the full script first." : "Önce tam metni oluşturup incele.");
+      return;
+    }
+    let approvedScript: CreatorScript;
+    try {
+      approvedScript = approveCreatorScript(creatorScript, creatorStrategyFingerprint);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Script approval failed.");
+      return;
+    }
+    let operationOrigin = Object.freeze({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+    const operationIsActive = () => isCreatorProjectOperationActive(operationOrigin, {
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+
     setCreatorProductionLoading(true);
     setLoadingSetup(true);
     setError("");
     setSaveMessage("");
 
     try {
+      creatorScriptRef.current = approvedScript;
+      setCreatorScript(approvedScript);
+      await persistProject(false, { creatorScript: approvedScript });
+      const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
+        projectId: currentProjectIdRef.current || currentProjectId,
+        generation: projectGenerationRef.current,
+      });
+      if (!advancedOrigin) return;
+      operationOrigin = advancedOrigin;
+      if (!operationIsActive()) return;
       const accessToken = await getAccessTokenOrThrow();
+      if (!operationIsActive()) return;
 
       const approvedDirection = creatorSelectedStrategyDirection || {
         title: creatorMentorRecommendedIdea.title,
@@ -14300,10 +14485,15 @@ const generateSceneImage = async (
           language,
           mentorAnalysis: approvedMentorAnalysis,
           creatorProfile,
+          approvedScript,
+          projectId: operationOrigin.projectId,
+          strategyFingerprint: creatorStrategyFingerprint,
         }),
       });
+      if (!operationIsActive()) return;
 
       const data = await res.json().catch(() => null);
+      if (!operationIsActive()) return;
 
       if (!res.ok || !data?.success || !data?.productionPackage) {
         throw new Error(
@@ -14314,18 +14504,12 @@ const generateSceneImage = async (
         );
       }
 
-      const scriptPlannedPackage = await applyCreatorProfessionalScriptPlan({
-        productionPackage:
-          data.productionPackage as CreatorProductionPackage,
-        topic: input,
-        accessToken,
-      });
       const nextPackage = {
         ...normalizeCreatorLabGeneratedPackage(
           {
-            ...scriptPlannedPackage,
+            ...(data.productionPackage as CreatorProductionPackage),
             scenes: normalizeScenesWithIntelligence(
-              (scriptPlannedPackage.scenes || []) as CreatorProductionScene[]
+              ((data.productionPackage as CreatorProductionPackage).scenes || []) as CreatorProductionScene[]
             ) as CreatorProductionScene[],
           },
           {
@@ -14344,7 +14528,20 @@ const generateSceneImage = async (
         targetPlatforms: creatorTargetPlatforms,
         platformOutputPlan: creatorPlatformOutputPlan,
       };
+      const authoritativeScriptScenes = (data.productionPackage as CreatorProductionPackage).scenes || [];
+      nextPackage.scenes = nextPackage.scenes.map((scene, index) => ({
+        ...scene,
+        narration: authoritativeScriptScenes[index]?.narration || scene.narration,
+        dialogue: authoritativeScriptScenes[index]?.dialogue || "",
+        scriptRevision: authoritativeScriptScenes[index]?.scriptRevision,
+        scriptSectionId: authoritativeScriptScenes[index]?.scriptSectionId,
+        scriptSegmentIndex: authoritativeScriptScenes[index]?.scriptSegmentIndex,
+        editorialClaimIds: authoritativeScriptScenes[index]?.editorialClaimIds,
+      }));
 
+      if (!operationIsActive()) return;
+      creatorScriptRef.current = approvedScript;
+      setCreatorScript(approvedScript);
       setCreatorProductionPackage(nextPackage);
       setCreatorMentorResult(persistedStrategyResult);
       setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "strategy_approved"));
@@ -14390,9 +14587,16 @@ const generateSceneImage = async (
       setExportedMovieUrl("");
       setExportMovieResult(null);
       setExportSignature("");
-
+      await persistProject(false, {
+        creatorScript: approvedScript,
+        creatorMentorResult: persistedStrategyResult,
+        creatorProductionPackage: nextPackage,
+        sourceScenes: [],
+      });
+      if (!operationIsActive()) return;
       setSaveMessage(ui.productionPackageReady);
     } catch (e: any) {
+      if (!operationIsActive()) return;
       console.error("handleCreatorProductionPackage error:", e);
       setError(
         e?.message ||
@@ -14401,8 +14605,84 @@ const generateSceneImage = async (
             : "Üretim paketi oluşturulurken hata oluştu.")
       );
     } finally {
-      setCreatorProductionLoading(false);
-      setLoadingSetup(false);
+      if (operationIsActive()) {
+        setCreatorProductionLoading(false);
+        setLoadingSetup(false);
+      }
+    }
+  };
+
+  const handleSaveCreatorScriptSection = (sectionId: string, text: string) => {
+    if (!creatorScript) return;
+    try {
+      const nextScript = editCreatorScriptSection(creatorScript, sectionId, text);
+      creatorScriptRef.current = nextScript;
+      setCreatorScript(nextScript);
+      setError("");
+      setSaveMessage(uiLanguage === "en" ? "Script edit saved. Approval is required again." : "Metin düzenlemesi kaydedildi. Yeniden onay gerekli.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Script edit failed.");
+    }
+  };
+
+  const handleRegenerateCreatorScriptSection = async (sectionId: string) => {
+    const sourceScript = creatorScriptRef.current;
+    if (!sourceScript || creatorScriptBusySectionId) return;
+    const sourceRevision = sourceScript.revision;
+    let installedRevision: number | null = null;
+    const operationOrigin = Object.freeze({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+    const operationIsActive = () => isCreatorProjectOperationActive(operationOrigin, {
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    });
+    const sourceRevisionIsActive = () => creatorScriptRef.current?.revision === sourceRevision;
+    setCreatorScriptBusySectionId(sectionId);
+    setError("");
+    try {
+      const accessToken = await getAccessTokenOrThrow();
+      if (!operationIsActive() || !sourceRevisionIsActive()) return;
+      const response = await fetch("/api/creator-script-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          operation: "regenerate_section",
+          creatorScript: sourceScript,
+          targetSectionId: sectionId,
+          strategyFingerprint: creatorStrategyFingerprint,
+          scriptContext: sourceScript.grounding.context,
+        }),
+      });
+      if (!operationIsActive() || !sourceRevisionIsActive()) return;
+      const data = await response.json().catch(() => null);
+      if (!operationIsActive() || !sourceRevisionIsActive()) return;
+      if (!response.ok || !data?.creatorScript) throw new Error(data?.error || "Script section regeneration failed.");
+      const nextScript = normalizeCreatorScript(data.creatorScript);
+      installedRevision = nextScript.revision;
+      creatorScriptRef.current = nextScript;
+      setCreatorScript(nextScript);
+      await persistProject(false, { creatorScript: nextScript });
+      if (!operationIsActive() || creatorScriptRef.current?.revision !== nextScript.revision) return;
+      setSaveMessage(sectionId === sourceScript.sections[0]?.id
+        ? (uiLanguage === "en" ? "Opening strengthened. Review and approve the new revision." : "Açılış güçlendirildi. Yeni sürümü inceleyip onayla.")
+        : (uiLanguage === "en" ? "Section regenerated. Review and approve the new revision." : "Bölüm yenilendi. Yeni sürümü inceleyip onayla."));
+    } catch (error) {
+      if (!shouldSurfaceCreatorScriptOperationFailure({
+        origin: operationOrigin,
+        active: {
+          projectId: currentProjectIdRef.current || currentProjectId,
+          generation: projectGenerationRef.current,
+        },
+        sourceRevision,
+        installedRevision,
+        currentRevision: creatorScriptRef.current?.revision ?? null,
+      })) return;
+      setSaveMessage("");
+      setError(error instanceof Error ? error.message : "Script section regeneration failed.");
+    } finally {
+      if (operationIsActive()) setCreatorScriptBusySectionId(null);
     }
   };
 
@@ -17753,6 +18033,7 @@ const generateSceneImage = async (
     narratorSettings,
     creatorProductionPackage,
     creatorMentorResult,
+    creatorScript,
     creatorSelectedStrategyDirectionId,
     creatorSelectedHookPattern,
     creatorCountry,
@@ -19385,7 +19666,9 @@ const generateSceneImage = async (
       }
     : creatorWorkspaceStep === 2
       ? {
-          title: uiLanguage === "en" ? "Approve strategy and build scenes" : "Stratejiyi onayla ve sahneleri oluştur",
+          title: creatorScript
+            ? uiLanguage === "en" ? "Review and approve the full script" : "Tam metni incele ve onayla"
+            : uiLanguage === "en" ? "Approve strategy and build script" : "Stratejiyi onayla ve metni oluştur",
           description: creatorSelectedStrategyDirection
             ? `${creatorSelectedStrategyDirection.title} · ${creatorSelectedStrategyHook || (uiLanguage === "en" ? "opening direction pending" : "açılış yönü bekliyor")}`
             : creatorIntelligenceReport?.nextBestAction || (uiLanguage === "en" ? "Select the direction that should shape the production package." : "Üretim paketini şekillendirecek yönü seç."),
@@ -30554,13 +30837,14 @@ const generateSceneImage = async (
               </ol>
             </section>
 
+            {(!creatorScript || creatorScript.strategyFingerprint !== creatorStrategyFingerprint) && (
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
                 <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
                 <p>
                   {uiLanguage === "en"
-                    ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build an editable scene plan. No paid media is generated yet.`
-                    : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak düzenlenebilir sahne planını oluşturacak. Henüz ücretli medya üretilmez.`}
+                    ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build one grounded full script for review. No scenes or paid media are generated yet.`
+                    : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak inceleme için kaynaklı bir tam metin oluşturacak. Henüz sahne veya ücretli medya üretilmez.`}
                 </p>
               </div>
               <button
@@ -30570,10 +30854,24 @@ const generateSceneImage = async (
                 className="creatorlab-strategy-primary-action"
               >
                 {creatorProductionLoading
-                  ? uiLanguage === "en" ? "Building scene plan..." : "Sahne planı oluşturuluyor..."
-                  : uiLanguage === "en" ? "Approve Strategy & Build Scenes" : "Stratejiyi Onayla ve Sahneleri Oluştur"}
+                  ? uiLanguage === "en" ? "Building full script..." : "Tam metin oluşturuluyor..."
+                  : uiLanguage === "en" ? "Approve Strategy & Build Script" : "Stratejiyi Onayla ve Metni Oluştur"}
               </button>
             </div>
+            )}
+
+            {creatorScript && (
+              <CreatorScriptReview
+                script={creatorScript}
+                currentStrategyFingerprint={creatorStrategyFingerprint}
+                language={language}
+                busySectionId={creatorScriptBusySectionId}
+                buildingScenes={creatorProductionLoading}
+                onSaveSection={handleSaveCreatorScriptSection}
+                onRegenerateSection={handleRegenerateCreatorScriptSection}
+                onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
+              />
+            )}
           </section>
         )}
 

@@ -49,6 +49,16 @@ export function isCreatorProjectOperationActive(
   return origin.projectId === active.projectId && origin.generation === active.generation;
 }
 
+export function advanceCreatorProjectOperationOrigin(
+  origin: CreatorProjectOperationOrigin,
+  active: CreatorProjectOperationOrigin,
+): CreatorProjectOperationOrigin | null {
+  if (origin.generation !== active.generation) return null;
+  if (origin.projectId === active.projectId) return origin;
+  if (!origin.projectId && active.projectId) return Object.freeze({ ...active });
+  return null;
+}
+
 export function creatorProjectStateRequestFields(
   flowType: "creator_lab" | "storyverse",
   snapshot: CreatorProjectStateSnapshot | null,

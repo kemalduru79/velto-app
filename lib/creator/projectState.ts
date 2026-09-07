@@ -1,3 +1,9 @@
+import {
+  isValidCreatorScript,
+  normalizeCreatorScript,
+  type CreatorScript,
+} from "./creatorScript.ts";
+
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
 
 export type CreatorProjectStateSnapshot = {
@@ -20,6 +26,7 @@ export type CreatorProjectStateSnapshot = {
     mentorResult: unknown | null;
     selectedDirectionId: string;
     selectedHook: string;
+    script: CreatorScript | null;
   };
   production: {
     package: unknown | null;
@@ -71,7 +78,7 @@ const hasOnlyStringValues = (value: unknown) => {
     Object.values(candidate).every((item) => typeof item === "string");
 };
 
-function isValidCreatorProjectState(value: unknown): value is CreatorProjectStateSnapshot {
+export function isValidCreatorProjectState(value: unknown): value is CreatorProjectStateSnapshot {
   const candidate = record(value);
   const brief = record(candidate.brief);
   const strategy = record(candidate.strategy);
@@ -99,6 +106,7 @@ function isValidCreatorProjectState(value: unknown): value is CreatorProjectStat
     isObjectOrNull(strategy.mentorResult) &&
     typeof strategy.selectedDirectionId === "string" &&
     typeof strategy.selectedHook === "string" &&
+    (!hasOwn(strategy, "script") || strategy.script === null || isValidCreatorScript(strategy.script)) &&
     (strategy.mentorResult === null ||
       (!hasOwn(mentor, "marketEvidence") ||
         (isObjectOrNull(mentor.marketEvidence) && mentor.marketEvidence !== null &&
@@ -199,6 +207,10 @@ export function readCreatorProjectState(
           legacyHookPatterns[0] ??
           "",
       ),
+      script:
+        hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
+          ? normalizeCreatorScript(savedStrategy.script)
+          : null,
     },
     production: {
       package:

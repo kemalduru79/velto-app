@@ -213,7 +213,12 @@ export function normalizeScriptPlannerEditorialContext(
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (!raw) throw new Error("EDITORIAL_CONTEXT_INVALID");
-  if (raw.version !== "0.10H-2E") throw new Error("EDITORIAL_CONTEXT_VERSION_INVALID");
+  if (raw.version !== "0.10H-2E" && raw.version !== "0.10H-2H") {
+    throw new Error("EDITORIAL_CONTEXT_VERSION_INVALID");
+  }
+  if (raw.version === "0.10H-2H" && raw.sourceVersion !== "0.10H-2E") {
+    throw new Error("EDITORIAL_CONTEXT_SOURCE_VERSION_INVALID");
+  }
 
   const context: ScriptPlannerEditorialContext = {
     version: "0.10H-2H",

@@ -58,8 +58,8 @@ assert.doesNotMatch(
 );
 assert.equal(
   (createPage.match(/applyCreatorProfessionalScriptPlan\(\{/g) || []).length,
-  2,
-  "Both existing normal CreatorLab grounded entry points must use the adapter",
+  1,
+  "The legacy full-package CreatorLab entry point must retain the scene-plan adapter; Stage 0.13B Strategy now builds the canonical script first",
 );
 assert.match(
   createPage,
@@ -68,8 +68,14 @@ assert.match(
 );
 assert.equal(
   (createPage.match(/fetch\(["']\/api\/creator-script-plan/g) || []).length,
-  0,
-  "No direct ungrounded Script Planner fallback may appear in the page",
+  1,
+  "Only the Stage 0.13B bounded section-regeneration call may invoke Script Planner directly",
 );
+const sectionRegeneration = createPage.match(
+  /const handleRegenerateCreatorScriptSection = async[\s\S]*?\n  \};/,
+)?.[0];
+assert.ok(sectionRegeneration, "The bounded section-regeneration handler must remain present");
+assert.match(sectionRegeneration, /operation:\s*["']regenerate_section["']/);
+assert.match(sectionRegeneration, /scriptContext:\s*sourceScript\.grounding\.context/);
 
 console.log("Stage 0.10H-4I CreatorLab PI documentary wiring test passed.");

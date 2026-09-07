@@ -184,8 +184,12 @@ assert.match(scriptPlanAdapter, /error instanceof CreatorEditorialPipelineError/
 
 assert.equal(
   (createPage.match(/applyCreatorProfessionalScriptPlan\(\{/g) || []).length,
-  2,
-  "Both existing CreatorLab production entry points must keep using the shared adapter",
+  1,
+  "The legacy full-package implementation remains adapter-bound while the Strategy gate uses the shared grounded pipeline directly",
+);
+assert.match(
+  createPage,
+  /const handleCreatorProductionPackage[\s\S]*?runCreatorEditorialScriptPipeline\(\{[\s\S]*?operation: "generate_full_script"/,
 );
 assert.match(
   createPage,
@@ -195,10 +199,6 @@ assert.doesNotMatch(
   scriptPlanAdapter,
   /claimId|evidenceId|providerName|researchLane|providerCost|rightsMetadata/,
 );
-assert.doesNotMatch(
-  createPage,
-  /editorialSummary|scriptContext|claimId|evidenceId|providerName|researchLane|providerCost|rightsMetadata/,
-  "Research, evidence, provider, and rights internals must remain backstage",
-);
+assert.doesNotMatch(createPage, /providerName|researchLane|providerCost|rightsMetadata/);
 
 console.log("Stage 0.10H-2I CreatorLab editorial orchestration tests passed.");

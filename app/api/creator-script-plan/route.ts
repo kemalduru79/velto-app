@@ -25,6 +25,11 @@ import {
 } from "../../../lib/research/scriptPlannerEditorialContext";
 import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvidenceBinding";
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
+import {
+  createCreatorScript,
+  normalizeCreatorScript,
+  regenerateCreatorScriptSection,
+} from "../../../lib/creator/creatorScript";
 
 type CreatorSceneInput = {
   id?: unknown;
@@ -59,6 +64,7 @@ type CreatorProductionPackageInput = {
 };
 
 type CreatorScriptPlanRequest = {
+  operation?: unknown;
   topic?: unknown;
   contentType?: unknown;
   format?: unknown;
@@ -69,6 +75,11 @@ type CreatorScriptPlanRequest = {
   dialogueRequested?: unknown;
   scriptContext?: unknown;
   productionPackage?: CreatorProductionPackageInput | null;
+  strategyFingerprint?: unknown;
+  title?: unknown;
+  creatorScript?: unknown;
+  targetSectionId?: unknown;
+  strategy?: unknown;
 };
 
 type SceneRole = "hook" | "setup" | "development" | "climax" | "resolution";
@@ -538,6 +549,146 @@ async function reviseScenes({
   );
 }
 
+async function executeCreatorScriptOperation(input: {
+  body: CreatorScriptPlanRequest;
+  editorialContext: ScriptPlannerEditorialContext;
+}) {
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({ error: "OPENAI_API_KEY is not configured." }, { status: 500 });
+  }
+  if (input.editorialContext.readiness.status === "blocked") {
+    return NextResponse.json(
+      { error: "Editorial grounding is blocked.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED" },
+      { status: 422 },
+    );
+  }
+  const operation = input.body.operation;
+  const strategyFingerprint = asString(input.body.strategyFingerprint);
+  if (!strategyFingerprint) {
+    return NextResponse.json({ error: "strategyFingerprint is required." }, { status: 400 });
+  }
+  const allowedClaimIds = input.editorialContext.claims.map((claim) => claim.claimId);
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const systemPrompt = [
+    "You are a senior evidence-grounded documentary and long-form creator script editor.",
+    "Return strict JSON only. Do not return production scenes, visual prompts, camera instructions, assets, or shot segmentation.",
+    "All factual and interpretive claims must stay inside the supplied editorial context and preserve its uncertainty.",
+    "Claim ids are backstage metadata and must be selected only from the exact allowlist. Never place ids or citations in spoken text.",
+  ].join(" ");
+
+  if (operation === "generate_full_script") {
+    const durationSec = clamp(asFiniteNumber(input.body.durationSec, 60), 5, 3600);
+    const language: "tr" | "en" = input.body.language === "tr" ? "tr" : "en";
+    const response = await client.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify({
+          task: "Create one coherent canonical full script for creator review before any scene breakdown.",
+          topic: asString(input.body.topic),
+          title: asString(input.body.title, asString(input.body.topic)),
+          contentType: asString(input.body.contentType),
+          format: asString(input.body.format),
+          outputLanguage: language === "tr" ? "Turkish" : "English",
+          targetDurationSec: durationSec,
+          strategy: input.body.strategy,
+          editorialContext: input.editorialContext,
+          allowedClaimIds,
+          requiredJsonShape: {
+            title: "string",
+            sections: [
+              { id: "opening", kind: "opening", heading: "optional string", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
+              { id: "section-1", kind: "body", heading: "section heading", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
+              { id: "conclusion", kind: "conclusion", heading: "optional string", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
+            ],
+          },
+          rules: [
+            "Return exactly one opening, one or more body sections, and exactly one conclusion in that order.",
+            "Every section id must be unique and stable-looking.",
+            "Write a continuous complete narrative that answers the topic, progresses without repetition, and fits the target duration.",
+            "Use only exact allowedClaimIds. Use an empty claimIds array for purely rhetorical or structural text.",
+          ],
+        }) },
+      ],
+      text: { format: { type: "json_object" } },
+      temperature: 0.3,
+    });
+    await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+    const parsed = parseModelJson(response.output_text || "");
+    const now = new Date().toISOString();
+    try {
+      const creatorScript = createCreatorScript({
+        title: asString(parsed.title, asString(input.body.title, asString(input.body.topic))),
+        sections: Array.isArray(parsed.sections)
+          ? parsed.sections.map((section) => ({ ...(section as Record<string, unknown>), evidenceReviewRequired: false })) as never
+          : [],
+        targetDurationSec: durationSec,
+        strategyFingerprint,
+        grounding: { context: input.editorialContext },
+        generatedAt: now,
+        updatedAt: now,
+      });
+      return NextResponse.json({ success: true, creatorScript });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Creator script output is invalid.", code: "CREATOR_SCRIPT_MODEL_INVALID" },
+        { status: 422 },
+      );
+    }
+  }
+
+  if (operation === "regenerate_section") {
+    let script;
+    try {
+      script = normalizeCreatorScript(input.body.creatorScript);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Creator script is invalid." }, { status: 400 });
+    }
+    const targetSectionId = asString(input.body.targetSectionId, "");
+    const targetIndex = script.sections.findIndex((section) => section.id === targetSectionId);
+    if (targetIndex < 0 || script.strategyFingerprint !== strategyFingerprint) {
+      return NextResponse.json({ error: "Script regeneration target is stale or invalid.", code: "CREATOR_SCRIPT_REGENERATION_STALE" }, { status: 409 });
+    }
+    const target = script.sections[targetIndex];
+    const response = await client.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: JSON.stringify({
+          task: target.kind === "opening" ? "Strengthen only the canonical opening section." : "Regenerate only the selected canonical script section.",
+          currentRevision: script.revision,
+          targetSection: target,
+          previousSection: script.sections[targetIndex - 1] || null,
+          nextSection: script.sections[targetIndex + 1] || null,
+          editorialContext: script.grounding.context,
+          allowedClaimIds,
+          requiredJsonShape: { section: { id: target.id, kind: target.kind, heading: "optional string", text: "replacement canonical spoken text", claimIds: ["allowlisted claim id"] } },
+          rules: ["Return only the target section.", "Preserve its id and kind.", "Do not rewrite neighboring sections.", "Use only exact allowedClaimIds."],
+        }) },
+      ],
+      text: { format: { type: "json_object" } },
+      temperature: 0.25,
+    });
+    await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_script_section_regeneration", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+    const parsed = parseModelJson(response.output_text || "");
+    try {
+      const creatorScript = regenerateCreatorScriptSection(
+        script,
+        targetSectionId,
+        { ...((parsed.section || {}) as Record<string, unknown>), evidenceReviewRequired: false },
+      );
+      return NextResponse.json({ success: true, creatorScript });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Regenerated section is invalid.", code: "CREATOR_SCRIPT_MODEL_INVALID" },
+        { status: 422 },
+      );
+    }
+  }
+
+  return NextResponse.json({ error: "Unsupported script operation." }, { status: 400 });
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createServerSupabaseClient();
@@ -560,14 +711,6 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => null)) as CreatorScriptPlanRequest | null;
-    const productionPackage = body?.productionPackage;
-
-    if (!productionPackage || typeof productionPackage !== "object") {
-      return NextResponse.json(
-        { error: "productionPackage is required." },
-        { status: 400 },
-      );
-    }
 
     let editorialContext: ScriptPlannerEditorialContext | null;
     try {
@@ -578,6 +721,20 @@ export async function POST(req: Request) {
           error: "Editorial context is invalid.",
           code: error instanceof Error ? error.message : "EDITORIAL_CONTEXT_INVALID",
         },
+        { status: 400 },
+      );
+    }
+    if (body?.operation === "generate_full_script" || body?.operation === "regenerate_section") {
+      if (!editorialContext) {
+        return NextResponse.json({ error: "Grounded editorial context is required." }, { status: 422 });
+      }
+      return executeCreatorScriptOperation({ body, editorialContext });
+    }
+
+    const productionPackage = body?.productionPackage;
+    if (!productionPackage || typeof productionPackage !== "object") {
+      return NextResponse.json(
+        { error: "productionPackage is required." },
         { status: 400 },
       );
     }

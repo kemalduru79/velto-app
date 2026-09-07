@@ -36,7 +36,7 @@ for (const contract of [
   /creatorStrategyAlternativeDirections\.map/,
   /Add market evidence/,
   /creatorMarketEvidenceReviewOpen/,
-  /Approve Strategy & Build Scenes/,
+  /Approve Strategy & Build Script/,
   /Strategy is not ready yet/,
   /Return to Brief/,
 ]) assert.match(page, contract);

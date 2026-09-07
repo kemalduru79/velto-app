@@ -55,6 +55,7 @@ export type CreatorEditorialPipelineProductionIntelligenceContext = {
 export type CreatorEditorialPipelineResult = {
   productionPackage: unknown;
   scriptPlan: unknown;
+  creatorScript: unknown;
   productionIntelligenceContexts: CreatorEditorialPipelineProductionIntelligenceContext[];
   editorialSummary: {
     researchSourceCount: number;
@@ -288,6 +289,7 @@ export async function runCreatorEditorialScriptPipeline(
   return {
     productionPackage: scriptPlan.productionPackage,
     scriptPlan: scriptPlan.scriptPlan,
+    creatorScript: scriptPlan.creatorScript,
     productionIntelligenceContexts: createProductionIntelligenceContexts({
       editorial,
       scriptPlan,

@@ -10,6 +10,13 @@ import {
 import { getCreatorVoiceScriptGuidance } from "../voiceRouting";
 import { normalizeCreatorSceneContinuityState } from "../sceneContinuity";
 import { parseCreatorProductionJson } from "../creatorProductionJson";
+import { getPersistenceServices } from "../../persistence";
+import {
+  assembleCreatorScriptScenes,
+  createCreatorScriptSceneSegments,
+  type CreatorScript,
+} from "../creatorScript";
+import { resolvePersistedCreatorScriptAuthority } from "../creatorProductionAuthority";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -23,6 +30,7 @@ type CreatorMentorResult = {
 };
 
 type CreatorProductionRequest = {
+  projectId?: string;
   topic?: string;
   country?: string;
   ageGroup?: string;
@@ -34,6 +42,8 @@ type CreatorProductionRequest = {
   qualityMode?: VideoQualityTier;
   mentorAnalysis?: CreatorMentorResult;
   creatorProfile?: Record<string, unknown>;
+  approvedScript?: unknown;
+  strategyFingerprint?: string;
 };
 
 type CreatorProductionModelOutput = {
@@ -491,27 +501,37 @@ export async function handleCreatorProductionRequest(req: Request) {
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
     const durationSec = clampNumber(body?.durationSec, 60, 5, 3600);
-    const sceneCount = clampNumber(body?.sceneCount, 6, 1, 36);
-    const targetSceneDurationSec = Math.max(
-      3,
-      Math.round(durationSec / sceneCount),
-    );
+    const requestedSceneCount = clampNumber(body?.sceneCount, 6, 1, 36);
     const language = body?.language === "tr" ? "tr" : "en";
-    const durationBudget = getDurationBudget(
-      durationSec,
-      sceneCount,
-      format,
-      language,
-    );
-    const voiceScriptGuidance = getCreatorVoiceScriptGuidance({
-      format,
-      durationSec,
-      sceneCount,
-      language,
-    });
     const mentorAnalysis = body?.mentorAnalysis || {};
     const creatorProfile = creatorProfileContext(body?.creatorProfile);
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
+    const projectId = asString(body?.projectId);
+    if (!projectId || !body || !Object.prototype.hasOwnProperty.call(body, "approvedScript")) {
+      return NextResponse.json(
+        { error: "A persisted approved project script is required before scene generation.", code: "CREATOR_SCRIPT_APPROVAL_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    let approvedScript: CreatorScript;
+    try {
+      const persistedProject = await getPersistenceServices().projectRepository.getForOwner(projectId, user.id);
+      approvedScript = resolvePersistedCreatorScriptAuthority({
+        persistedProject,
+        submittedScript: body.approvedScript,
+        submittedStrategyFingerprint: body.strategyFingerprint,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Persisted script approval could not be verified.", code: "CREATOR_SCRIPT_APPROVAL_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    const approvedSceneSegments = createCreatorScriptSceneSegments(approvedScript, requestedSceneCount);
+    const sceneCount = approvedSceneSegments.length;
+    const targetSceneDurationSec = Math.max(3, Math.round(durationSec / sceneCount));
+    const durationBudget = getDurationBudget(durationSec, sceneCount, format, language);
+    const voiceScriptGuidance = getCreatorVoiceScriptGuidance({ format, durationSec, sceneCount, language });
     const pacingBlueprint = getPacingBlueprint(sceneCount);
 
     if (!topic && !mentorAnalysis?.recommendedIdea?.title) {
@@ -559,6 +579,12 @@ export async function handleCreatorProductionRequest(req: Request) {
       consistencyGuard: getCreatorLabConsistencyRules(language),
       topic,
       mentorAnalysis,
+      approvedScript: {
+        title: approvedScript.title,
+        revision: approvedScript.revision,
+        sections: approvedScript.sections,
+        authoritativeSceneSegments: approvedSceneSegments,
+      },
       requiredJsonShape: {
         title: "string",
         hook: "string",
@@ -651,6 +677,7 @@ export async function handleCreatorProductionRequest(req: Request) {
         "CreatorLab visual prompts should stay high-clarity, platform-aware, mobile-readable, premium, and thumbnail-friendly; do not limit the style to cartoons unless requested.",
         "When creatorProfile includes a brand voice, audience, or visual style, make the output consistent with it without repeating the profile verbatim in every scene.",
         "Avoid repetitive scene openings; each scene should advance the story or explanation.",
+        "The supplied approvedScript and authoritativeSceneSegments are the editorial source of truth. Preserve every segment's narration and claim meaning exactly; add only production and visual direction.",
       ],
     };
 
@@ -704,12 +731,21 @@ export async function handleCreatorProductionRequest(req: Request) {
       topic,
       language,
     );
-    const scenes = normalizeScenesWithBudget(
+    const budgetedScenes = normalizeScenesWithBudget(
       paddedScenes,
       sceneCount,
       durationBudget.maxWordsPerScene,
       language,
     );
+    const scenes = assembleCreatorScriptScenes({
+      segments: approvedSceneSegments,
+      sceneShells: budgetedScenes,
+      createSceneShell: (index) => createFallbackScene(index, sceneCount, topic, language),
+    }).map((scene) => ({
+      ...scene,
+      speechWordCount: countWords(scene.narration),
+      estimatedSpeechSeconds: estimateSpeechSeconds(scene.narration, language),
+    }));
     const productionRepairNotes = [
       !normalizeCharacters(parsed.characters).length
         ? "No explicit character set was returned by the model; CreatorLab inserted a neutral narrator / brand voice anchor for faceless or professional formats."

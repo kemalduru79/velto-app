@@ -170,7 +170,11 @@ assert.match(createPage, /creatorProductionIntelligenceContextsRef/);
 assert.match(createPage, /documentarySourceContext:\s*context\.documentarySourceContext/);
 assert.match(createPage, /evidenceVisualContext:\s*context\.evidenceVisualContext/);
 assert.match(createPage, /fetch\(["']\/api\/creator-production-intelligence["']/);
-assert.equal((createPage.match(/fetch\(["']\/api\/creator-script-plan/g) || []).length, 0);
+assert.equal(
+  (createPage.match(/fetch\(["']\/api\/creator-script-plan/g) || []).length,
+  1,
+  "Stage 0.13B may call Script Planner only for bounded, persisted-grounding section regeneration",
+);
 assert.doesNotMatch(
   createPage,
   />\s*(?:Documentary source|Evidence visual|Source evidence|Provider)\s*</i,
