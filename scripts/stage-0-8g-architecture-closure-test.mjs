@@ -320,6 +320,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "components/create/CreatorEditor.tsx",
     "components/create/CreatorEditorTimeline.tsx",
     "components/create/CreatorStockPicker.tsx",
+    "lib/creator/audioTimeline.ts",
+    "scripts/stage-0-13c-a-audio-timeline-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
