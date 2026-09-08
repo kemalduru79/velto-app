@@ -1,4 +1,8 @@
 import type { CreatorBackgroundMusicConfig } from "./backgroundMusic";
+import {
+  normalizeCreatorAudioTimeline,
+  type CreatorAudioTimeline,
+} from "./audioTimeline.ts";
 
 type FinalProductionScene = {
   id: string | number;
@@ -47,9 +51,19 @@ function renderMusicConfig(music: CreatorBackgroundMusicConfig) {
   };
 }
 
+function renderAudioTimeline(timeline: CreatorAudioTimeline) {
+  const normalized = normalizeCreatorAudioTimeline(timeline);
+  return {
+    ...normalized,
+    placements: [...normalized.placements].sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+  };
+}
+
 export function buildCreatorFinalProductionSignature(input: {
   scenes: FinalProductionScene[];
   backgroundMusic: CreatorBackgroundMusicConfig;
+  audioTimeline?: CreatorAudioTimeline | null;
 }) {
   return JSON.stringify({
     version: "creator-final-production-v2",
@@ -73,7 +87,9 @@ export function buildCreatorFinalProductionSignature(input: {
           speechTailBuffer: Number(scene.timing?.speechTailBuffer || 0),
         },
       })),
-    backgroundMusic: renderMusicConfig(input.backgroundMusic),
+    ...(Object.prototype.hasOwnProperty.call(input, "audioTimeline")
+      ? { audioTimeline: input.audioTimeline === null ? null : renderAudioTimeline(input.audioTimeline!) }
+      : { backgroundMusic: renderMusicConfig(input.backgroundMusic) }),
   });
 }
 

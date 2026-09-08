@@ -322,6 +322,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "components/create/CreatorStockPicker.tsx",
     "lib/creator/audioTimeline.ts",
     "scripts/stage-0-13c-a-audio-timeline-test.mjs",
+    "lib/creator/finalProductionSignature.ts",
+    "scripts/stage-0-13c-b-audio-timeline-persistence-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

@@ -97,6 +97,8 @@ const allowed = new Set([
   "scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
   "lib/creator/audioTimeline.ts",
   "scripts/stage-0-13c-a-audio-timeline-test.mjs",
+  "lib/creator/finalProductionSignature.ts",
+  "scripts/stage-0-13c-b-audio-timeline-persistence-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
 

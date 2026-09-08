@@ -154,9 +154,11 @@ import {
 } from "@/lib/creator/creatorScript";
 import {
   buildCreatorProjectState,
+  creatorAudioTimelineSnapshotFields,
   readCreatorProjectState,
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
+import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
 import {
   advanceCreatorProjectSaveBinding,
   advanceCreatorProjectOperationOrigin,
@@ -3524,6 +3526,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useRef<CreatorEditorialPipelineProductionIntelligenceContext[]>([]);
   const [creatorBackgroundMusic, setCreatorBackgroundMusic] =
     useState<CreatorBackgroundMusicConfig>(DEFAULT_CREATOR_BACKGROUND_MUSIC);
+  const [creatorAudioTimeline, setCreatorAudioTimeline] =
+    useState<CreatorAudioTimeline | null | undefined>(undefined);
   const [creatorBackgroundMusicHydrationRevision, setCreatorBackgroundMusicHydrationRevision] =
     useState(0);
   const [creatorTimelinePreviewPlan, setCreatorTimelinePreviewPlan] =
@@ -3946,7 +3950,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
 
     const currentSignature = createCreatorPublishArtifactSignature({
-      finalVideoSignature: exportSignature || buildExportSignature(title, scenes),
+      finalVideoSignature: hasReusableExport()
+        ? exportSignature
+        : buildExportSignature(title, scenes),
       metadata: youtubeMetadataResult,
       thumbnail: youtubeThumbnailResult,
       thumbnailDesign: creatorThumbnailStudio,
@@ -3959,7 +3965,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       setCreatorPackageDownloaded(false);
     }
   }, [
+    creatorBackgroundMusic,
     creatorFormat,
+    creatorAudioTimeline,
     creatorPackageDownloaded,
     creatorPackageSignature,
     creatorProductionPackage,
@@ -5393,6 +5401,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       return buildCreatorFinalProductionSignature({
         scenes: exportableScenes,
         backgroundMusic: creatorBackgroundMusic,
+        ...(creatorAudioTimeline !== undefined ? { audioTimeline: creatorAudioTimeline } : {}),
       });
     }
 
@@ -11963,6 +11972,7 @@ const generateSceneImage = async (
             package: persistedProductionPackage,
             refinedScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes,
             backgroundMusic: lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
+            ...creatorAudioTimelineSnapshotFields(creatorAudioTimeline),
             projectContinuityMode: creatorProjectContinuityMode,
             sceneContinuityModes: creatorSceneContinuityModes,
             voicePreferences: persistedProductionPackage?.voicePreferences || null,
@@ -12090,6 +12100,7 @@ const generateSceneImage = async (
       const canonicalCreatorState = isCreatorProject
         ? readCreatorProjectState(project)
         : null;
+      setCreatorAudioTimeline(canonicalCreatorState?.production.audioTimeline);
       const savedCreatorPackage = (canonicalCreatorState?.production.package ?? null) as CreatorProductionPackage | null;
       const loadedContentLanguage: ContentLanguage =
         project.language === "en" ? "en" : "tr";
@@ -18054,6 +18065,7 @@ const generateSceneImage = async (
     creatorThumbnailStudio,
     creatorTargetPlatforms,
     creatorBackgroundMusic,
+    creatorAudioTimeline,
     creatorProjectContinuityMode,
     creatorSceneContinuityModes,
     refinedCreatorScenes,

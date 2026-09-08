@@ -3,6 +3,13 @@ import {
   normalizeCreatorScript,
   type CreatorScript,
 } from "./creatorScript.ts";
+import {
+  convertLegacyCreatorBackgroundMusic,
+  normalizeCreatorAudioTimeline,
+  readCreatorAudioTimelineField,
+  type CreatorAudioTimeline,
+  type CreatorLegacyMusicMigration,
+} from "./audioTimeline.ts";
 
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
 
@@ -32,6 +39,7 @@ export type CreatorProjectStateSnapshot = {
     package: unknown | null;
     refinedScenes: unknown[];
     backgroundMusic: unknown;
+    audioTimeline?: CreatorAudioTimeline | null;
     projectContinuityMode: string;
     sceneContinuityModes: Record<string, string>;
     voicePreferences: unknown | null;
@@ -78,6 +86,16 @@ const hasOnlyStringValues = (value: unknown) => {
     Object.values(candidate).every((item) => typeof item === "string");
 };
 
+const hasValidAudioTimelineField = (production: Record<string, unknown>) => {
+  if (!hasOwn(production, "audioTimeline") || production.audioTimeline === null) return true;
+  try {
+    normalizeCreatorAudioTimeline(production.audioTimeline);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export function isValidCreatorProjectState(value: unknown): value is CreatorProjectStateSnapshot {
   const candidate = record(value);
   const brief = record(candidate.brief);
@@ -116,6 +134,7 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     isObjectOrNull(production.package) &&
     Array.isArray(production.refinedScenes) &&
     isObjectOrNull(production.backgroundMusic) &&
+    hasValidAudioTimelineField(production) &&
     typeof production.projectContinuityMode === "string" &&
     hasOnlyStringValues(production.sceneContinuityModes) &&
     isObjectOrNull(production.voicePreferences) &&
@@ -144,13 +163,56 @@ const stringArray = (value: unknown): string[] =>
 export function buildCreatorProjectState(
   input: CreatorProjectStateInput,
 ): CreatorProjectStateSnapshot {
-  return { version: CREATOR_PROJECT_STATE_VERSION, ...input };
+  const production = {
+    ...input.production,
+    ...creatorAudioTimelineSnapshotFields(input.production.audioTimeline),
+  };
+  return { version: CREATOR_PROJECT_STATE_VERSION, ...input, production };
+}
+
+export function creatorAudioTimelineSnapshotFields(
+  audioTimeline: CreatorAudioTimeline | null | undefined,
+): { audioTimeline?: CreatorAudioTimeline | null } {
+  if (audioTimeline === undefined) return {};
+  return {
+    audioTimeline: audioTimeline === null
+      ? null
+      : normalizeCreatorAudioTimeline(audioTimeline),
+  };
+}
+
+export type CreatorAudioTimelineHydration =
+  | { state: "null"; timeline: null }
+  | { state: "value"; timeline: CreatorAudioTimeline }
+  | { state: "legacy"; migration: CreatorLegacyMusicMigration };
+
+export function readCreatorAudioTimelineHydration(
+  production: unknown,
+  context: { assetId?: string; sceneIds?: string[] } = {},
+): CreatorAudioTimelineHydration {
+  const source = record(production);
+  const canonical = readCreatorAudioTimelineField(source);
+  if (canonical.state === "null") return { state: "null", timeline: null };
+  if (canonical.state === "value") return { state: "value", timeline: canonical.value };
+  return {
+    state: "legacy",
+    migration: convertLegacyCreatorBackgroundMusic(source.backgroundMusic, context),
+  };
 }
 
 export function readCreatorProjectState(
   project: LegacyCreatorProject,
 ): CreatorProjectStateSnapshot {
   const exportResult = record(project.exported_movie_result);
+  const candidateSnapshot = record(exportResult.creatorProjectState);
+  const candidateProduction = record(candidateSnapshot.production);
+  if (
+    candidateSnapshot.version === CREATOR_PROJECT_STATE_VERSION &&
+    hasOwn(candidateProduction, "audioTimeline") &&
+    candidateProduction.audioTimeline !== null
+  ) {
+    normalizeCreatorAudioTimeline(candidateProduction.audioTimeline);
+  }
   const saved = isValidCreatorProjectState(exportResult.creatorProjectState)
     ? record(exportResult.creatorProjectState)
     : {};
@@ -223,6 +285,13 @@ export function readCreatorProjectState(
           ? project.refined_creator_scenes
           : [],
       backgroundMusic: savedProduction.backgroundMusic ?? legacyPackage.backgroundMusic ?? null,
+      ...(hasCanonicalSnapshot && hasOwn(savedProduction, "audioTimeline")
+        ? {
+            audioTimeline: savedProduction.audioTimeline === null
+              ? null
+              : normalizeCreatorAudioTimeline(savedProduction.audioTimeline),
+          }
+        : {}),
       projectContinuityMode: String(
         savedProduction.projectContinuityMode ?? legacyContinuity.projectMode ?? "independent",
       ),

@@ -43,6 +43,7 @@
     "test:stage-0-13a": "node --experimental-strip-types scripts/stage-0-13a-creator-project-state-persistence-test.mjs",
     "test:stage-0-13b": "node --experimental-strip-types scripts/stage-0-13b-full-script-review-test.mjs",
     "test:stage-0-13c-a": "node --experimental-strip-types scripts/stage-0-13c-a-audio-timeline-test.mjs",
+    "test:stage-0-13c-b": "node --experimental-strip-types scripts/stage-0-13c-b-audio-timeline-persistence-test.mjs",
     "test:post-0-13b-workflow": "node --experimental-strip-types scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
     "test:post-0-13b-evidence": "node --experimental-strip-types scripts/post-0-13b-duplicate-evidence-hotfix-test.mjs",
     "test:port-p1": "node scripts/port-p1-smoke-test.mjs",
