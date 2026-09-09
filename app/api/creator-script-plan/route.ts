@@ -27,8 +27,13 @@ import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvid
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorScript,
+  CreatorScriptDurationInvalidError,
+  CreatorScriptDurationUnsatisfiedError,
+  generateCreatorScriptWithDurationContract,
+  getCreatorScriptDurationContract,
   normalizeCreatorScript,
   regenerateCreatorScriptSection,
+  validateCreatorScriptGenerationDuration,
 } from "../../../lib/creator/creatorScript";
 
 type CreatorSceneInput = {
@@ -553,6 +558,18 @@ async function executeCreatorScriptOperation(input: {
   body: CreatorScriptPlanRequest;
   editorialContext: ScriptPlannerEditorialContext;
 }) {
+  const operation = input.body.operation;
+  let requestedDurationSec: number | null = null;
+  if (operation === "generate_full_script") {
+    try {
+      requestedDurationSec = validateCreatorScriptGenerationDuration(input.body.durationSec);
+    } catch (error) {
+      const invalidDuration = error instanceof CreatorScriptDurationInvalidError
+        ? error
+        : new CreatorScriptDurationInvalidError();
+      return NextResponse.json({ error: invalidDuration.message, code: invalidDuration.code }, { status: 400 });
+    }
+  }
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({ error: "OPENAI_API_KEY is not configured." }, { status: 500 });
   }
@@ -562,7 +579,6 @@ async function executeCreatorScriptOperation(input: {
       { status: 422 },
     );
   }
-  const operation = input.body.operation;
   const strategyFingerprint = asString(input.body.strategyFingerprint);
   if (!strategyFingerprint) {
     return NextResponse.json({ error: "strategyFingerprint is required." }, { status: 400 });
@@ -577,20 +593,30 @@ async function executeCreatorScriptOperation(input: {
   ].join(" ");
 
   if (operation === "generate_full_script") {
-    const durationSec = clamp(asFiniteNumber(input.body.durationSec, 60), 5, 3600);
+    const durationSec = requestedDurationSec as number;
     const language: "tr" | "en" = input.body.language === "tr" ? "tr" : "en";
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify({
+    const durationBudget = getCreatorScriptDurationContract({
+      targetDurationSec: durationSec,
+      language,
+      actualWordCount: 0,
+    });
+    const title = asString(input.body.title, asString(input.body.topic));
+    const createInitialResponse = () => client.responses.create({
+        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: JSON.stringify({
           task: "Create one coherent canonical full script for creator review before any scene breakdown.",
           topic: asString(input.body.topic),
-          title: asString(input.body.title, asString(input.body.topic)),
+          title,
           contentType: asString(input.body.contentType),
           format: asString(input.body.format),
           outputLanguage: language === "tr" ? "Turkish" : "English",
           targetDurationSec: durationSec,
+          targetMinutes: roundTo(durationSec / 60, 2),
+          targetWordCount: durationBudget.targetWordCount,
+          minimumAcceptableWordCount: durationBudget.minimumAcceptableWordCount,
+          maximumAcceptableWordCount: durationBudget.maximumAcceptableWordCount,
           strategy: input.body.strategy,
           editorialContext: input.editorialContext,
           allowedClaimIds,
@@ -605,20 +631,23 @@ async function executeCreatorScriptOperation(input: {
           rules: [
             "Return exactly one opening, one or more body sections, and exactly one conclusion in that order.",
             "Every section id must be unique and stable-looking.",
-            "Write a continuous complete narrative that answers the topic, progresses without repetition, and fits the target duration.",
+            "Write the complete long-form narrative and keep its spoken text inside the supplied minimumAcceptableWordCount and maximumAcceptableWordCount envelope.",
+            "Use structure and pacing appropriate to the supplied target duration and targetWordCount.",
+            "Deepen explanation, analysis, causal reasoning, comparisons, supported examples, counterarguments, transitions, synthesis, and implications only when supported by the supplied strategy and editorial context.",
+            "Never invent evidence or unsupported factual claims to reach the word budget. Rhetorical and structural connective writing is allowed only when it adds editorial value.",
+            "Preserve the master question, strategy authority, source authority, and all evidence uncertainty.",
             "Use only exact allowedClaimIds. Use an empty claimIds array for purely rhetorical or structural text.",
           ],
-        }) },
-      ],
-      text: { format: { type: "json_object" } },
-      temperature: 0.3,
-    });
-    await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
-    const parsed = parseModelJson(response.output_text || "");
+          }) },
+        ],
+        text: { format: { type: "json_object" } },
+        temperature: 0.3,
+      });
     const now = new Date().toISOString();
-    try {
-      const creatorScript = createCreatorScript({
-        title: asString(parsed.title, asString(input.body.title, asString(input.body.topic))),
+    const createFromResponse = (outputText: string) => {
+      const parsed = parseModelJson(outputText);
+      return createCreatorScript({
+        title: asString(parsed.title, title),
         sections: Array.isArray(parsed.sections)
           ? parsed.sections.map((section) => ({ ...(section as Record<string, unknown>), evidenceReviewRequired: false })) as never
           : [],
@@ -628,8 +657,63 @@ async function executeCreatorScriptOperation(input: {
         generatedAt: now,
         updatedAt: now,
       });
-      return NextResponse.json({ success: true, creatorScript });
+    };
+    try {
+      const accepted = await generateCreatorScriptWithDurationContract({
+        durationSec,
+        language,
+        generateInitial: async () => {
+          const response = await createInitialResponse();
+          await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+          return createFromResponse(response.output_text || "");
+        },
+        repair: async (firstScript, currentDuration) => {
+          const repairResponse = await client.responses.create({
+            model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+            input: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: JSON.stringify({
+                task: "Repair the current canonical full script once so its spoken text satisfies the supplied duration word envelope.",
+                requiredDirection: currentDuration.status === "too_short" ? "expand" : "compress",
+                topic: asString(input.body.topic),
+                title,
+                strategy: input.body.strategy,
+                editorialContext: input.editorialContext,
+                allowedClaimIds,
+                currentScript: firstScript,
+                targetDurationSec: durationSec,
+                targetMinutes: roundTo(durationSec / 60, 2),
+                currentWordCount: currentDuration.actualWordCount,
+                currentEstimatedDurationSec: currentDuration.estimatedDurationSec,
+                targetWordCount: currentDuration.targetWordCount,
+                minimumAcceptableWordCount: currentDuration.minimumAcceptableWordCount,
+                maximumAcceptableWordCount: currentDuration.maximumAcceptableWordCount,
+                requiredJsonShape: { title: "string", sections: "same CreatorScript section JSON shape as currentScript" },
+                rules: [
+                  "Return one complete revised script inside the supplied word envelope.",
+                  "Preserve the master question, strategy authority, section ordering, source authority, and evidence uncertainty.",
+                  "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
+                  currentDuration.status === "too_short"
+                    ? "Expand through clearer explanation, implications, causal reasoning, comparison, supported examples and counterarguments, transitions, synthesis, and implications for the master question using only the same grounded context."
+                    : "Compress repetition and low-value connective text while preserving core claims, evidence, uncertainty, and editorial meaning.",
+                ],
+              }) },
+            ],
+            text: { format: { type: "json_object" } },
+            temperature: 0.25,
+          });
+          await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script_duration_repair", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response: repairResponse });
+          return createFromResponse(repairResponse.output_text || "");
+        },
+      });
+      return NextResponse.json({ success: true, creatorScript: accepted.creatorScript });
     } catch (error) {
+      if (error instanceof CreatorScriptDurationUnsatisfiedError) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, direction: error.diagnostics.status, diagnostics: error.diagnostics },
+          { status: 422 },
+        );
+      }
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Creator script output is invalid.", code: "CREATOR_SCRIPT_MODEL_INVALID" },
         { status: 422 },

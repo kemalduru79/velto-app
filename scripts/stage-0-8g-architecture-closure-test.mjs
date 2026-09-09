@@ -101,7 +101,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed CreatorLab governance and secure audio surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "7c38385c534a402eef6331b1d3402b4f1912866707fe4ee32951a4b447e923ce"));
+check("API route inventory includes reviewed CreatorLab governance, secure audio, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "b0b4bd0b0179ba06c824292105fb051705e5dc14634df7e112d8fb1e3e309278"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
@@ -329,6 +329,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/creator/audioAssets.ts",
     "lib/creator/audioProbe.server.ts",
     "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
+    "scripts/post-0-13c-c-script-duration-contract-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

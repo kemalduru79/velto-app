@@ -164,6 +164,7 @@ const allowed = new Set([
   "lib/creator/audioAssets.ts",
   "lib/creator/audioProbe.server.ts",
   "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
+  "scripts/post-0-13c-c-script-duration-contract-test.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 

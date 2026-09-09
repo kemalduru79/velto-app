@@ -40,6 +40,43 @@ export type CreatorScript = {
 };
 
 export type CreatorScriptStatus = "draft" | "approved" | "stale";
+export type CreatorScriptDurationStatus = "compliant" | "too_short" | "too_long";
+
+export const CREATOR_SCRIPT_MIN_DURATION_RATIO = 0.9;
+export const CREATOR_SCRIPT_MAX_DURATION_RATIO = 1.1;
+
+export type CreatorScriptDurationContract = {
+  targetDurationSec: number;
+  wordsPerSecond: number;
+  targetWordCount: number;
+  minimumAcceptableWordCount: number;
+  maximumAcceptableWordCount: number;
+  actualWordCount: number;
+  estimatedDurationSec: number;
+  varianceSec: number;
+  durationRatio: number;
+  status: CreatorScriptDurationStatus;
+};
+
+export class CreatorScriptDurationUnsatisfiedError extends Error {
+  code = "CREATOR_SCRIPT_DURATION_UNSATISFIED" as const;
+  diagnostics: CreatorScriptDurationContract;
+
+  constructor(diagnostics: CreatorScriptDurationContract) {
+    super("The generated script could not safely satisfy the requested duration.");
+    this.name = "CreatorScriptDurationUnsatisfiedError";
+    this.diagnostics = diagnostics;
+  }
+}
+
+export class CreatorScriptDurationInvalidError extends Error {
+  code = "CREATOR_SCRIPT_DURATION_INVALID" as const;
+
+  constructor() {
+    super("A valid target duration between 5 and 3600 seconds is required.");
+    this.name = "CreatorScriptDurationInvalidError";
+  }
+}
 
 const record = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -183,14 +220,103 @@ export function getCreatorScriptStatus(script: CreatorScript, currentStrategyFin
     : "draft";
 }
 
+export function getCreatorScriptWordsPerSecond(language: "tr" | "en") {
+  return language === "tr" ? 2.15 : 2.35;
+}
+
+export function validateCreatorScriptGenerationDuration(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 5 || value > 3600) {
+    throw new CreatorScriptDurationInvalidError();
+  }
+  return value;
+}
+
+export function countCreatorScriptWords(value: string) {
+  return value.replace(/[“”"'’.,!?;:()\[\]{}]/g, " ").trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function getCreatorScriptDurationContract(input: {
+  targetDurationSec: number;
+  language: "tr" | "en";
+  actualWordCount: number;
+}): CreatorScriptDurationContract {
+  const targetDurationSec = Number(input.targetDurationSec);
+  const actualWordCount = Number(input.actualWordCount);
+  if (!Number.isFinite(targetDurationSec) || targetDurationSec <= 0 || !Number.isInteger(actualWordCount) || actualWordCount < 0) {
+    throw new Error("CREATOR_SCRIPT_DURATION_INPUT_INVALID");
+  }
+  const wordsPerSecond = getCreatorScriptWordsPerSecond(input.language);
+  const targetWordCount = Math.round(targetDurationSec * wordsPerSecond);
+  const minimumAcceptableWordCount = Math.ceil(targetWordCount * CREATOR_SCRIPT_MIN_DURATION_RATIO);
+  const maximumAcceptableWordCount = Math.floor(targetWordCount * CREATOR_SCRIPT_MAX_DURATION_RATIO);
+  const estimatedDurationSec = Math.round((actualWordCount / wordsPerSecond) * 10) / 10;
+  const varianceSec = Math.round((estimatedDurationSec - targetDurationSec) * 10) / 10;
+  const durationRatio = Math.round((estimatedDurationSec / targetDurationSec) * 1000) / 1000;
+  const status: CreatorScriptDurationStatus = actualWordCount < minimumAcceptableWordCount
+    ? "too_short"
+    : actualWordCount > maximumAcceptableWordCount
+      ? "too_long"
+      : "compliant";
+  return {
+    targetDurationSec,
+    wordsPerSecond,
+    targetWordCount,
+    minimumAcceptableWordCount,
+    maximumAcceptableWordCount,
+    actualWordCount,
+    estimatedDurationSec,
+    varianceSec,
+    durationRatio,
+    status,
+  };
+}
+
+export function getCreatorScriptDurationContractForScript(script: CreatorScript, language: "tr" | "en") {
+  return getCreatorScriptDurationContract({
+    targetDurationSec: script.targetDurationSec,
+    language,
+    actualWordCount: countCreatorScriptWords(script.sections.map((section) => section.text).join("\n\n")),
+  });
+}
+
+export async function acceptCreatorScriptWithDurationRepair(input: {
+  firstScript: CreatorScript;
+  language: "tr" | "en";
+  repair: (diagnostics: CreatorScriptDurationContract) => Promise<CreatorScript>;
+}) {
+  const firstScript = normalizeCreatorScript(input.firstScript);
+  const firstDiagnostics = getCreatorScriptDurationContractForScript(firstScript, input.language);
+  if (firstDiagnostics.status === "compliant") {
+    return { creatorScript: firstScript, diagnostics: firstDiagnostics, repaired: false };
+  }
+  const repairedScript = normalizeCreatorScript(await input.repair(firstDiagnostics));
+  const repairedDiagnostics = getCreatorScriptDurationContractForScript(repairedScript, input.language);
+  if (repairedDiagnostics.status !== "compliant") {
+    throw new CreatorScriptDurationUnsatisfiedError(repairedDiagnostics);
+  }
+  return { creatorScript: repairedScript, diagnostics: repairedDiagnostics, repaired: true };
+}
+
+export async function generateCreatorScriptWithDurationContract(input: {
+  durationSec: unknown;
+  language: "tr" | "en";
+  generateInitial: (durationSec: number) => Promise<CreatorScript>;
+  repair: (script: CreatorScript, diagnostics: CreatorScriptDurationContract) => Promise<CreatorScript>;
+}) {
+  const durationSec = validateCreatorScriptGenerationDuration(input.durationSec);
+  const firstScript = await input.generateInitial(durationSec);
+  return acceptCreatorScriptWithDurationRepair({
+    firstScript,
+    language: input.language,
+    repair: (diagnostics) => input.repair(firstScript, diagnostics),
+  });
+}
+
 export function getCreatorScriptMetrics(script: CreatorScript, language: "tr" | "en") {
   const fullText = script.sections.map((section) => section.text).join("\n\n");
-  const wordCount = fullText.replace(/[“”"'’.,!?;:()\[\]{}]/g, " ").trim().split(/\s+/).filter(Boolean).length;
-  const wordsPerSecond = language === "tr" ? 2.15 : 2.35;
-  const estimatedDurationSec = Math.round((wordCount / wordsPerSecond) * 10) / 10;
-  const varianceSec = Math.round((estimatedDurationSec - script.targetDurationSec) * 10) / 10;
+  const duration = getCreatorScriptDurationContractForScript(script, language);
   const groundedSections = script.sections.filter((section) => section.claimIds.length > 0).length;
-  return { fullText, wordCount, estimatedDurationSec, targetDurationSec: script.targetDurationSec, varianceSec, evidenceCoverage: script.sections.length ? groundedSections / script.sections.length : 0 };
+  return { fullText, wordCount: duration.actualWordCount, estimatedDurationSec: duration.estimatedDurationSec, targetDurationSec: script.targetDurationSec, varianceSec: duration.varianceSec, evidenceCoverage: script.sections.length ? groundedSections / script.sections.length : 0 };
 }
 
 export function creatorScriptHasGroundingBlocker(script: CreatorScript) {
