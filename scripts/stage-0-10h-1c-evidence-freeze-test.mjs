@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { adaptYoutubeResearchCandidate } from "../lib/research/youtubeSourceAdapter.ts";
 import { createResearchClaimEvidenceGraph } from "../lib/research/claimEvidenceGraph.ts";
-import { assessResearchSource } from "../lib/research/sourceAssessment.ts";
+import {
+  assessResearchSource,
+  classifyResearchSourceDirectness,
+} from "../lib/research/sourceAssessment.ts";
 import { createResearchEvidenceSnapshot } from "../lib/research/evidenceSnapshot.ts";
 
 const source = adaptYoutubeResearchCandidate({
@@ -26,6 +29,56 @@ assert.deepEqual(primaryAssessment.reviewReasons, []);
 const unknownAssessment = assessResearchSource(source);
 assert.equal(unknownAssessment.reviewStatus, "review");
 assert.match(unknownAssessment.reviewReasons.join(" "), /SOURCE_DIRECTNESS_REVIEW/);
+
+assert.deepEqual(
+  classifyResearchSourceDirectness({
+    ...source,
+    adapterId: "primary",
+    mediaKind: "article",
+  }),
+  { directness: "secondary", reason: "primary_search_intent_unverified" },
+);
+assert.deepEqual(
+  classifyResearchSourceDirectness({
+    ...source,
+    adapterId: "primary",
+    mediaKind: "document",
+    sourceMetadata: {
+      provenanceVerified: true,
+      provenanceKind: "official_company_announcement",
+    },
+  }),
+  { directness: "primary", reason: "verified_first_party_provenance" },
+);
+assert.deepEqual(
+  classifyResearchSourceDirectness({
+    ...source,
+    adapterId: "academic",
+    mediaKind: "paper",
+  }),
+  { directness: "primary", reason: "academic_publication" },
+);
+assert.deepEqual(
+  classifyResearchSourceDirectness({
+    ...source,
+    adapterId: "web",
+    mediaKind: "article",
+    title: "A secondary article discussing an official statement",
+  }),
+  { directness: "secondary", reason: "third_party_commentary" },
+);
+
+assert.deepEqual(
+  classifyResearchSourceDirectness({
+    ...source,
+    adapterId: "primary",
+    mediaKind: "article",
+    title: "Independent newsletter commentary",
+    url: "https://writer.example.com/post",
+    publisher: "writer.example.com",
+  }),
+  { directness: "secondary", reason: "primary_search_intent_unverified" },
+);
 
 const graph = createResearchClaimEvidenceGraph({
   sources: [source],

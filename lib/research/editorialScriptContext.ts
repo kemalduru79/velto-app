@@ -13,6 +13,8 @@ export type EditorialScriptContext = {
     status: "blocked" | "review" | "ready";
     editorialReadinessScore: number;
     reviewReasons: string[];
+    primarySourceRequiredClaimIds: string[];
+    primarySourceCoveredClaimIds: string[];
   };
   claims: Array<{
     claimId: string;
@@ -38,6 +40,8 @@ export type EditorialScriptContext = {
     publishedAt: string | null;
     directness: ResearchSourceAssessment["directness"];
     reviewStatus: ResearchSourceAssessment["reviewStatus"];
+    searchLane: ResearchClaimEvidenceGraph["sources"][number]["adapterId"];
+    sourceKind: ResearchClaimEvidenceGraph["sources"][number]["mediaKind"];
   }>;
 };
 
@@ -97,6 +101,8 @@ export function createEditorialScriptContext(input: {
       status: readiness.status,
       editorialReadinessScore: readiness.editorialReadinessScore,
       reviewReasons: [...readiness.reviewReasons],
+      primarySourceRequiredClaimIds: [...readiness.primarySourceRequiredClaimIds],
+      primarySourceCoveredClaimIds: [...readiness.primarySourceCoveredClaimIds],
     },
     claims: input.graph.claims.map((claim) => ({
       claimId: claim.claimId,
@@ -124,6 +130,8 @@ export function createEditorialScriptContext(input: {
         publishedAt: source.publishedAt,
         directness: assessment?.directness || "unknown",
         reviewStatus: assessment?.reviewStatus || "review",
+        searchLane: source.adapterId,
+        sourceKind: source.mediaKind,
       };
     }),
   };

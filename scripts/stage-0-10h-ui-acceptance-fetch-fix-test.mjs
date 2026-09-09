@@ -57,13 +57,14 @@ try {
     },
   });
 
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   assert.deepEqual(calls.map((call) => call.url), [
+    "/api/creator-script-plan",
     "/api/creator-research",
     "/api/creator-editorial-analysis",
     "/api/creator-script-plan",
   ]);
-  const scriptPlanBody = JSON.parse(calls[2].init.body);
+  const scriptPlanBody = JSON.parse(calls[3].init.body);
   assert.equal(scriptPlanBody.qualityMode, "pro");
   assert.equal(scriptPlanBody.topic, "Approved strategy");
   assert.deepEqual(result.productionPackage, {
@@ -71,11 +72,11 @@ try {
     scenes: [{ id: 1, narration: "Professional scene narration." }],
   });
 
-  globalThis.fetch = function failingBrowserFetch() {
+  globalThis.fetch = function failingBrowserFetch(url) {
     if (this !== globalThis) {
       throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
     }
-    return Promise.resolve(response({
+    return Promise.resolve(url === "/api/creator-script-plan" ? response({ success: true }) : response({
       success: false,
       error: "Research service unavailable",
     }, 503));

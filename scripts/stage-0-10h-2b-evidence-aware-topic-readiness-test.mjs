@@ -84,6 +84,27 @@ assert.deepEqual(blocked.primarySourceCoveredClaimIds, []);
 assert.ok(blocked.reviewReasons.includes("CLAIMS_REQUIRE_TRACEABLE_EVIDENCE"));
 assert.ok(blocked.reviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED"));
 
+const primaryCoverageReview = createResearchTopicReadiness({
+  graph: createResearchClaimEvidenceGraph({
+    sources: [source("s-secondary-review", "Secondary traceable source")],
+    claims: [
+      { claimId: "c-primary-review", claimType: "PRIMARY_SOURCE_CLAIM", text: "A claim requiring first-party review." },
+    ],
+    evidence: [
+      { evidenceId: "e-secondary-review", sourceId: "s-secondary-review", excerpt: "Traceable secondary evidence", contextNote: null, locator },
+    ],
+    links: [
+      { claimId: "c-primary-review", evidenceId: "e-secondary-review", stance: "supports" },
+    ],
+  }),
+  sourceAssessments: [
+    { sourceId: "s-secondary-review", directness: "secondary", provenanceStatus: "complete", reviewStatus: "usable", reviewReasons: [] },
+  ],
+});
+assert.equal(primaryCoverageReview.status, "review");
+assert.deepEqual(primaryCoverageReview.unsupportedClaimIds, []);
+assert.ok(primaryCoverageReview.reviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED"));
+
 const metaphysicalReview = createResearchTopicReadiness({
   graph: createResearchClaimEvidenceGraph({
     sources: [source("s-claimant", "Claimant source")],

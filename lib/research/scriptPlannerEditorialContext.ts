@@ -18,6 +18,8 @@ export type ScriptPlannerEditorialContext = {
     status: "blocked" | "review" | "ready";
     editorialReadinessScore: number;
     reviewReasons: string[];
+    primarySourceRequiredClaimIds: string[];
+    primarySourceCoveredClaimIds: string[];
   };
   claims: Array<{
     claimId: string;
@@ -37,7 +39,37 @@ export type ScriptPlannerEditorialContext = {
     publishedAt: string | null;
     directness: ResearchSourceDirectness;
     reviewStatus: ResearchSourceReviewStatus;
+    searchLane: string;
+    sourceKind: string;
   }>;
+};
+
+export type ScriptPlannerGroundingDiagnostics = {
+  groundingStatus: ScriptPlannerEditorialContext["readiness"]["status"];
+  evidenceCount: number;
+  claimCount: number;
+  canonicalSpanCount: number;
+  allowedClaimIdCount: number;
+  missingClaimIds: string[];
+  unknownClaimIds: string[];
+  duplicateEvidenceIdentities: string[];
+  duplicateSpanIdentities: string[];
+  blockingReasons: string[];
+  primaryEvidenceCount: number;
+  nonPrimaryEvidenceCount: number;
+  primaryCoverageRatio: number;
+  primaryRequiredClaimIds: string[];
+  primaryCoveredClaimIds: string[];
+  primaryMissingClaimIds: string[];
+  sourceClassificationCounts: Record<ResearchSourceDirectness, number>;
+  sourceClassifications: Array<{
+    sourceId: string;
+    searchLane: string;
+    sourceKind: string;
+    directness: ResearchSourceDirectness;
+    classificationReason: string;
+  }>;
+  primaryCoverageRule: "all_primary_source_claims_require_primary_support";
 };
 
 const MAX_CLAIMS = 40;
@@ -105,7 +137,15 @@ function normalizeReadiness(value: unknown): ScriptPlannerEditorialContext["read
   const reviewReasons = Array.isArray(raw.reviewReasons)
     ? [...new Set(raw.reviewReasons.map((item) => clean(item, 400)).filter(Boolean))].slice(0, 30)
     : [];
-  return { status, editorialReadinessScore, reviewReasons };
+  const primarySourceRequiredClaimIds = uniqueIds(raw.primarySourceRequiredClaimIds, MAX_CLAIMS);
+  const primarySourceCoveredClaimIds = uniqueIds(raw.primarySourceCoveredClaimIds, MAX_CLAIMS);
+  return {
+    status,
+    editorialReadinessScore,
+    reviewReasons,
+    primarySourceRequiredClaimIds,
+    primarySourceCoveredClaimIds,
+  };
 }
 
 function normalizeClaims(value: unknown) {
@@ -176,6 +216,8 @@ function normalizeSources(value: unknown): ScriptPlannerEditorialContext["source
       publishedAt: nullableText(raw.publishedAt, 100),
       directness,
       reviewStatus,
+      searchLane: clean(raw.searchLane, 80) || "unknown",
+      sourceKind: clean(raw.sourceKind, 80) || "other",
     };
   });
 }
@@ -183,7 +225,6 @@ function normalizeSources(value: unknown): ScriptPlannerEditorialContext["source
 function assertReferences(context: ScriptPlannerEditorialContext) {
   const sourceIds = new Set(context.sources.map((source) => source.sourceId));
   const evidenceIds = new Set(context.evidence.map((item) => item.evidenceId));
-
   for (const item of context.evidence) {
     if (!sourceIds.has(item.sourceId)) {
       throw new Error(`EDITORIAL_CONTEXT_EVIDENCE_SOURCE_MISSING:${item.evidenceId}:${item.sourceId}`);
@@ -235,6 +276,103 @@ export function normalizeScriptPlannerEditorialContext(
   };
   assertReferences(context);
   return context;
+}
+
+/** Safe, content-free diagnostics for the script provider grounding gate. */
+export function createScriptPlannerGroundingDiagnostics(
+  context: ScriptPlannerEditorialContext,
+): ScriptPlannerGroundingDiagnostics {
+  const allowedClaimIds = new Set(context.claims.map((claim) => claim.claimId));
+  const evidenceIds = new Set(context.evidence.map((item) => item.evidenceId));
+  const evidenceById = new Map(
+    context.evidence.map((item) => [item.evidenceId, item]),
+  );
+  const sourceById = new Map(
+    context.sources.map((source) => [source.sourceId, source]),
+  );
+  const missingClaimIds = context.claims
+    .filter((claim) =>
+      claim.claimType !== "THOUGHT_EXPERIMENT" &&
+      [
+        ...claim.supportingEvidenceIds,
+        ...claim.counterEvidenceIds,
+        ...claim.contextualEvidenceIds,
+      ].length === 0
+    )
+    .map((claim) => claim.claimId);
+  const unknownClaimIds = context.claims
+    .flatMap((claim) => [
+      ...claim.supportingEvidenceIds,
+      ...claim.counterEvidenceIds,
+      ...claim.contextualEvidenceIds,
+    ].map((evidenceId) => evidenceIds.has(evidenceId) ? "" : claim.claimId))
+    .filter((claimId, index, values) =>
+      Boolean(claimId) && values.indexOf(claimId) === index
+    );
+  const primaryRequiredClaimIds = context.claims
+    .filter((claim) => claim.claimType === "PRIMARY_SOURCE_CLAIM")
+    .map((claim) => claim.claimId);
+  const primaryCoveredClaimIds = context.claims
+    .filter((claim) =>
+      claim.claimType === "PRIMARY_SOURCE_CLAIM" &&
+      claim.supportingEvidenceIds.some((evidenceId) => {
+        const evidence = evidenceById.get(evidenceId);
+        return evidence && sourceById.get(evidence.sourceId)?.directness === "primary";
+      })
+    )
+    .map((claim) => claim.claimId);
+  const primaryCoveredClaimIdSet = new Set(primaryCoveredClaimIds);
+  const primaryMissingClaimIds = primaryRequiredClaimIds.filter(
+    (claimId) => !primaryCoveredClaimIdSet.has(claimId),
+  );
+  const primaryEvidenceCount = context.evidence.filter((evidence) =>
+    sourceById.get(evidence.sourceId)?.directness === "primary"
+  ).length;
+  const sourceClassificationCounts = context.sources.reduce(
+    (counts, source) => {
+      counts[source.directness] += 1;
+      return counts;
+    },
+    { primary: 0, secondary: 0, tertiary: 0, unknown: 0 } as Record<ResearchSourceDirectness, number>,
+  );
+
+  // Canonical normalization rejects duplicate evidence/source identities before
+  // this boundary. Keep explicit empty fields so production logs prove that fact.
+  return {
+    groundingStatus: context.readiness.status,
+    evidenceCount: context.evidence.length,
+    claimCount: context.claims.length,
+    canonicalSpanCount: context.evidence.filter((item) => Boolean(item.excerpt)).length,
+    allowedClaimIdCount: allowedClaimIds.size,
+    missingClaimIds,
+    unknownClaimIds,
+    duplicateEvidenceIdentities: [],
+    duplicateSpanIdentities: [],
+    blockingReasons: [...context.readiness.reviewReasons],
+    primaryEvidenceCount,
+    nonPrimaryEvidenceCount: context.evidence.length - primaryEvidenceCount,
+    primaryCoverageRatio: primaryRequiredClaimIds.length === 0
+      ? 1
+      : primaryCoveredClaimIds.length / primaryRequiredClaimIds.length,
+    primaryRequiredClaimIds,
+    primaryCoveredClaimIds,
+    primaryMissingClaimIds,
+    sourceClassificationCounts,
+    sourceClassifications: context.sources.map((source) => ({
+      sourceId: source.sourceId,
+      searchLane: source.searchLane,
+      sourceKind: source.sourceKind,
+      directness: source.directness,
+      classificationReason: source.directness === "primary"
+        ? source.searchLane === "academic" && source.sourceKind === "paper"
+          ? "academic_publication"
+          : "verified_first_party_provenance"
+        : source.searchLane === "primary"
+          ? "primary_search_intent_unverified"
+          : "third_party_commentary",
+    })),
+    primaryCoverageRule: "all_primary_source_claims_require_primary_support",
+  };
 }
 
 export function createScriptPlannerEvidenceGraph(

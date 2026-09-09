@@ -65,8 +65,9 @@ const result = await runCreatorEditorialScriptPipeline({
   fetchImpl: mockFetch,
 });
 
-assert.equal(calls.length, 3);
+assert.equal(calls.length, 4);
 assert.deepEqual(calls.map((call) => call.url), [
+  "/api/creator-script-plan",
   "/api/creator-research",
   "/api/creator-editorial-analysis",
   "/api/creator-script-plan",
@@ -76,19 +77,45 @@ for (const call of calls) {
   assert.equal(call.init.headers.Authorization, "Bearer test-token");
   assert.equal(call.init.headers["Content-Type"], "application/json");
 }
-assert.equal(calls[0].body.mode, "orchestrated");
-assert.equal(calls[0].body.subject, "Automation and the future of work");
-assert.equal(calls[0].body.includeRecentContext, false);
-assert.equal(calls[1].body.topic, "Automation and the future of work");
-assert.equal(calls[1].body.sources.length, 2);
-assert.deepEqual(calls[1].body.creatorProfile, { brandName: "Velto" });
+assert.equal(calls[0].body.operation, "validate_generation_authority");
+assert.equal(calls[0].body.topicAuthority, "Automation and the future of work");
+assert.equal(calls[1].body.mode, "orchestrated");
+assert.equal(calls[1].body.subject, "Automation and the future of work");
 assert.equal(calls[2].body.topic, "Automation and the future of work");
-assert.deepEqual(calls[2].body.scriptContext, scriptContext);
-assert.equal(calls[2].body.productionPackage.scenes[0].narration, "Draft");
+assert.equal(calls[2].body.sources.length, 2);
+assert.deepEqual(calls[2].body.creatorProfile, { brandName: "Velto" });
+assert.equal(calls[3].body.topic, "Automation and the future of work");
+assert.equal(calls[3].body.topicAuthority, "Automation and the future of work");
+assert.deepEqual(calls[3].body.scriptContext, scriptContext);
+assert.equal(calls[3].body.productionPackage.scenes[0].narration, "Draft");
 assert.deepEqual(result.productionPackage, { title: "Grounded package" });
 assert.equal(result.editorialSummary.researchSourceCount, 2);
 assert.equal(result.editorialSummary.readinessStatus, "ready");
 assert.equal(result.editorialSummary.editorialReadinessScore, 88);
+
+const longTopic = `${"A".repeat(25_000)} canonical-tail`;
+const longTopicCalls = [];
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: longTopic,
+  scriptPlanRequest: {},
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
+    longTopicCalls.push({ url, body });
+    if (url === "/api/creator-research") {
+      return jsonResponse({ success: true, sources: [{ sourceId: "long-source" }] });
+    }
+    if (url === "/api/creator-editorial-analysis") {
+      return jsonResponse({ success: true, scriptContext, readiness: { status: "ready" } });
+    }
+    return jsonResponse({ success: true, productionPackage: {}, scriptPlan: {} });
+  },
+});
+assert.equal(longTopicCalls[0].body.topic.length, 600);
+assert.equal(longTopicCalls[0].body.topicAuthority, longTopic);
+assert.match(longTopicCalls[1].body.subject, new RegExp(`^${"A".repeat(600)}`));
+assert.equal(longTopicCalls[2].body.topic, longTopic.slice(0, 600));
+assert.equal(longTopicCalls[3].body.topicAuthority, longTopic);
 
 await assert.rejects(
   () => runCreatorEditorialScriptPipeline({
@@ -140,7 +167,23 @@ await assert.rejects(
   (error) => error instanceof CreatorEditorialPipelineError &&
     error.stage === "research" && error.status === 502 && error.code === "RESEARCH_DOWN",
 );
-assert.deepEqual(failedCalls, ["/api/creator-research"]);
+assert.deepEqual(failedCalls, ["/api/creator-script-plan", "/api/creator-research"]);
+
+const staleAuthorityCalls = [];
+await assert.rejects(
+  () => runCreatorEditorialScriptPipeline({
+    accessToken: "token",
+    topic: "Topic",
+    scriptPlanRequest: { projectId: "project-b", durationSec: 300 },
+    fetchImpl: async (url) => {
+      staleAuthorityCalls.push(url);
+      return jsonResponse({ success: false, code: "CREATOR_SCRIPT_AUTHORITY_STALE", error: "Save or reload this project before building the script." }, 409);
+    },
+  }),
+  (error) => error instanceof CreatorEditorialPipelineError &&
+    error.stage === "script_plan" && error.status === 409 && error.code === "CREATOR_SCRIPT_AUTHORITY_STALE",
+);
+assert.deepEqual(staleAuthorityCalls, ["/api/creator-script-plan"]);
 
 const helper = fs.readFileSync("lib/research/creatorEditorialPipeline.client.ts", "utf8");
 assert.match(helper, /url: "\/api\/creator-research"/);
@@ -148,10 +191,8 @@ assert.match(helper, /url: "\/api\/creator-editorial-analysis"/);
 assert.match(helper, /url: "\/api\/creator-script-plan"/);
 assert.match(helper, /scriptContext,/);
 assert.match(helper, /intentionally fails closed/);
-assert.match(
-  helper,
-  /includeRecentContext: input\.includeRecentContext === true/,
-);
+assert.equal((helper.match(/url: "\/api\/creator-research"/g) || []).length, 1);
+assert.equal((helper.match(/url: "\/api\/creator-editorial-analysis"/g) || []).length, 1);
 assert.doesNotMatch(helper, /providerRequestId|providerCostUsd|rawProviderPayload/);
 
 const createPage = fs.readFileSync("app/create/page.tsx", "utf8");

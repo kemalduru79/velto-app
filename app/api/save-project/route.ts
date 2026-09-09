@@ -6,6 +6,7 @@ import {
 import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
 import {
   attachCreatorProjectState,
+  isValidCreatorProjectState,
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
 
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
       }
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
+      return NextResponse.json(
+        { error: "Creator project authority snapshot is invalid.", code: "CREATOR_PROJECT_STATE_INVALID" },
+        { status: 400 },
+      );
+    }
     const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
       ? attachCreatorProjectState(
           body.exportedMovieResult,

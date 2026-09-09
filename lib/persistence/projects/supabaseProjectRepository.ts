@@ -12,7 +12,8 @@ import { removeExactAssetHistoryUrl } from "./mediaHistoryCleanup";
 import {
   assertExistingProjectFlow,
   assertProjectUpdateMatched,
-  projectPayload,
+  creatorProjectInsertPayload,
+  creatorProjectUpdatePayload,
 } from "./projectPatch";
 
 const PROJECT_LIST_FIELDS =
@@ -86,7 +87,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
     input: SaveVeltoProjectInput,
   ): Promise<SaveVeltoProjectResult> {
     const client = createServerSupabaseClient();
-    let payload = projectPayload(input);
+    let payload = creatorProjectInsertPayload(input);
 
     if (input.projectId) {
       const { data: existingProject, error: existingProjectError } = await client
@@ -106,7 +107,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
         ? "creator_lab"
         : "storyverse";
       assertExistingProjectFlow(persistedFlowType, input.flowType, input.expectedUpdatedAt);
-      payload = projectPayload(input, false);
+      payload = creatorProjectUpdatePayload(input);
       let update = client
         .from("velto_projects")
         .update({ ...payload, updated_at: new Date().toISOString() })

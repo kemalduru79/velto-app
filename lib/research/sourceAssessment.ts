@@ -24,6 +24,52 @@ export type ResearchSourceAssessment = {
   reviewReasons: string[];
 };
 
+export type ResearchSourceDirectnessClassification = {
+  directness: ResearchSourceDirectness;
+  reason:
+    | "verified_first_party_provenance"
+    | "academic_publication"
+    | "primary_search_intent_unverified"
+    | "third_party_commentary"
+    | "unclassified_source";
+};
+
+const VERIFIED_PRIMARY_PROVENANCE_KINDS = new Set([
+  "official_company_announcement",
+  "government_publication",
+  "official_statistics",
+  "official_product_documentation",
+  "direct_transcript",
+  "official_filing",
+  "official_speech",
+  "original_dataset",
+  "original_academic_paper",
+]);
+
+export function classifyResearchSourceDirectness(
+  source: ResearchSource,
+): ResearchSourceDirectnessClassification {
+  if (source.adapterId === "academic" && source.mediaKind === "paper") {
+    return { directness: "primary", reason: "academic_publication" };
+  }
+  const provenanceKind = typeof source.sourceMetadata.provenanceKind === "string"
+    ? source.sourceMetadata.provenanceKind
+    : "";
+  if (
+    source.sourceMetadata.provenanceVerified === true &&
+    VERIFIED_PRIMARY_PROVENANCE_KINDS.has(provenanceKind)
+  ) {
+    return { directness: "primary", reason: "verified_first_party_provenance" };
+  }
+  if (source.adapterId === "primary") {
+    return { directness: "secondary", reason: "primary_search_intent_unverified" };
+  }
+  if (source.adapterId === "web" || source.adapterId === "news") {
+    return { directness: "secondary", reason: "third_party_commentary" };
+  }
+  return { directness: "unknown", reason: "unclassified_source" };
+}
+
 function hasText(value: unknown) {
   return typeof value === "string" && Boolean(value.trim());
 }

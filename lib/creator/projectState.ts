@@ -10,6 +10,7 @@ import {
   type CreatorAudioTimeline,
   type CreatorLegacyMusicMigration,
 } from "./audioTimeline.ts";
+import { normalizeCreatorTopicAuthority } from "./creatorWorkflowAuthority.ts";
 
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
 
@@ -33,6 +34,7 @@ export type CreatorProjectStateSnapshot = {
     mentorResult: unknown | null;
     selectedDirectionId: string;
     selectedHook: string;
+    strategyFingerprint?: string;
     script: CreatorScript | null;
   };
   production: {
@@ -103,8 +105,6 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
   const production = record(candidate.production);
   const createReview = record(candidate.createReview);
   const publish = record(candidate.publish);
-  const mentor = record(strategy.mentorResult);
-  const marketEvidence = record(mentor.marketEvidence);
   return (
     candidate.version === CREATOR_PROJECT_STATE_VERSION &&
     isObjectOrNull(candidate.brief) && candidate.brief !== null &&
@@ -124,12 +124,8 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     isObjectOrNull(strategy.mentorResult) &&
     typeof strategy.selectedDirectionId === "string" &&
     typeof strategy.selectedHook === "string" &&
+    (!hasOwn(strategy, "strategyFingerprint") || typeof strategy.strategyFingerprint === "string") &&
     (!hasOwn(strategy, "script") || strategy.script === null || isValidCreatorScript(strategy.script)) &&
-    (strategy.mentorResult === null ||
-      (!hasOwn(mentor, "marketEvidence") ||
-        (isObjectOrNull(mentor.marketEvidence) && mentor.marketEvidence !== null &&
-          (!hasOwn(marketEvidence, "videos") || Array.isArray(marketEvidence.videos)) &&
-          (!hasOwn(marketEvidence, "patternSummary") || isObjectOrNull(marketEvidence.patternSummary))))) &&
     isObjectOrNull(candidate.production) && candidate.production !== null &&
     isObjectOrNull(production.package) &&
     Array.isArray(production.refinedScenes) &&
@@ -167,7 +163,15 @@ export function buildCreatorProjectState(
     ...input.production,
     ...creatorAudioTimelineSnapshotFields(input.production.audioTimeline),
   };
-  return { version: CREATOR_PROJECT_STATE_VERSION, ...input, production };
+  return {
+    version: CREATOR_PROJECT_STATE_VERSION,
+    ...input,
+    brief: {
+      ...input.brief,
+      topic: normalizeCreatorTopicAuthority(input.brief.topic),
+    },
+    production,
+  };
 }
 
 export function creatorAudioTimelineSnapshotFields(
@@ -233,7 +237,9 @@ export function readCreatorProjectState(
 
   return buildCreatorProjectState({
     brief: {
-      topic: String(savedBrief.topic ?? project.input_prompt ?? project.title ?? ""),
+      topic: normalizeCreatorTopicAuthority(
+        savedBrief.topic ?? project.input_prompt ?? project.title ?? "",
+      ),
       language: (savedBrief.language ?? project.language) === "en" ? "en" : "tr",
       country: String(savedBrief.country ?? "global"),
       ageGroup: String(savedBrief.ageGroup ?? "professional_18"),
@@ -269,6 +275,9 @@ export function readCreatorProjectState(
           legacyHookPatterns[0] ??
           "",
       ),
+      ...(typeof savedStrategy.strategyFingerprint === "string"
+        ? { strategyFingerprint: savedStrategy.strategyFingerprint }
+        : {}),
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)

@@ -1,4 +1,5 @@
 import type { ResearchSource } from "./sourceContract.ts";
+import type { ResearchSourceMetadataValue } from "./sourceContract.ts";
 
 export type EditorialAnalysisRequest = {
   topic: string;
@@ -31,6 +32,15 @@ function normalizeSource(value: unknown, index: number): ResearchSource {
   const mediaKind = mediaKinds.has(String(raw.mediaKind))
     ? raw.mediaKind as ResearchSource["mediaKind"]
     : "webpage";
+  const rawMetadata = raw.sourceMetadata && typeof raw.sourceMetadata === "object" && !Array.isArray(raw.sourceMetadata)
+    ? raw.sourceMetadata as Record<string, unknown>
+    : {};
+  const provenanceKind = clean(rawMetadata.provenanceKind, 100);
+  const sourceMetadata: Record<string, ResearchSourceMetadataValue> = {};
+  if (rawMetadata.provenanceVerified === true && provenanceKind) {
+    sourceMetadata.provenanceVerified = true;
+    sourceMetadata.provenanceKind = provenanceKind;
+  }
 
   return {
     sourceId,
@@ -49,7 +59,7 @@ function normalizeSource(value: unknown, index: number): ResearchSource {
       ? Number(raw.durationSec)
       : null,
     metrics: {},
-    sourceMetadata: {},
+    sourceMetadata,
   };
 }
 

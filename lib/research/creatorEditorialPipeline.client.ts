@@ -7,6 +7,7 @@ import type { ResearchClaimEvidenceGraph } from "./claimEvidenceGraph.ts";
 import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
 import { createResearchSourceMediaReference } from "./sourceMediaReference.ts";
 import type { ScriptEvidenceBindingMap } from "./scriptEvidenceBinding.ts";
+import { normalizeCreatorTopicAuthority } from "../creator/creatorWorkflowAuthority.ts";
 
 export type CreatorEditorialPipelineStage =
   | "research"
@@ -221,8 +222,9 @@ export async function runCreatorEditorialScriptPipeline(
       message: "A valid session is required for grounded editorial production.",
     });
   }
-  const topic = clean(input.topic, 600);
-  if (!topic) {
+  const topicAuthority = normalizeCreatorTopicAuthority(input.topic);
+  const topic = clean(topicAuthority, 600);
+  if (!topicAuthority) {
     throw new CreatorEditorialPipelineError({
       stage: "research",
       code: "EDITORIAL_PIPELINE_TOPIC_REQUIRED",
@@ -230,6 +232,18 @@ export async function runCreatorEditorialScriptPipeline(
     });
   }
   const fetchImpl = input.fetchImpl || globalThis.fetch.bind(globalThis);
+  await postJson({
+    stage: "script_plan",
+    url: "/api/creator-script-plan",
+    accessToken,
+    fetchImpl,
+    body: {
+      ...input.scriptPlanRequest,
+      operation: "validate_generation_authority",
+      topic,
+      topicAuthority,
+    },
+  });
 
   const research = await postJson({
     stage: "research",
@@ -280,6 +294,7 @@ export async function runCreatorEditorialScriptPipeline(
     body: {
       ...input.scriptPlanRequest,
       topic,
+      topicAuthority,
       scriptContext,
     },
   });

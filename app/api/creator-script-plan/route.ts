@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { recordOpenAITextEconomics } from "@/lib/economics";
+import { getPersistenceServices } from "@/lib/persistence";
+import { readCreatorProjectState } from "@/lib/creator/projectState";
+import {
+  assessCreatorScriptGenerationAuthority,
+  getCreatorTopicAuthorityIdentity,
+  normalizeCreatorTopicAuthority,
+} from "@/lib/creator/creatorWorkflowAuthority";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
 import {
   createTimelineSyncPlan,
@@ -19,6 +26,7 @@ import {
   normalizeCreatorDialogueSpeakerCharacterId,
 } from "../../../lib/creator/characterIdentity";
 import {
+  createScriptPlannerGroundingDiagnostics,
   createScriptPlannerEvidenceGraph,
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
@@ -27,12 +35,25 @@ import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvid
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorScript,
+  assertCreatorScriptHasHealthySectionStructure,
+  assertCreatorScriptMatchesSectionPlan,
+  countCreatorScriptWords,
+  createCreatorScriptSectionBudgetPlan,
   CreatorScriptDurationInvalidError,
   CreatorScriptDurationUnsatisfiedError,
+  generateCreatorScriptSectionUnits,
   generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
+  getCreatorScriptDurationContractForScript,
+  getCreatorScriptOutputTokenBudget,
+  getCreatorScriptSafeSingleCallTargetWords,
+  getCreatorScriptSectionDiagnostics,
+  isCreatorScriptResidualRepairEligible,
+  mergeCreatorScriptSectionUnits,
+  mergeCreatorScriptReplacementSections,
   normalizeCreatorScript,
   regenerateCreatorScriptSection,
+  shouldUseCreatorScriptSectionNativeGeneration,
   validateCreatorScriptGenerationDuration,
 } from "../../../lib/creator/creatorScript";
 
@@ -85,6 +106,11 @@ type CreatorScriptPlanRequest = {
   creatorScript?: unknown;
   targetSectionId?: unknown;
   strategy?: unknown;
+  projectId?: unknown;
+  expectedProjectUpdatedAt?: unknown;
+  selectedDirectionId?: unknown;
+  selectedHook?: unknown;
+  topicAuthority?: unknown;
 };
 
 type SceneRole = "hook" | "setup" | "development" | "climax" | "resolution";
@@ -105,6 +131,52 @@ function asString(value: unknown, fallback = "") {
   return result || fallback;
 }
 
+async function validateCreatorScriptProjectAuthority(
+  body: CreatorScriptPlanRequest,
+  ownerUserId: string,
+) {
+  const projectId = asString(body.projectId);
+  const expectedUpdatedAt = asString(body.expectedProjectUpdatedAt);
+  const submittedDurationSec = Number(body.durationSec);
+  const submittedFingerprint = asString(body.strategyFingerprint);
+  const submittedTopicAuthority = normalizeCreatorTopicAuthority(body.topicAuthority);
+  if (!projectId || !expectedUpdatedAt || !submittedFingerprint || !submittedTopicAuthority) {
+    return { ok: false as const, reason: "missing_authority" };
+  }
+  const project = await getPersistenceServices().projectRepository.getForOwner(projectId, ownerUserId);
+  if (!project || project.flow_type !== "creator_lab") {
+    return { ok: false as const, reason: "project_missing" };
+  }
+  const persisted = readCreatorProjectState(project);
+  const persistedUpdatedAt = asString(project.updated_at);
+  const assessment = assessCreatorScriptGenerationAuthority({
+    submitted: {
+      projectId,
+      expectedUpdatedAt,
+      topic: submittedTopicAuthority,
+      language: body.language === "tr" ? "tr" : "en",
+      durationSec: submittedDurationSec,
+      strategyFingerprint: submittedFingerprint,
+      selectedDirectionId: asString(body.selectedDirectionId),
+      selectedHook: asString(body.selectedHook),
+    },
+    persisted: {
+      projectId: asString(project.id),
+      updatedAt: persistedUpdatedAt,
+      topic: persisted.brief.topic,
+      language: persisted.brief.language,
+      durationSec: persisted.brief.durationSec,
+      strategyFingerprint: persisted.strategy.strategyFingerprint || "",
+      selectedDirectionId: persisted.strategy.selectedDirectionId,
+      selectedHook: persisted.strategy.selectedHook,
+    },
+  });
+  if (!assessment.current) {
+    return { ok: false as const, reason: "authority_mismatch", projectId, persisted, persistedUpdatedAt, matches: assessment.matches };
+  }
+  return { ok: true as const, projectId, persisted, persistedUpdatedAt, matches: assessment.matches };
+}
+
 function asFiniteNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -121,6 +193,41 @@ function roundTo(value: number, digits = 1) {
 
 function countWords(value: string) {
   return value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean).length;
+}
+
+function createSectionNativeEditorialContext(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: ReturnType<typeof createCreatorScriptSectionBudgetPlan>;
+  sectionIndex: number;
+}) {
+  const section = input.plan[input.sectionIndex];
+  const bodySections = input.plan.filter((item) => item.kind === "body");
+  const bodyIndex = section.kind === "body"
+    ? bodySections.findIndex((item) => item.id === section.id)
+    : -1;
+  const relevantClaims = section.kind === "conclusion"
+    ? input.context.claims
+    : section.kind === "opening"
+      ? input.context.claims.slice(0, Math.min(4, input.context.claims.length))
+      : input.context.claims.filter((_, claimIndex) =>
+          bodySections.length === 0 || claimIndex % bodySections.length === bodyIndex
+        );
+  const claims = relevantClaims.length > 0
+    ? relevantClaims
+    : input.context.claims.slice(0, Math.min(2, input.context.claims.length));
+  const evidenceIds = new Set(claims.flatMap((claim) => [
+    ...claim.supportingEvidenceIds,
+    ...claim.counterEvidenceIds,
+    ...claim.contextualEvidenceIds,
+  ]));
+  const evidence = input.context.evidence.filter((item) => evidenceIds.has(item.evidenceId));
+  const sourceIds = new Set(evidence.map((item) => item.sourceId));
+  return {
+    ...input.context,
+    claims,
+    evidence,
+    sources: input.context.sources.filter((item) => sourceIds.has(item.sourceId)),
+  };
 }
 
 function estimateSpeechSeconds(value: string, language: "tr" | "en") {
@@ -573,7 +680,23 @@ async function executeCreatorScriptOperation(input: {
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({ error: "OPENAI_API_KEY is not configured." }, { status: 500 });
   }
+  const groundingDiagnostics = createScriptPlannerGroundingDiagnostics(
+    input.editorialContext,
+  );
   if (input.editorialContext.readiness.status === "blocked") {
+    console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
+      editorialAnalysisStatus: "accepted",
+      ...groundingDiagnostics,
+      sectionPlanCount: requestedDurationSec === null
+        ? 0
+        : createCreatorScriptSectionBudgetPlan({
+            targetDurationSec: requestedDurationSec,
+            language: input.body.language === "tr" ? "tr" : "en",
+          }).length,
+      exactBlockingCode: "CREATOR_SCRIPT_GROUNDING_BLOCKED",
+      repairAttempted: null,
+      scriptProviderDispatched: false,
+    });
     return NextResponse.json(
       { error: "Editorial grounding is blocked.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED" },
       { status: 422 },
@@ -600,13 +723,29 @@ async function executeCreatorScriptOperation(input: {
       language,
       actualWordCount: 0,
     });
+    const sectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
+      targetDurationSec: durationSec,
+      language,
+    });
+    const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
+      durationBudget.targetWordCount,
+    );
+    const generationUnits = sectionNative
+      ? sectionBudgetPlan.map((section) => [section])
+      : [sectionBudgetPlan];
     const title = asString(input.body.title, asString(input.body.topic));
-    const createInitialResponse = () => client.responses.create({
+    const createInitialResponse = (
+      requestedSections: typeof sectionBudgetPlan,
+      unitIndex: number,
+      continuityContext: { previousSectionTitle: string; previousSectionRole: string; previousSectionEnding: string } | null,
+    ) => client.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: JSON.stringify({
-          task: "Create one coherent canonical full script for creator review before any scene breakdown.",
+          task: sectionNative
+            ? `Create only canonical section ${requestedSections[0].id} of ${sectionBudgetPlan.length} for creator review before any scene breakdown.`
+            : "Create one coherent canonical full script for creator review before any scene breakdown.",
           topic: asString(input.body.topic),
           title,
           contentType: asString(input.body.contentType),
@@ -617,20 +756,41 @@ async function executeCreatorScriptOperation(input: {
           targetWordCount: durationBudget.targetWordCount,
           minimumAcceptableWordCount: durationBudget.minimumAcceptableWordCount,
           maximumAcceptableWordCount: durationBudget.maximumAcceptableWordCount,
+          requestedSection: sectionNative ? requestedSections[0] : null,
+          completeSectionBudgetPlan: sectionNative ? undefined : sectionBudgetPlan,
+          requestedSections: sectionNative ? undefined : requestedSections,
+          continuityContext,
           strategy: input.body.strategy,
-          editorialContext: input.editorialContext,
-          allowedClaimIds,
+          editorialContext: sectionNative
+            ? createSectionNativeEditorialContext({
+                context: input.editorialContext,
+                plan: sectionBudgetPlan,
+                sectionIndex: unitIndex,
+              })
+            : input.editorialContext,
+          allowedClaimIds: sectionNative
+            ? createSectionNativeEditorialContext({
+                context: input.editorialContext,
+                plan: sectionBudgetPlan,
+                sectionIndex: unitIndex,
+              }).claims.map((claim) => claim.claimId)
+            : allowedClaimIds,
           requiredJsonShape: {
             title: "string",
-            sections: [
-              { id: "opening", kind: "opening", heading: "optional string", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
-              { id: "section-1", kind: "body", heading: "section heading", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
-              { id: "conclusion", kind: "conclusion", heading: "optional string", text: "canonical spoken text", claimIds: ["allowlisted claim id"] },
-            ],
+            sections: requestedSections.map((section) => ({
+              id: section.id,
+              kind: section.kind,
+              role: section.role,
+              heading: "section heading",
+              text: `complete spoken section targeting ${section.targetWords} words`,
+              claimIds: ["allowlisted claim id"],
+            })),
           },
           rules: [
-            "Return exactly one opening, one or more body sections, and exactly one conclusion in that order.",
-            "Every section id must be unique and stable-looking.",
+            "Return every requested section exactly once, in the supplied order, with the exact supplied section ids, kinds, and roles. Return no unrequested sections.",
+            "Do not rewrite or repeat an earlier section.",
+            "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
+            "The complete spoken script must satisfy the total word envelope.",
             "Write the complete long-form narrative and keep its spoken text inside the supplied minimumAcceptableWordCount and maximumAcceptableWordCount envelope.",
             "Use structure and pacing appropriate to the supplied target duration and targetWordCount.",
             "Deepen explanation, analysis, causal reasoning, comparisons, supported examples, counterarguments, transitions, synthesis, and implications only when supported by the supplied strategy and editorial context.",
@@ -641,16 +801,16 @@ async function executeCreatorScriptOperation(input: {
           }) },
         ],
         text: { format: { type: "json_object" } },
+        max_output_tokens: getCreatorScriptOutputTokenBudget(
+          requestedSections.reduce((sum, section) => sum + section.targetWords, 0),
+        ),
         temperature: 0.3,
       });
     const now = new Date().toISOString();
-    const createFromResponse = (outputText: string) => {
-      const parsed = parseModelJson(outputText);
+    const createFromSections = (sections: unknown[]) => {
       return createCreatorScript({
-        title: asString(parsed.title, title),
-        sections: Array.isArray(parsed.sections)
-          ? parsed.sections.map((section) => ({ ...(section as Record<string, unknown>), evidenceReviewRequired: false })) as never
-          : [],
+        title,
+        sections: sections.map((section) => ({ ...(section as Record<string, unknown>), evidenceReviewRequired: false })) as never,
         targetDurationSec: durationSec,
         strategyFingerprint,
         grounding: { context: input.editorialContext },
@@ -658,29 +818,193 @@ async function executeCreatorScriptOperation(input: {
         updatedAt: now,
       });
     };
+    let firstActualWords: number | null = null;
+    let firstDurationStatus: string | null = null;
+    let durationRepairOccurred = false;
+    const sectionActualWordCounts: Array<{ sectionId: string; targetWords: number; actualWords: number }> = [];
+    const providerStatuses: Array<{ sectionId: string; status: string; incompleteReason: string | null }> = [];
+    let initialSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
+    let repairedSectionIds: string[] = [];
+    let postRepairSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
+    const safeSectionDiagnostics = (
+      diagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics>,
+    ) => diagnostics.map((section) => ({
+      sectionId: section.id,
+      role: section.role,
+      minWords: section.minimumWords,
+      targetWords: section.targetWords,
+      maxWords: section.maximumWords,
+      actualWords: section.actualWords,
+      status: section.missing
+        ? "missing"
+        : section.actualWords < section.minimumWords
+          ? "under"
+          : section.actualWords > section.maximumWords
+            ? "over"
+            : "compliant",
+    }));
+    const logSectionBudgetDiagnostics = (
+      event: "accepted" | "rejected",
+      failureCategory: string | null,
+      finalScript?: Parameters<typeof getCreatorScriptDurationContractForScript>[0],
+    ) => {
+      const finalDuration = finalScript
+        ? getCreatorScriptDurationContractForScript(finalScript, language)
+        : null;
+      console.info("CREATOR_SCRIPT_SECTION_BUDGET_DIAGNOSTICS", {
+        event,
+        targetDurationSec: durationSec,
+        totalTargetWords: durationBudget.targetWordCount,
+        totalMinWords: durationBudget.minimumAcceptableWordCount,
+        totalMaxWords: durationBudget.maximumAcceptableWordCount,
+        sectionCount: sectionBudgetPlan.length,
+        generationMode: sectionNative ? "section_native" : "single",
+        singleCallThresholdWords: getCreatorScriptSafeSingleCallTargetWords(),
+        providerGenerationCallCount: generationUnits.length,
+        sectionTargets: sectionBudgetPlan.map((section) => ({
+          sectionId: section.id,
+          targetWords: section.targetWords,
+        })),
+        sectionActualWordCounts,
+        sections: safeSectionDiagnostics(initialSectionDiagnostics),
+        totalActualWords: firstActualWords,
+        repairRan: durationRepairOccurred,
+        repairedSectionIds,
+        repairDeficitWords: Math.max(0, durationBudget.minimumAcceptableWordCount - (firstActualWords ?? 0)),
+        repairExcessWords: Math.max(0, (firstActualWords ?? 0) - durationBudget.maximumAcceptableWordCount),
+        providerStatuses,
+        repairCallCount: durationRepairOccurred ? 1 : 0,
+        postRepairSections: safeSectionDiagnostics(postRepairSectionDiagnostics),
+        finalTotalWords: finalDuration?.actualWordCount ?? null,
+        canonicalFailureCategory: failureCategory,
+      });
+    };
     try {
       const accepted = await generateCreatorScriptWithDurationContract({
         durationSec,
         language,
+        allowRepair: true,
+        validateFinal: (script) => {
+          assertCreatorScriptHasHealthySectionStructure(script, sectionBudgetPlan);
+        },
         generateInitial: async () => {
-          const response = await createInitialResponse();
-          await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
-          return createFromResponse(response.output_text || "");
+          const generateUnit = async (
+            requestedSections: typeof sectionBudgetPlan,
+            unitIndex: number,
+            continuityContext: { previousSectionTitle: string; previousSectionRole: string; previousSectionEnding: string } | null,
+          ) => {
+            const response = await createInitialResponse(requestedSections, unitIndex, continuityContext);
+            providerStatuses.push({
+              sectionId: sectionNative ? requestedSections[0].id : "full-script",
+              status: response.status || "unknown",
+              incompleteReason: response.incomplete_details?.reason || null,
+            });
+            await recordOpenAITextEconomics({
+              route: "/api/creator-script-plan",
+              operationType: sectionNative ? "creator_full_script_section" : "creator_full_script",
+              model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+              response,
+            });
+            const parsed = parseModelJson(response.output_text || "");
+            const returnedSections = Array.isArray(parsed.sections)
+              ? parsed.sections
+              : parsed.section ? [parsed.section] : [];
+            const orderedUnit = mergeCreatorScriptSectionUnits({
+              sections: returnedSections,
+              plan: requestedSections,
+            });
+            for (const section of orderedUnit) {
+              const sectionRecord = section as Record<string, unknown>;
+              const sectionId = asString(sectionRecord.id);
+              const budget = sectionBudgetPlan.find((item) => item.id === sectionId);
+              sectionActualWordCounts.push({
+                sectionId,
+                targetWords: budget?.targetWords ?? 0,
+                actualWords: countCreatorScriptWords(asString(sectionRecord.text)),
+              });
+            }
+            return orderedUnit;
+          };
+          const generatedSections = sectionNative
+            ? await generateCreatorScriptSectionUnits({
+                plan: sectionBudgetPlan,
+                generateSection: async (section, unitIndex, completedSections) => {
+                  const previous = completedSections.at(-1) as Record<string, unknown> | undefined;
+                  const previousBudget = sectionBudgetPlan[unitIndex - 1];
+                  const continuityContext = previous && previousBudget ? {
+                    previousSectionTitle: asString(previous.heading, previousBudget.id),
+                    previousSectionRole: previousBudget.role,
+                    previousSectionEnding: asString(previous.text).slice(-1_200),
+                  } : null;
+                  const generated = await generateUnit([section], unitIndex, continuityContext);
+                  return generated[0];
+                },
+              })
+            : await generateUnit(sectionBudgetPlan, 0, null);
+          const script = createFromSections(generatedSections);
+          const initialDiagnostics = getCreatorScriptDurationContract({
+            targetDurationSec: durationSec,
+            language,
+            actualWordCount: script.sections.reduce(
+              (sum, section) => sum + section.text.split(/\s+/u).filter(Boolean).length,
+              0,
+            ),
+          });
+          firstActualWords = initialDiagnostics.actualWordCount;
+          firstDurationStatus = initialDiagnostics.status;
+          initialSectionDiagnostics = getCreatorScriptSectionDiagnostics(script, sectionBudgetPlan);
+          return script;
         },
         repair: async (firstScript, currentDuration) => {
+          if (!isCreatorScriptResidualRepairEligible(currentDuration)) {
+            throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
+          }
+          durationRepairOccurred = true;
+          const sectionDiagnostics = getCreatorScriptSectionDiagnostics(firstScript, sectionBudgetPlan);
+          const residualWords = currentDuration.status === "too_short"
+            ? currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount
+            : currentDuration.actualWordCount - currentDuration.maximumAcceptableWordCount;
+          const rankedSections = [...sectionDiagnostics].sort((left, right) => {
+            const leftCapacity = currentDuration.status === "too_short"
+              ? left.maximumWords - left.actualWords
+              : left.actualWords - left.minimumWords;
+            const rightCapacity = currentDuration.status === "too_short"
+              ? right.maximumWords - right.actualWords
+              : right.actualWords - right.minimumWords;
+            return rightCapacity - leftCapacity ||
+              sectionBudgetPlan.findIndex((item) => item.id === left.id) -
+                sectionBudgetPlan.findIndex((item) => item.id === right.id);
+          });
+          const sectionsToRepair: typeof sectionDiagnostics = [];
+          let controlledCapacity = 0;
+          for (const section of rankedSections) {
+            const capacity = currentDuration.status === "too_short"
+              ? Math.max(0, section.maximumWords - section.actualWords)
+              : Math.max(0, section.actualWords - section.minimumWords);
+            if (capacity === 0) continue;
+            sectionsToRepair.push(section);
+            controlledCapacity += capacity;
+            if (controlledCapacity >= residualWords) break;
+          }
+          if (controlledCapacity < residualWords || sectionsToRepair.length === 0) {
+            throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
+          }
+          repairedSectionIds = sectionsToRepair.map((section) => section.id);
           const repairResponse = await client.responses.create({
             model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
             input: [
               { role: "system", content: systemPrompt },
               { role: "user", content: JSON.stringify({
                 task: "Repair the current canonical full script once so its spoken text satisfies the supplied duration word envelope.",
-                requiredDirection: currentDuration.status === "too_short" ? "expand" : "compress",
+                requiredDirection: currentDuration.status === "too_long" ? "compress" : "expand",
                 topic: asString(input.body.topic),
                 title,
                 strategy: input.body.strategy,
                 editorialContext: input.editorialContext,
                 allowedClaimIds,
-                currentScript: firstScript,
+                currentSectionsToRepair: firstScript.sections.filter((section) =>
+                  sectionsToRepair.some((diagnostic) => diagnostic.id === section.id)
+                ),
                 targetDurationSec: durationSec,
                 targetMinutes: roundTo(durationSec / 60, 2),
                 currentWordCount: currentDuration.actualWordCount,
@@ -688,10 +1012,25 @@ async function executeCreatorScriptOperation(input: {
                 targetWordCount: currentDuration.targetWordCount,
                 minimumAcceptableWordCount: currentDuration.minimumAcceptableWordCount,
                 maximumAcceptableWordCount: currentDuration.maximumAcceptableWordCount,
-                requiredJsonShape: { title: "string", sections: "same CreatorScript section JSON shape as currentScript" },
+                totalDeficitWords: Math.max(0, currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount),
+                totalExcessWords: Math.max(0, currentDuration.actualWordCount - currentDuration.maximumAcceptableWordCount),
+                sectionBudgetPlan,
+                sectionDiagnostics,
+                sectionsToRepair,
+                requiredJsonShape: {
+                  sections: sectionsToRepair.map((section) => ({
+                    id: section.id,
+                    kind: section.kind,
+                    role: section.role,
+                    heading: "section heading",
+                    text: `replacement spoken section targeting ${section.targetWords} words`,
+                    claimIds: ["allowlisted claim id"],
+                  })),
+                },
                 rules: [
-                  "Return one complete revised script inside the supplied word envelope.",
-                  "Preserve the master question, strategy authority, section ordering, source authority, and evidence uncertainty.",
+                  "Return only corrected replacement sections for every supplied sectionsToRepair item; do not return unrelated sections.",
+                  "Preserve each requested section id, kind, and role exactly and satisfy its supplied target range.",
+                  "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
                   currentDuration.status === "too_short"
                     ? "Expand through clearer explanation, implications, causal reasoning, comparison, supported examples and counterarguments, transitions, synthesis, and implications for the master question using only the same grounded context."
@@ -700,15 +1039,73 @@ async function executeCreatorScriptOperation(input: {
               }) },
             ],
             text: { format: { type: "json_object" } },
+            max_output_tokens: getCreatorScriptOutputTokenBudget(
+              sectionsToRepair.reduce((sum, section) => sum + section.targetWords, 0),
+            ),
             temperature: 0.25,
           });
           await recordOpenAITextEconomics({ route: "/api/creator-script-plan", operationType: "creator_full_script_duration_repair", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response: repairResponse });
-          return createFromResponse(repairResponse.output_text || "");
+          const parsedRepair = parseModelJson(repairResponse.output_text || "");
+          const validatedReplacements = mergeCreatorScriptSectionUnits({
+            sections: Array.isArray(parsedRepair.sections) ? parsedRepair.sections : [],
+            plan: sectionsToRepair,
+          });
+          const repairedScript = mergeCreatorScriptReplacementSections({
+            script: firstScript,
+            replacements: validatedReplacements,
+            plan: sectionBudgetPlan,
+          });
+          postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(repairedScript, sectionBudgetPlan);
+          return repairedScript;
         },
       });
+      const finalDuration = getCreatorScriptDurationContract({
+        targetDurationSec: durationSec,
+        language,
+        actualWordCount: accepted.creatorScript.sections.reduce(
+          (sum, section) => sum + countCreatorScriptWords(section.text),
+          0,
+        ),
+      });
+      console.info("CREATOR_SCRIPT_DURATION_ACCEPTED", {
+        targetDurationSec: durationSec,
+        targetWordCount: finalDuration.targetWordCount,
+        minWords: finalDuration.minimumAcceptableWordCount,
+        maxWords: finalDuration.maximumAcceptableWordCount,
+        generationMode: sectionNative ? "section_native" : "single",
+        sectionCount: sectionBudgetPlan.length,
+        providerGenerationCallCount: generationUnits.length,
+        sectionActualWordCounts,
+        mergedActualWords: firstActualWords,
+        repairCallCount: durationRepairOccurred ? 1 : 0,
+        repairActualWords: durationRepairOccurred ? finalDuration.actualWordCount : null,
+        finalDurationStatus: finalDuration.status,
+      });
+      logSectionBudgetDiagnostics("accepted", null, accepted.creatorScript);
       return NextResponse.json({ success: true, creatorScript: accepted.creatorScript });
     } catch (error) {
+      logSectionBudgetDiagnostics(
+        "rejected",
+        error instanceof Error ? error.message : "CREATOR_SCRIPT_MODEL_INVALID",
+      );
       if (error instanceof CreatorScriptDurationUnsatisfiedError) {
+        console.error("CREATOR_SCRIPT_DURATION_UNSATISFIED", {
+          targetDurationSec: error.diagnostics.targetDurationSec,
+          targetWordCount: error.diagnostics.targetWordCount,
+          minWords: error.diagnostics.minimumAcceptableWordCount,
+          maxWords: error.diagnostics.maximumAcceptableWordCount,
+          repairedActualWords: error.diagnostics.actualWordCount,
+          repairedStatus: error.diagnostics.status,
+          firstActualWords,
+          firstStatus: firstDurationStatus,
+          language,
+          generationMode: sectionNative ? "section_native" : "single",
+          sectionCount: sectionBudgetPlan.length,
+          providerGenerationCallCount: generationUnits.length,
+          sectionActualWordCounts,
+          repairCallCount: durationRepairOccurred ? 1 : 0,
+          repairOccurred: durationRepairOccurred,
+        });
         return NextResponse.json(
           { error: error.message, code: error.code, direction: error.diagnostics.status, diagnostics: error.diagnostics },
           { status: 422 },
@@ -795,6 +1192,52 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => null)) as CreatorScriptPlanRequest | null;
+
+    if (body?.operation === "validate_generation_authority" || body?.operation === "generate_full_script") {
+      const authority = await validateCreatorScriptProjectAuthority(body, user.id);
+      const submittedDurationSec = Number(body.durationSec);
+      const language: "tr" | "en" = body.language === "tr" ? "tr" : "en";
+      const duration = Number.isFinite(submittedDurationSec) && submittedDurationSec > 0
+        ? getCreatorScriptDurationContract({ targetDurationSec: submittedDurationSec, language, actualWordCount: 0 })
+        : null;
+      const mismatchAuthority = !authority.ok && authority.reason === "authority_mismatch"
+        ? authority
+        : null;
+      const persistedAuthority = authority.ok ? authority.persisted : mismatchAuthority?.persisted;
+      const authorityMatches = authority.ok ? authority.matches : mismatchAuthority?.matches;
+      const persistedTopicIdentity = getCreatorTopicAuthorityIdentity(persistedAuthority?.brief.topic);
+      const submittedTopicIdentity = getCreatorTopicAuthorityIdentity(body.topicAuthority);
+      console.info("CREATOR_SCRIPT_AUTHORITY_CHECK", {
+        projectId: asString(body.projectId),
+        ownerId: user.id,
+        persistedDurationSec: persistedAuthority?.brief.durationSec ?? null,
+        submittedDurationSec,
+        normalizedDurationSec: duration?.targetDurationSec ?? null,
+        strategyFingerprintPrefix: asString(body.strategyFingerprint).slice(0, 32),
+        strategyFingerprintMatch: authorityMatches?.strategyFingerprint ?? false,
+        authorityMatches: authorityMatches ?? null,
+        persistedTopicSource: "creatorProjectState.brief.topic",
+        submittedTopicSource: "request.topicAuthority",
+        persistedTopicLength: persistedTopicIdentity.length,
+        submittedTopicLength: submittedTopicIdentity.length,
+        persistedTopicHash: persistedTopicIdentity.hash,
+        submittedTopicHash: submittedTopicIdentity.hash,
+        targetWordCount: duration?.targetWordCount ?? null,
+        minWordCount: duration?.minimumAcceptableWordCount ?? null,
+        maxWordCount: duration?.maximumAcceptableWordCount ?? null,
+        authorityStatus: authority.ok ? "current" : authority.reason,
+      });
+      if (!authority.ok) {
+        return NextResponse.json({
+          success: false,
+          code: "CREATOR_SCRIPT_AUTHORITY_STALE",
+          error: "Save or reload this project before building the script.",
+        }, { status: 409 });
+      }
+      if (body.operation === "validate_generation_authority") {
+        return NextResponse.json({ success: true, authority: { projectId: authority.projectId, durationSec: authority.persisted.brief.durationSec } });
+      }
+    }
 
     let editorialContext: ScriptPlannerEditorialContext | null;
     try {

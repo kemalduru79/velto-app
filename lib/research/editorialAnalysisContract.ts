@@ -17,6 +17,7 @@ export type EditorialAnalysisProposal = {
     sourceId?: unknown;
     excerpt?: unknown;
     contextNote?: unknown;
+    spanId?: unknown;
   }>;
   links?: Array<{
     claimId?: unknown;
@@ -25,9 +26,9 @@ export type EditorialAnalysisProposal = {
   }>;
 };
 
-const MAX_ANALYSIS_CLAIMS = 80;
-const MAX_ANALYSIS_EVIDENCE = 240;
-const MAX_ANALYSIS_LINKS = 480;
+const MAX_ANALYSIS_CLAIMS = 30;
+const MAX_ANALYSIS_EVIDENCE = 90;
+const MAX_ANALYSIS_LINKS = 180;
 const VALID_STANCES = new Set<ClaimEvidenceStance>([
   "supports",
   "contradicts",
@@ -89,7 +90,7 @@ export function createValidatedEditorialAnalysis(input: {
     return { claimId, claimType, text };
   });
 
-  const evidence = rawEvidence.map((raw, index) => {
+  const normalizedEvidence = rawEvidence.map((raw, index) => {
     const evidenceId = clean(raw.evidenceId, 120) || `evidence-${index + 1}`;
     const sourceId = clean(raw.sourceId, 300);
     const source = sourceById.get(sourceId);
@@ -111,8 +112,17 @@ export function createValidatedEditorialAnalysis(input: {
       },
     };
   });
+  const evidenceByIdentity = new Map<string, (typeof normalizedEvidence)[number]>();
+  for (const item of normalizedEvidence) {
+    const previous = evidenceByIdentity.get(item.evidenceId);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(item)) {
+      throw new Error(`EDITORIAL_EVIDENCE_CONFLICT:${item.evidenceId}`);
+    }
+    evidenceByIdentity.set(item.evidenceId, item);
+  }
+  const evidence = [...evidenceByIdentity.values()];
 
-  const links = rawLinks.map((raw) => {
+  const normalizedLinks = rawLinks.map((raw) => {
     const claimId = clean(raw.claimId, 120);
     const evidenceId = clean(raw.evidenceId, 120);
     const stance = clean(raw.stance, 40) as ClaimEvidenceStance;
@@ -121,6 +131,10 @@ export function createValidatedEditorialAnalysis(input: {
     }
     return { claimId, evidenceId, stance };
   });
+  const links = [...new Map(normalizedLinks.map((link) => [
+    `${link.claimId}\0${link.evidenceId}\0${link.stance}`,
+    link,
+  ])).values()];
 
   return createResearchClaimEvidenceGraph({
     sources: [...input.sources],

@@ -30,6 +30,26 @@ assert.deepEqual(normalized.sources[0].sourceMetadata, {});
 assert.equal(JSON.stringify(normalized).includes("hidden-provider"), false);
 assert.equal(JSON.stringify(normalized).includes("hidden-request"), false);
 
+const verified = normalizeEditorialAnalysisRequest({
+  topic: "Verified provenance",
+  sources: [{
+    sourceId: "official-1",
+    adapterId: "primary",
+    mediaKind: "document",
+    title: "Official publication",
+    url: "https://agency.gov/publication",
+    sourceMetadata: {
+      provenanceVerified: true,
+      provenanceKind: "government_publication",
+      provider: "must-drop",
+    },
+  }],
+});
+assert.deepEqual(verified.sources[0].sourceMetadata, {
+  provenanceVerified: true,
+  provenanceKind: "government_publication",
+});
+
 assert.throws(
   () => normalizeEditorialAnalysisRequest({ topic: "x", sources: [] }),
   /EDITORIAL_SOURCES_REQUIRED/,
@@ -61,6 +81,9 @@ assert.match(route, /createValidatedEditorialAnalysisWithOneRepair\(/);
 assert.match(route, /recordOpenAITextEconomics\(/);
 assert.match(route, /createEditorialScriptContext\(/);
 assert.match(route, /EDITORIAL_ANALYSIS_GROUNDING_FAILED/);
+assert.match(route, /searchLane is retrieval intent only/);
+assert.match(route, /prefer coverage across those claims/);
+assert.match(route, /classificationReason/);
 for (const forbiddenMarker of [
   "providerRequestId",
   "rawProviderPayload",

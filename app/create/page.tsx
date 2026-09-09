@@ -149,14 +149,19 @@ import {
   createCreatorStrategyFingerprint,
   editCreatorScriptSection,
   getCreatorScriptDurationContractForScript,
+  isCreatorScriptCurrentForStrategy,
   normalizeCreatorScript,
   shouldSurfaceCreatorScriptOperationFailure,
   type CreatorScript,
 } from "@/lib/creator/creatorScript";
 import {
   persistCreatorScriptReplacement,
+  persistCreatorStrategyAuthority,
   getCreatorWorkflowLoadingState,
+  normalizeCreatorTopicAuthority,
   shouldRestoreCreatorBriefDraft,
+  startCreatorNewProjectLifecycle,
+  classifyCreatorProjectSaveError,
 } from "@/lib/creator/creatorWorkflowAuthority";
 import {
   buildCreatorProjectState,
@@ -3838,7 +3843,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           eventName,
           sessionId: getCreatorTelemetrySessionId(),
           stage: creatorWorkspaceStep,
-          projectState: currentProjectId ? "saved" : "draft",
+          projectState: currentProjectId && creatorPersistenceCurrentRef.current ? "saved" : "draft",
           metadata,
         }),
       });
@@ -4215,6 +4220,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const currentProjectIdRef = useRef("");
   const projectSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const projectGenerationRef = useRef(0);
+  const projectSaveAttemptRef = useRef(0);
+  const creatorPersistenceCurrentRef = useRef(false);
 
   const invalidateProjectPersistence = () => {
     projectGenerationRef.current += 1;
@@ -6637,6 +6644,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const resetStoryFlow = () => {
     invalidateProjectPersistence();
+    creatorPersistenceCurrentRef.current = false;
     clearAllVideoPolls();
     delayedVideoPollKeysRef.current.clear();
     stopDialoguePlayback();
@@ -11844,7 +11852,9 @@ const generateSceneImage = async (
           : undefined,
         childId: getProjectChildId(),
         title: persistedTitle,
-        inputPrompt: lifecycleOverrides.inputPrompt ?? input,
+        inputPrompt: isCreatorLabFlow
+          ? normalizeCreatorTopicAuthority(lifecycleOverrides.inputPrompt ?? input)
+          : lifecycleOverrides.inputPrompt ?? input,
         flowKey: activeFlowKey,
         flowTitle: selectedFlow.title,
         flowType: activeFlowKey || "storyverse",
@@ -11919,6 +11929,9 @@ const generateSceneImage = async (
     showManualMessage = false,
     lifecycleOverrides: Parameters<typeof executePersistProject>[1] = {},
   ) => {
+    const saveAttempt = projectSaveAttemptRef.current + 1;
+    projectSaveAttemptRef.current = saveAttempt;
+    creatorPersistenceCurrentRef.current = false;
     const sourceScenes = lifecycleOverrides.sourceScenes ?? scenes;
     const mentorResultForSave = Object.prototype.hasOwnProperty.call(
       lifecycleOverrides,
@@ -11969,7 +11982,7 @@ const generateSceneImage = async (
     const capturedCreatorProjectState = isCreatorLabFlow
       ? buildCreatorProjectState({
           brief: {
-            topic: lifecycleOverrides.inputPrompt ?? input,
+            topic: normalizeCreatorTopicAuthority(lifecycleOverrides.inputPrompt ?? input),
             language,
             country: creatorCountry,
             ageGroup: creatorAgeGroup,
@@ -11982,6 +11995,7 @@ const generateSceneImage = async (
             mentorResult: persistedMentorResult,
             selectedDirectionId: creatorSelectedStrategyDirectionId,
             selectedHook: creatorSelectedHookPattern,
+            strategyFingerprint: creatorStrategyFingerprint,
             script: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "creatorScript")
               ? lifecycleOverrides.creatorScript ?? null
               : creatorScript,
@@ -12034,7 +12048,15 @@ const generateSceneImage = async (
         throw saveError;
       });
     projectSaveQueueRef.current = queuedSave;
-    await queuedSave;
+    try {
+      await queuedSave;
+      if (saveAttempt === projectSaveAttemptRef.current && binding.generation === projectGenerationRef.current) {
+        creatorPersistenceCurrentRef.current = true;
+      }
+    } catch (saveError) {
+      if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
+      throw saveError;
+    }
   };
 
   const saveProject = async () => {
@@ -12084,8 +12106,10 @@ const generateSceneImage = async (
 
     const previousProjectId = currentProjectIdRef.current;
     const previousUpdatedAt = projectUpdatedAtRef.current;
+    const previousPersistenceCurrent = creatorPersistenceCurrentRef.current;
     let loadSucceeded = false;
     const loadGeneration = invalidateProjectPersistence();
+    creatorPersistenceCurrentRef.current = false;
     setCreatorScriptGenerationLoading(false);
     setCreatorSceneBuildLoading(false);
     isHydratingRef.current = true;
@@ -12572,6 +12596,7 @@ const generateSceneImage = async (
       });
 
       loadSucceeded = true;
+      creatorPersistenceCurrentRef.current = true;
       setSaveMessage(ui.projectLoaded);
 
     } catch (e: any) {
@@ -12586,6 +12611,7 @@ const generateSceneImage = async (
         invalidateProjectPersistence();
         currentProjectIdRef.current = previousProjectId;
         projectUpdatedAtRef.current = previousUpdatedAt;
+        creatorPersistenceCurrentRef.current = previousPersistenceCurrent;
         isHydratingRef.current = false;
         skipAutosaveRef.current = false;
       }
@@ -13309,7 +13335,7 @@ const generateSceneImage = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           country: creatorCountry,
           countryLabel: getCreatorCountryLabel(),
           language,
@@ -13387,7 +13413,7 @@ const generateSceneImage = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           country: getCreatorCountryLabel(),
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
@@ -13804,7 +13830,7 @@ const generateSceneImage = async (
 
   const creatorStrategyFingerprint = useMemo(
     () => createCreatorStrategyFingerprint({
-      topic: input,
+      topic: normalizeCreatorTopicAuthority(input),
       selectedDirectionId: creatorSelectedStrategyDirectionId,
       selectedHook: creatorSelectedHookPattern,
       language,
@@ -13836,6 +13862,12 @@ const generateSceneImage = async (
       creatorMentorResult,
     ],
   );
+  const creatorScriptIsCurrent = isCreatorScriptCurrentForStrategy({
+    script: creatorScript,
+    strategyFingerprint: creatorStrategyFingerprint,
+    targetDurationSec: creatorVideoDurationSec,
+    language,
+  });
 
   const applyCreatorProfessionalScriptPlan = async ({
     productionPackage,
@@ -14276,7 +14308,7 @@ const generateSceneImage = async (
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           country: getCreatorCountryLabel(),
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
@@ -14381,12 +14413,15 @@ const generateSceneImage = async (
     });
 
     setCreatorScriptGenerationLoading(true);
+    suspendAutosaveRef.current = true;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
     setError("");
     setSaveMessage("");
 
     try {
-      const accessToken = await getAccessTokenOrThrow();
-      if (!operationIsActive()) return;
       const persistedStrategyResult: CreatorMentorResult = {
         ...creatorMentorResult,
         strategySelection: {
@@ -14394,9 +14429,34 @@ const generateSceneImage = async (
           hook: creatorSelectedHookPattern,
         },
       };
+      const strategyAuthorityPersisted = await persistCreatorStrategyAuthority({
+        persist: () => persistProject(false, { creatorMentorResult: persistedStrategyResult }),
+        advanceAuthority: () => {
+          const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
+            projectId: currentProjectIdRef.current || currentProjectId,
+            generation: projectGenerationRef.current,
+          });
+          if (!advancedOrigin) return false;
+          operationOrigin = advancedOrigin;
+          return true;
+        },
+        isActive: operationIsActive,
+      });
+      if (!strategyAuthorityPersisted) return;
+      const accessToken = await getAccessTokenOrThrow();
+      if (!operationIsActive()) return;
+      console.info("CREATOR_SCRIPT_REQUEST_AUTHORITY", {
+        projectId: operationOrigin.projectId,
+        operationGeneration: operationOrigin.generation,
+        displayedDurationSec: creatorVideoDurationSec,
+        requestDurationSec: creatorVideoDurationSec,
+        strategyFingerprintPrefix: creatorStrategyFingerprint.slice(0, 32),
+        creatorScriptPresent: Boolean(creatorScript),
+        creatorScriptStatus: creatorScriptIsCurrent ? "current" : creatorScript ? "historic" : "none",
+      });
       const result = await runCreatorEditorialScriptPipeline({
         accessToken,
-        topic: input,
+        topic: normalizeCreatorTopicAuthority(input),
         creatorProfile,
         scriptPlanRequest: {
           operation: "generate_full_script",
@@ -14405,6 +14465,10 @@ const generateSceneImage = async (
           format: creatorFormat,
           durationSec: creatorVideoDurationSec,
           language,
+          projectId: operationOrigin.projectId,
+          expectedProjectUpdatedAt: projectUpdatedAtRef.current,
+          selectedDirectionId: creatorSelectedStrategyDirectionId,
+          selectedHook: creatorSelectedHookPattern,
           strategyFingerprint: creatorStrategyFingerprint,
           strategy: {
             selectedDirection: creatorSelectedStrategyDirection || creatorMentorRecommendedIdea,
@@ -14474,6 +14538,7 @@ const generateSceneImage = async (
       if (!operationIsActive()) return;
       setError(error instanceof Error ? error.message : uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı.");
     } finally {
+      suspendAutosaveRef.current = false;
       if (operationIsActive()) setCreatorScriptGenerationLoading(false);
     }
   };
@@ -14560,7 +14625,7 @@ const generateSceneImage = async (
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           country: getCreatorCountryLabel(),
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
@@ -14599,7 +14664,7 @@ const generateSceneImage = async (
             ) as CreatorProductionScene[],
           },
           {
-            topic: input,
+            topic: normalizeCreatorTopicAuthority(input),
             contentType: getCreatorContentTypeLabel(),
             format: getCreatorFormatLabel(),
             language,
@@ -15908,7 +15973,7 @@ const generateSceneImage = async (
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           country: getCreatorCountryLabel(),
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
@@ -16250,7 +16315,7 @@ const generateSceneImage = async (
             ? refinedCreatorScenes
             : creatorProductionPackage.scenes;
         const dialogueRequested = creatorBriefRequestsDialogue({
-          topic: input,
+          topic: normalizeCreatorTopicAuthority(input),
           contentType: getCreatorContentTypeLabel(),
           format: getCreatorFormatLabel(),
         });
@@ -17267,7 +17332,7 @@ const generateSceneImage = async (
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          topic: input.trim() || title || creatorProductionPackage?.title || "Velto Studio video",
+          topic: normalizeCreatorTopicAuthority(input) || title || creatorProductionPackage?.title || "Velto Studio video",
           contentType: getCreatorContentTypeLabel(),
           format: creatorFormat,
           language,
@@ -18095,9 +18160,16 @@ const generateSceneImage = async (
         setSaveMessage(ui.autoSaved);
       } catch (saveError) {
         if (autosaveGeneration !== projectGenerationRef.current) return;
+        const saveErrorCategory = classifyCreatorProjectSaveError(saveError);
+        console.error("CREATOR_PROJECT_AUTOSAVE_FAILED", {
+          projectId: currentProjectIdRef.current || currentProjectId,
+          generation: autosaveGeneration,
+          expectedUpdatedAtPresent: Boolean(projectUpdatedAtRef.current),
+          category: saveErrorCategory,
+        });
         setSaveMessage("");
         setError(
-          saveError instanceof Error && saveError.message.includes("changed")
+          saveErrorCategory === "cas_conflict"
             ? (uiLanguage === "en" ? "This project changed elsewhere. Reload before retrying; your local work is still here." : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.")
             : "Otomatik kaydetme sırasında hata oluştu.",
         );
@@ -30918,7 +30990,7 @@ const generateSceneImage = async (
               </ol>
             </section>
 
-            {(!creatorScript || creatorScript.strategyFingerprint !== creatorStrategyFingerprint) && (
+            {!creatorScriptIsCurrent && (
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
                 <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
@@ -30941,7 +31013,7 @@ const generateSceneImage = async (
             </div>
             )}
 
-            {creatorScript && (
+            {creatorScriptIsCurrent && creatorScript && (
               <CreatorScriptReview
                 script={creatorScript}
                 currentStrategyFingerprint={creatorStrategyFingerprint}
@@ -37306,8 +37378,11 @@ export default function CreatePage() {
     <CreateWorkspace
       key={workspaceSession}
       onStartNewProject={() => {
-        window.history.replaceState(null, "", "/create?flow=creator_lab");
-        setWorkspaceSession((current) => current + 1);
+        startCreatorNewProjectLifecycle({
+          clearBriefDraft: () => window.localStorage.removeItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY),
+          clearProjectUrl: () => window.history.replaceState(null, "", "/create?flow=creator_lab"),
+          remountWorkspace: () => setWorkspaceSession((current) => current + 1),
+        });
       }}
     />
   );

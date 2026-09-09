@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { parseCreatorProfile } from "@/lib/creator/creatorProfile";
 import { recordOpenAITextEconomics } from "@/lib/economics";
-import { createValidatedEditorialAnalysisWithOneRepair } from "@/lib/research/editorialGroundingRepair";
+import {
+  createEditorialGroundingCandidateSpans,
+  createValidatedEditorialAnalysisWithOneRepair,
+  MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+} from "@/lib/research/editorialGroundingRepair";
 import { normalizeEditorialAnalysisRequest } from "@/lib/research/editorialAnalysisRequest";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
-import { assessResearchSource } from "@/lib/research/sourceAssessment";
+import {
+  assessResearchSource,
+  classifyResearchSourceDirectness,
+} from "@/lib/research/sourceAssessment";
 import { createResearchTopicReadiness } from "@/lib/research/topicEvidenceReadiness";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
@@ -32,14 +39,6 @@ function parseModelJson(raw: string) {
       .replace(/,\s*([}\]])/g, "$1");
     return JSON.parse(repaired) as Record<string, unknown>;
   }
-}
-
-function directnessForSource(adapterId: string) {
-  if (adapterId === "primary") return "primary" as const;
-  if (adapterId === "web" || adapterId === "news" || adapterId === "academic") {
-    return "secondary" as const;
-  }
-  return "unknown" as const;
 }
 
 export async function POST(request: Request) {
@@ -76,22 +75,31 @@ export async function POST(request: Request) {
     }
 
     const profile = parseCreatorProfile(normalized.creatorProfile);
-    const sourceMaterial = normalized.sources.map((source) => ({
-      sourceId: source.sourceId,
-      sourceType: source.adapterId,
-      title: source.title,
-      publisher: source.publisher,
-      publishedAt: source.publishedAt,
-      summary: source.summary,
-    }));
+    const sourceMaterial = normalized.sources.map((source) => {
+      const classification = classifyResearchSourceDirectness(source);
+      return {
+        sourceId: source.sourceId,
+        searchLane: source.adapterId,
+        sourceKind: source.mediaKind,
+        directness: classification.directness,
+        classificationReason: classification.reason,
+        title: source.title,
+        publisher: source.publisher,
+        publishedAt: source.publishedAt,
+        summary: source.summary,
+      };
+    });
+    const candidateSpans = createEditorialGroundingCandidateSpans(normalized.sources)
+      .slice(0, MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST);
+    const eligibleSourceIds = new Set(candidateSpans.map((span) => span.sourceId));
     const systemPrompt = [
       "You are the evidence-aware editorial analyst for CreatorLab, an adult 18+ documentary and creator workflow.",
       "Use only the supplied research material. Never invent facts, evidence, quotes, dates, statistics, source ids, or source text.",
       "Classify every claim using exactly one allowed epistemic claim type.",
       "A metaphysical proposition remains METAPHYSICAL_CLAIM unless the supplied material supports a different explicit classification; do not silently convert belief into fact.",
       "FORECAST, HYPOTHESIS, THEORY, EXPERT_OPINION and EDITORIAL_INFERENCE must retain their uncertainty.",
-      "Evidence excerpts must be exact contiguous text copied from the cited source summary. Do not paraphrase inside the excerpt field.",
-      "If a source has no usable summary text, do not create evidence from that source.",
+      "Evidence must select an exact supplied candidate spanId owned by its sourceId. Never write evidence excerpt text.",
+      "If a source has no supplied candidate span, do not create evidence from that source.",
       "Use contradicts only for material counter-evidence or alternative findings, not for rhetorical disagreement.",
       "Return strict JSON only with no markdown or commentary.",
     ].join(" ");
@@ -110,7 +118,8 @@ export async function POST(request: Request) {
         "THOUGHT_EXPERIMENT",
       ],
       editorialConstitution: profile.editorialConstitution,
-      sources: sourceMaterial,
+      sources: sourceMaterial.filter((source) => eligibleSourceIds.has(source.sourceId)),
+      candidateSpans,
       requiredJsonShape: {
         claims: [
           { claimId: "claim-1", claimType: "FACT", text: "atomic claim" },
@@ -119,7 +128,7 @@ export async function POST(request: Request) {
           {
             evidenceId: "evidence-1",
             sourceId: "exact supplied sourceId",
-            excerpt: "exact contiguous text copied from that source summary",
+            spanId: "exact supplied spanId owned by sourceId",
             contextNote: "brief context or limitation",
           },
         ],
@@ -130,7 +139,10 @@ export async function POST(request: Request) {
       rules: [
         "Prefer atomic claims that can be independently supported or reviewed.",
         "Do not create more than 30 claims.",
-        "Do not create evidence without a real supplied sourceId and grounded excerpt.",
+        "Do not create evidence without an exact supplied sourceId and its exact candidate spanId.",
+        "Use PRIMARY_SOURCE_CLAIM for a claim where original or first-party evidence is preferred or required for full evidence readiness; secondary traceable evidence may support it while leaving primary-source coverage for human review.",
+        "When primary sources are available for distinct claims, prefer coverage across those claims instead of repeatedly supporting only one claim.",
+        "A primary searchLane is retrieval intent only; it does not override the supplied directness classification.",
         "Include material counter-evidence when the supplied sources contain it.",
         "Do not use certainty language to upgrade a forecast, theory, hypothesis, opinion, inference, or metaphysical claim.",
       ],
@@ -144,6 +156,23 @@ export async function POST(request: Request) {
         { role: "system", content: systemPrompt },
         { role: "user", content: JSON.stringify(userPrompt) },
       ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "creator_editorial_analysis",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
+              evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
+              links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
+            },
+            required: ["claims", "evidence", "links"],
+          },
+        },
+      },
       temperature: 0.2,
     });
     await recordOpenAITextEconomics({
@@ -156,15 +185,18 @@ export async function POST(request: Request) {
 
     const proposal = parseModelJson(response.output_text || "");
     let graph;
+    let groundingRepairAttempted = false;
     try {
       graph = await createValidatedEditorialAnalysisWithOneRepair({
         sources: normalized.sources,
         proposal,
         repair: async ({
+          diagnosticCategory,
           invalidEvidence,
           candidateSpans,
           failingSourceId,
         }) => {
+          groundingRepairAttempted = true;
           const repairResponse = await client.responses.create({
             model,
             input: [
@@ -183,12 +215,28 @@ export async function POST(request: Request) {
               {
                 role: "user",
                 content: JSON.stringify({
+                  diagnosticCategory,
                   failingSourceId,
                   invalidEvidence,
                   candidateSpans,
                 }),
               },
             ],
+            text: {
+              format: {
+                type: "json_schema",
+                name: "creator_editorial_grounding_repair",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    repairs: { type: "array", minItems: 1, maxItems: invalidEvidence.length, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string", enum: invalidEvidence.map((item) => item.evidenceId) }, spanId: { type: "string", enum: candidateSpans.map((span) => span.spanId) } }, required: ["evidenceId", "spanId"] } },
+                  },
+                  required: ["repairs"],
+                },
+              },
+            },
             temperature: 0,
           });
           await recordOpenAITextEconomics({
@@ -203,7 +251,11 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       const diagnostic = error instanceof Error ? error.message : "Editorial analysis grounding failed.";
-      console.error("CREATOR_EDITORIAL_GROUNDING_FAILED", { diagnostic });
+      console.error("CREATOR_EDITORIAL_GROUNDING_FAILED", {
+        diagnostic,
+        repairAttempted: groundingRepairAttempted,
+        invalidEvidenceType: diagnostic.split(":", 1)[0],
+      });
       return NextResponse.json(
         {
           success: false,
@@ -216,9 +268,44 @@ export async function POST(request: Request) {
     }
 
     const sourceAssessments = graph.sources.map((source) =>
-      assessResearchSource(source, directnessForSource(source.adapterId)),
+      assessResearchSource(
+        source,
+        classifyResearchSourceDirectness(source).directness,
+      ),
     );
     const readiness = createResearchTopicReadiness({ graph, sourceAssessments });
+    const assessmentBySourceId = new Map(
+      sourceAssessments.map((assessment) => [assessment.sourceId, assessment]),
+    );
+    const primaryEvidenceCount = graph.evidence.filter((evidence) =>
+      assessmentBySourceId.get(evidence.sourceId)?.directness === "primary"
+    ).length;
+    const primaryCoveredClaimIdSet = new Set(readiness.primarySourceCoveredClaimIds);
+    console.info("CREATOR_EDITORIAL_PRIMARY_SOURCE_COVERAGE", {
+      evidenceCount: graph.evidence.length,
+      primaryEvidenceCount,
+      nonPrimaryEvidenceCount: graph.evidence.length - primaryEvidenceCount,
+      primaryCoverageRatio: readiness.primarySourceRequiredClaimIds.length === 0
+        ? 1
+        : readiness.primarySourceCoveredClaimIds.length /
+          readiness.primarySourceRequiredClaimIds.length,
+      primaryRequiredClaimIds: readiness.primarySourceRequiredClaimIds,
+      primaryCoveredClaimIds: readiness.primarySourceCoveredClaimIds,
+      primaryMissingClaimIds: readiness.primarySourceRequiredClaimIds.filter(
+        (claimId) => !primaryCoveredClaimIdSet.has(claimId),
+      ),
+      sourceClassifications: graph.sources.map((source) => ({
+        sourceId: source.sourceId,
+        searchLane: source.adapterId,
+        sourceKind: source.mediaKind,
+        directness: classifyResearchSourceDirectness(source).directness,
+        classificationReason: classifyResearchSourceDirectness(source).reason,
+      })),
+      threshold: "all_primary_source_claims_require_primary_support",
+      result: readiness.reviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED")
+        ? "review_required"
+        : "satisfied",
+    });
     const scriptContext = createEditorialScriptContext({
       profile,
       graph,
@@ -231,6 +318,7 @@ export async function POST(request: Request) {
       sourceAssessments,
       readiness,
       scriptContext,
+      groundingRepairAttempted,
     });
   } catch (error) {
     console.error("CREATOR_EDITORIAL_ANALYSIS_FAILED", {

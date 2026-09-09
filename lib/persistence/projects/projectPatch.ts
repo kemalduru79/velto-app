@@ -22,6 +22,27 @@ export function projectPayload(input: SaveVeltoProjectInput, includeFlowType = t
   return payload;
 }
 
+export function creatorProjectInsertPayload(input: SaveVeltoProjectInput) {
+  if (input.flowType !== "creator_lab" || input.projectId) return projectPayload(input);
+  return projectPayload({
+    ...input,
+    inputPrompt: input.inputPrompt ?? "",
+    storyPremise: input.storyPremise ?? "",
+    language: input.language ?? "en",
+    visualBible: input.visualBible ?? {},
+    characters: input.characters ?? [],
+    scenes: input.scenes ?? [],
+  });
+}
+
+export function creatorProjectUpdatePayload(input: SaveVeltoProjectInput) {
+  const payload = projectPayload(input, false);
+  if (input.flowType === "creator_lab" && payload.visual_bible === null) {
+    delete payload.visual_bible;
+  }
+  return payload;
+}
+
 export function assertExistingProjectFlow(
   persistedFlowType: "creator_lab" | "storyverse",
   requestedFlowType: "creator_lab" | "storyverse",

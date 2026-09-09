@@ -51,6 +51,8 @@ const context = createEditorialScriptContext({
 assert.equal(context.version, "0.10H-2E");
 assert.equal(context.readiness.status, "ready");
 assert.equal(context.readiness.editorialReadinessScore, 100);
+assert.deepEqual(context.readiness.primarySourceRequiredClaimIds, ["c1"]);
+assert.deepEqual(context.readiness.primarySourceCoveredClaimIds, ["c1"]);
 assert.match(context.editorialConstitution, /Editorial mission:/);
 assert.match(context.editorialConstitution, /do not overclaim/);
 assert.deepEqual(context.claims[0].supportingEvidenceIds, ["e1"]);
@@ -77,6 +79,9 @@ assert.throws(
 const noAssessment = createEditorialScriptContext({ profile, graph, sourceAssessments: [] });
 assert.equal(noAssessment.sources[0].directness, "unknown");
 assert.equal(noAssessment.sources[0].reviewStatus, "review");
-assert.equal(noAssessment.readiness.status, "blocked");
+assert.equal(noAssessment.readiness.status, "review");
+assert.ok(noAssessment.readiness.reviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED"));
+assert.deepEqual(noAssessment.readiness.primarySourceRequiredClaimIds, ["c1"]);
+assert.deepEqual(noAssessment.readiness.primarySourceCoveredClaimIds, []);
 
 console.log("Stage 0.10H-2E editorial script context tests passed.");

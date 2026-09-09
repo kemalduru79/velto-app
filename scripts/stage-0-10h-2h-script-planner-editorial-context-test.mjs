@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  createScriptPlannerGroundingDiagnostics,
   createScriptPlannerEvidenceGraph,
   normalizeScriptPlannerEditorialContext,
 } from "../lib/research/scriptPlannerEditorialContext.ts";
@@ -16,6 +17,8 @@ const rawContext = {
     status: "review",
     editorialReadinessScore: 74,
     reviewReasons: ["MATERIAL_COUNTER_EVIDENCE_REVIEW"],
+    primarySourceRequiredClaimIds: [],
+    primarySourceCoveredClaimIds: [],
   },
   claims: [
     {
@@ -55,6 +58,8 @@ const rawContext = {
       publishedAt: "2026-01-01",
       directness: "primary",
       reviewStatus: "usable",
+      searchLane: "primary",
+      sourceKind: "document",
       provider: "hidden-provider",
     },
     {
@@ -66,6 +71,8 @@ const rawContext = {
       publishedAt: "2026-01-02",
       directness: "secondary",
       reviewStatus: "usable",
+      searchLane: "web",
+      sourceKind: "article",
     },
   ],
   providerRequestId: "must-drop-root",
@@ -80,12 +87,85 @@ assert.equal(normalized.evidence.length, 2);
 assert.equal(normalized.sources.length, 2);
 assert.equal(JSON.stringify(normalized).includes("hidden-provider"), false);
 assert.equal(JSON.stringify(normalized).includes("must-drop"), false);
+assert.deepEqual(createScriptPlannerGroundingDiagnostics(normalized), {
+  groundingStatus: "review",
+  evidenceCount: 2,
+  claimCount: 1,
+  canonicalSpanCount: 2,
+  allowedClaimIdCount: 1,
+  missingClaimIds: [],
+  unknownClaimIds: [],
+  duplicateEvidenceIdentities: [],
+  duplicateSpanIdentities: [],
+  blockingReasons: ["MATERIAL_COUNTER_EVIDENCE_REVIEW"],
+  primaryEvidenceCount: 1,
+  nonPrimaryEvidenceCount: 1,
+  primaryCoverageRatio: 1,
+  primaryRequiredClaimIds: [],
+  primaryCoveredClaimIds: [],
+  primaryMissingClaimIds: [],
+  sourceClassificationCounts: { primary: 1, secondary: 1, tertiary: 0, unknown: 0 },
+  sourceClassifications: [
+    { sourceId: "source-1", searchLane: "primary", sourceKind: "document", directness: "primary", classificationReason: "verified_first_party_provenance" },
+    { sourceId: "source-2", searchLane: "web", sourceKind: "article", directness: "secondary", classificationReason: "third_party_commentary" },
+  ],
+  primaryCoverageRule: "all_primary_source_claims_require_primary_support",
+});
+
+const blockedContext = normalizeScriptPlannerEditorialContext({
+  ...rawContext,
+  readiness: {
+    status: "blocked",
+    editorialReadinessScore: 55,
+    reviewReasons: ["CLAIMS_REQUIRE_TRACEABLE_EVIDENCE"],
+  },
+  claims: [{
+    ...rawContext.claims[0],
+    supportingEvidenceIds: [],
+    counterEvidenceIds: [],
+  }],
+});
+assert.ok(blockedContext);
+assert.deepEqual(
+  createScriptPlannerGroundingDiagnostics(blockedContext).missingClaimIds,
+  ["claim-forecast"],
+);
+
+const primaryReviewContext = normalizeScriptPlannerEditorialContext({
+  ...rawContext,
+  readiness: {
+    status: "review",
+    editorialReadinessScore: 85,
+    reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+    primarySourceRequiredClaimIds: ["claim-forecast"],
+    primarySourceCoveredClaimIds: [],
+  },
+  claims: [{
+    ...rawContext.claims[0],
+    claimType: "PRIMARY_SOURCE_CLAIM",
+    supportingEvidenceIds: ["evidence-counter"],
+    counterEvidenceIds: [],
+  }],
+});
+assert.ok(primaryReviewContext);
+assert.equal(primaryReviewContext.readiness.status, "review");
+assert.deepEqual(primaryReviewContext.readiness.primarySourceRequiredClaimIds, ["claim-forecast"]);
+assert.deepEqual(primaryReviewContext.readiness.primarySourceCoveredClaimIds, []);
+const primaryReviewDiagnostics = createScriptPlannerGroundingDiagnostics(primaryReviewContext);
+assert.deepEqual(primaryReviewDiagnostics.primaryRequiredClaimIds, ["claim-forecast"]);
+assert.deepEqual(primaryReviewDiagnostics.primaryCoveredClaimIds, []);
+assert.deepEqual(primaryReviewDiagnostics.primaryMissingClaimIds, ["claim-forecast"]);
+assert.equal(primaryReviewDiagnostics.primaryCoverageRatio, 0);
 
 assert.equal(normalizeScriptPlannerEditorialContext(null), null);
 assert.throws(
   () => normalizeScriptPlannerEditorialContext({ ...rawContext, version: "wrong" }),
   /EDITORIAL_CONTEXT_VERSION_INVALID/,
 );
+
+assert.match(route, /CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED/);
+assert.match(route, /scriptProviderDispatched: false/);
+assert.match(route, /code: "CREATOR_SCRIPT_GROUNDING_BLOCKED"/);
 assert.throws(
   () => normalizeScriptPlannerEditorialContext({
     ...rawContext,

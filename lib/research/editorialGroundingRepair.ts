@@ -20,6 +20,7 @@ export type EditorialGroundingRepairSelection = {
 };
 
 export type EditorialGroundingRepairInput = {
+  diagnosticCategory: string;
   invalidEvidence: Array<{
     evidenceId: string;
     sourceId: string;
@@ -139,8 +140,9 @@ function discoverInvalidEvidence(input: {
     const evidenceId = text(item.evidenceId);
     const sourceId = text(item.sourceId);
     const excerpt = text(item.excerpt);
+    const spanId = text(item.spanId);
     const source = sourceById.get(sourceId);
-    if (!evidenceId || !source || !excerpt || (source.summary || "").includes(excerpt)) {
+    if (!evidenceId || !source || (!spanId && excerpt && (source.summary || "").includes(excerpt))) {
       return [];
     }
     const linkedClaims = links.flatMap((link) => {
@@ -164,6 +166,36 @@ function discoverInvalidEvidence(input: {
       linkedClaims,
     }];
   });
+}
+
+export function installCanonicalEditorialEvidenceSpans(input: {
+  proposal: EditorialAnalysisProposal;
+  candidateSpans: EditorialGroundingCandidateSpan[];
+}): EditorialAnalysisProposal {
+  const spanBySourceAndId = new Map(
+    input.candidateSpans.map((span) => [`${span.sourceId}\0${span.spanId}`, span]),
+  );
+  const spanById = new Map(input.candidateSpans.map((span) => [span.spanId, span]));
+  return {
+    ...input.proposal,
+    evidence: (Array.isArray(input.proposal.evidence) ? input.proposal.evidence : []).map((item, index) => {
+      const evidenceId = text(item.evidenceId) || `evidence-${index + 1}`;
+      const sourceId = text(item.sourceId);
+      const spanId = text(item.spanId);
+      if (!spanId) throw new Error(`EDITORIAL_EVIDENCE_SPAN_REQUIRED:${evidenceId}`);
+      const span = spanBySourceAndId.get(`${sourceId}\0${spanId}`);
+      if (!span && spanById.has(spanId)) {
+        throw new Error(`EDITORIAL_EVIDENCE_SPAN_SOURCE_MISMATCH:${evidenceId}`);
+      }
+      if (!span) throw new Error(`EDITORIAL_EVIDENCE_SPAN_INVALID:${evidenceId}`);
+      return {
+        evidenceId,
+        sourceId,
+        excerpt: span.text,
+        contextNote: item.contextNote,
+      };
+    }),
+  };
 }
 
 function parseRepairSelection(value: unknown): EditorialGroundingRepairSelection {
@@ -244,14 +276,37 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
   proposal: EditorialAnalysisProposal;
   repair: (repairInput: EditorialGroundingRepairInput) => Promise<unknown>;
 }) {
+  const proposalUsesSpanSelections = (Array.isArray(input.proposal.evidence)
+    ? input.proposal.evidence
+    : []).some((item) => text(item.spanId));
+  const initialCandidateSpans = proposalUsesSpanSelections
+    ? createEditorialGroundingCandidateSpans(input.sources)
+    : [];
   try {
+    if (proposalUsesSpanSelections) {
+      const knownSourceIds = new Set(input.sources.map((source) => source.sourceId));
+      const unknownEvidence = (input.proposal.evidence || []).find((item) =>
+        !knownSourceIds.has(text(item.sourceId))
+      );
+      if (unknownEvidence) {
+        throw new Error(`EDITORIAL_EVIDENCE_SOURCE_MISSING:${text(unknownEvidence.evidenceId)}`);
+      }
+    }
     return createValidatedEditorialAnalysis({
       sources: input.sources,
-      proposal: input.proposal,
+      proposal: proposalUsesSpanSelections
+        ? installCanonicalEditorialEvidenceSpans({
+            proposal: input.proposal,
+            candidateSpans: initialCandidateSpans,
+          })
+        : input.proposal,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!message.startsWith(UNGROUNDED_EXCERPT_PREFIX)) throw error;
+    const recoverable = message.startsWith(UNGROUNDED_EXCERPT_PREFIX)
+      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_REQUIRED:")
+      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_INVALID:");
+    if (!recoverable) throw error;
 
     const invalidEvidence = discoverInvalidEvidence(input);
     const invalidSourceIds = new Set(invalidEvidence.map((item) => item.sourceId));
@@ -263,6 +318,7 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
       throw new Error("EDITORIAL_GROUNDING_REPAIR_CANDIDATE_LIMIT_EXCEEDED");
     }
     const selection = await input.repair({
+      diagnosticCategory: message.split(":", 1)[0],
       invalidEvidence,
       candidateSpans,
       failingSourceId: message.slice(UNGROUNDED_EXCERPT_PREFIX.length),

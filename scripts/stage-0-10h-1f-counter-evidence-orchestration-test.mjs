@@ -11,6 +11,16 @@ assert.ok(fact.lanes.some((lane) => lane.purpose === "primary_source"));
 assert.ok(fact.lanes.some((lane) => lane.purpose === "counter_evidence"));
 assert.ok(fact.lanes.length <= 4);
 
+const unclassified = createResearchOrchestrationPlan({
+  subject: "the future of optional work",
+});
+assert.equal(unclassified.lanes.length, 2);
+assert.deepEqual(
+  unclassified.lanes.map((lane) => lane.purpose),
+  ["baseline", "counter_evidence"],
+);
+assert.equal(unclassified.lanes[0].input.category, "web");
+
 const researchFinding = createResearchOrchestrationPlan({
   subject: "digital media use and parental stress",
   claimType: "RESEARCH_FINDING",

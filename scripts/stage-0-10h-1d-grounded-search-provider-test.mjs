@@ -84,6 +84,30 @@ const primary = adaptExaSearchResponse({
 }, "primary");
 assert.equal(primary.sources[0].adapterId, "primary");
 assert.equal(primary.sources[0].mediaKind, "webpage");
+assert.equal(primary.sources[0].sourceMetadata.provenanceVerified, true);
+assert.equal(primary.sources[0].sourceMetadata.provenanceKind, "government_publication");
+
+const commentaryFromPrimaryLane = adaptExaSearchResponse({
+  results: [{
+    id: "commentary-1",
+    title: "Commentary about an official statement",
+    url: "https://magazine.example.com/commentary",
+    text: "A third party discusses the statement.",
+  }],
+}, "primary");
+assert.equal(commentaryFromPrimaryLane.sources[0].sourceMetadata.provenanceVerified, false);
+assert.equal(commentaryFromPrimaryLane.sources[0].sourceMetadata.provenanceKind, null);
+
+const originalPaperFromPrimaryLane = adaptExaSearchResponse({
+  results: [{
+    id: "paper-1",
+    title: "Original research paper",
+    url: "https://doi.org/10.1000/example",
+    text: "Original research findings.",
+  }],
+}, "primary");
+assert.equal(originalPaperFromPrimaryLane.sources[0].sourceMetadata.provenanceVerified, true);
+assert.equal(originalPaperFromPrimaryLane.sources[0].sourceMetadata.provenanceKind, "original_academic_paper");
 
 const serverProvider = readFileSync(
   new URL("../lib/providers/research/exa.server.ts", import.meta.url),

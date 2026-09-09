@@ -55,6 +55,27 @@ function publisherFromUrl(rawUrl: string) {
   }
 }
 
+function verifiedProvenanceFromUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const path = url.pathname.toLowerCase();
+    const governmentHost = host.endsWith(".gov") || /\.gov\.[a-z]{2}$/u.test(host);
+    if (governmentHost) {
+      return { provenanceVerified: true, provenanceKind: "government_publication" };
+    }
+    const originalAcademicRecord =
+      host === "doi.org" ||
+      (host === "arxiv.org" && /^\/(abs|pdf)\//u.test(path));
+    if (originalAcademicRecord) {
+      return { provenanceVerified: true, provenanceKind: "original_academic_paper" };
+    }
+  } catch {
+    // Invalid URLs are rejected by the canonical source contract downstream.
+  }
+  return { provenanceVerified: false, provenanceKind: null };
+}
+
 function summaryFromItem(item: ExaSearchResultItem) {
   const directSummary = clean(item.summary, 2_500);
   if (directSummary) return directSummary;
@@ -86,6 +107,7 @@ function adaptItem(
   const highlights = Array.isArray(item.highlights)
     ? item.highlights.map((value) => clean(value, 1_200)).filter(Boolean)
     : [];
+  const verifiedProvenance = verifiedProvenanceFromUrl(url);
 
   return {
     sourceId: createResearchSourceId(adapterId, externalId),
@@ -106,6 +128,7 @@ function adaptItem(
       provider: "exa",
       resultId: rawExternalId || null,
       highlightCount: highlights.length,
+      ...verifiedProvenance,
     },
   };
 }

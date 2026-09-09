@@ -157,9 +157,7 @@ export function createResearchTopicReadiness(input: {
     reviewReasons.push("SOURCE_PROVENANCE_REVIEW");
   }
 
-  const blocked =
-    unsupportedClaimIds.length > 0 ||
-    primarySourceCoveredClaimIds.length < primarySourceRequiredClaimIds.length;
+  const blocked = unsupportedClaimIds.length > 0;
   const status: ResearchTopicReadinessStatus = blocked
     ? "blocked"
     : reviewReasons.length > 0 || editorialReadinessScore < 80
