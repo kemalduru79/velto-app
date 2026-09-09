@@ -172,6 +172,12 @@ const presentationOnly = new Set([
   "scripts/stage-0-13c-a-audio-timeline-test.mjs",
   "lib/creator/finalProductionSignature.ts",
   "scripts/stage-0-13c-b-audio-timeline-persistence-test.mjs",
+  "next.config.ts",
+  "app/api/creator-audio-assets/",
+  "lib/creator/audioAssetResolver.server.ts",
+  "lib/creator/audioAssets.ts",
+  "lib/creator/audioProbe.server.ts",
+  "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

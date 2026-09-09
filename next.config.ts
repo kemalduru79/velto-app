@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
     ];
   },
   outputFileTracingIncludes: {
+    "/api/creator-audio-assets": [
+      "./node_modules/ffprobe-static/index.js",
+      "./node_modules/ffprobe-static/package.json",
+      ffprobeExecutable,
+    ],
     "/api/store-dialogue-audio": ["./node_modules/ffmpeg-static/**/*"],
     "/api/export-movie": ["./node_modules/ffmpeg-static/**/*"],
     "/api/stitch-video": [
