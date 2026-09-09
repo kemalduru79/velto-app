@@ -148,10 +148,16 @@ import {
   canBuildScenesFromCreatorScript,
   createCreatorStrategyFingerprint,
   editCreatorScriptSection,
+  getCreatorScriptDurationContractForScript,
   normalizeCreatorScript,
   shouldSurfaceCreatorScriptOperationFailure,
   type CreatorScript,
 } from "@/lib/creator/creatorScript";
+import {
+  persistCreatorScriptReplacement,
+  getCreatorWorkflowLoadingState,
+  shouldRestoreCreatorBriefDraft,
+} from "@/lib/creator/creatorWorkflowAuthority";
 import {
   buildCreatorProjectState,
   creatorAudioTimelineSnapshotFields,
@@ -3541,6 +3547,15 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorMediaPreflightLoading, setCreatorMediaPreflightLoading] =
     useState(false);
   const [creatorProductionLoading, setCreatorProductionLoading] = useState(false);
+  const [creatorScriptGenerationLoading, setCreatorScriptGenerationLoading] = useState(false);
+  const [creatorSceneBuildLoading, setCreatorSceneBuildLoading] = useState(false);
+  const creatorWorkflowLoadingState = getCreatorWorkflowLoadingState({
+    operation: creatorScriptGenerationLoading
+      ? "script"
+      : creatorSceneBuildLoading
+        ? "scenes"
+        : "idle",
+  });
   const [isGeneratingFullYoutubePackage, setIsGeneratingFullYoutubePackage] = useState(false);
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [bulkTopics, setBulkTopics] = useState("");
@@ -6630,6 +6645,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setCreatorMentorResult(null);
     setCreatorScript(null);
     setCreatorScriptBusySectionId(null);
+    setCreatorScriptGenerationLoading(false);
+    setCreatorSceneBuildLoading(false);
     setCreatorProductionPackage(null);
     creatorProductionIntelligenceContextsRef.current = [];
     setCreatorProductionSubstep("setup");
@@ -11658,6 +11675,7 @@ const generateSceneImage = async (
       currentPublishSignature?: string;
       youtubeMetadata?: YoutubeMetadataResult | null;
       youtubeThumbnail?: YoutubeThumbnailResult | null;
+      releaseConfirmations?: Record<CreatorReleaseConfirmationKey, boolean>;
       forceInvalidateFinalVideo?: boolean;
       backgroundMusic?: CreatorBackgroundMusicConfig;
       creatorMentorResult?: CreatorMentorResult | null;
@@ -11986,7 +12004,7 @@ const generateSceneImage = async (
               ? lifecycleOverrides.youtubeThumbnail ?? null
               : youtubeThumbnailResult,
             thumbnailDesign: creatorThumbnailStudio,
-            confirmations: creatorReleaseConfirmations,
+            confirmations: lifecycleOverrides.releaseConfirmations ?? creatorReleaseConfirmations,
             packageDownloaded: lifecycleOverrides.packageDownloaded ?? creatorPackageDownloaded,
             packageSignature: lifecycleOverrides.storedPublishPackageSignature ?? creatorPackageSignature,
             finalVideoUrl: lifecycleOverrides.forceInvalidateFinalVideo
@@ -12068,6 +12086,8 @@ const generateSceneImage = async (
     const previousUpdatedAt = projectUpdatedAtRef.current;
     let loadSucceeded = false;
     const loadGeneration = invalidateProjectPersistence();
+    setCreatorScriptGenerationLoading(false);
+    setCreatorSceneBuildLoading(false);
     isHydratingRef.current = true;
     skipAutosaveRef.current = true;
     currentProjectIdRef.current = projectIdToLoad;
@@ -12614,6 +12634,20 @@ const generateSceneImage = async (
       return;
     }
 
+    const requestedProjectId = new URLSearchParams(window.location.search)
+      .get(PROJECT_URL_PARAM)
+      ?.trim() || "";
+    if (!shouldRestoreCreatorBriefDraft({
+      isCreatorLabFlow,
+      currentProjectId: currentProjectIdRef.current || currentProjectId,
+      requestedProjectId,
+    })) {
+      window.localStorage.removeItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
+      setCreatorBriefDraftRestored(false);
+      setCreatorBriefDraftHydrated(true);
+      return;
+    }
+
     try {
       const rawDraft = window.localStorage.getItem(CREATOR_BRIEF_DRAFT_STORAGE_KEY);
       if (rawDraft) {
@@ -12665,7 +12699,7 @@ const generateSceneImage = async (
     } finally {
       setCreatorBriefDraftHydrated(true);
     }
-  }, [isCreatorLabFlow, creatorBriefDraftHydrated]);
+  }, [isCreatorLabFlow, creatorBriefDraftHydrated, currentProjectId]);
 
   useEffect(() => {
     if (
@@ -14327,6 +14361,7 @@ const generateSceneImage = async (
 
 
   const handleCreatorProductionPackage = async () => {
+    if (creatorScriptGenerationLoading || creatorSceneBuildLoading) return;
     if (!creatorMentorResult) {
       setError(
         uiLanguage === "en"
@@ -14345,7 +14380,7 @@ const generateSceneImage = async (
       generation: projectGenerationRef.current,
     });
 
-    setCreatorProductionLoading(true);
+    setCreatorScriptGenerationLoading(true);
     setError("");
     setSaveMessage("");
 
@@ -14391,32 +14426,68 @@ const generateSceneImage = async (
       });
       if (!accepted) return;
       const nextScript = accepted.script;
+      const replacement = await persistCreatorScriptReplacement({
+        script: nextScript,
+        persist: () => persistProject(false, {
+          creatorMentorResult: persistedStrategyResult,
+          creatorScript: nextScript,
+          creatorProductionPackage: null,
+          refinedCreatorScenes: [],
+          sourceScenes: [],
+          forceInvalidateFinalVideo: true,
+          storedPublishPackageSignature: "",
+          packageDownloaded: false,
+          publishReady: false,
+          currentPublishSignature: "",
+          releaseConfirmations: CREATOR_RELEASE_CONFIRMATION_DEFAULTS,
+        }),
+        advanceAuthority: () => {
+          const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
+            projectId: currentProjectIdRef.current || currentProjectId,
+            generation: projectGenerationRef.current,
+          });
+          if (!advancedOrigin) return false;
+          operationOrigin = advancedOrigin;
+          return true;
+        },
+        isActive: operationIsActive,
+      });
+      if (!replacement) return;
       setCreatorMentorResult(persistedStrategyResult);
-      creatorScriptRef.current = nextScript;
-      setCreatorScript(nextScript);
-      await persistProject(false, {
-        creatorMentorResult: persistedStrategyResult,
-        creatorScript: nextScript,
-      });
-      const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
-        projectId: currentProjectIdRef.current || currentProjectId,
-        generation: projectGenerationRef.current,
-      });
-      if (!advancedOrigin) return;
-      operationOrigin = advancedOrigin;
-      if (!operationIsActive()) return;
+      creatorScriptRef.current = replacement.script;
+      setCreatorScript(replacement.script);
+      setCreatorProductionPackage(replacement.productionPackage);
+      setRefinedCreatorScenes(replacement.refinedScenes);
+      setScenes(replacement.scenes);
+      setCreatorTimelinePreviewPlan(replacement.timelinePreviewPlan);
+      setCreatorEditPlan(replacement.editPlan);
+      setExportedMovieUrl(replacement.exportedMovieUrl);
+      setExportMovieResult(replacement.exportMovieResult);
+      setExportSignature(replacement.exportSignature);
+      setCreatorPackageDownloaded(replacement.packageDownloaded);
+      setCreatorPackageSignature(replacement.packageSignature);
+      if (replacement.resetReleaseConfirmations) {
+        setCreatorReleaseConfirmations(CREATOR_RELEASE_CONFIRMATION_DEFAULTS);
+      }
       setSaveMessage(uiLanguage === "en" ? "Full script ready for review." : "Tam metin incelemeye hazır.");
     } catch (error) {
       if (!operationIsActive()) return;
       setError(error instanceof Error ? error.message : uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı.");
     } finally {
-      if (operationIsActive()) setCreatorProductionLoading(false);
+      if (operationIsActive()) setCreatorScriptGenerationLoading(false);
     }
   };
 
   const handleApproveCreatorScriptAndBuildScenes = async () => {
+    if (creatorScriptGenerationLoading || creatorSceneBuildLoading) return;
     if (!creatorMentorResult || !creatorScript) {
       setError(uiLanguage === "en" ? "Generate and review the full script first." : "Önce tam metni oluşturup incele.");
+      return;
+    }
+    if (getCreatorScriptDurationContractForScript(creatorScript, language).status !== "compliant") {
+      setError(uiLanguage === "en"
+        ? "This script does not satisfy its duration target. Rebuild the full script before creating scenes."
+        : "Bu metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce tam metni yeniden oluştur.");
       return;
     }
     let approvedScript: CreatorScript;
@@ -14435,7 +14506,7 @@ const generateSceneImage = async (
       generation: projectGenerationRef.current,
     });
 
-    setCreatorProductionLoading(true);
+    setCreatorSceneBuildLoading(true);
     setLoadingSetup(true);
     setError("");
     setSaveMessage("");
@@ -14621,7 +14692,7 @@ const generateSceneImage = async (
       );
     } finally {
       if (operationIsActive()) {
-        setCreatorProductionLoading(false);
+        setCreatorSceneBuildLoading(false);
         setLoadingSetup(false);
       }
     }
@@ -30860,10 +30931,10 @@ const generateSceneImage = async (
               <button
                 type="button"
                 onClick={handleCreatorProductionPackage}
-                disabled={creatorProductionLoading}
+                disabled={creatorWorkflowLoadingState.scriptGenerating || creatorWorkflowLoadingState.scenesBuilding}
                 className="creatorlab-strategy-primary-action"
               >
-                {creatorProductionLoading
+                {creatorWorkflowLoadingState.scriptGenerating
                   ? uiLanguage === "en" ? "Building full script..." : "Tam metin oluşturuluyor..."
                   : uiLanguage === "en" ? "Approve Strategy & Build Script" : "Stratejiyi Onayla ve Metni Oluştur"}
               </button>
@@ -30876,7 +30947,8 @@ const generateSceneImage = async (
                 currentStrategyFingerprint={creatorStrategyFingerprint}
                 language={language}
                 busySectionId={creatorScriptBusySectionId}
-                buildingScenes={creatorProductionLoading}
+                buildingScenes={creatorWorkflowLoadingState.scenesBuilding}
+                generatingScript={creatorWorkflowLoadingState.scriptGenerating}
                 onSaveSection={handleSaveCreatorScriptSection}
                 onRegenerateSection={handleRegenerateCreatorScriptSection}
                 onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}

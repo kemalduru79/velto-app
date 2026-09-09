@@ -330,6 +330,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/creator/audioProbe.server.ts",
     "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
     "scripts/post-0-13c-c-script-duration-contract-test.mjs",
+    "lib/creator/creatorWorkflowAuthority.ts",
+    "scripts/post-script-duration-workflow-authority-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

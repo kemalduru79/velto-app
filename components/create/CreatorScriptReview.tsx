@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  getCreatorScriptDurationContractForScript,
   getCreatorScriptMetrics,
   getCreatorScriptStatus,
   type CreatorScript,
@@ -13,6 +14,7 @@ type Props = {
   language: "tr" | "en";
   busySectionId: string | null;
   buildingScenes: boolean;
+  generatingScript: boolean;
   onSaveSection: (sectionId: string, text: string) => void;
   onRegenerateSection: (sectionId: string) => void;
   onApproveAndBuildScenes: () => void;
@@ -30,6 +32,7 @@ export default function CreatorScriptReview({
   language,
   busySectionId,
   buildingScenes,
+  generatingScript,
   onSaveSection,
   onRegenerateSection,
   onApproveAndBuildScenes,
@@ -37,7 +40,12 @@ export default function CreatorScriptReview({
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const metrics = useMemo(() => getCreatorScriptMetrics(script, language), [script, language]);
+  const durationContract = useMemo(
+    () => getCreatorScriptDurationContractForScript(script, language),
+    [script, language],
+  );
   const status = getCreatorScriptStatus(script, currentStrategyFingerprint);
+  const durationCompliant = durationContract.status === "compliant";
   const claims = new Map(script.grounding.context.claims.map((claim) => [claim.claimId, claim]));
 
   return (
@@ -60,6 +68,14 @@ export default function CreatorScriptReview({
         <span>{language === "en" ? "Variance" : "Fark"}: {formatSeconds(metrics.varianceSec)}</span>
         <span>{language === "en" ? "Evidence coverage" : "Kanıt kapsamı"}: {Math.round(metrics.evidenceCoverage * 100)}%</span>
       </div>
+
+      {generatingScript && (
+        <p role="status">
+          {language === "en"
+            ? "Rebuilding the full script. This is the previous script and will remain available unless the rebuild succeeds."
+            : "Tam metin yeniden oluşturuluyor. Bu önceki metindir ve yeni metin başarıyla tamamlanana kadar korunacaktır."}
+        </p>
+      )}
 
       <div className="creatorlab-strategy-production-list">
         {script.sections.map((section) => {
@@ -100,10 +116,18 @@ export default function CreatorScriptReview({
       <div className="creatorlab-strategy-action-bar">
         <div className="creatorlab-strategy-action-copy">
           <strong>{language === "en" ? "Approve the current script revision" : "Mevcut metin sürümünü onayla"}</strong>
-          <p>{status === "stale" ? (language === "en" ? "Strategy changed. Rebuild the script before creating scenes." : "Strateji değişti. Sahneleri oluşturmadan önce metni yeniden oluştur.") : (language === "en" ? "Scenes will use this exact editorial script as their source of truth." : "Sahneler bu editoryal metni tek kaynak olarak kullanacak.")}</p>
+          <p>{generatingScript
+            ? (language === "en" ? "A replacement script is being generated. Scene creation is unavailable until it succeeds." : "Yeni metin oluşturuluyor. Başarıyla tamamlanana kadar sahne oluşturma kullanılamaz.")
+            : !durationCompliant
+              ? (language === "en" ? "This historic script does not satisfy its duration target. Rebuild the script before creating scenes." : "Bu eski metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce metni yeniden oluştur.")
+              : status === "stale" ? (language === "en" ? "Strategy changed. Rebuild the script before creating scenes." : "Strateji değişti. Sahneleri oluşturmadan önce metni yeniden oluştur.") : (language === "en" ? "Scenes will use this exact editorial script as their source of truth." : "Sahneler bu editoryal metni tek kaynak olarak kullanacak.")}</p>
         </div>
-        <button type="button" className="creatorlab-strategy-primary-action" onClick={onApproveAndBuildScenes} disabled={buildingScenes || status === "stale" || script.sections.some((section) => section.evidenceReviewRequired) || script.grounding.context.readiness.status === "blocked"}>
-          {buildingScenes ? (language === "en" ? "Building scenes…" : "Sahneler oluşturuluyor…") : (language === "en" ? "Approve Script & Build Scenes" : "Metni Onayla ve Sahneleri Oluştur")}
+        <button type="button" className="creatorlab-strategy-primary-action" onClick={onApproveAndBuildScenes} disabled={generatingScript || buildingScenes || !durationCompliant || status === "stale" || script.sections.some((section) => section.evidenceReviewRequired) || script.grounding.context.readiness.status === "blocked"}>
+          {buildingScenes
+            ? (language === "en" ? "Building scenes…" : "Sahneler oluşturuluyor…")
+            : !durationCompliant
+              ? (language === "en" ? "Rebuild Script Required" : "Metni Yeniden Oluştur")
+              : (language === "en" ? "Approve Script & Build Scenes" : "Metni Onayla ve Sahneleri Oluştur")}
         </button>
       </div>
     </section>

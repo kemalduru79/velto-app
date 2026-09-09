@@ -179,6 +179,8 @@ const presentationOnly = new Set([
   "lib/creator/audioProbe.server.ts",
   "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
   "scripts/post-0-13c-c-script-duration-contract-test.mjs",
+  "lib/creator/creatorWorkflowAuthority.ts",
+  "scripts/post-script-duration-workflow-authority-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

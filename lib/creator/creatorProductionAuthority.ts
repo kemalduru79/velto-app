@@ -1,5 +1,7 @@
 import {
   canBuildScenesFromCreatorScript,
+  CreatorScriptDurationUnsatisfiedError,
+  getCreatorScriptDurationContractForScript,
   normalizeCreatorScript,
   type CreatorScript,
 } from "./creatorScript.ts";
@@ -61,4 +63,19 @@ export function resolvePersistedCreatorScriptAuthority(input: {
     throw new Error("CREATOR_SCRIPT_PERSISTED_MISMATCH");
   }
   return persistedScript;
+}
+
+export function assertCreatorScriptSceneBuildDuration(input: {
+  script: CreatorScript;
+  language: "tr" | "en";
+  requestedDurationSec: number;
+}) {
+  const diagnostics = getCreatorScriptDurationContractForScript(input.script, input.language);
+  if (
+    input.script.targetDurationSec !== input.requestedDurationSec
+    || diagnostics.status !== "compliant"
+  ) {
+    throw new CreatorScriptDurationUnsatisfiedError(diagnostics);
+  }
+  return diagnostics;
 }

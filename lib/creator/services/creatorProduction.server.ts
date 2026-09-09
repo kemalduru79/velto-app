@@ -16,7 +16,11 @@ import {
   createCreatorScriptSceneSegments,
   type CreatorScript,
 } from "../creatorScript";
-import { resolvePersistedCreatorScriptAuthority } from "../creatorProductionAuthority";
+import {
+  assertCreatorScriptSceneBuildDuration,
+  resolvePersistedCreatorScriptAuthority,
+} from "../creatorProductionAuthority";
+import { readCreatorProjectState } from "../projectState";
 
 type CreatorMentorResult = {
   audienceInsight?: string[];
@@ -495,14 +499,14 @@ export async function handleCreatorProductionRequest(req: Request) {
       .json()
       .catch(() => null)) as CreatorProductionRequest | null;
 
-    const topic = asString(body?.topic);
+    let topic = asString(body?.topic);
     const country = asString(body?.country, "Global / International");
     const ageGroup = asString(body?.ageGroup, "Professional creator audience / 18+");
     const contentType = asString(body?.contentType, "Educational");
     const format = asString(body?.format, "Shorts / 60 sec");
-    const durationSec = clampNumber(body?.durationSec, 60, 5, 3600);
+    let durationSec = clampNumber(body?.durationSec, 60, 5, 3600);
     const requestedSceneCount = clampNumber(body?.sceneCount, 6, 1, 36);
-    const language = body?.language === "tr" ? "tr" : "en";
+    let language: "tr" | "en" = body?.language === "tr" ? "tr" : "en";
     const mentorAnalysis = body?.mentorAnalysis || {};
     const creatorProfile = creatorProfileContext(body?.creatorProfile);
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
@@ -516,14 +520,28 @@ export async function handleCreatorProductionRequest(req: Request) {
     let approvedScript: CreatorScript;
     try {
       const persistedProject = await getPersistenceServices().projectRepository.getForOwner(projectId, user.id);
+      if (!persistedProject) throw new Error("CREATOR_SCRIPT_PROJECT_NOT_FOUND");
       approvedScript = resolvePersistedCreatorScriptAuthority({
         persistedProject,
         submittedScript: body.approvedScript,
         submittedStrategyFingerprint: body.strategyFingerprint,
       });
+      const persistedBrief = readCreatorProjectState(persistedProject).brief;
+      topic = persistedBrief.topic;
+      durationSec = persistedBrief.durationSec;
+      language = persistedBrief.language;
+      assertCreatorScriptSceneBuildDuration({
+        script: approvedScript,
+        language,
+        requestedDurationSec: durationSec,
+      });
     } catch (error) {
+      const code = error instanceof Error && "code" in error
+        && error.code === "CREATOR_SCRIPT_DURATION_UNSATISFIED"
+        ? "CREATOR_SCRIPT_DURATION_UNSATISFIED"
+        : "CREATOR_SCRIPT_APPROVAL_REQUIRED";
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Persisted script approval could not be verified.", code: "CREATOR_SCRIPT_APPROVAL_REQUIRED" },
+        { error: error instanceof Error ? error.message : "Persisted script approval could not be verified.", code },
         { status: 409 },
       );
     }
