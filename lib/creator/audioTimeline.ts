@@ -25,6 +25,7 @@ export type CreatorAudioRightsMetadata = {
 
 export type CreatorAudioAssetReference = {
   assetId: string;
+  displayName?: string;
   origin: CreatorAudioAssetOrigin;
   mediaKind: CreatorAudioPlacementKind;
   durationMs?: number;
@@ -70,6 +71,9 @@ export type CreatorAudioMasterMix = {
 export type CreatorAudioTimeline = {
   version: typeof CREATOR_AUDIO_TIMELINE_VERSION;
   timingBasis: "scene_anchored";
+  musicIntent?: {
+    mode: "none" | "auto" | "browse";
+  };
   placements: CreatorAudioPlacement[];
   master: CreatorAudioMasterMix;
 };
@@ -168,6 +172,7 @@ function normalizeAsset(value: unknown, kind: CreatorAudioPlacementKind): Creato
   if (durationMs === 0) throw new CreatorAudioTimelineError("AUDIO_ASSET_DURATION_INVALID");
   return {
     assetId: requiredText(source.assetId, "AUDIO_ASSET_ID_REQUIRED"),
+    ...(optionalText(source.displayName, 180) ? { displayName: optionalText(source.displayName, 180) } : {}),
     origin: source.origin as CreatorAudioAssetOrigin,
     mediaKind: kind,
     ...(durationMs !== undefined ? { durationMs } : {}),
@@ -279,9 +284,16 @@ export function normalizeCreatorAudioTimeline(value: unknown): CreatorAudioTimel
   if (new Set(placements.map((placement) => placement.id)).size !== placements.length) {
     throw new CreatorAudioTimelineError("AUDIO_PLACEMENT_ID_DUPLICATE");
   }
+  const musicIntent = record(source.musicIntent);
+  if (own(source, "musicIntent") && (
+    !musicIntent || !["none", "auto", "browse"].includes(String(musicIntent.mode))
+  )) {
+    throw new CreatorAudioTimelineError("AUDIO_MUSIC_INTENT_INVALID");
+  }
   return {
     version: CREATOR_AUDIO_TIMELINE_VERSION,
     timingBasis: "scene_anchored",
+    ...(musicIntent ? { musicIntent: { mode: musicIntent.mode as "none" | "auto" | "browse" } } : {}),
     placements,
     master: normalizeMaster(source.master),
   };

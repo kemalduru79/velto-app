@@ -67,7 +67,7 @@ for (const handlerContract of [
   /setCreatorNoCastMode\("faceless"\)/,
   /clearAllSceneAudioData\(\)/,
   /applyCreatorVoiceProfile\(/,
-  /setCreatorBackgroundMusic\(normalized\)/,
+  /setCreatorAudioTimeline\(nextTimeline\)/,
   /setCreatorProjectContinuityMode\(option\.value\)/,
   /saveCreatorProfile/,
 ]) {

@@ -171,6 +171,12 @@ import {
 } from "@/lib/creator/projectState";
 import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
 import {
+  createDefaultCreatorMusicTimeline,
+  getCreatorMusicSetupMode,
+  getSelectedCreatorMusicDisplayName,
+  hydrateCreatorMusicTimeline,
+} from "@/lib/creator/musicSetup";
+import {
   advanceCreatorProjectSaveBinding,
   advanceCreatorProjectOperationOrigin,
   createCreatorProjectSaveBinding,
@@ -3538,7 +3544,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorBackgroundMusic, setCreatorBackgroundMusic] =
     useState<CreatorBackgroundMusicConfig>(DEFAULT_CREATOR_BACKGROUND_MUSIC);
   const [creatorAudioTimeline, setCreatorAudioTimeline] =
-    useState<CreatorAudioTimeline | null | undefined>(undefined);
+    useState<CreatorAudioTimeline | null | undefined>(() => createDefaultCreatorMusicTimeline());
   const [creatorBackgroundMusicHydrationRevision, setCreatorBackgroundMusicHydrationRevision] =
     useState(0);
   const [creatorTimelinePreviewPlan, setCreatorTimelinePreviewPlan] =
@@ -6660,6 +6666,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setCreatorProductionSubstep("setup");
     setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
     setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
+    setCreatorAudioTimeline(createDefaultCreatorMusicTimeline());
     setCreatorOutcome(undefined);
     setIsGeneratingFullYoutubePackage(false);
     setIsAdvancedMode(false);
@@ -12144,7 +12151,6 @@ const generateSceneImage = async (
       const canonicalCreatorState = isCreatorProject
         ? readCreatorProjectState(project)
         : null;
-      setCreatorAudioTimeline(canonicalCreatorState?.production.audioTimeline);
       const savedCreatorPackage = (canonicalCreatorState?.production.package ?? null) as CreatorProductionPackage | null;
       const loadedContentLanguage: ContentLanguage =
         project.language === "en" ? "en" : "tr";
@@ -12391,15 +12397,18 @@ const generateSceneImage = async (
       setCreatorSceneContinuityModes(loadedContinuitySettings.sceneModes);
       setCreatorContinuityHydrated(true);
       setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
-      setCreatorBackgroundMusic(
-        normalizeCreatorBackgroundMusicConfig(
+      const hydratedBackgroundMusic = normalizeCreatorBackgroundMusicConfig(
           isCreatorProject
             ? canonicalCreatorState?.production.backgroundMusic ?? savedCreatorPackage?.backgroundMusic
             : undefined,
           [],
           isCreatorPremiumMusicTrackId,
-        ),
       );
+      setCreatorBackgroundMusic(hydratedBackgroundMusic);
+      setCreatorAudioTimeline(hydrateCreatorMusicTimeline({
+        timeline: canonicalCreatorState?.production.audioTimeline,
+        legacyMode: hydratedBackgroundMusic.mode,
+      }));
 
       const savedQualityMode =
         canonicalCreatorState?.brief.qualityMode || normalizedSavedCreatorPackage?.qualityMode;
@@ -19916,11 +19925,17 @@ const generateSceneImage = async (
   const creatorCharacterVoiceSummary = creatorBoundDialogueCharacterIds.size > 0
     ? `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"} · ${uiLanguage === "en" ? "Character voices" : "Karakter sesleri"} ${creatorResolvedCharacterVoiceCount}/${creatorBoundDialogueCharacterIds.size} ${uiLanguage === "en" ? "resolved" : "çözümlendi"}`
     : `${characters.length} ${uiLanguage === "en" ? characters.length === 1 ? "cast member" : "cast members" : "kadro üyesi"} · ${uiLanguage === "en" ? characters.length === 0 ? "Character voices · Not needed for this project" : "Character voices · No character dialogue yet" : characters.length === 0 ? "Karakter sesleri · Bu proje için gerekli değil" : "Karakter sesleri · Henüz karakter diyaloğu yok"}`;
-  const creatorMusicSummary = creatorBackgroundMusic.mode === "selected"
+  const creatorMusicMode = getCreatorMusicSetupMode(creatorAudioTimeline);
+  const creatorSelectedMusicDisplayName = getSelectedCreatorMusicDisplayName(creatorAudioTimeline);
+  const creatorMusicSummary = creatorAudioTimeline?.placements.some(
+    (placement) => placement.kind === "music" && placement.status === "active",
+  )
     ? uiLanguage === "en" ? "Selected" : "Seçildi"
-    : creatorBackgroundMusic.mode === "auto"
+    : creatorMusicMode === "auto"
       ? uiLanguage === "en" ? "Auto Match" : "Otomatik Eşleştir"
-      : uiLanguage === "en" ? "Off" : "Kapalı";
+      : creatorMusicMode === "browse"
+        ? creatorSelectedMusicDisplayName || (uiLanguage === "en" ? "Browse Music" : "Müziğe Göz At")
+        : uiLanguage === "en" ? "No Music" : "Müzik Yok";
   const creatorNarratorSummary = narratorSettings.voiceSelection?.name ||
     (uiLanguage === "en" ? "Velto default" : "Velto varsayılanı");
   const creatorContinuitySummary = creatorProjectContinuityMode === "consistent"
@@ -31806,81 +31821,24 @@ const generateSceneImage = async (
                   </div>
                 <CreatorBackgroundMusic
                   key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
-                  value={creatorBackgroundMusic}
-                  onChange={(nextValue) => {
-                    const normalized = normalizeCreatorBackgroundMusicConfig(nextValue, [], isCreatorPremiumMusicTrackId);
-                    setCreatorBackgroundMusic(normalized);
-                  }}
-                  onConfirmTrack={async (trackId) => {
-                    if (creatorBackgroundMusic.selectedTrackId !== trackId) return false;
-                    if (!currentProjectId) {
-                      setError(
-                        uiLanguage === "en"
-                          ? "Save the project before confirming premium music."
-                          : "Premium müziği onaylamadan önce projeyi kaydet.",
-                      );
-                      return false;
-                    }
-                    setError("");
-                    try {
-                      const accessToken = await getAccessTokenOrThrow();
-                      const acquisitionResponse = await fetch("/api/creator-music/acquire", {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${accessToken}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          productProfile: "creatorlab",
-                          projectId: currentProjectId,
-                          trackId,
-                        }),
-                      });
-                      const acquisitionResult = await acquisitionResponse.json().catch(() => null);
-                      if (!acquisitionResponse.ok || acquisitionResult?.ok !== true) {
-                        setError(
-                          uiLanguage === "en"
-                            ? "Premium music could not be acquired. Try again."
-                            : "Premium müzik edinilemedi. Tekrar dene.",
-                        );
-                        return false;
-                      }
-                    } catch {
-                      setError(
-                        uiLanguage === "en"
-                          ? "Premium music could not be acquired. Try again."
-                          : "Premium müzik edinilemedi. Tekrar dene.",
-                      );
-                      return false;
-                    }
-                    const confirmedMusic = normalizeCreatorBackgroundMusicConfig(
-                      { ...creatorBackgroundMusic, confirmedTrackId: trackId },
-                      [],
-                      isCreatorPremiumMusicTrackId,
-                    );
-                    setCreatorBackgroundMusic(confirmedMusic);
-                    try {
-                      await persistProject(false, { backgroundMusic: confirmedMusic });
-                      return true;
-                    } catch (confirmationSaveError) {
-                      console.error("premium music confirmation save error:", confirmationSaveError);
-                      setCreatorBackgroundMusic(creatorBackgroundMusic);
-                      setError(
-                        uiLanguage === "en"
-                          ? "Music confirmation could not be saved. Try again."
-                          : "Müzik onayı kaydedilemedi. Tekrar dene.",
-                      );
-                      return false;
-                    }
+                  timeline={creatorAudioTimeline}
+                  projectId={currentProjectId}
+                  sceneIds={scenes.map((scene) => scene.creatorSceneId || `legacy-${scene.id}`)}
+                  getAccessToken={getAccessTokenOrThrow}
+                  onChange={(nextTimeline) => {
+                    setCreatorAudioTimeline(nextTimeline);
+                    const nextMode = getCreatorMusicSetupMode(nextTimeline);
+                    setCreatorBackgroundMusic({
+                      ...DEFAULT_CREATOR_BACKGROUND_MUSIC,
+                      mode: nextMode === "auto" ? "auto" : "none",
+                    });
+                    setExportedMovieUrl("");
+                    setExportMovieResult(null);
+                    setExportSignature("");
+                    setCreatorPackageDownloaded(false);
+                    setCreatorPackageSignature("");
                   }}
                   language={uiLanguage === "en" ? "en" : "tr"}
-                  autoMatchInput={{
-                    contentType: creatorContentType,
-                    outcome: creatorOutcome || "",
-                    format: creatorFormat,
-                    topic: title || input,
-                    visualStyle: visualBible?.style || "",
-                  }}
                 />
                 </section>
 
