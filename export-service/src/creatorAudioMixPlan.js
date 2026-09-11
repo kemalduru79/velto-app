@@ -1,12 +1,6 @@
-export const CREATOR_AUDIO_RENDER_DEFAULTS = Object.freeze({
-  fadeInMs: 350,
-  fadeOutMs: 350,
-  musicBedGain: 0.18,
-  duckingMode: "under_speech",
-  duckingGain: 0.24,
-  duckingAttackMs: 180,
-  duckingReleaseMs: 500,
-});
+import { CREATOR_AUDIO_MIX_POLICY } from "./creatorAudioPolicy.js";
+
+export const CREATOR_AUDIO_RENDER_DEFAULTS = CREATOR_AUDIO_MIX_POLICY;
 
 export class CreatorAudioMixPlanError extends Error {
   constructor(code) {

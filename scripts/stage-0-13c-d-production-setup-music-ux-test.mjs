@@ -63,11 +63,14 @@ assert.doesNotMatch(component, /Start here|Continue|Change here|Stop after this 
 assert.doesNotMatch(component, /FFmpeg|Railway|mixing|renderer/i);
 
 const musicHandler = page.slice(page.indexOf("onChange={(nextTimeline)"), page.indexOf("language={uiLanguage", page.indexOf("onChange={(nextTimeline)")));
-assert.match(musicHandler, /setCreatorAudioTimeline\(nextTimeline\)/);
-assert.match(musicHandler, /setExportedMovieUrl\(""\)/);
+const canonicalTimelineChangeHandler = page.slice(page.indexOf("const applyCreatorAudioTimelineChange"), page.indexOf("const ", page.indexOf("const applyCreatorAudioTimelineChange") + 6));
+assert.match(musicHandler, /applyCreatorAudioTimelineChange\(nextTimeline\)/);
+assert.match(canonicalTimelineChangeHandler, /setCreatorAudioTimeline\(nextTimeline\)/);
+assert.match(canonicalTimelineChangeHandler, /setExportedMovieUrl\(""\)/);
+assert.match(canonicalTimelineChangeHandler, /persistProject\(false, \{[\s\S]*audioTimeline: nextTimeline,[\s\S]*forceInvalidateFinalVideo: true/);
 assert.doesNotMatch(musicHandler, /setScenes|setCreatorScript|setCreatorMentorResult|research|generate|fetch\(/i);
 assert.match(page, /setCreatorAudioTimeline\(hydrateCreatorMusicTimeline/);
-assert.match(page, /creatorAudioTimelineSnapshotFields\(creatorAudioTimeline\)/);
+assert.match(page, /creatorAudioTimelineSnapshotFields\([\s\S]*Object\.prototype\.hasOwnProperty\.call\(lifecycleOverrides, "audioTimeline"\)[\s\S]*\? lifecycleOverrides\.audioTimeline[\s\S]*: creatorAudioTimeline/);
 assert.match(page, /creatorSelectedMusicDisplayName \|\|/);
 assert.match(page, /"No Music"/);
 

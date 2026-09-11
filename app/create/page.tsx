@@ -48,6 +48,7 @@ import type { CreatorProductionSubstep } from "@/components/create/CreatorProduc
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import { useCreatorAudioPreviewPlayback } from "@/components/create/useCreatorAudioPreviewPlayback";
 import CreatorStockPicker from "@/components/create/CreatorStockPicker";
 import CreatorUploadPicker from "@/components/create/CreatorUploadPicker";
 import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
@@ -171,6 +172,7 @@ import {
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
 import { reconcileCreatorAudioTimeline, type CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
+import { deriveCreatorAudioPreviewPlan } from "@/lib/creator/audioPreviewPlan";
 import {
   createDefaultCreatorMusicTimeline,
   getCreatorMusicSetupMode,
@@ -4852,6 +4854,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
     return session.access_token;
   }, []);
+  const creatorAudioPreviewPlayback = useCreatorAudioPreviewPlayback(getAccessTokenOrThrow);
 
   const notifyCreditAccountChanged = (credits?: { account?: unknown } | null) => {
     if (typeof window === "undefined") return;
@@ -6592,6 +6595,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     storyPlaybackTokenRef.current += 1;
     setIsPlayingStory(false);
     stopCurrentAudio();
+    creatorAudioPreviewPlayback.stop();
   };
 
   const clearAllSceneAudioData = () => {
@@ -11651,11 +11655,29 @@ const generateSceneImage = async (
     setIsPlayingStory(true);
     storyPlaybackTokenRef.current += 1;
     const playbackToken = storyPlaybackTokenRef.current;
+    const previewPlan = isCreatorLabFlow && creatorAudioTimeline
+      ? deriveCreatorAudioPreviewPlan({
+          timeline: creatorAudioTimeline,
+          scenes: scenes.flatMap((scene) => scene.creatorSceneId ? [{
+            creatorSceneId: scene.creatorSceneId,
+            durationMs: getCreatorPlannedSceneDuration(scene) * 1000,
+            narrationDurationMs: Number(scene.timing?.narrationDuration || 0) * 1000,
+            dialogueDurationMs: Number(scene.timing?.dialogueDuration || 0) * 1000,
+          }] : []),
+        })
+      : null;
 
     try {
       for (const scene of scenes) {
         if (playbackToken !== storyPlaybackTokenRef.current) {
           return;
+        }
+        const previewScene = previewPlan?.scenes.find((item) => item.creatorSceneId === scene.creatorSceneId);
+        try {
+          await creatorAudioPreviewPlayback.sync(previewScene?.music);
+        } catch {
+          creatorAudioPreviewPlayback.stop();
+          setError(uiLanguage === "en" ? "Project music preview is unavailable." : "Proje müzik önizlemesi kullanılamıyor.");
         }
 
         if (scene.narration?.trim()) {
@@ -11668,7 +11690,9 @@ const generateSceneImage = async (
           }
 
           setLoadingAudioSceneId(null);
+          creatorAudioPreviewPlayback.setSpeechActive(true);
           await waitForAudioToFinish(scene.id, narrationAudioUrl, playbackToken);
+          creatorAudioPreviewPlayback.setSpeechActive(false);
         }
 
         if (playbackToken !== storyPlaybackTokenRef.current) {
@@ -11685,7 +11709,9 @@ const generateSceneImage = async (
           }
 
           setLoadingDialogueSceneId(null);
+          creatorAudioPreviewPlayback.setSpeechActive(true);
           await waitForAudioToFinish(scene.id, dialogueAudioUrl, playbackToken);
+          creatorAudioPreviewPlayback.setSpeechActive(false);
         }
       }
     } catch (e: any) {
@@ -11697,6 +11723,7 @@ const generateSceneImage = async (
         setLoadingAudioSceneId(null);
         setLoadingDialogueSceneId(null);
         stopCurrentAudio();
+        creatorAudioPreviewPlayback.stop();
       }
     }
   };
@@ -31974,6 +32001,22 @@ const generateSceneImage = async (
                         ? `${scenes.length} scenes · ${getCreatorQualityModeLabel()} · Visuals ${visualAssetReadyCount}/${scenes.length} · Voice ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`
                         : `${scenes.length} sahne · ${getCreatorQualityModeLabel()} · Görsel ${visualAssetReadyCount}/${scenes.length} · Ses ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`}
                     </p>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      data-creator-preview-project="true"
+                      onClick={playWholeStory}
+                      disabled={
+                        !isPlayingStory &&
+                        (isPreparingAudio || playingDialogueSceneId !== null || loadingAudioSceneId !== null)
+                      }
+                      className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {isPlayingStory
+                        ? uiLanguage === "en" ? "Stop Preview" : "Önizlemeyi Durdur"
+                        : uiLanguage === "en" ? "Preview Project" : "Projeyi Önizle"}
+                    </button>
                   </div>
                   <div
                     data-production-compact-progress="true"
