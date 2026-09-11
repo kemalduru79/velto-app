@@ -46,7 +46,7 @@ assert.equal(getCreatorMusicSetupMode(hydrateCreatorMusicTimeline({ timeline: in
 assert.equal(getCreatorMusicSetupMode(hydrateCreatorMusicTimeline({ timeline: undefined, legacyMode: "none" })), "none");
 assert.equal(getCreatorMusicSetupMode(hydrateCreatorMusicTimeline({ timeline: undefined, legacyMode: "selected" })), "browse");
 
-for (const label of ["No Music", "Auto Match", "Browse Music", "Upload Music"]) assert.match(component, new RegExp(label));
+for (const label of ["No Music", "Auto Match", "Choose Music", "Upload your own music"]) assert.match(component, new RegExp(label));
 assert.doesNotMatch(component, /<h3[^>]*>\{english \? "Music"/);
 assert.match(component, /Velto will match music to your content\./);
 assert.match(component, /I have the right to use this audio\./);

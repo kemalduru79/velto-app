@@ -465,6 +465,356 @@
   box-shadow: none !important;
 }
 
+/* Stage 0.13C-E final layout: scene navigation is a compact strip above one full-width editor. */
+.creatorlab-premium-surface .creatorlab-p2c-production-plan,
+.creatorlab-premium-surface .creatorlab-p2c-production-status {
+  padding: var(--cl-space-3) var(--cl-space-4);
+  background: var(--cl-surface-muted);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-plan {
+  border-radius: var(--cl-radius-surface) var(--cl-radius-surface) 0 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-status {
+  border-top: 1px solid var(--cl-border);
+  border-radius: 0 0 var(--cl-radius-surface) var(--cl-radius-surface);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-plan-kicker,
+.creatorlab-premium-surface .creatorlab-p2c-production-status-heading h2 {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-plan-primary-meta,
+.creatorlab-premium-surface .creatorlab-p2c-production-plan-secondary-meta {
+  display: inline;
+  font-size: var(--cl-type-body);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-plan-secondary-meta::before {
+  content: " · ";
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-plan-details {
+  display: inline-block;
+  margin: 0 0 0 var(--cl-space-3);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-status-heading {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-progress {
+  gap: var(--cl-space-2) var(--cl-space-4);
+  padding: 0;
+  border: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-progress > div > span {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-next-action {
+  padding-top: var(--cl-space-2);
+  border-top: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-production-next-action > button:only-child {
+  margin-left: auto;
+}
+
+.creatorlab-premium-surface #creatorlab-production-storyboard.creatorlab-p2c-production-workspace {
+  display: block;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-rail {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cl-space-3);
+  max-height: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-rail > .creatorlab-p2c-scene-operations {
+  order: 1;
+  max-height: none;
+  padding: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-rail > .creatorlab-p2c-batch-toolbar {
+  position: static;
+  order: 2;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-heading {
+  align-items: center;
+  padding: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-navigator-label {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-list {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--cl-space-2);
+  max-height: none;
+  padding: var(--cl-space-1) 0 var(--cl-space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operations-list > li {
+  flex: 0 0 min(238px, 72vw);
+  scroll-snap-align: start;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-row {
+  min-height: 48px;
+  padding: var(--cl-space-2) var(--cl-space-3);
+  background: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-focus {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-scene-operation-progress {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-active-scene {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-top: var(--cl-space-7);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > summary {
+  padding-inline: 0 !important;
+  border-bottom-color: var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-heading {
+  display: grid;
+  min-width: 0;
+  gap: var(--cl-space-1);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-heading > span {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-heading > strong {
+  overflow: hidden;
+  color: var(--cl-text-primary);
+  font-size: var(--cl-type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-heading > p {
+  color: var(--cl-text-muted);
+  font-size: var(--cl-type-meta);
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > summary > input,
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > summary > span:last-child,
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene-completion {
+  display: none;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > div {
+  padding-inline: 0 !important;
+}
+
+.creatorlab-premium-surface .scene-production-navigator {
+  padding: 0;
+  background: transparent;
+}
+
+.creatorlab-premium-surface .scene-production-navigator__header {
+  padding-inline: 0;
+}
+
+.creatorlab-premium-surface .scene-production-navigator__tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cl-space-3);
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--cl-border);
+  border-radius: 0;
+}
+
+.creatorlab-premium-surface .scene-production-tab,
+.creatorlab-premium-surface .scene-production-tab:hover,
+.creatorlab-premium-surface .scene-production-tab[data-state="ready"],
+.creatorlab-premium-surface .scene-production-tab[data-state="ready"]:hover {
+  width: auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 0 var(--cl-space-2);
+  color: var(--cl-text-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .scene-production-tab[data-state="active"],
+.creatorlab-premium-surface .scene-production-tab[data-state="active"]:hover {
+  color: var(--cl-text-primary) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom-color: var(--cl-primary) !important;
+  box-shadow: none !important;
+}
+
+.creatorlab-premium-surface .scene-production-tab__title,
+.creatorlab-premium-surface .scene-production-tab[data-state="ready"] .scene-production-tab__title {
+  color: var(--cl-text-muted) !important;
+  font-weight: 600;
+}
+
+.creatorlab-premium-surface .scene-production-tab[data-state="active"] .scene-production-tab__title {
+  color: var(--cl-text-primary) !important;
+  font-weight: 700;
+}
+
+.creatorlab-premium-surface .scene-production-tab__icon,
+.creatorlab-premium-surface .scene-production-tab__subtitle {
+  display: none !important;
+}
+
+.creatorlab-premium-surface .scene-production-tab[data-complete="true"] .scene-production-tab__icon {
+  display: inline !important;
+  flex: none;
+  width: auto;
+  height: auto;
+  color: var(--cl-success) !important;
+  background: transparent !important;
+  border: 0 !important;
+  font-size: var(--cl-type-meta);
+  line-height: 1;
+}
+
+.creatorlab-premium-surface .creatorlab-scene-visual-workspace {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  gap: var(--cl-space-4);
+}
+
+.creatorlab-premium-surface .creatorlab-scene-visual-storage,
+.creatorlab-premium-surface .creatorlab-scene-visual-main,
+.creatorlab-premium-surface .creatorlab-scene-visual-inspector {
+  min-width: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-script-surface {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-script-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cl-space-2) var(--cl-space-6);
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-script-metrics > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cl-space-2);
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-script-metrics strong {
+  display: inline;
+  margin: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-opening-alternatives {
+  border-bottom: 1px solid var(--cl-border);
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-opening-alternatives > summary {
+  width: fit-content;
+  cursor: pointer;
+  padding: var(--cl-space-2) 0;
+  color: var(--cl-text-secondary);
+  font-size: var(--cl-type-meta);
+  font-weight: 650;
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-opening-alternatives > div {
+  padding: var(--cl-space-3) 0 var(--cl-space-5);
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-opening-alternatives > div > div {
+  display: grid;
+  gap: var(--cl-space-2);
+  margin-top: var(--cl-space-3);
+}
+
+.creatorlab-premium-surface .creatorlab-editorial-opening-alternatives button {
+  padding: var(--cl-space-2) 0;
+  color: var(--cl-text-secondary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.creatorlab-premium-surface .creatorlab-p2c-focused-scene > div {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: clamp(24px, 2.5vw, 32px) !important;
+}
+
+@media (min-width: 1024px) {
+  .creatorlab-premium-surface .creatorlab-scene-visual-workspace {
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+    align-items: start;
+  }
+
+  .creatorlab-premium-surface .creatorlab-scene-visual-storage {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 1180px) {
   .creatorlab-premium-surface #creatorlab-production-storyboard.creatorlab-p2c-production-workspace {
     grid-template-columns: minmax(232px, 272px) minmax(0, 1fr);

@@ -43,6 +43,7 @@ import ProductTopNavigation from "@/components/navigation/ProductTopNavigation";
 import UserAccountMenu from "@/components/auth/UserAccountMenu";
 import CreatorOutcomeStart from "@/components/create/CreatorOutcomeStart";
 import CreatorBackgroundMusic from "@/components/create/CreatorBackgroundMusic";
+import CreatorSceneMusicControls from "@/components/create/CreatorSceneMusicControls";
 import type { CreatorProductionSubstep } from "@/components/create/CreatorProductionSubnav";
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
@@ -169,7 +170,7 @@ import {
   readCreatorProjectState,
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
-import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
+import { reconcileCreatorAudioTimeline, type CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
 import {
   createDefaultCreatorMusicTimeline,
   getCreatorMusicSetupMode,
@@ -754,7 +755,7 @@ type CreatorSceneScriptFitFeedback = {
   suggestedDurationSec?: number;
 };
 
-type CreatorSceneInspectorTab = "script" | "visual" | "audio";
+type CreatorSceneInspectorTab = "script" | "visual" | "audio" | "music";
 
 type CreatorVoicePickerTarget =
   | { scope: "project_narrator" }
@@ -8129,6 +8130,18 @@ const generateSceneImage = async (
     stopStoryPlayback();
 
     const nextProjection = projectCreatorEditorScenes(nextScenes);
+    if (creatorAudioTimeline) {
+      const reconciliationScene = (scene: Scene) => ({
+        creatorSceneId: scene.creatorSceneId || `legacy-${scene.id}`,
+        ...(scene.scriptSectionId ? { scriptSectionId: scene.scriptSectionId } : {}),
+        ...(Number.isInteger(scene.scriptSegmentIndex) ? { scriptSegmentIndex: scene.scriptSegmentIndex } : {}),
+      });
+      setCreatorAudioTimeline(reconcileCreatorAudioTimeline({
+        timeline: creatorAudioTimeline,
+        previousScenes: scenes.map(reconciliationScene),
+        nextScenes: nextScenes.map(reconciliationScene),
+      }).timeline);
+    }
     setScenes(nextScenes);
     setCreatorProductionPackage((prev) =>
       prev
@@ -31825,6 +31838,7 @@ const generateSceneImage = async (
                   projectId={currentProjectId}
                   sceneIds={scenes.map((scene) => scene.creatorSceneId || `legacy-${scene.id}`)}
                   getAccessToken={getAccessTokenOrThrow}
+                  autoMatchInput={{ contentType: creatorContentType, outcome: creatorOutcome, format: creatorFormat, topic: input, visualStyle: visualBible?.style }}
                   onChange={(nextTimeline) => {
                     setCreatorAudioTimeline(nextTimeline);
                     const nextMode = getCreatorMusicSetupMode(nextTimeline);
@@ -31996,12 +32010,12 @@ const generateSceneImage = async (
                   </div>
                   {!creatorProductionComplete && (
                     <div id="creatorlab-production-action" data-production-compact-action="true" className="creatorlab-p2c-production-next-action">
-                      <div className="min-w-0" aria-live="polite">
-                        <strong>{creatorNextProductionAction.title}</strong>
-                        {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
+                      {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
+                        <div className="min-w-0" aria-live="polite">
+                          <strong>{creatorNextProductionAction.title}</strong>
                           <p>{creatorNextProductionAction.description}</p>
-                        )}
-                      </div>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={continueCreatorProduction}
@@ -32101,14 +32115,14 @@ const generateSceneImage = async (
                       <video src={exportMovieResult?.downloadUrl || exportedMovieUrl} controls preload="metadata" className="max-h-44 w-full rounded-xl bg-black object-contain lg:w-72" />
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <button
+                      {!creatorEditorOpen && <button
                         type="button"
                         data-edit-current-final-video="true"
                         onClick={() => setCreatorEditorOpen(true)}
                         className={`min-h-11 rounded-xl px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${creatorFinalVideoNeedsRebuild ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white shadow-md hover:bg-blue-800"}`}
                       >
                         {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
-                      </button>
+                      </button>}
                       <button
                         type="button"
                         data-rebuild-final-video="true"
@@ -32184,6 +32198,15 @@ const generateSceneImage = async (
                     projectId={currentProjectId}
                     getAccessToken={getAccessTokenOrThrow}
                     onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}
+                    audioTimeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
+                    onAudioTimelineChange={(nextTimeline) => {
+                      setCreatorAudioTimeline(nextTimeline);
+                      setExportedMovieUrl("");
+                      setExportMovieResult(null);
+                      setExportSignature("");
+                      setCreatorPackageDownloaded(false);
+                      setCreatorPackageSignature("");
+                    }}
                     sceneOperationsDisabled={
                       isBatchRendering ||
                       scenes.some((scene) =>
@@ -32202,7 +32225,7 @@ const generateSceneImage = async (
                   data-generating-visual-scene-ids={creatorGeneratingVisualSceneIds.join(",")}
                 >
                   <div className="creatorlab-p2c-scene-rail">
-                  {(creatorSelectedSceneIds.length > 0 || creatorVisualDispatchCountdown) && (
+                  {(creatorSelectedSceneIds.length > 1 || creatorVisualDispatchCountdown) && (
                     <div
                       className="creatorlab-p2c-batch-toolbar creatorlab-p2c-batch-toolbar-sticky"
                       data-creator-selected-scenes-toolbar="true"
@@ -32284,16 +32307,6 @@ const generateSceneImage = async (
                     selectedSceneIds={creatorSelectedSceneIdSet}
                     onToggleSceneSelection={toggleCreatorSceneSelection}
                     language={uiLanguage === "en" ? "en" : "tr"}
-                    contextualAction={!creatorEditorOpen ? (
-                      <button
-                        type="button"
-                        data-creator-editor-entry="true"
-                        onClick={() => setCreatorEditorOpen(true)}
-                        className="creatorlab-p2c-open-editor"
-                      >
-                        {uiLanguage === "en" ? "Open Editor" : "Editörü Aç"}
-                      </button>
-                    ) : undefined}
                   />
                   </div>
 
@@ -32400,11 +32413,6 @@ const generateSceneImage = async (
                         admittedSceneIds: activeVisualGenerationSceneIds,
                         processingSceneIds: creatorProcessingVisualSceneIds,
                       });
-                      const sceneProductionReadyCount = [
-                        sceneDraftHealth.status === "ready",
-                        visualReady,
-                        voiceReady,
-                      ].filter(Boolean).length;
                       const hasDialogue = Boolean(scene.dialogue?.trim());
                       const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
                       const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
@@ -32530,48 +32538,19 @@ const generateSceneImage = async (
                               aria-label={uiLanguage === "en" ? `Select scene ${index + 1}` : `Sahne ${index + 1} seç`}
                               className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600"
                             />
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700">
-                              {String(index + 1).padStart(2, "0")}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <strong className="truncate text-sm text-slate-950">
-                                  {scene.text || (uiLanguage === "en" ? `Scene ${scene.id}` : `Sahne ${scene.id}`)}
-                                </strong>
-                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
-                                  {targetDurationSec.toFixed(0)}s
-                                </span>
-                                <span
-                                  className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                                    sceneDraftHealth.status === "ready"
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : sceneDraftHealth.status === "too_long"
-                                        ? "bg-rose-50 text-rose-700"
-                                        : "bg-amber-50 text-amber-700"
-                                  }`}
-                                >
-                                  {simpleGuidance}
-                                </span>
-                              </div>
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                                {scene.narration || scene.dialogue || (uiLanguage === "en" ? "Spoken content is not ready." : "Konuşma içeriği hazır değil.")}
-                              </p>
-                            </div>
-                            <div className="hidden items-center gap-2 lg:flex">
-                              <span className="creatorlab-p2c-focused-scene-completion">
-                                {sceneProductionReadyCount}/3 {uiLanguage === "en" ? "steps ready" : "adım hazır"}
+                            <div className="creatorlab-p2c-focused-scene-heading min-w-0 flex-1">
+                              <span>
+                                {uiLanguage === "en" ? `Selected Scene ${String(index + 1).padStart(2, "0")}` : `Seçili Sahne ${String(index + 1).padStart(2, "0")}`}
                               </span>
-                              <span className="creatorlab-p2c-focused-scene-status">
-                                {sceneOperationalSummary
-                                  ? getCreatorSceneTriageLabel(sceneOperationalSummary.status, uiLanguage === "en" ? "en" : "tr")
-                                  : uiLanguage === "en" ? "Needs action" : "Aksiyon gerekli"}
-                              </span>
+                              <strong>
+                                {scene.text || (uiLanguage === "en" ? `Scene ${scene.id}` : `Sahne ${scene.id}`)}
+                              </strong>
+                              <p>{targetDurationSec.toFixed(0)}s · {simpleGuidance}</p>
                             </div>
-                            <span className="text-slate-400 transition group-open:rotate-180" aria-hidden="true">⌄</span>
                           </summary>
 
                           <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-5">
-                            <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
+                            {(scenePrimaryActionUsesCredits || sceneDraftHealth.status !== "ready" || motionFailed) && <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
                               <div>
                                 <span>
                                   {sceneOperationalSummary
@@ -32583,7 +32562,7 @@ const generateSceneImage = async (
                                   <small>{uiLanguage === "en" ? "Generation starts after a short cancel window" : "Üretim kısa bir iptal süresinden sonra başlar"}</small>
                                 )}
                               </div>
-                              <button
+                              {(scenePrimaryActionUsesCredits || sceneDraftHealth.status !== "ready" || motionFailed) && <button
                                 type="button"
                                 onClick={runCreatorScenePrimaryAction}
                                 disabled={
@@ -32606,53 +32585,10 @@ const generateSceneImage = async (
                                   : sceneVisualGenerating || scene.videoStatus === "processing" || scene.videoStatus === "delayed"
                                   ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
                                   : scenePrimaryActionLabel}
-                              </button>
-                            </div>
-
-                            {activeSceneInspectorTab === "script" && index === 0 && creatorOpeningHookOptions.length > 0 && (
-                              <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
-                                <div>
-                                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">
-                                    {uiLanguage === "en" ? "Opening alternatives" : "Açılış alternatifleri"}
-                                  </span>
-                                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                                    {uiLanguage === "en"
-                                      ? "Choose an opening direction here, where narration and timing can be reviewed together."
-                                      : "Açılış yönünü, anlatım ve sürenin birlikte değerlendirilebildiği bu alanda seç."}
-                                  </p>
-                                </div>
-                                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                                  {creatorOpeningHookOptions.map((hook, hookIndex) => (
-                                    <button
-                                      key={`opening-hook-${hookIndex}`}
-                                      type="button"
-                                      onClick={() => stageCreatorOpeningHookDraft(scene, hook)}
-                                      className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-left text-xs leading-5 text-slate-700 transition hover:border-blue-400 hover:bg-blue-50"
-                                    >
-                                      {hook}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                              </button>}
+                            </div>}
 
                             <div className="scene-production-navigator sticky top-4 z-20 mb-5">
-                              <div className="scene-production-navigator__header">
-                                <div className="min-w-0">
-                                  <span className="scene-production-navigator__eyebrow">
-                                    {uiLanguage === "en" ? "Scene production" : "Sahne üretimi"}
-                                  </span>
-                                  <p className="scene-production-navigator__description">
-                                    {uiLanguage === "en"
-                                      ? "Move between script, visual and audio without leaving the scene."
-                                      : "Sahneden ayrılmadan metin, görsel ve ses arasında ilerle."}
-                                  </p>
-                                </div>
-                                <span className="scene-production-navigator__progress">
-                                  {sceneProductionReadyCount}/3 {uiLanguage === "en" ? "ready" : "hazır"}
-                                </span>
-                              </div>
-
                               <div
                                 className="scene-production-navigator__tabs"
                                 role="tablist"
@@ -32666,6 +32602,7 @@ const generateSceneImage = async (
                                   aria-selected={activeSceneInspectorTab === "script"}
                                   aria-controls={`scene-${scene.id}-script-panel`}
                                   data-production-step="script"
+                                  data-complete={sceneDraftHealth.status === "ready"}
                                   data-state={
                                     activeSceneInspectorTab === "script"
                                       ? "active"
@@ -32702,6 +32639,7 @@ const generateSceneImage = async (
                                   aria-selected={activeSceneInspectorTab === "visual"}
                                   aria-controls={`scene-${scene.id}-visual-panel`}
                                   data-production-step="visual"
+                                  data-complete={visualReady}
                                   data-state={
                                     activeSceneInspectorTab === "visual"
                                       ? "active"
@@ -32744,6 +32682,7 @@ const generateSceneImage = async (
                                   aria-selected={activeSceneInspectorTab === "audio"}
                                   aria-controls={`scene-${scene.id}-audio-panel`}
                                   data-production-step="audio"
+                                  data-complete={voiceReady}
                                   data-state={
                                     activeSceneInspectorTab === "audio"
                                       ? "active"
@@ -32777,6 +32716,26 @@ const generateSceneImage = async (
                                     </span>
                                   </span>
                                 </button>
+
+                                <button
+                                  key={`scene-${scene.id}-tab-music`}
+                                  id={`scene-${scene.id}-music-tab`}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={activeSceneInspectorTab === "music"}
+                                  aria-controls={`scene-${scene.id}-music-panel`}
+                                  data-production-step="music"
+                                  data-complete="true"
+                                  data-state={activeSceneInspectorTab === "music" ? "active" : "ready"}
+                                  onClick={() => setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "music" }))}
+                                  className="scene-production-tab"
+                                >
+                                  <span className="scene-production-tab__icon" aria-hidden="true">✓</span>
+                                  <span className="scene-production-tab__content">
+                                    <strong className="scene-production-tab__title">{uiLanguage === "en" ? "Music" : "Müzik"}</strong>
+                                    <span className="scene-production-tab__subtitle">{uiLanguage === "en" ? "Review transitions" : "Geçişleri incele"}</span>
+                                  </span>
+                                </button>
                               </div>
                             </div>
 
@@ -32787,7 +32746,20 @@ const generateSceneImage = async (
                                 aria-labelledby={`scene-${scene.id}-script-tab`}
                                 className="space-y-4"
                               >
-                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                {index === 0 && creatorOpeningHookOptions.length > 0 && (
+                                  <details className="creatorlab-editorial-opening-alternatives" data-opening-alternatives="collapsed">
+                                    <summary>{uiLanguage === "en" ? "Opening alternatives" : "Açılış alternatifleri"}</summary>
+                                    <div>
+                                      <p>{uiLanguage === "en" ? "Choose an opening direction while reviewing the script." : "Metni incelerken bir açılış yönü seç."}</p>
+                                      <div>
+                                        {creatorOpeningHookOptions.map((hook, hookIndex) => (
+                                          <button key={`opening-hook-${hookIndex}`} type="button" onClick={() => stageCreatorOpeningHookDraft(scene, hook)}>{hook}</button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </details>
+                                )}
+                                <div className="creatorlab-editorial-script-surface rounded-2xl border border-slate-200 bg-white p-4">
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">
                                       <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -32816,7 +32788,7 @@ const generateSceneImage = async (
                                     )}
                                   </div>
 
-                                  <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-3">
+                                  <div className="creatorlab-editorial-script-metrics mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-3">
                                     <div className="rounded-xl bg-slate-50 p-3">
                                       <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Words" : "Kelime"}</span>
                                       <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.speechWordCount}</strong>
@@ -33046,15 +33018,15 @@ const generateSceneImage = async (
                                 id={`scene-${scene.id}-visual-panel`}
                                 role="tabpanel"
                                 aria-labelledby={`scene-${scene.id}-visual-tab`}
-                                className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(280px,1fr)] xl:items-start"
+                                className="creatorlab-scene-visual-workspace"
                               >
-                                        <div data-visual-storage-status-mount="true">
+                                        <div className="creatorlab-scene-visual-storage" data-visual-storage-status-mount="true">
                                           <CreatorVisualStorageStatus
                                             language={uiLanguage === "en" ? "en" : "tr"}
                                             getAccessToken={getAccessTokenOrThrow}
                                           />
                                         </div>
-                                <div className="space-y-3">
+                                <div className="creatorlab-scene-visual-main space-y-3">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3" data-creator-visual-source-selector="true">
                                     <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                                       {uiLanguage === "en" ? "Visual source" : "Görsel kaynağı"}
@@ -33393,7 +33365,7 @@ const generateSceneImage = async (
                                   )}
                                 </div>
 
-                                <aside className="space-y-3">
+                                <aside className="creatorlab-scene-visual-inspector space-y-3">
                                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                       {uiLanguage === "en" ? "Output" : "Çıktı"}
@@ -34009,6 +33981,27 @@ const generateSceneImage = async (
                                     </div>
                                   </div>
                                 </div>
+                              </div>
+                            )}
+
+                            {activeSceneInspectorTab === "music" && (
+                              <div id={`scene-${scene.id}-music-panel`} role="tabpanel" aria-labelledby={`scene-${scene.id}-music-tab`}>
+                                <CreatorSceneMusicControls
+                                  timeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
+                                  sceneIds={scenes.map((item) => item.creatorSceneId || `legacy-${item.id}`)}
+                                  sceneId={scene.creatorSceneId || `legacy-${scene.id}`}
+                                  disabled={isBatchRendering || creatorMediaPreflightLoading}
+                                  getAccessToken={getAccessTokenOrThrow}
+                                  language={uiLanguage === "en" ? "en" : "tr"}
+                                  onChange={(nextTimeline) => {
+                                    setCreatorAudioTimeline(nextTimeline);
+                                    setExportedMovieUrl("");
+                                    setExportMovieResult(null);
+                                    setExportSignature("");
+                                    setCreatorPackageDownloaded(false);
+                                    setCreatorPackageSignature("");
+                                  }}
+                                />
                               </div>
                             )}
                           </div>

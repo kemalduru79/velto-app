@@ -60,8 +60,8 @@ check(await resolve(entitlement, undefined, true, "wrong-bucket") === null, "12 
 check(await resolve({ ...entitlement, contentType: "audio/wav" }) === null, "13 type blocked");
 check(await resolve({ ...entitlement, checksum: "bad" }) === null, "14 checksum blocked");
 check(/delete exportPayload\.musicEntitlement/.test(route), "15 browser entitlement removed");
-check(!/storageBucket/.test(route), "16 bucket injection absent");
-check(!/storagePath/.test(route), "17 path injection absent");
+check(/delete exportPayload\.storageBucket/.test(route), "16 browser bucket injection removed");
+check(/delete exportPayload\.storagePath/.test(route), "17 browser path injection removed");
 check(!/body\.providerKey/.test(route), "18 provider injection absent");
 check(!/body\.licensePolicyVersion/.test(route), "19 policy injection absent");
 check(/return \{ entitlementId: entitlement\.id, trackId \}/.test(service), "20 minimal contract");

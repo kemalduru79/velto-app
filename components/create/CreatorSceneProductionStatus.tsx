@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 export type CreatorSceneTriageStatus =
   | "ready"
   | "needs_action"
@@ -68,7 +66,6 @@ export default function CreatorSceneProductionStatus({
   focusedSceneId,
   onFocusScene,
   language,
-  contextualAction,
   selectedSceneIds,
   onToggleSceneSelection,
 }: {
@@ -76,7 +73,6 @@ export default function CreatorSceneProductionStatus({
   focusedSceneId: number | null;
   onFocusScene: (sceneId: number) => void;
   language: "en" | "tr";
-  contextualAction?: ReactNode;
   selectedSceneIds: ReadonlySet<number>;
   onToggleSceneSelection: (sceneId: number) => void;
 }) {
@@ -93,11 +89,12 @@ export default function CreatorSceneProductionStatus({
       className="creatorlab-p2c-scene-operations"
       aria-labelledby="creatorlab-scene-production-title"
       data-scene-production-overview="true"
+      data-scene-navigator-layout="horizontal"
     >
       <div className="creatorlab-p2c-scene-operations-heading">
         <div>
           <h2 id="creatorlab-scene-production-title">
-            {language === "en" ? "Scene Production" : "Sahne Üretimi"}
+            {language === "en" ? "Scenes" : "Sahneler"}
           </h2>
           <p>
             <strong>{scenes.length}</strong> {language === "en" ? "scenes" : "sahne"}
@@ -113,17 +110,14 @@ export default function CreatorSceneProductionStatus({
             )}
           </p>
         </div>
-        {contextualAction && (
-          <div className="creatorlab-p2c-scene-operations-action">{contextualAction}</div>
-        )}
       </div>
 
       <div className="creatorlab-p2c-scene-navigator-label">
-        <strong>{language === "en" ? "Scenes" : "Sahneler"}</strong>
         <span>{language === "en" ? "Select a scene to review" : "İncelemek için sahne seç"}</span>
       </div>
       <ol
         className="creatorlab-p2c-scene-operations-list"
+        data-horizontal-scene-strip="true"
         aria-label={language === "en" ? "Production scene navigator" : "Üretim sahnesi navigasyonu"}
       >
           {scenes.map((scene) => {

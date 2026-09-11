@@ -19,10 +19,10 @@ const library = read("lib/creator/voiceLibrary.ts");
 
 assert(page.includes("VELTO_VOICE_P1B"), "page marker is missing");
 assert(page.includes("Browse narrator voices"), "project narrator browser is missing");
-assert(page.includes("Choose character voice"), "character voice browser is missing");
-assert(page.includes("Change narrator voice"), "scene narrator override is missing");
+assert(page.includes("Browse character voices"), "character voice browser is missing");
+assert(page.includes('openCreatorVoiceLibrary({ scope: "scene_narrator", sceneId: scene.id })'), "scene narrator override is missing");
 assert(page.includes("Explore library"), "shared voice library tab is missing");
-assert(page.includes("Preview playback does not use Velto credits"), "preview credit disclosure is missing");
+assert(page.includes("Preview playback does not start generation"), "preview generation disclosure is missing");
 assert(page.includes("voiceSelection: narratorSettings.voiceSelection"), "project voice selection persistence is missing");
 assert(page.includes("narratorVoiceSelection: normalizeVoiceLibrarySelection"), "scene voice hydration is missing");
 assert(page.includes("getEffectiveDialogueVoiceId(scene)"), "dialogue voice routing is missing");

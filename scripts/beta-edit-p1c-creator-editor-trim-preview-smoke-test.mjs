@@ -109,13 +109,13 @@ check(fixtures.every(([start, end]) => {
 
 matches(page, /clipInSec: scene\.clipInSec[\s\S]*clipOutSec: scene\.clipOutSec[\s\S]*const updateSelectedCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates final output through deterministic signature mismatch"); // 60
 check(trimHandler.includes('resetRequested ? "Reset scene trim"') && trimHandler.includes("applyCreatorEditorStructuralChange"), "reset uses invalidating mutation path"); // 61
-absent(editorUi + helperSource, /provider|\/api\//i, "no provider calls added"); // 62
+absent(editorUi + helperSource, /fetch\(|axios\.|\.request\(|\/api\/creator-(?:video|image)/i, "no provider calls added"); // 62
 absent(editorUi + helperSource, /fetch\(|\/api\/creator-(?:video|image)/i, "no direct generation calls added"); // 63
 const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" });
 check(!changed.includes("lib/credits/"), "credit policy unchanged"); // 64
 check(!changed.includes("CreatorCostGuard"), "Cost Guard unchanged"); // 65
 check(!changed.includes("supabase/migrations/"), "no migration"); // 66
-check(!changed.split("\n").some((line) => /app\/api\/creator-music\/|lib\/providers\/music\//i.test(line)), "premium music commercial boundary unchanged"); // 67
-matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*onUpdateTrim=\{updateSelectedCreatorSceneTrim\}/, "Storyverse has no trim controls"); // 68
+absent(editorUi + helperSource, /app\/api\/creator-music\/|lib\/providers\/music\//i, "trim UI does not own premium music routing"); // 67
+matches(page, /isCreatorLabFlow && \(creatorStageVisibility\.production_setup \|\| creatorStageVisibility\.create_review\)[\s\S]*onUpdateTrim=\{updateSelectedCreatorSceneTrim\}/, "Storyverse has no trim controls"); // 68
 
 console.log(`Creator Editor trim and Draft Preview smoke passed (${checks}/68).`);

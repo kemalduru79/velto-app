@@ -14,6 +14,8 @@ import {
 } from "@/lib/creator/editorState";
 import type { CreatorVideoCurrentness } from "@/lib/creator/videoGeneration";
 import type { CreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
+import CreatorSceneMusicControls from "@/components/create/CreatorSceneMusicControls";
+import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
 
 type CreatorEditorProps = {
   scenes: readonly CreatorEditorTimelineScene[];
@@ -44,6 +46,8 @@ type CreatorEditorProps = {
   onProjectHistoryRemoved: (url: string) => void;
   sceneOperationsDisabled?: boolean;
   language: "en" | "tr";
+  audioTimeline: CreatorAudioTimeline;
+  onAudioTimelineChange: (timeline: CreatorAudioTimeline) => void;
 };
 
 export default function CreatorEditor({
@@ -71,6 +75,8 @@ export default function CreatorEditor({
   onProjectHistoryRemoved,
   sceneOperationsDisabled = false,
   language,
+  audioTimeline,
+  onAudioTimelineChange,
 }: CreatorEditorProps) {
   const selectedScene =
     scenes.find((scene) => scene.creatorSceneId === selectedCreatorSceneId) ||
@@ -207,7 +213,7 @@ export default function CreatorEditor({
     <section ref={editorRef} tabIndex={-1} aria-labelledby="creator-editor-title" className="creatorlab-p2c-editor-surface creatorlab-p2c-editor min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 focus:outline-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-blue-500 [&_button:focus-visible]:ring-offset-2 md:p-5" data-creator-editor="foundation">
       <div className="creatorlab-p2c-editor-heading">
         <div className="min-w-0">
-          <span>{language === "en" ? "Edit & Assemble" : "Düzenle ve Birleştir"}</span>
+          <span>{language === "en" ? "Selected Scene" : "Seçili Sahne"}</span>
           <h2 id="creator-editor-title">
             {language === "en" ? "Scene" : "Sahne"} {String(selectedIndex + 1).padStart(2, "0")} · {sceneTitle}
           </h2>
@@ -221,7 +227,7 @@ export default function CreatorEditor({
       <div className="creatorlab-p2c-editor-layout">
         <div className="creatorlab-p2c-editor-preview-column">
           <div className="creatorlab-p2c-editor-section-heading">
-            <span>{language === "en" ? "Media Preview" : "Medya Önizleme"}</span>
+            <span>{language === "en" ? "Visual" : "Görsel"}</span>
             <small>{hasSelectedVideo ? "Video" : selectedScene.image ? (language === "en" ? "Image" : "Görsel") : (language === "en" ? "No media" : "Medya yok")}</small>
           </div>
           <div className="creatorlab-p2c-editor-preview-canvas">
@@ -319,11 +325,21 @@ export default function CreatorEditor({
             )}
           </div>
 
+          <CreatorSceneMusicControls
+            timeline={audioTimeline}
+            sceneIds={scenes.flatMap((scene) => scene.creatorSceneId ? [scene.creatorSceneId] : [])}
+            sceneId={selectedScene.creatorSceneId!}
+            disabled={sceneOperationsDisabled}
+            onChange={onAudioTimelineChange}
+            getAccessToken={getAccessToken}
+            language={language}
+          />
+
           <section className="creatorlab-p2c-editor-content" data-creator-text-editor="true" aria-labelledby="creator-editor-content-title">
             <div className="creatorlab-p2c-editor-content-heading">
               <div>
                 <span>{language === "en" ? "Content" : "İçerik"}</span>
-                <h3 id="creator-editor-content-title">{language === "en" ? "Scene copy and voice" : "Sahne metni ve ses"}</h3>
+                <h3 id="creator-editor-content-title">{language === "en" ? "Script & Voice" : "Senaryo ve Ses"}</h3>
               </div>
               {textChanged && <small>{language === "en" ? "Unsaved changes" : "Kaydedilmemiş değişiklikler"}</small>}
             </div>

@@ -16,8 +16,7 @@ assert.match(subnav, /"setup" \| "create_review"/);
 assert.match(subnav, /Setup/);
 assert.match(subnav, /Create & Review/);
 assert.match(subnav, /data-production-substep-selected=\{active \? "true" : "false"\}/);
-assert.match(subnav, /border-blue-600 bg-white/);
-assert.match(subnav, /border-transparent text-slate-400/);
+assert.match(subnav, /data-state=\{state\}/);
 assert.doesNotMatch(subnav, /fetch\(|credits|provider/i);
 assert.match(page, /useState<CreatorProductionSubstep>\("setup"\)/);
 assert.match(page, /selectCreatorProductionSubstep\("create_review"\)/);
@@ -25,7 +24,7 @@ assert.match(summary, /Edit Setup/);
 assert.doesNotMatch(summary, /fetch\(|credits|provider/i);
 
 const setupStart = page.indexOf('data-production-substep="setup"');
-const setupEnd = page.indexOf('creatorProductionSubstep === "create_review" && (scenes.length', setupStart);
+const setupEnd = page.indexOf('creatorStageVisibility.create_review && (scenes.length', setupStart);
 const setupSource = page.slice(setupStart, setupEnd);
 assert.match(setupSource, /Production approach/i);
 assert.match(setupSource, /Brand foundation/i);
@@ -66,7 +65,7 @@ assert.doesNotMatch(page, /multi-track dialogue mixer|speaker segmentation/i);
 assert.match(page, /creatorBoundDialogueCharacterIds/);
 assert.match(page, /creatorResolvedCharacterVoiceCount/);
 assert.match(page, /getCreatorVoiceCreditEstimate\(scenes\)\.totalTracks/);
-assert.match(page, /Credits are charged only when generation starts/);
+assert.match(page, /estimateCreatorOperationManifest/);
 
 assert.match(page, /CreatorProductionSetupSummary/);
 assert.match(summary, /data-production-compact-header/);
@@ -85,11 +84,11 @@ assert.doesNotMatch(
 assert.match(page, /All production assets are ready/);
 assert.match(page, /Continue · Build Final Video/);
 assert.match(page, /data-production-compact-action/);
-assert.match(page, /Mini timeline/i);
+assert.doesNotMatch(page, /Mini timeline/i);
 assert.match(page, /Dialogue speaker/);
 assert.match(page, /scene\.dialogueSpeakerCharacterId/);
 assert.match(page, /creatorSceneContinuityModes/);
-const createReviewStart = page.indexOf('creatorProductionSubstep === "create_review" && (scenes.length');
+const createReviewStart = page.indexOf('creatorStageVisibility.create_review && (scenes.length');
 const compactHeaderIndex = page.indexOf("<CreatorProductionSetupSummary");
 const compactProgressIndex = page.indexOf('data-production-compact-progress="true"', createReviewStart);
 const sceneWorkspaceIndex = page.indexOf('id="creatorlab-production-storyboard"', createReviewStart);
@@ -98,7 +97,7 @@ assert.doesNotMatch(page.slice(compactProgressIndex, sceneWorkspaceIndex), /Appr
 
 assert.match(page, /if \(value === "setup"\) return "setup"/);
 assert.match(page, /if \(value === "review"\) return "create_review"/);
-assert.match(page, /onChange=\{selectCreatorProductionSubstep\}/);
+assert.doesNotMatch(page, /<CreatorProductionSubnav/);
 assert.doesNotMatch(subnav, /dashboard|overview|assets|timeline/i);
 
 const referencePreviewCssStart = page.indexOf(".creatorlab-cast-reference-image {");
@@ -112,7 +111,7 @@ assert.doesNotMatch(referencePreviewCss, /object-fit: cover|aspect-ratio|height:
 
 assert.match(music, /No Music/);
 assert.match(music, /Auto Match/);
-assert.match(music, /Browse Music/);
+assert.match(music, /Choose Music/);
 assert.match(page, /isCreatorPremiumMusicTrackId/);
 assert.match(exportRoute, /creator_premium_music_confirmation_required/);
 
@@ -123,7 +122,7 @@ assert.match(page, /Independent scenes/);
 assert.match(page, /Keep continuity/);
 assert.match(page, /Choose per scene/);
 
-assert.match(page, /isCreatorLabFlow && creatorWorkspaceStep === 3/);
+assert.match(page, /isCreatorLabFlow && \(creatorStageVisibility\.production_setup \|\| creatorStageVisibility\.create_review\)/);
 assert.match(page, /voiceSelection: narratorSettings\.voiceSelection/);
 assert.match(page, /dialogueVoiceSelection: narratorSettings\.dialogueVoiceSelection/);
 assert.match(page, /characters,/);

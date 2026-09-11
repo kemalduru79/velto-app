@@ -107,7 +107,7 @@ check(!changed.includes("lib/credits/") && !changed.includes("CreatorCostGuard")
 check(changed.split("\n").filter((line) => line.includes("app/api/")).every((line) => line.endsWith("app/api/creator-video/route.ts") || line.endsWith("app/api/creator-store-video/route.ts") || line.endsWith("app/api/creator-export/route.ts")) && changed.split("\n").filter((line) => line.includes("export-service/")).every((line) => line.endsWith("export-service/src/server.js")), "only authorized Stage 0.5.3E video storage/export API paths changed"); // 58
 check(!changed.includes("supabase/migrations/"), "no migration"); // 59
 check(!changed.split("\n").some((line) => /app\/api\/creator-music\/|lib\/providers\/music\//i.test(line)), "premium music commercial boundary unchanged"); // 60
-matches(page, /isCreatorLabFlow && creatorWorkspaceStep === 3[\s\S]*onMoveScene=\{moveSelectedCreatorEditorScene\}/, "Storyverse operations absent"); // 61
+matches(page, /creatorStageVisibility\.create_review[\s\S]*\{creatorEditorOpen && \([\s\S]*onMoveScene=\{moveSelectedCreatorEditorScene\}/, "CreatorLab Create & Review owns editor operations"); // 61
 matches(page, /setCreatorUndoStack\(\[\]\)[\s\S]*setSelectedCreatorEditorSceneId\(null\)[\s\S]*setCreatorEditorOpen\(false\)/, "project boundary resets operation state"); // 62
 
 console.log(`Creator Editor scene operations smoke passed (${checks}/62).`);

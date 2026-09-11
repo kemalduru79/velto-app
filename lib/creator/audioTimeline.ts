@@ -47,7 +47,8 @@ export type CreatorAudioSceneAnchoredRange = {
 export type CreatorAudioPlacement = {
   id: string;
   kind: CreatorAudioPlacementKind;
-  asset: CreatorAudioAssetReference;
+  asset?: CreatorAudioAssetReference;
+  musicSelection?: { mode: "auto" };
   range: CreatorAudioSceneAnchoredRange;
   sourceInMs: number;
   sourceOutMs?: number;
@@ -205,7 +206,10 @@ function normalizePlacement(value: unknown): CreatorAudioPlacement {
     throw new CreatorAudioTimelineError("AUDIO_PLACEMENT_STATUS_INVALID");
   }
   const kind = source.kind as CreatorAudioPlacementKind;
-  const asset = normalizeAsset(source.asset, kind);
+  const musicSelection = record(source.musicSelection);
+  const unresolvedAuto = kind === "music" && source.status === "unresolved" && musicSelection?.mode === "auto";
+  const asset = own(source, "asset") ? normalizeAsset(source.asset, kind) : undefined;
+  if (!asset && !unresolvedAuto) throw new CreatorAudioTimelineError("AUDIO_ASSET_INVALID");
   const sourceInMs = nonNegative(source.sourceInMs, "AUDIO_SOURCE_IN_INVALID");
   const sourceOutMs = own(source, "sourceOutMs")
     ? nonNegative(source.sourceOutMs, "AUDIO_SOURCE_OUT_INVALID")
@@ -213,7 +217,7 @@ function normalizePlacement(value: unknown): CreatorAudioPlacement {
   if (sourceOutMs !== undefined && sourceOutMs <= sourceInMs) {
     throw new CreatorAudioTimelineError("AUDIO_SOURCE_RANGE_INVALID");
   }
-  if (asset.durationMs !== undefined && (
+  if (asset?.durationMs !== undefined && (
     sourceInMs >= asset.durationMs ||
     (sourceOutMs !== undefined && sourceOutMs > asset.durationMs)
   )) throw new CreatorAudioTimelineError("AUDIO_SOURCE_BOUNDS_INVALID");
@@ -233,7 +237,8 @@ function normalizePlacement(value: unknown): CreatorAudioPlacement {
   return {
     id: requiredText(source.id, "AUDIO_PLACEMENT_ID_REQUIRED"),
     kind,
-    asset,
+    ...(asset ? { asset } : {}),
+    ...(unresolvedAuto ? { musicSelection: { mode: "auto" as const } } : {}),
     range: {
       start: normalizeAnchor(range.start),
       end: normalizeAnchor(range.end),
@@ -440,7 +445,11 @@ export function reconcileCreatorAudioTimeline(input: {
       issues.push({ placementId: placement.id, code: "range_inverted" });
       return { ...placement, range: { start, end }, status: "stale" as const };
     }
-    return { ...placement, range: { start, end }, status: "active" as const };
+    return {
+      ...placement,
+      range: { start, end },
+      status: placement.musicSelection?.mode === "auto" ? "unresolved" as const : "active" as const,
+    };
   });
   return { timeline: { ...timeline, placements }, issues };
 }
@@ -492,6 +501,7 @@ export function resolveCreatorAudioTimeline(input: {
   });
   const placements: CreatorResolvedAudioPlacement[] = timeline.placements.map((placement) => {
     if (placement.status !== "active") throw new CreatorAudioTimelineError("AUDIO_PLACEMENT_NOT_RENDERABLE");
+    if (!placement.asset) throw new CreatorAudioTimelineError("AUDIO_ASSET_INVALID");
     const startScene = boundaries.get(placement.range.start.sceneId);
     const endScene = boundaries.get(placement.range.end.sceneId);
     if (!startScene || !endScene) throw new CreatorAudioTimelineError("AUDIO_ANCHOR_UNRESOLVED");
