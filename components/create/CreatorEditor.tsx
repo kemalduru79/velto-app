@@ -327,6 +327,7 @@ export default function CreatorEditor({
 
           <CreatorSceneMusicControls
             timeline={audioTimeline}
+            projectId={projectId}
             sceneIds={scenes.flatMap((scene) => scene.creatorSceneId ? [scene.creatorSceneId] : [])}
             sceneId={selectedScene.creatorSceneId!}
             disabled={sceneOperationsDisabled}

@@ -11074,6 +11074,18 @@ const generateSceneImage = async (
       : validatedExportScenes;
     const flowContinuityAudit = exportFlowValidation?.audit || null;
 
+    if (isCreatorLabFlow) {
+      try {
+        await projectSaveQueueRef.current;
+      } catch {
+        setSaveMessage("");
+        setError(uiLanguage === "en"
+          ? "Save the latest music changes before building the final video."
+          : "Final videoyu oluşturmadan önce son müzik değişikliklerini kaydet.");
+        return;
+      }
+    }
+
     const creatorExportOperationKey = `export:${getProjectKey()}`;
     let creatorExportOperationId = "";
     if (isCreatorLabFlow && getOperationCreditCost("creator_export", creatorQualityMode) > 0) {
@@ -11706,6 +11718,7 @@ const generateSceneImage = async (
       releaseConfirmations?: Record<CreatorReleaseConfirmationKey, boolean>;
       forceInvalidateFinalVideo?: boolean;
       backgroundMusic?: CreatorBackgroundMusicConfig;
+      audioTimeline?: CreatorAudioTimeline | null;
       creatorMentorResult?: CreatorMentorResult | null;
       creatorScript?: CreatorScript | null;
       creatorProductionPackage?: CreatorProductionPackage | null;
@@ -12024,7 +12037,11 @@ const generateSceneImage = async (
             package: persistedProductionPackage,
             refinedScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes,
             backgroundMusic: lifecycleOverrides.backgroundMusic ?? creatorBackgroundMusic,
-            ...creatorAudioTimelineSnapshotFields(creatorAudioTimeline),
+            ...creatorAudioTimelineSnapshotFields(
+              Object.prototype.hasOwnProperty.call(lifecycleOverrides, "audioTimeline")
+                ? lifecycleOverrides.audioTimeline
+                : creatorAudioTimeline,
+            ),
             projectContinuityMode: creatorProjectContinuityMode,
             sceneContinuityModes: creatorSceneContinuityModes,
             voicePreferences: persistedProductionPackage?.voicePreferences || null,
@@ -12077,6 +12094,27 @@ const generateSceneImage = async (
       if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
       throw saveError;
     }
+  };
+
+  const applyCreatorAudioTimelineChange = (nextTimeline: CreatorAudioTimeline) => {
+    setCreatorAudioTimeline(nextTimeline);
+    setExportedMovieUrl("");
+    setExportMovieResult(null);
+    setExportSignature("");
+    setCreatorPackageDownloaded(false);
+    setCreatorPackageSignature("");
+    void persistProject(false, {
+      audioTimeline: nextTimeline,
+      forceInvalidateFinalVideo: true,
+    }).catch((saveError) => {
+      if (classifyCreatorProjectSaveError(saveError) === "cas_conflict") {
+        setError(uiLanguage === "en"
+          ? "This project changed elsewhere. Reload before retrying; your local work is still here."
+          : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.");
+      } else {
+        setError(uiLanguage === "en" ? "Music changes could not be saved." : "Müzik değişiklikleri kaydedilemedi.");
+      }
+    });
   };
 
   const saveProject = async () => {
@@ -31840,17 +31878,12 @@ const generateSceneImage = async (
                   getAccessToken={getAccessTokenOrThrow}
                   autoMatchInput={{ contentType: creatorContentType, outcome: creatorOutcome, format: creatorFormat, topic: input, visualStyle: visualBible?.style }}
                   onChange={(nextTimeline) => {
-                    setCreatorAudioTimeline(nextTimeline);
                     const nextMode = getCreatorMusicSetupMode(nextTimeline);
                     setCreatorBackgroundMusic({
                       ...DEFAULT_CREATOR_BACKGROUND_MUSIC,
                       mode: nextMode === "auto" ? "auto" : "none",
                     });
-                    setExportedMovieUrl("");
-                    setExportMovieResult(null);
-                    setExportSignature("");
-                    setCreatorPackageDownloaded(false);
-                    setCreatorPackageSignature("");
+                    applyCreatorAudioTimelineChange(nextTimeline);
                   }}
                   language={uiLanguage === "en" ? "en" : "tr"}
                 />
@@ -32199,14 +32232,7 @@ const generateSceneImage = async (
                     getAccessToken={getAccessTokenOrThrow}
                     onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}
                     audioTimeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
-                    onAudioTimelineChange={(nextTimeline) => {
-                      setCreatorAudioTimeline(nextTimeline);
-                      setExportedMovieUrl("");
-                      setExportMovieResult(null);
-                      setExportSignature("");
-                      setCreatorPackageDownloaded(false);
-                      setCreatorPackageSignature("");
-                    }}
+                    onAudioTimelineChange={applyCreatorAudioTimelineChange}
                     sceneOperationsDisabled={
                       isBatchRendering ||
                       scenes.some((scene) =>
@@ -33988,19 +34014,13 @@ const generateSceneImage = async (
                               <div id={`scene-${scene.id}-music-panel`} role="tabpanel" aria-labelledby={`scene-${scene.id}-music-tab`}>
                                 <CreatorSceneMusicControls
                                   timeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
+                                  projectId={currentProjectId}
                                   sceneIds={scenes.map((item) => item.creatorSceneId || `legacy-${item.id}`)}
                                   sceneId={scene.creatorSceneId || `legacy-${scene.id}`}
                                   disabled={isBatchRendering || creatorMediaPreflightLoading}
                                   getAccessToken={getAccessTokenOrThrow}
                                   language={uiLanguage === "en" ? "en" : "tr"}
-                                  onChange={(nextTimeline) => {
-                                    setCreatorAudioTimeline(nextTimeline);
-                                    setExportedMovieUrl("");
-                                    setExportMovieResult(null);
-                                    setExportSignature("");
-                                    setCreatorPackageDownloaded(false);
-                                    setCreatorPackageSignature("");
-                                  }}
+                                  onChange={applyCreatorAudioTimelineChange}
                                 />
                               </div>
                             )}

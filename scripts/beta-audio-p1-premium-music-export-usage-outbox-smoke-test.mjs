@@ -69,11 +69,11 @@ check(/\.in\("status", \["pending", "failed"\]\)[\s\S]*\.eq\("status", "reported
 check(/markFailed[\s\S]*\.update\(\{ status: "failed"/.test(repository) && !/markFailed[\s\S]*\.insert\(/.test(repository), "25 failure reuses event");
 check(/PROVIDER_USAGE_ID_PATTERN = \/\^\[A-Za-z0-9/.test(repository) && /\{1,160\}/.test(repository), "26 provider usage ID bounded");
 
-check(/if \(musicUsageIdentity\)/.test(route), "27 Storyverse creates no event");
-check(/if \(musicUsageIdentity\)/.test(route), "28 no-music creates no event");
-check(/backgroundMusic\.mode === "selected"[\s\S]*musicUsageIdentity = buildCreatorMusicUsageEventIdentity/.test(route), "29 non-selected creates no event");
-check(route.indexOf("if (!musicEntitlement) return blockPremiumMusicExport()") < route.indexOf("await registerCreatorMusicExportUsage"), "30 blocked creates no event");
-check(/catch \{\s*return blockPremiumMusicExport\(\)/.test(route), "31 entitlement failure no event");
+check(/const musicUsageIdentities: CreatorMusicUsageEventIdentity\[\] = \[\]/.test(route), "27 Storyverse creates no event");
+check(/for \(const musicUsageIdentity of musicUsageIdentities\)/.test(route), "28 no-music creates no event");
+check(/placement\.asset\.origin !== "licensed_catalog"[\s\S]*buildCreatorMusicUsageEventIdentity/.test(route), "29 only licensed catalog placements create events");
+check(route.indexOf("if (!entitlement) throw new CreatorAudioExportError") < route.indexOf("await registerCreatorMusicExportUsage"), "30 blocked creates no event");
+check(/catch \{\s*throw new CreatorAudioExportError\("creator_audio_acquisition_required"\)/.test(route), "31 entitlement failure no event");
 check(route.indexOf("if (!response.ok || !data?.ok || !data?.movieUrl)") < route.indexOf("await registerCreatorMusicExportUsage"), "32 render failure no event");
 check(/await registerCreatorMusicExportUsage\(musicUsageIdentity\)/.test(route), "33 successful render creates pending event");
 check(route.indexOf("await registerCreatorMusicExportUsage") < route.indexOf("await settleMeteredOperation"), "34 usage before settlement");

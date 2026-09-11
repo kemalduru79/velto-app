@@ -50,6 +50,7 @@
     "test:stage-0-13c-e-corrective": "node --experimental-strip-types scripts/stage-0-13c-e-music-library-corrective-test.mjs",
     "test:stage-0-13c-e-final-ux": "node --experimental-strip-types scripts/stage-0-13c-e-final-ux-corrective-test.mjs",
     "test:stage-0-13c-e-layout": "node scripts/stage-0-13c-e-spacious-create-review-layout-test.mjs",
+    "test:stage-0-13c-f": "node scripts/stage-0-13c-f-renderer-mixing-test.mjs",
     "test:script-duration-contract": "node --experimental-strip-types scripts/post-0-13c-c-script-duration-contract-test.mjs",
     "test:strategy-script-authority": "node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs",
     "test:long-form-grounded-acceptance": "node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs",

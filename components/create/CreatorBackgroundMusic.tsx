@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { CreatorAudioAssetReference, CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
-import { getCreatorMusicSetupMode, selectCatalogCreatorMusic, selectUploadedCreatorMusic, setCreatorMusicSetupMode, type CreatorMusicSetupMode } from "@/lib/creator/musicSetup";
+import { getCreatorMusicSetupMode, selectAcquiredCatalogCreatorMusic, selectUploadedCreatorMusic, setCreatorMusicSetupMode, type CreatorMusicSetupMode } from "@/lib/creator/musicSetup";
 import CreatorMusicLibraryPicker from "@/components/create/CreatorMusicLibraryPicker";
 
 const ACCEPTED_AUDIO = "audio/mpeg,audio/wav,audio/mp4,audio/x-m4a";
@@ -81,10 +81,10 @@ export default function CreatorBackgroundMusic({ timeline, projectId, sceneIds, 
       </button>)}
     </div>
     {mode === "auto" && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">{english ? "Velto will match music to your content." : "Velto içeriğine uygun müziği eşleştirecek."}</p>}
-    {mode === "auto" && <div className="mt-4 rounded-xl bg-slate-50 p-4"><CreatorMusicLibraryPicker autoOnly autoMatchInput={autoMatchInput} getAccessToken={getAccessToken} language={language} onSelect={(track) => onChange(selectCatalogCreatorMusic({ timeline, track, sceneIds }))} /></div>}
+    {mode === "auto" && <div className="mt-4 rounded-xl bg-slate-50 p-4"><CreatorMusicLibraryPicker autoOnly autoMatchInput={autoMatchInput} getAccessToken={getAccessToken} projectId={projectId} language={language} onSelect={(track) => onChange(selectAcquiredCatalogCreatorMusic({ timeline, track, sceneIds }))} /></div>}
     {mode === "none" && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">{english ? "Your video will use narration without background music." : "Videon arka plan müziği olmadan anlatımı kullanacak."}</p>}
     {mode === "browse" && <div className="mt-4 space-y-4 rounded-xl bg-slate-50 p-4">
-      <CreatorMusicLibraryPicker getAccessToken={getAccessToken} language={language} onSelect={(track) => onChange(selectCatalogCreatorMusic({ timeline, track, sceneIds }))} />
+      <CreatorMusicLibraryPicker getAccessToken={getAccessToken} projectId={projectId} language={language} onSelect={(track) => onChange(selectAcquiredCatalogCreatorMusic({ timeline, track, sceneIds }))} />
       {selectedMusic ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><strong>{selectedMusic.asset?.displayName || (english ? "Music selected" : "Müzik seçildi")}</strong><p className="mt-1 text-xs">{selectedMusic.status === "unresolved" ? (english ? "Selected for this project. Final use requires availability." : "Bu proje için seçildi. Nihai kullanım kullanılabilirlik gerektirir.") : (english ? "Ready for this project." : "Bu proje için hazır.")}</p></div> : <p className="text-sm text-slate-600">{english ? "Search the library or upload your own track." : "Kütüphanede ara veya kendi parçanı yükle."}</p>}
       <input ref={inputRef} type="file" className="sr-only" accept={ACCEPTED_AUDIO} onChange={(event) => { setFile(event.target.files?.[0] || null); setRightsConfirmed(false); setError(""); }} />
       <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">{english ? "Upload your own music" : "Kendi müziğini yükle"}</button>

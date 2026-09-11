@@ -88,8 +88,8 @@ check(/downloadError \|\| !privateObject/.test(exportService), "38 missing objec
 check(/privateObject\.size > MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES/.test(exportService), "39 oversize object");
 check(/privateObject\.size < 1/.test(exportService), "40 empty object");
 check(/!isMp3\(buffer\)[\s\S]*createHash\("sha256"\)/.test(exportService), "41 corrupt object");
-check(/return localPath/.test(exportService) && /\? privateCreatorMusicPath/.test(exportService), "42 local bgm path");
-check(!/contract\.(?:storageBucket|storagePath)/.test(exportService), "43 request storage ignored");
+check(/return localPath/.test(exportService) && /canonicalCreatorAudioAssets/.test(exportService), "42 entitled assets resolve to local render paths");
+check(!/contract\.(?:storageBucket|storagePath)/.test(exportService.slice(exportService.indexOf("resolvePrivateCreatorMusicAsset"), exportService.indexOf("resolveCanonicalCreatorAudioAssets"))), "43 licensed request storage ignored");
 check(!/providerUrl|downloadUrl/.test(exportService.slice(exportService.indexOf("resolvePrivateCreatorMusicAsset"), exportService.indexOf('app.get("/health"'))), "44 provider URL absent");
 
 check(!/CREATOR_MUSIC_ASSET_BY_ID/.test(exportService), "45 static map removed");
@@ -102,16 +102,16 @@ check(/if \(!contract\) return ""/.test(exportService) && /: path\.join\(process
 check(!/migration|db push|supabase migration/.test(route + exportService), "52 migration not executed");
 check(!/storageBucket|storagePath|providerLicenseMetadata/.test(route.slice(route.indexOf("return NextResponse.json({\n      ...data"))), "53 private identity not returned");
 
-check(/selectedCreatorMusicRequested && !body\.musicEntitlement[\s\S]*res\.status\(409\)/.test(exportHandler), "54 selected without entitlement rejected");
-check(/body\.backgroundMusic\.mode === "selected"[\s\S]*!body\.musicEntitlement/.test(exportHandler), "55 selectedTrackId alone cannot authorize");
-check(/Premium music must be confirmed before final export\./.test(exportHandler), "56 legacy browser selected request safely rejected");
-check(/body\.musicEntitlement && !selectedCreatorMusicRequested[\s\S]*res\.status\(403\)/.test(exportHandler) && /resolvePrivateCreatorMusicAsset\(\{ req, body, tempDir \}\)/.test(exportHandler), "57 selected valid internal path accepted");
-check(/productProfile === "creatorlab"[\s\S]*backgroundMusic\.mode === "selected"/.test(exportHandler), "58 CreatorLab no-music remains compatible");
+check(/body\.musicEntitlement \|\| \(body\.productProfile === "creatorlab" && body\.backgroundMusic\)/.test(exportHandler), "54 legacy CreatorLab music authority rejected");
+check(/!body\.audioTimeline \|\| !Array\.isArray\(body\.creatorAudioAssets\)/.test(exportHandler), "55 canonical timeline contract required");
+check(/Legacy CreatorLab music authority is not accepted\./.test(exportHandler), "56 legacy browser selected request safely rejected");
+check(/resolveCanonicalCreatorAudioAssets\(\{ req, body, tempDir, ownership \}\)/.test(exportHandler), "57 canonical internal assets accepted");
+check(/resolvedAudioPlan\.music\.length > 0/.test(exportHandler), "58 CreatorLab no-music remains compatible");
 check(/body\?\.productProfile === "creatorlab"/.test(exportHandler) && /: path\.join\(process\.cwd\(\), "assets", "bgm\.mp3"\)/.test(exportHandler), "59 Storyverse remains compatible");
-check(exportHandler.indexOf("selectedCreatorMusicRequested && !body.musicEntitlement") < exportHandler.indexOf("resolvePrivateCreatorMusicAsset({ req, body, tempDir })"), "60 rejection before entitlement DB/storage");
-check(exportHandler.indexOf("selectedCreatorMusicRequested && !body.musicEntitlement") < exportHandler.indexOf("const exportFlowValidation") && exportHandler.indexOf("selectedCreatorMusicRequested && !body.musicEntitlement") < exportHandler.indexOf("for (let i = 0; i < usableScenes.length"), "61 rejection before render work");
+check(exportHandler.indexOf("body.musicEntitlement ||") < exportHandler.indexOf("resolveCanonicalCreatorAudioAssets"), "60 legacy rejection before entitlement DB/storage");
+check(exportHandler.indexOf("body.musicEntitlement ||") < exportHandler.indexOf("const exportFlowValidation") && exportHandler.indexOf("body.musicEntitlement ||") < exportHandler.indexOf("for (let i = 0; i < usableScenes.length"), "61 rejection before render work");
 check(/if \(!contract\) return ""[\s\S]*x-velto-internal-export-token/.test(exportService), "62 token remains entitlement-specific");
-check(!/selectedCreatorMusicRequested[\s\S]{0,240}(?:storageBucket|storagePath|providerKey|providerUrl|assetUrl)/.test(exportHandler) && /contractKeys\.join\(","\) !== "entitlementId,trackId"/.test(exportService), "63 injected storage/provider fields cannot authorize");
+check(/contractKeys\.join\(","\) !== "entitlementId,trackId"/.test(exportService) && /keys !== "assetId,bucket,channels,checksumSha256/.test(exportService), "63 injected storage/provider fields cannot authorize");
 
 assert.equal(checks, 63);
 console.log(`CreatorLab premium music export entitlement smoke passed (${checks}/63).`);

@@ -115,7 +115,7 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226"));
-check("export runtime includes economics dimensions", () => assert.equal(sha256("export-service/src/server.js"), "12cf471a134b858abc65163178efc9dc06ea9cc187ed39ea59c0991a7758eca3"));
+check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "1f788669922cddaab45ecd3e9380ccc320b56c34f20e62af0c301f59a7c2b865"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
@@ -130,6 +130,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-8g-architecture-closure-test.mjs",
     "app/api/share-project/route.ts",
+    "app/api/creator-music/acquire/route.ts",
     "app/create/page.tsx",
     "app/globals.css",
     "app/layout.tsx",
@@ -171,7 +172,12 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
   "scripts/stage-0-13c-e-scene-aware-music-test.mjs",
   "components/create/CreatorSceneProductionStatus.tsx",
   "scripts/stage-0-13c-e-final-ux-corrective-test.mjs",
-  "scripts/stage-0-13c-e-spacious-create-review-layout-test.mjs",
+    "scripts/stage-0-13c-e-spacious-create-review-layout-test.mjs",
+    "export-service/src/creatorAudioMixPlan.js",
+    "export-service/src/server.js",
+    "scripts/stage-0-13c-f-renderer-mixing-test.mjs",
+    "scripts/beta-audio-p1-premium-music-entitlement-storage-smoke-test.mjs",
+    "scripts/beta-audio-p1-premium-music-export-usage-outbox-smoke-test.mjs",
   "scripts/beta-audio-p1-premium-music-export-entitlement-smoke-test.mjs",
   "scripts/beta-edit-p1-creator-editor-foundation-smoke-test.mjs",
   "scripts/beta-edit-p1b-creator-editor-scene-operations-smoke-test.mjs",

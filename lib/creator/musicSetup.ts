@@ -105,6 +105,11 @@ export function creatorCatalogTrackAsset(track: CreatorPremiumMusicTrack): Creat
   };
 }
 
+/** Use only after the authenticated acquisition route confirms durable acquisition. */
+export function creatorAcquiredCatalogTrackAsset(track: CreatorPremiumMusicTrack): CreatorAudioAssetReference {
+  return { ...creatorCatalogTrackAsset(track), rights: { status: "verified" } };
+}
+
 export function selectCatalogCreatorMusic(input: { timeline: CreatorAudioTimeline | null | undefined; track: CreatorPremiumMusicTrack; sceneIds: string[] }) {
   const asset = creatorCatalogTrackAsset(input.track);
   const sceneIds = input.sceneIds.filter(Boolean);
@@ -114,6 +119,18 @@ export function selectCatalogCreatorMusic(input: { timeline: CreatorAudioTimelin
     ...current.placements.filter((item) => !isCreatorStartingMusicPlacement(item)),
     { id: `project-music:${asset.assetId}`, kind: "music" as const, asset, range: { start: { sceneId: sceneIds[0], edge: "start" as const, offsetMs: 0 }, end: getCreatorStartingMusicEnd(current, sceneIds) }, sourceInMs: 0, gain: 1, status: "unresolved" as const },
   ] };
+}
+
+/** Canonical starting-music selection for the shared picker's post-acquisition callback. */
+export function selectAcquiredCatalogCreatorMusic(input: { timeline: CreatorAudioTimeline | null | undefined; track: CreatorPremiumMusicTrack; sceneIds: string[] }) {
+  const selected = selectCatalogCreatorMusic(input);
+  const asset = creatorAcquiredCatalogTrackAsset(input.track);
+  return {
+    ...selected,
+    placements: selected.placements.map((placement) => placement.id === `project-music:${asset.assetId}`
+      ? { ...placement, asset, status: "active" as const }
+      : placement),
+  };
 }
 
 export function hydrateCreatorMusicTimeline(input: {

@@ -6,10 +6,9 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
-import { normalizeCreatorBackgroundMusicConfig } from "@/lib/creator/backgroundMusic";
-import {
-  isCreatorPremiumMusicTrackId,
-} from "@/lib/creator/musicLibrary";
+import { normalizeCreatorAudioTimeline, CreatorAudioTimelineError } from "@/lib/creator/audioTimeline";
+import { readCreatorProjectState } from "@/lib/creator/projectState";
+import { resolveOwnedCreatorAudioAsset } from "@/lib/creator/audioAssetResolver.server";
 import { authenticateRequest } from "@/lib/auth/server";
 import { resolveCreatorPremiumMusicExportEntitlement } from "@/lib/creator/musicEntitlement";
 import { isPremiumMusicAcquisitionEnabled } from "@/lib/providers/music/downloadSecurity";
@@ -34,6 +33,13 @@ import { persistEconomicOperationBestEffort, unknownCost, type EconomicOperation
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+class CreatorAudioExportError extends Error {
+  constructor(readonly code: string, message = "Project audio is not ready for final rendering.") {
+    super(message);
+    this.name = "CreatorAudioExportError";
+  }
+}
 
 // 3Q FINAL PRODUCTION GATE
 const EXPORT_HEALTH_TIMEOUT_MS = 4_000;
@@ -111,6 +117,7 @@ export async function POST(request: Request) {
       : body.productProfile === "creatorlab"
         ? "creatorlab"
         : "storyverse";
+    const persistedCreatorState = productProfile === "creatorlab" ? readCreatorProjectState(project) : null;
     const qualityMode = body.qualityMode;
     const evidenceGovernance = project.flow_type === "creator_lab"
       ? (await resolveCreatorProjectUsedMediaGovernance({
@@ -138,6 +145,15 @@ export async function POST(request: Request) {
     delete exportPayload.storageBucket;
     delete exportPayload.storagePath;
     if (productProfile === "creatorlab") {
+      const persistedScenes = new Map(
+        (persistedCreatorState?.createReview.scenes || []).flatMap((scene) => {
+          if (!scene || typeof scene !== "object" || Array.isArray(scene)) return [];
+          const value = scene as Record<string, unknown>;
+          return typeof value.creatorSceneId === "string" && value.creatorSceneId.trim()
+            ? [[value.creatorSceneId.trim(), value] as const]
+            : [];
+        }),
+      );
       try {
         exportPayload.scenes = resolveCanonicalCreatorExportScenes(
           Array.isArray(body.scenes) ? body.scenes.filter(
@@ -153,7 +169,16 @@ export async function POST(request: Request) {
               media: mediaIdentity,
             });
           }
-          return { ...scene, mediaIdentity };
+          const persistedScene = persistedScenes.get(scene.creatorSceneId);
+          if (!persistedScene) throw new CreatorExportSceneError("invalid_scene_identity");
+          return {
+            ...scene,
+            narration: persistedScene.narration,
+            dialogue: persistedScene.dialogue,
+            audioUrl: persistedScene.audioUrl,
+            dialogueAudioUrl: persistedScene.dialogueAudioUrl,
+            mediaIdentity,
+          };
         });
       } catch (error) {
         if (error instanceof CreatorExportSceneError) {
@@ -166,43 +191,65 @@ export async function POST(request: Request) {
       }
     }
     const internalExportToken = getFinalMovieInternalToken();
-    let musicUsageIdentity: CreatorMusicUsageEventIdentity | null = null;
+    const musicUsageIdentities: CreatorMusicUsageEventIdentity[] = [];
     if (productProfile === "creatorlab") {
-      const backgroundMusic = normalizeCreatorBackgroundMusicConfig(
-        body.backgroundMusic,
-        [],
-        isCreatorPremiumMusicTrackId,
-      );
-      if (backgroundMusic.mode === "selected") {
-        const blockPremiumMusicExport = () => NextResponse.json(
-          { ok: false, code: "creator_premium_music_confirmation_required", error: "Premium music must be confirmed before final export.", creditReserved: false },
-          { status: 409 },
-        );
-        if (!isPremiumMusicAcquisitionEnabled()) return blockPremiumMusicExport();
-        let musicEntitlement;
-        try {
-          musicEntitlement = await resolveCreatorPremiumMusicExportEntitlement({
-            userId: principal.id,
-            projectId: project.id,
-            trackId: backgroundMusic.selectedTrackId,
-          });
-        } catch {
-          return blockPremiumMusicExport();
+      const persistedTimeline = persistedCreatorState?.production.audioTimeline;
+      if (!persistedTimeline) throw new CreatorAudioExportError("creator_audio_timeline_required");
+      const timeline = normalizeCreatorAudioTimeline(persistedTimeline);
+      const runtimeAssets = [];
+      const resolvedAssetIds = new Set<string>();
+      const services = getPersistenceServices();
+      for (const placement of timeline.placements) {
+        if (placement.kind !== "music") {
+          if (placement.status === "active") throw new CreatorAudioExportError("creator_audio_placement_not_renderable");
+          continue;
         }
-        if (!musicEntitlement) return blockPremiumMusicExport();
-        musicUsageIdentity = buildCreatorMusicUsageEventIdentity({
-          entitlementId: musicEntitlement.entitlementId,
-          userId: principal.id,
-          projectId: project.id,
-          trackId: musicEntitlement.trackId,
-          exportIdempotencyKey: request.headers.get("x-idempotency-key"),
+        if (placement.status !== "active" || !placement.asset) {
+          throw new CreatorAudioExportError("creator_audio_placement_not_renderable");
+        }
+        if (!["verified", "creator_attested"].includes(placement.asset.rights.status)) {
+          throw new CreatorAudioExportError("creator_audio_rights_not_renderable");
+        }
+        if (resolvedAssetIds.has(placement.asset.assetId)) continue;
+        if (placement.asset.origin === "uploaded") {
+          const descriptor = await resolveOwnedCreatorAudioAsset({
+            ownerUserId: principal.id, projectId: project.id, assetId: placement.asset.assetId,
+          }, services);
+          if (!["verified", "creator_attested"].includes(descriptor.rights.status)) {
+            throw new CreatorAudioExportError("creator_audio_rights_not_renderable");
+          }
+          runtimeAssets.push({ ...descriptor, kind: "uploaded" as const });
+          resolvedAssetIds.add(placement.asset.assetId);
+          continue;
+        }
+        if (placement.asset.origin !== "licensed_catalog" || !placement.asset.assetId.startsWith("catalog:")) {
+          throw new CreatorAudioExportError("creator_audio_asset_not_renderable");
+        }
+        if (!isPremiumMusicAcquisitionEnabled()) throw new CreatorAudioExportError("creator_audio_acquisition_required");
+        const trackId = placement.asset.assetId.slice("catalog:".length);
+        let entitlement;
+        try {
+          entitlement = await resolveCreatorPremiumMusicExportEntitlement({ userId: principal.id, projectId: project.id, trackId });
+        } catch {
+          throw new CreatorAudioExportError("creator_audio_acquisition_required");
+        }
+        if (!entitlement) throw new CreatorAudioExportError("creator_audio_acquisition_required");
+        const usageIdentity = buildCreatorMusicUsageEventIdentity({
+          entitlementId: entitlement.entitlementId, userId: principal.id, projectId: project.id,
+          trackId: entitlement.trackId, exportIdempotencyKey: request.headers.get("x-idempotency-key"),
         });
-        if (!musicUsageIdentity) return blockPremiumMusicExport();
-        exportPayload.musicEntitlement = musicEntitlement;
+        if (!usageIdentity) throw new CreatorAudioExportError("creator_audio_acquisition_required");
+        musicUsageIdentities.push(usageIdentity);
+        runtimeAssets.push({ kind: "licensed" as const, assetId: placement.asset.assetId, ...entitlement });
+        resolvedAssetIds.add(placement.asset.assetId);
       }
-      exportPayload.backgroundMusic = backgroundMusic;
+      exportPayload.audioTimeline = timeline;
+      exportPayload.creatorAudioAssets = runtimeAssets;
+      delete exportPayload.backgroundMusic;
     } else {
       delete exportPayload.backgroundMusic;
+      delete exportPayload.audioTimeline;
+      delete exportPayload.creatorAudioAssets;
     }
 
     const exportApiBase = getExportApiBase();
@@ -275,7 +322,7 @@ export async function POST(request: Request) {
       providerAcceptedAt: data.renderStartedAt || new Date().toISOString(), completedAt: data.renderCompletedAt || new Date().toISOString() };
     await persistEconomicOperationBestEffort(economicAttempt);
 
-    if (musicUsageIdentity) {
+    for (const musicUsageIdentity of musicUsageIdentities) {
       await registerCreatorMusicExportUsage(musicUsageIdentity);
     }
 
@@ -336,6 +383,12 @@ export async function POST(request: Request) {
           finalProductionGate: { version: "3Q", status: "blocked" },
         },
         { status: 503 },
+      );
+    }
+    if (error instanceof CreatorAudioExportError || error instanceof CreatorAudioTimelineError) {
+      return NextResponse.json(
+        { ok: false, code: error instanceof CreatorAudioExportError ? error.code : "creator_audio_timeline_invalid", error: error.message, creditReserved: false },
+        { status: 409 },
       );
     }
 

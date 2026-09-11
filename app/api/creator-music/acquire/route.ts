@@ -23,8 +23,8 @@ export async function POST(request: Request) {
     if (Object.keys(input).some((key) => !ALLOWED_BODY_KEYS.has(key)) || input.productProfile !== "creatorlab" || typeof input.projectId !== "string") {
       return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
     }
-    const result = await acquireCreatorPremiumMusic({ userId: principal.id, projectId: input.projectId, trackId: input.trackId });
-    return NextResponse.json({ ok: true, status: result.status, entitlementId: result.entitlement.id, reused: result.reused });
+    await acquireCreatorPremiumMusic({ userId: principal.id, projectId: input.projectId, trackId: input.trackId });
+    return NextResponse.json({ ok: true, status: "acquired" });
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, error: "Authentication required." }, { status: 401 });
     if (error instanceof CreatorMusicAcquisitionError) {

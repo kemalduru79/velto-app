@@ -19,6 +19,8 @@ import {
 import { assertProjectUpdateMatched } from "../lib/persistence/projects/projectPatch.ts";
 import { buildCreatorFinalProductionSignature } from "../lib/creator/finalProductionSignature.ts";
 import { createCreatorPublishArtifactSignature } from "../lib/creator/projectExportReadiness.ts";
+import { createDefaultCreatorMusicTimeline, creatorAcquiredCatalogTrackAsset, selectAcquiredCatalogCreatorMusic } from "../lib/creator/musicSetup.ts";
+import { startOrChangeCreatorSceneMusic } from "../lib/creator/sceneMusic.ts";
 
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 
@@ -210,10 +212,31 @@ assert.deepEqual(manualAudioPayload.audioTimeline.placements[0].ducking, { mode:
 assert.deepEqual(manualAudioPayload.audioTimeline.placements[0].asset.rights, { status: "verified", referenceId: "license-a" });
 assert.deepEqual(creatorAudioTimelineSnapshotFields(null), { audioTimeline: null });
 assert.deepEqual(creatorAudioTimelineSnapshotFields(undefined), {});
+
+const acquiredTrack = { id: "acquired-track", title: "Acquired", artist: "Artist", durationSec: 120, moods: [], genres: [], previewAvailable: true };
+const acquiredStartingTimeline = selectAcquiredCatalogCreatorMusic({
+  timeline: createDefaultCreatorMusicTimeline(), track: acquiredTrack, sceneIds: ["scene-1", "scene-2", "scene-3"],
+});
+const acquiredStartingSnapshot = buildCreatorProjectState(baseInput({ audioTimeline: acquiredStartingTimeline }));
+assert.equal(acquiredStartingSnapshot.production.audioTimeline.placements[0].status, "active");
+assert.equal(acquiredStartingSnapshot.production.audioTimeline.placements[0].asset.rights.status, "verified");
+const acquiredSceneTimeline = startOrChangeCreatorSceneMusic({
+  timeline: acquiredStartingTimeline, sceneIds: ["scene-1", "scene-2", "scene-3"], sceneId: "scene-2",
+  choice: { mode: "asset", asset: creatorAcquiredCatalogTrackAsset({ ...acquiredTrack, id: "scene-track" }) },
+});
+const acquiredSceneSnapshot = buildCreatorProjectState(baseInput({ audioTimeline: acquiredSceneTimeline }));
+assert.equal(acquiredSceneSnapshot.production.audioTimeline.placements.find((placement) => placement.id.startsWith("primary-music:"))?.status, "active");
+assert.equal(acquiredSceneSnapshot.production.audioTimeline.placements.find((placement) => placement.id.startsWith("primary-music:"))?.asset?.rights.status, "verified");
+const replacedStarting = selectAcquiredCatalogCreatorMusic({ timeline: acquiredSceneTimeline, track: { ...acquiredTrack, id: "replacement" }, sceneIds: ["scene-1", "scene-2", "scene-3"] });
+assert.equal(replacedStarting.placements.some((placement) => placement.id.includes("scene-track") && placement.range.start.sceneId === "scene-2"), true, "default replacement preserves the later explicit transition");
+
 const runtimeSave = page.slice(page.indexOf("const persistProject = async"), page.indexOf("const loadProject = async"));
 const manualSave = page.slice(page.indexOf("const saveProject = async"), page.indexOf("const loadProject = async"));
 const autosave = page.slice(page.indexOf("useEffect(() => {\n    if (skipAutosaveRef.current)"), page.indexOf("useEffect(() => {\n    return () =>", page.indexOf("useEffect(() => {\n    if (skipAutosaveRef.current)")));
-assert.match(runtimeSave, /creatorAudioTimelineSnapshotFields\(creatorAudioTimeline\)/);
+assert.match(runtimeSave, /audioTimeline: nextTimeline[\s\S]*forceInvalidateFinalVideo: true/);
+assert.match(runtimeSave, /hasOwnProperty\.call\(lifecycleOverrides, "audioTimeline"\)/);
+assert.match(page.slice(page.indexOf("const handleExportMovie"), page.indexOf("const applyCreatorProfessionalScriptPlan")), /await projectSaveQueueRef\.current/);
+assert.match(runtimeSave, /creatorAudioTimelineSnapshotFields\([\s\S]*lifecycleOverrides\.audioTimeline[\s\S]*creatorAudioTimeline/);
 assert.match(manualSave, /await persistProject\(true\)/);
 assert.match(autosave, /await persistProject\(false\)/);
 

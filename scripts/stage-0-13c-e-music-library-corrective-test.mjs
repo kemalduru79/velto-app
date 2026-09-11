@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { creatorCatalogTrackAsset, selectCatalogCreatorMusic } from "../lib/creator/musicSetup.ts";
+import { creatorAcquiredCatalogTrackAsset, creatorCatalogTrackAsset, selectAcquiredCatalogCreatorMusic, selectCatalogCreatorMusic } from "../lib/creator/musicSetup.ts";
 import { createDefaultCreatorMusicTimeline } from "../lib/creator/musicSetup.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -21,12 +21,19 @@ assert.match(picker, /action: "preview"/);
 assert.match(picker, /playingId === track\.id/);
 assert.match(picker, /Music Library/); assert.match(picker, /Search music\.\.\./);
 assert.match(picker, /Preview/); assert.match(picker, /Use track/);
+assert.match(picker, /fetch\("\/api\/creator-music\/acquire"/);
+assert.match(picker, /body: JSON\.stringify\(\{ productProfile: "creatorlab", projectId, trackId: track\.id \}\)/);
+assert.ok(picker.indexOf('body?.status !== "acquired"') < picker.indexOf("onSelect(track)"));
+assert.match(picker, /disabled=\{Boolean\(acquiringId\)\}/); assert.match(picker, /Preparing…/);
+assert.match(picker, /Music could not be prepared for final use\./);
 assert.doesNotMatch(picker + setup + scene + page, /EPIDEMIC_SOUND_API_KEY|partner-content-api/);
 assert.equal((setup.match(/CreatorMusicLibraryPicker/g) || []).length >= 3, true);
 assert.equal((scene.match(/<CreatorMusicLibraryPicker/g) || []).length, 1);
 assert.doesNotMatch(scene, /fetch\("\/api\/creator-music/);
 assert.match(setup, /\/api\/creator-audio-assets/); assert.match(setup, /uploadToSignedUrl/);
 assert.match(acquire, /acquireCreatorPremiumMusic/); assert.match(security, /isPremiumMusicAcquisitionEnabled/);
+assert.match(acquire, /NextResponse\.json\(\{ ok: true, status: "acquired" \}\)/);
+assert.doesNotMatch(acquire, /entitlementId:|reused:/);
 assert.doesNotMatch(acquire + security, /acquisitionEnabled\s*=\s*true/);
 assert.doesNotMatch(picker, /entitlementId|assetId|raw rights|COGS/);
 assert.doesNotMatch(picker, /volume|gain|fade|ducking|waveform|BPM|sourceIn|sourceOut/i);
@@ -42,5 +49,11 @@ assert.equal("previewUrl" in asset, false); assert.equal("streamUrl" in asset, f
 const selected = selectCatalogCreatorMusic({ timeline: createDefaultCreatorMusicTimeline(), track, sceneIds: ["a", "b"] });
 assert.equal(selected.placements[0].status, "unresolved");
 assert.equal(selected.placements[0].asset.displayName, "Calm Horizon · Artist");
+const acquiredAsset = creatorAcquiredCatalogTrackAsset(track);
+assert.equal(acquiredAsset.rights.status, "verified");
+const acquired = selectAcquiredCatalogCreatorMusic({ timeline: createDefaultCreatorMusicTimeline(), track, sceneIds: ["a", "b"] });
+assert.equal(acquired.placements[0].status, "active");
+assert.equal(acquired.placements[0].asset.rights.status, "verified");
+assert.match(setup, /selectAcquiredCatalogCreatorMusic/); assert.match(scene, /creatorAcquiredCatalogTrackAsset/);
 
 console.log("STAGE_0_13C_E_MUSIC_LIBRARY_CORRECTIVE=PASS");

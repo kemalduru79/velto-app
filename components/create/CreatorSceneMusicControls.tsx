@@ -3,11 +3,12 @@
 import { useState } from "react";
 import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
 import { getCreatorSceneMusicState, startOrChangeCreatorSceneMusic, stopCreatorSceneMusicAfter } from "@/lib/creator/sceneMusic";
-import { creatorCatalogTrackAsset } from "@/lib/creator/musicSetup";
+import { creatorAcquiredCatalogTrackAsset } from "@/lib/creator/musicSetup";
 import CreatorMusicLibraryPicker from "@/components/create/CreatorMusicLibraryPicker";
 
-export default function CreatorSceneMusicControls({ timeline, sceneIds, sceneId, disabled, onChange, getAccessToken, language }: {
+export default function CreatorSceneMusicControls({ timeline, sceneIds, sceneId, projectId, disabled, onChange, getAccessToken, language }: {
   timeline: CreatorAudioTimeline; sceneIds: string[]; sceneId: string; disabled?: boolean;
+  projectId: string;
   onChange: (timeline: CreatorAudioTimeline) => void; language: "en" | "tr";
   getAccessToken: () => Promise<string>;
 }) {
@@ -33,7 +34,7 @@ export default function CreatorSceneMusicControls({ timeline, sceneIds, sceneId,
         {musicActiveHere && <button type="button" disabled={disabled} onClick={() => onChange(stopCreatorSceneMusicAfter({ timeline, sceneIds, sceneId }))} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">{english ? "Stop music after this scene" : "Müziği bu sahneden sonra durdur"}</button>}
       </div> : <div className="rounded-xl bg-slate-50 p-4">
         <p className="text-sm text-slate-600">{english ? "Choose music to play from this scene." : "Bu sahneden itibaren çalacak müziği seç."}</p>
-        <div className="mt-4"><CreatorMusicLibraryPicker getAccessToken={getAccessToken} language={language} onSelect={(track) => choose({ mode: "asset", asset: creatorCatalogTrackAsset(track) })} /></div>
+        <div className="mt-4"><CreatorMusicLibraryPicker getAccessToken={getAccessToken} projectId={projectId} language={language} onSelect={(track) => choose({ mode: "asset", asset: creatorAcquiredCatalogTrackAsset(track) })} /></div>
         <button type="button" onClick={() => setChoosing(false)} className="mt-3 text-xs font-semibold text-slate-600">{english ? "Cancel" : "İptal"}</button>
       </div>}
       {(state.starts || state.changes) && <p className="text-xs text-slate-500">{english ? "Music continues naturally until you change or stop it." : "Müzik, değiştirene veya durdurana kadar doğal biçimde devam eder."}</p>}

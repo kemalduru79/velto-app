@@ -17,14 +17,19 @@ const check = (condition, label) => {
 };
 
 check(/<CreatorMusicLibraryPicker/.test(setup), "canonical setup reuses the music library picker");
-check(/selectCatalogCreatorMusic\(\{ timeline, track, sceneIds \}\)/.test(setup), "catalog selection enters the canonical AudioTimeline flow");
+check(/selectAcquiredCatalogCreatorMusic\(\{ timeline, track, sceneIds \}\)/.test(setup), "acquired catalog selection enters the canonical AudioTimeline flow");
 check(/action: autoOnly \? "auto" : "search"/.test(picker), "picker preserves catalog search and auto-match");
 check(/action: "preview"/.test(picker) && /playingId === track\.id/.test(picker), "picker preserves track preview");
+check(/fetch\("\/api\/creator-music\/acquire"/.test(picker), "Use track calls the authenticated acquisition route");
+check(/productProfile: "creatorlab", projectId, trackId: track\.id/.test(picker), "picker sends only canonical acquisition identity");
+check(picker.indexOf('body?.status !== "acquired"') < picker.indexOf("onSelect(track)"), "selection occurs only after durable acquisition");
+check(/Music could not be prepared for final use\./.test(picker) && /disabled=\{Boolean\(acquiringId\)\}/.test(picker), "acquisition failure is concise and repeated clicks are disabled");
 check(/Selected for this project\. Final use requires availability\./.test(setup), "unresolved catalog selection is disclosed");
 check(/selectedMusic\?\.asset\?\.rights\.status === "unknown"/.test(setup) && /Review required/.test(setup), "unknown catalog rights remain review-gated");
 check(/authenticateRequest/.test(route), "acquisition route remains authenticated");
 check(/ALLOWED_BODY_KEYS = new Set\(\["productProfile", "projectId", "trackId"\]\)/.test(route), "acquisition request contract remains narrow");
 check(/acquireCreatorPremiumMusic/.test(route), "acquisition route delegates to the entitlement boundary");
+check(/NextResponse\.json\(\{ ok: true, status: "acquired" \}\)/.test(route) && !/entitlementId:|reused:/.test(route), "public acquisition response exposes no entitlement or storage internals");
 check(/if \(!dependencies\.acquisitionEnabled\) throw new CreatorMusicAcquisitionError\("disabled"\)/.test(acquisition), "commercial acquisition remains fail-closed");
 check(/isPremiumMusicAcquisitionEnabled/.test(security), "provider download security retains the acquisition gate");
 check(/MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES/.test(security) && /PREMIUM_MUSIC_DOWNLOAD_TIMEOUT_MS/.test(security), "provider download remains bounded");

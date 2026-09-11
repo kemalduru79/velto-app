@@ -6,9 +6,10 @@ import type { CreatorPremiumMusicTrack } from "@/lib/providers/music/types";
 
 type AutoMatchInput = { contentType?: string; outcome?: string; format?: string; topic?: string; visualStyle?: string };
 
-export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, language, autoMatchInput, autoOnly = false }: {
+export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, projectId, language, autoMatchInput, autoOnly = false }: {
   onSelect: (track: CreatorPremiumMusicTrack) => void;
   getAccessToken: () => Promise<string>;
+  projectId: string;
   language: "en" | "tr";
   autoMatchInput?: AutoMatchInput;
   autoOnly?: boolean;
@@ -19,6 +20,7 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, la
   const [term, setTerm] = useState("");
   const [playingId, setPlayingId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [acquiringId, setAcquiringId] = useState("");
   const [error, setError] = useState("");
   const english = language === "en";
   const stopPreview = () => { hlsRef.current?.destroy(); hlsRef.current = null; audioRef.current?.pause(); audioRef.current = null; setPlayingId(""); };
@@ -52,6 +54,25 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, la
       else { audio.src = body.streamUrl; await audio.play(); }
     } catch { stopPreview(); setError(english ? "Preview is unavailable." : "Önizleme kullanılamıyor."); }
   };
+  const select = async (track: CreatorPremiumMusicTrack) => {
+    if (acquiringId) return;
+    stopPreview(); setError(""); setAcquiringId(track.id);
+    try {
+      const token = await getAccessToken();
+      const response = await fetch("/api/creator-music/acquire", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ productProfile: "creatorlab", projectId, trackId: track.id }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.ok !== true || body?.status !== "acquired") throw new Error("acquisition_failed");
+      onSelect(track);
+    } catch {
+      setError(english ? "Music could not be prepared for final use." : "Müzik nihai kullanım için hazırlanamadı.");
+    } finally {
+      setAcquiringId("");
+    }
+  };
   return <section className="space-y-3" data-creator-music-library="true">
     <strong className="block text-sm text-slate-900">{english ? "Music Library" : "Müzik Kütüphanesi"}</strong>
     {!autoOnly && <div className="flex gap-2"><input value={term} onChange={(event) => setTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} placeholder={english ? "Search music..." : "Müzik ara..."} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm" /><button type="button" onClick={() => void search()} disabled={loading} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{english ? "Search" : "Ara"}</button></div>}
@@ -62,7 +83,7 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, la
       {track.artworkUrl && <img src={track.artworkUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}
       <div className="min-w-0 flex-1"><strong className="block truncate text-sm">{track.title}</strong><span className="block truncate text-xs text-slate-500">{[track.artist, track.durationSec ? `${Math.floor(track.durationSec / 60)}:${String(Math.round(track.durationSec % 60)).padStart(2, "0")}` : ""].filter(Boolean).join(" · ")}</span></div>
       <button type="button" disabled={!track.previewAvailable} onClick={() => void preview(track)} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40">{playingId === track.id ? (english ? "Stop" : "Durdur") : (english ? "Preview" : "Önizle")}</button>
-      <button type="button" onClick={() => { stopPreview(); onSelect(track); }} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white">{english ? "Use track" : "Parçayı kullan"}</button>
+      <button type="button" disabled={Boolean(acquiringId)} onClick={() => void select(track)} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{acquiringId === track.id ? (english ? "Preparing…" : "Hazırlanıyor…") : (english ? "Use track" : "Parçayı kullan")}</button>
     </article>)}
   </section>;
 }

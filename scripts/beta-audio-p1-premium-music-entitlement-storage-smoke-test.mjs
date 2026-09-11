@@ -108,7 +108,7 @@ check(record.providerLicenseMetadata.licenseType === "commercial" && !("url" in 
 check(!/temporary|rawResponse|authorization|previewUrl|browserUrl/i.test(types + migration), "no raw/provider URL payload");
 
 check(!/creator_music/.test(read("lib/credits/operationPolicy.ts")), "no creator_music credit operation");
-check(/backgroundMusic\.mode === "selected"/.test(exportRoute) && /creator_premium_music_confirmation_required/.test(exportRoute), "premium export remains guarded");
+check(/placement\.asset\.origin !== "licensed_catalog"/.test(exportRoute) && /creator_audio_acquisition_required/.test(exportRoute), "canonical premium export remains guarded");
 check(/searchTracks/.test(provider) && /action === "auto"/.test(creatorMusicRoute), "search preserved");
 check(/getTrackPreview/.test(provider) && /action === "preview"/.test(creatorMusicRoute), "preview preserved");
 check(!/storyverse/i.test(service + route + types + repository), "CreatorLab-only foundation");

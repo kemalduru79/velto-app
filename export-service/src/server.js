@@ -8,6 +8,7 @@ import os from "os";
 import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { resolveRuntimeRelease } from "./runtimeIdentity.js";
+import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
 
 const app = express();
 
@@ -50,6 +51,7 @@ const STITCH_AV_DRIFT_TOLERANCE_SECONDS = 0.15;
 const CREATOR_PREMIUM_MUSIC_LICENSE_POLICY_VERSION = "creator-premium-music-license-v1";
 const CREATOR_PREMIUM_MUSIC_PROVIDER_KEY = "premium_music_catalog";
 const MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES = 30 * 1024 * 1024;
+const MAX_CREATOR_AUDIO_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TRACK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
 const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
@@ -1460,6 +1462,67 @@ async function mixFinalVideoWithBackgroundMusic({
   ]);
 }
 
+async function mixFinalVideoWithCreatorAudioPlan({ inputVideoPath, outputVideoPath, plan }) {
+  if (plan.music.length === 0) return false;
+  const inputs = [];
+  const filters = [];
+  const musicLabels = [];
+  plan.music.forEach((segment, index) => {
+    inputs.push("-stream_loop", "-1", "-i", segment.localPath);
+    const inputIndex = index + 1;
+    const durationSec = (segment.endMs - segment.startMs) / 1000;
+    const sourceInSec = segment.sourceInMs / 1000;
+    const fadeInSec = segment.fadeInMs / 1000;
+    const fadeOutSec = segment.fadeOutMs / 1000;
+    const chain = [
+      `atrim=start=${sourceInSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`,
+      "asetpts=PTS-STARTPTS",
+      `volume=${segment.gain.toFixed(6)}`,
+    ];
+    if (segment.duckingMode === "under_speech") {
+      for (const window of plan.duckingWindows) {
+        const localStart = Math.max(0, window.startMs - segment.startMs);
+        const localEnd = Math.min(segment.endMs - segment.startMs, window.endMs - segment.startMs);
+        if (localEnd > localStart) {
+          const attackStart = Math.max(0, localStart - window.attackMs);
+          const releaseEnd = Math.min(segment.endMs - segment.startMs, localEnd + window.releaseMs);
+          const attackStartSec = attackStart / 1000;
+          const localStartSec = localStart / 1000;
+          const localEndSec = localEnd / 1000;
+          const releaseEndSec = releaseEnd / 1000;
+          const gain = window.gain.toFixed(6);
+          const attack = localStart > attackStart
+            ? `1-(1-${gain})*(t-${attackStartSec.toFixed(3)})/${((localStart - attackStart) / 1000).toFixed(3)}`
+            : gain;
+          const release = releaseEnd > localEnd
+            ? `${gain}+(1-${gain})*(t-${localEndSec.toFixed(3)})/${((releaseEnd - localEnd) / 1000).toFixed(3)}`
+            : gain;
+          chain.push(
+            `volume='if(lt(t,${attackStartSec.toFixed(3)}),1,if(lt(t,${localStartSec.toFixed(3)}),${attack},if(lte(t,${localEndSec.toFixed(3)}),${gain},if(lt(t,${releaseEndSec.toFixed(3)}),${release},1))))':eval=frame`,
+          );
+        }
+      }
+    }
+    if (fadeInSec > 0) chain.push(`afade=t=in:st=0:d=${fadeInSec.toFixed(3)}`);
+    if (fadeOutSec > 0) chain.push(`afade=t=out:st=${Math.max(0, durationSec - fadeOutSec).toFixed(3)}:d=${fadeOutSec.toFixed(3)}`);
+    chain.push(`adelay=${Math.round(segment.startMs)}|${Math.round(segment.startMs)}`);
+    const label = `creator_music_${index}`;
+    filters.push(`[${inputIndex}:a]${chain.join(",")}[${label}]`);
+    musicLabels.push(`[${label}]`);
+  });
+  const limiter = plan.master?.limiter?.enabled === true
+    ? `,alimiter=limit=${Math.min(1, Math.max(0.1, Number(plan.master.limiter.ceiling) || 0.95)).toFixed(3)}`
+    : "";
+  filters.push(`[0:a]volume=${Number(plan.master?.narrationGain || 1).toFixed(6)}[creator_program]`);
+  filters.push(`[creator_program]${musicLabels.join("")}amix=inputs=${musicLabels.length + 1}:duration=first:dropout_transition=0:normalize=0${limiter}[creator_final_audio]`);
+  await runFfmpeg([
+    "-y", "-i", inputVideoPath, ...inputs, "-filter_complex", filters.join(";"),
+    "-map", "0:v", "-map", "[creator_final_audio]", "-c:v", "copy", "-c:a", "aac",
+    "-b:a", "192k", "-ar", "44100", "-ac", "2", "-movflags", "+faststart", "-shortest", outputVideoPath,
+  ]);
+  return true;
+}
+
 function normalizeCreatorBackgroundMusic(value) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -1546,6 +1609,49 @@ async function resolvePrivateCreatorMusicAsset({ req, body, tempDir }) {
   return localPath;
 }
 
+async function resolveCanonicalCreatorAudioAssets({ req, body, tempDir, ownership }) {
+  const contracts = Array.isArray(body?.creatorAudioAssets) ? body.creatorAudioAssets : [];
+  const resolved = [];
+  const seen = new Set();
+  for (const contract of contracts) {
+    const assetId = typeof contract?.assetId === "string" ? contract.assetId.trim() : "";
+    if (!assetId || seen.has(assetId) || contract?.previewOnly === true) throw new Error("Canonical audio asset is unavailable.");
+    seen.add(assetId);
+    if (contract.kind === "licensed") {
+      const localPath = await resolvePrivateCreatorMusicAsset({
+        req,
+        body: { productProfile: "creatorlab", projectId: ownership.projectId, musicEntitlement: { entitlementId: contract.entitlementId, trackId: contract.trackId } },
+        tempDir,
+      });
+      resolved.push({ assetId, localPath });
+      continue;
+    }
+    const keys = Object.keys(contract || {}).sort().join(",");
+    if (contract.kind !== "uploaded" || keys !== "assetId,bucket,channels,checksumSha256,codec,durationMs,kind,mediaKind,mimeType,origin,ownerUserId,projectId,rights,sampleRateHz,sizeBytes,storagePath" ||
+        contract.ownerUserId !== ownership.ownerUserId || contract.projectId !== ownership.projectId || contract.origin !== "uploaded" || contract.mediaKind !== "music" ||
+        !["verified", "creator_attested"].includes(contract.rights?.status) || !CHECKSUM_PATTERN.test(contract.checksumSha256 || "") ||
+        !Number.isSafeInteger(contract.sizeBytes) || contract.sizeBytes < 1 || contract.sizeBytes > MAX_CREATOR_AUDIO_DOWNLOAD_BYTES ||
+        typeof contract.bucket !== "string" || !contract.bucket || typeof contract.storagePath !== "string" || !contract.storagePath ||
+        contract.storagePath.includes("..") || contract.storagePath.includes("\\") || /[\u0000-\u001f\u007f]/.test(contract.storagePath)) {
+      throw new Error("Canonical audio asset is unavailable.");
+    }
+    const expectedPrefix = `creator/${ownership.ownerUserId}/audio/${ownership.projectId}/`;
+    if (!contract.storagePath.startsWith(expectedPrefix)) throw new Error("Canonical audio asset is unavailable.");
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.storage.from(contract.bucket).download(contract.storagePath);
+    if (error || !data || data.size !== contract.sizeBytes) throw new Error("Canonical audio asset is unavailable.");
+    const buffer = Buffer.from(await data.arrayBuffer());
+    if (createHash("sha256").update(buffer).digest("hex") !== contract.checksumSha256) throw new Error("Canonical audio asset is unavailable.");
+    const extension = contract.mimeType === "audio/wav" ? "wav" : contract.mimeType === "audio/mpeg" ? "mp3" : "m4a";
+    const localPath = path.join(tempDir, `creator-audio-${safeName(assetId)}.${extension}`);
+    await fs.promises.writeFile(localPath, buffer);
+    const media = await probeMediaStreams(localPath);
+    if (!media.hasAudio || media.hasVideo) throw new Error("Canonical audio asset is unavailable.");
+    resolved.push({ assetId, localPath });
+  }
+  return resolved;
+}
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -1629,22 +1735,9 @@ app.post("/export-movie", async (req, res) => {
       return res.status(401).json({ ok: false, error: "Final video request is unauthorized." });
     }
     body.projectId = ownership.projectId;
-    const selectedCreatorMusicRequested =
-      body?.productProfile === "creatorlab" &&
-      body?.backgroundMusic &&
-      typeof body.backgroundMusic === "object" &&
-      !Array.isArray(body.backgroundMusic) &&
-      body.backgroundMusic.mode === "selected";
-    if (selectedCreatorMusicRequested && !body.musicEntitlement) {
-      return res.status(409).json({
-        ok: false,
-        error: "Premium music must be confirmed before final export.",
-      });
-    }
-    if (body.musicEntitlement && !selectedCreatorMusicRequested) {
+    if (body.musicEntitlement || (body.productProfile === "creatorlab" && body.backgroundMusic)) {
       return res.status(403).json({
-        ok: false,
-        error: "Premium music entitlement is unavailable.",
+        ok: false, error: "Legacy CreatorLab music authority is not accepted.",
       });
     }
     const exportFlowValidation = body?.exportFlowValidation;
@@ -1684,11 +1777,9 @@ app.post("/export-movie", async (req, res) => {
         });
       }
     }
-    const creatorMusic = normalizeCreatorBackgroundMusic(body?.backgroundMusic);
-    const shouldPrepareSpeechDucking =
-      isCreatorLabExport &&
-      creatorMusic.mode === "selected" &&
-      creatorMusic.autoDucking;
+    if (isCreatorLabExport && (!body.audioTimeline || !Array.isArray(body.creatorAudioAssets))) {
+      return res.status(409).json({ ok: false, error: "Canonical project audio is not ready for final rendering." });
+    }
     const projectId = ownership.projectId;
     const title =
       typeof body?.title === "string" && body.title.trim()
@@ -1712,18 +1803,19 @@ app.post("/export-movie", async (req, res) => {
     supabase = getSupabaseAdmin();
     consumptionToken = await beginFinalMovieStorageAdmission(supabase, ownership);
 
-    let privateCreatorMusicPath = "";
-    try {
-      privateCreatorMusicPath = await resolvePrivateCreatorMusicAsset({ req, body, tempDir });
-    } catch {
-      throw new FinalMovieStorageAdmissionError("Premium music entitlement is unavailable.", 403);
+    let canonicalCreatorAudioAssets = [];
+    if (isCreatorLabExport) {
+      try {
+        canonicalCreatorAudioAssets = await resolveCanonicalCreatorAudioAssets({ req, body, tempDir, ownership });
+      } catch {
+        throw new FinalMovieStorageAdmissionError("Canonical project audio asset is unavailable.", 403);
+      }
     }
 
     const sceneClipPaths = [];
     const sceneDurationsSec = [];
     const sceneContinuityChecks = [];
-    const sceneSpeechControlPaths = [];
-    let speechDuckingControlAvailable = shouldPrepareSpeechDucking;
+    const finalizedAudioScenes = [];
     let visualFillerSceneCount = 0;
     let visualFillerDurationSec = 0;
     const visualFillerStrategyCount = {};
@@ -1795,11 +1887,17 @@ app.post("/export-movie", async (req, res) => {
       let hasNarration = false;
       let hasDialogue = false;
 
+      if (isCreatorLabExport && typeof scene.narration === "string" && scene.narration.trim() &&
+          !(typeof scene.audioUrl === "string" && scene.audioUrl.trim())) {
+        return res.status(409).json({ ok: false, error: "A required narration asset is missing." });
+      }
+
       if (typeof scene.audioUrl === "string" && scene.audioUrl.trim()) {
         try {
           await downloadFile(scene.audioUrl, narrationPath);
           hasNarration = true;
         } catch (error) {
+          if (isCreatorLabExport) throw new Error(`Required narration asset failed for scene ${scene.creatorSceneId}.`);
           console.warn(`Scene ${scene.id} narration download skipped:`, error);
         }
       }
@@ -1812,6 +1910,7 @@ app.post("/export-movie", async (req, res) => {
           await downloadFile(scene.dialogueAudioUrl, dialoguePath);
           hasDialogue = true;
         } catch (error) {
+          if (isCreatorLabExport) throw new Error(`Required dialogue asset failed for scene ${scene.creatorSceneId}.`);
           console.warn(`Scene ${scene.id} dialogue download skipped:`, error);
         }
       }
@@ -1938,27 +2037,20 @@ app.post("/export-movie", async (req, res) => {
       sceneClipPaths.push(clipOutputPath);
       sceneDurationsSec.push(clipResult.durationSec);
       sceneContinuityChecks.push(sceneContinuityCheck);
-
-      if (shouldPrepareSpeechDucking && speechDuckingControlAvailable) {
-        const sceneSpeechControlPath = path.join(
-          tempDir,
-          `scene-speech-control-${i + 1}.m4a`
-        );
-        try {
-          await createSpeechDuckingControl({
-            speechAudioPath: finalAudioPath,
-            outputPath: sceneSpeechControlPath,
-            durationSeconds: clipResult.durationSec,
-          });
-          sceneSpeechControlPaths.push(sceneSpeechControlPath);
-        } catch (speechControlError) {
-          speechDuckingControlAvailable = false;
-          sceneSpeechControlPaths.length = 0;
-          console.warn(
-            "Speech-only ducking control preparation failed; music will be mixed without ducking:",
-            speechControlError
-          );
+      if (isCreatorLabExport) {
+        const speech = [];
+        let speechCursorMs = 0;
+        if (hasNarration) {
+          const durationMs = (await getMediaDuration(narrationPath)) * 1000;
+          speech.push({ kind: "narration", startOffsetMs: 0, durationMs: Math.min(durationMs, clipResult.durationSec * 1000) });
+          speechCursorMs = durationMs;
         }
+        if (hasDialogue) {
+          if (hasNarration) speechCursorMs += getSceneAudioMixProfile(scene).pauseMs;
+          const durationMs = (await getMediaDuration(dialoguePath)) * 1000;
+          speech.push({ kind: "dialogue", startOffsetMs: speechCursorMs, durationMs: Math.min(durationMs, Math.max(0, clipResult.durationSec * 1000 - speechCursorMs)) });
+        }
+        finalizedAudioScenes.push({ creatorSceneId: scene.creatorSceneId, durationMs: clipResult.durationSec * 1000, speech: speech.filter((segment) => segment.durationMs > 0) });
       }
 
       if (clipResult.fillerStrategy !== "none") {
@@ -1977,28 +2069,20 @@ app.post("/export-movie", async (req, res) => {
       outputFilePath
     );
 
-    const bgmPath = isCreatorLabExport
-      ? privateCreatorMusicPath
-      : path.join(process.cwd(), "assets", "bgm.mp3");
+    const bgmPath = isCreatorLabExport ? "" : path.join(process.cwd(), "assets", "bgm.mp3");
     let finalOutputFilePath = outputFilePath;
     let backgroundMusicEmbedded = false;
-    let speechControlPath;
 
-    if (shouldPrepareSpeechDucking && speechDuckingControlAvailable) {
-      try {
-        speechControlPath = await concatSpeechDuckingControls(
-          sceneSpeechControlPaths,
-          tempDir
-        );
-      } catch (speechControlError) {
-        console.warn(
-          "Speech-only ducking timeline failed; music will be mixed without ducking:",
-          speechControlError
-        );
+    if (isCreatorLabExport) {
+      const resolvedAudioPlan = resolveCreatorAudioMixPlan({ timeline: body.audioTimeline, finalizedScenes: finalizedAudioScenes, assets: canonicalCreatorAudioAssets });
+      if (resolvedAudioPlan.music.length > 0) {
+        const outputWithCanonicalAudio = path.join(tempDir, "output-with-canonical-audio.mp4");
+        backgroundMusicEmbedded = await mixFinalVideoWithCreatorAudioPlan({ inputVideoPath: outputFilePath, outputVideoPath: outputWithCanonicalAudio, plan: resolvedAudioPlan });
+        finalOutputFilePath = outputWithCanonicalAudio;
       }
     }
 
-    if (bgmPath && fs.existsSync(bgmPath)) {
+    if (!isCreatorLabExport && bgmPath && fs.existsSync(bgmPath)) {
       const outputWithBgmPath = path.join(tempDir, "output-with-continuous-bgm.mp4");
 
       try {
@@ -2006,29 +2090,25 @@ app.post("/export-movie", async (req, res) => {
           inputVideoPath: outputFilePath,
           bgmPath,
           outputVideoPath: outputWithBgmPath,
-          bgmVolume: isCreatorLabExport ? creatorMusic.volume : 0.16,
-          autoDucking:
-            isCreatorLabExport && creatorMusic.autoDucking && Boolean(speechControlPath),
-          fadeInSec: isCreatorLabExport ? creatorMusic.fadeInSec : 0,
-          fadeOutSec: isCreatorLabExport ? creatorMusic.fadeOutSec : 0,
-          speechControlPath,
-          preserveProgramLevel: isCreatorLabExport,
+          bgmVolume: 0.16,
+          autoDucking: false,
+          fadeInSec: 0,
+          fadeOutSec: 0,
+          preserveProgramLevel: false,
         });
 
         finalOutputFilePath = outputWithBgmPath;
         backgroundMusicEmbedded = true;
-        console.log(isCreatorLabExport
-          ? "Entitled CreatorLab background music embedded."
-          : "Continuous background music embedded:", isCreatorLabExport ? "" : bgmPath);
+        console.log("Continuous background music embedded:", bgmPath);
       } catch (bgmError) {
         console.warn("Background music mix skipped:", bgmError);
       }
-    } else {
+    } else if (!isCreatorLabExport) {
       console.log(
-        isCreatorLabExport
-          ? "No approved CreatorLab music selected. Export continues without background music."
-          : "No bgm.mp3 found under assets. Export continues without background music."
+        "No bgm.mp3 found under assets. Export continues without background music."
       );
+    } else if (!backgroundMusicEmbedded) {
+      console.log("Canonical CreatorLab mix contains no music placements.");
     }
 
     const expectedFinalDurationSec = roundDuration(
