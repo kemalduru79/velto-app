@@ -233,7 +233,8 @@ assert.equal(replacedStarting.placements.some((placement) => placement.id.includ
 const runtimeSave = page.slice(page.indexOf("const persistProject = async"), page.indexOf("const loadProject = async"));
 const manualSave = page.slice(page.indexOf("const saveProject = async"), page.indexOf("const loadProject = async"));
 const autosave = page.slice(page.indexOf("useEffect(() => {\n    if (skipAutosaveRef.current)"), page.indexOf("useEffect(() => {\n    return () =>", page.indexOf("useEffect(() => {\n    if (skipAutosaveRef.current)")));
-assert.match(runtimeSave, /audioTimeline: nextTimeline[\s\S]*forceInvalidateFinalVideo: true/);
+assert.match(runtimeSave, /audioTimeline: nextTimeline[\s\S]*storedPublishPackageSignature: ""/);
+assert.doesNotMatch(runtimeSave, /forceInvalidateFinalVideo: true/);
 assert.match(runtimeSave, /hasOwnProperty\.call\(lifecycleOverrides, "audioTimeline"\)/);
 assert.match(page.slice(page.indexOf("const handleExportMovie"), page.indexOf("const applyCreatorProfessionalScriptPlan")), /await projectSaveQueueRef\.current/);
 assert.match(runtimeSave, /creatorAudioTimelineSnapshotFields\([\s\S]*lifecycleOverrides\.audioTimeline[\s\S]*creatorAudioTimeline/);

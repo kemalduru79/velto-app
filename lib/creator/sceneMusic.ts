@@ -109,3 +109,24 @@ export function stopCreatorSceneMusicAfter(input: { timeline: CreatorAudioTimeli
     }),
   };
 }
+
+export function continueCreatorSceneMusicAfter(input: { timeline: CreatorAudioTimeline; sceneIds: string[]; sceneId: string }) {
+  const current = normalizeCreatorAudioTimeline(input.timeline);
+  const sceneIndex = input.sceneIds.indexOf(input.sceneId);
+  if (sceneIndex < 0) throw new Error("CREATOR_SCENE_MUSIC_SCENE_INVALID");
+  const placements = materializeAutoDefault(current, input.sceneIds);
+  const nextTransition = placements
+    .map((item) => ({ item, index: input.sceneIds.indexOf(item.range.start.sceneId) }))
+    .filter((entry) => entry.index > sceneIndex)
+    .sort((left, right) => left.index - right.index)[0]?.item;
+  const nextEnd = nextTransition?.range.start || anchor(input.sceneIds.at(-1)!, "end");
+  return {
+    ...current,
+    placements: [
+      ...current.placements.filter((item) => item.kind !== "music"),
+      ...placements,
+    ].map((item) => item.kind === "music" && item.range.end.sceneId === input.sceneId && item.range.end.edge === "end"
+      ? { ...item, range: { ...item.range, end: nextEnd } }
+      : item),
+  };
+}

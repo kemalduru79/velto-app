@@ -9,6 +9,7 @@ const exportService = read("export-service/src/server.js");
 const policy = read("lib/credits/operationPolicy.ts");
 const musicRoute = read("app/api/creator-music/route.ts");
 const acquisitionRoute = read("app/api/creator-music/acquire/route.ts");
+const audioRenderability = read("lib/creator/audioRenderability.server.ts");
 const migration = read("supabase/migrations/20260811100000_audio_p1_creator_music_entitlements.sql");
 const exportHandler = exportService.slice(exportService.indexOf('app.post("/export-movie"'));
 let checks = 0;
@@ -46,7 +47,11 @@ const resolve = (record, project, enabled, bucket) => domain.resolveCreatorPremi
 
 repoCalls = 0;
 check(await resolve(entitlement, undefined, false) === null && repoCalls === 0, "1 disabled remains blocked");
-check(route.indexOf("isPremiumMusicAcquisitionEnabled") < route.indexOf("reserveMeteredOperation(request"), "2 disabled before credit");
+check(
+  route.indexOf("resolveCreatorAudioRenderability") < route.indexOf("reserveMeteredOperation(request")
+    && /isPremiumMusicAcquisitionEnabled/.test(audioRenderability),
+  "2 disabled before credit",
+);
 check(/normalizeCreatorPremiumMusicTrackId\(input\.trackId\)/.test(service), "3 track normalized");
 check(await resolve(entitlement, null) === null, "4 ownership required");
 check(await resolve(entitlement, { id: projectId, flow_type: "storyverse" }) === null, "5 CreatorLab required");

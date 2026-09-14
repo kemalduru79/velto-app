@@ -101,7 +101,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed CreatorLab governance, secure audio, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "b0b4bd0b0179ba06c824292105fb051705e5dc14634df7e112d8fb1e3e309278"));
+check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "b21d4a8df8f360a0a2470c4dfccd17800744ab75bccffd87a4b2492d58d9c960"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
@@ -224,6 +224,15 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "tsconfig.json",
     "app/api/creator-usage/route.ts",
     "app/api/export-creator-package/route.ts",
+    "app/api/creator-publish-readiness/route.ts",
+    "app/api/creator-publish-readiness/",
+    "lib/creator/audioRenderability.server.ts",
+    "lib/creator/finalSceneExportSelection.ts",
+    "lib/creator/musicAcquisitionEconomics.server.ts",
+    "lib/creator/publishReadiness.server.ts",
+    "scripts/stage-0-13c-h-final-signature-normalization-test.mjs",
+    "scripts/stage-0-13c-h-rights-publish-economics-test.mjs",
+    "scripts/stage-0-13c-h-stop-after-invalidation-test.mjs",
     "docs/stage-0-10f-usage-margin-controls.md",
     "lib/economics/economicAdmission.ts",
     "lib/economics/entitlementSnapshot.ts",

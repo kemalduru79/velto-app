@@ -66,8 +66,8 @@ const musicHandler = page.slice(page.indexOf("onChange={(nextTimeline)"), page.i
 const canonicalTimelineChangeHandler = page.slice(page.indexOf("const applyCreatorAudioTimelineChange"), page.indexOf("const ", page.indexOf("const applyCreatorAudioTimelineChange") + 6));
 assert.match(musicHandler, /applyCreatorAudioTimelineChange\(nextTimeline\)/);
 assert.match(canonicalTimelineChangeHandler, /setCreatorAudioTimeline\(nextTimeline\)/);
-assert.match(canonicalTimelineChangeHandler, /setExportedMovieUrl\(""\)/);
-assert.match(canonicalTimelineChangeHandler, /persistProject\(false, \{[\s\S]*audioTimeline: nextTimeline,[\s\S]*forceInvalidateFinalVideo: true/);
+assert.doesNotMatch(canonicalTimelineChangeHandler, /setExportedMovieUrl\(""\)|setExportSignature\(""\)/);
+assert.match(canonicalTimelineChangeHandler, /persistProject\(false, \{[\s\S]*audioTimeline: nextTimeline,[\s\S]*storedPublishPackageSignature: ""/);
 assert.doesNotMatch(musicHandler, /setScenes|setCreatorScript|setCreatorMentorResult|research|generate|fetch\(/i);
 assert.match(page, /setCreatorAudioTimeline\(hydrateCreatorMusicTimeline/);
 assert.match(page, /creatorAudioTimelineSnapshotFields\([\s\S]*Object\.prototype\.hasOwnProperty\.call\(lifecycleOverrides, "audioTimeline"\)[\s\S]*\? lifecycleOverrides\.audioTimeline[\s\S]*: creatorAudioTimeline/);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { acquireCreatorPremiumMusic, CreatorMusicAcquisitionError } from "@/lib/creator/musicEntitlement";
+import { recordCreatorMusicAcquisitionEconomics } from "@/lib/creator/musicAcquisitionEconomics.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
     if (Object.keys(input).some((key) => !ALLOWED_BODY_KEYS.has(key)) || input.productProfile !== "creatorlab" || typeof input.projectId !== "string") {
       return NextResponse.json({ ok: false, error: "Invalid request." }, { status: 400 });
     }
-    await acquireCreatorPremiumMusic({ userId: principal.id, projectId: input.projectId, trackId: input.trackId });
+    const acquisition = await acquireCreatorPremiumMusic({ userId: principal.id, projectId: input.projectId, trackId: input.trackId });
+    await recordCreatorMusicAcquisitionEconomics({ acquisition, userId: principal.id, projectId: input.projectId });
     return NextResponse.json({ ok: true, status: "acquired" });
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, error: "Authentication required." }, { status: 401 });

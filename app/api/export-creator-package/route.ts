@@ -11,6 +11,7 @@ import {
 import { resolveCreatorProjectUsedMediaGovernance } from "@/lib/creator/usedMediaGovernance.server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { startResourceMeasurement } from "@/lib/observability";
+import { resolveCreatorPublishAuthority } from "@/lib/creator/publishReadiness.server";
 
 // 3R PUBLISH-READY PACKAGE
 
@@ -453,9 +454,27 @@ export async function POST(req: Request) {
           project,
         })).governance
       : undefined;
+    const publishAuthority = project.flow_type === "creator_lab"
+      ? await resolveCreatorPublishAuthority({
+          ownerUserId: principal.id,
+          projectId: project.id,
+          requestedFinalVideoUrl: body?.videoUrl,
+        })
+      : null;
+    if (publishAuthority && !publishAuthority.ready) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "CREATOR_PUBLISH_NOT_READY",
+          blocker: publishAuthority.blocker,
+          error: publishAuthority.message,
+        },
+        { status: 409, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      );
+    }
     const publishReadyReport = createCreatorPublishReadyPackageReport({
       productionPackage: body?.productionPackage,
-      videoUrl: body?.videoUrl,
+      videoUrl: publishAuthority?.ready ? publishAuthority.finalVideoUrl : body?.videoUrl,
       thumbnail: body?.thumbnail,
       metadata: body?.metadata,
       scenes: body?.scenes,
@@ -517,7 +536,9 @@ export async function POST(req: Request) {
       safeString(productionPackage?.title, "VELTO Creator Package"),
     );
     const safeTitle = sanitizeFileName(title);
-    const videoUrl = safeString(body?.videoUrl);
+    const videoUrl = publishAuthority?.ready
+      ? publishAuthority.finalVideoUrl
+      : safeString(body?.videoUrl);
     const thumbnailUrl = safeString(thumbnail?.imageUrl);
     const thumbnailSourceUrl = safeString(thumbnail?.sourceImageUrl);
     const recommendedTitle = safeString(

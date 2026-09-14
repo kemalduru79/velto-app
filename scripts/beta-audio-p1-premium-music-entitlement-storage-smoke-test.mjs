@@ -13,6 +13,7 @@ const storage = read("lib/persistence/storage/supabaseObjectStorageRepository.ts
 const provider = read("lib/providers/music/epidemic.ts");
 const creatorMusicRoute = read("app/api/creator-music/route.ts");
 const exportRoute = read("app/api/creator-export/route.ts");
+const audioRenderability = read("lib/creator/audioRenderability.server.ts");
 const executableService = service
   .replace(/import \{ normalizeCreatorPremiumMusicTrackId \} from "\.\/musicLibrary";/, `const normalizeCreatorPremiumMusicTrackId = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/.test(value) ? value : undefined;`)
   .replace(/import \{ getPersistenceServices \} from "@\/lib\/persistence";/, "const getPersistenceServices = () => { throw new Error('unused'); };")
@@ -108,7 +109,13 @@ check(record.providerLicenseMetadata.licenseType === "commercial" && !("url" in 
 check(!/temporary|rawResponse|authorization|previewUrl|browserUrl/i.test(types + migration), "no raw/provider URL payload");
 
 check(!/creator_music/.test(read("lib/credits/operationPolicy.ts")), "no creator_music credit operation");
-check(/placement\.asset\.origin !== "licensed_catalog"/.test(exportRoute) && /creator_audio_acquisition_required/.test(exportRoute), "canonical premium export remains guarded");
+check(
+  /resolveCreatorAudioRenderability/.test(exportRoute)
+    && /placement\.asset\.origin !== "licensed_catalog"/.test(audioRenderability)
+    && /resolveCreatorPremiumMusicExportEntitlement/.test(audioRenderability)
+    && /creator_audio_acquisition_required/.test(audioRenderability),
+  "canonical premium export remains guarded",
+);
 check(/searchTracks/.test(provider) && /action === "auto"/.test(creatorMusicRoute), "search preserved");
 check(/getTrackPreview/.test(provider) && /action === "preview"/.test(creatorMusicRoute), "preview preserved");
 check(!/storyverse/i.test(service + route + types + repository), "CreatorLab-only foundation");

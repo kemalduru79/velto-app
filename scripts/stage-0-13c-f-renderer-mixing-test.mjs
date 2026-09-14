@@ -83,9 +83,11 @@ assert.throws(() => plan([
 assert.throws(() => resolveCreatorAudioMixPlan({ timeline: timeline([placement("project-a", "scene-1", "start", "scene-3", "end")]), finalizedScenes: scenes(), assets: runtime("project-b") }), /AUDIO_ASSET_NOT_RENDERABLE/, "project asset sets cannot cross-resolve");
 
 const routeSource = readFileSync(new URL("../app/api/creator-export/route.ts", import.meta.url), "utf8");
+const audioRenderabilitySource = readFileSync(new URL("../lib/creator/audioRenderability.server.ts", import.meta.url), "utf8");
 const rendererSource = readFileSync(new URL("../export-service/src/server.js", import.meta.url), "utf8");
 assert.match(routeSource, /persistedCreatorState\?\.production\.audioTimeline/);
-assert.match(routeSource, /resolveOwnedCreatorAudioAsset/);
+assert.match(routeSource, /resolveCreatorAudioRenderability/);
+assert.match(audioRenderabilitySource, /resolveOwnedCreatorAudioAsset/);
 assert.doesNotMatch(routeSource.slice(routeSource.indexOf('if \(productProfile === "creatorlab"\)')), /exportPayload\.backgroundMusic\s*=/);
 assert.match(rendererSource, /resolveCreatorAudioMixPlan\(\{ timeline: body\.audioTimeline, finalizedScenes: finalizedAudioScenes/);
 assert.match(rendererSource, /A required narration asset is missing/);

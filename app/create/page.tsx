@@ -62,6 +62,7 @@ import {
   buildCreatorFinalProductionSignature,
   projectLegacyCreatorFinalProductionSignature,
 } from "@/lib/creator/finalProductionSignature";
+import { resolveCreatorFinalSceneExportSelections } from "@/lib/creator/finalSceneExportSelection";
 import {
   buildCreatorVideoGenerationSignature,
   buildLegacyCreatorVideoGenerationSignature,
@@ -3728,6 +3729,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [exportedMovieUrl, setExportedMovieUrl] = useState("");
   const [exportMovieResult, setExportMovieResult] = useState<ExportMovieResult | null>(null);
   const [exportSignature, setExportSignature] = useState("");
+  const [creatorServerPublishReadiness, setCreatorServerPublishReadiness] = useState<{
+    ready: boolean;
+    status: "checking" | "ready" | "final_video_required" | "production_changed" | "music_attention";
+    message: string;
+  }>({ ready: false, status: "checking", message: "" });
+  const [creatorPublishReadinessRevision, setCreatorPublishReadinessRevision] = useState(0);
 
   useEffect(() => {
     return () => {
@@ -5273,10 +5280,17 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return `${mb.toFixed(2)} MB`;
   };
 
-  const getSceneExportSource = (scene: Scene): "video" | "image" | "none" => {
-    const effectiveOutputMode = isCreatorLabFlow
-      ? getCreatorEffectiveSceneOutputMode(scene)
-      : scene.renderMode;
+  const getSceneExportSource = (
+    scene: Scene,
+    sourceScenes: Scene[] = scenes,
+  ): "video" | "image" | "none" => {
+    if (isCreatorLabFlow) {
+      return resolveCreatorFinalSceneExportSelections(
+        sourceScenes,
+        getCreatorProductionPlan(sourceScenes),
+      ).find((selection) => selection.creatorSceneId === (scene.creatorSceneId || `legacy-${scene.id}`))?.exportSource || "none";
+    }
+    const effectiveOutputMode = scene.renderMode;
 
     if (effectiveOutputMode === "image") {
       return scene.image ? "image" : "none";
@@ -5286,8 +5300,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       return scene.videoUrl && scene.videoStatus === "done" ? "video" : "none";
     }
 
-    // Storyverse keeps its historical media fallback behavior. CreatorLab
-    // always resolves Auto through Production Quality before export.
     if (scene.videoUrl && scene.videoStatus === "done") {
       return "video";
     }
@@ -5397,9 +5409,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
     const exportableScenes = nextScenes
-      .filter((scene) => getSceneExportSource(scene) !== "none")
+      .filter((scene) => getSceneExportSource(scene, nextScenes) !== "none")
       .map((scene) => {
-        const exportSource = getSceneExportSource(scene);
+        const exportSource = getSceneExportSource(scene, nextScenes);
 
         return {
           id: scene.id,
@@ -11970,6 +11982,7 @@ const generateSceneImage = async (
       replaceProjectUrlIdentity(data.project.id);
       projectUpdatedAtRef.current = String(data.project.updated_at || "");
     }
+    if (isCreatorLabFlow) setCreatorPublishReadinessRevision((current) => current + 1);
 
     await fetchProjects();
 
@@ -12125,14 +12138,12 @@ const generateSceneImage = async (
 
   const applyCreatorAudioTimelineChange = (nextTimeline: CreatorAudioTimeline) => {
     setCreatorAudioTimeline(nextTimeline);
-    setExportedMovieUrl("");
-    setExportMovieResult(null);
-    setExportSignature("");
     setCreatorPackageDownloaded(false);
     setCreatorPackageSignature("");
     void persistProject(false, {
       audioTimeline: nextTimeline,
-      forceInvalidateFinalVideo: true,
+      packageDownloaded: false,
+      storedPublishPackageSignature: "",
     }).catch((saveError) => {
       if (classifyCreatorProjectSaveError(saveError) === "cas_conflict") {
         setError(uiLanguage === "en"
@@ -15413,6 +15424,14 @@ const generateSceneImage = async (
       );
       return false;
     }
+    if (!creatorServerPublishReadiness.ready) {
+      setError(
+        creatorServerPublishReadiness.message || (uiLanguage === "en"
+          ? "Final video readiness could not be verified."
+          : "Final video hazırlığı doğrulanamadı.")
+      );
+      return false;
+    }
 
     setIsDownloadingCreatorPackage(true);
     setYoutubeMetadataLoading(!youtubeMetadataResult);
@@ -18423,6 +18442,25 @@ const generateSceneImage = async (
         ? 2
         : 1;
   const creatorWorkspaceStep: 1 | 2 | 3 | 4 = creatorSelectedWorkspaceStep;
+  useEffect(() => {
+    if (!isCreatorLabFlow || creatorWorkspaceStep !== 4 || !currentProjectId) return;
+    let active = true;
+    setCreatorServerPublishReadiness({ ready: false, status: "checking", message: "" });
+    void getAccessTokenOrThrow().then((token) => fetch(
+      `/api/creator-publish-readiness?projectId=${encodeURIComponent(currentProjectId)}`,
+      { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+    )).then(async (response) => {
+      const data = await response.json().catch(() => null);
+      if (!active) return;
+      const status = ["ready", "final_video_required", "production_changed", "music_attention"].includes(data?.status)
+        ? data.status
+        : "production_changed";
+      setCreatorServerPublishReadiness({ ready: response.ok && data?.ready === true, status, message: typeof data?.message === "string" ? data.message : "" });
+    }).catch(() => {
+      if (active) setCreatorServerPublishReadiness({ ready: false, status: "production_changed", message: "Project readiness could not be verified." });
+    });
+    return () => { active = false; };
+  }, [creatorWorkspaceStep, currentProjectId, exportSignature, exportedMovieUrl, creatorAudioTimeline, scenes, isCreatorLabFlow, creatorPublishReadinessRevision]);
   const creatorStageVisibility = resolveCreatorStageVisibility({
     workspaceStep: creatorWorkspaceStep,
     productionSubstep: creatorProductionSubstep,
@@ -19129,10 +19167,14 @@ const generateSceneImage = async (
   const creatorPublishSystemChecks = [
     {
       key: "finalVideo",
-      label: uiLanguage === "en" ? "Final video exists" : "Final video mevcut",
-      attentionLabel: uiLanguage === "en" ? "Create final video" : "Final videoyu oluştur",
-      detail: uiLanguage === "en" ? "A downloadable final render is available." : "İndirilebilir final render hazır.",
-      ready: Boolean(creatorPublishVideoUrl),
+      label: uiLanguage === "en" ? "Final video is current" : "Final video güncel",
+      attentionLabel: creatorServerPublishReadiness.status === "music_attention"
+        ? uiLanguage === "en" ? "Music needs attention" : "Müzik kontrol edilmeli"
+        : creatorHasFinalVideo
+          ? uiLanguage === "en" ? "Rebuild final video" : "Final videoyu yeniden oluştur"
+          : uiLanguage === "en" ? "Create final video" : "Final videoyu oluştur",
+      detail: uiLanguage === "en" ? "The final render matches the current production." : "Final render mevcut üretimle eşleşiyor.",
+      ready: creatorServerPublishReadiness.ready,
     },
     {
       key: "thumbnail",
@@ -19206,7 +19248,7 @@ const generateSceneImage = async (
     evidenceVerified: creatorReleaseConfirmations.claimsVerified,
     rightsConfirmed: creatorReleaseConfirmations.rightsConfirmed,
     outputReady: Boolean(
-      creatorProductionComplete &&
+      creatorServerPublishReadiness.ready &&
         creatorPublishSystemChecks.find((item) => item.key === "ratio")?.ready,
     ),
   });
@@ -19224,9 +19266,7 @@ const generateSceneImage = async (
     action_required: uiLanguage === "en" ? "Action required" : "İşlem gerekli",
     blocked: uiLanguage === "en" ? "Blocked" : "Engellendi",
   } as const;
-  const creatorPublishIsOutdated =
-    creatorFinalVideoNeedsRebuild ||
-    creatorProjectLifecycle?.status === "export_outdated";
+  const creatorPublishIsOutdated = creatorServerPublishReadiness.status === "production_changed";
   const creatorPublishAttentionItems = [
     ...creatorPublishSystemChecks
       .filter((item) => !item.ready)
@@ -19252,7 +19292,7 @@ const generateSceneImage = async (
       );
   const creatorPackageReady = Boolean(creatorProductionPackage && creatorReleaseReady);
   const creatorPublishAssetCount = [
-    Boolean(creatorPublishVideoUrl),
+    creatorServerPublishReadiness.ready,
     Boolean(creatorPublishThumbnailUrl),
     Boolean(youtubeMetadataResult),
   ].filter(Boolean).length;
@@ -19283,7 +19323,7 @@ const generateSceneImage = async (
     {
       name: uiLanguage === "en" ? "Final video file" : "Final video dosyası",
       file: "final-video.mp4 / .webm",
-      ready: Boolean(creatorPublishVideoUrl),
+      ready: creatorServerPublishReadiness.ready,
     },
     {
       name: "Thumbnail",
@@ -19326,7 +19366,7 @@ const generateSceneImage = async (
         continuity: flowContinuityAudit,
         finalGate: creatorFinalProductionGate,
         publish: {
-          finalVideoReady: Boolean(creatorPublishVideoUrl),
+          finalVideoReady: creatorServerPublishReadiness.ready,
           thumbnailReady: Boolean(creatorPublishThumbnailUrl),
           metadataReady: Boolean(youtubeMetadataResult),
           captionsReady: creatorPublishCaptionReady,

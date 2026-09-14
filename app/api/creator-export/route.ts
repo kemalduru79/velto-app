@@ -6,12 +6,10 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
-import { normalizeCreatorAudioTimeline, CreatorAudioTimelineError } from "@/lib/creator/audioTimeline";
+import { CreatorAudioTimelineError } from "@/lib/creator/audioTimeline";
 import { readCreatorProjectState } from "@/lib/creator/projectState";
-import { resolveOwnedCreatorAudioAsset } from "@/lib/creator/audioAssetResolver.server";
 import { authenticateRequest } from "@/lib/auth/server";
-import { resolveCreatorPremiumMusicExportEntitlement } from "@/lib/creator/musicEntitlement";
-import { isPremiumMusicAcquisitionEnabled } from "@/lib/providers/music/downloadSecurity";
+import { CreatorAudioRenderabilityError, resolveCreatorAudioRenderability } from "@/lib/creator/audioRenderability.server";
 import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
@@ -33,13 +31,6 @@ import { persistEconomicOperationBestEffort, unknownCost, type EconomicOperation
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-class CreatorAudioExportError extends Error {
-  constructor(readonly code: string, message = "Project audio is not ready for final rendering.") {
-    super(message);
-    this.name = "CreatorAudioExportError";
-  }
-}
 
 // 3Q FINAL PRODUCTION GATE
 const EXPORT_HEALTH_TIMEOUT_MS = 4_000;
@@ -193,58 +184,22 @@ export async function POST(request: Request) {
     const internalExportToken = getFinalMovieInternalToken();
     const musicUsageIdentities: CreatorMusicUsageEventIdentity[] = [];
     if (productProfile === "creatorlab") {
-      const persistedTimeline = persistedCreatorState?.production.audioTimeline;
-      if (!persistedTimeline) throw new CreatorAudioExportError("creator_audio_timeline_required");
-      const timeline = normalizeCreatorAudioTimeline(persistedTimeline);
-      const runtimeAssets = [];
-      const resolvedAssetIds = new Set<string>();
-      const services = getPersistenceServices();
-      for (const placement of timeline.placements) {
-        if (placement.kind !== "music") {
-          if (placement.status === "active") throw new CreatorAudioExportError("creator_audio_placement_not_renderable");
-          continue;
-        }
-        if (placement.status !== "active" || !placement.asset) {
-          throw new CreatorAudioExportError("creator_audio_placement_not_renderable");
-        }
-        if (!["verified", "creator_attested"].includes(placement.asset.rights.status)) {
-          throw new CreatorAudioExportError("creator_audio_rights_not_renderable");
-        }
-        if (resolvedAssetIds.has(placement.asset.assetId)) continue;
-        if (placement.asset.origin === "uploaded") {
-          const descriptor = await resolveOwnedCreatorAudioAsset({
-            ownerUserId: principal.id, projectId: project.id, assetId: placement.asset.assetId,
-          }, services);
-          if (!["verified", "creator_attested"].includes(descriptor.rights.status)) {
-            throw new CreatorAudioExportError("creator_audio_rights_not_renderable");
-          }
-          runtimeAssets.push({ ...descriptor, kind: "uploaded" as const });
-          resolvedAssetIds.add(placement.asset.assetId);
-          continue;
-        }
-        if (placement.asset.origin !== "licensed_catalog" || !placement.asset.assetId.startsWith("catalog:")) {
-          throw new CreatorAudioExportError("creator_audio_asset_not_renderable");
-        }
-        if (!isPremiumMusicAcquisitionEnabled()) throw new CreatorAudioExportError("creator_audio_acquisition_required");
-        const trackId = placement.asset.assetId.slice("catalog:".length);
-        let entitlement;
-        try {
-          entitlement = await resolveCreatorPremiumMusicExportEntitlement({ userId: principal.id, projectId: project.id, trackId });
-        } catch {
-          throw new CreatorAudioExportError("creator_audio_acquisition_required");
-        }
-        if (!entitlement) throw new CreatorAudioExportError("creator_audio_acquisition_required");
+      const renderability = await resolveCreatorAudioRenderability({
+        ownerUserId: principal.id,
+        projectId: project.id,
+        timeline: persistedCreatorState?.production.audioTimeline,
+      });
+      for (const asset of renderability.assets) {
+        if (asset.kind !== "licensed") continue;
         const usageIdentity = buildCreatorMusicUsageEventIdentity({
-          entitlementId: entitlement.entitlementId, userId: principal.id, projectId: project.id,
-          trackId: entitlement.trackId, exportIdempotencyKey: request.headers.get("x-idempotency-key"),
+          entitlementId: asset.entitlementId, userId: principal.id, projectId: project.id,
+          trackId: asset.trackId, exportIdempotencyKey: request.headers.get("x-idempotency-key"),
         });
-        if (!usageIdentity) throw new CreatorAudioExportError("creator_audio_acquisition_required");
+        if (!usageIdentity) throw new CreatorAudioRenderabilityError("creator_audio_acquisition_required");
         musicUsageIdentities.push(usageIdentity);
-        runtimeAssets.push({ kind: "licensed" as const, assetId: placement.asset.assetId, ...entitlement });
-        resolvedAssetIds.add(placement.asset.assetId);
       }
-      exportPayload.audioTimeline = timeline;
-      exportPayload.creatorAudioAssets = runtimeAssets;
+      exportPayload.audioTimeline = renderability.timeline;
+      exportPayload.creatorAudioAssets = renderability.assets;
       delete exportPayload.backgroundMusic;
     } else {
       delete exportPayload.backgroundMusic;
@@ -385,9 +340,9 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    if (error instanceof CreatorAudioExportError || error instanceof CreatorAudioTimelineError) {
+    if (error instanceof CreatorAudioRenderabilityError || error instanceof CreatorAudioTimelineError) {
       return NextResponse.json(
-        { ok: false, code: error instanceof CreatorAudioExportError ? error.code : "creator_audio_timeline_invalid", error: error.message, creditReserved: false },
+        { ok: false, code: error instanceof CreatorAudioRenderabilityError ? error.code : "creator_audio_timeline_invalid", error: error.message, creditReserved: false },
         { status: 409 },
       );
     }

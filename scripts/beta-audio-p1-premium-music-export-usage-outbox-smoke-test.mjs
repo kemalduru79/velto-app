@@ -10,6 +10,7 @@ const types = read("lib/persistence/music/types.ts");
 const repository = read("lib/persistence/music/supabaseCreatorMusicUsageEventRepository.ts");
 const usage = read("lib/creator/musicUsage.ts");
 const route = read("app/api/creator-export/route.ts");
+const audioRenderability = read("lib/creator/audioRenderability.server.ts");
 const exportService = read("export-service/src/server.js");
 const policy = read("lib/credits/operationPolicy.ts");
 let checks = 0;
@@ -71,9 +72,13 @@ check(/PROVIDER_USAGE_ID_PATTERN = \/\^\[A-Za-z0-9/.test(repository) && /\{1,160
 
 check(/const musicUsageIdentities: CreatorMusicUsageEventIdentity\[\] = \[\]/.test(route), "27 Storyverse creates no event");
 check(/for \(const musicUsageIdentity of musicUsageIdentities\)/.test(route), "28 no-music creates no event");
-check(/placement\.asset\.origin !== "licensed_catalog"[\s\S]*buildCreatorMusicUsageEventIdentity/.test(route), "29 only licensed catalog placements create events");
-check(route.indexOf("if (!entitlement) throw new CreatorAudioExportError") < route.indexOf("await registerCreatorMusicExportUsage"), "30 blocked creates no event");
-check(/catch \{\s*throw new CreatorAudioExportError\("creator_audio_acquisition_required"\)/.test(route), "31 entitlement failure no event");
+check(
+  /placement\.asset\.origin !== "licensed_catalog"/.test(audioRenderability)
+    && /if \(asset\.kind !== "licensed"\) continue;[\s\S]*buildCreatorMusicUsageEventIdentity/.test(route),
+  "29 only licensed catalog placements create events",
+);
+check(route.indexOf("resolveCreatorAudioRenderability") < route.indexOf("await registerCreatorMusicExportUsage"), "30 blocked creates no event");
+check(/\.catch\(\(\) => null\)[\s\S]*creator_audio_acquisition_required/.test(audioRenderability), "31 entitlement failure no event");
 check(route.indexOf("if (!response.ok || !data?.ok || !data?.movieUrl)") < route.indexOf("await registerCreatorMusicExportUsage"), "32 render failure no event");
 check(/await registerCreatorMusicExportUsage\(musicUsageIdentity\)/.test(route), "33 successful render creates pending event");
 check(route.indexOf("await registerCreatorMusicExportUsage") < route.indexOf("await settleMeteredOperation"), "34 usage before settlement");
