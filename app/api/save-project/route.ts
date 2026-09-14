@@ -8,7 +8,9 @@ import {
   attachCreatorProjectState,
   isValidCreatorProjectState,
   type CreatorProjectStateSnapshot,
+  readCreatorProjectState,
 } from "@/lib/creator/projectState";
+import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
 
 export const runtime = "nodejs";
 
@@ -68,6 +70,19 @@ export async function POST(req: Request) {
         { error: "Creator project authority snapshot is invalid.", code: "CREATOR_PROJECT_STATE_INVALID" },
         { status: 400 },
       );
+    }
+    if (hasCreatorProjectState && projectId) {
+      const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
+      if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+      const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
+      const candidateState = body.creatorProjectState as CreatorProjectStateSnapshot;
+      if (persistedScript && candidateState.strategy.script) {
+        try {
+          assertCreatorScriptVerificationAuthority(persistedScript, candidateState.strategy.script);
+        } catch {
+          return NextResponse.json({ error: "Script verification state must be updated through source review.", code: "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
+        }
+      }
     }
     const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
       ? attachCreatorProjectState(

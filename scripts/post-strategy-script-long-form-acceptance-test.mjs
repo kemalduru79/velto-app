@@ -237,6 +237,22 @@ const catastrophicallyUnevenFiveMinuteScript = createCreatorScript({
 assert.equal(getCreatorScriptDurationContractForScript(catastrophicallyUnevenFiveMinuteScript, "en").status, "compliant");
 assert.deepEqual(getCreatorScriptMaterialSectionFailures(catastrophicallyUnevenFiveMinuteScript, plan300).map((section) => section.id), ["opening"]);
 assert.throws(() => assertCreatorScriptHasHealthySectionStructure(catastrophicallyUnevenFiveMinuteScript, plan300), /SECTION_BUDGET_UNSATISFIED/);
+let fiveMinuteStructureRepairCalls = 0;
+const repairedFiveMinuteStructure = await generateCreatorScriptWithDurationContract({
+  durationSec: 300,
+  language: "en",
+  generateInitial: async () => { fiveMinuteStructureRepairCalls += 1; return catastrophicallyUnevenFiveMinuteScript; },
+  repair: async (_script, diagnostics) => {
+    fiveMinuteStructureRepairCalls += 1;
+    assert.equal(diagnostics.status, "compliant");
+    return fiveMinuteScript;
+  },
+  requiresRepair: (script) => getCreatorScriptMaterialSectionFailures(script, plan300).length > 0,
+  validateFinal: (script) => assertCreatorScriptHasHealthySectionStructure(script, plan300),
+});
+assert.equal(repairedFiveMinuteStructure.repaired, true);
+assert.equal(repairedFiveMinuteStructure.diagnostics.status, "compliant");
+assert.equal(fiveMinuteStructureRepairCalls, 2);
 const duration960 = getCreatorScriptDurationContract({ targetDurationSec: 960, language: "en", actualWordCount: 549 });
 assert.deepEqual([duration960.targetWordCount, duration960.minimumAcceptableWordCount, duration960.maximumAcceptableWordCount], [2256, 2031, 2481]);
 assert.equal(plan960.length, 8);
@@ -313,7 +329,7 @@ assert.equal(exaCalls, 0);
 const scenes = [];
 assert.equal(scenes.length, 0);
 
-assert.equal(isCreatorScriptCurrentForStrategy({ script: shortScript, strategyFingerprint: "work-freedom-960", targetDurationSec: 960, language: "en" }), false);
+assert.equal(isCreatorScriptCurrentForStrategy({ script: shortScript, strategyFingerprint: "work-freedom-960", targetDurationSec: 960, language: "en" }), true);
 assert.equal(isCreatorScriptCurrentForStrategy({ script: makePlannedScript(plan960), strategyFingerprint: "refreshed-strategy", targetDurationSec: 960, language: "en" }), false);
 assert.equal(isCreatorScriptCurrentForStrategy({ script: makePlannedScript(plan960), strategyFingerprint: "work-freedom-960", targetDurationSec: 960, language: "en" }), true);
 
@@ -371,6 +387,9 @@ assert.match(route, /sectionBudgetPlan/);
 assert.match(route, /creator_full_script_section/);
 assert.doesNotMatch(route, /long_form_batch|MAX_INITIAL_GENERATION_CALLS|splitCreatorScriptSectionPlan/);
 assert.match(route, /max_output_tokens: getCreatorScriptOutputTokenBudget/);
+assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
+assert.match(route, /rebalance_sections/);
+assert.match(route, /Rebalance only the supplied failing sections toward their individual target, minimum, and maximum word ranges while preserving the overall script duration envelope\. Do not globally compress or expand\./);
 assert.doesNotMatch(route, /Exa|creator-research/);
 const createPage = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(createPage, /const creatorScriptIsCurrent = isCreatorScriptCurrentForStrategy/);

@@ -239,7 +239,7 @@ assert.doesNotMatch(firstHandler, /fetch\("\/api\/creator-production"/);
 assert.doesNotMatch(firstHandler, /creatorStageAfterSuccess/);
 assert.match(page, /Approve Strategy & Build Script/);
 assert.match(component, /Approve Script & Build Scenes/);
-assert.match(component, /Strengthen Opening/);
+assert.match(component, /Strengthen opening/);
 assert.match(route, /generate_full_script/);
 assert.match(route, /regenerate_section/);
 assert.match(production, /approvedScript/);

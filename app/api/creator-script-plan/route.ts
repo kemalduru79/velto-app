@@ -45,6 +45,7 @@ import {
   generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
+  getCreatorScriptMaterialSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
   getCreatorScriptSectionDiagnostics,
@@ -887,6 +888,8 @@ async function executeCreatorScriptOperation(input: {
         validateFinal: (script) => {
           assertCreatorScriptHasHealthySectionStructure(script, sectionBudgetPlan);
         },
+        requiresRepair: (script) =>
+          getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0,
         generateInitial: async () => {
           const generateUnit = async (
             requestedSections: typeof sectionBudgetPlan,
@@ -956,8 +959,18 @@ async function executeCreatorScriptOperation(input: {
           return script;
         },
         repair: async (firstScript, currentDuration) => {
-          if (!isCreatorScriptResidualRepairEligible(currentDuration)) {
+          const materialSectionFailures = getCreatorScriptMaterialSectionFailures(
+            firstScript,
+            sectionBudgetPlan,
+          );
+          if (
+            currentDuration.status !== "compliant"
+            && !isCreatorScriptResidualRepairEligible(currentDuration)
+          ) {
             throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
+          }
+          if (currentDuration.status === "compliant" && materialSectionFailures.length === 0) {
+            throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
           }
           durationRepairOccurred = true;
           const sectionDiagnostics = getCreatorScriptSectionDiagnostics(firstScript, sectionBudgetPlan);
@@ -975,18 +988,25 @@ async function executeCreatorScriptOperation(input: {
               sectionBudgetPlan.findIndex((item) => item.id === left.id) -
                 sectionBudgetPlan.findIndex((item) => item.id === right.id);
           });
-          const sectionsToRepair: typeof sectionDiagnostics = [];
+          const sectionsToRepair: typeof sectionDiagnostics = currentDuration.status === "compliant"
+            ? materialSectionFailures
+            : [];
           let controlledCapacity = 0;
-          for (const section of rankedSections) {
-            const capacity = currentDuration.status === "too_short"
-              ? Math.max(0, section.maximumWords - section.actualWords)
-              : Math.max(0, section.actualWords - section.minimumWords);
-            if (capacity === 0) continue;
-            sectionsToRepair.push(section);
-            controlledCapacity += capacity;
-            if (controlledCapacity >= residualWords) break;
+          if (currentDuration.status !== "compliant") {
+            for (const section of rankedSections) {
+              const capacity = currentDuration.status === "too_short"
+                ? Math.max(0, section.maximumWords - section.actualWords)
+                : Math.max(0, section.actualWords - section.minimumWords);
+              if (capacity === 0) continue;
+              sectionsToRepair.push(section);
+              controlledCapacity += capacity;
+              if (controlledCapacity >= residualWords) break;
+            }
           }
-          if (controlledCapacity < residualWords || sectionsToRepair.length === 0) {
+          if (
+            sectionsToRepair.length === 0
+            || (currentDuration.status !== "compliant" && controlledCapacity < residualWords)
+          ) {
             throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
           }
           repairedSectionIds = sectionsToRepair.map((section) => section.id);
@@ -996,7 +1016,9 @@ async function executeCreatorScriptOperation(input: {
               { role: "system", content: systemPrompt },
               { role: "user", content: JSON.stringify({
                 task: "Repair the current canonical full script once so its spoken text satisfies the supplied duration word envelope.",
-                requiredDirection: currentDuration.status === "too_long" ? "compress" : "expand",
+                requiredDirection: currentDuration.status === "compliant"
+                  ? "rebalance_sections"
+                  : currentDuration.status === "too_long" ? "compress" : "expand",
                 topic: asString(input.body.topic),
                 title,
                 strategy: input.body.strategy,
@@ -1032,9 +1054,11 @@ async function executeCreatorScriptOperation(input: {
                   "Preserve each requested section id, kind, and role exactly and satisfy its supplied target range.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
-                  currentDuration.status === "too_short"
-                    ? "Expand through clearer explanation, implications, causal reasoning, comparison, supported examples and counterarguments, transitions, synthesis, and implications for the master question using only the same grounded context."
-                    : "Compress repetition and low-value connective text while preserving core claims, evidence, uncertainty, and editorial meaning.",
+                  currentDuration.status === "compliant"
+                    ? "Rebalance only the supplied failing sections toward their individual target, minimum, and maximum word ranges while preserving the overall script duration envelope. Do not globally compress or expand. Preserve editorial meaning, claims, evidence, uncertainty, continuity, and section identities."
+                    : currentDuration.status === "too_short"
+                      ? "Expand through clearer explanation, implications, causal reasoning, comparison, supported examples and counterarguments, transitions, synthesis, and implications for the master question using only the same grounded context."
+                      : "Compress repetition and low-value connective text while preserving core claims, evidence, uncertainty, and editorial meaning.",
                 ],
               }) },
             ],

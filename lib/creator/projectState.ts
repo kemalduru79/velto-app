@@ -35,6 +35,7 @@ export type CreatorProjectStateSnapshot = {
     selectedDirectionId: string;
     selectedHook: string;
     strategyFingerprint?: string;
+    profileSnapshot?: unknown;
     script: CreatorScript | null;
   };
   production: {
@@ -125,6 +126,7 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     typeof strategy.selectedDirectionId === "string" &&
     typeof strategy.selectedHook === "string" &&
     (!hasOwn(strategy, "strategyFingerprint") || typeof strategy.strategyFingerprint === "string") &&
+    (!hasOwn(strategy, "profileSnapshot") || isObjectOrNull(strategy.profileSnapshot)) &&
     (!hasOwn(strategy, "script") || strategy.script === null || isValidCreatorScript(strategy.script)) &&
     isObjectOrNull(candidate.production) && candidate.production !== null &&
     isObjectOrNull(production.package) &&
@@ -278,6 +280,7 @@ export function readCreatorProjectState(
       ...(typeof savedStrategy.strategyFingerprint === "string"
         ? { strategyFingerprint: savedStrategy.strategyFingerprint }
         : {}),
+      ...(hasOwn(savedStrategy, "profileSnapshot") ? { profileSnapshot: savedStrategy.profileSnapshot } : {}),
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)

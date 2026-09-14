@@ -150,7 +150,7 @@ import {
   approveCreatorScript,
   canBuildScenesFromCreatorScript,
   createCreatorStrategyFingerprint,
-  editCreatorScriptSection,
+  editCreatorScriptDocument,
   getCreatorScriptDurationContractForScript,
   isCreatorScriptCurrentForStrategy,
   normalizeCreatorScript,
@@ -3517,6 +3517,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState(false);
   const [creatorProfile, setCreatorProfile] =
     useState<CreatorProfile>(EMPTY_CREATOR_PROFILE);
+  const [creatorStrategyProfileSnapshot, setCreatorStrategyProfileSnapshot] = useState<CreatorProfile | null>(null);
   const [creatorMentorResult, setCreatorMentorResult] =
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
@@ -6674,6 +6675,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     stopStoryPlayback();
     setStorySetup(null);
     setCreatorMentorResult(null);
+    setCreatorStrategyProfileSnapshot(null);
     setCreatorScript(null);
     setCreatorScriptBusySectionId(null);
     setCreatorScriptGenerationLoading(false);
@@ -12069,6 +12071,7 @@ const generateSceneImage = async (
             selectedDirectionId: creatorSelectedStrategyDirectionId,
             selectedHook: creatorSelectedHookPattern,
             strategyFingerprint: creatorStrategyFingerprint,
+            profileSnapshot: creatorStrategyProfileSnapshot || creatorProfile,
             script: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "creatorScript")
               ? lifecycleOverrides.creatorScript ?? null
               : creatorScript,
@@ -12428,6 +12431,7 @@ const generateSceneImage = async (
 
       const loadedMentorResult = canonicalCreatorState?.strategy.mentorResult as CreatorMentorResult | null;
       setCreatorMentorResult(loadedMentorResult || null);
+      setCreatorStrategyProfileSnapshot(canonicalCreatorState?.strategy.profileSnapshot ? parseCreatorProfile(canonicalCreatorState.strategy.profileSnapshot) : null);
       setCreatorScript(canonicalCreatorState?.strategy.script || null);
       setCreatorSelectedStrategyDirectionId(
         canonicalCreatorState?.strategy.selectedDirectionId ||
@@ -13937,7 +13941,7 @@ const generateSceneImage = async (
       contentType: creatorContentType,
       format: creatorFormat,
       targetDurationSec: creatorVideoDurationSec,
-      creatorProfile,
+      creatorProfile: creatorStrategyProfileSnapshot || creatorProfile,
       mentorResult: creatorMentorResult ? {
         audienceInsight: creatorMentorResult.audienceInsight,
         hookPatterns: creatorMentorResult.hookPatterns,
@@ -13957,6 +13961,7 @@ const generateSceneImage = async (
       creatorFormat,
       creatorVideoDurationSec,
       creatorProfile,
+      creatorStrategyProfileSnapshot,
       creatorMentorResult,
     ],
   );
@@ -14005,7 +14010,7 @@ const generateSceneImage = async (
         await runCreatorEditorialScriptPipeline({
           accessToken,
           topic,
-          creatorProfile,
+      creatorProfile: creatorStrategyProfileSnapshot || creatorProfile,
           scriptPlanRequest,
         });
 
@@ -14430,6 +14435,7 @@ const generateSceneImage = async (
       }
 
       setCreatorMentorResult(data.analysis as CreatorMentorResult);
+      setCreatorStrategyProfileSnapshot(parseCreatorProfile(creatorProfile));
       setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "brief_completed"));
       setSaveMessage(
         uiLanguage === "en"
@@ -14634,20 +14640,37 @@ const generateSceneImage = async (
       setSaveMessage(uiLanguage === "en" ? "Full script ready for review." : "Tam metin incelemeye hazır.");
     } catch (error) {
       if (!operationIsActive()) return;
-      setError(error instanceof Error ? error.message : uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı.");
+      const message = error instanceof Error ? error.message : "";
+      setError(message.startsWith("CREATOR_SCRIPT_")
+        ? uiLanguage === "en"
+          ? "The full script could not be completed safely. Your existing script is unchanged; please try again."
+          : "Tam metin güvenli biçimde tamamlanamadı. Mevcut metnin değişmedi; lütfen tekrar dene."
+        : message || (uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı."));
     } finally {
       suspendAutosaveRef.current = false;
       if (operationIsActive()) setCreatorScriptGenerationLoading(false);
     }
   };
 
-  const handleApproveCreatorScriptAndBuildScenes = async () => {
+  const handleApproveCreatorScriptAndBuildScenes = async (documentText: string) => {
     if (creatorScriptGenerationLoading || creatorSceneBuildLoading) return;
     if (!creatorMentorResult || !creatorScript) {
       setError(uiLanguage === "en" ? "Generate and review the full script first." : "Önce tam metni oluşturup incele.");
       return;
     }
-    if (getCreatorScriptDurationContractForScript(creatorScript, language).status !== "compliant") {
+    let scriptForApproval: CreatorScript;
+    try {
+      scriptForApproval = editCreatorScriptDocument(creatorScript, documentText);
+      if (scriptForApproval !== creatorScript) {
+        creatorScriptRef.current = scriptForApproval;
+        setCreatorScript(scriptForApproval);
+        await persistProject(false, { creatorScript: scriptForApproval });
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Script edit failed.");
+      return;
+    }
+    if (getCreatorScriptDurationContractForScript(scriptForApproval, language).status !== "compliant") {
       setError(uiLanguage === "en"
         ? "This script does not satisfy its duration target. Rebuild the full script before creating scenes."
         : "Bu metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce tam metni yeniden oluştur.");
@@ -14655,7 +14678,7 @@ const generateSceneImage = async (
     }
     let approvedScript: CreatorScript;
     try {
-      approvedScript = approveCreatorScript(creatorScript, creatorStrategyFingerprint);
+      approvedScript = approveCreatorScript(scriptForApproval, creatorStrategyFingerprint);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Script approval failed.");
       return;
@@ -14861,12 +14884,14 @@ const generateSceneImage = async (
     }
   };
 
-  const handleSaveCreatorScriptSection = (sectionId: string, text: string) => {
-    if (!creatorScript) return;
+  const handleSaveCreatorScriptDocument = async (text: string) => {
+    const sourceScript = creatorScriptRef.current;
+    if (!sourceScript) return;
     try {
-      const nextScript = editCreatorScriptSection(creatorScript, sectionId, text);
+      const nextScript = editCreatorScriptDocument(sourceScript, text);
       creatorScriptRef.current = nextScript;
       setCreatorScript(nextScript);
+      await persistProject(false, { creatorScript: nextScript });
       setError("");
       setSaveMessage(uiLanguage === "en" ? "Script edit saved. Approval is required again." : "Metin düzenlemesi kaydedildi. Yeniden onay gerekli.");
     } catch (error) {
@@ -14933,6 +14958,22 @@ const generateSceneImage = async (
     } finally {
       if (operationIsActive()) setCreatorScriptBusySectionId(null);
     }
+  };
+
+  const handleReviewCreatorScriptSources = async (sectionId: string, confirm = false) => {
+    if (!creatorScript) return [];
+    const accessToken = await getAccessTokenOrThrow();
+    const response = await fetch("/api/creator-script/verify-section", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: currentProjectIdRef.current || currentProjectId, sectionId, revision: creatorScript.revision, confirm }) });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || "Source verification could not be completed.");
+    if (confirm && data.creatorScript) {
+      const nextScript = normalizeCreatorScript(data.creatorScript);
+      creatorScriptRef.current = nextScript;
+      setCreatorScript(nextScript);
+      if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
+      setSaveMessage(uiLanguage === "en" ? "Source verification saved." : "Kaynak doğrulaması kaydedildi.");
+    }
+    return Array.isArray(data.review?.items) ? data.review.items : [];
   };
 
 
@@ -31148,14 +31189,16 @@ const generateSceneImage = async (
 
             {creatorScriptIsCurrent && creatorScript && (
               <CreatorScriptReview
+                key={creatorScript.revision}
                 script={creatorScript}
                 currentStrategyFingerprint={creatorStrategyFingerprint}
                 language={language}
                 busySectionId={creatorScriptBusySectionId}
                 buildingScenes={creatorWorkflowLoadingState.scenesBuilding}
                 generatingScript={creatorWorkflowLoadingState.scriptGenerating}
-                onSaveSection={handleSaveCreatorScriptSection}
+                onSaveDocument={handleSaveCreatorScriptDocument}
                 onRegenerateSection={handleRegenerateCreatorScriptSection}
+                onReviewSources={handleReviewCreatorScriptSources}
                 onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
               />
             )}

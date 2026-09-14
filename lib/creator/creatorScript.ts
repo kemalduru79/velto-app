@@ -14,6 +14,7 @@ export type CreatorScriptSection = {
   text: string;
   claimIds: string[];
   evidenceReviewRequired: boolean;
+  humanVerification?: { scriptRevision: number; verifiedAt: string };
 };
 
 export type CreatorScriptGrounding = {
@@ -153,6 +154,9 @@ function normalizeSection(
     text,
     claimIds,
     evidenceReviewRequired: section.evidenceReviewRequired === true,
+    ...(record(section.humanVerification) && Number(record(section.humanVerification)?.scriptRevision) > 0 && clean(record(section.humanVerification)?.verifiedAt, 100)
+      ? { humanVerification: { scriptRevision: Number(record(section.humanVerification)?.scriptRevision), verifiedAt: clean(record(section.humanVerification)?.verifiedAt, 100) } }
+      : {}),
   };
 }
 
@@ -176,7 +180,7 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
   const primarySourceCoveredClaimIds = new Set(
     editorialContext.readiness.primarySourceCoveredClaimIds,
   );
-  const sections = script.sections.map((section, index) => {
+  const rawSections = script.sections.map((section, index) => {
     const normalized = normalizeSection(section, index, allowedClaimIds);
     return {
       ...normalized,
@@ -190,10 +194,10 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
       ),
     };
   });
-  if (sections[0]?.kind !== "opening" || sections.at(-1)?.kind !== "conclusion" || sections.slice(1, -1).some((section) => section.kind !== "body")) {
+  if (rawSections[0]?.kind !== "opening" || rawSections.at(-1)?.kind !== "conclusion" || rawSections.slice(1, -1).some((section) => section.kind !== "body")) {
     throw new Error("CREATOR_SCRIPT_STRUCTURE_INVALID");
   }
-  if (new Set(sections.map((section) => section.id)).size !== sections.length) {
+  if (new Set(rawSections.map((section) => section.id)).size !== rawSections.length) {
     throw new Error("CREATOR_SCRIPT_SECTION_ID_DUPLICATE");
   }
   const approval = script.approval === null ? null : record(script.approval);
@@ -206,6 +210,10 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
   if (!clean(script.title, 500) || !Number.isFinite(targetDurationSec) || targetDurationSec <= 0 || !Number.isInteger(revision) || revision < 1 || !clean(script.strategyFingerprint, 300) || !clean(script.generatedAt, 100) || !clean(script.updatedAt, 100)) {
     throw new Error("CREATOR_SCRIPT_FIELDS_INVALID");
   }
+  const sections = rawSections.map((section) => {
+    const verificationValid = !section.evidenceReviewRequired && section.humanVerification?.scriptRevision === revision;
+    return verificationValid ? section : { ...section, humanVerification: undefined };
+  });
   return {
     version: CREATOR_SCRIPT_VERSION,
     title: clean(script.title, 500),
@@ -222,6 +230,26 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
       approvedAt: clean(approval.approvedAt, 100),
     } : null,
   };
+}
+
+export function assertCreatorScriptVerificationAuthority(persisted: CreatorScript, candidate: CreatorScript) {
+  const previousById = new Map(persisted.sections.map((section) => [section.id, section]));
+  for (const section of candidate.sections) {
+    const previous = previousById.get(section.id);
+    if (!previous) continue;
+    if (section.humanVerification && JSON.stringify(section.humanVerification) !== JSON.stringify(previous.humanVerification)) {
+      throw new Error("CREATOR_SCRIPT_VERIFICATION_FORGED");
+    }
+    const sameLineage = candidate.generatedAt === persisted.generatedAt;
+    const bindingsUnchanged = JSON.stringify(section.claimIds) === JSON.stringify(previous.claimIds);
+    if (sameLineage && previous.evidenceReviewRequired && !section.evidenceReviewRequired && section.text === previous.text && bindingsUnchanged) {
+      throw new Error("CREATOR_SCRIPT_VERIFICATION_FORGED");
+    }
+    if (sameLineage && section.text !== previous.text && section.claimIds.length > 0 && !section.evidenceReviewRequired) {
+      throw new Error("CREATOR_SCRIPT_VERIFICATION_FORGED");
+    }
+  }
+  return candidate;
 }
 
 export function isValidCreatorScript(value: unknown): value is CreatorScript {
@@ -426,7 +454,8 @@ export function mergeCreatorScriptReplacementSections(input: {
     replacementById.set(id, value);
   }
   const existingById = new Map(input.script.sections.map((section) => [section.id, section]));
-  const sections = allowedIds.map((id) => replacementById.get(id) ?? existingById.get(id));
+  const nextRevision = input.script.revision + 1;
+  const sections = allowedIds.map((id) => replacementById.get(id) ?? (() => { const section = existingById.get(id); return section?.humanVerification ? { ...section, humanVerification: { ...section.humanVerification, scriptRevision: nextRevision } } : section; })());
   if (sections.some((section) => !section)) {
     throw new Error("CREATOR_SCRIPT_REPAIR_SECTIONS_INCOMPLETE");
   }
@@ -533,8 +562,6 @@ export function isCreatorScriptCurrentForStrategy(input: {
     script
     && script.strategyFingerprint === input.strategyFingerprint
     && script.targetDurationSec === input.targetDurationSec
-    && getCreatorScriptDurationContractForScript(script, input.language).status === "compliant"
-    && !creatorScriptHasGroundingBlocker(script)
   );
 }
 
@@ -586,10 +613,126 @@ export async function generateCreatorScriptWithDurationContract(input: {
 }
 
 export function getCreatorScriptMetrics(script: CreatorScript, language: "tr" | "en") {
-  const fullText = script.sections.map((section) => section.text).join("\n\n");
+  const fullText = getCreatorScriptDocumentText(script);
   const duration = getCreatorScriptDurationContractForScript(script, language);
   const groundedSections = script.sections.filter((section) => section.claimIds.length > 0).length;
   return { fullText, wordCount: duration.actualWordCount, estimatedDurationSec: duration.estimatedDurationSec, targetDurationSec: script.targetDurationSec, varianceSec: duration.varianceSec, evidenceCoverage: script.sections.length ? groundedSections / script.sections.length : 0 };
+}
+
+export function getCreatorScriptDocumentText(script: CreatorScript) {
+  return script.sections.map((section) => section.text).join("\n\n");
+}
+
+function projectCreatorScriptDocumentSections(script: CreatorScript, documentText: string) {
+  const normalizedDocument = clean(documentText, 100_000);
+  if (!normalizedDocument) throw new Error("CREATOR_SCRIPT_DOCUMENT_TEXT_REQUIRED");
+  const originalDocument = getCreatorScriptDocumentText(script);
+  if (normalizedDocument === originalDocument) return script.sections.map((section) => section.text);
+
+  let unchangedPrefixLength = 0;
+  while (
+    unchangedPrefixLength < originalDocument.length &&
+    unchangedPrefixLength < normalizedDocument.length &&
+    originalDocument[unchangedPrefixLength] === normalizedDocument[unchangedPrefixLength]
+  ) unchangedPrefixLength += 1;
+  let unchangedSuffixLength = 0;
+  while (
+    unchangedSuffixLength < originalDocument.length - unchangedPrefixLength &&
+    unchangedSuffixLength < normalizedDocument.length - unchangedPrefixLength &&
+    originalDocument[originalDocument.length - unchangedSuffixLength - 1] ===
+      normalizedDocument[normalizedDocument.length - unchangedSuffixLength - 1]
+  ) unchangedSuffixLength += 1;
+
+  const spans: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+  for (const section of script.sections) {
+    spans.push({ start: cursor, end: cursor + section.text.length });
+    cursor += section.text.length + 2;
+  }
+  const originalEditStart = unchangedPrefixLength;
+  const originalEditEnd = originalDocument.length - unchangedSuffixLength;
+  const startSectionIndex = spans.findIndex((span) => originalEditStart <= span.end);
+  const endProbe = Math.max(originalEditStart, originalEditEnd);
+  let endSectionIndex = spans.findLastIndex((span) => endProbe >= span.start);
+  if (startSectionIndex < 0) throw new Error("CREATOR_SCRIPT_DOCUMENT_STRUCTURE_INVALID");
+  endSectionIndex = Math.max(startSectionIndex, endSectionIndex);
+
+  const startSpan = spans[startSectionIndex];
+  const endSpan = spans[endSectionIndex];
+  const replacementEnd = normalizedDocument.length - unchangedSuffixLength;
+  const affectedDocument = [
+    script.sections[startSectionIndex].text.slice(0, Math.max(0, originalEditStart - startSpan.start)),
+    normalizedDocument.slice(originalEditStart, replacementEnd),
+    script.sections[endSectionIndex].text.slice(Math.max(0, originalEditEnd - endSpan.start)),
+  ].join("");
+  const affectedSectionCount = endSectionIndex - startSectionIndex + 1;
+  const affectedTexts = affectedSectionCount === 1
+    ? [affectedDocument.trim()]
+    : affectedDocument.split(/\n\s*\n/).map((text) => text.trim());
+  if (affectedTexts.length !== affectedSectionCount || affectedTexts.some((text) => !text)) {
+    throw new Error("CREATOR_SCRIPT_DOCUMENT_BOUNDARY_AMBIGUOUS");
+  }
+  return script.sections.map((section, index) =>
+    index < startSectionIndex || index > endSectionIndex
+      ? section.text
+      : affectedTexts[index - startSectionIndex],
+  );
+}
+
+export function editCreatorScriptDocument(
+  script: CreatorScript,
+  documentText: string,
+  updatedAt = new Date().toISOString(),
+) {
+  const sectionTexts = projectCreatorScriptDocumentSections(script, documentText);
+  if (sectionTexts.some((text) => !text)) throw new Error("CREATOR_SCRIPT_DOCUMENT_STRUCTURE_INVALID");
+  if (sectionTexts.every((text, index) => text === script.sections[index].text)) return script;
+  const sections = script.sections.map((section, index) => {
+    const changed = section.text !== sectionTexts[index];
+    return {
+      ...section,
+      text: sectionTexts[index],
+      evidenceReviewRequired: section.evidenceReviewRequired || (changed && section.claimIds.length > 0),
+      ...(changed ? { humanVerification: undefined } : section.humanVerification ? { humanVerification: { ...section.humanVerification, scriptRevision: script.revision + 1 } } : {}),
+    };
+  });
+  return normalizeCreatorScript({
+    ...script,
+    sections,
+    revision: script.revision + 1,
+    updatedAt,
+    approval: null,
+  });
+}
+
+export function getCreatorScriptSectionSourceReview(script: CreatorScript, sectionId: string) {
+  const section = script.sections.find((item) => item.id === sectionId);
+  if (!section || !section.evidenceReviewRequired || script.grounding.context.readiness.status === "blocked") return null;
+  const claims = new Map(script.grounding.context.claims.map((claim) => [claim.claimId, claim]));
+  const evidence = new Map(script.grounding.context.evidence.map((item) => [item.evidenceId, item]));
+  const sources = new Map(script.grounding.context.sources.map((source) => [source.sourceId, source]));
+  const items = section.claimIds.map((claimId) => {
+    const claim = claims.get(claimId);
+    const support = claim?.supportingEvidenceIds.map((id) => evidence.get(id)).filter((item) => item !== undefined).map((item) => ({
+      sourceTitle: sources.get(item.sourceId)?.title || "",
+      excerpt: item.excerpt,
+      context: item.contextNote,
+    })).filter((item) => item.sourceTitle && item.excerpt) ?? [];
+    return claim && support.length ? { statement: claim.text, sources: support } : null;
+  }).filter((item) => item !== null);
+  return items.length === section.claimIds.length && items.length > 0 ? { sectionId, items } : null;
+}
+
+export function verifyCreatorScriptSectionSources(script: CreatorScript, sectionId: string, verifiedAt = new Date().toISOString()) {
+  if (!getCreatorScriptSectionSourceReview(script, sectionId)) throw new Error("CREATOR_SCRIPT_MANUAL_VERIFICATION_UNAVAILABLE");
+  return normalizeCreatorScript({
+    ...script,
+    sections: script.sections.map((section) => section.id === sectionId ? {
+      ...section,
+      evidenceReviewRequired: false,
+      humanVerification: { scriptRevision: script.revision, verifiedAt },
+    } : section),
+  });
 }
 
 export function creatorScriptHasGroundingBlocker(script: CreatorScript) {
@@ -628,10 +771,10 @@ export function editCreatorScriptSection(script: CreatorScript, sectionId: strin
   if (!normalizedText) throw new Error("CREATOR_SCRIPT_SECTION_TEXT_REQUIRED");
   let found = false;
   const sections = script.sections.map((section) => {
-    if (section.id !== sectionId) return section;
+    if (section.id !== sectionId) return section.humanVerification ? { ...section, humanVerification: { ...section.humanVerification, scriptRevision: script.revision + 1 } } : section;
     found = true;
     if (section.text === normalizedText) return section;
-    return { ...section, text: normalizedText, evidenceReviewRequired: section.claimIds.length > 0 };
+    return { ...section, text: normalizedText, evidenceReviewRequired: section.claimIds.length > 0, humanVerification: undefined };
   });
   if (!found) throw new Error("CREATOR_SCRIPT_SECTION_NOT_FOUND");
   return normalizeCreatorScript({ ...script, sections, revision: script.revision + 1, updatedAt, approval: null });
@@ -643,7 +786,7 @@ export function regenerateCreatorScriptSection(script: CreatorScript, sectionId:
   if (currentIndex < 0) throw new Error("CREATOR_SCRIPT_SECTION_NOT_FOUND");
   const nextSection = normalizeSection(replacement, currentIndex, allowedClaimIds);
   if (nextSection.id !== sectionId || nextSection.kind !== script.sections[currentIndex].kind) throw new Error("CREATOR_SCRIPT_REGENERATION_TARGET_MISMATCH");
-  const sections = script.sections.map((section, index) => index === currentIndex ? nextSection : section);
+  const sections = script.sections.map((section, index) => index === currentIndex ? { ...nextSection, humanVerification: undefined } : section.humanVerification ? { ...section, humanVerification: { ...section.humanVerification, scriptRevision: script.revision + 1 } } : section);
   return normalizeCreatorScript({ ...script, sections, revision: script.revision + 1, updatedAt, approval: null });
 }
 
