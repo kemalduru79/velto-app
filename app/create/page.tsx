@@ -149,14 +149,15 @@ import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import CreatorScriptReview from "@/components/create/CreatorScriptReview";
 import { getCreatorScriptRefinementChangedRanges, getCreatorScriptRefinementReplacementRange } from "@/lib/creator/creatorScriptRefinement";
 import type { CreatorScriptPendingRefinement, CreatorScriptRevisionHistoryEntry } from "@/lib/creator/creatorScriptRevisions";
+import { creatorSceneOutputIsCurrent } from "@/lib/creator/creatorScriptApproval";
 import {
   acceptGeneratedCreatorScript,
-  approveCreatorScript,
   canBuildScenesFromCreatorScript,
   createCreatorStrategyFingerprint,
   editCreatorScriptDocument,
   getCreatorScriptDocumentText,
   getCreatorScriptDurationContractForScript,
+  getCreatorScriptStatus,
   isCreatorScriptCurrentForStrategy,
   normalizeCreatorScript,
   shouldSurfaceCreatorScriptOperationFailure,
@@ -1079,6 +1080,7 @@ type CreatorProductionScene = {
 };
 
 type CreatorProductionPackage = {
+  sourceScriptRevision?: number;
   outcome?: CreatorOutcome;
   format?: CreatorFormat;
   contentType?: CreatorContentType;
@@ -12281,7 +12283,10 @@ const generateSceneImage = async (
       const loadedCharacters = isCreatorProject
         ? normalizeCreatorLabCharacters(project.characters)
         : withDefaultGuideCharacter(project.characters);
-      const persistedCreatorScenes = canonicalCreatorState?.createReview.scenes ?? project.scenes;
+      const persistedCreatorSceneCandidates = canonicalCreatorState?.createReview.scenes ?? project.scenes;
+      const persistedCreatorScenes = isCreatorProject && !creatorSceneOutputIsCurrent({ script: canonicalCreatorState?.strategy.script || null, productionPackage: normalizedSavedCreatorPackage, scenes: Array.isArray(persistedCreatorSceneCandidates) ? persistedCreatorSceneCandidates : [] })
+        ? []
+        : persistedCreatorSceneCandidates;
       const loadedProjectScenesBeforeIdentity = Array.isArray(persistedCreatorScenes)
         ? persistedCreatorScenes.map((scene: Scene, index: number) =>
             isCreatorProject
@@ -14684,31 +14689,17 @@ const generateSceneImage = async (
       setError(uiLanguage === "en" ? "Generate and review the full script first." : "Önce tam metni oluşturup incele.");
       return;
     }
-    let scriptForApproval: CreatorScript;
-    try {
-      scriptForApproval = editCreatorScriptDocument(creatorScript, documentText);
-      if (scriptForApproval !== creatorScript) {
-        creatorScriptRef.current = scriptForApproval;
-        setCreatorScript(scriptForApproval);
-        await persistProject(false, { creatorScript: scriptForApproval });
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Script edit failed.");
+    if (documentText !== getCreatorScriptDocumentText(creatorScript)) {
+      setError(uiLanguage === "en" ? "Save the current script changes before approval." : "Onaylamadan önce mevcut metin değişikliklerini kaydet.");
       return;
     }
-    if (getCreatorScriptDurationContractForScript(scriptForApproval, language).status !== "compliant") {
+    if (getCreatorScriptDurationContractForScript(creatorScript, language).status !== "compliant") {
       setError(uiLanguage === "en"
         ? "This script does not satisfy its duration target. Rebuild the full script before creating scenes."
         : "Bu metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce tam metni yeniden oluştur.");
       return;
     }
-    let approvedScript: CreatorScript;
-    try {
-      approvedScript = approveCreatorScript(scriptForApproval, creatorStrategyFingerprint);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Script approval failed.");
-      return;
-    }
+    let approvedScript = creatorScript;
     let operationOrigin = Object.freeze({
       projectId: currentProjectIdRef.current || currentProjectId,
       generation: projectGenerationRef.current,
@@ -14724,17 +14715,24 @@ const generateSceneImage = async (
     setSaveMessage("");
 
     try {
+      const accessToken = await getAccessTokenOrThrow();
+      if (getCreatorScriptStatus(approvedScript, creatorStrategyFingerprint) !== "approved") {
+        const approvalResponse = await fetch("/api/creator-script/approve", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: operationOrigin.projectId, revision: approvedScript.revision }) });
+        const approvalData = await approvalResponse.json().catch(() => null);
+        if (!approvalResponse.ok || !approvalData?.creatorScript) throw new Error(approvalData?.error || "Script approval failed.");
+        approvedScript = normalizeCreatorScript(approvalData.creatorScript);
+        creatorScriptRef.current = approvedScript;
+        setCreatorScript(approvedScript);
+        if (typeof approvalData.project?.updated_at === "string") projectUpdatedAtRef.current = approvalData.project.updated_at;
+      }
       creatorScriptRef.current = approvedScript;
       setCreatorScript(approvedScript);
-      await persistProject(false, { creatorScript: approvedScript });
       const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
         projectId: currentProjectIdRef.current || currentProjectId,
         generation: projectGenerationRef.current,
       });
       if (!advancedOrigin) return;
       operationOrigin = advancedOrigin;
-      if (!operationIsActive()) return;
-      const accessToken = await getAccessTokenOrThrow();
       if (!operationIsActive()) return;
 
       const approvedDirection = creatorSelectedStrategyDirection || {
@@ -14783,9 +14781,8 @@ const generateSceneImage = async (
           language,
           mentorAnalysis: approvedMentorAnalysis,
           creatorProfile,
-          approvedScript,
+          approvedScriptRevision: approvedScript.revision,
           projectId: operationOrigin.projectId,
-          strategyFingerprint: creatorStrategyFingerprint,
         }),
       });
       if (!operationIsActive()) return;
@@ -14924,6 +14921,9 @@ const generateSceneImage = async (
         const savedState = readCreatorProjectState(saved.project);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
+        setScenes([]);
+        setRefinedCreatorScenes([]);
+        invalidateFinalVideoForProductionChange();
       }
       setError("");
       setSaveMessage(uiLanguage === "en" ? "Script edit saved. Approval is required again." : "Metin düzenlemesi kaydedildi. Yeniden onay gerekli.");
@@ -14976,6 +14976,9 @@ const generateSceneImage = async (
         const savedState = readCreatorProjectState(saved.project);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
+        setScenes([]);
+        setRefinedCreatorScenes([]);
+        invalidateFinalVideoForProductionChange();
       }
       setSaveMessage(sectionId === sourceScript.sections[0]?.id
         ? (uiLanguage === "en" ? "Opening strengthened. Review and approve the new revision." : "Açılış güçlendirildi. Yeni sürümü inceleyip onayla.")
@@ -15045,6 +15048,7 @@ const generateSceneImage = async (
         : null;
       setCreatorScriptRefinementHighlights(replacementRange ? [replacementRange] : getCreatorScriptRefinementChangedRanges(sourceScript, nextScript));
       creatorScriptRef.current = nextScript; setCreatorScript(nextScript);
+      setScenes([]); setRefinedCreatorScenes([]); invalidateFinalVideoForProductionChange();
     }
     if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
     setError(""); setSaveMessage(action === "apply" ? "Script refinement applied." : "Refinement discarded.");
@@ -16511,6 +16515,10 @@ const generateSceneImage = async (
 
   const buildStory = async () => {
     if (isCreatorLabFlow && creatorProductionPackage?.scenes?.length) {
+      if (!creatorSceneOutputIsCurrent({ script: creatorScriptRef.current, productionPackage: creatorProductionPackage, scenes: creatorProductionPackage.scenes })) {
+        setError(uiLanguage === "en" ? "Script changed. Approve it again and rebuild scenes." : "Metin değişti. Yeniden onayla ve sahneleri yeniden oluştur.");
+        return;
+      }
       setBuildingStory(true);
       setError("");
       setSaveMessage("");

@@ -46,8 +46,7 @@ type CreatorProductionRequest = {
   qualityMode?: VideoQualityTier;
   mentorAnalysis?: CreatorMentorResult;
   creatorProfile?: Record<string, unknown>;
-  approvedScript?: unknown;
-  strategyFingerprint?: string;
+  approvedScriptRevision?: number;
 };
 
 type CreatorProductionModelOutput = {
@@ -511,7 +510,7 @@ export async function handleCreatorProductionRequest(req: Request) {
     const creatorProfile = creatorProfileContext(body?.creatorProfile);
     const qualityMode = normalizeVideoQualityTier(body?.qualityMode, "pro");
     const projectId = asString(body?.projectId);
-    if (!projectId || !body || !Object.prototype.hasOwnProperty.call(body, "approvedScript")) {
+    if (!projectId || !body || !Number.isInteger(body.approvedScriptRevision)) {
       return NextResponse.json(
         { error: "A persisted approved project script is required before scene generation.", code: "CREATOR_SCRIPT_APPROVAL_REQUIRED" },
         { status: 409 },
@@ -523,8 +522,7 @@ export async function handleCreatorProductionRequest(req: Request) {
       if (!persistedProject) throw new Error("CREATOR_SCRIPT_PROJECT_NOT_FOUND");
       approvedScript = resolvePersistedCreatorScriptAuthority({
         persistedProject,
-        submittedScript: body.approvedScript,
-        submittedStrategyFingerprint: body.strategyFingerprint,
+        requestedRevision: body.approvedScriptRevision,
       });
       const persistedBrief = readCreatorProjectState(persistedProject).brief;
       topic = persistedBrief.topic;
@@ -797,6 +795,7 @@ export async function handleCreatorProductionRequest(req: Request) {
     });
 
     const productionPackage = {
+      sourceScriptRevision: approvedScript.revision,
       title: asString(
         parsed.title,
         asString(mentorAnalysis?.recommendedIdea?.title, "Creator Lab Video"),

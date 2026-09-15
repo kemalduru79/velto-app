@@ -7,6 +7,7 @@ import { attachCreatorProjectState, readCreatorProjectState } from "@/lib/creato
 import { getCreatorScriptSectionSourceReview } from "@/lib/creator/creatorScript";
 import { applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, validateCreatorScriptSelection, type CreatorScriptRefinementScope } from "@/lib/creator/creatorScriptRefinement";
 import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorScriptProposal, discardCreatorScriptProposal } from "@/lib/creator/creatorScriptRevisions";
+import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     const state = readCreatorProjectState(project); const script = state.strategy.script;
     if (!script || script.revision !== revision) return NextResponse.json({ error: "Script changed. Review the current revision.", code: "CREATOR_SCRIPT_REFINEMENT_STALE" }, { status: 409 });
-    const saveState = async (nextState: typeof state) => services.projectRepository.saveForOwner({ projectId, ownerUserId: principal.id, childId: null, flowType: "creator_lab", exportedMovieResult: attachCreatorProjectState(project.exported_movie_result, nextState), expectedUpdatedAt: typeof project.updated_at === "string" ? project.updated_at : null });
+    const saveState = async (nextState: typeof state, invalidateProduction = false) => services.projectRepository.saveForOwner({ projectId, ownerUserId: principal.id, childId: null, flowType: "creator_lab", ...(invalidateProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}), exportedMovieResult: attachCreatorProjectState(project.exported_movie_result, nextState), expectedUpdatedAt: typeof project.updated_at === "string" ? project.updated_at : null });
     if (action === "discard") {
       const proposalId = text(body.proposalId, 120);
       if (!proposalId) return NextResponse.json({ error: "Invalid refinement action." }, { status: 400 });
@@ -41,8 +42,8 @@ export async function POST(req: Request) {
       const nextScript = applyCreatorScriptProposal(script, proposal, state.brief.language);
       const origin = proposal.scope === "selection" ? "ai_selection" : proposal.scope === "opening" ? "ai_opening" : "ai_whole_script";
       const revisionHistory = appendCreatorScriptHistory(state.strategy.revisionHistory || [], { fromRevision: script.revision, toRevision: nextScript.revision, origin, instruction: proposal.instruction, changes: proposal.changes });
-      const nextState = { ...state, strategy: { ...state.strategy, script: nextScript, pendingRefinement: null, revisionHistory } };
-      const result = await saveState(nextState);
+      const nextState = invalidateCreatorSceneAuthorityForScriptChange({ ...state, strategy: { ...state.strategy, script: nextScript, pendingRefinement: null, revisionHistory } });
+      const result = await saveState(nextState, true);
       return NextResponse.json({ success: true, action: "apply", creatorScript: nextScript, pendingRefinement: null, revisionHistory, project: result.project });
     }
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: "Script refinement is unavailable." }, { status: 500 });

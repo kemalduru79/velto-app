@@ -81,6 +81,7 @@ export default function CreatorScriptReview({
     try { return editCreatorScriptDocument(script, draft, script.updatedAt); } catch { return null; }
   }, [draft, script]);
   const status = getCreatorScriptStatus(script, currentStrategyFingerprint);
+  const editorialStatus = draftChanged ? "draft" : status;
   const durationCompliant = durationContract.status === "compliant";
   const evidenceReviewSections = projectedScript?.sections.filter((section) => section.evidenceReviewRequired) ?? [];
   const evidenceReviewBlocked = evidenceReviewSections.length > 0;
@@ -143,8 +144,8 @@ export default function CreatorScriptReview({
           <h3>{script.title}</h3>
           <p>{language === "en" ? "Review and approve the complete script before scene production." : "Sahne üretiminden önce tam metni incele ve onayla."}</p>
         </div>
-        <strong data-script-status={status}>
-          {status === "approved" ? (language === "en" ? "Approved" : "Onaylandı") : status === "stale" ? (language === "en" ? "Stale · Action required" : "Güncel değil · İşlem gerekli") : (language === "en" ? "Draft" : "Taslak")}
+        <strong data-script-status={editorialStatus}>
+          {editorialStatus === "approved" ? (language === "en" ? `Approved · Revision ${script.revision}` : `Onaylandı · Sürüm ${script.revision}`) : editorialStatus === "stale" ? (language === "en" ? "Stale · Action required" : "Güncel değil · İşlem gerekli") : (language === "en" ? "Draft" : "Taslak")}
         </strong>
       </div>
 
@@ -244,18 +245,24 @@ export default function CreatorScriptReview({
           <strong>{language === "en" ? "Approve the current script revision" : "Mevcut metin sürümünü onayla"}</strong>
           <p>{generatingScript
             ? (language === "en" ? "A replacement script is being generated. Scene creation is unavailable until it succeeds." : "Yeni metin oluşturuluyor. Başarıyla tamamlanana kadar sahne oluşturma kullanılamaz.")
+            : pendingRefinement
+              ? (language === "en" ? "Apply or discard the pending refinement before approving this script." : "Bu metni onaylamadan önce bekleyen iyileştirmeyi uygula veya vazgeç.")
+            : draftChanged
+              ? (language === "en" ? "Save the current script changes before approval." : "Onaylamadan önce mevcut metin değişikliklerini kaydet.")
             : evidenceReviewBlocked
               ? (language === "en" ? `${evidenceReviewSections.length === 1 ? "One edited section contains" : `${evidenceReviewSections.length} edited sections contain`} sourced claims that need verification before scenes can be built. In Section tools, choose Regenerate to verify. Your saved text remains unchanged until you choose that action.` : `${evidenceReviewSections.length} düzenlenmiş bölümde sahneler oluşturulmadan önce doğrulanması gereken kaynaklı iddialar var. Bölüm araçlarında doğrulamak için Yenile'yi seç. Bu işlemi seçene kadar kaydedilmiş metnin değişmez.`)
             : !durationCompliant
               ? (language === "en" ? "This historic script does not satisfy its duration target. Rebuild the script before creating scenes." : "Bu eski metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce metni yeniden oluştur.")
               : status === "stale" ? (language === "en" ? "Strategy changed. Rebuild the script before creating scenes." : "Strateji değişti. Sahneleri oluşturmadan önce metni yeniden oluştur.") : (language === "en" ? "Scenes will use this exact editorial script as their source of truth." : "Sahneler bu editoryal metni tek kaynak olarak kullanacak.")}</p>
         </div>
-        <button type="button" className="creatorlab-strategy-primary-action" onClick={() => onApproveAndBuildScenes(draft)} disabled={generatingScript || buildingScenes || saving || !projectedScript || !durationCompliant || status === "stale" || evidenceReviewBlocked || script.grounding.context.readiness.status === "blocked"}>
+        <button type="button" className="creatorlab-strategy-primary-action" onClick={() => onApproveAndBuildScenes(draft)} disabled={generatingScript || buildingScenes || saving || draftChanged || Boolean(pendingRefinement) || !projectedScript || !durationCompliant || status === "stale" || evidenceReviewBlocked || script.grounding.context.readiness.status === "blocked"}>
           {buildingScenes
             ? (language === "en" ? "Building scenes…" : "Sahneler oluşturuluyor…")
             : !durationCompliant
               ? (language === "en" ? "Rebuild Script Required" : "Metni Yeniden Oluştur")
-              : (language === "en" ? "Approve Script & Build Scenes" : "Metni Onayla ve Sahneleri Oluştur")}
+              : status === "approved"
+                ? (language === "en" ? "Build Scenes" : "Sahneleri Oluştur")
+                : (language === "en" ? "Approve Script & Build Scenes" : "Metni Onayla ve Sahneleri Oluştur")}
         </button>
       </div>
     </section>

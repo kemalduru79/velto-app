@@ -12,6 +12,7 @@ import {
 } from "@/lib/creator/projectState";
 import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
+import { assertCreatorScriptApprovalAuthority, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
     const hasScenes = Object.prototype.hasOwnProperty.call(body, "scenes");
-    const scenes = Array.isArray(body.scenes) ? body.scenes : body.scenes === null ? null : undefined;
+    let scenes = Array.isArray(body.scenes) ? body.scenes : body.scenes === null ? null : undefined;
 
     if ((!projectId && (!title || !Array.isArray(scenes))) || (hasTitle && !title) || (hasScenes && scenes === undefined)) {
       return NextResponse.json(
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
       }
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    let shouldInvalidateCreatorProduction = false;
     let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
     if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
       return NextResponse.json(
@@ -85,11 +87,14 @@ export async function POST(req: Request) {
       if (persistedScript && candidateState.strategy.script) {
         try {
           assertCreatorScriptVerificationAuthority(persistedScript, candidateState.strategy.script);
-        } catch {
-          return NextResponse.json({ error: "Script verification state must be updated through source review.", code: "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
+          assertCreatorScriptApprovalAuthority(persistedScript, candidateState.strategy.script);
+        } catch (error) {
+          const approvalForged = error instanceof Error && error.message === "CREATOR_SCRIPT_APPROVAL_FORGED";
+          return NextResponse.json({ error: approvalForged ? "Script approval must be updated through the approval action." : "Script verification state must be updated through source review.", code: approvalForged ? "CREATOR_SCRIPT_APPROVAL_FORGED" : "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
         }
       }
       const textChanged = creatorScriptTextChanged(persistedScript, candidateState.strategy.script);
+      shouldInvalidateCreatorProduction = textChanged;
       const scriptRevisionChanged = Boolean(persistedScript && candidateState.strategy.script && persistedScript.revision !== candidateState.strategy.script.revision);
       const revisionHistory = textChanged && persistedScript && candidateState.strategy.script
         ? appendCreatorScriptHistory(persistedState.strategy.revisionHistory || [], {
@@ -107,6 +112,10 @@ export async function POST(req: Request) {
           revisionHistory,
         },
       };
+      if (textChanged) {
+        authoritativeCreatorState = invalidateCreatorSceneAuthorityForScriptChange(authoritativeCreatorState);
+        if (hasScenes) scenes = [];
+      }
     }
     const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
       ? attachCreatorProjectState(
@@ -142,6 +151,7 @@ export async function POST(req: Request) {
         ...(has("refinedCreatorScenes")
           ? { refinedCreatorScenes: body.refinedCreatorScenes }
           : {}),
+        ...(shouldInvalidateCreatorProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}),
         expectedUpdatedAt,
       });
 

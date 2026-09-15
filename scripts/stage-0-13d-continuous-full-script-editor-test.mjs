@@ -179,13 +179,13 @@ assert.match(reviewHandler, /if \(confirm && data\.creatorScript\)/);
 assert.doesNotMatch(reviewHandler.slice(0, reviewHandler.indexOf("if (confirm && data.creatorScript)")), /setCreatorScript|setCreatorSelectedWorkspaceStep|setCreatorProductionSubstep|persistProject/);
 assert.equal((component.match(/<textarea/g) || []).length, 1);
 assert.match(component, /onApproveAndBuildScenes\(draft\)/);
-assert.match(page, /editCreatorScriptDocument\(creatorScript, documentText\)/);
-assert.match(page, /persistProject\(false, \{ creatorScript: scriptForApproval \}\)/);
+assert.match(page, /documentText !== getCreatorScriptDocumentText\(creatorScript\)/);
+assert.match(page, /fetch\("\/api\/creator-script\/approve"/);
 const approvalHandler = page.slice(
   page.indexOf("const handleApproveCreatorScriptAndBuildScenes"),
   page.indexOf("const handleSaveCreatorScriptDocument"),
 );
-assert.ok(approvalHandler.indexOf("persistProject(false, { creatorScript: approvedScript })") < approvalHandler.indexOf('fetch("/api/creator-production"'));
+assert.ok(approvalHandler.indexOf('fetch("/api/creator-script/approve"') < approvalHandler.indexOf('fetch("/api/creator-production"'));
 assert.match(production, /resolvePersistedCreatorScriptAuthority/);
 assert.doesNotMatch(component, /createCreatorScriptSceneSegments|\/api\/creator-production/);
 assert.match(page, /onSaveDocument=\{handleSaveCreatorScriptDocument\}/);

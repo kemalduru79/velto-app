@@ -2,7 +2,6 @@ import {
   canBuildScenesFromCreatorScript,
   CreatorScriptDurationUnsatisfiedError,
   getCreatorScriptDurationContractForScript,
-  normalizeCreatorScript,
   type CreatorScript,
 } from "./creatorScript.ts";
 import {
@@ -17,29 +16,13 @@ const record = (value: unknown): Record<string, unknown> | null =>
     ? value as Record<string, unknown>
     : null;
 
-const scriptIdentity = (script: CreatorScript) => JSON.stringify({
-  version: script.version,
-  revision: script.revision,
-  strategyFingerprint: script.strategyFingerprint,
-  approval: script.approval,
-  sections: script.sections.map((section) => ({
-    id: section.id,
-    kind: section.kind,
-    heading: section.heading || "",
-    text: section.text,
-    claimIds: section.claimIds,
-    evidenceReviewRequired: section.evidenceReviewRequired,
-  })),
-});
-
 /**
  * Resolves scene-build authority exclusively from an owner-scoped persisted
- * project record. The submitted script is only a concurrency/content assertion.
+ * project record. The client supplies only the revision it intends to build.
  */
 export function resolvePersistedCreatorScriptAuthority(input: {
   persistedProject: PersistedProjectRecord | null;
-  submittedScript: unknown;
-  submittedStrategyFingerprint: unknown;
+  requestedRevision: unknown;
 }): CreatorScript {
   const project = input.persistedProject;
   if (!project || project.flow_type !== "creator_lab") {
@@ -50,18 +33,13 @@ export function resolvePersistedCreatorScriptAuthority(input: {
   if (!isValidCreatorProjectState(snapshot)) {
     throw new Error("CREATOR_SCRIPT_SNAPSHOT_INVALID");
   }
-  const persistedScript = readCreatorProjectState(project).strategy.script;
+  const state = readCreatorProjectState(project);
+  const persistedScript = state.strategy.script;
   if (!persistedScript) throw new Error("CREATOR_SCRIPT_APPROVAL_REQUIRED");
-  const fingerprint = typeof input.submittedStrategyFingerprint === "string"
-    ? input.submittedStrategyFingerprint.trim()
-    : "";
-  if (!canBuildScenesFromCreatorScript(persistedScript, fingerprint)) {
+  if (!canBuildScenesFromCreatorScript(persistedScript, state.strategy.strategyFingerprint || persistedScript.strategyFingerprint)) {
     throw new Error("CREATOR_SCRIPT_APPROVAL_REQUIRED");
   }
-  const submittedScript = normalizeCreatorScript(input.submittedScript);
-  if (scriptIdentity(submittedScript) !== scriptIdentity(persistedScript)) {
-    throw new Error("CREATOR_SCRIPT_PERSISTED_MISMATCH");
-  }
+  if (!Number.isInteger(input.requestedRevision) || Number(input.requestedRevision) !== persistedScript.revision) throw new Error("CREATOR_SCRIPT_APPROVAL_STALE");
   return persistedScript;
 }
 

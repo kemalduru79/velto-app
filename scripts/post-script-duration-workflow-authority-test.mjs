@@ -87,7 +87,7 @@ const projectSnapshot = buildCreatorProjectState({
 });
 const persistedProject = { id: "project-work", flow_type: "creator_lab", exported_movie_result: { creatorProjectState: projectSnapshot } };
 assert.equal(readCreatorProjectState(persistedProject).brief.topic, persistedTopic);
-assert.equal(resolvePersistedCreatorScriptAuthority({ persistedProject, submittedScript: compliant, submittedStrategyFingerprint: fingerprint }).revision, compliant.revision);
+assert.equal(resolvePersistedCreatorScriptAuthority({ persistedProject, requestedRevision: compliant.revision }).revision, compliant.revision);
 
 const historicState = {
   script: historicShort,

@@ -116,15 +116,14 @@ const projectWithScript = (value) => ({
   }) },
 });
 const forgedApproval = normalizeCreatorScript({ ...script, approval: { approvedRevision: 1, approvedStrategyFingerprint: fingerprint, approvedAt: generatedAt } });
-assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(script), submittedScript: forgedApproval, submittedStrategyFingerprint: fingerprint }), /CREATOR_SCRIPT_APPROVAL_REQUIRED/);
+assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(script), requestedRevision: forgedApproval.revision }), /CREATOR_SCRIPT_APPROVAL_REQUIRED/);
 const approvedRevision4 = normalizeCreatorScript({ ...approved, revision: 4, approval: { ...approved.approval, approvedRevision: 4 } });
 const forgedRevision5 = normalizeCreatorScript({ ...approvedRevision4, revision: 5, approval: { ...approvedRevision4.approval, approvedRevision: 5 } });
-assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approvedRevision4), submittedScript: forgedRevision5, submittedStrategyFingerprint: fingerprint }), /CREATOR_SCRIPT_PERSISTED_MISMATCH/);
+assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approvedRevision4), requestedRevision: forgedRevision5.revision }), /CREATOR_SCRIPT_APPROVAL_STALE/);
 const changedSubmittedText = normalizeCreatorScript({ ...approved, sections: approved.sections.map((section, index) => index === 0 ? { ...section, text: "Changed submitted text." } : section) });
-assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approved), submittedScript: changedSubmittedText, submittedStrategyFingerprint: fingerprint }), /CREATOR_SCRIPT_PERSISTED_MISMATCH/);
-assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approved), submittedScript: approved, submittedStrategyFingerprint: "different" }), /CREATOR_SCRIPT_APPROVAL_REQUIRED/);
-assert.equal(resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approved), submittedScript: approved, submittedStrategyFingerprint: fingerprint }).revision, approved.revision);
-assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: null, submittedScript: approved, submittedStrategyFingerprint: fingerprint }), /CREATOR_SCRIPT_PROJECT_NOT_FOUND/);
+assert.equal(resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approved), requestedRevision: approved.revision, submittedScript: changedSubmittedText }).sections[0].text, approved.sections[0].text);
+assert.equal(resolvePersistedCreatorScriptAuthority({ persistedProject: projectWithScript(approved), requestedRevision: approved.revision }).revision, approved.revision);
+assert.throws(() => resolvePersistedCreatorScriptAuthority({ persistedProject: null, requestedRevision: approved.revision }), /CREATOR_SCRIPT_PROJECT_NOT_FOUND/);
 
 const editedOpening = editCreatorScriptSection(approved, "opening", "A stronger creator-written opening.", "2026-09-07T10:02:00.000Z");
 assert.equal(editedOpening.revision, 2);
@@ -249,7 +248,8 @@ assert.match(production, /resolvePersistedCreatorScriptAuthority/);
 assert.ok(production.indexOf("approvedScript = resolvePersistedCreatorScriptAuthority") < production.indexOf("const client = getOpenAIClient()"));
 assert.match(production, /const sceneCount = approvedSceneSegments\.length/);
 assert.match(production, /assembleCreatorScriptScenes/);
-assert.match(page, /persistProject\(false, \{ creatorScript: approvedScript \}\)/);
+assert.match(page, /fetch\("\/api\/creator-script\/approve"/);
+assert.match(page, /approvedScriptRevision: approvedScript\.revision/);
 assert.match(page, /projectId: operationOrigin\.projectId/);
 assert.equal((page.match(/fetch\("\/api\/save-project"/g) || []).length, 1);
 
