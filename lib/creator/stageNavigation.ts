@@ -22,6 +22,38 @@ export const CREATOR_VISIBLE_WORKFLOW_STAGES = [
 ] as const;
 
 export type CreatorVisibleWorkflowStep = typeof CREATOR_VISIBLE_WORKFLOW_STAGES[number]["id"];
+export type CreatorProjectNavigation = {
+  workspaceStep: CreatorProductionStage;
+  productionSubstep: "setup" | "create_review";
+};
+
+export const canOpenCreatorPublish = (input: { productionComplete: boolean; publishComplete: boolean }) =>
+  input.productionComplete || input.publishComplete;
+
+export function resolveCreatorRestoredNavigation(input: {
+  persisted?: Partial<CreatorProjectNavigation> | null;
+  hasStrategy: boolean;
+  hasProductionPackage: boolean;
+  hasScenes: boolean;
+  canOpenPublish: boolean;
+}): CreatorProjectNavigation {
+  const maximumStep: CreatorProductionStage = input.canOpenPublish
+    ? 4
+    : input.hasProductionPackage
+      ? 3
+      : input.hasStrategy
+        ? 2
+        : 1;
+  const requested = Number.isInteger(input.persisted?.workspaceStep)
+    ? Math.max(1, Math.min(4, Number(input.persisted?.workspaceStep))) as CreatorProductionStage
+    : maximumStep;
+  const workspaceStep = Math.min(requested, maximumStep) as CreatorProductionStage;
+  const inferredSubstep = !input.persisted && input.hasScenes ? "create_review" : "setup";
+  const productionSubstep = workspaceStep === 3 && (input.persisted?.productionSubstep ?? inferredSubstep) === "create_review" && input.hasScenes
+    ? "create_review"
+    : "setup";
+  return { workspaceStep, productionSubstep };
+}
 
 export function resolveCreatorVisibleWorkflowStep(input: {
   workspaceStep: CreatorProductionStage;

@@ -56,6 +56,7 @@
     "test:stage-0-13c-h-signature": "node --experimental-strip-types scripts/stage-0-13c-h-final-signature-normalization-test.mjs",
     "test:stage-0-13c-h-stop-after": "node --experimental-strip-types scripts/stage-0-13c-h-stop-after-invalidation-test.mjs",
     "test:stage-0-13d": "node --experimental-strip-types scripts/stage-0-13d-continuous-full-script-editor-test.mjs",
+    "test:stage-0-13e": "node --experimental-strip-types scripts/stage-0-13e-ai-script-refinement-test.mjs",
     "test:script-duration-contract": "node --experimental-strip-types scripts/post-0-13c-c-script-duration-contract-test.mjs",
     "test:strategy-script-authority": "node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs",
     "test:long-form-grounded-acceptance": "node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs",

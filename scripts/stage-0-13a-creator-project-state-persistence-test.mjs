@@ -64,6 +64,7 @@ const productionPackage = {
   backgroundMusic: { enabled: true, trackId: "track-1", volume: 0.2 },
 };
 const snapshot = buildCreatorProjectState({
+  navigation: { workspaceStep: 3, productionSubstep: "create_review" },
   brief: {
     topic: "Question",
     language: "en",
@@ -117,6 +118,7 @@ const persisted = {
 };
 const hydrated = readCreatorProjectState(persisted);
 
+assert.deepEqual(hydrated.navigation, { workspaceStep: 3, productionSubstep: "create_review" });
 assert.equal(hydrated.brief.format, "youtube_video");
 assert.equal(hydrated.brief.durationSec, 16 * 60);
 assert.equal(hydrated.brief.durationPreset, "custom");

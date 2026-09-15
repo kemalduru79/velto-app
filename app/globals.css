@@ -546,6 +546,67 @@ select {
   color: var(--cl-disabled) !important;
 }
 
+/* The continuous editor's mirror owns its background so locked/refined ranges remain visible through the canonical textarea. */
+.creatorlab-script-document-layer {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1.5rem;
+  border: 1px solid transparent;
+  font-family: var(--cl-font-ui);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 2rem;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 8;
+}
+
+.creatorlab-premium-surface textarea.creatorlabs-script-document-textarea {
+  background: #ffffff !important;
+  padding: 1.5rem;
+  font-family: var(--cl-font-ui);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 2rem;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 8;
+}
+
+.creatorlab-premium-surface .creatorlabs-script-document-mirror,
+.creatorlab-premium-surface .creatorlabs-script-document-mirror * {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.creatorlab-script-highlight-selection {
+  border-radius: 0.125rem;
+  background: rgba(250, 204, 21, 0.28) !important;
+}
+
+.creatorlab-script-highlight-refinement {
+  border-radius: 0.125rem;
+  background: rgba(245, 158, 11, 0.20) !important;
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.28);
+}
+
+@media (min-width: 768px) {
+  .creatorlab-script-document-layer,
+  .creatorlab-premium-surface textarea.creatorlabs-script-document-textarea {
+    padding-right: 2rem;
+    padding-left: 2rem;
+  }
+}
+
+.creatorlab-premium-surface textarea.creatorlabs-script-document-textarea::selection {
+  color: var(--cl-text-strong);
+  background: #fde68a;
+}
+
 .creatorlab-premium-surface option {
   background: #ffffff;
   color: var(--cl-text-strong);

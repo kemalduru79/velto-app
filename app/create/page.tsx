@@ -137,20 +137,24 @@ import {
 } from "@/lib/creator/visualGenerationStatus";
 import {
   creatorStageAfterSuccess,
+  canOpenCreatorPublish,
   CREATOR_VISIBLE_WORKFLOW_STAGES,
   resolveCreatorVisibleWorkflowProgress,
+  resolveCreatorRestoredNavigation,
   resolveCreatorVisibleWorkflowStep,
   resolveCreatorWorkspaceTarget,
   resolveCreatorStageVisibility,
 } from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import CreatorScriptReview from "@/components/create/CreatorScriptReview";
+import { getCreatorScriptRefinementChangedRanges, getCreatorScriptRefinementReplacementRange } from "@/lib/creator/creatorScriptRefinement";
 import {
   acceptGeneratedCreatorScript,
   approveCreatorScript,
   canBuildScenesFromCreatorScript,
   createCreatorStrategyFingerprint,
   editCreatorScriptDocument,
+  getCreatorScriptDocumentText,
   getCreatorScriptDurationContractForScript,
   isCreatorScriptCurrentForStrategy,
   normalizeCreatorScript,
@@ -1371,13 +1375,6 @@ function replaceProjectUrlIdentity(projectId: string, flowKey?: "creator_lab" | 
   }
 
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-}
-
-function getProductionSubstepFromUrl(): CreatorProductionSubstep | null {
-  const value = new URLSearchParams(window.location.search).get(PRODUCTION_URL_PARAM);
-  if (value === "setup") return "setup";
-  if (value === "review") return "create_review";
-  return null;
 }
 
 function replaceProductionSubstepUrl(substep: CreatorProductionSubstep) {
@@ -3522,6 +3519,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
   const [creatorScript, setCreatorScript] = useState<CreatorScript | null>(null);
+  const [creatorScriptRefinementHighlights, setCreatorScriptRefinementHighlights] = useState<Array<{ start: number; end: number }>>([]);
   const creatorScriptRef = useRef<CreatorScript | null>(null);
   const [creatorScriptBusySectionId, setCreatorScriptBusySectionId] = useState<string | null>(null);
   useEffect(() => {
@@ -3534,11 +3532,14 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<1 | 2 | 3 | 4>(1);
   const [creatorProductionSubstep, setCreatorProductionSubstep] =
     useState<CreatorProductionSubstep>("setup");
+  const creatorNavigationRef = useRef({ workspaceStep: 1 as 1 | 2 | 3 | 4, productionSubstep: "setup" as CreatorProductionSubstep });
   const [creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen] =
     useState(true);
-  const selectCreatorProductionSubstep = (substep: CreatorProductionSubstep) => {
+  const selectCreatorProductionSubstep = (substep: CreatorProductionSubstep, persist = true) => {
+    creatorNavigationRef.current = { ...creatorNavigationRef.current, productionSubstep: substep };
     setCreatorProductionSubstep(substep);
     replaceProductionSubstepUrl(substep);
+    if (persist) void persistProject(false);
   };
   const creatorLastAutoStepRef = useRef<1 | 2 | 3 | 4>(1);
   const [creatorNoCastMode, setCreatorNoCastMode] = useState<CreatorNoCastMode>("faceless");
@@ -6682,6 +6683,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setCreatorSceneBuildLoading(false);
     setCreatorProductionPackage(null);
     creatorProductionIntelligenceContextsRef.current = [];
+    creatorNavigationRef.current = { workspaceStep: 1, productionSubstep: "setup" };
+    setCreatorSelectedWorkspaceStep(1);
     setCreatorProductionSubstep("setup");
     setCreatorBackgroundMusicHydrationRevision((revision) => revision + 1);
     setCreatorBackgroundMusic(DEFAULT_CREATOR_BACKGROUND_MUSIC);
@@ -11259,6 +11262,11 @@ const generateSceneImage = async (
       setCreatorArtifactHistory(nextArtifactHistory);
 
       let finalProductionPersisted = false;
+      const priorNavigation = creatorNavigationRef.current;
+      const finalNavigation = isCreatorLabFlow
+        ? { ...priorNavigation, workspaceStep: creatorStageAfterSuccess(priorNavigation.workspaceStep, "production_setup_continued") }
+        : priorNavigation;
+      creatorNavigationRef.current = finalNavigation;
       try {
         await persistProject(false, {
           finalVideoUrl: nextExportResult.movieUrl,
@@ -11271,13 +11279,12 @@ const generateSceneImage = async (
         });
         finalProductionPersisted = true;
       } catch (saveError) {
+        creatorNavigationRef.current = priorNavigation;
         console.error("export cache save error:", saveError);
       }
 
       if (isCreatorLabFlow && finalProductionPersisted) {
-        setCreatorSelectedWorkspaceStep((current) =>
-          creatorStageAfterSuccess(current, "production_setup_continued"),
-        );
+        setCreatorSelectedWorkspaceStep(finalNavigation.workspaceStep);
       }
 
       setSaveMessage(ui.movieCreated);
@@ -12056,6 +12063,7 @@ const generateSceneImage = async (
       : null;
     const capturedCreatorProjectState = isCreatorLabFlow
       ? buildCreatorProjectState({
+          navigation: creatorNavigationRef.current,
           brief: {
             topic: normalizeCreatorTopicAuthority(lifecycleOverrides.inputPrompt ?? input),
             language,
@@ -12423,12 +12431,6 @@ const generateSceneImage = async (
       setCreatorPackageDownloaded(
         loadedArtifactHistory.packageDownloaded,
       );
-      if (savedExportedMovieUrl && project.export_signature) {
-        setCreatorSelectedWorkspaceStep((current) =>
-          creatorStageAfterSuccess(current, "production_setup_continued"),
-        );
-      }
-
       const loadedMentorResult = canonicalCreatorState?.strategy.mentorResult as CreatorMentorResult | null;
       setCreatorMentorResult(loadedMentorResult || null);
       setCreatorStrategyProfileSnapshot(canonicalCreatorState?.strategy.profileSnapshot ? parseCreatorProfile(canonicalCreatorState.strategy.profileSnapshot) : null);
@@ -12614,12 +12616,22 @@ const generateSceneImage = async (
 
       setCreatorProductionPackage(normalizedSavedCreatorPackage);
       creatorProductionIntelligenceContextsRef.current = [];
-      setCreatorProductionSubstep(
-        isCreatorProject
-          ? getProductionSubstepFromUrl() ||
-              (loadedProjectScenes.length > 0 ? "create_review" : "setup")
-          : "setup",
-      );
+      const restoredNavigation = isCreatorProject
+        ? resolveCreatorRestoredNavigation({
+            persisted: canonicalCreatorState?.navigation,
+            hasStrategy: Boolean(canonicalCreatorState?.strategy.mentorResult || canonicalCreatorState?.strategy.script),
+            hasProductionPackage: Boolean(normalizedSavedCreatorPackage),
+            hasScenes: loadedProjectScenes.length > 0,
+            canOpenPublish: canOpenCreatorPublish({
+              productionComplete: Boolean(savedExportedMovieUrl && project.export_signature),
+              publishComplete: savedLifecycle?.status === "exported",
+            }),
+          })
+        : { workspaceStep: 1 as const, productionSubstep: "setup" as const };
+      creatorNavigationRef.current = restoredNavigation;
+      setCreatorSelectedWorkspaceStep(restoredNavigation.workspaceStep);
+      setCreatorProductionSubstep(restoredNavigation.productionSubstep);
+      replaceProductionSubstepUrl(restoredNavigation.productionSubstep);
       setCreatorOutcome(
         normalizeCreatorOutcome(
           canonicalCreatorState?.brief.outcome ?? normalizedSavedCreatorPackage?.outcome,
@@ -14436,7 +14448,10 @@ const generateSceneImage = async (
 
       setCreatorMentorResult(data.analysis as CreatorMentorResult);
       setCreatorStrategyProfileSnapshot(parseCreatorProfile(creatorProfile));
-      setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "brief_completed"));
+      const workspaceStep = creatorStageAfterSuccess(creatorNavigationRef.current.workspaceStep, "brief_completed");
+      creatorNavigationRef.current = { ...creatorNavigationRef.current, workspaceStep };
+      setCreatorSelectedWorkspaceStep(workspaceStep);
+      void persistProject(false, { creatorMentorResult: data.analysis as CreatorMentorResult });
       setSaveMessage(
         uiLanguage === "en"
           ? "Creator mentor analysis is ready ✅"
@@ -14816,7 +14831,9 @@ const generateSceneImage = async (
       setCreatorScript(approvedScript);
       setCreatorProductionPackage(nextPackage);
       setCreatorMentorResult(persistedStrategyResult);
-      setCreatorSelectedWorkspaceStep((current) => creatorStageAfterSuccess(current, "strategy_approved"));
+      const workspaceStep = creatorStageAfterSuccess(creatorNavigationRef.current.workspaceStep, "strategy_approved");
+      creatorNavigationRef.current = { workspaceStep, productionSubstep: "setup" };
+      setCreatorSelectedWorkspaceStep(workspaceStep);
       setCreatorProductionSubstep("setup");
       setCreatorTimelinePreviewPlan(nextPackage.timelineSyncPlan || null);
       setRefinedCreatorScenes([]);
@@ -14974,6 +14991,25 @@ const generateSceneImage = async (
       setSaveMessage(uiLanguage === "en" ? "Source verification saved." : "Kaynak doğrulaması kaydedildi.");
     }
     return Array.isArray(data.review?.items) ? data.review.items : [];
+  };
+
+  const handleRefineCreatorScript = async (refinement: { scope: "selection" | "opening" | "whole_script"; instruction: string; selectionStart?: number; selectionEnd?: number; selectedText?: string }) => {
+    const sourceScript = creatorScriptRef.current;
+    if (!sourceScript) return false;
+    const sourceDocument = getCreatorScriptDocumentText(sourceScript);
+    const accessToken = await getAccessTokenOrThrow();
+    const response = await fetch("/api/creator-script/refine", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: currentProjectIdRef.current || currentProjectId, revision: sourceScript.revision, ...refinement }) });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.creatorScript) { setError(data?.error || "Script refinement could not be completed safely."); return false; }
+    const nextScript = normalizeCreatorScript(data.creatorScript);
+    const replacementRange = refinement.scope === "selection" && refinement.selectionStart !== undefined && refinement.selectionEnd !== undefined
+      ? getCreatorScriptRefinementReplacementRange({ previousDocument: sourceDocument, nextDocument: getCreatorScriptDocumentText(nextScript), start: refinement.selectionStart, end: refinement.selectionEnd })
+      : null;
+    setCreatorScriptRefinementHighlights(replacementRange ? [replacementRange] : getCreatorScriptRefinementChangedRanges(sourceScript, nextScript));
+    creatorScriptRef.current = nextScript; setCreatorScript(nextScript);
+    if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
+    setError(""); setSaveMessage(uiLanguage === "en" ? "Script refinement applied." : "Metin iyileştirmesi uygulandı.");
+    return true;
   };
 
 
@@ -18475,7 +18511,7 @@ const generateSceneImage = async (
   const creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete;
   const creatorPublishComplete =
     creatorProjectLifecycle?.status === "exported";
-  const creatorProgressStep: 1 | 2 | 3 | 4 = creatorProductionComplete || creatorPublishComplete
+  const creatorProgressStep: 1 | 2 | 3 | 4 = canOpenCreatorPublish({ productionComplete: creatorProductionComplete, publishComplete: creatorPublishComplete })
     ? 4
     : creatorProductionPackage || scenes.length > 0
       ? 3
@@ -18700,18 +18736,10 @@ const generateSceneImage = async (
 
     const previousProgressStep = creatorLastAutoStepRef.current;
 
-    if (creatorProgressStep > previousProgressStep) {
-      // Readiness may automatically reveal Brief → Strategy → Production, but
-      // Publish is an explicit user navigation boundary. Editing media can
-      // make a prior Final Video current again and must never jump to step 4.
-      const automaticTargetStep = Math.min(creatorProgressStep, 3) as 1 | 2 | 3;
-      setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
-        current < automaticTargetStep ? automaticTargetStep : current,
-      );
-    } else if (creatorProgressStep < previousProgressStep) {
-      setCreatorSelectedWorkspaceStep((current: 1 | 2 | 3 | 4) =>
-        current > creatorProgressStep ? creatorProgressStep : current,
-      );
+    if (creatorProgressStep < previousProgressStep) {
+      const workspaceStep = Math.min(creatorNavigationRef.current.workspaceStep, creatorProgressStep) as 1 | 2 | 3 | 4;
+      creatorNavigationRef.current = { ...creatorNavigationRef.current, workspaceStep };
+      setCreatorSelectedWorkspaceStep(workspaceStep);
     }
 
     creatorLastAutoStepRef.current = creatorProgressStep;
@@ -18740,7 +18768,9 @@ const generateSceneImage = async (
       return;
     }
 
+    creatorNavigationRef.current = { ...creatorNavigationRef.current, workspaceStep: step };
     setCreatorSelectedWorkspaceStep(step);
+    void persistProject(false);
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -18772,7 +18802,7 @@ const generateSceneImage = async (
     if (!creatorCanOpenVisibleWorkflowStep(step)) return;
 
     const target = resolveCreatorWorkspaceTarget(step);
-    if (target.productionSubstep) selectCreatorProductionSubstep(target.productionSubstep);
+    if (target.productionSubstep) selectCreatorProductionSubstep(target.productionSubstep, false);
     navigateCreatorWorkspaceStep(target.workspaceStep);
   };
 
@@ -19114,6 +19144,8 @@ const generateSceneImage = async (
       }
 
       setCreatorSelectedWorkspaceStep(targetStep);
+      creatorNavigationRef.current = { ...creatorNavigationRef.current, workspaceStep: targetStep };
+      void persistProject(false);
     }
 
     window.setTimeout(() => {
@@ -31199,6 +31231,8 @@ const generateSceneImage = async (
                 onSaveDocument={handleSaveCreatorScriptDocument}
                 onRegenerateSection={handleRegenerateCreatorScriptSection}
                 onReviewSources={handleReviewCreatorScriptSources}
+                onRefine={handleRefineCreatorScript}
+                refinementHighlights={creatorScriptRefinementHighlights}
                 onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
               />
             )}

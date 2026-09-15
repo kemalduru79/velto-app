@@ -11,11 +11,13 @@ import {
   type CreatorLegacyMusicMigration,
 } from "./audioTimeline.ts";
 import { normalizeCreatorTopicAuthority } from "./creatorWorkflowAuthority.ts";
+import type { CreatorProjectNavigation } from "./stageNavigation.ts";
 
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
 
 export type CreatorProjectStateSnapshot = {
   version: typeof CREATOR_PROJECT_STATE_VERSION;
+  navigation?: CreatorProjectNavigation;
   brief: {
     topic: string;
     language: "tr" | "en";
@@ -106,8 +108,14 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
   const production = record(candidate.production);
   const createReview = record(candidate.createReview);
   const publish = record(candidate.publish);
+  const navigation = record(candidate.navigation);
   return (
     candidate.version === CREATOR_PROJECT_STATE_VERSION &&
+    (!hasOwn(candidate, "navigation") || (
+      isObjectOrNull(candidate.navigation) && candidate.navigation !== null &&
+      [1, 2, 3, 4].includes(Number(navigation.workspaceStep)) &&
+      (navigation.productionSubstep === "setup" || navigation.productionSubstep === "create_review")
+    )) &&
     isObjectOrNull(candidate.brief) && candidate.brief !== null &&
     typeof brief.topic === "string" &&
     (brief.language === "tr" || brief.language === "en") &&
@@ -227,6 +235,7 @@ export function readCreatorProjectState(
   const savedProduction = record(saved.production);
   const savedCreateReview = record(saved.createReview);
   const savedPublish = record(saved.publish);
+  const savedNavigation = record(saved.navigation);
   const hasCanonicalSnapshot = saved.version === CREATOR_PROJECT_STATE_VERSION;
   const legacyPackage = record(project.creator_production_package);
   const legacyMentor = project.creator_mentor_result || null;
@@ -238,6 +247,10 @@ export function readCreatorProjectState(
   const legacyThumbnail = project.youtube_thumbnail || null;
 
   return buildCreatorProjectState({
+    ...(hasOwn(saved, "navigation") ? { navigation: {
+      workspaceStep: Number(savedNavigation.workspaceStep) as 1 | 2 | 3 | 4,
+      productionSubstep: savedNavigation.productionSubstep === "create_review" ? "create_review" : "setup",
+    } } : {}),
     brief: {
       topic: normalizeCreatorTopicAuthority(
         savedBrief.topic ?? project.input_prompt ?? project.title ?? "",
