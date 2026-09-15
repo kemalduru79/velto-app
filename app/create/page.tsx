@@ -8778,8 +8778,8 @@ const generateSceneImage = async (
     finishCreatorSceneVisualCountdown(sceneId, false);
     setError("");
     setSaveMessage(uiLanguage === "en"
-      ? `Scene ${sceneId} visual start cancelled before provider dispatch.`
-      : `Sahne ${sceneId} görsel başlangıcı servise gönderilmeden iptal edildi.`);
+      ? `Scene ${sceneId} visual start cancelled before generation began.`
+      : `Sahne ${sceneId} görsel başlangıcı üretim başlamadan iptal edildi.`);
   };
 
   const startCreatorSceneVisualCountdown = async ({
@@ -8836,11 +8836,11 @@ const generateSceneImage = async (
     setSaveMessage(
       pending.scope === "batch"
         ? uiLanguage === "en"
-          ? "Batch video start cancelled before provider dispatch."
-          : "Toplu video başlangıcı servise gönderilmeden iptal edildi."
+          ? "Batch video start cancelled before generation began."
+          : "Toplu video başlangıcı üretim başlamadan iptal edildi."
         : uiLanguage === "en"
-          ? "Video start cancelled before provider dispatch."
-          : "Video başlangıcı servise gönderilmeden iptal edildi.",
+          ? "Video start cancelled before generation began."
+          : "Video başlangıcı üretim başlamadan iptal edildi.",
     );
   };
 
@@ -8909,15 +8909,15 @@ const generateSceneImage = async (
     setSaveMessage(
       pending.scope === "batch"
         ? uiLanguage === "en"
-          ? "Batch image start cancelled before provider dispatch."
-          : "Toplu görsel başlangıcı servise gönderilmeden iptal edildi."
+          ? "Batch image start cancelled before generation began."
+          : "Toplu görsel başlangıcı üretim başlamadan iptal edildi."
         : pending.scope === "thumbnail"
           ? uiLanguage === "en"
-            ? "AI thumbnail start cancelled before provider dispatch."
-            : "AI thumbnail başlangıcı servise gönderilmeden iptal edildi."
+            ? "AI thumbnail start cancelled before generation began."
+            : "AI thumbnail başlangıcı üretim başlamadan iptal edildi."
           : uiLanguage === "en"
-            ? "Image start cancelled before provider dispatch."
-            : "Görsel başlangıcı servise gönderilmeden iptal edildi.",
+            ? "Image start cancelled before generation began."
+            : "Görsel başlangıcı üretim başlamadan iptal edildi.",
     );
   };
 
@@ -9502,8 +9502,8 @@ const generateSceneImage = async (
     if (options.confirm !== false) {
       const confirmed = window.confirm(
         uiLanguage === "en"
-          ? "Stop this video production? The provider request has already been dispatched and may still complete."
-          : "Bu video üretimi durdurulsun mu? Servis talebi zaten gönderildi ve tamamlanabilir.",
+          ? "Stop this video production? The request has already started and may still complete."
+          : "Bu video üretimi durdurulsun mu? Talep zaten başladı ve yine de tamamlanabilir.",
       );
       if (!confirmed) return false;
     }
@@ -9562,8 +9562,8 @@ const generateSceneImage = async (
       if (!options.silent) {
         setSaveMessage(
           uiLanguage === "en"
-            ? "Video production stopped. The provider request was already dispatched and may still complete."
-            : "Video üretimi durduruldu. Servis talebi daha önce gönderildi ve tamamlanabilir.",
+            ? "Video production stopped. The request had already started and may still complete."
+            : "Video üretimi durduruldu. Talep daha önce başladı ve yine de tamamlanabilir.",
         );
       }
 
@@ -9605,8 +9605,8 @@ const generateSceneImage = async (
     setSaveMessage(
       activeVideoScenes.length > 0
         ? uiLanguage === "en"
-          ? "Batch render stopped. Active provider tasks were asked to stop; dispatched operations may still complete."
-          : "Toplu üretim durduruldu. Aktif servis görevleri için durdurma istendi; gönderilmiş işlemler tamamlanabilir."
+          ? "Batch render stopped. Active generation was asked to stop; operations already started may still complete."
+          : "Toplu üretim durduruldu. Aktif üretim için durdurma istendi; başlamış işlemler tamamlanabilir."
         : uiLanguage === "en"
           ? "Batch render stop requested."
           : "Batch render durdurma isteği alındı.",
@@ -10226,7 +10226,7 @@ const generateSceneImage = async (
             step: "route",
             message:
               uiLanguage === "en"
-                ? "Image-motion route selected; no AI video generation was dispatched."
+                ? "Image motion selected; no AI video generation was started."
                 : "Image-motion rotası seçildi; AI video üretimi gönderilmedi.",
           });
           continue;
@@ -10800,7 +10800,7 @@ const generateSceneImage = async (
               step: "route",
               message:
                 uiLanguage === "en"
-                  ? "Retry uses the image-motion route; no AI video generation was dispatched."
+                  ? "Retry uses image motion; no AI video generation was started."
                   : "Retry image-motion rotasını kullanıyor; AI video üretimi gönderilmedi.",
             });
           }
@@ -10970,8 +10970,8 @@ const generateSceneImage = async (
 
     if (gate.checks.exportService === "blocked") {
       return uiLanguage === "en"
-        ? "Final video service is unavailable or not on the required continuity release. Export was not dispatched."
-        : "Final video servisi kullanılamıyor veya gerekli devamlılık sürümünde değil. Export gönderilmedi.";
+        ? "Final video creation is temporarily unavailable. Export was not started."
+                : "Final video oluşturma geçici olarak kullanılamıyor. Dışa aktarma başlatılmadı.";
     }
 
     if (gate.status === "blocked") {
@@ -17203,8 +17203,8 @@ const generateSceneImage = async (
       if (!batchOperationId) {
         throw new Error(
           uiLanguage === "en"
-            ? "Video generation was cancelled before provider dispatch."
-            : "Video üretimi servise gönderilmeden iptal edildi.",
+            ? "Video generation was cancelled before it started."
+            : "Video üretimi başlamadan iptal edildi.",
         );
       }
     }
@@ -19073,8 +19073,8 @@ const generateSceneImage = async (
               : "Eksik sahne görsellerini üret",
           description:
             uiLanguage === "en"
-              ? "Velto Studio will create only the missing visuals and keep provider routing in the background."
-              : "Velto Studio yalnızca eksik görselleri oluşturacak ve sağlayıcı yönlendirmesini arka planda tutacak.",
+              ? "Velto Studio will create only the missing visuals and handle the production path automatically."
+              : "Velto Studio yalnızca eksik görselleri oluşturacak ve üretim yolunu otomatik olarak yönetecek.",
           buttonLabel:
             uiLanguage === "en"
               ? "Continue · Generate Visuals"
@@ -29168,8 +29168,8 @@ const generateSceneImage = async (
                                         <p>
                                           {action.impact === "credit_variable"
                                             ? uiLanguage === "en"
-                                              ? "Provider usage is recorded by the production workflow. Completed generation cannot be undone."
-                                              : "Servis kullanımı üretim akışı tarafından kaydedilir. Tamamlanan üretim geri alınamaz."
+                                              ? "Usage is recorded when generation starts. Completed generation cannot be undone."
+                                              : "Kullanım, üretim başladığında kaydedilir. Tamamlanan üretim geri alınamaz."
                                             : uiLanguage === "en"
                                               ? "Velto Studio will recheck release readiness before downloading the package."
                                               : "Velto Studio paketi indirmeden önce yayın hazırlığını yeniden kontrol eder."}
@@ -30368,8 +30368,8 @@ const generateSceneImage = async (
                   <h3>{uiLanguage === "en" ? "Define the output, not the engine" : "Motoru değil, çıktıyı tanımla"}</h3>
                   <span>
                     {uiLanguage === "en"
-                      ? "Velto Studio keeps technical provider choices internal and asks only for decisions that shape the result."
-                      : "Velto Studio teknik sağlayıcı seçimlerini sistem içinde tutar ve yalnızca sonucu şekillendiren kararları sorar."}
+                      ? "Choose only the decisions that shape your result. Velto Studio handles the production details."
+                      : "Yalnızca sonucu şekillendiren kararları verin. Velto Studio üretim ayrıntılarını yönetir."}
                   </span>
                 </div>
                 {creatorBriefDraftRestored && (
@@ -31781,7 +31781,7 @@ const generateSceneImage = async (
                           <option value="eleven_multilingual_v2">{uiLanguage === "en" ? "Natural multilingual" : "Doğal çok dilli"}</option>
                           <option value="eleven_flash_v2_5">{uiLanguage === "en" ? "Fast preview" : "Hızlı önizleme"}</option>
                         </select>
-                        <small>{uiLanguage === "en" ? "Provider details remain internal." : "Provider ayrıntıları sistem içinde kalır."}</small>
+                        <small>{uiLanguage === "en" ? "Natural delivery prioritizes nuance; Fast preview prioritizes speed." : "Doğal anlatım nüansı, Hızlı önizleme ise hızı önceliklendirir."}</small>
                       </label>
                     </div>
                     <div className="creatorlab-voice-tuning-grid">
@@ -32484,7 +32484,7 @@ const generateSceneImage = async (
                               : ""}
                             {uiLanguage === "en" ? "Starting in" : "Başlıyor"} {creatorVisualDispatchCountdown.secondsRemaining}s
                           </strong>
-                          <span>{uiLanguage === "en" ? "No generation request has been dispatched." : "Henüz üretim talebi gönderilmedi."}</span>
+                          <span>{uiLanguage === "en" ? "No generation request has been sent." : "Henüz üretim talebi gönderilmedi."}</span>
                           <button
                             type="button"
                             onClick={videoDispatchCountdown ? cancelPendingVideoDispatch : cancelPendingImageDispatch}
@@ -33427,14 +33427,14 @@ const generateSceneImage = async (
                                   {sceneVisualCountdownActive && (
                                     <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
                                       {uiLanguage === "en"
-                                        ? `Starting in ${creatorSceneVisualOperation?.secondsRemaining}s · No generation request has been dispatched yet.`
+                                        ? `Starting in ${creatorSceneVisualOperation?.secondsRemaining}s · No generation request has been sent yet.`
                                         : `${creatorSceneVisualOperation?.secondsRemaining} sn içinde başlıyor · Henüz üretim talebi gönderilmedi.`}
                                     </span>
                                   )}
                                   {sceneVideoDispatchCountdownActive && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
                                       {uiLanguage === "en"
-                                        ? "No generation request has been dispatched yet."
+                                        ? "No generation request has been sent yet."
                                         : "Henüz üretim talebi gönderilmedi."}
                                     </p>
                                   )}
@@ -33444,7 +33444,7 @@ const generateSceneImage = async (
                                       type="button"
                                       onClick={() => void requestCancelSceneVideo(scene)}
                                       disabled={cancellingVideoSceneId === scene.id}
-                                      title={uiLanguage === "en" ? "Stop the provider task. A dispatched operation may still complete." : "Servis görevini durdur. Gönderilmiş işlem tamamlanabilir."}
+                                      title={uiLanguage === "en" ? "Stop this generation. A request that already started may still complete." : "Bu üretimi durdur. Başlamış bir talep yine de tamamlanabilir."}
                                       className="min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {cancellingVideoSceneId === scene.id
@@ -34874,7 +34874,7 @@ const generateSceneImage = async (
                       <div>
                         <strong className="text-sm">
                           {uiLanguage === "en"
-                            ? `AI thumbnail dispatch starts in ${imageDispatchCountdown.secondsRemaining} seconds`
+                            ? `AI thumbnail generation starts in ${imageDispatchCountdown.secondsRemaining} seconds`
                             : `AI thumbnail gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
                         </strong>
                         <p className="mt-1 text-xs leading-5 text-amber-800">
@@ -34884,7 +34884,7 @@ const generateSceneImage = async (
                         </p>
                       </div>
                       <button type="button" onClick={cancelPendingImageDispatch} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700">
-                        {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                        {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
                       </button>
                     </div>
                   </div>
@@ -35934,8 +35934,8 @@ const generateSceneImage = async (
                       </p>
                       <p className="mt-2 text-xs leading-5 text-slate-600">
                         {uiLanguage === "en"
-                          ? "Media generation remains controlled by Continue Production. This area only exposes recovery actions when a provider task fails."
-                          : "Medya üretimi Üretime Devam Et tarafından yönetilir. Bu alan yalnızca bir servis görevi başarısız olduğunda kurtarma aksiyonlarını gösterir."}
+                          ? "Media generation remains controlled by Continue Production. This area shows recovery actions only when generation fails."
+                          : "Medya üretimi Üretime Devam Et tarafından yönetilir. Bu alan yalnızca üretim başarısız olduğunda kurtarma aksiyonlarını gösterir."}
                       </p>
 
                       <div className="mt-3 flex flex-wrap justify-center gap-3">
@@ -36080,7 +36080,7 @@ const generateSceneImage = async (
                   <div>
                     <strong className="text-sm">
                       {uiLanguage === "en"
-                        ? `Image dispatch starts in ${imageDispatchCountdown.secondsRemaining} seconds`
+                        ? `Image generation starts in ${imageDispatchCountdown.secondsRemaining} seconds`
                         : `Görsel gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
                     </strong>
                     <p className="mt-1 text-xs leading-5 text-amber-800">
@@ -36094,7 +36094,7 @@ const generateSceneImage = async (
                     onClick={cancelPendingImageDispatch}
                     className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
                   >
-                    {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                    {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
                   </button>
                 </div>
               </div>
@@ -36106,7 +36106,7 @@ const generateSceneImage = async (
                   <div>
                     <strong className="text-sm">
                       {uiLanguage === "en"
-                        ? `Video dispatch starts in ${videoDispatchCountdown.secondsRemaining} seconds`
+                        ? `Video generation starts in ${videoDispatchCountdown.secondsRemaining} seconds`
                         : `Video gönderimi ${videoDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
                     </strong>
                     <p className="mt-1 text-xs leading-5 text-amber-800">
@@ -36120,7 +36120,7 @@ const generateSceneImage = async (
                     onClick={cancelPendingVideoDispatch}
                     className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
                   >
-                    {uiLanguage === "en" ? "Cancel before dispatch" : "Gönderilmeden iptal et"}
+                    {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
                   </button>
                 </div>
               </div>
@@ -36634,8 +36634,8 @@ const generateSceneImage = async (
                         title={
                           sceneVideoDispatchCountdownActive
                             ? uiLanguage === "en"
-                              ? "Cancel before provider dispatch."
-                              : "Servise gönderilmeden iptal et."
+                              ? "Cancel before generation starts."
+                              : "Üretim başlamadan iptal et."
                             : !scene.image
                               ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
                               : isCreatorActionBlocked("ai_video_blocks")
@@ -36670,8 +36670,8 @@ const generateSceneImage = async (
                       {sceneVideoDispatchCountdownActive && (
                         <span className="basis-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
                           {uiLanguage === "en"
-                            ? "No provider request has been sent yet. Dispatch begins at zero."
-                            : "Henüz servis talebi gönderilmedi. Gönderim sıfırda başlar."}
+                            ? "No generation request has been sent yet. You can cancel until the countdown reaches zero."
+                            : "Henüz üretim talebi gönderilmedi. Geri sayım sıfıra ulaşana kadar iptal edebilirsiniz."}
                         </span>
                       )}
 
@@ -36680,7 +36680,7 @@ const generateSceneImage = async (
                           type="button"
                           onClick={() => void requestCancelSceneVideo(scene)}
                           disabled={cancellingVideoSceneId === scene.id}
-                          title={uiLanguage === "en" ? "Stop the provider task. A dispatched operation may still complete." : "Servis görevini durdur. Gönderilmiş işlem tamamlanabilir."}
+                          title={uiLanguage === "en" ? "Stop this generation. A request that already started may still complete." : "Bu üretimi durdur. Başlamış bir talep yine de tamamlanabilir."}
                           className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {cancellingVideoSceneId === scene.id
@@ -36733,8 +36733,8 @@ const generateSceneImage = async (
                         title={
                           sceneImageDispatchCountdownActive
                             ? uiLanguage === "en"
-                              ? "Cancel before provider dispatch."
-                              : "Servise gönderilmeden iptal et."
+                              ? "Cancel before generation starts."
+                              : "Üretim başlamadan iptal et."
                             : isCreatorActionBlocked("visuals") || isCreatorMediaGenerationBlocked
                               ? getCreatorMediaActionError("visuals")
                               : (uiLanguage === "en" ? "Regenerate this scene visual." : "Bu sahne görselini yeniden üret.")

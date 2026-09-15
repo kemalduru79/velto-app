@@ -60,6 +60,7 @@
     "test:stage-0-13f": "node --experimental-strip-types scripts/stage-0-13f-revision-preview-history-test.mjs",
     "test:stage-0-13g": "node --experimental-strip-types scripts/stage-0-13g-script-approval-scene-build-test.mjs",
     "test:stage-0-13h": "node --experimental-strip-types scripts/stage-0-13h-editorial-qa-corrections-test.mjs",
+    "test:stage-0-13j": "node scripts/stage-0-13j-production-feedback-consolidation-test.mjs",
     "test:script-duration-contract": "node --experimental-strip-types scripts/post-0-13c-c-script-duration-contract-test.mjs",
     "test:strategy-script-authority": "node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs",
     "test:long-form-grounded-acceptance": "node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs",
