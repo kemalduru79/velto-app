@@ -89,6 +89,8 @@ export default function CreatorScriptReview({
   const manuallyReviewableSectionIds = new Set(evidenceReviewSections.filter((section) =>
     projectedScript && getCreatorScriptSectionSourceReview(projectedScript, section.id)
   ).map((section) => section.id));
+  const reviewableEvidenceSectionCount = manuallyReviewableSectionIds.size;
+  const nonReviewableEvidenceSectionCount = evidenceReviewSections.length - reviewableEvidenceSectionCount;
   const visibleHighlights = lockedSelection
     ? [{ start: lockedSelection.start, end: lockedSelection.end, kind: "selection" as const }]
     : showRefinementHighlights ? refinementHighlights.map((range) => ({ ...range, kind: "refinement" as const })) : [];
@@ -228,7 +230,7 @@ export default function CreatorScriptReview({
             <div className="flex shrink-0 items-center gap-2">
             {manuallyReviewableSectionIds.has(section.id) && <button className="rounded-lg px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" type="button" disabled={reviewing || draftChanged} onClick={async (event) => { event.preventDefault(); event.stopPropagation(); setReviewing(true); try { setSourceReview({ sectionId: section.id, items: await onReviewSources(section.id, false) }); } finally { setReviewing(false); } }}>{language === "en" ? "Review sources" : "Kaynakları incele"}</button>}
             <button className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45" type="button" onClick={() => onRegenerateSection(section.id)} disabled={Boolean(busySectionId) || draftChanged}>
-              {busySectionId === section.id ? (language === "en" ? "Regenerating…" : "Yenileniyor…") : section.evidenceReviewRequired ? (language === "en" ? "Regenerate to verify" : "Doğrulamak için yenile") : section.kind === "opening" ? (language === "en" ? "Strengthen opening" : "Açılışı güçlendir") : (language === "en" ? "Regenerate" : "Yenile")}
+              {busySectionId === section.id ? (language === "en" ? "Rewriting…" : "Yeniden yazılıyor…") : section.evidenceReviewRequired ? (language === "en" ? "Rewrite section with AI" : "Bölümü yapay zekâyla yeniden yaz") : section.kind === "opening" ? (language === "en" ? "Strengthen opening" : "Açılışı güçlendir") : (language === "en" ? "Regenerate" : "Yenile")}
             </button>
             </div>
           </div>)}
@@ -250,7 +252,13 @@ export default function CreatorScriptReview({
             : draftChanged
               ? (language === "en" ? "Save the current script changes before approval." : "Onaylamadan önce mevcut metin değişikliklerini kaydet.")
             : evidenceReviewBlocked
-              ? (language === "en" ? `${evidenceReviewSections.length === 1 ? "One edited section contains" : `${evidenceReviewSections.length} edited sections contain`} sourced claims that need verification before scenes can be built. In Section tools, choose Regenerate to verify. Your saved text remains unchanged until you choose that action.` : `${evidenceReviewSections.length} düzenlenmiş bölümde sahneler oluşturulmadan önce doğrulanması gereken kaynaklı iddialar var. Bölüm araçlarında doğrulamak için Yenile'yi seç. Bu işlemi seçene kadar kaydedilmiş metnin değişmez.`)
+              ? reviewableEvidenceSectionCount > 0
+                ? (language === "en"
+                    ? `${evidenceReviewSections.length === 1 ? "One edited section contains" : `${evidenceReviewSections.length} edited sections contain`} sourced claims that need review before scenes can be built. Open Section tools and choose Review sources.${nonReviewableEvidenceSectionCount > 0 ? " Sections without reviewable evidence must be rewritten or manually revised." : " Confirm the edit only after checking the supporting sources."}`
+                    : `${evidenceReviewSections.length === 1 ? "Bir düzenlenmiş bölümde" : `${evidenceReviewSections.length} düzenlenmiş bölümde`} sahneler oluşturulmadan önce incelenmesi gereken kaynaklı iddialar var. Bölüm araçlarını açıp Kaynakları incele'yi seç.${nonReviewableEvidenceSectionCount > 0 ? " İncelenebilir kanıtı olmayan bölümler yeniden yazılmalı veya elle düzenlenmelidir." : " Düzenlemeyi yalnızca destekleyici kaynakları kontrol ettikten sonra onayla."}`)
+                : (language === "en"
+                    ? "This edit cannot be confirmed from the available sources. Open Section tools to rewrite the affected section with new wording, or revise it manually."
+                    : "Bu düzenleme mevcut kaynaklarla doğrulanamıyor. Etkilenen bölümü yeni ifadelerle yeniden yazmak veya elle düzenlemek için Bölüm araçlarını aç.")
             : !durationCompliant
               ? (language === "en" ? "This historic script does not satisfy its duration target. Rebuild the script before creating scenes." : "Bu eski metin süre hedefini karşılamıyor. Sahneleri oluşturmadan önce metni yeniden oluştur.")
               : status === "stale" ? (language === "en" ? "Strategy changed. Rebuild the script before creating scenes." : "Strateji değişti. Sahneleri oluşturmadan önce metni yeniden oluştur.") : (language === "en" ? "Scenes will use this exact editorial script as their source of truth." : "Sahneler bu editoryal metni tek kaynak olarak kullanacak.")}</p>

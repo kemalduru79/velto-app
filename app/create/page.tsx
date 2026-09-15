@@ -150,6 +150,7 @@ import CreatorScriptReview from "@/components/create/CreatorScriptReview";
 import { getCreatorScriptRefinementChangedRanges, getCreatorScriptRefinementReplacementRange } from "@/lib/creator/creatorScriptRefinement";
 import type { CreatorScriptPendingRefinement, CreatorScriptRevisionHistoryEntry } from "@/lib/creator/creatorScriptRevisions";
 import { creatorSceneOutputIsCurrent } from "@/lib/creator/creatorScriptApproval";
+import { creatorSceneBuildRecoveryMessage, resolveCreatorScriptEditorialState } from "@/lib/creator/creatorEditorialQa";
 import {
   acceptGeneratedCreatorScript,
   canBuildScenesFromCreatorScript,
@@ -13999,6 +14000,10 @@ const generateSceneImage = async (
     targetDurationSec: creatorVideoDurationSec,
     language,
   });
+  const creatorScriptEditorialState = resolveCreatorScriptEditorialState({
+    hasScript: Boolean(creatorScript),
+    isCurrent: creatorScriptIsCurrent,
+  });
 
   const applyCreatorProfessionalScriptPlan = async ({
     productionPackage,
@@ -14719,7 +14724,7 @@ const generateSceneImage = async (
       if (getCreatorScriptStatus(approvedScript, creatorStrategyFingerprint) !== "approved") {
         const approvalResponse = await fetch("/api/creator-script/approve", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: operationOrigin.projectId, revision: approvedScript.revision }) });
         const approvalData = await approvalResponse.json().catch(() => null);
-        if (!approvalResponse.ok || !approvalData?.creatorScript) throw new Error(approvalData?.error || "Script approval failed.");
+        if (!approvalResponse.ok || !approvalData?.creatorScript) throw new Error(creatorSceneBuildRecoveryMessage({ code: approvalData?.code, language: uiLanguage === "en" ? "en" : "tr" }));
         approvedScript = normalizeCreatorScript(approvalData.creatorScript);
         creatorScriptRef.current = approvedScript;
         setCreatorScript(approvedScript);
@@ -14791,12 +14796,7 @@ const generateSceneImage = async (
       if (!operationIsActive()) return;
 
       if (!res.ok || !data?.success || !data?.productionPackage) {
-        throw new Error(
-          data?.error ||
-            (uiLanguage === "en"
-              ? "Production package could not be generated."
-              : "Üretim paketi oluşturulamadı.")
-        );
+        throw new Error(creatorSceneBuildRecoveryMessage({ code: data?.code, language: uiLanguage === "en" ? "en" : "tr" }));
       }
 
       const nextPackage = {
@@ -30567,8 +30567,8 @@ const generateSceneImage = async (
                     <label>{ui.creatorQualityTitle}</label>
                     <p>
                       {uiLanguage === "en"
-                        ? "One quality decision controls the whole project. Provider routing remains internal."
-                        : "Tek kalite kararı tüm projeyi yönetir. Sağlayıcı yönlendirmesi sistem içinde kalır."}
+                        ? "Choose the finish and production quality that best fit this project."
+                        : "Bu projeye en uygun sonuç ve üretim kalitesini seç."}
                     </p>
                   </div>
                 </div>
@@ -31243,14 +31243,20 @@ const generateSceneImage = async (
               </ol>
             </section>
 
-            {!creatorScriptIsCurrent && (
+            {creatorScriptEditorialState !== "current" && (
             <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
               <div className="creatorlab-strategy-action-copy">
-                <strong>{uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?"}</strong>
+                <strong>{creatorScriptEditorialState === "stale"
+                  ? (uiLanguage === "en" ? "Your strategy has changed" : "Stratejin değişti")
+                  : (uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?")}</strong>
                 <p>
-                  {uiLanguage === "en"
-                    ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build one grounded full script for review. No scenes or paid media are generated yet.`
-                    : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak inceleme için kaynaklı bir tam metin oluşturacak. Henüz sahne veya ücretli medya üretilmez.`}
+                  {creatorScriptEditorialState === "stale"
+                    ? (uiLanguage === "en"
+                        ? "Your previous script is preserved, but it no longer matches the current direction. Rebuild the script to continue."
+                        : "Önceki metnin korunuyor ancak artık mevcut yönle eşleşmiyor. Devam etmek için metni yeniden oluştur.")
+                    : uiLanguage === "en"
+                      ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build one grounded full script for review. No scenes or paid media are generated yet.`
+                      : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak inceleme için kaynaklı bir tam metin oluşturacak. Henüz sahne veya ücretli medya üretilmez.`}
                 </p>
               </div>
               <button
@@ -31261,7 +31267,9 @@ const generateSceneImage = async (
               >
                 {creatorWorkflowLoadingState.scriptGenerating
                   ? uiLanguage === "en" ? "Building full script..." : "Tam metin oluşturuluyor..."
-                  : uiLanguage === "en" ? "Approve Strategy & Build Script" : "Stratejiyi Onayla ve Metni Oluştur"}
+                  : creatorScriptEditorialState === "stale"
+                    ? (uiLanguage === "en" ? "Rebuild script" : "Metni yeniden oluştur")
+                    : (uiLanguage === "en" ? "Approve Strategy & Build Script" : "Stratejiyi Onayla ve Metni Oluştur")}
               </button>
             </div>
             )}

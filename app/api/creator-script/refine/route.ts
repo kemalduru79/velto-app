@@ -28,6 +28,7 @@ export async function POST(req: Request) {
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     const state = readCreatorProjectState(project); const script = state.strategy.script;
     if (!script || script.revision !== revision) return NextResponse.json({ error: "Script changed. Review the current revision.", code: "CREATOR_SCRIPT_REFINEMENT_STALE" }, { status: 409 });
+    if (!state.strategy.strategyFingerprint || script.strategyFingerprint !== state.strategy.strategyFingerprint) return NextResponse.json({ error: "Strategy changed. Rebuild the script before refining it.", code: "CREATOR_SCRIPT_REFINEMENT_STALE" }, { status: 409 });
     const saveState = async (nextState: typeof state, invalidateProduction = false) => services.projectRepository.saveForOwner({ projectId, ownerUserId: principal.id, childId: null, flowType: "creator_lab", ...(invalidateProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}), exportedMovieResult: attachCreatorProjectState(project.exported_movie_result, nextState), expectedUpdatedAt: typeof project.updated_at === "string" ? project.updated_at : null });
     if (action === "discard") {
       const proposalId = text(body.proposalId, 120);
