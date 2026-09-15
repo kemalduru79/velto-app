@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     if (!review) return NextResponse.json({ error: "Source verification is unavailable for this section." }, { status: 422 });
     if (!confirm) return NextResponse.json({ success: true, review });
     const verifiedScript = verifyCreatorScriptSectionSources(script, sectionId);
-    const nextState = { ...state, strategy: { ...state.strategy, script: verifiedScript } };
+    const nextState = { ...state, strategy: { ...state.strategy, script: verifiedScript, pendingRefinement: null } };
     const result = await services.projectRepository.saveForOwner({
       projectId,
       ownerUserId: principal.id,
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       exportedMovieResult: attachCreatorProjectState(project.exported_movie_result, nextState),
       expectedUpdatedAt: typeof project.updated_at === "string" ? project.updated_at : null,
     });
-    return NextResponse.json({ success: true, creatorScript: verifiedScript, project: result.project });
+    return NextResponse.json({ success: true, creatorScript: verifiedScript, pendingRefinement: null, project: result.project });
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
     if (error instanceof Error && error.message === "PROJECT_SAVE_CONFLICT") return NextResponse.json({ error: "Project changed. Reload and review again." }, { status: 409 });

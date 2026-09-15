@@ -148,6 +148,7 @@ import {
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import CreatorScriptReview from "@/components/create/CreatorScriptReview";
 import { getCreatorScriptRefinementChangedRanges, getCreatorScriptRefinementReplacementRange } from "@/lib/creator/creatorScriptRefinement";
+import type { CreatorScriptPendingRefinement, CreatorScriptRevisionHistoryEntry } from "@/lib/creator/creatorScriptRevisions";
 import {
   acceptGeneratedCreatorScript,
   approveCreatorScript,
@@ -3520,6 +3521,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
   const [creatorScript, setCreatorScript] = useState<CreatorScript | null>(null);
   const [creatorScriptRefinementHighlights, setCreatorScriptRefinementHighlights] = useState<Array<{ start: number; end: number }>>([]);
+  const [creatorScriptPendingRefinement, setCreatorScriptPendingRefinement] = useState<CreatorScriptPendingRefinement | null>(null);
+  const [creatorScriptRevisionHistory, setCreatorScriptRevisionHistory] = useState<CreatorScriptRevisionHistoryEntry[]>([]);
   const creatorScriptRef = useRef<CreatorScript | null>(null);
   const [creatorScriptBusySectionId, setCreatorScriptBusySectionId] = useState<string | null>(null);
   useEffect(() => {
@@ -6678,6 +6681,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setCreatorMentorResult(null);
     setCreatorStrategyProfileSnapshot(null);
     setCreatorScript(null);
+    setCreatorScriptPendingRefinement(null);
+    setCreatorScriptRevisionHistory([]);
     setCreatorScriptBusySectionId(null);
     setCreatorScriptGenerationLoading(false);
     setCreatorSceneBuildLoading(false);
@@ -12005,6 +12010,7 @@ const generateSceneImage = async (
         data.mode === "created" ? ui.projectSaved : ui.projectUpdated
       );
     }
+    return data;
   };
 
   const persistProject = async (
@@ -12083,6 +12089,8 @@ const generateSceneImage = async (
             script: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "creatorScript")
               ? lifecycleOverrides.creatorScript ?? null
               : creatorScript,
+            pendingRefinement: creatorScriptPendingRefinement,
+            revisionHistory: creatorScriptRevisionHistory,
           },
           production: {
             package: persistedProductionPackage,
@@ -12137,10 +12145,11 @@ const generateSceneImage = async (
       });
     projectSaveQueueRef.current = queuedSave;
     try {
-      await queuedSave;
+      const result = await queuedSave;
       if (saveAttempt === projectSaveAttemptRef.current && binding.generation === projectGenerationRef.current) {
         creatorPersistenceCurrentRef.current = true;
       }
+      return result;
     } catch (saveError) {
       if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
       throw saveError;
@@ -12435,6 +12444,8 @@ const generateSceneImage = async (
       setCreatorMentorResult(loadedMentorResult || null);
       setCreatorStrategyProfileSnapshot(canonicalCreatorState?.strategy.profileSnapshot ? parseCreatorProfile(canonicalCreatorState.strategy.profileSnapshot) : null);
       setCreatorScript(canonicalCreatorState?.strategy.script || null);
+      setCreatorScriptPendingRefinement(canonicalCreatorState?.strategy.pendingRefinement || null);
+      setCreatorScriptRevisionHistory(canonicalCreatorState?.strategy.revisionHistory || []);
       setCreatorSelectedStrategyDirectionId(
         canonicalCreatorState?.strategy.selectedDirectionId ||
           loadedMentorResult?.strategySelection?.directionId || "recommended",
@@ -14908,7 +14919,12 @@ const generateSceneImage = async (
       const nextScript = editCreatorScriptDocument(sourceScript, text);
       creatorScriptRef.current = nextScript;
       setCreatorScript(nextScript);
-      await persistProject(false, { creatorScript: nextScript });
+      const saved = await persistProject(false, { creatorScript: nextScript });
+      if (saved?.project) {
+        const savedState = readCreatorProjectState(saved.project);
+        setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
+        setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
+      }
       setError("");
       setSaveMessage(uiLanguage === "en" ? "Script edit saved. Approval is required again." : "Metin düzenlemesi kaydedildi. Yeniden onay gerekli.");
     } catch (error) {
@@ -14954,8 +14970,13 @@ const generateSceneImage = async (
       installedRevision = nextScript.revision;
       creatorScriptRef.current = nextScript;
       setCreatorScript(nextScript);
-      await persistProject(false, { creatorScript: nextScript });
+      const saved = await persistProject(false, { creatorScript: nextScript });
       if (!operationIsActive() || creatorScriptRef.current?.revision !== nextScript.revision) return;
+      if (saved?.project) {
+        const savedState = readCreatorProjectState(saved.project);
+        setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
+        setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
+      }
       setSaveMessage(sectionId === sourceScript.sections[0]?.id
         ? (uiLanguage === "en" ? "Opening strengthened. Review and approve the new revision." : "Açılış güçlendirildi. Yeni sürümü inceleyip onayla.")
         : (uiLanguage === "en" ? "Section regenerated. Review and approve the new revision." : "Bölüm yenilendi. Yeni sürümü inceleyip onayla."));
@@ -14987,6 +15008,7 @@ const generateSceneImage = async (
       const nextScript = normalizeCreatorScript(data.creatorScript);
       creatorScriptRef.current = nextScript;
       setCreatorScript(nextScript);
+      setCreatorScriptPendingRefinement(null);
       if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
       setSaveMessage(uiLanguage === "en" ? "Source verification saved." : "Kaynak doğrulaması kaydedildi.");
     }
@@ -15000,15 +15022,32 @@ const generateSceneImage = async (
     const accessToken = await getAccessTokenOrThrow();
     const response = await fetch("/api/creator-script/refine", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: currentProjectIdRef.current || currentProjectId, revision: sourceScript.revision, ...refinement }) });
     const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.creatorScript) { setError(data?.error || "Script refinement could not be completed safely."); return false; }
-    const nextScript = normalizeCreatorScript(data.creatorScript);
-    const replacementRange = refinement.scope === "selection" && refinement.selectionStart !== undefined && refinement.selectionEnd !== undefined
-      ? getCreatorScriptRefinementReplacementRange({ previousDocument: sourceDocument, nextDocument: getCreatorScriptDocumentText(nextScript), start: refinement.selectionStart, end: refinement.selectionEnd })
-      : null;
-    setCreatorScriptRefinementHighlights(replacementRange ? [replacementRange] : getCreatorScriptRefinementChangedRanges(sourceScript, nextScript));
-    creatorScriptRef.current = nextScript; setCreatorScript(nextScript);
+    if (!response.ok || !data?.pendingRefinement) { setError(data?.error || "Script refinement could not be completed safely."); return false; }
+    setCreatorScriptPendingRefinement(data.pendingRefinement);
     if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
-    setError(""); setSaveMessage(uiLanguage === "en" ? "Script refinement applied." : "Metin iyileştirmesi uygulandı.");
+    setError(""); setSaveMessage(uiLanguage === "en" ? "Refinement preview ready." : "İyileştirme önizlemesi hazır.");
+    return true;
+  };
+
+  const handleResolveCreatorScriptRefinement = async (action: "apply" | "discard") => {
+    const sourceScript = creatorScriptRef.current; const proposal = creatorScriptPendingRefinement;
+    if (!sourceScript || !proposal) return false;
+    const accessToken = await getAccessTokenOrThrow();
+    const response = await fetch("/api/creator-script/refine", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ action, projectId: currentProjectIdRef.current || currentProjectId, revision: sourceScript.revision, proposalId: proposal.proposalId }) });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) { setError(data?.error || "Refinement preview is no longer current."); return false; }
+    setCreatorScriptPendingRefinement(null);
+    setCreatorScriptRevisionHistory(Array.isArray(data.revisionHistory) ? data.revisionHistory : []);
+    if (action === "apply" && data.creatorScript) {
+      const nextScript = normalizeCreatorScript(data.creatorScript);
+      const replacementRange = proposal.scope === "selection" && proposal.changes[0]?.selectionStart !== undefined && proposal.changes[0]?.selectionEnd !== undefined
+        ? getCreatorScriptRefinementReplacementRange({ previousDocument: getCreatorScriptDocumentText(sourceScript), nextDocument: getCreatorScriptDocumentText(nextScript), start: proposal.changes[0].selectionStart, end: proposal.changes[0].selectionEnd })
+        : null;
+      setCreatorScriptRefinementHighlights(replacementRange ? [replacementRange] : getCreatorScriptRefinementChangedRanges(sourceScript, nextScript));
+      creatorScriptRef.current = nextScript; setCreatorScript(nextScript);
+    }
+    if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
+    setError(""); setSaveMessage(action === "apply" ? "Script refinement applied." : "Refinement discarded.");
     return true;
   };
 
@@ -31232,6 +31271,10 @@ const generateSceneImage = async (
                 onRegenerateSection={handleRegenerateCreatorScriptSection}
                 onReviewSources={handleReviewCreatorScriptSources}
                 onRefine={handleRefineCreatorScript}
+                pendingRefinement={creatorScriptPendingRefinement}
+                revisionHistory={creatorScriptRevisionHistory}
+                onApplyRefinement={() => handleResolveCreatorScriptRefinement("apply")}
+                onDiscardRefinement={() => handleResolveCreatorScriptRefinement("discard")}
                 refinementHighlights={creatorScriptRefinementHighlights}
                 onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
               />

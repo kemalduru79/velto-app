@@ -11,6 +11,7 @@ import {
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
 import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
+import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 
 export const runtime = "nodejs";
 
@@ -65,16 +66,21 @@ export async function POST(req: Request) {
       }
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
     if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
       return NextResponse.json(
         { error: "Creator project authority snapshot is invalid.", code: "CREATOR_PROJECT_STATE_INVALID" },
         { status: 400 },
       );
     }
+    if (hasCreatorProjectState && !projectId && authoritativeCreatorState) {
+      authoritativeCreatorState = { ...authoritativeCreatorState, strategy: { ...authoritativeCreatorState.strategy, pendingRefinement: null, revisionHistory: [] } };
+    }
     if (hasCreatorProjectState && projectId) {
       const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
       if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
       const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
+      const persistedState = readCreatorProjectState(persistedProject);
       const candidateState = body.creatorProjectState as CreatorProjectStateSnapshot;
       if (persistedScript && candidateState.strategy.script) {
         try {
@@ -83,11 +89,29 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "Script verification state must be updated through source review.", code: "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
         }
       }
+      const textChanged = creatorScriptTextChanged(persistedScript, candidateState.strategy.script);
+      const scriptRevisionChanged = Boolean(persistedScript && candidateState.strategy.script && persistedScript.revision !== candidateState.strategy.script.revision);
+      const revisionHistory = textChanged && persistedScript && candidateState.strategy.script
+        ? appendCreatorScriptHistory(persistedState.strategy.revisionHistory || [], {
+            fromRevision: persistedScript.revision,
+            toRevision: candidateState.strategy.script.revision,
+            origin: "manual",
+            changes: createCreatorScriptChanges(persistedScript, candidateState.strategy.script),
+          })
+        : persistedState.strategy.revisionHistory || [];
+      authoritativeCreatorState = {
+        ...candidateState,
+        strategy: {
+          ...candidateState.strategy,
+          pendingRefinement: textChanged || scriptRevisionChanged ? null : persistedState.strategy.pendingRefinement || null,
+          revisionHistory,
+        },
+      };
     }
     const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
       ? attachCreatorProjectState(
           body.exportedMovieResult,
-          body.creatorProjectState as CreatorProjectStateSnapshot,
+          authoritativeCreatorState as CreatorProjectStateSnapshot,
         )
       : body.exportedMovieResult;
     const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()

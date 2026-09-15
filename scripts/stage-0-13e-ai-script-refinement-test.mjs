@@ -48,7 +48,8 @@ const component = await readFile(new URL("../components/create/CreatorScriptRevi
 const globals = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.match(route, /getForOwner\(projectId, principal\.id\)/); assert.match(route, /script\.revision !== revision/); assert.match(route, /expectedUpdatedAt/);
 assert.match(route, /for \(const section of script\.sections\)/); assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
-assert.ok(route.indexOf("client.responses.create") < route.indexOf("projectRepository.saveForOwner"));
+assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
+assert.ok(route.indexOf("pendingRefinement = createCreatorScriptProposal") < route.lastIndexOf("saveState(nextState)"));
 assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /Full script/);
 assert.match(component, /aria-hidden="true"/); assert.match(component, /visibleHighlights/); assert.match(component, /setEditorScroll/);
 assert.match(component, /data-script-highlight=\{range\.kind\}/); assert.match(component, /creatorlab-script-highlight-selection/); assert.match(component, /creatorlab-script-highlight-refinement/);

@@ -12,6 +12,7 @@ import {
 } from "./audioTimeline.ts";
 import { normalizeCreatorTopicAuthority } from "./creatorWorkflowAuthority.ts";
 import type { CreatorProjectNavigation } from "./stageNavigation.ts";
+import { isValidCreatorScriptHistory, isValidCreatorScriptPendingRefinement, normalizeCreatorScriptRevisionState, type CreatorScriptPendingRefinement, type CreatorScriptRevisionHistoryEntry } from "./creatorScriptRevisions.ts";
 
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
 
@@ -39,6 +40,8 @@ export type CreatorProjectStateSnapshot = {
     strategyFingerprint?: string;
     profileSnapshot?: unknown;
     script: CreatorScript | null;
+    pendingRefinement?: CreatorScriptPendingRefinement | null;
+    revisionHistory?: CreatorScriptRevisionHistoryEntry[];
   };
   production: {
     package: unknown | null;
@@ -136,6 +139,8 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     (!hasOwn(strategy, "strategyFingerprint") || typeof strategy.strategyFingerprint === "string") &&
     (!hasOwn(strategy, "profileSnapshot") || isObjectOrNull(strategy.profileSnapshot)) &&
     (!hasOwn(strategy, "script") || strategy.script === null || isValidCreatorScript(strategy.script)) &&
+    (!hasOwn(strategy, "pendingRefinement") || strategy.pendingRefinement === null || isValidCreatorScriptPendingRefinement(strategy.pendingRefinement)) &&
+    (!hasOwn(strategy, "revisionHistory") || isValidCreatorScriptHistory(strategy.revisionHistory)) &&
     isObjectOrNull(candidate.production) && candidate.production !== null &&
     isObjectOrNull(production.package) &&
     Array.isArray(production.refinedScenes) &&
@@ -236,6 +241,7 @@ export function readCreatorProjectState(
   const savedCreateReview = record(saved.createReview);
   const savedPublish = record(saved.publish);
   const savedNavigation = record(saved.navigation);
+  const revisionState = normalizeCreatorScriptRevisionState({ pending: savedStrategy.pendingRefinement, history: savedStrategy.revisionHistory });
   const hasCanonicalSnapshot = saved.version === CREATOR_PROJECT_STATE_VERSION;
   const legacyPackage = record(project.creator_production_package);
   const legacyMentor = project.creator_mentor_result || null;
@@ -298,6 +304,8 @@ export function readCreatorProjectState(
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)
           : null,
+      pendingRefinement: revisionState.pending,
+      revisionHistory: revisionState.history,
     },
     production: {
       package:
