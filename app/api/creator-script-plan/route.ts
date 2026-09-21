@@ -39,12 +39,14 @@ import {
   assertCreatorScriptMatchesSectionPlan,
   countCreatorScriptWords,
   createCreatorScriptSectionBudgetPlan,
+  creatorScriptRepairMateriallyImproved,
   CreatorScriptDurationInvalidError,
   CreatorScriptDurationUnsatisfiedError,
   generateCreatorScriptSectionUnits,
   generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
+  getCreatorScriptDurationRepairSections,
   getCreatorScriptMaterialSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
@@ -758,6 +760,11 @@ async function executeCreatorScriptOperation(input: {
           minimumAcceptableWordCount: durationBudget.minimumAcceptableWordCount,
           maximumAcceptableWordCount: durationBudget.maximumAcceptableWordCount,
           requestedSection: sectionNative ? requestedSections[0] : null,
+          sectionWordBudget: sectionNative ? {
+            minWords: requestedSections[0].minimumWords,
+            targetWords: requestedSections[0].targetWords,
+            maxWords: requestedSections[0].maximumWords,
+          } : null,
           completeSectionBudgetPlan: sectionNative ? undefined : sectionBudgetPlan,
           requestedSections: sectionNative ? undefined : requestedSections,
           continuityContext,
@@ -790,9 +797,15 @@ async function executeCreatorScriptOperation(input: {
           rules: [
             "Return every requested section exactly once, in the supplied order, with the exact supplied section ids, kinds, and roles. Return no unrequested sections.",
             "Do not rewrite or repeat an earlier section.",
-            "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
-            "The complete spoken script must satisfy the total word envelope.",
-            "Write the complete long-form narrative and keep its spoken text inside the supplied minimumAcceptableWordCount and maximumAcceptableWordCount envelope.",
+            sectionNative
+              ? `Write this complete section between ${requestedSections[0].minimumWords} and ${requestedSections[0].maximumWords} words, aiming near ${requestedSections[0].targetWords} words. Treat these as measured spoken-word requirements, not suggestions.`
+              : "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
+            sectionNative
+              ? "This call returns one section only. Do not try to fit the complete script's global word count into this section; the server assembles all sections sequentially."
+              : "The complete spoken script must satisfy the total word envelope.",
+            sectionNative
+              ? "Develop the section fully enough to reach its assigned local target without repetition, filler, or unsupported claims."
+              : "Write the complete long-form narrative and keep its spoken text inside the supplied minimumAcceptableWordCount and maximumAcceptableWordCount envelope.",
             "Use structure and pacing appropriate to the supplied target duration and targetWordCount.",
             "Deepen explanation, analysis, causal reasoning, comparisons, supported examples, counterarguments, transitions, synthesis, and implications only when supported by the supplied strategy and editorial context.",
             "Never invent evidence or unsupported factual claims to reach the word budget. Rhetorical and structural connective writing is allowed only when it adds editorial value.",
@@ -821,7 +834,7 @@ async function executeCreatorScriptOperation(input: {
     };
     let firstActualWords: number | null = null;
     let firstDurationStatus: string | null = null;
-    let durationRepairOccurred = false;
+    let repairCallCount = 0;
     const sectionActualWordCounts: Array<{ sectionId: string; targetWords: number; actualWords: number }> = [];
     const providerStatuses: Array<{ sectionId: string; status: string; incompleteReason: string | null }> = [];
     let initialSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
@@ -869,12 +882,12 @@ async function executeCreatorScriptOperation(input: {
         sectionActualWordCounts,
         sections: safeSectionDiagnostics(initialSectionDiagnostics),
         totalActualWords: firstActualWords,
-        repairRan: durationRepairOccurred,
+        repairRan: repairCallCount > 0,
         repairedSectionIds,
         repairDeficitWords: Math.max(0, durationBudget.minimumAcceptableWordCount - (firstActualWords ?? 0)),
         repairExcessWords: Math.max(0, (firstActualWords ?? 0) - durationBudget.maximumAcceptableWordCount),
         providerStatuses,
-        repairCallCount: durationRepairOccurred ? 1 : 0,
+        repairCallCount,
         postRepairSections: safeSectionDiagnostics(postRepairSectionDiagnostics),
         finalTotalWords: finalDuration?.actualWordCount ?? null,
         canonicalFailureCategory: failureCategory,
@@ -890,6 +903,9 @@ async function executeCreatorScriptOperation(input: {
         },
         requiresRepair: (script) =>
           getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0,
+        maxRepairAttempts: sectionNative ? 2 : 1,
+        shouldRetryRepair: ({ previous, current }) =>
+          sectionNative && creatorScriptRepairMateriallyImproved({ previous, current }),
         generateInitial: async () => {
           const generateUnit = async (
             requestedSections: typeof sectionBudgetPlan,
@@ -958,9 +974,9 @@ async function executeCreatorScriptOperation(input: {
           initialSectionDiagnostics = getCreatorScriptSectionDiagnostics(script, sectionBudgetPlan);
           return script;
         },
-        repair: async (firstScript, currentDuration) => {
+        repair: async (currentScript, currentDuration) => {
           const materialSectionFailures = getCreatorScriptMaterialSectionFailures(
-            firstScript,
+            currentScript,
             sectionBudgetPlan,
           );
           if (
@@ -972,44 +988,27 @@ async function executeCreatorScriptOperation(input: {
           if (currentDuration.status === "compliant" && materialSectionFailures.length === 0) {
             throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
           }
-          durationRepairOccurred = true;
-          const sectionDiagnostics = getCreatorScriptSectionDiagnostics(firstScript, sectionBudgetPlan);
-          const residualWords = currentDuration.status === "too_short"
-            ? currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount
-            : currentDuration.actualWordCount - currentDuration.maximumAcceptableWordCount;
-          const rankedSections = [...sectionDiagnostics].sort((left, right) => {
-            const leftCapacity = currentDuration.status === "too_short"
-              ? left.maximumWords - left.actualWords
-              : left.actualWords - left.minimumWords;
-            const rightCapacity = currentDuration.status === "too_short"
-              ? right.maximumWords - right.actualWords
-              : right.actualWords - right.minimumWords;
-            return rightCapacity - leftCapacity ||
-              sectionBudgetPlan.findIndex((item) => item.id === left.id) -
-                sectionBudgetPlan.findIndex((item) => item.id === right.id);
+          repairCallCount += 1;
+          const sectionDiagnostics = getCreatorScriptSectionDiagnostics(currentScript, sectionBudgetPlan);
+          const sectionsToRepair = getCreatorScriptDurationRepairSections({
+            script: currentScript,
+            plan: sectionBudgetPlan,
+            duration: currentDuration,
           });
-          const sectionsToRepair: typeof sectionDiagnostics = currentDuration.status === "compliant"
-            ? materialSectionFailures
-            : [];
-          let controlledCapacity = 0;
-          if (currentDuration.status !== "compliant") {
-            for (const section of rankedSections) {
-              const capacity = currentDuration.status === "too_short"
-                ? Math.max(0, section.maximumWords - section.actualWords)
-                : Math.max(0, section.actualWords - section.minimumWords);
-              if (capacity === 0) continue;
-              sectionsToRepair.push(section);
-              controlledCapacity += capacity;
-              if (controlledCapacity >= residualWords) break;
-            }
-          }
-          if (
-            sectionsToRepair.length === 0
-            || (currentDuration.status !== "compliant" && controlledCapacity < residualWords)
-          ) {
+          if (sectionsToRepair.length === 0) {
             throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
           }
-          repairedSectionIds = sectionsToRepair.map((section) => section.id);
+          repairedSectionIds = Array.from(new Set([
+            ...repairedSectionIds,
+            ...sectionsToRepair.map((section) => section.id),
+          ]));
+          const repairTargets = sectionsToRepair.map((section) => ({
+            sectionId: section.id,
+            currentWords: section.actualWords,
+            requiredFinalMinWords: section.minimumWords,
+            requiredFinalTargetWords: section.targetWords,
+            requiredFinalMaxWords: section.maximumWords,
+          }));
           const repairResponse = await client.responses.create({
             model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
             input: [
@@ -1024,7 +1023,7 @@ async function executeCreatorScriptOperation(input: {
                 strategy: input.body.strategy,
                 editorialContext: input.editorialContext,
                 allowedClaimIds,
-                currentSectionsToRepair: firstScript.sections.filter((section) =>
+                currentSectionsToRepair: currentScript.sections.filter((section) =>
                   sectionsToRepair.some((diagnostic) => diagnostic.id === section.id)
                 ),
                 targetDurationSec: durationSec,
@@ -1039,6 +1038,7 @@ async function executeCreatorScriptOperation(input: {
                 sectionBudgetPlan,
                 sectionDiagnostics,
                 sectionsToRepair,
+                repairTargets,
                 requiredJsonShape: {
                   sections: sectionsToRepair.map((section) => ({
                     id: section.id,
@@ -1051,7 +1051,8 @@ async function executeCreatorScriptOperation(input: {
                 },
                 rules: [
                   "Return only corrected replacement sections for every supplied sectionsToRepair item; do not return unrelated sections.",
-                  "Preserve each requested section id, kind, and role exactly and satisfy its supplied target range.",
+                  "Preserve each requested section id, kind, and role exactly. For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
+                  "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
                   currentDuration.status === "compliant"
@@ -1075,7 +1076,7 @@ async function executeCreatorScriptOperation(input: {
             plan: sectionsToRepair,
           });
           const repairedScript = mergeCreatorScriptReplacementSections({
-            script: firstScript,
+            script: currentScript,
             replacements: validatedReplacements,
             plan: sectionBudgetPlan,
           });
@@ -1101,8 +1102,8 @@ async function executeCreatorScriptOperation(input: {
         providerGenerationCallCount: generationUnits.length,
         sectionActualWordCounts,
         mergedActualWords: firstActualWords,
-        repairCallCount: durationRepairOccurred ? 1 : 0,
-        repairActualWords: durationRepairOccurred ? finalDuration.actualWordCount : null,
+        repairCallCount,
+        repairActualWords: repairCallCount > 0 ? finalDuration.actualWordCount : null,
         finalDurationStatus: finalDuration.status,
       });
       logSectionBudgetDiagnostics("accepted", null, accepted.creatorScript);
@@ -1127,8 +1128,8 @@ async function executeCreatorScriptOperation(input: {
           sectionCount: sectionBudgetPlan.length,
           providerGenerationCallCount: generationUnits.length,
           sectionActualWordCounts,
-          repairCallCount: durationRepairOccurred ? 1 : 0,
-          repairOccurred: durationRepairOccurred,
+          repairCallCount,
+          repairOccurred: repairCallCount > 0,
         });
         return NextResponse.json(
           { error: error.message, code: error.code, direction: error.diagnostics.status, diagnostics: error.diagnostics },

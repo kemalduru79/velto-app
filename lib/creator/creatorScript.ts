@@ -423,6 +423,48 @@ export function getCreatorScriptMaterialSectionFailures(
   });
 }
 
+export function getCreatorScriptDurationRepairSections(input: {
+  script: CreatorScript;
+  plan: CreatorScriptSectionBudget[];
+  duration: CreatorScriptDurationContract;
+}) {
+  const diagnostics = getCreatorScriptSectionDiagnostics(input.script, input.plan);
+  if (input.duration.status === "compliant") {
+    const materialIds = new Set(
+      getCreatorScriptMaterialSectionFailures(input.script, input.plan)
+        .map((section) => section.id),
+    );
+    return diagnostics.filter((section) => materialIds.has(section.id));
+  }
+
+  const expanding = input.duration.status === "too_short";
+  const primary = diagnostics.filter((section) => expanding
+    ? section.actualWords < section.minimumWords
+    : section.actualWords > section.maximumWords);
+  const selectedIds = new Set(primary.map((section) => section.id));
+  const selected = [...primary];
+  const residualWords = expanding
+    ? input.duration.minimumAcceptableWordCount - input.duration.actualWordCount
+    : input.duration.actualWordCount - input.duration.maximumAcceptableWordCount;
+  const capacity = (section: CreatorScriptSectionDiagnostic) => expanding
+    ? Math.max(0, section.maximumWords - section.actualWords)
+    : Math.max(0, section.actualWords - section.minimumWords);
+  let controlledCapacity = selected.reduce((sum, section) => sum + capacity(section), 0);
+
+  if (controlledCapacity < residualWords) {
+    const additional = diagnostics
+      .filter((section) => !selectedIds.has(section.id) && capacity(section) > 0)
+      .sort((left, right) => capacity(right) - capacity(left));
+    for (const section of additional) {
+      selected.push(section);
+      controlledCapacity += capacity(section);
+      if (controlledCapacity >= residualWords) break;
+    }
+  }
+
+  return controlledCapacity >= residualWords ? selected : [];
+}
+
 export function assertCreatorScriptHasHealthySectionStructure(
   script: CreatorScript,
   plan: CreatorScriptSectionBudget[],
@@ -568,10 +610,20 @@ export function isCreatorScriptCurrentForStrategy(input: {
 export async function acceptCreatorScriptWithDurationRepair(input: {
   firstScript: CreatorScript;
   language: "tr" | "en";
-  repair: (diagnostics: CreatorScriptDurationContract) => Promise<CreatorScript>;
+  repair: (
+    diagnostics: CreatorScriptDurationContract,
+    script: CreatorScript,
+    attempt: number,
+  ) => Promise<CreatorScript>;
   requiresRepair?: (script: CreatorScript) => boolean;
   validateFinal?: (script: CreatorScript) => void;
   allowRepair?: boolean;
+  maxRepairAttempts?: number;
+  shouldRetryRepair?: (input: {
+    previous: CreatorScriptDurationContract;
+    current: CreatorScriptDurationContract;
+    attempt: number;
+  }) => boolean;
 }) {
   const firstScript = normalizeCreatorScript(input.firstScript);
   const firstDiagnostics = getCreatorScriptDurationContractForScript(firstScript, input.language);
@@ -582,33 +634,86 @@ export async function acceptCreatorScriptWithDurationRepair(input: {
   if (input.allowRepair === false) {
     throw new CreatorScriptDurationUnsatisfiedError(firstDiagnostics);
   }
-  const repairedScript = normalizeCreatorScript(await input.repair(firstDiagnostics));
-  const repairedDiagnostics = getCreatorScriptDurationContractForScript(repairedScript, input.language);
-  if (repairedDiagnostics.status !== "compliant") {
-    throw new CreatorScriptDurationUnsatisfiedError(repairedDiagnostics);
+  const maxRepairAttempts = Math.max(1, Math.min(2, input.maxRepairAttempts ?? 1));
+  let currentScript = firstScript;
+  let currentDiagnostics = firstDiagnostics;
+  for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
+    const previousDiagnostics = currentDiagnostics;
+    currentScript = normalizeCreatorScript(
+      await input.repair(previousDiagnostics, currentScript, attempt),
+    );
+    currentDiagnostics = getCreatorScriptDurationContractForScript(currentScript, input.language);
+    if (currentDiagnostics.status === "compliant") {
+      input.validateFinal?.(currentScript);
+      return {
+        creatorScript: currentScript,
+        diagnostics: currentDiagnostics,
+        repaired: true,
+        repairAttempts: attempt,
+      };
+    }
+    if (
+      attempt >= maxRepairAttempts
+      || !input.shouldRetryRepair?.({
+        previous: previousDiagnostics,
+        current: currentDiagnostics,
+        attempt,
+      })
+    ) {
+      throw new CreatorScriptDurationUnsatisfiedError(currentDiagnostics);
+    }
   }
-  input.validateFinal?.(repairedScript);
-  return { creatorScript: repairedScript, diagnostics: repairedDiagnostics, repaired: true };
+  throw new CreatorScriptDurationUnsatisfiedError(currentDiagnostics);
+}
+
+export function creatorScriptRepairMateriallyImproved(input: {
+  previous: CreatorScriptDurationContract;
+  current: CreatorScriptDurationContract;
+}) {
+  if (input.previous.status !== input.current.status || input.current.status === "compliant") {
+    return false;
+  }
+  const previousDistance = input.previous.status === "too_short"
+    ? input.previous.minimumAcceptableWordCount - input.previous.actualWordCount
+    : input.previous.actualWordCount - input.previous.maximumAcceptableWordCount;
+  const currentDistance = input.current.status === "too_short"
+    ? input.current.minimumAcceptableWordCount - input.current.actualWordCount
+    : input.current.actualWordCount - input.current.maximumAcceptableWordCount;
+  const improvement = previousDistance - currentDistance;
+  return currentDistance > 0
+    && improvement >= Math.max(10, Math.ceil(previousDistance * 0.1));
 }
 
 export async function generateCreatorScriptWithDurationContract(input: {
   durationSec: unknown;
   language: "tr" | "en";
   generateInitial: (durationSec: number) => Promise<CreatorScript>;
-  repair: (script: CreatorScript, diagnostics: CreatorScriptDurationContract) => Promise<CreatorScript>;
+  repair: (
+    script: CreatorScript,
+    diagnostics: CreatorScriptDurationContract,
+    attempt: number,
+  ) => Promise<CreatorScript>;
   requiresRepair?: (script: CreatorScript) => boolean;
   validateFinal?: (script: CreatorScript) => void;
   allowRepair?: boolean;
+  maxRepairAttempts?: number;
+  shouldRetryRepair?: (input: {
+    previous: CreatorScriptDurationContract;
+    current: CreatorScriptDurationContract;
+    attempt: number;
+  }) => boolean;
 }) {
   const durationSec = validateCreatorScriptGenerationDuration(input.durationSec);
   const firstScript = await input.generateInitial(durationSec);
   return acceptCreatorScriptWithDurationRepair({
     firstScript,
     language: input.language,
-    repair: (diagnostics) => input.repair(firstScript, diagnostics),
+    repair: (diagnostics, script, attempt) => input.repair(script, diagnostics, attempt),
     requiresRepair: input.requiresRepair,
     validateFinal: input.validateFinal,
     allowRepair: input.allowRepair,
+    maxRepairAttempts: input.maxRepairAttempts,
+    shouldRetryRepair: input.shouldRetryRepair,
   });
 }
 

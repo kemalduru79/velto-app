@@ -11,10 +11,12 @@ import {
   assertCreatorScriptSatisfiesSectionBudgets,
   createCreatorScript,
   createCreatorScriptSectionBudgetPlan,
+  creatorScriptRepairMateriallyImproved,
   generateCreatorScriptSectionUnits,
   generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
+  getCreatorScriptDurationRepairSections,
   getCreatorScriptMaterialSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
@@ -353,6 +355,93 @@ assert.equal(modestDiagnostics.status, "too_short");
 assert.equal(isCreatorScriptResidualRepairEligible(modestDiagnostics), true);
 assert.equal(isCreatorScriptResidualRepairEligible(getCreatorScriptDurationContractForScript(shortScript, "en")), false);
 
+const realUseCounts = [170, 250, 250, 250, 250, 250, 250, 164];
+const realUseShortScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({
+    id: budget.id,
+    kind: budget.kind,
+    heading: budget.role,
+    text: words(realUseCounts[index]),
+    claimIds: [],
+    evidenceReviewRequired: false,
+  })),
+});
+const realUseDuration = getCreatorScriptDurationContractForScript(realUseShortScript, "en");
+assert.equal(realUseDuration.actualWordCount, 1834);
+assert.equal(realUseDuration.status, "too_short");
+const realUseRepairSections = getCreatorScriptDurationRepairSections({
+  script: realUseShortScript,
+  plan: plan960,
+  duration: realUseDuration,
+});
+assert.deepEqual(
+  realUseRepairSections.map((section) => section.id),
+  plan960.slice(1).map((section) => section.id),
+  "every locally under-minimum section is repaired instead of two aggregate-capacity winners",
+);
+assert.ok(realUseRepairSections.every((section) => section.targetWords <= section.maximumWords));
+
+let boundedRepairCalls = 0;
+const boundedRepair = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => realUseShortScript,
+  maxRepairAttempts: 2,
+  shouldRetryRepair: ({ previous, current }) =>
+    creatorScriptRepairMateriallyImproved({ previous, current }),
+  repair: async (script, _duration, attempt) => {
+    boundedRepairCalls += 1;
+    const counts = attempt === 1
+      ? [170, 261, 261, 261, 261, 261, 261, 172]
+      : plan960.map((budget) => budget.targetWords);
+    return mergeCreatorScriptReplacementSections({
+      script,
+      plan: plan960,
+      replacements: plan960.slice(1).map((budget, index) => ({
+        ...script.sections[index + 1],
+        id: budget.id,
+        kind: budget.kind,
+        heading: budget.role,
+        text: words(counts[index + 1]),
+      })),
+    });
+  },
+  validateFinal: (script) => assertCreatorScriptHasHealthySectionStructure(script, plan960),
+});
+assert.equal(boundedRepairCalls, 2);
+assert.equal(boundedRepair.diagnostics.status, "compliant");
+assert.equal(boundedRepair.repairAttempts, 2);
+assert.equal(boundedRepair.creatorScript.revision, realUseShortScript.revision + 2);
+assert.deepEqual(boundedRepair.creatorScript.grounding, realUseShortScript.grounding);
+assert.ok(getCreatorScriptSectionDiagnostics(boundedRepair.creatorScript, plan960)
+  .every((section) => section.actualWords <= section.maximumWords));
+
+let unrecoverableCalls = 0;
+await assert.rejects(
+  generateCreatorScriptWithDurationContract({
+    durationSec: 960,
+    language: "en",
+    generateInitial: async () => realUseShortScript,
+    maxRepairAttempts: 2,
+    shouldRetryRepair: ({ previous, current }) =>
+      creatorScriptRepairMateriallyImproved({ previous, current }),
+    repair: async (script) => {
+      unrecoverableCalls += 1;
+      return mergeCreatorScriptReplacementSections({
+        script,
+        plan: plan960,
+        replacements: [{
+          ...script.sections[1],
+          text: `${script.sections[1].text} one two three four five`,
+        }],
+      });
+    },
+  }),
+  /requested duration/,
+);
+assert.equal(unrecoverableCalls, 1, "an immaterial repair must fail closed without a second call");
+
 scriptCalls = 0;
 const residualRepaired = await generateCreatorScriptWithDurationContract({
   durationSec: 960,
@@ -387,7 +476,15 @@ assert.match(route, /sectionBudgetPlan/);
 assert.match(route, /creator_full_script_section/);
 assert.doesNotMatch(route, /long_form_batch|MAX_INITIAL_GENERATION_CALLS|splitCreatorScriptSectionPlan/);
 assert.match(route, /max_output_tokens: getCreatorScriptOutputTokenBudget/);
+assert.match(route, /sectionWordBudget: sectionNative \? \{\s*minWords: requestedSections\[0\]\.minimumWords,\s*targetWords: requestedSections\[0\]\.targetWords,\s*maxWords: requestedSections\[0\]\.maximumWords/);
+assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} words, aiming near \$\{requestedSections\[0\]\.targetWords\} words/);
+assert.match(route, /This call returns one section only\. Do not try to fit the complete script's global word count into this section/);
 assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
+assert.match(route, /maxRepairAttempts: sectionNative \? 2 : 1/);
+assert.match(route, /creatorScriptRepairMateriallyImproved/);
+assert.match(route, /repairTargets/);
+assert.match(route, /requiredFinalMinWords/);
+assert.match(route, /Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence/);
 assert.match(route, /rebalance_sections/);
 assert.match(route, /Rebalance only the supplied failing sections toward their individual target, minimum, and maximum word ranges while preserving the overall script duration envelope\. Do not globally compress or expand\./);
 assert.doesNotMatch(route, /Exa|creator-research/);
