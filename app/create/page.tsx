@@ -173,6 +173,7 @@ import {
   startCreatorNewProjectLifecycle,
   classifyCreatorProjectSaveError,
 } from "@/lib/creator/creatorWorkflowAuthority";
+import { resolveCreatorMarketEvidenceSubject } from "@/lib/creator/marketEvidenceSubject";
 import {
   buildCreatorProjectState,
   creatorAudioTimelineSnapshotFields,
@@ -1046,6 +1047,7 @@ type CreatorMentorResult = {
   };
   productionPlan: string[];
   marketEvidence?: {
+    subject?: string;
     videos: YoutubeResearchVideo[];
     patternSummary: YoutubePatternSummary | null;
   };
@@ -13445,11 +13447,11 @@ const generateSceneImage = async (
   };
 
   const handleYoutubeResearch = async () => {
-    if (!input.trim()) {
+    if (!creatorMarketEvidenceSubject) {
       setError(
         uiLanguage === "en"
-          ? "Please enter a topic or video idea before running YouTube analysis."
-          : "YouTube analizi için önce bir konu veya video fikri yaz."
+          ? "Choose a concise content direction before adding market evidence."
+          : "Pazar kanıtı eklemeden önce kısa bir içerik yönü seç."
       );
       return;
     }
@@ -13466,7 +13468,7 @@ const generateSceneImage = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          topic: normalizeCreatorTopicAuthority(input),
+          topic: creatorMarketEvidenceSubject,
           country: creatorCountry,
           countryLabel: getCreatorCountryLabel(),
           language,
@@ -13494,7 +13496,12 @@ const generateSceneImage = async (
       const nextMentorResult = creatorMentorResult
         ? {
             ...creatorMentorResult,
+            strategySelection: {
+              directionId: creatorSelectedStrategyDirectionId,
+              hook: creatorSelectedHookPattern,
+            },
             marketEvidence: {
+              subject: creatorMarketEvidenceSubject,
               videos: relevantVideos,
               patternSummary: null,
             },
@@ -13544,7 +13551,7 @@ const generateSceneImage = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          topic: normalizeCreatorTopicAuthority(input),
+          topic: creatorMarketEvidenceSubject,
           country: getCreatorCountryLabel(),
           ageGroup: creatorAgeGroup,
           contentType: getCreatorContentTypeLabel(),
@@ -13571,7 +13578,12 @@ const generateSceneImage = async (
       const nextMentorResult = creatorMentorResult
         ? {
             ...creatorMentorResult,
+            strategySelection: {
+              directionId: creatorSelectedStrategyDirectionId,
+              hook: creatorSelectedHookPattern,
+            },
             marketEvidence: {
+              subject: creatorMarketEvidenceSubject,
               videos: youtubeResearchVideos,
               patternSummary: nextPatternSummary,
             },
@@ -18718,6 +18730,12 @@ const generateSceneImage = async (
     creatorStrategyDirections.find(
       (direction) => direction.id === creatorSelectedStrategyDirectionId,
     ) || creatorStrategyDirections[0];
+  const creatorMarketEvidenceSubject = resolveCreatorMarketEvidenceSubject({
+    briefTopic: input,
+    selectedDirectionId: creatorSelectedStrategyDirectionId,
+    recommendedIdea: creatorMentorResult?.recommendedIdea,
+    videoIdeas: creatorMentorResult?.videoIdeas,
+  });
   const creatorStrategyHookOptions = Array.from(
     new Set(
       [
@@ -31098,7 +31116,7 @@ const generateSceneImage = async (
                 <div className="creatorlab-strategy-research-context">
                   <div>
                     <span>{uiLanguage === "en" ? "Research subject" : "Araştırma konusu"}</span>
-                    <strong>{input.trim()}</strong>
+                    <strong>{creatorMarketEvidenceSubject}</strong>
                   </div>
                   <small>
                     {youtubeResearchVideos.length} {uiLanguage === "en" ? "relevant references retained" : "ilgili referans korundu"}

@@ -27,7 +27,7 @@ assert.doesNotMatch(card, />Optional</);
 assert.doesNotMatch(card, /Research optional|Exa|OpenAI|provider/i);
 
 assert.match(researchHandler, /fetch\("\/api\/youtube-research"/);
-assert.match(researchHandler, /marketEvidence:\s*\{\s*videos: relevantVideos/);
+assert.match(researchHandler, /marketEvidence:\s*\{\s*subject: creatorMarketEvidenceSubject,\s*videos: relevantVideos/);
 assert.match(researchHandler, /persistProject\(false, \{ creatorMentorResult: nextMentorResult \}\)/);
 assert.doesNotMatch(researchHandler, /\/api\/creator-research|\/api\/creator-editorial-analysis/);
 assert.match(page, /loadedMentorResult\?\.marketEvidence\?\.videos/);
@@ -36,7 +36,7 @@ assert.match(page, /loadedMentorResult\?\.marketEvidence\?\.patternSummary/);
 assert.match(strategySection, /onClick=\{handleCreatorProductionPackage\}/);
 assert.match(strategySection, /Approve Strategy & Build Script/);
 assert.doesNotMatch(approvalAction, /youtubeResearchVideos|youtubePatternSummary/);
-assert.match(page, /creatorStageAfterSuccess\(current, "brief_completed"\)/);
-assert.match(page, /creatorStageAfterSuccess\(current, "strategy_approved"\)/);
+assert.match(page, /creatorStageAfterSuccess\(creatorNavigationRef\.current\.workspaceStep, "brief_completed"\)/);
+assert.match(page, /creatorStageAfterSuccess\(creatorNavigationRef\.current\.workspaceStep, "strategy_approved"\)/);
 
 console.log("Stage 0.10H Market Evidence Strategy UX test passed.");
