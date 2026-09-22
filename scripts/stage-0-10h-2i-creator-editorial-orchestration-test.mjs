@@ -185,6 +185,34 @@ await assert.rejects(
 );
 assert.deepEqual(staleAuthorityCalls, ["/api/creator-script-plan"]);
 
+const providerFailureCalls = [];
+await assert.rejects(
+  () => runCreatorEditorialScriptPipeline({
+    accessToken: "token",
+    topic: "Memory and identity",
+    scriptPlanRequest: { operation: "generate_full_script", projectId: "project-baseline", durationSec: 960 },
+    fetchImpl: async (url, init) => {
+      providerFailureCalls.push({ url, body: JSON.parse(String(init?.body || "{}")) });
+      if (providerFailureCalls.length === 1) return jsonResponse({ success: true, authority: {} });
+      if (url === "/api/creator-research") return jsonResponse({ success: true, sources: [{ sourceId: "memory-source" }] });
+      if (url === "/api/creator-editorial-analysis") {
+        return jsonResponse({ success: true, scriptContext, readiness: { status: "ready" } });
+      }
+      return jsonResponse({ success: false, code: "CREATOR_SCRIPT_MODEL_INVALID", error: "Script output was invalid." }, 422);
+    },
+  }),
+  (error) => error instanceof CreatorEditorialPipelineError &&
+    error.stage === "script_plan" && error.status === 422 && error.code === "CREATOR_SCRIPT_MODEL_INVALID",
+);
+assert.deepEqual(providerFailureCalls.map((call) => call.url), [
+  "/api/creator-script-plan",
+  "/api/creator-research",
+  "/api/creator-editorial-analysis",
+  "/api/creator-script-plan",
+]);
+assert.equal(providerFailureCalls[0].body.operation, "validate_generation_authority");
+assert.equal(providerFailureCalls[3].body.operation, "generate_full_script");
+
 const helper = fs.readFileSync("lib/research/creatorEditorialPipeline.client.ts", "utf8");
 assert.match(helper, /url: "\/api\/creator-research"/);
 assert.match(helper, /url: "\/api\/creator-editorial-analysis"/);
