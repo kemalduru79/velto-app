@@ -45,6 +45,7 @@ import {
   createCreatorScriptNarrationEditorialContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScriptSectionBudgetPlan,
   createCreatorScriptRepairTargets,
@@ -73,6 +74,7 @@ import {
   normalizeCreatorScript,
   regenerateCreatorScriptSection,
   shouldUseCreatorScriptSectionNativeGeneration,
+  selectCreatorScriptExpansionCandidates,
   validateCreatorScriptGenerationDuration,
 } from "../../../lib/creator/creatorScript";
 
@@ -811,6 +813,7 @@ async function executeCreatorScriptOperation(input: {
           generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
           audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
           documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+          firstPassBudgetContract: CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
           internalEditorialGuidance: {
             usage: "Control context only. Perform these principles in the narration; never describe, quote, explain, or attribute them in spoken text.",
             appliedByServer: true,
@@ -848,7 +851,7 @@ async function executeCreatorScriptOperation(input: {
               ? "The counterview section must seriously test the master thesis using supplied counter-evidence or alternative findings; token balance language is not sufficient."
               : "Do not invent a counterview. Use the supplied limits-and-uncertainty role to test the thesis only within grounded support.",
             sectionNative
-              ? `Write this complete section between ${requestedSections[0].minimumWords} and ${requestedSections[0].maximumWords} words, aiming near ${requestedSections[0].targetWords} words. Treat these as measured spoken-word requirements, not suggestions.`
+              ? `Write this complete section between ${requestedSections[0].minimumWords} and ${requestedSections[0].maximumWords} spoken words, aiming near ${requestedSections[0].targetWords}. Count the section text before returning JSON. Local ranges guide first-pass completeness; the server's canonical whole-script counter remains duration authority.`
               : "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
             sectionNative
               ? "This call returns one section only. Do not try to fit the complete script's global word count into this section; the server assembles all sections sequentially."
@@ -1063,6 +1066,17 @@ async function executeCreatorScriptOperation(input: {
           firstActualWords = initialDiagnostics.actualWordCount;
           firstDurationStatus = initialDiagnostics.status;
           initialSectionDiagnostics = getCreatorScriptSectionDiagnostics(script, sectionBudgetPlan);
+          console.info("CREATOR_SCRIPT_FIRST_PASS_RELIABILITY_DIAGNOSTICS", {
+            totalWords: initialDiagnostics.actualWordCount,
+            targetWords: initialDiagnostics.targetWordCount,
+            minimumWords: initialDiagnostics.minimumAcceptableWordCount,
+            maximumWords: initialDiagnostics.maximumAcceptableWordCount,
+            deficitWords: Math.max(0, initialDiagnostics.minimumAcceptableWordCount - initialDiagnostics.actualWordCount),
+            excessWords: Math.max(0, initialDiagnostics.actualWordCount - initialDiagnostics.maximumAcceptableWordCount),
+            firstPassDurationStatus: initialDiagnostics.status === "too_short" ? "under" : initialDiagnostics.status === "too_long" ? "over" : "compliant",
+            repairRequired: initialDiagnostics.status !== "compliant" || getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0,
+            sectionWordCounts: initialSectionDiagnostics.map((section) => ({ sectionId: section.id, actualWords: section.actualWords, targetWords: section.targetWords })),
+          });
           logDistinctivenessDiagnostics("initial_generation", script);
           return script;
         },
@@ -1209,7 +1223,7 @@ async function executeCreatorScriptOperation(input: {
               }
               additionById.set(sectionId, addition);
             }
-            const acceptedReplacements: Array<Record<string, unknown>> = [];
+            const validatedCandidates: Array<{ sectionId: string; gainWords: number; replacement: Record<string, unknown> }> = [];
             for (const target of expansionTargets) {
               const originalSection = currentScript.sections.find((section) => section.id === target.sectionId)!;
               const addition = additionById.get(target.sectionId);
@@ -1237,7 +1251,7 @@ async function executeCreatorScriptOperation(input: {
                   assertCreatorScriptHasSafeSectionStructure(candidate, sectionBudgetPlan);
                   assertCreatorScriptHasDistinctEditorialSections(candidate, sectionBudgetPlan);
                   assertCreatorScriptNarrationIsProductionSafe({ sections: candidate.sections, authoritativeText: narrationAuthority });
-                  acceptedReplacements.push(replacement);
+                  validatedCandidates.push({ sectionId: target.sectionId, gainWords: afterWords - target.currentWords, replacement });
                   acceptedAddition = true;
                   reason = "accepted_additive_progress";
                 } catch (error) {
@@ -1256,7 +1270,31 @@ async function executeCreatorScriptOperation(input: {
                 providerCompletionStatus: expansionResponse.status || "unknown",
               });
             }
-            if (acceptedReplacements.length === 0) return currentScript;
+            if (validatedCandidates.length === 0) return currentScript;
+            const selectedCandidates = selectCreatorScriptExpansionCandidates({
+              deficitWords: globalDeficitWords,
+              candidates: validatedCandidates.map((candidate) => ({
+                sectionId: candidate.sectionId,
+                gainWords: candidate.gainWords,
+                value: candidate,
+              })),
+              canonicalSectionOrder: sectionBudgetPlan.map((section) => section.id),
+            }).map((candidate) => candidate.value);
+            const selectedIds = new Set(selectedCandidates.map((candidate) => candidate.sectionId));
+            const acceptedReplacements = selectedCandidates.map((candidate) => candidate.replacement);
+            const validCandidateGain = validatedCandidates.reduce((sum, candidate) => sum + candidate.gainWords, 0);
+            const selectedCandidateGain = selectedCandidates.reduce((sum, candidate) => sum + candidate.gainWords, 0);
+            console.info("CREATOR_SCRIPT_DURATION_EXPANSION_SELECTION", {
+              attempt: repairCallCount,
+              currentTotalWords: currentDuration.actualWordCount,
+              remainingDeficitWords: globalDeficitWords,
+              requestedCandidateSectionIds: expansionTargets.map((target) => target.sectionId),
+              validCandidateGain,
+              selectedCandidateGain,
+              selectedSectionIds: selectedCandidates.map((candidate) => candidate.sectionId),
+              validButNotNeededSectionIds: validatedCandidates.filter((candidate) => !selectedIds.has(candidate.sectionId)).map((candidate) => candidate.sectionId),
+              projectedCanonicalTotal: currentDuration.actualWordCount + selectedCandidateGain,
+            });
             repairedSectionIds = Array.from(new Set([
               ...repairedSectionIds,
               ...acceptedReplacements.map((replacement) => asString(replacement.id)),
@@ -1430,6 +1468,10 @@ async function executeCreatorScriptOperation(input: {
         mergedActualWords: firstActualWords,
         repairCallCount,
         repairActualWords: repairCallCount > 0 ? finalDuration.actualWordCount : null,
+        firstPassDurationStatus: firstDurationStatus,
+        repairDependency: repairCallCount === 0 ? "none" : repairCallCount === 1 ? "single_attempt" : "second_attempt",
+        repairAddedWords: Math.max(0, finalDuration.actualWordCount - (firstActualWords ?? finalDuration.actualWordCount)),
+        repairOvershootWords: Math.max(0, finalDuration.actualWordCount - finalDuration.minimumAcceptableWordCount),
         finalDurationStatus: finalDuration.status,
       });
       logSectionBudgetDiagnostics("accepted", null, accepted.creatorScript);

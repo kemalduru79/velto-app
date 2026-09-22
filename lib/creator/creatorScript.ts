@@ -38,6 +38,12 @@ export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
   "For a conclusion, state directly what the established argument changes about identity, agency, responsibility, or meaning; do not label the ending, refer to evidence 'discussed above', recap sections, or narrate the production process. Preserve uncertainty and make the final sentence one natural open question.",
 ] as const;
 
+export const CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT = [
+  "Before returning JSON, count the spoken words in each authored section against its supplied minWords, targetWords, and maxWords.",
+  "Aim near targetWords and do not stop materially below minWords while grounded, section-owned explanation, evidence, uncertainty, comparison, or human consequence remains undeveloped.",
+  "Grounding, narration safety, section ownership, and documentary quality outrank local length guidance. Never reach a word target by repeating established premises, summarizing the section, adding filler, or inventing unsupported material.",
+] as const;
+
 export type CreatorScriptNarrationSafetyViolation = {
   sectionId: string;
   category: "internal_editorial_leakage" | "unsupported_named_authority";
@@ -222,6 +228,57 @@ export function createCreatorScriptAdditiveExpansionPlan(input: {
       availablePlacementAnchors: anchors.map(({ id, placementMode }) => ({ id, placementMode })),
     }] : [];
   });
+}
+
+export type CreatorScriptValidatedExpansionCandidate<T = unknown> = {
+  sectionId: string;
+  gainWords: number;
+  value: T;
+};
+
+export function selectCreatorScriptExpansionCandidates<T>(input: {
+  deficitWords: number;
+  candidates: CreatorScriptValidatedExpansionCandidate<T>[];
+  canonicalSectionOrder: string[];
+}) {
+  const deficitWords = Math.max(0, Math.floor(input.deficitWords));
+  const order = new Map(input.canonicalSectionOrder.map((sectionId, index) => [sectionId, index]));
+  const candidates = input.candidates
+    .filter((candidate) => candidate.gainWords > 0 && order.has(candidate.sectionId))
+    .sort((left, right) => (order.get(left.sectionId) ?? 0) - (order.get(right.sectionId) ?? 0));
+  const totalGain = candidates.reduce((sum, candidate) => sum + candidate.gainWords, 0);
+  if (deficitWords <= 0) return [];
+  if (totalGain < deficitWords) return candidates;
+
+  let selected: typeof candidates | null = null;
+  let selectedGain = Number.POSITIVE_INFINITY;
+  for (let mask = 1; mask < 2 ** candidates.length; mask += 1) {
+    const subset = candidates.filter((_, index) => (mask & (1 << index)) !== 0);
+    const gain = subset.reduce((sum, candidate) => sum + candidate.gainWords, 0);
+    if (gain < deficitWords) continue;
+    const overshoot = gain - deficitWords;
+    const selectedOvershoot = selectedGain - deficitWords;
+    let canonicalOrderWins = false;
+    if (selected !== null && subset.length === selected.length) {
+      for (let index = 0; index < subset.length; index += 1) {
+        const candidateIndex = order.get(subset[index].sectionId) ?? 0;
+        const selectedIndex = order.get(selected[index].sectionId) ?? Number.POSITIVE_INFINITY;
+        if (candidateIndex === selectedIndex) continue;
+        canonicalOrderWins = candidateIndex < selectedIndex;
+        break;
+      }
+    }
+    const better = selected === null
+      || overshoot < selectedOvershoot
+      || (overshoot === selectedOvershoot && subset.length < selected.length)
+      || (overshoot === selectedOvershoot && subset.length === selected.length
+        && canonicalOrderWins);
+    if (better) {
+      selected = subset;
+      selectedGain = gain;
+    }
+  }
+  return selected || [];
 }
 
 export function applyCreatorScriptAdditiveExpansion(input: {

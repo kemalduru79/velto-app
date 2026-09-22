@@ -17,6 +17,7 @@ import {
   createCreatorScriptNarrationEditorialContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScript,
   countCreatorScriptWords,
@@ -47,6 +48,7 @@ import {
   mergeCreatorScriptSectionUnits,
   mergeCreatorScriptReplacementSections,
   shouldUseCreatorScriptSectionNativeGeneration,
+  selectCreatorScriptExpansionCandidates,
 } from "../lib/creator/creatorScript.ts";
 
 const sources = ["work", "freedom"].map((name, index) => ({
@@ -745,6 +747,17 @@ assert.ok(additiveTargets.every((target) => target.sectionId.startsWith("section
 assert.ok(additiveTargets.every((target) => target.requestedGainWords <= target.maxAdditionalWords));
 const remainingTargets = createCreatorScriptAdditiveExpansionPlan({ script: additiveHistoricalScript, plan: plan960, globalDeficitWords: 41 });
 assert.equal(remainingTargets.reduce((sum, target) => sum + target.requestedGainWords, 0), 41, "attempt two recomputes and allocates only the remaining deficit");
+const candidateOrder = ["section-1", "section-2", "section-3", "section-4", "section-5", "section-6"];
+const realResidualCandidates = [15, 18, 18, 17, 18, 15].map((gainWords, index) => ({ sectionId: candidateOrder[index], gainWords, value: candidateOrder[index] }));
+assert.deepEqual(selectCreatorScriptExpansionCandidates({ deficitWords: 30, candidates: realResidualCandidates, canonicalSectionOrder: candidateOrder }).map((candidate) => candidate.sectionId), ["section-1", "section-6"], "exact recovery uses two atomic 15-word candidates");
+assert.deepEqual(selectCreatorScriptExpansionCandidates({ deficitWords: 31, candidates: realResidualCandidates, canonicalSectionOrder: candidateOrder }).map((candidate) => candidate.sectionId), ["section-1", "section-4"], "minimum overshoot wins and canonical order breaks equivalent ties");
+assert.deepEqual(selectCreatorScriptExpansionCandidates({ deficitWords: 40, candidates: [{ sectionId: "section-1", gainWords: 12, value: 1 }, { sectionId: "section-2", gainWords: 13, value: 2 }], canonicalSectionOrder: candidateOrder }).map((candidate) => candidate.sectionId), ["section-1", "section-2"], "all positive candidates survive when their total cannot close the deficit");
+assert.equal(selectCreatorScriptExpansionCandidates({ deficitWords: 18, candidates: realResidualCandidates, canonicalSectionOrder: candidateOrder }).length, 1, "fewer additions win when overshoot is tied");
+assert.deepEqual(selectCreatorScriptExpansionCandidates({ deficitWords: 19, candidates: [{ sectionId: "section-1", gainWords: 20, value: "atomic-20" }, { sectionId: "section-2", gainWords: 10, value: "atomic-10a" }, { sectionId: "section-3", gainWords: 10, value: "atomic-10b" }], canonicalSectionOrder: candidateOrder }).map((candidate) => candidate.value), ["atomic-20"], "equal overshoot selects fewer atomic additions without truncation");
+assert.deepEqual(selectCreatorScriptExpansionCandidates({ deficitWords: 31, candidates: [{ sectionId: "section-1", gainWords: 16, value: 1 }, { sectionId: "section-2", gainWords: 16, value: 2 }, { sectionId: "section-3", gainWords: 15, value: 3 }, { sectionId: "section-4", gainWords: 15, value: 4 }], canonicalSectionOrder: candidateOrder }).map((candidate) => candidate.sectionId), ["section-1", "section-3"], "canonical section order resolves equivalent exact subsets");
+assert.ok(CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT.some((rule) => /count the spoken words/i.test(rule)));
+assert.ok(CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT.some((rule) => /Grounding, narration safety, section ownership, and documentary quality outrank local length guidance/i.test(rule)));
+assert.ok(CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT.some((rule) => /Never reach a word target by repeating established premises[\s\S]*filler[\s\S]*unsupported material/i.test(rule)));
 const conclusionSection = additiveHistoricalScript.sections.at(-1);
 assert.deepEqual(createCreatorScriptInsertionAnchors(conclusionSection).map(({ id, placementMode }) => ({ id, placementMode })), [{ id: "before_terminal_sentence", placementMode: "server_exact_offset" }]);
 const additiveApplied = applyCreatorScriptAdditiveExpansion({ section: conclusionSection, placementAnchorId: "before_terminal_sentence", additionalText: "Identity remains a grounded interpretation of remembered experience." });
@@ -892,8 +905,10 @@ assert.match(route, /counterview section must seriously test the master thesis/)
 assert.match(route, /creator_full_script_section/);
 assert.doesNotMatch(route, /long_form_batch|MAX_INITIAL_GENERATION_CALLS|splitCreatorScriptSectionPlan/);
 assert.match(route, /max_output_tokens: getCreatorScriptOutputTokenBudget/);
+assert.match(route, /firstPassBudgetContract: CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT/);
+assert.match(route, /Local ranges guide first-pass completeness; the server's canonical whole-script counter remains duration authority/);
 assert.match(route, /sectionWordBudget: sectionNative \? \{\s*minWords: requestedSections\[0\]\.minimumWords,\s*targetWords: requestedSections\[0\]\.targetWords,\s*maxWords: requestedSections\[0\]\.maximumWords/);
-assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} words, aiming near \$\{requestedSections\[0\]\.targetWords\} words/);
+assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} spoken words, aiming near \$\{requestedSections\[0\]\.targetWords\}/);
 assert.match(route, /This call returns one section only\. Do not try to fit the complete script's global word count into this section/);
 assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
 assert.match(route, /maxRepairAttempts: sectionNative \? 2 : 1/);
@@ -906,7 +921,11 @@ assert.match(route, /Do not rewrite, summarize, paraphrase, delete, or return ex
 assert.ok((route.match(/documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT/g) || []).length >= 3, "shared documentary writing guidance reaches initial generation, additive expansion, and section regeneration");
 assert.match(route, /Continue the section's local rhetorical movement[\s\S]*Do not repeat its thesis[\s\S]*natural documentary sentence rhythm/);
 assert.match(route, /Treat sectionControl as non-narratable metadata[\s\S]*assume establishedPremises are known/);
-assert.match(route, /acceptedReplacements\.length === 0[\s\S]*repairedSectionIds = Array\.from\(new Set\(\[[\s\S]*acceptedReplacements\.map/);
+assert.match(route, /validatedCandidates\.length === 0[\s\S]*selectedCandidates[\s\S]*repairedSectionIds = Array\.from\(new Set\(\[[\s\S]*acceptedReplacements\.map/);
+assert.match(route, /selectCreatorScriptExpansionCandidates/);
+assert.match(route, /CREATOR_SCRIPT_DURATION_EXPANSION_SELECTION/);
+assert.match(route, /validButNotNeededSectionIds/);
+assert.match(route, /repairDependency[\s\S]*repairAddedWords[\s\S]*repairOvershootWords/);
 assert.doesNotMatch(route, /repairedSectionIds = Array\.from\(new Set\(\[[\s\S]{0,160}sectionsToRepair\.map/);
 assert.match(route, /requiredFinalMinWords/);
 assert.match(route, /Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence/);
