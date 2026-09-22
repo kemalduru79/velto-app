@@ -60,6 +60,16 @@ assert.equal(
   "",
   "metadata-heavy briefs without a canonical direction must fail closed",
 );
+assert.equal(
+  resolveCreatorMarketEvidenceSubject({
+    briefTopic: detailedBrief,
+    selectedDirectionId: "recommended",
+    recommendedIdea: { title: "   " },
+    videoIdeas: [{ title: "" }],
+  }),
+  "",
+  "empty or malformed optional direction titles must not expose master-brief metadata",
+);
 
 const snapshot = buildCreatorProjectState({
   brief: {
@@ -133,6 +143,11 @@ assert.match(handler, /topic: creatorMarketEvidenceSubject/);
 assert.match(handler, /subject: creatorMarketEvidenceSubject/);
 assert.match(handler, /strategySelection:\s*\{\s*directionId: creatorSelectedStrategyDirectionId,\s*hook: creatorSelectedHookPattern/);
 assert.doesNotMatch(handler, /topic: normalizeCreatorTopicAuthority\(input\)/);
+const scriptGenerationHandler = page.slice(
+  page.indexOf("const handleCreatorProductionPackage = async"),
+  page.indexOf("const handleApproveCreatorScriptAndBuildScenes = async"),
+);
+assert.match(scriptGenerationHandler, /topic: normalizeCreatorTopicAuthority\(input\),\s*researchSubject: creatorMarketEvidenceSubject,/);
 assert.match(marketPanel, /<strong>\{creatorMarketEvidenceSubject\}<\/strong>/);
 assert.doesNotMatch(marketPanel, /<strong>\{input\.trim\(\)\}<\/strong>/);
 assert.match(marketPanel, /youtubeResearchVideos\.length === 0/);

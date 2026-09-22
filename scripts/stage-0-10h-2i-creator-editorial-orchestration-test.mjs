@@ -4,6 +4,8 @@ import {
   CreatorEditorialPipelineError,
   runCreatorEditorialScriptPipeline,
 } from "../lib/research/creatorEditorialPipeline.client.ts";
+import { getCreatorTopicAuthorityIdentity } from "../lib/creator/creatorWorkflowAuthority.ts";
+import { createResearchOrchestrationPlan } from "../lib/research/researchOrchestration.ts";
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -93,11 +95,12 @@ assert.equal(result.editorialSummary.researchSourceCount, 2);
 assert.equal(result.editorialSummary.readinessStatus, "ready");
 assert.equal(result.editorialSummary.editorialReadinessScore, 88);
 
-const longTopic = `${"A".repeat(25_000)} canonical-tail`;
+const longTopic = `${"PROJECT THYNEL premium faceless documentary for YouTube. ".repeat(420)}Memory & Identity`;
 const longTopicCalls = [];
 await runCreatorEditorialScriptPipeline({
   accessToken: "test-token",
   topic: longTopic,
+  researchSubject: "Memory & Identity",
   scriptPlanRequest: {},
   fetchImpl: async (url, init) => {
     const body = JSON.parse(String(init?.body || "{}"));
@@ -111,11 +114,43 @@ await runCreatorEditorialScriptPipeline({
     return jsonResponse({ success: true, productionPackage: {}, scriptPlan: {} });
   },
 });
-assert.equal(longTopicCalls[0].body.topic.length, 600);
+assert.equal(longTopicCalls[0].body.topic, "Memory & Identity");
 assert.equal(longTopicCalls[0].body.topicAuthority, longTopic);
-assert.match(longTopicCalls[1].body.subject, new RegExp(`^${"A".repeat(600)}`));
-assert.equal(longTopicCalls[2].body.topic, longTopic.slice(0, 600));
+assert.deepEqual(
+  getCreatorTopicAuthorityIdentity(longTopicCalls[0].body.topicAuthority),
+  getCreatorTopicAuthorityIdentity(longTopic),
+  "concise subject selection must not change canonical brief authority or its hash",
+);
+assert.equal(longTopicCalls[1].body.subject, "Memory & Identity");
+assert.equal(longTopicCalls[2].body.topic, "Memory & Identity");
+assert.equal(longTopicCalls[3].body.topic, "Memory & Identity");
 assert.equal(longTopicCalls[3].body.topicAuthority, longTopic);
+assert.doesNotMatch(longTopicCalls[1].body.subject, /THYNEL|YouTube|premium faceless documentary/i);
+assert.doesNotMatch(longTopicCalls[2].body.topic, /THYNEL|YouTube|premium faceless documentary/i);
+const memoryResearchPlan = createResearchOrchestrationPlan({ subject: longTopicCalls[1].body.subject });
+assert.equal(memoryResearchPlan.lanes[0].input.query, "Memory & Identity");
+assert.equal(
+  memoryResearchPlan.lanes.find((lane) => lane.purpose === "counter_evidence")?.input.query,
+  "Memory & Identity limitations alternative explanations counter evidence criticism",
+);
+
+const legacyConciseCalls = [];
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: "How does sleep affect memory?",
+  scriptPlanRequest: {},
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
+    legacyConciseCalls.push({ url, body });
+    if (url === "/api/creator-research") return jsonResponse({ success: true, sources: [{ sourceId: "sleep-source" }] });
+    if (url === "/api/creator-editorial-analysis") return jsonResponse({ success: true, scriptContext, readiness: { status: "ready" } });
+    return jsonResponse({ success: true, productionPackage: {}, scriptPlan: {} });
+  },
+});
+assert.equal(legacyConciseCalls[1].body.subject, "How does sleep affect memory?");
+assert.equal(legacyConciseCalls[2].body.topic, "How does sleep affect memory?");
+assert.equal(legacyConciseCalls[3].body.topic, "How does sleep affect memory?");
+assert.equal(legacyConciseCalls[0].body.topicAuthority, "How does sleep affect memory?");
 
 await assert.rejects(
   () => runCreatorEditorialScriptPipeline({
@@ -258,7 +293,7 @@ assert.equal(
 );
 assert.match(
   createPage,
-  /const handleCreatorProductionPackage[\s\S]*?runCreatorEditorialScriptPipeline\(\{[\s\S]*?operation: "generate_full_script"/,
+  /const handleCreatorProductionPackage[\s\S]*?runCreatorEditorialScriptPipeline\(\{[\s\S]*?researchSubject: creatorMarketEvidenceSubject,[\s\S]*?operation: "generate_full_script"/,
 );
 assert.match(
   createPage,

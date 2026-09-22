@@ -14680,6 +14680,7 @@ const generateSceneImage = async (
       const result = await runCreatorEditorialScriptPipeline({
         accessToken,
         topic: normalizeCreatorTopicAuthority(input),
+        researchSubject: creatorMarketEvidenceSubject,
         creatorProfile,
         scriptPlanRequest: {
           operation: "generate_full_script",

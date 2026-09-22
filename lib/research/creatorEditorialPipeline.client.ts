@@ -36,6 +36,7 @@ export class CreatorEditorialPipelineError extends Error {
 export type CreatorEditorialPipelineInput = {
   accessToken: string;
   topic: string;
+  researchSubject?: string;
   creatorProfile?: unknown;
   scriptPlanRequest: Record<string, unknown>;
   includeRecentContext?: boolean;
@@ -223,7 +224,7 @@ export async function runCreatorEditorialScriptPipeline(
     });
   }
   const topicAuthority = normalizeCreatorTopicAuthority(input.topic);
-  const topic = clean(topicAuthority, 600);
+  const topic = clean(input.researchSubject, 600) || clean(topicAuthority, 600);
   if (!topicAuthority) {
     throw new CreatorEditorialPipelineError({
       stage: "research",

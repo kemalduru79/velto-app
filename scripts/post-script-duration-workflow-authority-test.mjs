@@ -210,6 +210,7 @@ assert.match(scriptBuildHandler, /CREATOR_SCRIPT_GENERATION_DISPATCH/);
 assert.match(scriptBuildHandler, /creatorScriptEditorialState === "stale" \? "explicit_rebuild" : "explicit_first_generation"/);
 assert.equal((scriptBuildHandler.match(/operation: "generate_full_script"/g) || []).length, 1);
 assert.equal((scriptBuildHandler.match(/runCreatorEditorialScriptPipeline\(\{/g) || []).length, 1);
+assert.equal((scriptBuildHandler.match(/researchSubject: creatorMarketEvidenceSubject/g) || []).length, 1);
 assert.match(scriptBuildHandler, /const accepted = acceptGeneratedCreatorScript\([\s\S]*const replacement = await persistCreatorScriptReplacement/);
 assert.match(scriptBuildHandler, /if \(!replacement\) return;[\s\S]*setCreatorScript\(replacement\.script\)/);
 const scriptBuildCatch = scriptBuildHandler.slice(scriptBuildHandler.indexOf("} catch (error)"));
