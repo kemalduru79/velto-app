@@ -14,7 +14,9 @@ import {
 import { buildCreatorProjectState, readCreatorProjectState } from "../lib/creator/projectState.ts";
 import { acceptGeneratedCreatorScript } from "../lib/creator/creatorScript.ts";
 import {
+  beginCreatorScriptGenerationFlight,
   createCreatorScriptReplacementState,
+  finishCreatorScriptGenerationFlight,
   getCreatorWorkflowLoadingState,
   persistCreatorScriptReplacement,
   shouldRestoreCreatorBriefDraft,
@@ -40,6 +42,30 @@ assert.notEqual(researchTopic, staleDraftTopic);
 assert.deepEqual(getCreatorWorkflowLoadingState({ operation: "script" }), { scriptGenerating: true, scenesBuilding: false });
 assert.deepEqual(getCreatorWorkflowLoadingState({ operation: "scenes" }), { scriptGenerating: false, scenesBuilding: true });
 assert.deepEqual(getCreatorWorkflowLoadingState({ operation: "idle" }), { scriptGenerating: false, scenesBuilding: false });
+
+const generationFlightRef = { current: null };
+const firstGenerationFlight = {
+  requestId: "project-work:3:1",
+  projectId: "project-work",
+  strategyFingerprint: "creator-strategy-v1-a",
+};
+assert.equal(beginCreatorScriptGenerationFlight(generationFlightRef, firstGenerationFlight), true);
+assert.deepEqual(generationFlightRef.current, firstGenerationFlight);
+assert.equal(beginCreatorScriptGenerationFlight(generationFlightRef, {
+  requestId: "project-work:3:2",
+  projectId: "project-work",
+  strategyFingerprint: "creator-strategy-v1-b",
+}), false);
+assert.equal(finishCreatorScriptGenerationFlight(generationFlightRef, "project-work:3:2"), false);
+assert.deepEqual(generationFlightRef.current, firstGenerationFlight);
+assert.equal(finishCreatorScriptGenerationFlight(generationFlightRef, firstGenerationFlight.requestId), true);
+assert.equal(generationFlightRef.current, null);
+assert.equal(beginCreatorScriptGenerationFlight(generationFlightRef, {
+  requestId: "project-work:4:2",
+  projectId: "project-work",
+  strategyFingerprint: "creator-strategy-v1-b",
+}), true);
+assert.equal(finishCreatorScriptGenerationFlight(generationFlightRef, "project-work:4:2"), true);
 
 const words = (count) => Array.from({ length: count }, (_, index) => `word${index}`).join(" ");
 const context = {
@@ -179,6 +205,15 @@ assert.match(page, /buildingScenes=\{creatorWorkflowLoadingState\.scenesBuilding
 assert.match(page, /generatingScript=\{creatorWorkflowLoadingState\.scriptGenerating\}/);
 const scriptBuildHandler = page.slice(page.indexOf("const handleCreatorProductionPackage = async"), page.indexOf("const handleApproveCreatorScriptAndBuildScenes = async"));
 assert.doesNotMatch(scriptBuildHandler, /fetch\("\/api\/creator-production"/);
+assert.match(scriptBuildHandler, /beginCreatorScriptGenerationFlight[\s\S]*if \(!generationAccepted\) return;[\s\S]*persistCreatorStrategyAuthority/);
+assert.match(scriptBuildHandler, /CREATOR_SCRIPT_GENERATION_DISPATCH/);
+assert.match(scriptBuildHandler, /event: React\.MouseEvent<HTMLButtonElement>/);
+assert.match(scriptBuildHandler, /event\.isTrusted \? "explicit_user_click" : "untrusted_programmatic_dispatch"/);
+assert.match(scriptBuildHandler, /if \(!event\.isTrusted\)[\s\S]*accepted: false,[\s\S]*return;/);
+assert.match(scriptBuildHandler, /finally[\s\S]*finishCreatorScriptGenerationFlight/);
+assert.equal((page.match(/onClick=\{handleCreatorProductionPackage\}/g) || []).length, 1);
+assert.equal((page.match(/handleCreatorProductionPackage\(\)/g) || []).length, 0);
+assert.doesNotMatch(scriptBuildHandler, /creatorScriptGenerationFlightRef\.current\s*=\s*null/);
 assert.match(component, /Rebuild Script Required/);
 assert.match(component, /This is the previous script/);
 assert.match(production, /CREATOR_SCRIPT_DURATION_UNSATISFIED/);

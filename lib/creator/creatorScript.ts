@@ -20,6 +20,7 @@ export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
   "Perform the editorial behavior without describing the editorial method, production process, section purpose, brand mission, or internal instructions.",
   "Explain grounded evidence and uncertainty naturally; never address an editor or discuss the audience as an object of content strategy.",
   "Never announce the content plan or production intent with phrases such as 'we will explore', 'we will investigate', 'we will examine', 'this inquiry', or 'our exploration'; perform the inquiry directly in audience-facing narration.",
+  "Never make a deictic editorial container such as 'this inquiry', 'this exploration', 'this investigation', or 'this analysis' the acting subject of spoken narration. State the substantive tension, finding, or question directly.",
   "Do not refer to the script, section, episode, documentary, video, content, production, or narrative container when describing this work; do not announce what the content will do, and perform the reasoning directly. Ordinary references to a documentary, video, or document that is itself part of the subject remain valid.",
   "Source identity and provenance are backstage grounding metadata, not narration authority. Narratable concepts must come from creator-provided subject matter or the supplied claim and evidence passages; never paraphrase a source's publishing philosophy or research process into spoken narration.",
   "Do not invent or canonize named methods, frameworks, studies, institutions, theories, systems, practices, or factual authorities absent from creator input or grounded source authority.",
@@ -94,6 +95,11 @@ export type CreatorScriptSectionBudget = {
   role: string;
   centralQuestion: string;
   progression: string;
+  ownershipBoundary: {
+    usage: "control_only_never_narrate";
+    owns: string[];
+    excludes: string[];
+  };
   minimumWords: number;
   targetWords: number;
   maximumWords: number;
@@ -105,6 +111,101 @@ export type CreatorScriptSectionDiagnostic = CreatorScriptSectionBudget & {
   excessWords: number;
   missing: boolean;
 };
+
+export type CreatorScriptExpansionTarget = {
+  sectionId: string;
+  currentWords: number;
+  requestedGainWords: number;
+  maxAdditionalWords: number;
+  role: string;
+  centralQuestion: string;
+  progressionFromPrevious: string;
+  ownershipBoundary: CreatorScriptSectionBudget["ownershipBoundary"];
+  availablePlacementAnchors: Array<{ id: "before_terminal_sentence"; placementMode: "server_exact_offset" }>;
+};
+
+export function createCreatorScriptInsertionAnchors(section: Pick<CreatorScriptSection, "text">) {
+  const starts = [0];
+  for (const match of section.text.matchAll(/[.!?][”"']?\s+(?=\S)/gu)) {
+    starts.push((match.index ?? 0) + match[0].length);
+  }
+  const offset = starts.at(-1) ?? 0;
+  return offset > 0 && offset < section.text.length
+    ? [{ id: "before_terminal_sentence" as const, placementMode: "server_exact_offset" as const, offset }]
+    : [];
+}
+
+export function createCreatorScriptAdditiveExpansionPlan(input: {
+  script: CreatorScript;
+  plan: CreatorScriptSectionBudget[];
+  globalDeficitWords: number;
+}) {
+  const diagnostics = getCreatorScriptSectionDiagnostics(input.script, input.plan);
+  const sectionById = new Map(input.script.sections.map((section) => [section.id, section]));
+  const ranked = diagnostics
+    .filter((section) => section.kind === "body")
+    .concat(diagnostics.filter((section) => section.kind === "opening"))
+    .concat(diagnostics.filter((section) => section.kind === "conclusion"))
+    .map((section) => ({
+      section,
+      anchors: createCreatorScriptInsertionAnchors(sectionById.get(section.id)!),
+      capacity: Math.max(0, section.maximumWords - section.actualWords),
+    }))
+    .filter((item) => item.capacity > 0 && item.anchors.length > 0);
+  const allocations = new Map(ranked.map((item) => [item.section.id, 0]));
+  let remaining = Math.max(0, Math.floor(input.globalDeficitWords));
+  for (const kind of ["body", "opening", "conclusion"] as const) {
+    const tier = ranked.filter((item) => item.section.kind === kind);
+    while (remaining > 0) {
+      let progressed = false;
+      for (const item of tier) {
+        const allocated = allocations.get(item.section.id) || 0;
+        if (allocated >= item.capacity) continue;
+        allocations.set(item.section.id, allocated + 1);
+        remaining -= 1;
+        progressed = true;
+        if (remaining === 0) break;
+      }
+      if (!progressed) break;
+    }
+    if (remaining === 0) break;
+  }
+  if (remaining > 0) return [];
+  return ranked.flatMap(({ section, anchors, capacity }): CreatorScriptExpansionTarget[] => {
+    const requestedGainWords = allocations.get(section.id) || 0;
+    return requestedGainWords > 0 ? [{
+      sectionId: section.id,
+      currentWords: section.actualWords,
+      requestedGainWords,
+      maxAdditionalWords: capacity,
+      role: section.role,
+      centralQuestion: section.centralQuestion,
+      progressionFromPrevious: section.progression,
+      ownershipBoundary: section.ownershipBoundary,
+      availablePlacementAnchors: anchors.map(({ id, placementMode }) => ({ id, placementMode })),
+    }] : [];
+  });
+}
+
+export function applyCreatorScriptAdditiveExpansion(input: {
+  section: CreatorScriptSection;
+  placementAnchorId: string;
+  additionalText: string;
+}) {
+  const anchors = createCreatorScriptInsertionAnchors(input.section);
+  const matches = anchors.filter((anchor) => anchor.id === input.placementAnchorId);
+  if (matches.length !== 1) throw new Error("CREATOR_SCRIPT_EXPANSION_ANCHOR_INVALID");
+  const additionalText = clean(input.additionalText, 20_000);
+  if (!additionalText) throw new Error("CREATOR_SCRIPT_EXPANSION_TEXT_REQUIRED");
+  const offset = matches[0].offset;
+  const insertedText = `${additionalText} `;
+  const text = `${input.section.text.slice(0, offset)}${insertedText}${input.section.text.slice(offset)}`;
+  const insertion = { start: offset, end: offset + insertedText.length };
+  if (`${text.slice(0, insertion.start)}${text.slice(insertion.end)}` !== input.section.text) {
+    throw new Error("CREATOR_SCRIPT_EXPANSION_IMMUTABILITY_FAILED");
+  }
+  return { text, insertion, insertedText };
+}
 
 export class CreatorScriptDurationUnsatisfiedError extends Error {
   code = "CREATOR_SCRIPT_DURATION_UNSATISFIED" as const;
@@ -326,13 +427,14 @@ export function createCreatorScriptNarrationAuthority(input: {
   editorialContext: ScriptPlannerEditorialContext;
   creatorProvidedText?: unknown[];
 }) {
+  const narrationContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
   const creatorProvided = (input.creatorProvidedText || []).flatMap((value) => {
     if (typeof value === "string") return [value];
     try { return [JSON.stringify(value)]; } catch { return []; }
   });
   const grounded = [
-    ...input.editorialContext.claims.map((claim) => claim.text),
-    ...input.editorialContext.evidence.flatMap((evidence) => [evidence.excerpt || "", evidence.contextNote || ""]),
+    ...narrationContext.claims.map((claim) => claim.text),
+    ...narrationContext.evidence.flatMap((evidence) => [evidence.excerpt || "", evidence.contextNote || ""]),
   ];
   return normalizeCreatorScriptAuthorityText([...creatorProvided, ...grounded].filter(Boolean).join("\n"));
 }
@@ -346,10 +448,38 @@ export function createCreatorScriptNarrationAuthority(input: {
 export function createCreatorScriptNarrationEditorialContext(
   context: ScriptPlannerEditorialContext,
 ): ScriptPlannerEditorialContext {
+  const controlOnlySourceIds = new Set(context.sources
+    .filter((source) => {
+      try {
+        const url = new URL(source.url);
+        return /(^|\.)thnkfirst\.com$/iu.test(url.hostname)
+          && /^\/applied-inquiry(?:\/|$)/iu.test(url.pathname);
+      } catch {
+        return false;
+      }
+    })
+    .map((source) => source.sourceId));
+  const evidence = context.evidence.filter((item) => !controlOnlySourceIds.has(item.sourceId));
+  const narrationEvidenceIds = new Set(evidence.map((item) => item.evidenceId));
+  const claims = context.claims
+    .map((claim) => ({
+      ...claim,
+      supportingEvidenceIds: claim.supportingEvidenceIds.filter((id) => narrationEvidenceIds.has(id)),
+      counterEvidenceIds: claim.counterEvidenceIds.filter((id) => narrationEvidenceIds.has(id)),
+      contextualEvidenceIds: claim.contextualEvidenceIds.filter((id) => narrationEvidenceIds.has(id)),
+    }))
+    .filter((claim) => [
+      ...claim.supportingEvidenceIds,
+      ...claim.counterEvidenceIds,
+      ...claim.contextualEvidenceIds,
+    ].length > 0);
+  const narrationSourceIds = new Set(evidence.map((item) => item.sourceId));
   return {
     ...context,
     editorialConstitution: "Backstage editorial controls are enforced separately and are not narration material.",
-    sources: context.sources.map((source) => ({
+    claims,
+    evidence,
+    sources: context.sources.filter((source) => narrationSourceIds.has(source.sourceId)).map((source) => ({
       sourceId: source.sourceId,
       title: "Grounding source",
       url: "",
@@ -372,13 +502,15 @@ export function getCreatorScriptNarrationSafetyViolations(input: {
   const internalPatterns: Array<{ marker: string; pattern: RegExp }> = [
     { marker: "publishing_brand", pattern: /\bTHYNEL\b/giu },
     { marker: "invalid_named_internal_artifact", pattern: /\bTHNK\s+Research\b/giu },
-    { marker: "production_intent_meta", pattern: /\b(?:(?:this|our)\s+(?:inquiry|exploration|investigation))\s+(?:does\s+not\s+seek|seeks?|aims?|will|explores?|examines?|reveals?|shows?)\b/giu },
+    { marker: "production_intent_meta", pattern: /\b(?:(?:this|our)\s+(?:inquiry|exploration|investigation|analysis))\s+(?:does\s+not\s+seek|seeks?|aims?|will|opens?|asks?|invites?|frames?|introduces?|explores?|examines?|reveals?|shows?)\b/giu },
     { marker: "narrative_process_meta", pattern: /\bwe\s+(?:will|aim\s+to|seek\s+to)\s+(?:investigate|explore|examine|consider)\b/giu },
     {
       marker: "production_self_reference",
       pattern: /\b(?:(?:(?:in|within|later\s+in|earlier\s+in)\s+(?:this|our)\s+(?:script|documentary|episode|video|section|content|production|narrative))|(?:(?:this|our)\s+(?:script|documentary|episode|video|section|content|production|narrative)\s*,?\s*(?:we\s+(?:will|aim\s+to|seek\s+to)|will|aims?\s+to|seeks?\s+to|explores?|examines?|investigates?|considers?|shows?|reveals?|asks?|argues?|traces?|focuses?)))\b/giu,
     },
     { marker: "editorial_methodology", pattern: /\b(?:our|the|this)\s+editorial\s+(?:approach|method|methodology|commitment|mission|purpose)\b/giu },
+    { marker: "editorial_methodology", pattern: /\b(?:the\s+)?(?:working\s+)?inquiry\s+(?:practice|approach|method(?:ology)?)\s+behind\s+(?:this|our)\s+(?:exploration|inquiry|investigation|analysis)\b/giu },
+    { marker: "editorial_methodology", pattern: /\bthis\s+(?:understanding|perspective|view)\s+aligns?\s+with\s+(?:the\s+)?(?:principle|practice|approach)\s+that\s+inquiry\b/giu },
     { marker: "editorial_alignment", pattern: /\b(?:this inquiry|this project|this story)\s+(?:aligns?|reflects?|embodies?|supports?)\b/giu },
     { marker: "audience_as_strategy", pattern: /\b(?:we|this (?:documentary|inquiry))\s+(?:invite|ask|encourage)\s+(?:the\s+)?(?:viewer|viewers|audience)\b/giu },
   ];
@@ -497,62 +629,73 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   const targets = weights.map((weight) => Math.floor(duration.targetWordCount * weight));
   targets[targets.length - 1] += duration.targetWordCount - targets.reduce((sum, value) => sum + value, 0);
   const longForm = duration.targetWordCount > getCreatorScriptSafeSingleCallTargetWords();
-  const bodyFunctions = [
+  const bodyFunctions: Array<Pick<CreatorScriptSectionBudget, "role" | "centralQuestion" | "progression" | "ownershipBoundary">> = [
     {
-      role: "Define the phenomenon and sharpen the master question without explaining the mechanism yet",
-      centralQuestion: "What exactly is happening, and why is the familiar framing incomplete?",
-      progression: "Turns the opening stakes into a precise phenomenon the audience can investigate.",
+      role: "Define and frame the phenomenon precisely",
+      centralQuestion: "What exactly counts as the phenomenon, what does not, and which familiar framing needs correction?",
+      progression: "Converts the opening tension into a precise subject the rest of the argument can explain.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["definition", "framing", "misconception_correction"], excludes: ["opening_thesis_restatement", "mechanism", "evidence", "social_formation", "material_consequence"] },
     },
     {
       role: "Explain the central mechanism or causal process",
       centralQuestion: "How does the phenomenon actually work, step by step?",
       progression: "Adds causal explanation rather than restating that the phenomenon exists.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["mechanism", "causal_process"], excludes: ["evidence_catalog", "limits", "social_formation", "material_consequence"] },
     },
     {
-      role: "Test the mechanism against the strongest concrete evidence or case",
-      centralQuestion: "What evidence, case, or observation most clearly tests the explanation?",
-      progression: "Moves from explanation to grounded examination of what supports it.",
+      role: "Demonstrate the mechanism through the strongest grounded evidence or case",
+      centralQuestion: "What concrete evidence, case, or observation demonstrates whether the proposed mechanism operates as described?",
+      progression: "Moves from explaining the process to showing what grounded evidence demonstrates it.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["grounded_demonstration", "concrete_case"], excludes: ["mechanism_reteaching", "limits", "social_formation", "material_consequence"] },
     },
     input.hasMaterialCounterview
       ? {
           role: "Present and seriously test the strongest evidence-backed counterview or alternative explanation",
           centralQuestion: "What is the strongest credible challenge to the emerging thesis, and what survives it?",
           progression: "Introduces genuine tension and limits instead of token balance language.",
+          ownershipBoundary: { usage: "control_only_never_narrate", owns: ["counterview", "thesis_stress_test"], excludes: ["mechanism_summary", "evidence_summary", "social_formation", "material_consequence"] },
         }
       : {
           role: "Examine limits, uncertainty, and where the explanation may break down",
           centralQuestion: "What remains uncertain, conditional, or resistant to the main explanation?",
           progression: "Tests the thesis without inventing an unsupported opposing claim.",
+          ownershipBoundary: { usage: "control_only_never_narrate", owns: ["limits", "uncertainty", "scope_conditions"], excludes: ["mechanism_summary", "evidence_summary", "social_formation", "material_consequence"] },
         },
     {
-      role: "Trace the social, relational, or systemic dimension",
-      centralQuestion: "How does this move beyond the individual into relationships, institutions, or culture?",
-      progression: "Adds a new scale of consequence rather than repeating the mechanism.",
+      role: "Explain social, relational, or systemic formation and influence",
+      centralQuestion: "How do interactions, shared narratives, institutions, or culture shape or reinforce the phenomenon?",
+      progression: "Moves from individual limits to how the phenomenon is formed or altered through social and systemic interaction.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["social_formation", "relational_influence", "systemic_interaction"], excludes: ["downstream_harm", "decision_outcome", "legal_outcome", "material_consequence"] },
     },
     {
-      role: "Develop a second-order consequence that follows from the earlier evidence",
-      centralQuestion: "If the argument is true, what less obvious consequence follows next?",
-      progression: "Advances beyond first-order effects into a supported downstream implication.",
+      role: "Develop material downstream consequences and second-order effects",
+      centralQuestion: "What materially happens in lives, decisions, institutions, responsibility, or outcomes when the phenomenon is believed or acted upon?",
+      progression: "Builds on formation and influence by tracing supported downstream effects rather than explaining how the phenomenon was formed.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["material_consequence", "downstream_effect", "second_order_impact"], excludes: ["social_formation_reteaching", "mechanism_reteaching", "evidence_summary"] },
     },
     {
       role: "Examine the personal, moral, or existential consequence",
       centralQuestion: "What does this change about agency, responsibility, identity, or meaning?",
       progression: "Brings the established argument to its deepest human implication.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["human_implication"], excludes: ["section_recap", "conclusion_synthesis"] },
     },
     {
       role: "Reconcile competing interpretations without flattening their disagreement",
       centralQuestion: "Which competing interpretation best fits the evidence, and what cannot be reconciled?",
       progression: "Synthesizes established tensions while preserving material uncertainty.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["interpretation_reconciliation"], excludes: ["supporting_section_reteaching"] },
     },
     {
       role: "Apply the argument to a distinct practical or future-facing consequence",
       centralQuestion: "Where does this argument lead when decisions or future conditions change?",
       progression: "Extends the argument into a new supported domain rather than paraphrasing it.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["distinct_application"], excludes: ["prior_consequence_duplication"] },
     },
     {
       role: "Identify the final unresolved tension before synthesis",
       centralQuestion: "What decisive question remains unanswered after the evidence is weighed?",
       progression: "Creates the unresolved tension that the conclusion must honestly carry forward.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["unresolved_tension"], excludes: ["conclusion_synthesis", "argument_recap"] },
     },
   ];
   const selectedBodyFunctions = bodyFunctions.slice(0, bodyCount);
@@ -576,18 +719,23 @@ export function createCreatorScriptSectionBudgetPlan(input: {
       role: kind === "opening"
         ? "Establish the master question, stakes, and selected hook"
         : kind === "conclusion"
-          ? "Synthesize the answer, preserve uncertainty, and end on the strongest unresolved question"
+          ? "Derive the highest-order implication for the master question, preserve uncertainty, and end on one unresolved question"
           : longForm ? bodyFunction.role : `Develop grounded documentary argument ${index}`,
       centralQuestion: kind === "opening"
         ? "What question and stakes should make the audience need the answer?"
         : kind === "conclusion"
-          ? "What can now be concluded, and what important uncertainty must remain open?"
+          ? "What highest-order implication does the established argument create for the master question, and what single unresolved question follows from that implication?"
           : longForm ? bodyFunction.centralQuestion : `What distinct part of the argument belongs in section ${index}?`,
       progression: kind === "opening"
-        ? "Opens the inquiry without prematurely resolving it."
+        ? "Creates unresolved audience stakes before definition, mechanism, and evidence are introduced."
         : kind === "conclusion"
-          ? "Synthesizes the progression without repeating the body section summaries."
+          ? "Moves forward from established consequences to their deepest implication for the master question rather than tracing backward through the section sequence."
           : longForm ? bodyFunction.progression : "Advances the narrative beyond the previous section.",
+      ownershipBoundary: kind === "opening"
+        ? { usage: "control_only_never_narrate", owns: ["human_stakes", "master_tension", "master_question"], excludes: ["full_definition", "mechanism", "evidence", "limits", "social_formation", "material_consequence"] }
+        : kind === "conclusion"
+          ? { usage: "control_only_never_narrate", owns: ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_demonstration", "limits_inventory", "social_formation", "consequence_inventory", "section_by_section_recap"] }
+          : longForm ? bodyFunction.ownershipBoundary : { usage: "control_only_never_narrate", owns: ["distinct_argument_step"], excludes: ["neighboring_section_repetition"] },
       minimumWords: Math.floor(targetWords * CREATOR_SCRIPT_MIN_DURATION_RATIO),
       targetWords,
       maximumWords: Math.ceil(targetWords * CREATOR_SCRIPT_MAX_DURATION_RATIO),
@@ -639,23 +787,57 @@ export function getCreatorScriptEditorialDistinctivenessFailures(
   script: CreatorScript,
   plan: CreatorScriptSectionBudget[],
 ) {
+  const failureIds = new Set(
+    getCreatorScriptEditorialDistinctivenessDiagnostics(script, plan)
+      .map((failure) => failure.sectionId),
+  );
+  return plan.filter((section) => failureIds.has(section.id));
+}
+
+export type CreatorScriptEditorialDistinctivenessDiagnostic = {
+  sectionId: string;
+  comparedSectionId?: string;
+  failureType: "heading_insufficient_distinct_tokens" | "heading_token_overlap";
+  role: string;
+  meaningfulHeadingTokenCount: number;
+  overlapRatio?: number;
+};
+
+export function getCreatorScriptEditorialDistinctivenessDiagnostics(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+): CreatorScriptEditorialDistinctivenessDiagnostic[] {
   assertCreatorScriptMatchesSectionPlan(script, plan);
   const bodySections = script.sections.filter((section) => section.kind === "body");
-  const failures = new Set<string>();
+  const budgetById = new Map(plan.map((section) => [section.id, section]));
+  const failures: CreatorScriptEditorialDistinctivenessDiagnostic[] = [];
   for (let index = 0; index < bodySections.length; index += 1) {
     const section = bodySections[index];
     const tokens = new Set(creatorScriptHeadingTokens(section.heading));
-    if (tokens.size < 2) failures.add(section.id);
+    if (tokens.size < 2) failures.push({
+      sectionId: section.id,
+      failureType: "heading_insufficient_distinct_tokens",
+      role: budgetById.get(section.id)?.role || "",
+      meaningfulHeadingTokenCount: tokens.size,
+    });
     for (let priorIndex = 0; priorIndex < index; priorIndex += 1) {
       const prior = bodySections[priorIndex];
       const priorTokens = new Set(creatorScriptHeadingTokens(prior.heading));
       const smallerSize = Math.min(tokens.size, priorTokens.size);
       if (smallerSize < 2) continue;
       const intersection = [...tokens].filter((token) => priorTokens.has(token)).length;
-      if (intersection / smallerSize >= 0.72) failures.add(section.id);
+      const overlapRatio = intersection / smallerSize;
+      if (overlapRatio >= 0.72) failures.push({
+        sectionId: section.id,
+        comparedSectionId: prior.id,
+        failureType: "heading_token_overlap",
+        role: budgetById.get(section.id)?.role || "",
+        meaningfulHeadingTokenCount: tokens.size,
+        overlapRatio,
+      });
     }
   }
-  return plan.filter((section) => failures.has(section.id));
+  return failures;
 }
 
 export function assertCreatorScriptHasDistinctEditorialSections(
@@ -750,6 +932,26 @@ export function getCreatorScriptDurationRepairSections(input: {
   return controlledCapacity >= residualWords ? selected : [];
 }
 
+export function createCreatorScriptRepairTargets(input: {
+  sections: CreatorScriptSectionDiagnostic[];
+  direction: "expand" | "compress" | "rebalance_sections" | "differentiate_sections";
+}) {
+  return input.sections.map((section) => ({
+    sectionId: section.id,
+    direction: input.direction,
+    beforeWords: section.actualWords,
+    requiredFinalMinWords: section.minimumWords,
+    requiredFinalTargetWords: section.targetWords,
+    requiredFinalMaxWords: section.maximumWords,
+    minimumRequiredGain: input.direction === "expand"
+      ? Math.max(0, section.minimumWords - section.actualWords)
+      : 0,
+    minimumRequiredReduction: input.direction === "compress"
+      ? Math.max(0, section.actualWords - section.maximumWords)
+      : 0,
+  }));
+}
+
 export function assertCreatorScriptHasHealthySectionStructure(
   script: CreatorScript,
   plan: CreatorScriptSectionBudget[],
@@ -777,21 +979,35 @@ export function filterCreatorScriptRepairReplacements(input: {
   plan: CreatorScriptSectionBudget[];
   replacements: unknown[];
 }) {
+  return getCreatorScriptRepairReplacementDiagnostics(input)
+    .filter((diagnostic) => diagnostic.accepted)
+    .map((diagnostic) => diagnostic.replacement);
+}
+
+export function getCreatorScriptRepairReplacementDiagnostics(input: {
+  script: CreatorScript;
+  plan: CreatorScriptSectionBudget[];
+  replacements: unknown[];
+}) {
   assertCreatorScriptMatchesSectionPlan(input.script, input.plan);
   const diagnostics = new Map(
     getCreatorScriptSectionDiagnostics(input.script, input.plan)
       .map((section) => [section.id, section]),
   );
-  return input.replacements.filter((value) => {
+  return input.replacements.map((value) => {
     const item = record(value);
     const id = clean(item?.id, 120);
     const diagnostic = diagnostics.get(id);
-    if (!diagnostic) return false;
+    if (!diagnostic) return { sectionId: id || "unknown", beforeWords: null, candidateWords: null, accepted: false, reason: "unknown_section", replacement: value };
     const replacementWords = countCreatorScriptWords(clean(item?.text, 100_000));
-    if (replacementWords === 0 || replacementWords > diagnostic.maximumWords) return false;
-    if (diagnostic.actualWords < diagnostic.minimumWords && replacementWords <= diagnostic.actualWords) return false;
-    if (diagnostic.actualWords > diagnostic.maximumWords && replacementWords >= diagnostic.actualWords) return false;
-    return true;
+    if (replacementWords === 0) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "empty", replacement: value };
+    if (replacementWords > diagnostic.maximumWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "above_maximum", replacement: value };
+    if (diagnostic.actualWords < diagnostic.minimumWords && replacementWords <= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_expand", replacement: value };
+    if (diagnostic.actualWords > diagnostic.maximumWords && replacementWords >= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_compress", replacement: value };
+    const reason = diagnostic.actualWords < diagnostic.minimumWords && replacementWords < diagnostic.minimumWords
+      ? "partial_progress_requires_retry"
+      : "accepted_within_section_envelope";
+    return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: true, reason, replacement: value };
   });
 }
 
@@ -827,6 +1043,35 @@ export function mergeCreatorScriptReplacementSections(input: {
     updatedAt: new Date().toISOString(),
     approval: null,
   });
+}
+
+export function filterCreatorScriptDistinctiveRepairReplacements(input: {
+  script: CreatorScript;
+  replacements: unknown[];
+  plan: CreatorScriptSectionBudget[];
+}) {
+  if (input.replacements.length === 0) return {
+    replacements: [],
+    failures: [] as CreatorScriptEditorialDistinctivenessDiagnostic[],
+    rejectedSectionIds: [] as string[],
+  };
+  const candidate = mergeCreatorScriptReplacementSections(input);
+  const failures = getCreatorScriptEditorialDistinctivenessDiagnostics(candidate, input.plan);
+  const replacementIds = new Set(input.replacements.map((replacement) => clean(record(replacement)?.id, 120)));
+  const rejectedSectionIds = new Set<string>();
+  for (const failure of failures) {
+    if (replacementIds.has(failure.sectionId)) rejectedSectionIds.add(failure.sectionId);
+    if (failure.comparedSectionId && replacementIds.has(failure.comparedSectionId)) {
+      rejectedSectionIds.add(failure.comparedSectionId);
+    }
+  }
+  return {
+    replacements: input.replacements.filter((replacement) =>
+      !rejectedSectionIds.has(clean(record(replacement)?.id, 120))
+    ),
+    failures,
+    rejectedSectionIds: [...rejectedSectionIds],
+  };
 }
 
 export function getCreatorScriptOutputTokenBudget(targetWordCount: number) {
@@ -999,8 +1244,10 @@ export function creatorScriptRepairMateriallyImproved(input: {
     ? input.current.minimumAcceptableWordCount - input.current.actualWordCount
     : input.current.actualWordCount - input.current.maximumAcceptableWordCount;
   const improvement = previousDistance - currentDistance;
-  return currentDistance > 0
-    && improvement >= Math.max(10, Math.ceil(previousDistance * 0.1));
+  // Any strict movement toward the global envelope may use the one remaining
+  // bounded attempt. A small partial expansion is progress, not success; the
+  // hard duration gate still decides final acceptance after at most two calls.
+  return currentDistance > 0 && improvement > 0;
 }
 
 export async function generateCreatorScriptWithDurationContract(input: {

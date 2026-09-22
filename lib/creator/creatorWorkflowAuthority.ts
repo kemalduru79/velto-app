@@ -21,6 +21,34 @@ export type CreatorWorkflowLoadingState = {
   scenesBuilding: boolean;
 };
 
+export type CreatorScriptGenerationFlight = Readonly<{
+  requestId: string;
+  projectId: string;
+  strategyFingerprint: string;
+}>;
+
+export type CreatorScriptGenerationFlightRef = {
+  current: CreatorScriptGenerationFlight | null;
+};
+
+export function beginCreatorScriptGenerationFlight(
+  ref: CreatorScriptGenerationFlightRef,
+  flight: CreatorScriptGenerationFlight,
+) {
+  if (ref.current) return false;
+  ref.current = Object.freeze({ ...flight });
+  return true;
+}
+
+export function finishCreatorScriptGenerationFlight(
+  ref: CreatorScriptGenerationFlightRef,
+  requestId: string,
+) {
+  if (ref.current?.requestId !== requestId) return false;
+  ref.current = null;
+  return true;
+}
+
 export function shouldRestoreCreatorBriefDraft(input: {
   isCreatorLabFlow: boolean;
   currentProjectId: string;

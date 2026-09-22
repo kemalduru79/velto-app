@@ -17,14 +17,23 @@ import {
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScript,
+  countCreatorScriptWords,
   createCreatorScriptSectionBudgetPlan,
+  createCreatorScriptRepairTargets,
+  createCreatorScriptAdditiveExpansionPlan,
+  createCreatorScriptInsertionAnchors,
+  applyCreatorScriptAdditiveExpansion,
   creatorScriptRepairMateriallyImproved,
+  creatorScriptHasGroundingBlocker,
   generateCreatorScriptSectionUnits,
   generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
   getCreatorScriptDurationRepairSections,
+  getCreatorScriptRepairReplacementDiagnostics,
   getCreatorScriptEditorialDistinctivenessFailures,
+  getCreatorScriptEditorialDistinctivenessDiagnostics,
+  filterCreatorScriptDistinctiveRepairReplacements,
   filterCreatorScriptRepairReplacements,
   getCreatorScriptMaterialSectionFailures,
   getCreatorScriptNarrationSafetyViolations,
@@ -164,9 +173,31 @@ assert.equal(fiveMinuteCalls, 1);
 assert.equal(acceptedFiveMinute.diagnostics.status, "compliant");
 assert.equal(plan300.length, 4);
 assert.equal(plan960.length, 8, "the existing duration-derived section-count constraint remains explicit");
+assert.deepEqual(plan960.map((section) => section.id), ["opening", "section-1", "section-2", "section-3", "section-4", "section-5", "section-6", "conclusion"]);
 assert.equal(new Set(plan960.map((section) => section.role)).size, plan960.length);
 assert.equal(new Set(plan960.map((section) => section.centralQuestion)).size, plan960.length);
 assert.equal(new Set(plan960.map((section) => section.progression)).size, plan960.length);
+assert.ok(plan960.every((section) => section.ownershipBoundary.usage === "control_only_never_narrate" && section.ownershipBoundary.owns.length > 0 && section.ownershipBoundary.excludes.length > 0), "every canonical section owns explicit non-narratable control metadata");
+assert.doesNotMatch(JSON.stringify(plan960.map((section) => section.ownershipBoundary)), /this inquiry|does not seek|this section|later sections are reserved/i, "ownership controls are compact metadata rather than narration-ready editorial prose");
+assert.deepEqual(plan960[0].ownershipBoundary.owns, ["human_stakes", "master_tension", "master_question"]);
+assert.ok(plan960[0].ownershipBoundary.excludes.includes("mechanism") && plan960[0].ownershipBoundary.excludes.includes("evidence"), "opening reserves body explanation for later sections");
+assert.match(plan960[1].role, /define and frame/i);
+assert.ok(plan960[1].ownershipBoundary.excludes.includes("opening_thesis_restatement") && plan960[1].ownershipBoundary.excludes.includes("mechanism"));
+assert.match(plan960[2].role, /mechanism|causal process/i);
+assert.ok(plan960[2].ownershipBoundary.excludes.includes("evidence_catalog"));
+assert.match(plan960[3].role, /evidence|case/i);
+assert.ok(plan960[3].ownershipBoundary.excludes.includes("mechanism_reteaching") && plan960[3].ownershipBoundary.excludes.includes("limits"));
+assert.match(plan960[4].role, /limits|counterview|alternative explanation/i);
+assert.ok(plan960[4].ownershipBoundary.excludes.includes("social_formation"));
+assert.match(plan960[5].role, /formation and influence/i);
+assert.ok(plan960[5].ownershipBoundary.owns.includes("social_formation") && plan960[5].ownershipBoundary.excludes.includes("material_consequence"));
+assert.match(plan960[6].role, /downstream consequences|second-order effects/i);
+assert.ok(plan960[6].ownershipBoundary.owns.includes("material_consequence") && plan960[6].ownershipBoundary.excludes.includes("social_formation_reteaching"));
+assert.match(plan960[7].role, /unresolved question/i);
+assert.deepEqual(plan960[7].ownershipBoundary.owns, ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"]);
+assert.ok(["mechanism", "evidence_demonstration", "social_formation", "consequence_inventory", "section_by_section_recap"].every((item) => plan960[7].ownershipBoundary.excludes.includes(item)));
+assert.match(plan960[7].progression, /moves forward|deepest implication/i);
+assert.doesNotMatch(plan960[7].centralQuestion, /intervention|prevention|correct false/i);
 assert.match(
   plan960WithCounterview.find((section) => section.role.includes("counterview"))?.centralQuestion || "",
   /strongest credible challenge/i,
@@ -200,6 +231,8 @@ const repetitiveFailures = getCreatorScriptEditorialDistinctivenessFailures(
   plan960,
 );
 assert.ok(repetitiveFailures.length >= 2, "obvious memory/identity heading paraphrases must fail");
+const repetitiveDistinctivenessDiagnostics = getCreatorScriptEditorialDistinctivenessDiagnostics(repetitiveMemoryScript, plan960);
+assert.ok(repetitiveDistinctivenessDiagnostics.some((failure) => failure.failureType === "heading_token_overlap" && failure.sectionId && failure.comparedSectionId), "diagnostics identify the exact section pair and deterministic heading-overlap rule");
 assert.throws(
   () => assertCreatorScriptHasDistinctEditorialSections(repetitiveMemoryScript, plan960),
   /CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_UNSATISFIED/,
@@ -217,6 +250,31 @@ const distinctMemoryScript = createCreatorScript({
   })),
 });
 assert.doesNotThrow(() => assertCreatorScriptHasDistinctEditorialSections(distinctMemoryScript, plan960));
+
+const headingRegressingReplacement = {
+  ...distinctMemoryScript.sections[4],
+  heading: distinctMemoryScript.sections[3].heading,
+  text: words(plan960[4].targetWords + 1),
+};
+const rejectedDistinctivenessRepair = filterCreatorScriptDistinctiveRepairReplacements({
+  script: distinctMemoryScript,
+  plan: plan960,
+  replacements: [headingRegressingReplacement],
+});
+assert.deepEqual(rejectedDistinctivenessRepair.replacements, [], "a longer duration candidate cannot consume a neighboring section's deterministic heading identity");
+assert.deepEqual(rejectedDistinctivenessRepair.rejectedSectionIds, [plan960[4].id]);
+assert.equal(rejectedDistinctivenessRepair.failures[0].failureType, "heading_token_overlap");
+const distinctiveDurationReplacement = {
+  ...distinctMemoryScript.sections[4],
+  heading: "Collective Retelling and Social Formation",
+  text: words(plan960[4].targetWords + 1),
+};
+const acceptedDistinctivenessRepair = filterCreatorScriptDistinctiveRepairReplacements({
+  script: distinctMemoryScript,
+  plan: plan960,
+  replacements: [distinctiveDurationReplacement],
+});
+assert.equal(acceptedDistinctivenessRepair.replacements.length, 1, "a longer candidate preserving deterministic distinctiveness remains eligible");
 
 let distinctivenessRepairCalls = 0;
 const distinctivenessRepaired = await generateCreatorScriptWithDurationContract({
@@ -586,7 +644,100 @@ await assert.rejects(
   }),
   /requested duration/,
 );
-assert.equal(unrecoverableCalls, 1, "an immaterial repair must fail closed without a second call");
+assert.equal(unrecoverableCalls, 2, "strict directional progress may use the one remaining bounded attempt but can never loop beyond it");
+
+const partialReplacementDiagnostics = getCreatorScriptRepairReplacementDiagnostics({
+  script: realUseShortScript,
+  plan: plan960,
+  replacements: [{ ...realUseShortScript.sections[1], text: words(260) }],
+});
+assert.deepEqual(partialReplacementDiagnostics.map(({ sectionId, beforeWords, candidateWords, accepted, reason }) => ({ sectionId, beforeWords, candidateWords, accepted, reason })), [{ sectionId: "section-1", beforeWords: 250, candidateWords: 260, accepted: true, reason: "partial_progress_requires_retry" }]);
+const arithmeticRepairTargets = createCreatorScriptRepairTargets({
+  sections: getCreatorScriptSectionDiagnostics(realUseShortScript, plan960).filter((section) => section.id === "section-1"),
+  direction: "expand",
+});
+assert.deepEqual(arithmeticRepairTargets, [{ sectionId: "section-1", direction: "expand", beforeWords: 250, requiredFinalMinWords: 277, requiredFinalTargetWords: 308, requiredFinalMaxWords: 339, minimumRequiredGain: 27, minimumRequiredReduction: 0 }]);
+assert.equal(creatorScriptRepairMateriallyImproved({
+  previous: getCreatorScriptDurationContract({ targetDurationSec: 960, language: "en", actualWordCount: 1981 }),
+  current: getCreatorScriptDurationContract({ targetDurationSec: 960, language: "en", actualWordCount: 1990 }),
+}), true, "a nine-word directional gain remains eligible for the single bounded retry rather than terminating recovery");
+
+const narrowRecoveryCounts = [169, 278, 264, 254, 292, 267, 268, 189];
+const narrowRecoveryScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({ ...makePlannedScript(plan960).sections[index], text: words(narrowRecoveryCounts[index]) })),
+});
+assert.equal(getCreatorScriptDurationContractForScript(narrowRecoveryScript, "en").actualWordCount, 1981);
+assert.equal(getCreatorScriptSectionDiagnostics(narrowRecoveryScript, plan960).reduce((sum, section) => sum + section.actualWords, 0), getCreatorScriptDurationContractForScript(narrowRecoveryScript, "en").actualWordCount, "canonical section counts and global duration use the same representation and counter");
+const narrowRecoveryTargets = getCreatorScriptDurationRepairSections({ script: narrowRecoveryScript, plan: plan960, duration: getCreatorScriptDurationContractForScript(narrowRecoveryScript, "en") });
+const allWrongDirectionCandidates = narrowRecoveryTargets.map((budget) => {
+  const index = plan960.findIndex((section) => section.id === budget.id);
+  return { ...narrowRecoveryScript.sections[index], text: words(Math.max(1, narrowRecoveryCounts[index] - 1)) };
+});
+assert.equal(filterCreatorScriptRepairReplacements({ script: narrowRecoveryScript, plan: plan960, replacements: allWrongDirectionCandidates }).length, 0);
+assert.equal(getCreatorScriptDurationContractForScript(narrowRecoveryScript, "en").actualWordCount, 1981, "zero accepted replacements cannot change canonical duration");
+let narrowRecoveryCalls = 0;
+const narrowRecovery = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => narrowRecoveryScript,
+  maxRepairAttempts: 2,
+  shouldRetryRepair: ({ previous, current }) => creatorScriptRepairMateriallyImproved({ previous, current }),
+  repair: async (script, _duration, attempt) => {
+    narrowRecoveryCalls += 1;
+    const nextCounts = attempt === 1
+      ? [169, 278, 266, 256, 292, 269, 270, 190]
+      : plan960.map((budget) => budget.targetWords);
+    return mergeCreatorScriptReplacementSections({
+      script,
+      plan: plan960,
+      replacements: plan960.map((budget, index) => ({ ...script.sections[index], text: words(nextCounts[index]) })),
+    });
+  },
+  validateFinal: (script) => assertCreatorScriptHasSafeSectionStructure(script, plan960),
+});
+assert.equal(narrowRecoveryCalls, 2, "a 1981 to 1990 partial repair uses exactly one bounded retry");
+assert.equal(narrowRecovery.diagnostics.status, "compliant");
+assert.ok(plan960.every((section) => section.ownershipBoundary.usage === "control_only_never_narrate"), "duration recovery does not alter narrative ownership authority");
+
+const sentenceText = (count, terminal = "The final question remains open?") => {
+  const suffix = `Added context stays grounded. ${terminal}`;
+  return `${words(Math.max(1, count - countCreatorScriptWords(suffix)))}. ${suffix}`;
+};
+const additiveHistoricalCounts = [166, 273, 257, 236, 300, 252, 257, 153];
+const additiveHistoricalScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({
+    ...makePlannedScript(plan960).sections[index],
+    text: sentenceText(additiveHistoricalCounts[index], budget.kind === "conclusion" ? "What remains when certainty is gone?" : "The next question remains open?"),
+  })),
+});
+const additiveHistoricalDuration = getCreatorScriptDurationContractForScript(additiveHistoricalScript, "en");
+assert.equal(additiveHistoricalDuration.actualWordCount, 1894);
+const additiveTargets = createCreatorScriptAdditiveExpansionPlan({
+  script: additiveHistoricalScript,
+  plan: plan960,
+  globalDeficitWords: additiveHistoricalDuration.minimumAcceptableWordCount - additiveHistoricalDuration.actualWordCount,
+});
+assert.equal(additiveTargets.reduce((sum, target) => sum + target.requestedGainWords, 0), 137, "allocator requests only the exact global deficit");
+assert.ok(additiveTargets.every((target) => target.sectionId.startsWith("section-")), "body capacity is preferred before opening or conclusion");
+assert.ok(additiveTargets.every((target) => target.requestedGainWords <= target.maxAdditionalWords));
+const remainingTargets = createCreatorScriptAdditiveExpansionPlan({ script: additiveHistoricalScript, plan: plan960, globalDeficitWords: 41 });
+assert.equal(remainingTargets.reduce((sum, target) => sum + target.requestedGainWords, 0), 41, "attempt two recomputes and allocates only the remaining deficit");
+const conclusionSection = additiveHistoricalScript.sections.at(-1);
+assert.deepEqual(createCreatorScriptInsertionAnchors(conclusionSection).map(({ id, placementMode }) => ({ id, placementMode })), [{ id: "before_terminal_sentence", placementMode: "server_exact_offset" }]);
+const additiveApplied = applyCreatorScriptAdditiveExpansion({ section: conclusionSection, placementAnchorId: "before_terminal_sentence", additionalText: "Identity remains a grounded interpretation of remembered experience." });
+assert.ok(additiveApplied.text.endsWith("What remains when certainty is gone?"), "conclusion's unresolved final question remains terminal");
+assert.equal(`${additiveApplied.text.slice(0, additiveApplied.insertion.start)}${additiveApplied.text.slice(additiveApplied.insertion.end)}`, conclusionSection.text, "removing the inserted addition reconstructs the exact immutable section");
+assert.throws(() => applyCreatorScriptAdditiveExpansion({ section: conclusionSection, placementAnchorId: "invented-anchor", additionalText: "Grounded addition." }), /CREATOR_SCRIPT_EXPANSION_ANCHOR_INVALID/);
+assert.throws(() => applyCreatorScriptAdditiveExpansion({ section: { ...conclusionSection, text: "One sentence only" }, placementAnchorId: "before_terminal_sentence", additionalText: "Grounded addition." }), /CREATOR_SCRIPT_EXPANSION_ANCHOR_INVALID/);
+const unsafeAdditiveApplied = applyCreatorScriptAdditiveExpansion({ section: additiveHistoricalScript.sections[1], placementAnchorId: "before_terminal_sentence", additionalText: "The working inquiry practice behind this exploration supports careful claims analysis." });
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: unsafeAdditiveApplied.text }], authoritativeText: "memory evidence recall identity" }), /NARRATION_EDITORIAL_LEAKAGE/, "unsafe additional narration is rejected after deterministic insertion");
+const groundingBlockedAdditiveBase = createCreatorScript({
+  ...additiveHistoricalScript,
+  sections: additiveHistoricalScript.sections.map((section, index) => index === 1 ? { ...section, evidenceReviewRequired: true } : section),
+});
+assert.equal(creatorScriptHasGroundingBlocker(groundingBlockedAdditiveBase), true, "grounding failure blocks an additive base");
 
 scriptCalls = 0;
 const residualRepaired = await generateCreatorScriptWithDurationContract({
@@ -629,18 +780,40 @@ assert.equal(narrationAuthority.includes("internal editorial method"), false, "i
 const controlOnlySourceContext = {
   ...namedAuthorityContext,
   editorialConstitution: "Use the practical inquiry approach to examine claims before drawing conclusions.",
-  sources: [{ ...namedAuthorityContext.sources[0], title: "THNK Research Applied Inquiry Approach", publisher: "THNK First", author: "Editorial Methods Team" }],
+  claims: [
+    ...namedAuthorityContext.claims,
+    { claimId: "claim-control-only", claimType: "EDITORIAL_INFERENCE", text: "Inquiry should not transfer judgment to new authorities.", supportingEvidenceIds: ["evidence-control-only"], counterEvidenceIds: [], contextualEvidenceIds: [] },
+  ],
+  evidence: [
+    ...namedAuthorityContext.evidence,
+    { evidenceId: "evidence-control-only", sourceId: "source-control-only", excerpt: "A working inquiry practice examines claims and evidence before drawing conclusions.", contextNote: null, locator: { section: null, page: null, timecodeStartSec: null, timecodeEndSec: null } },
+  ],
+  sources: [
+    namedAuthorityContext.sources[0],
+    { ...namedAuthorityContext.sources[0], sourceId: "source-control-only", url: "https://thnkfirst.com/applied-inquiry", title: "THNK Research Applied Inquiry Approach", publisher: "THNK First", author: "Editorial Methods Team" },
+  ],
 };
 const projectedNarrationContext = createCreatorScriptNarrationEditorialContext(controlOnlySourceContext);
 assert.equal(projectedNarrationContext.editorialConstitution.includes("practical inquiry"), false, "control-only editorial methodology prose is absent from the narration-facing context");
 assert.deepEqual(projectedNarrationContext.sources, [{ sourceId: "source-authority", title: "Grounding source", url: "", publisher: "", author: null, publishedAt: null, directness: "secondary", reviewStatus: "usable", searchLane: "supporting_evidence", sourceKind: "article" }], "source identity remains provenance-only and cannot seed editorial-methodology narration");
+assert.deepEqual(projectedNarrationContext.claims.map((claim) => claim.claimId), ["claim-authority"], "control-only methodology claims are excluded from narration authority");
+assert.deepEqual(projectedNarrationContext.evidence.map((item) => item.evidenceId), ["evidence-authority"], "control-only methodology evidence is excluded from narration authority");
 const controlOnlyAuthority = createCreatorScriptNarrationAuthority({ editorialContext: controlOnlySourceContext });
 assert.equal(controlOnlyAuthority.includes("applied inquiry"), false, "control-only source identity is not promoted into speakable authority");
+assert.equal(controlOnlyAuthority.includes("transfer judgment"), false, "control-only claim prose is not promoted into speakable authority");
+assert.equal(controlOnlyAuthority.includes("working inquiry practice"), false, "control-only evidence prose is not promoted into speakable authority");
 assert.equal(controlOnlyAuthority.includes("reconstructive memory theory"), true, "a subject-matter methodology grounded in claims and evidence remains speakable");
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "THYNEL's mission invites viewers to reflect." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "THNK Research establishes a proprietary explanation." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "THNK Research establishes a proprietary explanation." }], authoritativeText: `${narrationAuthority} thnk research` }), /NARRATION_EDITORIAL_LEAKAGE/, "known invalid internal artifacts cannot become speakable merely by appearing in broad authority text");
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This inquiry does not seek to provide simple answers but to explore the evidence." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "The working inquiry practice behind this exploration supports careful examination of claims, evidence, and uncertainty before drawing conclusions about what memory truly represents." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-2", text: "This understanding aligns with the principle that inquiry should not transfer judgment to new authorities but allow individuals to inspect the basis of claims about memory and truth." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This inquiry asks us to reconsider what memory means." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This investigation reveals a tension between certainty and evidence." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-3", text: "A historical inquiry into the archive documented conflicting accounts. The investigation by prosecutors remained open for years, while later analysis of the records identified missing testimony." }], authoritativeText: narrationAuthority }), "inquiry, investigation, and analysis remain available as substantive subject nouns");
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-3", text: "The evidence supports the claim that repeated suggestion can alter later recall, while the analysis leaves the mechanism's limits unresolved." }], authoritativeText: narrationAuthority }), "ordinary subject-matter evidence and claim language remains available");
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "A memory can feel certain even when its details have changed. What happens to identity when certainty is not accuracy?" }], authoritativeText: narrationAuthority }), "direct audience-facing opening tension remains allowed");
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "conclusion", text: "Our exploration reveals that memory remains uncertain." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "We will investigate how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "In this section, we examine how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
@@ -674,6 +847,8 @@ assert.match(route, /sectionBudgetPlan/);
 assert.match(route, /editorialSectionPlan/);
 assert.match(route, /centralQuestion/);
 assert.match(route, /progressionFromPrevious/);
+assert.match(route, /ownershipBoundary/);
+assert.match(route, /ownershipBoundary is control-only metadata/);
 assert.match(route, /getCreatorScriptEditorialDistinctivenessFailures/);
 assert.match(route, /differentiate_sections/);
 assert.match(route, /The same thesis with different wording is invalid/);
@@ -688,6 +863,12 @@ assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMateria
 assert.match(route, /maxRepairAttempts: sectionNative \? 2 : 1/);
 assert.match(route, /creatorScriptRepairMateriallyImproved/);
 assert.match(route, /repairTargets/);
+assert.match(route, /requiredDirection === "expand"[\s\S]*creatorScriptHasGroundingBlocker\(currentScript\)[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
+assert.match(route, /task: "Return only new grounded narration additions for the supplied immutable safe sections\."/);
+assert.match(route, /applyCreatorScriptAdditiveExpansion/);
+assert.match(route, /Do not rewrite, summarize, paraphrase, delete, or return existing prose/);
+assert.match(route, /acceptedReplacements\.length === 0[\s\S]*repairedSectionIds = Array\.from\(new Set\(\[[\s\S]*acceptedReplacements\.map/);
+assert.doesNotMatch(route, /repairedSectionIds = Array\.from\(new Set\(\[[\s\S]{0,160}sectionsToRepair\.map/);
 assert.match(route, /requiredFinalMinWords/);
 assert.match(route, /Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence/);
 assert.match(route, /generationPriorityHierarchy/); assert.match(route, /audienceFacingNarratorContract/); assert.match(route, /internalEditorialGuidance/);

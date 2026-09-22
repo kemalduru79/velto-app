@@ -165,9 +165,12 @@ import {
   type CreatorScript,
 } from "@/lib/creator/creatorScript";
 import {
+  beginCreatorScriptGenerationFlight,
+  finishCreatorScriptGenerationFlight,
   persistCreatorScriptReplacement,
   persistCreatorStrategyAuthority,
   getCreatorWorkflowLoadingState,
+  getCreatorTopicAuthorityIdentity,
   normalizeCreatorTopicAuthority,
   shouldRestoreCreatorBriefDraft,
   startCreatorNewProjectLifecycle,
@@ -3529,6 +3532,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorScriptPendingRefinement, setCreatorScriptPendingRefinement] = useState<CreatorScriptPendingRefinement | null>(null);
   const [creatorScriptRevisionHistory, setCreatorScriptRevisionHistory] = useState<CreatorScriptRevisionHistoryEntry[]>([]);
   const creatorScriptRef = useRef<CreatorScript | null>(null);
+  const creatorScriptGenerationFlightRef = useRef<{
+    requestId: string;
+    projectId: string;
+    strategyFingerprint: string;
+  } | null>(null);
+  const creatorScriptGenerationSequenceRef = useRef(0);
   const [creatorScriptBusySectionId, setCreatorScriptBusySectionId] = useState<string | null>(null);
   useEffect(() => {
     creatorScriptRef.current = creatorScript;
@@ -14544,9 +14553,50 @@ const generateSceneImage = async (
   };
 
 
-  const handleCreatorProductionPackage = async () => {
-    if (creatorScriptGenerationLoading || creatorSceneBuildLoading) return;
+  const handleCreatorProductionPackage = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    const generationProjectId = currentProjectIdRef.current || currentProjectId;
+    const generationRequestId = `${generationProjectId}:${projectGenerationRef.current}:${creatorScriptGenerationSequenceRef.current + 1}`;
+    const generationReason = creatorScriptEditorialState === "stale" ? "explicit_rebuild" : "explicit_first_generation";
+    const existingFlight = creatorScriptGenerationFlightRef.current;
+    const generationSource = event.isTrusted ? "explicit_user_click" : "untrusted_programmatic_dispatch";
+    if (!event.isTrusted) {
+      console.info("CREATOR_SCRIPT_GENERATION_DISPATCH", {
+        source: generationSource,
+        projectId: generationProjectId,
+        strategyFingerprintPrefix: creatorStrategyFingerprint.slice(0, 32),
+        projectRevision: projectUpdatedAtRef.current,
+        reason: generationReason,
+        inFlight: Boolean(existingFlight),
+        accepted: false,
+      });
+      return;
+    }
+    const generationAccepted = beginCreatorScriptGenerationFlight(
+      creatorScriptGenerationFlightRef,
+      {
+        requestId: generationRequestId,
+        projectId: generationProjectId,
+        strategyFingerprint: creatorStrategyFingerprint,
+      },
+    );
+    console.info("CREATOR_SCRIPT_GENERATION_DISPATCH", {
+      source: generationSource,
+      projectId: generationProjectId,
+      strategyFingerprintPrefix: creatorStrategyFingerprint.slice(0, 32),
+      projectRevision: projectUpdatedAtRef.current,
+      reason: generationReason,
+      inFlight: Boolean(existingFlight),
+      accepted: generationAccepted,
+      activeRequestId: existingFlight?.requestId || generationRequestId,
+    });
+    if (!generationAccepted) return;
+    creatorScriptGenerationSequenceRef.current += 1;
+    if (creatorScriptGenerationLoading || creatorSceneBuildLoading) {
+      finishCreatorScriptGenerationFlight(creatorScriptGenerationFlightRef, generationRequestId);
+      return;
+    }
     if (!creatorMentorResult) {
+      finishCreatorScriptGenerationFlight(creatorScriptGenerationFlightRef, generationRequestId);
       setError(
         uiLanguage === "en"
           ? "Please run the mentor analysis first."
@@ -14603,6 +14653,27 @@ const generateSceneImage = async (
         displayedDurationSec: creatorVideoDurationSec,
         requestDurationSec: creatorVideoDurationSec,
         strategyFingerprintPrefix: creatorStrategyFingerprint.slice(0, 32),
+        strategyAuthorityComponents: {
+          topic: getCreatorTopicAuthorityIdentity(input),
+          directionId: creatorSelectedStrategyDirectionId,
+          hookLength: creatorSelectedHookPattern.length,
+          language,
+          country: creatorCountry,
+          audience: creatorAgeGroup,
+          contentType: creatorContentType,
+          format: creatorFormat,
+          durationSec: creatorVideoDurationSec,
+          profileFingerprintPrefix: createCreatorStrategyFingerprint(
+            creatorStrategyProfileSnapshot || creatorProfile,
+          ).slice(0, 32),
+          mentorFingerprintPrefix: createCreatorStrategyFingerprint({
+            audienceInsight: creatorMentorResult.audienceInsight,
+            hookPatterns: creatorMentorResult.hookPatterns,
+            videoIdeas: creatorMentorResult.videoIdeas,
+            recommendedIdea: creatorMentorResult.recommendedIdea,
+            productionPlan: creatorMentorResult.productionPlan,
+          }).slice(0, 32),
+        },
         creatorScriptPresent: Boolean(creatorScript),
         creatorScriptStatus: creatorScriptIsCurrent ? "current" : creatorScript ? "historic" : "none",
       });
@@ -14696,6 +14767,7 @@ const generateSceneImage = async (
         : message || (uiLanguage === "en" ? "Full script generation failed." : "Tam metin oluşturulamadı."));
     } finally {
       suspendAutosaveRef.current = false;
+      finishCreatorScriptGenerationFlight(creatorScriptGenerationFlightRef, generationRequestId);
       if (operationIsActive()) setCreatorScriptGenerationLoading(false);
     }
   };
