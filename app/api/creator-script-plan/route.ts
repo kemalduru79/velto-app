@@ -890,6 +890,7 @@ async function executeCreatorScriptOperation(input: {
     let firstActualWords: number | null = null;
     let firstDurationStatus: string | null = null;
     let repairCallCount = 0;
+    let mixedRepairDispatched = false;
     const sectionActualWordCounts: Array<{ sectionId: string; targetWords: number; actualWords: number }> = [];
     const providerStatuses: Array<{ sectionId: string; status: string; incompleteReason: string | null }> = [];
     let initialSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
@@ -968,7 +969,9 @@ async function executeCreatorScriptOperation(input: {
           || getCreatorScriptEditorialDistinctivenessFailures(script, sectionBudgetPlan).length > 0,
         maxRepairAttempts: sectionNative ? 2 : 1,
         shouldRetryRepair: ({ previous, current }) =>
-          sectionNative && creatorScriptRepairMateriallyImproved({ previous, current }),
+          sectionNative
+          && !mixedRepairDispatched
+          && creatorScriptRepairMateriallyImproved({ previous, current }),
         generateInitial: async () => {
           const generateUnit = async (
             requestedSections: typeof sectionBudgetPlan,
@@ -1120,11 +1123,13 @@ async function executeCreatorScriptOperation(input: {
           const requiredDirection = currentDuration.status === "compliant"
             ? distinctivenessFailures.length > 0 ? "differentiate_sections" : "rebalance_sections"
             : currentDuration.status === "too_long" ? "compress" : "expand";
+          mixedRepairDispatched = currentDuration.status !== "compliant"
+            && distinctivenessFailures.length > 0;
           const repairTargets = createCreatorScriptRepairTargets({
             sections: sectionsToRepair,
             direction: requiredDirection,
           });
-          if (requiredDirection === "expand") {
+          if (requiredDirection === "expand" && distinctivenessFailures.length === 0) {
             normalizeCreatorScript(currentScript);
             if (creatorScriptHasGroundingBlocker(currentScript)) throw new Error("CREATOR_SCRIPT_GROUNDING_BLOCKED");
             assertCreatorScriptHasSafeSectionStructure(currentScript, sectionBudgetPlan);

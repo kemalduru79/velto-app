@@ -317,6 +317,80 @@ assert.equal(distinctivenessRepairCalls, 1);
 assert.equal(distinctivenessRepaired.repaired, true);
 assert.deepEqual(distinctivenessRepaired.creatorScript.grounding, repetitiveMemoryScript.grounding);
 
+const mixedFailureScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({
+    id: budget.id,
+    kind: budget.kind,
+    heading: repetitiveMemoryHeadings[index],
+    text: words(Math.max(1, budget.targetWords - 30)),
+    claimIds: [],
+    evidenceReviewRequired: false,
+  })),
+});
+const mixedInitialDuration = getCreatorScriptDurationContractForScript(mixedFailureScript, "en");
+assert.equal(mixedInitialDuration.status, "too_short");
+const mixedDistinctivenessIds = getCreatorScriptEditorialDistinctivenessFailures(mixedFailureScript, plan960)
+  .map((section) => section.id);
+const mixedDurationIds = getCreatorScriptDurationRepairSections({
+  script: mixedFailureScript,
+  plan: plan960,
+  duration: mixedInitialDuration,
+}).map((section) => section.id);
+assert.ok(mixedDistinctivenessIds.length > 0);
+assert.ok(mixedDurationIds.length > 0);
+
+let mixedRepairCalls = 0;
+const mixedRepairTargetIds = new Set();
+const mixedFailureRepaired = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => mixedFailureScript,
+  requiresRepair: (script) =>
+    getCreatorScriptEditorialDistinctivenessFailures(script, plan960).length > 0,
+  maxRepairAttempts: 1,
+  repair: async (script, duration) => {
+    mixedRepairCalls += 1;
+    const durationIds = getCreatorScriptDurationRepairSections({ script, plan: plan960, duration })
+      .map((section) => section.id);
+    const distinctivenessIds = getCreatorScriptEditorialDistinctivenessFailures(script, plan960)
+      .map((section) => section.id);
+    [...durationIds, ...distinctivenessIds].forEach((sectionId) => mixedRepairTargetIds.add(sectionId));
+    return distinctMemoryScript;
+  },
+  validateFinal: (script) => {
+    assertCreatorScriptHasSafeSectionStructure(script, plan960);
+    assertCreatorScriptHasDistinctEditorialSections(script, plan960);
+  },
+});
+assert.equal(mixedRepairCalls, 1, "mixed duration and distinctiveness failures use one bounded repair operation");
+assert.ok(mixedDurationIds.every((sectionId) => mixedRepairTargetIds.has(sectionId)), "mixed repair includes duration targets");
+assert.ok(mixedDistinctivenessIds.every((sectionId) => mixedRepairTargetIds.has(sectionId)), "mixed repair includes distinctiveness targets");
+assert.equal(mixedFailureRepaired.diagnostics.status, "compliant");
+assert.doesNotThrow(() => assertCreatorScriptHasDistinctEditorialSections(mixedFailureRepaired.creatorScript, plan960));
+
+let failedMixedRepairCalls = 0;
+await assert.rejects(
+  generateCreatorScriptWithDurationContract({
+    durationSec: 960,
+    language: "en",
+    generateInitial: async () => mixedFailureScript,
+    requiresRepair: (script) =>
+      getCreatorScriptEditorialDistinctivenessFailures(script, plan960).length > 0,
+    maxRepairAttempts: 1,
+    repair: async () => {
+      failedMixedRepairCalls += 1;
+      return repetitiveMemoryScript;
+    },
+    validateFinal: (script) => {
+      assertCreatorScriptHasSafeSectionStructure(script, plan960);
+      assertCreatorScriptHasDistinctEditorialSections(script, plan960);
+    },
+  }),
+  /CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_UNSATISFIED/,
+);
+assert.equal(failedMixedRepairCalls, 1, "a still-indistinct mixed repair fails closed without a second attempt");
+
 const primaryReviewScript = createCreatorScript({
   ...fiveMinuteScript,
   grounding: {
@@ -914,7 +988,10 @@ assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMateria
 assert.match(route, /maxRepairAttempts: sectionNative \? 2 : 1/);
 assert.match(route, /creatorScriptRepairMateriallyImproved/);
 assert.match(route, /repairTargets/);
-assert.match(route, /requiredDirection === "expand"[\s\S]*creatorScriptHasGroundingBlocker\(currentScript\)[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
+assert.match(route, /requiredDirection === "expand" && distinctivenessFailures\.length === 0[\s\S]*creatorScriptHasGroundingBlocker\(currentScript\)[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
+assert.match(route, /mixedRepairDispatched = currentDuration\.status !== "compliant"[\s\S]*distinctivenessFailures\.length > 0/);
+assert.match(route, /shouldRetryRepair:[\s\S]*!mixedRepairDispatched[\s\S]*creatorScriptRepairMateriallyImproved/);
+assert.match(route, /distinctivenessFailureSectionIds:[\s\S]*repairTargets:[\s\S]*creator_full_script_duration_repair/);
 assert.match(route, /task: "Return only new grounded narration additions for the supplied immutable safe sections\."/);
 assert.match(route, /applyCreatorScriptAdditiveExpansion/);
 assert.match(route, /Do not rewrite, summarize, paraphrase, delete, or return existing prose/);
