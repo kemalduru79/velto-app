@@ -13,8 +13,10 @@ import {
   assertCreatorScriptNarrationIsProductionSafe,
   assertCreatorScriptSatisfiesSectionBudgets,
   createCreatorScriptNarrationAuthority,
+  createCreatorScriptNarrationControlPlan,
   createCreatorScriptNarrationEditorialContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScript,
   countCreatorScriptWords,
@@ -196,6 +198,12 @@ assert.ok(plan960[6].ownershipBoundary.owns.includes("material_consequence") && 
 assert.match(plan960[7].role, /unresolved question/i);
 assert.deepEqual(plan960[7].ownershipBoundary.owns, ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"]);
 assert.ok(["mechanism", "evidence_demonstration", "social_formation", "consequence_inventory", "section_by_section_recap"].every((item) => plan960[7].ownershipBoundary.excludes.includes(item)));
+const narrationControlPlan960 = createCreatorScriptNarrationControlPlan(plan960);
+assert.deepEqual(narrationControlPlan960[0].owns, plan960[0].ownershipBoundary.owns, "structural ownership remains available as control metadata");
+assert.ok(narrationControlPlan960[2].establishedPremises.includes("definition"), "later sections receive compact established-premise authority");
+assert.match(narrationControlPlan960[3].narrationDirective, /what happened or was observed[\s\S]*what result changed[\s\S]*why that result tests/);
+assert.match(narrationControlPlan960[7].narrationDirective, /State directly[\s\S]*final sentence[\s\S]*open question without labeling/);
+assert.doesNotMatch(JSON.stringify(narrationControlPlan960), /highest-order implication|unresolved question|establish the master question|define and frame|demonstrate the mechanism/i, "provider-facing controls do not expose narration-ready structural labels");
 assert.match(plan960[7].progression, /moves forward|deepest implication/i);
 assert.doesNotMatch(plan960[7].centralQuestion, /intervention|prevention|correct false/i);
 assert.match(
@@ -469,9 +477,22 @@ assert.equal(getCreatorScriptSafeSingleCallTargetWords(), 800);
 const sectionUnits960 = plan960.map((budget) => ({ id: budget.id, kind: budget.kind, role: budget.role, heading: budget.role, text: words(budget.targetWords), claimIds: [] }));
 const mergedSectionUnits = mergeCreatorScriptSectionUnits({ sections: sectionUnits960, plan: plan960 });
 assert.deepEqual(mergedSectionUnits.map((section) => section.id), plan960.map((section) => section.id));
+for (const budget of [plan960[0], plan960[1], plan960.at(-1)]) {
+  const [serverCompletedUnit] = mergeCreatorScriptSectionUnits({
+    sections: [{ heading: "Authored heading", text: words(budget.targetWords), claimIds: [] }],
+    plan: [budget],
+  });
+  assert.deepEqual(
+    { id: serverCompletedUnit.id, kind: serverCompletedUnit.kind, role: serverCompletedUnit.role },
+    { id: budget.id, kind: budget.kind, role: budget.role },
+    `${budget.kind} canonical metadata is attached by server authority`,
+  );
+}
 assert.throws(() => mergeCreatorScriptSectionUnits({ sections: sectionUnits960.filter((section) => section.id !== plan960[1].id), plan: plan960 }), /SECTION_UNITS_INCOMPLETE/);
-assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [...sectionUnits960, { ...sectionUnits960[1], id: "invented" }], plan: plan960 }), /SECTION_UNIT_INVALID/);
-assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [...sectionUnits960, sectionUnits960[1]], plan: plan960 }), /SECTION_UNIT_INVALID/);
+assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [...sectionUnits960, { ...sectionUnits960[1], id: "invented" }], plan: plan960 }), /SECTION_UNITS_INCOMPLETE/);
+assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [...sectionUnits960, sectionUnits960[1]], plan: plan960 }), /SECTION_UNITS_INCOMPLETE/);
+assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [{ id: "invented", text: "authored narration" }], plan: [plan960[0]] }), /SECTION_UNIT_INVALID:opening/);
+assert.throws(() => mergeCreatorScriptSectionUnits({ sections: [{ text: "" }], plan: [plan960[0]] }), /SECTION_UNIT_INVALID:opening/);
 
 let sectionNativeCalls = 0;
 const generated960 = await generateCreatorScriptSectionUnits({
@@ -818,6 +839,8 @@ assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ 
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "We will investigate how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "In this section, we examine how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This documentary explores how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This inquiry does not offer easy answers but opens a space to question memory." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "Historical inquiry into memory records how testimony changed after the event. Scientific investigation can test that change against contemporaneous evidence." }], authoritativeText: narrationAuthority }), "subject-matter uses of inquiry and investigation remain allowed");
 assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "In this video, we will investigate how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
 assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "The documentary The Memory Illusion examines testimony through archival interviews. A legal document can preserve a claim without proving that memory is exact." }], authoritativeText: narrationAuthority }), "documentaries, videos, and documents that are the subject are legitimate narration nouns");
 const selfReferenceDiagnostic = getCreatorScriptNarrationSafetyViolations({ sections: [{ id: "opening", text: "Memory changes. This documentary explores why." }], authoritativeText: narrationAuthority });
@@ -835,6 +858,13 @@ assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({
 assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "This perspective treats evidence carefully while leaving the inquiry open to revision." }], authoritativeText: narrationAuthority }), "ordinary substantive uses of perspective, evidence, and inquiry remain available");
 assert.deepEqual(CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY.slice(0, 3), ["Immutable creator constraints", "Grounding, source, and evidence authority", "Audience-facing narration contract"]);
 assert.ok(CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT.some((rule) => /editorial method|production process/u.test(rule)));
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /Do not restate a thesis merely to transition/u.test(rule)));
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /narrate the supported action, observation, comparison, or result/u.test(rule)));
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /meta transitions/u.test(rule)));
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /generic 'Imagine\.\.\.'/u.test(rule)));
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /make the final sentence one natural open question/u.test(rule)));
+assert.doesNotMatch(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.join(" "), /highest-order implication|unresolved question/u, "narration-facing writing guidance does not repeat conclusion control labels");
+assert.ok(CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT.some((rule) => /not banned when they perform necessary substantive work/u.test(rule)), "anti-filler guidance remains instructional rather than a hard lexical ban");
 assert.ok(
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT.some((rule) =>
     /we will explore|we will investigate|content plan|production intent/u.test(rule)
@@ -845,13 +875,19 @@ assert.ok(
 const route = await readFile(new URL("../app/api/creator-script-plan/route.ts", import.meta.url), "utf8");
 assert.match(route, /sectionBudgetPlan/);
 assert.match(route, /editorialSectionPlan/);
-assert.match(route, /centralQuestion/);
-assert.match(route, /progressionFromPrevious/);
-assert.match(route, /ownershipBoundary/);
-assert.match(route, /ownershipBoundary is control-only metadata/);
+assert.match(route, /createCreatorScriptNarrationControlPlan/);
+assert.match(route, /requestedSectionControl/);
+assert.match(route, /establishedPremises/);
+assert.match(route, /Treat editorialSectionPlan as non-narratable control metadata/);
+assert.doesNotMatch(route, /editorialPurpose: section\.role|centralQuestion: section\.centralQuestion|progressionFromPrevious: section\.progression/);
+assert.match(route, /The server owns and attaches section identity, kind, role, order, ownership metadata, and budgets/);
+assert.match(route, /CREATOR_SCRIPT_SECTION_UNIT_VALIDATION_DIAGNOSTICS/);
+assert.doesNotMatch(route, /requiredJsonShape:\s*\{[\s\S]{0,220}sections:[\s\S]{0,220}id: section\.id/);
+assert.doesNotMatch(route, /previousSectionRole:/);
+assert.doesNotMatch(route, /sectionDiagnostics,\s*sectionsToRepair,|repairTargets,\s*requiredJsonShape/);
 assert.match(route, /getCreatorScriptEditorialDistinctivenessFailures/);
 assert.match(route, /differentiate_sections/);
-assert.match(route, /The same thesis with different wording is invalid/);
+assert.match(route, /Treat establishedPremises as already known[\s\S]*never re-teach an established premise/);
 assert.match(route, /counterview section must seriously test the master thesis/);
 assert.match(route, /creator_full_script_section/);
 assert.doesNotMatch(route, /long_form_batch|MAX_INITIAL_GENERATION_CALLS|splitCreatorScriptSectionPlan/);
@@ -867,6 +903,9 @@ assert.match(route, /requiredDirection === "expand"[\s\S]*creatorScriptHasGround
 assert.match(route, /task: "Return only new grounded narration additions for the supplied immutable safe sections\."/);
 assert.match(route, /applyCreatorScriptAdditiveExpansion/);
 assert.match(route, /Do not rewrite, summarize, paraphrase, delete, or return existing prose/);
+assert.ok((route.match(/documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT/g) || []).length >= 3, "shared documentary writing guidance reaches initial generation, additive expansion, and section regeneration");
+assert.match(route, /Continue the section's local rhetorical movement[\s\S]*Do not repeat its thesis[\s\S]*natural documentary sentence rhythm/);
+assert.match(route, /Treat sectionControl as non-narratable metadata[\s\S]*assume establishedPremises are known/);
 assert.match(route, /acceptedReplacements\.length === 0[\s\S]*repairedSectionIds = Array\.from\(new Set\(\[[\s\S]*acceptedReplacements\.map/);
 assert.doesNotMatch(route, /repairedSectionIds = Array\.from\(new Set\(\[[\s\S]{0,160}sectionsToRepair\.map/);
 assert.match(route, /requiredFinalMinWords/);

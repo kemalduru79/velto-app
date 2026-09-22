@@ -41,8 +41,10 @@ import {
   assertCreatorScriptMatchesSectionPlan,
   countCreatorScriptWords,
   createCreatorScriptNarrationAuthority,
+  createCreatorScriptNarrationControlPlan,
   createCreatorScriptNarrationEditorialContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScriptSectionBudgetPlan,
   createCreatorScriptRepairTargets,
@@ -732,6 +734,7 @@ async function executeCreatorScriptOperation(input: {
     "Claim ids are backstage metadata and must be selected only from the exact allowlist. Never place ids or citations in spoken text.",
     `Honor this priority order without trading a higher priority for a lower one: ${CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY.join(" > ")}.`,
     ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+    ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   ].join(" ");
 
   if (operation === "generate_full_script") {
@@ -750,6 +753,7 @@ async function executeCreatorScriptOperation(input: {
       language,
       hasMaterialCounterview,
     });
+    const narrationControlPlan = createCreatorScriptNarrationControlPlan(sectionBudgetPlan);
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
     );
@@ -766,7 +770,7 @@ async function executeCreatorScriptOperation(input: {
     const createInitialResponse = (
       requestedSections: typeof sectionBudgetPlan,
       unitIndex: number,
-      continuityContext: { previousSectionTitle: string; previousSectionRole: string; previousSectionEnding: string } | null,
+      continuityContext: { previousSectionTitle: string; establishedPremises: string[]; previousSectionEnding: string } | null,
     ) => client.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
         input: [
@@ -785,26 +789,28 @@ async function executeCreatorScriptOperation(input: {
           targetWordCount: durationBudget.targetWordCount,
           minimumAcceptableWordCount: durationBudget.minimumAcceptableWordCount,
           maximumAcceptableWordCount: durationBudget.maximumAcceptableWordCount,
-          requestedSection: sectionNative ? requestedSections[0] : null,
+          requestedSectionControl: sectionNative
+            ? narrationControlPlan.find((section) => section.sectionId === requestedSections[0].id)
+            : null,
           sectionWordBudget: sectionNative ? {
             minWords: requestedSections[0].minimumWords,
             targetWords: requestedSections[0].targetWords,
             maxWords: requestedSections[0].maximumWords,
           } : null,
           completeSectionBudgetPlan: sectionNative ? undefined : sectionBudgetPlan,
-          editorialSectionPlan: sectionBudgetPlan.map((section) => ({
-            id: section.id,
+          editorialSectionPlan: narrationControlPlan,
+          requestedSectionBudgets: requestedSections.map((section) => ({
+            sectionId: section.id,
             kind: section.kind,
-            editorialPurpose: section.role,
-            centralQuestion: section.centralQuestion,
-            progressionFromPrevious: section.progression,
-            ownershipBoundary: section.ownershipBoundary,
+            minWords: section.minimumWords,
+            targetWords: section.targetWords,
+            maxWords: section.maximumWords,
           })),
-          requestedSections: sectionNative ? undefined : requestedSections,
           continuityContext,
           strategy: input.body.strategy,
           generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
           audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+          documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
           internalEditorialGuidance: {
             usage: "Control context only. Perform these principles in the narration; never describe, quote, explain, or attribute them in spoken text.",
             appliedByServer: true,
@@ -826,21 +832,18 @@ async function executeCreatorScriptOperation(input: {
           requiredJsonShape: {
             title: "string",
             sections: requestedSections.map((section) => ({
-              id: section.id,
-              kind: section.kind,
-              role: section.role,
               heading: "section heading",
               text: `complete spoken section targeting ${section.targetWords} words`,
               claimIds: ["allowlisted claim id"],
             })),
           },
           rules: [
-            "Return every requested section exactly once, in the supplied order, with the exact supplied section ids, kinds, and roles. Return no unrequested sections.",
+            "Return one authored section object for every requestedSectionBudgets item, in the supplied order. Return no unrequested sections. The server owns and attaches section identity, kind, role, order, ownership metadata, and budgets.",
             "Do not rewrite or repeat an earlier section.",
             "Use the full editorialSectionPlan as the authority for intellectual progression. Every heading, primary claim, and section purpose must be materially distinct from every other section.",
-            "A body section must answer its own centralQuestion, perform its unique editorialPurpose, and add the stated progressionFromPrevious. The same thesis with different wording is invalid.",
-            "The conclusion treats prior sections as established premises only. It derives the highest-order implication for the master question and ends on one unresolved question; it must not restart the explanatory chain or recap the section sequence.",
-            "ownershipBoundary is control-only metadata. Apply its owns/excludes tokens silently; never quote, paraphrase, explain, or refer to those constraints, the section plan, the inquiry's intent, or reserved later work in spoken narration.",
+            "Treat editorialSectionPlan as non-narratable control metadata. Execute owns, excludes, establishedPremises, and narrationDirective silently; never quote, paraphrase, label, or explain those controls.",
+            "Treat establishedPremises as already known. Perform only the requested section's new owns work; never re-teach an established premise or append a summary that repeats it.",
+            "Do not announce a section's function, the inquiry's intent, structural progression, or reserved later work in spoken narration.",
             hasMaterialCounterview
               ? "The counterview section must seriously test the master thesis using supplied counter-evidence or alternative findings; token balance language is not sufficient."
               : "Do not invent a counterview. Use the supplied limits-and-uncertainty role to test the thesis only within grounded support.",
@@ -967,7 +970,7 @@ async function executeCreatorScriptOperation(input: {
           const generateUnit = async (
             requestedSections: typeof sectionBudgetPlan,
             unitIndex: number,
-            continuityContext: { previousSectionTitle: string; previousSectionRole: string; previousSectionEnding: string } | null,
+            continuityContext: { previousSectionTitle: string; establishedPremises: string[]; previousSectionEnding: string } | null,
           ) => {
             const response = await createInitialResponse(requestedSections, unitIndex, continuityContext);
             providerStatuses.push({
@@ -985,6 +988,40 @@ async function executeCreatorScriptOperation(input: {
             const returnedSections = Array.isArray(parsed.sections)
               ? parsed.sections
               : parsed.section ? [parsed.section] : [];
+            if (returnedSections.length !== requestedSections.length) {
+              console.warn("CREATOR_SCRIPT_SECTION_UNIT_VALIDATION_DIAGNOSTICS", {
+                sectionId: requestedSections[0]?.id || "unknown",
+                phase: "provider_response",
+                failureCode: "section_count_mismatch",
+                missingFields: [],
+                invalidFields: ["sections.length"],
+                providerCompletionStatus: response.status || "unknown",
+              });
+            } else {
+              returnedSections.forEach((value, index) => {
+                const returned = value && typeof value === "object" && !Array.isArray(value)
+                  ? value as Record<string, unknown>
+                  : {};
+                const expected = requestedSections[index];
+                const missingFields = asString(returned.text) ? [] : ["text"];
+                const invalidFields = [
+                  asString(returned.id) && asString(returned.id) !== expected.id ? "id" : "",
+                  asString(returned.kind) && asString(returned.kind) !== expected.kind ? "kind" : "",
+                  asString(returned.role) && asString(returned.role) !== expected.role ? "role" : "",
+                ].filter(Boolean);
+                if (missingFields.length > 0 || invalidFields.length > 0) console.warn(
+                  "CREATOR_SCRIPT_SECTION_UNIT_VALIDATION_DIAGNOSTICS",
+                  {
+                    sectionId: expected.id,
+                    phase: "provider_response",
+                    failureCode: missingFields.length > 0 ? "missing_authored_field" : "conflicting_server_owned_field",
+                    missingFields,
+                    invalidFields,
+                    providerCompletionStatus: response.status || "unknown",
+                  },
+                );
+              });
+            }
             const orderedUnit = mergeCreatorScriptSectionUnits({
               sections: returnedSections,
               plan: requestedSections,
@@ -1013,7 +1050,7 @@ async function executeCreatorScriptOperation(input: {
                   const previousBudget = sectionBudgetPlan[unitIndex - 1];
                   const continuityContext = previous && previousBudget ? {
                     previousSectionTitle: asString(previous.heading, previousBudget.id),
-                    previousSectionRole: previousBudget.role,
+                    establishedPremises: narrationControlPlan[unitIndex]?.establishedPremises || [],
                     previousSectionEnding: asString(previous.text).slice(-1_200),
                   } : null;
                   const generated = await generateUnit([section], unitIndex, continuityContext);
@@ -1111,10 +1148,16 @@ async function executeCreatorScriptOperation(input: {
                   strategy: input.body.strategy,
                   generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
                   audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+                  documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
                   editorialContext: narrationEditorialContext,
                   allowedClaimIds: narrationAllowedClaimIds,
                   expansionTargets: expansionTargets.map((target) => ({
-                    ...target,
+                    sectionId: target.sectionId,
+                    currentWords: target.currentWords,
+                    requestedGainWords: target.requestedGainWords,
+                    maxAdditionalWords: target.maxAdditionalWords,
+                    sectionControl: narrationControlPlan.find((section) => section.sectionId === target.sectionId),
+                    availablePlacementAnchors: target.availablePlacementAnchors,
                     existingSectionText: currentScript.sections.find((section) => section.id === target.sectionId)?.text || "",
                     permittedGrounding: createSectionNativeEditorialContext({
                       context: narrationEditorialContext,
@@ -1139,12 +1182,14 @@ async function executeCreatorScriptOperation(input: {
                   rules: [
                     "Do not rewrite, summarize, paraphrase, delete, or return existing prose. Return new material only.",
                     "Each addition must perform only work owned by its section and answer its central question without consuming another section's role.",
+                    "Treat sectionControl as non-narratable metadata. Add only its new owns work, assume establishedPremises are known, and never verbalize control labels.",
                     "Do not repeat existing sentences, add filler, invent claims, or introduce unsupported examples, studies, statistics, authorities, or evidence.",
                     "Do not introduce editorial methodology or describe the current inquiry, exploration, investigation, analysis, production, or section plan.",
                     "Control-only provenance is not narration authority. Use only supplied narration-facing claims and evidence.",
                     "Use one supplied placementAnchorId exactly. Never invent or paraphrase anchor text.",
                     "Aim at requestedGainWords and never exceed maxAdditionalWords.",
                     "Preserve grounding, uncertainty, section ownership, and the existing terminal sentence or unresolved question.",
+                    "Continue the section's local rhetorical movement with one useful role-owned contribution. Do not repeat its thesis, summarize its existing prose, or make the insertion read like filler; maintain natural documentary sentence rhythm and preserve the terminal sentence's function.",
                   ],
                 }) },
               ],
@@ -1252,29 +1297,51 @@ async function executeCreatorScriptOperation(input: {
                 maximumAcceptableWordCount: currentDuration.maximumAcceptableWordCount,
                 totalDeficitWords: Math.max(0, currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount),
                 totalExcessWords: Math.max(0, currentDuration.actualWordCount - currentDuration.maximumAcceptableWordCount),
-                sectionBudgetPlan,
-                sectionDiagnostics,
-                sectionsToRepair,
+                sectionControlPlan: narrationControlPlan,
+                sectionDiagnostics: sectionDiagnostics.map((section) => ({
+                  sectionId: section.id,
+                  kind: section.kind,
+                  minWords: section.minimumWords,
+                  targetWords: section.targetWords,
+                  maxWords: section.maximumWords,
+                  actualWords: section.actualWords,
+                  deficitWords: section.deficitWords,
+                  excessWords: section.excessWords,
+                  missing: section.missing,
+                })),
+                sectionsToRepair: sectionsToRepair.map((section) => ({
+                  sectionId: section.id,
+                  kind: section.kind,
+                  minWords: section.minimumWords,
+                  targetWords: section.targetWords,
+                  maxWords: section.maximumWords,
+                  actualWords: section.actualWords,
+                  sectionControl: narrationControlPlan.find((control) => control.sectionId === section.id),
+                })),
                 distinctivenessFailureSectionIds: distinctivenessFailures.map((section) => section.id),
-                repairTargets,
+                repairTargets: repairTargets.map((target) => ({
+                  sectionId: target.sectionId,
+                  beforeWords: target.beforeWords,
+                  requiredFinalMinWords: target.requiredFinalMinWords,
+                  requiredFinalTargetWords: target.requiredFinalTargetWords,
+                  requiredFinalMaxWords: target.requiredFinalMaxWords,
+                  minimumRequiredGain: target.minimumRequiredGain,
+                })),
                 requiredJsonShape: {
                   sections: sectionsToRepair.map((section) => ({
-                    id: section.id,
-                    kind: section.kind,
-                    role: section.role,
                     heading: "section heading",
                     text: `replacement spoken section targeting ${section.targetWords} words`,
                     claimIds: ["allowlisted claim id"],
                   })),
                 },
                 rules: [
-                  "Return only corrected replacement sections for every supplied sectionsToRepair item; do not return unrelated sections.",
-                  "Preserve each requested section id, kind, and role exactly. For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
+                  "Return one corrected authored section object for every supplied sectionsToRepair item, in order; do not return unrelated sections. The server attaches canonical identity, kind, role, order, ownership metadata, and budgets.",
+                  "For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
                   "For requiredDirection=expand, each replacement must be longer than beforeWords and must add at least minimumRequiredGain words to reach requiredFinalMinWords. A shorter replacement or one still below the hard minimum is not a successful expansion. Use grounded, role-owned explanation, causal reasoning, supported implications or comparison, uncertainty, synthesis, and useful transitions only.",
                   "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
-                  "Any section listed in distinctivenessFailureSectionIds must be rewritten around its assigned editorial purpose and central question so its heading and primary claim no longer duplicate another section.",
-                  "ownershipBoundary is control-only metadata. Apply its owns/excludes tokens silently and never verbalize the constraints, section plan, inquiry intent, or reserved work. Replacement text must perform only its owned intellectual job.",
-                  "When repairing the conclusion, use earlier sections only as established premises, derive the highest-order implication for the master question, and end on one unresolved question without re-teaching or inventorying prior roles.",
+                  "Any section listed in distinctivenessFailureSectionIds must be rewritten to perform its sectionControlPlan owns work so its heading and primary claim no longer duplicate another section.",
+                  "sectionControlPlan is control-only metadata. Apply owns/excludes/establishedPremises silently and never verbalize structural labels, inquiry intent, or reserved work.",
+                  "For a conclusion, state the resulting implication directly and make the final sentence the open question without labeling either one or inventorying prior sections.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
                   "Keep all internal editorial guidance, brand context, production intent, workflow language, and section-purpose instructions out of spoken narration.",
@@ -1427,6 +1494,7 @@ async function executeCreatorScriptOperation(input: {
           nextSection: script.sections[targetIndex + 1] || null,
           generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
           audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+          documentaryWritingContract: CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
           internalEditorialGuidance: { usage: "Control context only; never narration.", appliedByServer: true },
           editorialContext: createCreatorScriptNarrationEditorialContext(script.grounding.context),
           allowedClaimIds,

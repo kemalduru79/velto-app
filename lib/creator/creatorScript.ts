@@ -26,6 +26,18 @@ export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
   "Do not invent or canonize named methods, frameworks, studies, institutions, theories, systems, practices, or factual authorities absent from creator input or grounded source authority.",
 ] as const;
 
+export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
+  "Write as an intelligent, calm, precise, curious human documentary narrator: state substantive ideas directly instead of announcing, labeling, or explaining the paragraph's function.",
+  "Treat established premises as known. Do not restate a thesis merely to transition, summarize prior sections, or give each section a self-contained introduction; each section must add new role-owned intellectual value.",
+  "Let transitions emerge from unresolved logic. Never use meta transitions such as 'this brings us to', 'having established', 'we now turn to', 'the next question is', or 'this section examines'.",
+  "Prefer concrete grounded human stakes before abstract category lists, but never invent people, scenarios, study details, facts, examples, or authorities. Clearly illustrative language is allowed only when it asserts no new fact and existing grounded evidence cannot provide the concrete stake.",
+  "When the section owns evidence or a case, narrate the supported action, observation, comparison, or result before interpreting why it tests the mechanism; do not default to generic 'studies show' or 'evidence suggests' summaries when concrete grounded detail is available.",
+  "Vary sentence and paragraph rhythm naturally: combine earned short emphasis with clear medium explanation and occasional longer analysis; avoid repetitive clause shapes, excessive semicolons, rhetorical-question stacking, and mechanically balanced paragraphs.",
+  "Avoid academic or generic AI filler that merely restates a point, including repeated uses of 'it is important to', 'this highlights', 'this underscores', 'recognizing this', 'understanding this', 'in this context', 'at its core', 'ultimately', 'profound implications', or 'complex interplay'. These expressions are not banned when they perform necessary substantive work.",
+  "For an opening, begin from a grounded human contradiction, recognizable experience, supported surprising fact, consequential tension, or concise observation; avoid generic 'Imagine...' framing, dictionary definitions, question stacking, clickbait, and premature explanation of the full thesis.",
+  "For a conclusion, state directly what the established argument changes about identity, agency, responsibility, or meaning; do not label the ending, refer to evidence 'discussed above', recap sections, or narrate the production process. Preserve uncertainty and make the final sentence one natural open question.",
+] as const;
+
 export type CreatorScriptNarrationSafetyViolation = {
   sectionId: string;
   category: "internal_editorial_leakage" | "unsupported_named_authority";
@@ -123,6 +135,31 @@ export type CreatorScriptExpansionTarget = {
   ownershipBoundary: CreatorScriptSectionBudget["ownershipBoundary"];
   availablePlacementAnchors: Array<{ id: "before_terminal_sentence"; placementMode: "server_exact_offset" }>;
 };
+
+export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSectionBudget[]) {
+  const establishedPremises: string[] = [];
+  return plan.map((section) => {
+    const owns = [...section.ownershipBoundary.owns];
+    const narrationDirective = section.kind === "opening"
+      ? "Begin directly with one grounded human tension or observation. Ask at most one essential question. Do not announce what the inquiry or content will do."
+      : section.kind === "conclusion"
+        ? "State directly what the established argument changes about identity, agency, responsibility, or meaning. Preserve uncertainty and make the final sentence the single open question without labeling it."
+        : owns.includes("grounded_demonstration")
+          ? "Use supported material in this order: what happened or was observed, what result changed, and why that result tests the already-established mechanism. Stop without restating the premise."
+          : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them.";
+    const control = {
+      sectionId: section.id,
+      kind: section.kind,
+      usage: "control_only_never_narrate" as const,
+      owns,
+      excludes: [...section.ownershipBoundary.excludes],
+      establishedPremises: [...establishedPremises],
+      narrationDirective,
+    };
+    establishedPremises.push(...owns);
+    return control;
+  });
+}
 
 export function createCreatorScriptInsertionAnchors(section: Pick<CreatorScriptSection, "text">) {
   const starts = [0];
@@ -502,7 +539,7 @@ export function getCreatorScriptNarrationSafetyViolations(input: {
   const internalPatterns: Array<{ marker: string; pattern: RegExp }> = [
     { marker: "publishing_brand", pattern: /\bTHYNEL\b/giu },
     { marker: "invalid_named_internal_artifact", pattern: /\bTHNK\s+Research\b/giu },
-    { marker: "production_intent_meta", pattern: /\b(?:(?:this|our)\s+(?:inquiry|exploration|investigation|analysis))\s+(?:does\s+not\s+seek|seeks?|aims?|will|opens?|asks?|invites?|frames?|introduces?|explores?|examines?|reveals?|shows?)\b/giu },
+    { marker: "production_intent_meta", pattern: /\b(?:(?:this|our)\s+(?:inquiry|exploration|investigation|analysis))\s+(?:(?:does\s+not\s+|does\s+|will\s+)?(?:seek|aim|offer|provide|create|open|allow|ask|invite|frame|introduce|explore|examine|reveal|show)s?)\b/giu },
     { marker: "narrative_process_meta", pattern: /\bwe\s+(?:will|aim\s+to|seek\s+to)\s+(?:investigate|explore|examine|consider)\b/giu },
     {
       marker: "production_self_reference",
@@ -1099,26 +1136,30 @@ export function mergeCreatorScriptSectionUnits(input: {
   sections: unknown[];
   plan: CreatorScriptSectionBudget[];
 }) {
-  const sectionById = new Map<string, unknown>();
-  const allowed = new Map(input.plan.map((section) => [section.id, section]));
-  for (const sectionValue of input.sections) {
-    const section = record(sectionValue);
-    const id = clean(section?.id, 120);
-    const budget = allowed.get(id);
-    if (
-      !id || !budget || sectionById.has(id) || section?.kind !== budget.kind ||
-      clean(section?.role, 500) !== budget.role || !clean(section?.text, 100_000)
-    ) {
-      throw new Error(`CREATOR_SCRIPT_SECTION_UNIT_INVALID:${id || "unknown"}`);
-    }
-    sectionById.set(id, sectionValue);
-  }
-  if (sectionById.size !== input.plan.length) {
+  if (input.sections.length !== input.plan.length) {
     throw new Error("CREATOR_SCRIPT_SECTION_UNITS_INCOMPLETE");
   }
-  return input.plan
-    .map((section) => sectionById.get(section.id))
-    .filter((section) => section !== undefined);
+  return input.plan.map((budget, index) => {
+    const sectionValue = input.sections[index];
+    const section = record(sectionValue);
+    const id = clean(section?.id, 120);
+    const kind = clean(section?.kind, 120);
+    const role = clean(section?.role, 500);
+    if (
+      (id && id !== budget.id) ||
+      (kind && kind !== budget.kind) ||
+      (role && role !== budget.role) ||
+      !clean(section?.text, 100_000)
+    ) {
+      throw new Error(`CREATOR_SCRIPT_SECTION_UNIT_INVALID:${budget.id}`);
+    }
+    return {
+      ...section,
+      id: budget.id,
+      kind: budget.kind,
+      role: budget.role,
+    };
+  });
 }
 
 export async function generateCreatorScriptSectionUnits(input: {
