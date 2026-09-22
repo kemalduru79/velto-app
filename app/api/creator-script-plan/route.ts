@@ -35,10 +35,15 @@ import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvid
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorScript,
+  assertCreatorScriptNarrationIsProductionSafe,
   assertCreatorScriptHasDistinctEditorialSections,
   assertCreatorScriptHasSafeSectionStructure,
   assertCreatorScriptMatchesSectionPlan,
   countCreatorScriptWords,
+  createCreatorScriptNarrationAuthority,
+  createCreatorScriptNarrationEditorialContext,
+  CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScriptSectionBudgetPlan,
   creatorScriptRepairMateriallyImproved,
   CreatorScriptDurationInvalidError,
@@ -719,6 +724,8 @@ async function executeCreatorScriptOperation(input: {
     "Return strict JSON only. Do not return production scenes, visual prompts, camera instructions, assets, or shot segmentation.",
     "All factual and interpretive claims must stay inside the supplied editorial context and preserve its uncertainty.",
     "Claim ids are backstage metadata and must be selected only from the exact allowlist. Never place ids or citations in spoken text.",
+    `Honor this priority order without trading a higher priority for a lower one: ${CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY.join(" > ")}.`,
+    ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   ].join(" ");
 
   if (operation === "generate_full_script") {
@@ -744,6 +751,10 @@ async function executeCreatorScriptOperation(input: {
       ? sectionBudgetPlan.map((section) => [section])
       : [sectionBudgetPlan];
     const title = asString(input.body.title, asString(input.body.topic));
+    const narrationAuthority = createCreatorScriptNarrationAuthority({
+      editorialContext: input.editorialContext,
+      creatorProvidedText: [input.body.topic, input.body.title, input.body.strategy],
+    });
     const createInitialResponse = (
       requestedSections: typeof sectionBudgetPlan,
       unitIndex: number,
@@ -783,16 +794,22 @@ async function executeCreatorScriptOperation(input: {
           requestedSections: sectionNative ? undefined : requestedSections,
           continuityContext,
           strategy: input.body.strategy,
+          generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
+          audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+          internalEditorialGuidance: {
+            usage: "Control context only. Perform these principles in the narration; never describe, quote, explain, or attribute them in spoken text.",
+            appliedByServer: true,
+          },
           editorialContext: sectionNative
             ? createSectionNativeEditorialContext({
-                context: input.editorialContext,
+                context: createCreatorScriptNarrationEditorialContext(input.editorialContext),
                 plan: sectionBudgetPlan,
                 sectionIndex: unitIndex,
               })
-            : input.editorialContext,
+            : createCreatorScriptNarrationEditorialContext(input.editorialContext),
           allowedClaimIds: sectionNative
             ? createSectionNativeEditorialContext({
-                context: input.editorialContext,
+                context: createCreatorScriptNarrationEditorialContext(input.editorialContext),
                 plan: sectionBudgetPlan,
                 sectionIndex: unitIndex,
               }).claims.map((claim) => claim.claimId)
@@ -830,6 +847,8 @@ async function executeCreatorScriptOperation(input: {
             "Never invent evidence or unsupported factual claims to reach the word budget. Rhetorical and structural connective writing is allowed only when it adds editorial value.",
             "Preserve the master question, strategy authority, source authority, and all evidence uncertainty.",
             "Use only exact allowedClaimIds. Use an empty claimIds array for purely rhetorical or structural text.",
+            "Do not turn internal editorial guidance, brand context, workflow language, production intent, or section-purpose instructions into narration. The narrator performs the editorial behavior and speaks to the viewer about the subject; the narrator never explains the editorial behavior to an editor.",
+            "Do not introduce a named methodology, framework, study, institution, theory, system, practice, researcher, or factual authority unless that exact named concept is present in creator-provided input or the supplied grounded claims, evidence, or sources.",
           ],
           }) },
         ],
@@ -920,6 +939,7 @@ async function executeCreatorScriptOperation(input: {
         validateFinal: (script) => {
           assertCreatorScriptHasSafeSectionStructure(script, sectionBudgetPlan);
           assertCreatorScriptHasDistinctEditorialSections(script, sectionBudgetPlan);
+          assertCreatorScriptNarrationIsProductionSafe({ sections: script.sections, authoritativeText: narrationAuthority });
         },
         requiresRepair: (script) =>
           getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0
@@ -952,6 +972,10 @@ async function executeCreatorScriptOperation(input: {
             const orderedUnit = mergeCreatorScriptSectionUnits({
               sections: returnedSections,
               plan: requestedSections,
+            });
+            assertCreatorScriptNarrationIsProductionSafe({
+              sections: orderedUnit.map((section) => ({ id: asString((section as Record<string, unknown>).id), text: asString((section as Record<string, unknown>).text) })),
+              authoritativeText: narrationAuthority,
             });
             for (const section of orderedUnit) {
               const sectionRecord = section as Record<string, unknown>;
@@ -1055,7 +1079,10 @@ async function executeCreatorScriptOperation(input: {
                 topic: asString(input.body.topic),
                 title,
                 strategy: input.body.strategy,
-                editorialContext: input.editorialContext,
+                generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
+                audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+                internalEditorialGuidance: { usage: "Control context only; never narration.", appliedByServer: true },
+                editorialContext: createCreatorScriptNarrationEditorialContext(input.editorialContext),
                 allowedClaimIds,
                 currentSectionsToRepair: currentScript.sections.filter((section) =>
                   sectionsToRepair.some((diagnostic) => diagnostic.id === section.id)
@@ -1091,6 +1118,8 @@ async function executeCreatorScriptOperation(input: {
                   "Any section listed in distinctivenessFailureSectionIds must be rewritten around its assigned editorial purpose and central question so its heading and primary claim no longer duplicate another section.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
+                  "Keep all internal editorial guidance, brand context, production intent, workflow language, and section-purpose instructions out of spoken narration.",
+                  "Do not introduce any named methodology, framework, study, institution, theory, system, practice, researcher, or factual authority absent from creator-provided input or grounded claims, evidence, and sources.",
                   currentDuration.status === "compliant"
                     ? "Rebalance only the supplied failing sections toward their individual target, minimum, and maximum word ranges while preserving the overall script duration envelope. Do not globally compress or expand. Preserve editorial meaning, claims, evidence, uncertainty, continuity, and section identities."
                     : currentDuration.status === "too_short"
@@ -1110,6 +1139,10 @@ async function executeCreatorScriptOperation(input: {
           const validatedReplacements = mergeCreatorScriptSectionUnits({
             sections: Array.isArray(parsedRepair.sections) ? parsedRepair.sections : [],
             plan: sectionsToRepair,
+          });
+          assertCreatorScriptNarrationIsProductionSafe({
+            sections: validatedReplacements.map((section) => ({ id: asString((section as Record<string, unknown>).id), text: asString((section as Record<string, unknown>).text) })),
+            authoritativeText: narrationAuthority,
           });
           const directionallyValidReplacements = filterCreatorScriptRepairReplacements({
             script: currentScript,
@@ -1211,10 +1244,13 @@ async function executeCreatorScriptOperation(input: {
           targetSection: target,
           previousSection: script.sections[targetIndex - 1] || null,
           nextSection: script.sections[targetIndex + 1] || null,
-          editorialContext: script.grounding.context,
+          generationPriorityHierarchy: CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
+          audienceFacingNarratorContract: CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+          internalEditorialGuidance: { usage: "Control context only; never narration.", appliedByServer: true },
+          editorialContext: createCreatorScriptNarrationEditorialContext(script.grounding.context),
           allowedClaimIds,
           requiredJsonShape: { section: { id: target.id, kind: target.kind, heading: "optional string", text: "replacement canonical spoken text", claimIds: ["allowlisted claim id"] } },
-          rules: ["Return only the target section.", "Preserve its id and kind.", "Do not rewrite neighboring sections.", "Use only exact allowedClaimIds."],
+          rules: ["Return only the target section.", "Preserve its id and kind.", "Do not rewrite neighboring sections.", "Use only exact allowedClaimIds.", "Keep internal editorial guidance, brand context, production intent, workflow language, and section-purpose instructions out of spoken narration.", "Do not introduce named factual or conceptual authority absent from creator-provided input or grounded claims, evidence, and sources."],
         }) },
       ],
       text: { format: { type: "json_object" } },
@@ -1228,6 +1264,10 @@ async function executeCreatorScriptOperation(input: {
         targetSectionId,
         { ...((parsed.section || {}) as Record<string, unknown>), evidenceReviewRequired: false },
       );
+      assertCreatorScriptNarrationIsProductionSafe({
+        sections: creatorScript.sections,
+        authoritativeText: createCreatorScriptNarrationAuthority({ editorialContext: script.grounding.context, creatorProvidedText: [input.body.topic, input.body.title, input.body.strategy, script.title] }),
+      });
       return NextResponse.json({ success: true, creatorScript });
     } catch (error) {
       return NextResponse.json(

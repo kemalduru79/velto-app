@@ -5,6 +5,35 @@ import {
 
 export const CREATOR_SCRIPT_VERSION = 1 as const;
 
+export const CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY = [
+  "Immutable creator constraints",
+  "Grounding, source, and evidence authority",
+  "Audience-facing narration contract",
+  "Section role and narrative progression",
+  "Content richness and global duration",
+  "Editorial writing quality",
+  "Stylistic polish",
+] as const;
+
+export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
+  "Speak directly to the viewer about the subject and advance the inquiry itself.",
+  "Perform the editorial behavior without describing the editorial method, production process, section purpose, brand mission, or internal instructions.",
+  "Explain grounded evidence and uncertainty naturally; never address an editor or discuss the audience as an object of content strategy.",
+  "Never announce the content plan or production intent with phrases such as 'we will explore', 'we will investigate', 'we will examine', 'this inquiry', or 'our exploration'; perform the inquiry directly in audience-facing narration.",
+  "Do not refer to the script, section, episode, documentary, video, content, production, or narrative container when describing this work; do not announce what the content will do, and perform the reasoning directly. Ordinary references to a documentary, video, or document that is itself part of the subject remain valid.",
+  "Source identity and provenance are backstage grounding metadata, not narration authority. Narratable concepts must come from creator-provided subject matter or the supplied claim and evidence passages; never paraphrase a source's publishing philosophy or research process into spoken narration.",
+  "Do not invent or canonize named methods, frameworks, studies, institutions, theories, systems, practices, or factual authorities absent from creator input or grounded source authority.",
+] as const;
+
+export type CreatorScriptNarrationSafetyViolation = {
+  sectionId: string;
+  category: "internal_editorial_leakage" | "unsupported_named_authority";
+  marker: string;
+  matchText?: string;
+  matchStart?: number;
+  matchEnd?: number;
+};
+
 export type CreatorScriptSectionKind = "opening" | "body" | "conclusion";
 
 export type CreatorScriptSection = {
@@ -287,6 +316,126 @@ export function validateCreatorScriptGenerationDuration(value: unknown) {
 
 export function countCreatorScriptWords(value: string) {
   return value.replace(/[“”"'’.,!?;:()\[\]{}]/g, " ").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function normalizeCreatorScriptAuthorityText(value: string) {
+  return value.normalize("NFKC").replace(/[’‘]/gu, "'").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
+}
+
+export function createCreatorScriptNarrationAuthority(input: {
+  editorialContext: ScriptPlannerEditorialContext;
+  creatorProvidedText?: unknown[];
+}) {
+  const creatorProvided = (input.creatorProvidedText || []).flatMap((value) => {
+    if (typeof value === "string") return [value];
+    try { return [JSON.stringify(value)]; } catch { return []; }
+  });
+  const grounded = [
+    ...input.editorialContext.claims.map((claim) => claim.text),
+    ...input.editorialContext.evidence.flatMap((evidence) => [evidence.excerpt || "", evidence.contextNote || ""]),
+  ];
+  return normalizeCreatorScriptAuthorityText([...creatorProvided, ...grounded].filter(Boolean).join("\n"));
+}
+
+/**
+ * Source identity and classification establish provenance backstage. They do
+ * not, by themselves, authorize the narrator to speak a source's brand,
+ * publishing philosophy, or research process. A source identity is speakable
+ * only when it is also present in an allowlisted claim or evidence passage.
+ */
+export function createCreatorScriptNarrationEditorialContext(
+  context: ScriptPlannerEditorialContext,
+): ScriptPlannerEditorialContext {
+  return {
+    ...context,
+    editorialConstitution: "Backstage editorial controls are enforced separately and are not narration material.",
+    sources: context.sources.map((source) => ({
+      sourceId: source.sourceId,
+      title: "Grounding source",
+      url: "",
+      publisher: "",
+      author: null,
+      publishedAt: null,
+      directness: source.directness,
+      reviewStatus: source.reviewStatus,
+      searchLane: source.searchLane,
+      sourceKind: source.sourceKind,
+    })),
+  };
+}
+
+export function getCreatorScriptNarrationSafetyViolations(input: {
+  sections: Array<Pick<CreatorScriptSection, "id" | "text">>;
+  authoritativeText: string;
+}) {
+  const violations: CreatorScriptNarrationSafetyViolation[] = [];
+  const internalPatterns: Array<{ marker: string; pattern: RegExp }> = [
+    { marker: "publishing_brand", pattern: /\bTHYNEL\b/giu },
+    { marker: "invalid_named_internal_artifact", pattern: /\bTHNK\s+Research\b/giu },
+    { marker: "production_intent_meta", pattern: /\b(?:(?:this|our)\s+(?:inquiry|exploration|investigation))\s+(?:does\s+not\s+seek|seeks?|aims?|will|explores?|examines?|reveals?|shows?)\b/giu },
+    { marker: "narrative_process_meta", pattern: /\bwe\s+(?:will|aim\s+to|seek\s+to)\s+(?:investigate|explore|examine|consider)\b/giu },
+    {
+      marker: "production_self_reference",
+      pattern: /\b(?:(?:(?:in|within|later\s+in|earlier\s+in)\s+(?:this|our)\s+(?:script|documentary|episode|video|section|content|production|narrative))|(?:(?:this|our)\s+(?:script|documentary|episode|video|section|content|production|narrative)\s*,?\s*(?:we\s+(?:will|aim\s+to|seek\s+to)|will|aims?\s+to|seeks?\s+to|explores?|examines?|investigates?|considers?|shows?|reveals?|asks?|argues?|traces?|focuses?)))\b/giu,
+    },
+    { marker: "editorial_methodology", pattern: /\b(?:our|the|this)\s+editorial\s+(?:approach|method|methodology|commitment|mission|purpose)\b/giu },
+    { marker: "editorial_alignment", pattern: /\b(?:this inquiry|this project|this story)\s+(?:aligns?|reflects?|embodies?|supports?)\b/giu },
+    { marker: "audience_as_strategy", pattern: /\b(?:we|this (?:documentary|inquiry))\s+(?:invite|ask|encourage)\s+(?:the\s+)?(?:viewer|viewers|audience)\b/giu },
+  ];
+  const namedAuthorityPatterns = [
+    /\b[\p{Lu}][\p{L}\p{N}&.'’-]*(?:\s+[\p{Lu}][\p{L}\p{N}&.'’-]*){0,4}\s+(?:Research|Methodology|Method|Framework|Theory|Institute|Institution|University|Laboratory|Lab|Study|System|Practice)\b/gu,
+    /\b[\p{Lu}][\p{L}\p{N}&.'’-]*(?:\s+[\p{Lu}][\p{L}\p{N}&.'’-]*){0,4}\s+(?:Araştırma(?:sı)?|Yöntemi|Metodolojisi|Çerçevesi|Teorisi|Enstitüsü|Kurumu|Üniversitesi|Laboratuvarı|Çalışması|Sistemi|Uygulaması)\b/gu,
+  ];
+  for (const section of input.sections) {
+    for (const { marker, pattern } of internalPatterns) {
+      const match = pattern.exec(section.text);
+      if (match) violations.push({
+        sectionId: section.id,
+        category: "internal_editorial_leakage",
+        marker,
+        matchText: match[0].slice(0, 120),
+        matchStart: match.index,
+        matchEnd: match.index + match[0].length,
+      });
+      pattern.lastIndex = 0;
+    }
+    for (const pattern of namedAuthorityPatterns) {
+      for (const match of section.text.matchAll(pattern)) {
+        const candidate = normalizeCreatorScriptAuthorityText(match[0]);
+        if (candidate && !input.authoritativeText.includes(candidate)) violations.push({
+          sectionId: section.id,
+          category: "unsupported_named_authority",
+          marker: match[0],
+          matchText: match[0].slice(0, 120),
+          matchStart: match.index,
+          matchEnd: match.index + match[0].length,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+export function assertCreatorScriptNarrationIsProductionSafe(input: {
+  sections: Array<Pick<CreatorScriptSection, "id" | "text">>;
+  authoritativeText: string;
+}) {
+  const violations = getCreatorScriptNarrationSafetyViolations(input);
+  if (violations.length > 0) {
+    console.warn("CREATOR_SCRIPT_NARRATION_SAFETY_DIAGNOSTICS", {
+      violations: violations.map((violation) => ({
+        sectionId: violation.sectionId,
+        category: violation.category,
+        marker: violation.marker,
+        matchText: violation.matchText,
+        matchStart: violation.matchStart,
+        matchEnd: violation.matchEnd,
+      })),
+    });
+  }
+  if (violations.some((violation) => violation.category === "internal_editorial_leakage")) throw new Error("CREATOR_SCRIPT_NARRATION_EDITORIAL_LEAKAGE");
+  if (violations.length) throw new Error("CREATOR_SCRIPT_NARRATION_UNSUPPORTED_NAMED_AUTHORITY");
+  return input.sections;
 }
 
 export function getCreatorScriptDurationContract(input: {

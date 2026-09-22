@@ -10,7 +10,12 @@ import {
   assertCreatorScriptHasHealthySectionStructure,
   assertCreatorScriptHasSafeSectionStructure,
   assertCreatorScriptHasDistinctEditorialSections,
+  assertCreatorScriptNarrationIsProductionSafe,
   assertCreatorScriptSatisfiesSectionBudgets,
+  createCreatorScriptNarrationAuthority,
+  createCreatorScriptNarrationEditorialContext,
+  CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScript,
   createCreatorScriptSectionBudgetPlan,
   creatorScriptRepairMateriallyImproved,
@@ -22,6 +27,7 @@ import {
   getCreatorScriptEditorialDistinctivenessFailures,
   filterCreatorScriptRepairReplacements,
   getCreatorScriptMaterialSectionFailures,
+  getCreatorScriptNarrationSafetyViolations,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
   getCreatorScriptSectionDiagnostics,
@@ -611,6 +617,58 @@ const compressed = await generateCreatorScriptWithDurationContract({ durationSec
 assert.equal(compressed.repaired, true);
 assert.equal(scriptCalls, 2);
 
+const namedAuthorityContext = {
+  ...context,
+  editorialConstitution: "THYNEL's internal editorial method preserves evidence and uncertainty.",
+  claims: [{ claimId: "claim-authority", claimType: "THEORY", text: "Reconstructive Memory Theory describes recall as reconstructive.", supportingEvidenceIds: ["evidence-authority"], counterEvidenceIds: [], contextualEvidenceIds: [] }],
+  evidence: [{ evidenceId: "evidence-authority", sourceId: "source-authority", excerpt: "Reconstructive Memory Theory is discussed in the source.", contextNote: null, locator: { section: null, page: null, timecodeStartSec: null, timecodeEndSec: null } }],
+  sources: [{ sourceId: "source-authority", title: "Reconstructive Memory Theory", url: "https://example.test/authority", publisher: "Evidence Press", author: "A. Researcher", publishedAt: null, directness: "secondary", reviewStatus: "usable", searchLane: "supporting_evidence", sourceKind: "article" }],
+};
+const narrationAuthority = createCreatorScriptNarrationAuthority({ editorialContext: namedAuthorityContext, creatorProvidedText: ["Use the Narrative Identity Framework supplied by the creator."] });
+assert.equal(narrationAuthority.includes("internal editorial method"), false, "internal editorial constitution is control context, not narration authority");
+const controlOnlySourceContext = {
+  ...namedAuthorityContext,
+  editorialConstitution: "Use the practical inquiry approach to examine claims before drawing conclusions.",
+  sources: [{ ...namedAuthorityContext.sources[0], title: "THNK Research Applied Inquiry Approach", publisher: "THNK First", author: "Editorial Methods Team" }],
+};
+const projectedNarrationContext = createCreatorScriptNarrationEditorialContext(controlOnlySourceContext);
+assert.equal(projectedNarrationContext.editorialConstitution.includes("practical inquiry"), false, "control-only editorial methodology prose is absent from the narration-facing context");
+assert.deepEqual(projectedNarrationContext.sources, [{ sourceId: "source-authority", title: "Grounding source", url: "", publisher: "", author: null, publishedAt: null, directness: "secondary", reviewStatus: "usable", searchLane: "supporting_evidence", sourceKind: "article" }], "source identity remains provenance-only and cannot seed editorial-methodology narration");
+const controlOnlyAuthority = createCreatorScriptNarrationAuthority({ editorialContext: controlOnlySourceContext });
+assert.equal(controlOnlyAuthority.includes("applied inquiry"), false, "control-only source identity is not promoted into speakable authority");
+assert.equal(controlOnlyAuthority.includes("reconstructive memory theory"), true, "a subject-matter methodology grounded in claims and evidence remains speakable");
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "THYNEL's mission invites viewers to reflect." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "THNK Research establishes a proprietary explanation." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "THNK Research establishes a proprietary explanation." }], authoritativeText: `${narrationAuthority} thnk research` }), /NARRATION_EDITORIAL_LEAKAGE/, "known invalid internal artifacts cannot become speakable merely by appearing in broad authority text");
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This inquiry does not seek to provide simple answers but to explore the evidence." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "conclusion", text: "Our exploration reveals that memory remains uncertain." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "We will investigate how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "In this section, we examine how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "This documentary explores how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "opening", text: "In this video, we will investigate how memory changes over time." }], authoritativeText: narrationAuthority }), /NARRATION_EDITORIAL_LEAKAGE/);
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "The documentary The Memory Illusion examines testimony through archival interviews. A legal document can preserve a claim without proving that memory is exact." }], authoritativeText: narrationAuthority }), "documentaries, videos, and documents that are the subject are legitimate narration nouns");
+const selfReferenceDiagnostic = getCreatorScriptNarrationSafetyViolations({ sections: [{ id: "opening", text: "Memory changes. This documentary explores why." }], authoritativeText: narrationAuthority });
+assert.deepEqual(selfReferenceDiagnostic.map(({ marker, matchText, matchStart, matchEnd }) => ({ marker, matchText, matchStart, matchEnd })), [{ marker: "production_self_reference", matchText: "This documentary explores", matchStart: 16, matchEnd: 41 }], "narration diagnostics identify the short exact matching span without logging the full script");
+assert.throws(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "The Quantum Recall Methodology explains the effect." }], authoritativeText: narrationAuthority }), /UNSUPPORTED_NAMED_AUTHORITY/);
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "Reconstructive Memory Theory describes recall as reconstructive." }, { id: "section-2", text: "The Narrative Identity Framework connects memory and identity." }], authoritativeText: narrationAuthority }), "grounded and creator-provided named concepts remain allowed");
+assert.deepEqual(getCreatorScriptNarrationSafetyViolations({ sections: [{ id: "section-1", text: "Ordinary memory research examines recall without naming a proprietary system." }], authoritativeText: narrationAuthority }), [], "generic explanatory language is not treated as named authority");
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({
+  sections: [{
+    id: "section-1",
+    text: "This approach focuses on how recall changes over time. The method compares what people remember across repeated interviews. The purpose is to understand how reconstruction affects autobiographical memory.",
+  }],
+  authoritativeText: narrationAuthority,
+}), "ordinary audience-facing narration using approach, method, or purpose must not be misclassified as editorial leakage");
+assert.doesNotThrow(() => assertCreatorScriptNarrationIsProductionSafe({ sections: [{ id: "section-1", text: "This perspective treats evidence carefully while leaving the inquiry open to revision." }], authoritativeText: narrationAuthority }), "ordinary substantive uses of perspective, evidence, and inquiry remain available");
+assert.deepEqual(CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY.slice(0, 3), ["Immutable creator constraints", "Grounding, source, and evidence authority", "Audience-facing narration contract"]);
+assert.ok(CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT.some((rule) => /editorial method|production process/u.test(rule)));
+assert.ok(
+  CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT.some((rule) =>
+    /we will explore|we will investigate|content plan|production intent/u.test(rule)
+  ),
+  "audience narrator contract must explicitly forbid announcing the content plan",
+);
+
 const route = await readFile(new URL("../app/api/creator-script-plan/route.ts", import.meta.url), "utf8");
 assert.match(route, /sectionBudgetPlan/);
 assert.match(route, /editorialSectionPlan/);
@@ -632,6 +690,8 @@ assert.match(route, /creatorScriptRepairMateriallyImproved/);
 assert.match(route, /repairTargets/);
 assert.match(route, /requiredFinalMinWords/);
 assert.match(route, /Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence/);
+assert.match(route, /generationPriorityHierarchy/); assert.match(route, /audienceFacingNarratorContract/); assert.match(route, /internalEditorialGuidance/);
+assert.match(route, /assertCreatorScriptNarrationIsProductionSafe/); assert.match(route, /named methodology, framework, study, institution, theory, system, practice/);
 assert.match(route, /rebalance_sections/);
 assert.match(route, /Rebalance only the supplied failing sections toward their individual target, minimum, and maximum word ranges while preserving the overall script duration envelope\. Do not globally compress or expand\./);
 assert.doesNotMatch(route, /Exa|creator-research/);
