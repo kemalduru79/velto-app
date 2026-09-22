@@ -47,10 +47,13 @@ const page = await readFile(new URL("../app/create/page.tsx", import.meta.url), 
 const component = await readFile(new URL("../components/create/CreatorScriptReview.tsx", import.meta.url), "utf8");
 const globals = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.match(route, /getForOwner\(projectId, principal\.id\)/); assert.match(route, /script\.revision !== revision/); assert.match(route, /expectedUpdatedAt/);
-assert.match(route, /for \(const section of script\.sections\)/); assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
+assert.match(route, /scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED/); assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
+assert.match(route, /creator_script_holistic_candidate_plan/); assert.match(route, /creator_script_holistic_edit_execution/); assert.match(route, /creator_script_holistic_qa/);
+assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
 assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
 assert.ok(route.indexOf("pendingRefinement = createCreatorScriptProposal") < route.lastIndexOf("saveState(nextState)"));
-assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /Full script/);
+assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /scope: "opening"/); assert.doesNotMatch(component, /option value="whole_script"/, "Full Script refinement is not offered on the production creator surface");
+assert.match(component, /pendingRefinement\.scope !== "whole_script"/, "a preserved experimental preview cannot expose Apply in the production UI");
 assert.match(component, /aria-hidden="true"/); assert.match(component, /visibleHighlights/); assert.match(component, /setEditorScroll/);
 assert.match(component, /data-script-highlight=\{range\.kind\}/); assert.match(component, /creatorlab-script-highlight-selection/); assert.match(component, /creatorlab-script-highlight-refinement/);
 assert.match(component, /const start = textarea\.selectionStart;[\s\S]*const end = textarea\.selectionEnd;[\s\S]*textarea\.value\.slice\(start, end\)/);

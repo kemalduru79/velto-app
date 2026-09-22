@@ -63,6 +63,8 @@ export type CreatorScriptSectionBudget = {
   id: string;
   kind: CreatorScriptSectionKind;
   role: string;
+  centralQuestion: string;
+  progression: string;
   minimumWords: number;
   targetWords: number;
   maximumWords: number;
@@ -334,6 +336,7 @@ export function getCreatorScriptDurationContractForScript(script: CreatorScript,
 export function createCreatorScriptSectionBudgetPlan(input: {
   targetDurationSec: number;
   language: "tr" | "en";
+  hasMaterialCounterview?: boolean;
 }) {
   const duration = getCreatorScriptDurationContract({
     targetDurationSec: input.targetDurationSec,
@@ -344,20 +347,98 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   const weights = [0.08, ...Array.from({ length: bodyCount }, () => 0.82 / bodyCount), 0.1];
   const targets = weights.map((weight) => Math.floor(duration.targetWordCount * weight));
   targets[targets.length - 1] += duration.targetWordCount - targets.reduce((sum, value) => sum + value, 0);
+  const longForm = duration.targetWordCount > getCreatorScriptSafeSingleCallTargetWords();
+  const bodyFunctions = [
+    {
+      role: "Define the phenomenon and sharpen the master question without explaining the mechanism yet",
+      centralQuestion: "What exactly is happening, and why is the familiar framing incomplete?",
+      progression: "Turns the opening stakes into a precise phenomenon the audience can investigate.",
+    },
+    {
+      role: "Explain the central mechanism or causal process",
+      centralQuestion: "How does the phenomenon actually work, step by step?",
+      progression: "Adds causal explanation rather than restating that the phenomenon exists.",
+    },
+    {
+      role: "Test the mechanism against the strongest concrete evidence or case",
+      centralQuestion: "What evidence, case, or observation most clearly tests the explanation?",
+      progression: "Moves from explanation to grounded examination of what supports it.",
+    },
+    input.hasMaterialCounterview
+      ? {
+          role: "Present and seriously test the strongest evidence-backed counterview or alternative explanation",
+          centralQuestion: "What is the strongest credible challenge to the emerging thesis, and what survives it?",
+          progression: "Introduces genuine tension and limits instead of token balance language.",
+        }
+      : {
+          role: "Examine limits, uncertainty, and where the explanation may break down",
+          centralQuestion: "What remains uncertain, conditional, or resistant to the main explanation?",
+          progression: "Tests the thesis without inventing an unsupported opposing claim.",
+        },
+    {
+      role: "Trace the social, relational, or systemic dimension",
+      centralQuestion: "How does this move beyond the individual into relationships, institutions, or culture?",
+      progression: "Adds a new scale of consequence rather than repeating the mechanism.",
+    },
+    {
+      role: "Develop a second-order consequence that follows from the earlier evidence",
+      centralQuestion: "If the argument is true, what less obvious consequence follows next?",
+      progression: "Advances beyond first-order effects into a supported downstream implication.",
+    },
+    {
+      role: "Examine the personal, moral, or existential consequence",
+      centralQuestion: "What does this change about agency, responsibility, identity, or meaning?",
+      progression: "Brings the established argument to its deepest human implication.",
+    },
+    {
+      role: "Reconcile competing interpretations without flattening their disagreement",
+      centralQuestion: "Which competing interpretation best fits the evidence, and what cannot be reconciled?",
+      progression: "Synthesizes established tensions while preserving material uncertainty.",
+    },
+    {
+      role: "Apply the argument to a distinct practical or future-facing consequence",
+      centralQuestion: "Where does this argument lead when decisions or future conditions change?",
+      progression: "Extends the argument into a new supported domain rather than paraphrasing it.",
+    },
+    {
+      role: "Identify the final unresolved tension before synthesis",
+      centralQuestion: "What decisive question remains unanswered after the evidence is weighed?",
+      progression: "Creates the unresolved tension that the conclusion must honestly carry forward.",
+    },
+  ];
+  const selectedBodyFunctions = bodyFunctions.slice(0, bodyCount);
+  if (
+    input.hasMaterialCounterview
+    && selectedBodyFunctions.length > 0
+    && !selectedBodyFunctions.some((item) => item.role.includes("counterview"))
+  ) {
+    selectedBodyFunctions[selectedBodyFunctions.length - 1] = bodyFunctions[3];
+  }
   return targets.map((targetWords, index): CreatorScriptSectionBudget => {
     const kind: CreatorScriptSectionKind = index === 0
       ? "opening"
       : index === targets.length - 1
         ? "conclusion"
         : "body";
+    const bodyFunction = selectedBodyFunctions[Math.max(0, index - 1)] ?? bodyFunctions.at(-1)!;
     return {
       id: kind === "body" ? `section-${index}` : kind,
       kind,
       role: kind === "opening"
         ? "Establish the master question, stakes, and selected hook"
         : kind === "conclusion"
-          ? "Synthesize the answer, uncertainty, and implications"
-          : `Develop grounded documentary argument ${index}`,
+          ? "Synthesize the answer, preserve uncertainty, and end on the strongest unresolved question"
+          : longForm ? bodyFunction.role : `Develop grounded documentary argument ${index}`,
+      centralQuestion: kind === "opening"
+        ? "What question and stakes should make the audience need the answer?"
+        : kind === "conclusion"
+          ? "What can now be concluded, and what important uncertainty must remain open?"
+          : longForm ? bodyFunction.centralQuestion : `What distinct part of the argument belongs in section ${index}?`,
+      progression: kind === "opening"
+        ? "Opens the inquiry without prematurely resolving it."
+        : kind === "conclusion"
+          ? "Synthesizes the progression without repeating the body section summaries."
+          : longForm ? bodyFunction.progression : "Advances the narrative beyond the previous section.",
       minimumWords: Math.floor(targetWords * CREATOR_SCRIPT_MIN_DURATION_RATIO),
       targetWords,
       maximumWords: Math.ceil(targetWords * CREATOR_SCRIPT_MAX_DURATION_RATIO),
@@ -381,6 +462,61 @@ export function getCreatorScriptSectionDiagnostics(
       missing: !section,
     };
   });
+}
+
+const CREATOR_SCRIPT_HEADING_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "behind", "by", "for", "from",
+  "how", "in", "into", "is", "it", "its", "of", "on", "or", "that", "the",
+  "their", "this", "to", "what", "when", "where", "why", "with", "ve", "bir",
+  "bu", "da", "de", "icin", "ile", "mi", "mı", "mu", "mü", "nasıl", "neden",
+]);
+
+function creatorScriptHeadingTokens(value: unknown) {
+  return clean(value, 300)
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/u)
+    .map((token) => token.endsWith("ies") && token.length > 4
+      ? `${token.slice(0, -3)}y`
+      : token.endsWith("s") && token.length > 4
+        ? token.slice(0, -1)
+        : token)
+    .filter((token) => token.length > 1 && !CREATOR_SCRIPT_HEADING_STOP_WORDS.has(token));
+}
+
+export function getCreatorScriptEditorialDistinctivenessFailures(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+) {
+  assertCreatorScriptMatchesSectionPlan(script, plan);
+  const bodySections = script.sections.filter((section) => section.kind === "body");
+  const failures = new Set<string>();
+  for (let index = 0; index < bodySections.length; index += 1) {
+    const section = bodySections[index];
+    const tokens = new Set(creatorScriptHeadingTokens(section.heading));
+    if (tokens.size < 2) failures.add(section.id);
+    for (let priorIndex = 0; priorIndex < index; priorIndex += 1) {
+      const prior = bodySections[priorIndex];
+      const priorTokens = new Set(creatorScriptHeadingTokens(prior.heading));
+      const smallerSize = Math.min(tokens.size, priorTokens.size);
+      if (smallerSize < 2) continue;
+      const intersection = [...tokens].filter((token) => priorTokens.has(token)).length;
+      if (intersection / smallerSize >= 0.72) failures.add(section.id);
+    }
+  }
+  return plan.filter((section) => failures.has(section.id));
+}
+
+export function assertCreatorScriptHasDistinctEditorialSections(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+) {
+  if (getCreatorScriptEditorialDistinctivenessFailures(script, plan).length > 0) {
+    throw new Error("CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_UNSATISFIED");
+  }
+  return script;
 }
 
 export function assertCreatorScriptMatchesSectionPlan(
@@ -474,6 +610,40 @@ export function assertCreatorScriptHasHealthySectionStructure(
     throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
   }
   return script;
+}
+
+export function assertCreatorScriptHasSafeSectionStructure(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+) {
+  assertCreatorScriptMatchesSectionPlan(script, plan);
+  if (getCreatorScriptSectionDiagnostics(script, plan).some((section) =>
+    section.missing || section.actualWords === 0 || section.excessWords > 0
+  )) throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
+  return script;
+}
+
+export function filterCreatorScriptRepairReplacements(input: {
+  script: CreatorScript;
+  plan: CreatorScriptSectionBudget[];
+  replacements: unknown[];
+}) {
+  assertCreatorScriptMatchesSectionPlan(input.script, input.plan);
+  const diagnostics = new Map(
+    getCreatorScriptSectionDiagnostics(input.script, input.plan)
+      .map((section) => [section.id, section]),
+  );
+  return input.replacements.filter((value) => {
+    const item = record(value);
+    const id = clean(item?.id, 120);
+    const diagnostic = diagnostics.get(id);
+    if (!diagnostic) return false;
+    const replacementWords = countCreatorScriptWords(clean(item?.text, 100_000));
+    if (replacementWords === 0 || replacementWords > diagnostic.maximumWords) return false;
+    if (diagnostic.actualWords < diagnostic.minimumWords && replacementWords <= diagnostic.actualWords) return false;
+    if (diagnostic.actualWords > diagnostic.maximumWords && replacementWords >= diagnostic.actualWords) return false;
+    return true;
+  });
 }
 
 export function mergeCreatorScriptReplacementSections(input: {

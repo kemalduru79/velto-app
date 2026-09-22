@@ -8,6 +8,8 @@ import {
 import { createValidatedEditorialAnalysis } from "../lib/research/editorialAnalysisContract.ts";
 import {
   assertCreatorScriptHasHealthySectionStructure,
+  assertCreatorScriptHasSafeSectionStructure,
+  assertCreatorScriptHasDistinctEditorialSections,
   assertCreatorScriptSatisfiesSectionBudgets,
   createCreatorScript,
   createCreatorScriptSectionBudgetPlan,
@@ -17,6 +19,8 @@ import {
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
   getCreatorScriptDurationRepairSections,
+  getCreatorScriptEditorialDistinctivenessFailures,
+  filterCreatorScriptRepairReplacements,
   getCreatorScriptMaterialSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
@@ -124,6 +128,11 @@ for (const language of ["en", "tr"]) {
   }
 }
 const plan960 = createCreatorScriptSectionBudgetPlan({ targetDurationSec: 960, language: "en" });
+const plan960WithCounterview = createCreatorScriptSectionBudgetPlan({
+  targetDurationSec: 960,
+  language: "en",
+  hasMaterialCounterview: true,
+});
 const plan300 = createCreatorScriptSectionBudgetPlan({ targetDurationSec: 300, language: "en" });
 const duration300 = getCreatorScriptDurationContract({ targetDurationSec: 300, language: "en", actualWordCount: 705 });
 assert.deepEqual([duration300.targetWordCount, duration300.minimumAcceptableWordCount, duration300.maximumAcceptableWordCount, duration300.status], [705, 635, 775, "compliant"]);
@@ -148,6 +157,91 @@ const acceptedFiveMinute = await generateCreatorScriptWithDurationContract({
 assert.equal(fiveMinuteCalls, 1);
 assert.equal(acceptedFiveMinute.diagnostics.status, "compliant");
 assert.equal(plan300.length, 4);
+assert.equal(plan960.length, 8, "the existing duration-derived section-count constraint remains explicit");
+assert.equal(new Set(plan960.map((section) => section.role)).size, plan960.length);
+assert.equal(new Set(plan960.map((section) => section.centralQuestion)).size, plan960.length);
+assert.equal(new Set(plan960.map((section) => section.progression)).size, plan960.length);
+assert.match(
+  plan960WithCounterview.find((section) => section.role.includes("counterview"))?.centralQuestion || "",
+  /strongest credible challenge/i,
+);
+assert.ok(plan300.filter((section) => section.kind === "body")
+  .every((section, index) => section.role === `Develop grounded documentary argument ${index + 1}`));
+
+const repetitiveMemoryHeadings = [
+  "What if your memories are not what you think?",
+  "The Reconstructive Nature of Memory",
+  "The Impact of False Memories on Identity and Relationships",
+  "The Science Behind False Memories and Their Influence on Identity",
+  "The Social Construction of False Memories and Identity",
+  "The Reconstructive Nature of Memory and Its Implications for Identity",
+  "The Complex Impact of False Memories on Identity and Relationships",
+  "The Fluidity of Memory and Identity",
+];
+const repetitiveMemoryScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({
+    id: budget.id,
+    kind: budget.kind,
+    heading: repetitiveMemoryHeadings[index],
+    text: words(budget.targetWords),
+    claimIds: [],
+    evidenceReviewRequired: false,
+  })),
+});
+const repetitiveFailures = getCreatorScriptEditorialDistinctivenessFailures(
+  repetitiveMemoryScript,
+  plan960,
+);
+assert.ok(repetitiveFailures.length >= 2, "obvious memory/identity heading paraphrases must fail");
+assert.throws(
+  () => assertCreatorScriptHasDistinctEditorialSections(repetitiveMemoryScript, plan960),
+  /CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_UNSATISFIED/,
+);
+
+const distinctMemoryScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget) => ({
+    id: budget.id,
+    kind: budget.kind,
+    heading: budget.role,
+    text: words(budget.targetWords),
+    claimIds: [],
+    evidenceReviewRequired: false,
+  })),
+});
+assert.doesNotThrow(() => assertCreatorScriptHasDistinctEditorialSections(distinctMemoryScript, plan960));
+
+let distinctivenessRepairCalls = 0;
+const distinctivenessRepaired = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => repetitiveMemoryScript,
+  requiresRepair: (script) =>
+    getCreatorScriptEditorialDistinctivenessFailures(script, plan960).length > 0,
+  repair: async (script) => {
+    distinctivenessRepairCalls += 1;
+    const failures = getCreatorScriptEditorialDistinctivenessFailures(script, plan960);
+    return mergeCreatorScriptReplacementSections({
+      script,
+      plan: plan960,
+      replacements: failures.map((failure) => ({
+        ...script.sections.find((section) => section.id === failure.id),
+        id: failure.id,
+        kind: failure.kind,
+        heading: failure.role,
+        text: words(failure.targetWords),
+      })),
+    });
+  },
+  validateFinal: (script) => {
+    assertCreatorScriptHasHealthySectionStructure(script, plan960);
+    assertCreatorScriptHasDistinctEditorialSections(script, plan960);
+  },
+});
+assert.equal(distinctivenessRepairCalls, 1);
+assert.equal(distinctivenessRepaired.repaired, true);
+assert.deepEqual(distinctivenessRepaired.creatorScript.grounding, repetitiveMemoryScript.grounding);
 
 const primaryReviewScript = createCreatorScript({
   ...fiveMinuteScript,
@@ -224,6 +318,52 @@ const acceptedMildVariance = await generateCreatorScriptWithDurationContract({
 });
 assert.equal(acceptedMildVariance.repaired, false);
 assert.equal(mildlyUnevenCalls, 1);
+
+const globallySafeRealUseCounts = [170, 290, 285, 274, 286, 237, 290, 240];
+const globallySafeRealUseScript = createCreatorScript({
+  ...makePlannedScript(plan960),
+  sections: plan960.map((budget, index) => ({
+    id: budget.id,
+    kind: budget.kind,
+    heading: `Distinct real use heading ${index}`,
+    text: words(globallySafeRealUseCounts[index]),
+    claimIds: [],
+    evidenceReviewRequired: false,
+  })),
+});
+assert.equal(getCreatorScriptDurationContractForScript(globallySafeRealUseScript, "en").actualWordCount, 2072);
+assert.equal(getCreatorScriptDurationContractForScript(globallySafeRealUseScript, "en").status, "compliant");
+assert.ok(getCreatorScriptSectionDiagnostics(globallySafeRealUseScript, plan960).find((section) => section.id === "section-3").deficitWords > 0);
+assert.doesNotThrow(() => assertCreatorScriptHasSafeSectionStructure(globallySafeRealUseScript, plan960), "soft local minima do not override globally safe duration");
+assert.deepEqual(getCreatorScriptMaterialSectionFailures(globallySafeRealUseScript, plan960).map((section) => section.id), ["section-5"], "material local miss remains bounded repair guidance");
+const wrongDirectionReplacement = [{
+  id: "section-5",
+  kind: "body",
+  role: plan960.find((section) => section.id === "section-5").role,
+  heading: "Distinct repaired heading",
+  text: words(233),
+  claimIds: [],
+}];
+assert.deepEqual(filterCreatorScriptRepairReplacements({ script: globallySafeRealUseScript, plan: plan960, replacements: wrongDirectionReplacement }), [], "wrong-direction expansion is ignored");
+let wrongDirectionRepairCalls = 0;
+const acceptedWrongDirectionRepair = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => { wrongDirectionRepairCalls += 1; return globallySafeRealUseScript; },
+  repair: async (script) => {
+    wrongDirectionRepairCalls += 1;
+    const replacements = filterCreatorScriptRepairReplacements({ script, plan: plan960, replacements: wrongDirectionReplacement });
+    return replacements.length ? mergeCreatorScriptReplacementSections({ script, plan: plan960, replacements }) : script;
+  },
+  requiresRepair: (script) => getCreatorScriptMaterialSectionFailures(script, plan960).length > 0,
+  validateFinal: (script) => assertCreatorScriptHasSafeSectionStructure(script, plan960),
+});
+assert.equal(wrongDirectionRepairCalls, 2, "material local under-generation receives one bounded repair attempt");
+assert.equal(acceptedWrongDirectionRepair.creatorScript.sections.find((section) => section.id === "section-5").text, globallySafeRealUseScript.sections.find((section) => section.id === "section-5").text, "wrong-direction repair cannot replace canonical section text");
+const overMaximumReplacement = [{ ...wrongDirectionReplacement[0], text: words(plan960.find((section) => section.id === "section-5").maximumWords + 1) }];
+assert.deepEqual(filterCreatorScriptRepairReplacements({ script: globallySafeRealUseScript, plan: plan960, replacements: overMaximumReplacement }), [], "section maximum remains hard during repair");
+const overMaximumScript = createCreatorScript({ ...globallySafeRealUseScript, sections: globallySafeRealUseScript.sections.map((section) => section.id === "section-5" ? { ...section, text: words(plan960.find((budget) => budget.id === "section-5").maximumWords + 1) } : section) });
+assert.throws(() => assertCreatorScriptHasSafeSectionStructure(overMaximumScript, plan960), /SECTION_BUDGET_UNSATISFIED/, "section maximum remains a final hard gate");
 
 const catastrophicallyUnevenFiveMinuteScript = createCreatorScript({
   ...fiveMinuteScript,
@@ -473,6 +613,13 @@ assert.equal(scriptCalls, 2);
 
 const route = await readFile(new URL("../app/api/creator-script-plan/route.ts", import.meta.url), "utf8");
 assert.match(route, /sectionBudgetPlan/);
+assert.match(route, /editorialSectionPlan/);
+assert.match(route, /centralQuestion/);
+assert.match(route, /progressionFromPrevious/);
+assert.match(route, /getCreatorScriptEditorialDistinctivenessFailures/);
+assert.match(route, /differentiate_sections/);
+assert.match(route, /The same thesis with different wording is invalid/);
+assert.match(route, /counterview section must seriously test the master thesis/);
 assert.match(route, /creator_full_script_section/);
 assert.doesNotMatch(route, /long_form_batch|MAX_INITIAL_GENERATION_CALLS|splitCreatorScriptSectionPlan/);
 assert.match(route, /max_output_tokens: getCreatorScriptOutputTokenBudget/);

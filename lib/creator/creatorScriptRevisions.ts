@@ -20,6 +20,7 @@ export type CreatorScriptPendingRefinement = {
   instruction: string;
   createdAt: string;
   changes: CreatorScriptChange[];
+  editorialAdvisories?: Array<{ code: string; sectionIds: string[]; summary: string }>;
 };
 
 export type CreatorScriptRevisionHistoryEntry = {
@@ -52,6 +53,10 @@ export function isValidCreatorScriptPendingRefinement(value: unknown): value is 
   return typeof item.proposalId === "string" && item.proposalId.length > 0 && item.proposalId.length <= 120 && Number.isInteger(item.baseRevision) &&
     ["selection", "opening", "whole_script"].includes(String(item.scope)) &&
     typeof item.instruction === "string" && item.instruction.length > 0 && item.instruction.length <= 2000 && typeof item.createdAt === "string" &&
+    (!Object.prototype.hasOwnProperty.call(item, "editorialAdvisories") || (Array.isArray(item.editorialAdvisories) && item.editorialAdvisories.length <= 20 && item.editorialAdvisories.every((value) => {
+      const advisory = value && typeof value === "object" ? value as Record<string, unknown> : {};
+      return typeof advisory.code === "string" && advisory.code.length <= 80 && Array.isArray(advisory.sectionIds) && advisory.sectionIds.length <= 20 && advisory.sectionIds.every((sectionId) => typeof sectionId === "string" && sectionId.length <= 200) && typeof advisory.summary === "string" && advisory.summary.length > 0 && advisory.summary.length <= 1000;
+    }))) &&
     Array.isArray(item.changes) && item.changes.length > 0 && item.changes.every(isValidCreatorScriptChange);
 }
 
@@ -74,7 +79,7 @@ export function createCreatorScriptChanges(before: CreatorScript, after: Creator
   });
 }
 
-export function createCreatorScriptProposal(input: { script: CreatorScript; scope: CreatorScriptRefinementScope; instruction: string; nextScript: CreatorScript; selectionStart?: number; selectionEnd?: number; selectedText?: string; replacementText?: string }) {
+export function createCreatorScriptProposal(input: { script: CreatorScript; scope: CreatorScriptRefinementScope; instruction: string; nextScript: CreatorScript; selectionStart?: number; selectionEnd?: number; selectedText?: string; replacementText?: string; editorialAdvisories?: Array<{ code: string; sectionIds: string[]; summary: string }> }) {
   let changes = createCreatorScriptChanges(input.script, input.nextScript);
   if (input.scope === "selection" && input.selectionStart !== undefined && input.selectionEnd !== undefined && input.selectedText !== undefined && input.replacementText !== undefined) {
     if (input.selectedText === input.replacementText) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
@@ -82,7 +87,7 @@ export function createCreatorScriptProposal(input: { script: CreatorScript; scop
     changes = [{ sectionId: section?.id || "selection", sectionHeading: section?.heading || "Selected text", beforeText: input.selectedText, afterText: input.replacementText, selectionStart: input.selectionStart, selectionEnd: input.selectionEnd }];
   }
   if (!changes.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
-  return { proposalId: crypto.randomUUID(), baseRevision: input.script.revision, scope: input.scope, instruction: input.instruction, createdAt: new Date().toISOString(), changes } satisfies CreatorScriptPendingRefinement;
+  return { proposalId: crypto.randomUUID(), baseRevision: input.script.revision, scope: input.scope, instruction: input.instruction, createdAt: new Date().toISOString(), changes, ...(input.editorialAdvisories?.length ? { editorialAdvisories: input.editorialAdvisories } : {}) } satisfies CreatorScriptPendingRefinement;
 }
 
 export function applyCreatorScriptProposal(script: CreatorScript, proposal: CreatorScriptPendingRefinement, language: "tr" | "en") {

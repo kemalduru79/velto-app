@@ -35,7 +35,8 @@ import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvid
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorScript,
-  assertCreatorScriptHasHealthySectionStructure,
+  assertCreatorScriptHasDistinctEditorialSections,
+  assertCreatorScriptHasSafeSectionStructure,
   assertCreatorScriptMatchesSectionPlan,
   countCreatorScriptWords,
   createCreatorScriptSectionBudgetPlan,
@@ -47,6 +48,8 @@ import {
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
   getCreatorScriptDurationRepairSections,
+  getCreatorScriptEditorialDistinctivenessFailures,
+  filterCreatorScriptRepairReplacements,
   getCreatorScriptMaterialSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
@@ -726,9 +729,13 @@ async function executeCreatorScriptOperation(input: {
       language,
       actualWordCount: 0,
     });
+    const hasMaterialCounterview = input.editorialContext.claims.some(
+      (claim) => claim.counterEvidenceIds.length > 0,
+    );
     const sectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
       targetDurationSec: durationSec,
       language,
+      hasMaterialCounterview,
     });
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
@@ -766,6 +773,13 @@ async function executeCreatorScriptOperation(input: {
             maxWords: requestedSections[0].maximumWords,
           } : null,
           completeSectionBudgetPlan: sectionNative ? undefined : sectionBudgetPlan,
+          editorialSectionPlan: sectionBudgetPlan.map((section) => ({
+            id: section.id,
+            kind: section.kind,
+            editorialPurpose: section.role,
+            centralQuestion: section.centralQuestion,
+            progressionFromPrevious: section.progression,
+          })),
           requestedSections: sectionNative ? undefined : requestedSections,
           continuityContext,
           strategy: input.body.strategy,
@@ -797,6 +811,11 @@ async function executeCreatorScriptOperation(input: {
           rules: [
             "Return every requested section exactly once, in the supplied order, with the exact supplied section ids, kinds, and roles. Return no unrequested sections.",
             "Do not rewrite or repeat an earlier section.",
+            "Use the full editorialSectionPlan as the authority for intellectual progression. Every heading, primary claim, and section purpose must be materially distinct from every other section.",
+            "A body section must answer its own centralQuestion, perform its unique editorialPurpose, and add the stated progressionFromPrevious. The same thesis with different wording is invalid.",
+            hasMaterialCounterview
+              ? "The counterview section must seriously test the master thesis using supplied counter-evidence or alternative findings; token balance language is not sufficient."
+              : "Do not invent a counterview. Use the supplied limits-and-uncertainty role to test the thesis only within grounded support.",
             sectionNative
               ? `Write this complete section between ${requestedSections[0].minimumWords} and ${requestedSections[0].maximumWords} words, aiming near ${requestedSections[0].targetWords} words. Treat these as measured spoken-word requirements, not suggestions.`
               : "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
@@ -899,10 +918,12 @@ async function executeCreatorScriptOperation(input: {
         language,
         allowRepair: true,
         validateFinal: (script) => {
-          assertCreatorScriptHasHealthySectionStructure(script, sectionBudgetPlan);
+          assertCreatorScriptHasSafeSectionStructure(script, sectionBudgetPlan);
+          assertCreatorScriptHasDistinctEditorialSections(script, sectionBudgetPlan);
         },
         requiresRepair: (script) =>
-          getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0,
+          getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0
+          || getCreatorScriptEditorialDistinctivenessFailures(script, sectionBudgetPlan).length > 0,
         maxRepairAttempts: sectionNative ? 2 : 1,
         shouldRetryRepair: ({ previous, current }) =>
           sectionNative && creatorScriptRepairMateriallyImproved({ previous, current }),
@@ -979,22 +1000,35 @@ async function executeCreatorScriptOperation(input: {
             currentScript,
             sectionBudgetPlan,
           );
+          const distinctivenessFailures = getCreatorScriptEditorialDistinctivenessFailures(
+            currentScript,
+            sectionBudgetPlan,
+          );
           if (
             currentDuration.status !== "compliant"
             && !isCreatorScriptResidualRepairEligible(currentDuration)
           ) {
             throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
           }
-          if (currentDuration.status === "compliant" && materialSectionFailures.length === 0) {
+          if (
+            currentDuration.status === "compliant"
+            && materialSectionFailures.length === 0
+            && distinctivenessFailures.length === 0
+          ) {
             throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
           }
           repairCallCount += 1;
           const sectionDiagnostics = getCreatorScriptSectionDiagnostics(currentScript, sectionBudgetPlan);
-          const sectionsToRepair = getCreatorScriptDurationRepairSections({
+          const durationRepairSections = getCreatorScriptDurationRepairSections({
             script: currentScript,
             plan: sectionBudgetPlan,
             duration: currentDuration,
           });
+          const repairIds = new Set([
+            ...durationRepairSections.map((section) => section.id),
+            ...distinctivenessFailures.map((section) => section.id),
+          ]);
+          const sectionsToRepair = sectionDiagnostics.filter((section) => repairIds.has(section.id));
           if (sectionsToRepair.length === 0) {
             throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
           }
@@ -1014,9 +1048,9 @@ async function executeCreatorScriptOperation(input: {
             input: [
               { role: "system", content: systemPrompt },
               { role: "user", content: JSON.stringify({
-                task: "Repair the current canonical full script once so its spoken text satisfies the supplied duration word envelope.",
+                task: "Repair the supplied canonical sections once so the script satisfies its duration envelope and editorial distinctiveness plan.",
                 requiredDirection: currentDuration.status === "compliant"
-                  ? "rebalance_sections"
+                  ? distinctivenessFailures.length > 0 ? "differentiate_sections" : "rebalance_sections"
                   : currentDuration.status === "too_long" ? "compress" : "expand",
                 topic: asString(input.body.topic),
                 title,
@@ -1038,6 +1072,7 @@ async function executeCreatorScriptOperation(input: {
                 sectionBudgetPlan,
                 sectionDiagnostics,
                 sectionsToRepair,
+                distinctivenessFailureSectionIds: distinctivenessFailures.map((section) => section.id),
                 repairTargets,
                 requiredJsonShape: {
                   sections: sectionsToRepair.map((section) => ({
@@ -1053,6 +1088,7 @@ async function executeCreatorScriptOperation(input: {
                   "Return only corrected replacement sections for every supplied sectionsToRepair item; do not return unrelated sections.",
                   "Preserve each requested section id, kind, and role exactly. For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
                   "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
+                  "Any section listed in distinctivenessFailureSectionIds must be rewritten around its assigned editorial purpose and central question so its heading and primary claim no longer duplicate another section.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
                   "Use only exact allowedClaimIds and never invent evidence ids, claims, or unsupported factual filler.",
                   currentDuration.status === "compliant"
@@ -1075,9 +1111,18 @@ async function executeCreatorScriptOperation(input: {
             sections: Array.isArray(parsedRepair.sections) ? parsedRepair.sections : [],
             plan: sectionsToRepair,
           });
+          const directionallyValidReplacements = filterCreatorScriptRepairReplacements({
+            script: currentScript,
+            plan: sectionBudgetPlan,
+            replacements: validatedReplacements,
+          });
+          if (directionallyValidReplacements.length === 0) {
+            postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(currentScript, sectionBudgetPlan);
+            return currentScript;
+          }
           const repairedScript = mergeCreatorScriptReplacementSections({
             script: currentScript,
-            replacements: validatedReplacements,
+            replacements: directionallyValidReplacements,
             plan: sectionBudgetPlan,
           });
           postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(repairedScript, sectionBudgetPlan);

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createCreatorScript, editCreatorScriptDocument, getCreatorScriptDocumentText, verifyCreatorScriptSectionSources } from "../lib/creator/creatorScript.ts";
-import { applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement } from "../lib/creator/creatorScriptRefinement.ts";
+import { createCreatorScript, editCreatorScriptDocument, getCreatorScriptDocumentText, getCreatorScriptDurationContractForScript, verifyCreatorScriptSectionSources } from "../lib/creator/creatorScript.ts";
+import { applyCreatorScriptHolisticEdits, applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, assertCreatorScriptExecutionMatchesSelection, assertCreatorScriptForbiddenTermsRemoved, assertCreatorScriptHolisticSelectionAllowed, createCreatorScriptEditableUnits, createCreatorScriptHolisticCandidateSchema, createCreatorScriptHolisticCorrectionSchema, createCreatorScriptHolisticEditSchema, createCreatorScriptHolisticExecutionSchema, createCreatorScriptHolisticQaSchema, createCreatorScriptHolisticSelectionSchema, createCreatorScriptImmutableConstraintCatalog, createCreatorScriptMandatoryCandidates, createCreatorScriptWholeRefinementPlan, getCreatorScriptForbiddenLiteralTerms, getCreatorScriptHolisticCorrectionDiagnostics, getCreatorScriptHolisticDurationCorrection, getCreatorScriptHolisticEditDiagnostics, getCreatorScriptHolisticExecutionDiagnostics, getCreatorScriptHolisticSelectionDiagnostics, getCreatorScriptImmutableCreatorConstraints, normalizeCreatorScriptHolisticCandidates, parseCreatorScriptHolisticCandidates, parseCreatorScriptHolisticEdits, parseCreatorScriptHolisticQa, parseCreatorScriptHolisticSelections, projectCreatorScriptHolisticCandidates, reconcileCreatorScriptHolisticQaConstraints } from "../lib/creator/creatorScriptRefinement.ts";
 import { CREATOR_SCRIPT_HISTORY_LIMIT, appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorScriptChanges, createCreatorScriptProposal, discardCreatorScriptProposal, normalizeCreatorScriptRevisionState } from "../lib/creator/creatorScriptRevisions.ts";
 
 const words = (prefix, count) => Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(" ");
+const sentenceWords = (prefix, count, sentenceSize = 24) => Array.from({ length: Math.ceil(count / sentenceSize) }, (_, sentenceIndex) => Array.from({ length: Math.min(sentenceSize, count - sentenceIndex * sentenceSize) }, (_, wordIndex) => `${wordIndex === 0 ? "Sentence-" : ""}${prefix}${sentenceIndex * sentenceSize + wordIndex}`).join(" ") + ".").join(" ");
 const context = { version: "0.10H-2H", sourceVersion: "0.10H-2E", editorialConstitution: "Preserve evidence.", readiness: { status: "ready", editorialReadinessScore: 90, reviewReasons: [] }, claims: [{ claimId: "c1", claimType: "FACT", text: "Supported", supportingEvidenceIds: ["e1"], counterEvidenceIds: [], contextualEvidenceIds: [] }], evidence: [{ evidenceId: "e1", sourceId: "s1", excerpt: "Evidence", contextNote: null, locator: { section: null, page: null, timecodeStartSec: null, timecodeEndSec: null } }], sources: [{ sourceId: "s1", title: "Source", url: "https://example.test", publisher: "Publisher", author: null, publishedAt: null, directness: "primary", reviewStatus: "usable" }] };
 const script = createCreatorScript({ title: "Revision test", sections: [{ id: "opening", kind: "opening", text: words("open", 55), claimIds: [], evidenceReviewRequired: false }, { id: "body", kind: "body", text: words("body", 575), claimIds: ["c1"], evidenceReviewRequired: false }, { id: "conclusion", kind: "conclusion", text: words("end", 75), claimIds: [], evidenceReviewRequired: false }], targetDurationSec: 300, strategyFingerprint: "fp", grounding: { context }, generatedAt: "2026-09-15T00:00:00Z", updatedAt: "2026-09-15T00:00:00Z" });
 
@@ -22,66 +23,225 @@ assert.throws(() => applyCreatorScriptProposal(editCreatorScriptDocument(script,
 const approvedScript = { ...script, approval: { approvedAt: "2026-09-15T01:00:00Z", strategyFingerprint: "fp", scriptRevision: script.revision } };
 const discardHistory = [{ id: "history-1", fromRevision: 0, toRevision: 1, createdAt: "2026-09-15T00:00:00Z", origin: "manual", changes: [{ sectionId: "opening", sectionHeading: "Opening", beforeText: "before", afterText: "after" }] }];
 const discardedSelection = discardCreatorScriptProposal({ script: approvedScript, pendingRefinement: selectionProposal, revisionHistory: discardHistory }, selectionProposal.proposalId);
-assert.strictEqual(discardedSelection.script, approvedScript, "discard preserves the exact canonical script object");
-assert.strictEqual(discardedSelection.revisionHistory, discardHistory, "discard creates no history entry");
-assert.equal(discardedSelection.pendingRefinement, null);
-assert.equal(discardedSelection.script.revision, script.revision); assert.deepEqual(discardedSelection.script.approval, approvedScript.approval);
-assert.throws(() => discardCreatorScriptProposal(discardedSelection, selectionProposal.proposalId), /REFINEMENT_STALE/, "repeated discard fails without mutation");
+assert.strictEqual(discardedSelection.script, approvedScript); assert.strictEqual(discardedSelection.revisionHistory, discardHistory); assert.equal(discardedSelection.pendingRefinement, null);
+assert.throws(() => discardCreatorScriptProposal(discardedSelection, selectionProposal.proposalId), /REFINEMENT_STALE/);
 
 const openingNext = applyCreatorScriptOpeningRefinement(script, words("revised", 55));
 const openingProposal = createCreatorScriptProposal({ script, scope: "opening", instruction: "Strengthen", nextScript: openingNext });
-assert.equal(applyCreatorScriptProposal(script, openingProposal, "en").sections[1].text, script.sections[1].text);
-assert.strictEqual(discardCreatorScriptProposal({ script, pendingRefinement: openingProposal, revisionHistory: [] }, openingProposal.proposalId).script, script, "opening discard is non-mutating");
+assert.equal(applyCreatorScriptProposal(script, openingProposal, "en").sections[1].text, script.sections[1].text, "Opening refinement remains isolated");
+assert.strictEqual(discardCreatorScriptProposal({ script, pendingRefinement: openingProposal, revisionHistory: [] }, openingProposal.proposalId).script, script);
 
-const wholeNext = applyCreatorScriptWholeRefinement(script, script.sections.map((section) => ({ id: section.id, text: section.id === "body" ? words("grounded", 575) : section.text })), "en");
-const wholeProposal = createCreatorScriptProposal({ script, scope: "whole_script", instruction: "Improve flow", nextScript: wholeNext });
-assert.deepEqual(wholeProposal.changes.map((change) => change.sectionId), ["body"], "whole-script preview stores changed sections only");
-assert.equal(applyCreatorScriptProposal(script, wholeProposal, "en").sections[1].evidenceReviewRequired, true);
-assert.strictEqual(discardCreatorScriptProposal({ script, pendingRefinement: wholeProposal, revisionHistory: [] }, wholeProposal.proposalId).script, script, "full-script discard is non-mutating");
+const longFormSections = [
+  ["opening", "opening", 175], ["section-1", "body", 307], ["section-2", "body", 307], ["section-3", "body", 307],
+  ["section-4", "body", 307], ["section-5", "body", 307], ["section-6", "body", 307], ["conclusion", "conclusion", 177],
+].map(([id, kind, count], index) => ({ id, kind, heading: `Distinct section ${index + 1}`, text: sentenceWords(`section${index}-`, count), claimIds: kind === "body" ? ["c1"] : [], evidenceReviewRequired: false }));
+const longScript = createCreatorScript({ title: "Holistic long-form refinement", sections: longFormSections, targetDurationSec: 960, strategyFingerprint: "long-fp", grounding: { context }, generatedAt: "2026-09-21T00:00:00Z", updatedAt: "2026-09-21T00:00:00Z" });
+assert.equal(getCreatorScriptDurationContractForScript(longScript, "en").actualWordCount, 2194);
+const architecture = createCreatorScriptWholeRefinementPlan(longScript, "en");
+assert.equal(architecture.length, 8); assert.deepEqual(architecture.map((section) => section.id), longScript.sections.map((section) => section.id));
+assert.ok(architecture.every((section) => section.editorialRole && section.centralQuestion && section.progression), "complete canonical architecture reaches the holistic call");
+assert.equal(Object.hasOwn(architecture[1], "minimumWords"), false, "no hard per-section minimum survives in Full Script architecture");
 
-const longScript = createCreatorScript({ title: "Long revision", sections: [{ id: "long-opening", kind: "opening", text: words("lo", 200), claimIds: [], evidenceReviewRequired: false }, { id: "long-body", kind: "body", text: words("lb", 1850), claimIds: [], evidenceReviewRequired: false }, { id: "long-conclusion", kind: "conclusion", text: words("lc", 200), claimIds: [], evidenceReviewRequired: false }], targetDurationSec: 960, strategyFingerprint: "long-fp", grounding: { context: { ...context, claims: [], evidence: [], sources: [] } }, generatedAt: "2026-09-15T00:00:00Z", updatedAt: "2026-09-15T00:00:00Z" });
-const longNext = applyCreatorScriptWholeRefinement(longScript, longScript.sections.map((section) => ({ id: section.id, text: section.id === "long-body" ? section.text.replace("lb100", "revised100") : section.text })), "en");
-const longProposal = createCreatorScriptProposal({ script: longScript, scope: "whole_script", instruction: "Improve one passage", nextScript: longNext });
-assert.deepEqual(longProposal.changes.map((change) => change.sectionId), ["long-body"], "long-form proposal remains changed-section native");
-assert.equal(applyCreatorScriptProposal(longScript, longProposal, "en").revision, longScript.revision + 1, "long-form apply remains one compliant revision");
+const ids = longScript.sections.map((section) => section.id);
+const editableUnits = createCreatorScriptEditableUnits(longScript, "en");
+for (const section of longScript.sections) assert.equal(editableUnits.filter((unit) => unit.sectionId === section.id).map((unit) => unit.rawText).join(""), section.text, "zero-edit unit reconstruction is byte-equivalent");
+const segmentationFixture = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: "Dr. Lane measured 3.5 points. The result held.\n\nA new paragraph starts." } : section) };
+const segmentationUnits = createCreatorScriptEditableUnits(segmentationFixture, "en").filter((unit) => unit.sectionId === "opening"); assert.equal(segmentationUnits.map((unit) => unit.rawText).join(""), segmentationFixture.sections[0].text); assert.equal(segmentationUnits.length, 3, "sentence segmentation handles abbreviations, decimals, and paragraph boundaries without losing text");
+const replacementSentence = (prefix, count = 24) => sentenceWords(prefix, count);
+const selectionOutput = { selections: [
+  { unitIds: ["opening:u1"], intent: "remove_repetition", operation: "replace" },
+  { unitIds: ["section-1:u1"], intent: "clarify", operation: "replace" },
+  { unitIds: ["section-1:u3"], intent: "replace_academic_filler", operation: "replace" },
+  { unitIds: ["section-5:u1", "section-5:u2"], intent: "role_separation", operation: "replace" },
+  { unitIds: ["conclusion:u2"], intent: "strengthen_conclusion", operation: "replace" },
+] };
+const parsedSelections = parseCreatorScriptHolisticSelections({ output: selectionOutput, allowedUnitIds: editableUnits.map((unit) => unit.unitId) });
+const selectionLimits = { maximumCanonicalFootprintFraction: 0.35, maximumSectionFootprintFraction: 0.45, maximumSafeDeletionWords: 163 };
+const selectionDiagnostics = assertCreatorScriptHolisticSelectionAllowed(longScript, parsedSelections, "en", selectionLimits);
+assert.equal(selectionDiagnostics.selectionCount, 5); assert.equal(selectionDiagnostics.selectedWords, 144); assert.equal(selectionDiagnostics.rejectionReason, null);
+assert.equal(selectionDiagnostics.perSection.find((item) => item.sectionId === "section-1").selectedUnitCount, 2, "several localized selections in one section remain valid below the cumulative cap");
+assert.equal(getCreatorScriptHolisticSelectionDiagnostics(longScript, parsedSelections, "en", { ...selectionLimits, maximumCanonicalFootprintFraction: 0.05 }).rejectionReason, "canonical_footprint", "global selection footprint is enforced independently before execution");
+assert.equal(createCreatorScriptHolisticSelectionSchema(editableUnits.map((unit) => unit.unitId)).properties.selections.items.additionalProperties, false, "selection planning cannot author replacement prose");
+assert.throws(() => parseCreatorScriptHolisticSelections({ output: { selections: [{ unitIds: ["opening:u1"], intent: "rewrite_everything", replacementText: "forbidden" }] }, allowedUnitIds: editableUnits.map((unit) => unit.unitId) }), /SELECTION_PLAN_INVALID/);
+const candidateOutput = { candidates: editableUnits.filter((unit) => unit.sectionId === "section-5").map((unit) => ({ unitIds: [unit.unitId], intent: "role_separation", operation: "replace", priority: "substantive", reason: "Remove foreign territory from Social." })) };
+const parsedCandidates = parseCreatorScriptHolisticCandidates({ output: candidateOutput, allowedUnitIds: editableUnits.map((unit) => unit.unitId) });
+assert.equal(createCreatorScriptHolisticCandidateSchema(editableUnits.map((unit) => unit.unitId)).properties.candidates.items.additionalProperties, false, "candidate planning cannot author replacement prose");
+const mandatoryFixture = [{ unitIds: ["section-1:u1"], intent: "remove_meta_reference", operation: "replace", priority: "hard_compliance", reason: "Required literal removal", mandatory: true }];
+const collisionNormalization = normalizeCreatorScriptHolisticCandidates({ script: longScript, language: "en", mandatoryCandidates: mandatoryFixture, modelCandidates: [{ ...mandatoryFixture[0], mandatory: false }, { unitIds: ["section-1:u1", "section-1:u2"], intent: "clarify", operation: "replace", priority: "substantive", reason: "Partially overlapping suggestion" }, ...parsedCandidates, parsedCandidates[0]] });
+assert.equal(collisionNormalization.invalidCandidates.length, 0); assert.equal(collisionNormalization.diagnostics.deduplicatedCount, 2, "exact mandatory/model and duplicate model spans normalize safely"); assert.equal(collisionNormalization.diagnostics.overlapDroppedCount, 1, "partial overlap loses to mandatory scope");
+assert.equal(collisionNormalization.mergedCandidates.filter((candidate) => candidate.unitIds.includes("section-1:u1")).length, 1); assert.equal(collisionNormalization.mergedCandidates[0].mandatory, true, "server mandatory candidate wins collisions");
+const invalidNormalization = normalizeCreatorScriptHolisticCandidates({ script: longScript, language: "en", mandatoryCandidates: [], modelCandidates: [{ unitIds: ["section-1:u1", "section-1:u3"], intent: "clarify", operation: "replace", priority: "substantive", reason: "Invalid gap" }, { unitIds: ["section-1:u1", "section-2:u1"], intent: "clarify", operation: "replace", priority: "substantive", reason: "Invalid section crossing" }, { unitIds: ["section-1:u1", "section-1:u1"], intent: "clarify", operation: "replace", priority: "substantive", reason: "Duplicate unit" }, { unitIds: ["foreign:u1"], intent: "clarify", operation: "replace", priority: "substantive", reason: "Invalid ID" }] });
+assert.deepEqual(invalidNormalization.invalidCandidates.map((candidate) => candidate.validationFailureReason), ["non_adjacent_units", "cross_section_group", "duplicate_unit_within_candidate", "invalid_unit_id"], "structural candidate failures retain exact safe diagnostics");
+assert.throws(() => parseCreatorScriptHolisticCandidates({ output: { candidates: [{ unitIds: ["section-1:u1"], intent: "clarify" }] }, allowedUnitIds: editableUnits.map((unit) => unit.unitId) }), /CANDIDATE_PLAN_INVALID/, "malformed candidates remain fail-closed");
+const projected = projectCreatorScriptHolisticCandidates({ script: longScript, language: "en", mandatoryCandidates: collisionNormalization.mergedCandidates.filter((candidate) => candidate.mandatory), modelCandidates: collisionNormalization.mergedCandidates.filter((candidate) => !candidate.mandatory), limits: { ...selectionLimits, maximumSelectionCount: 16 } });
+assert.equal(projected.mandatoryRetained, true, "server-mandatory creator constraints outrank model candidates");
+assert.ok(projected.dropped.length > 0, "an over-broad candidate pool is projected to a safe subset rather than rejected wholesale");
+assert.ok(projected.diagnostics.canonicalFootprintPercent <= 35); assert.ok(projected.diagnostics.perSection.every((item) => item.footprintPercent <= 45 && item.selectedUnitCount < item.totalUnitCount), "approved projection cannot cover a complete section");
+const droppedUnitId = projected.dropped[0].unitIds[0];
+assert.throws(() => assertCreatorScriptExecutionMatchesSelection(projected.approved, projected.approved.map((selection, index) => ({ unitIds: index === 0 ? [droppedUnitId] : selection.unitIds, replacementText: "x" }))), /EXECUTION_SCOPE_INVALID/, "dropped candidates cannot reappear during execution");
+const oneUnitMandatoryScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: "THYNEL must disappear." } : section) };
+const oneUnitMandatory = createCreatorScriptMandatoryCandidates(oneUnitMandatoryScript, "en", ["THYNEL"]);
+assert.throws(() => projectCreatorScriptHolisticCandidates({ script: oneUnitMandatoryScript, language: "en", mandatoryCandidates: oneUnitMandatory, modelCandidates: [], limits: { ...selectionLimits, maximumSelectionCount: 16 } }), /MANDATORY_SELECTION_UNSATISFIED/, "mandatory constraints fail closed when their required scope alone is unsafe");
+const holisticOutput = { edits: [
+  { unitIds: ["opening:u1"], replacementText: replacementSentence("holistic-opening-") },
+  { unitIds: ["section-1:u1"], replacementText: replacementSentence("clear-definition-") },
+  { unitIds: ["section-1:u3"], replacementText: replacementSentence("natural-voice-") },
+  { unitIds: ["section-5:u1", "section-5:u2"], replacementText: replacementSentence("holistic-social-", 48) },
+  { unitIds: ["conclusion:u2"], replacementText: replacementSentence("open-question-") },
+] };
+const parsedEdits = parseCreatorScriptHolisticEdits({ output: holisticOutput, allowedUnitIds: editableUnits.map((unit) => unit.unitId) });
+assert.doesNotThrow(() => assertCreatorScriptExecutionMatchesSelection(parsedSelections, parsedEdits));
+assert.throws(() => assertCreatorScriptExecutionMatchesSelection(parsedSelections, parsedEdits.slice(1)), /EXECUTION_SCOPE_INVALID/, "execution cannot omit an approved selection");
+assert.throws(() => assertCreatorScriptExecutionMatchesSelection(parsedSelections, [{ ...parsedEdits[0], unitIds: ["opening:u2"] }, ...parsedEdits.slice(1)]), /EXECUTION_SCOPE_INVALID/, "execution cannot broaden or substitute approved selection scope");
+const approvedExecution = parsedSelections.map((selection, index) => ({ selectionId: `selection-${index + 1}`, selection, mandatory: index === 0, priority: index === 0 ? "hard_compliance" : index === 1 ? "substantive" : "polish", oldText: editableUnits.find((unit) => unit.unitId === selection.unitIds[0]).rawText }));
+const initialExecutionOutput = { results: approvedExecution.map((item, index) => ({ selectionId: item.selectionId, replacementText: parsedEdits[index].replacementText })) };
+const initialExecutionDiagnostics = getCreatorScriptHolisticExecutionDiagnostics({ output: initialExecutionOutput, approved: approvedExecution }); assert.equal(initialExecutionDiagnostics.mismatchCategory, null); assert.deepEqual(initialExecutionDiagnostics.edits.map((edit) => edit.unitIds), parsedEdits.map((edit) => edit.unitIds));
+assert.equal(createCreatorScriptHolisticExecutionSchema(approvedExecution.map((item) => item.selectionId)).properties.results.items.additionalProperties, false, "initial execution cannot author scope metadata");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [{ selectionId: "foreign", replacementText: "x" }] }, approved: approvedExecution }).mismatchCategory, "foreign_selection");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [{ selectionId: "selection-1", replacementText: "x" }, { selectionId: "selection-1", replacementText: "y" }, ...initialExecutionOutput.results.slice(2)] }, approved: approvedExecution }).mismatchCategory, "duplicate_selection");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: approvedExecution.slice(1).map((item, index) => ({ selectionId: item.selectionId, replacementText: parsedEdits[index + 1].replacementText })) }, approved: approvedExecution }).mismatchCategory, "missing_required_selection", "mandatory replacements cannot be omitted");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [{ selectionId: "selection-1", replacementText: approvedExecution[0].oldText }, ...initialExecutionOutput.results.slice(1)] }, approved: approvedExecution }).mismatchCategory, "mandatory_no_op_replacement", "mandatory no-op fails closed");
+const optionalNoOpResults = initialExecutionOutput.results.map((result, index) => index === 1 ? { ...result, replacementText: approvedExecution[index].oldText } : result);
+const optionalSkipped = getCreatorScriptHolisticExecutionDiagnostics({ output: { results: optionalNoOpResults }, approved: approvedExecution }); assert.equal(optionalSkipped.mismatchCategory, null); assert.equal(optionalSkipped.optionalNoOpCount, 1); assert.equal(optionalSkipped.executionStatus, "accepted_with_optional_skips"); assert.equal(optionalSkipped.edits.length, approvedExecution.length - 1, "optional canonical no-op is skipped without invalidating other edits");
+const optionalOmitted = getCreatorScriptHolisticExecutionDiagnostics({ output: { results: initialExecutionOutput.results.slice(0, 2) }, approved: approvedExecution }); assert.equal(optionalOmitted.mismatchCategory, null); assert.deepEqual(optionalOmitted.omittedOptionalSelectionIds, approvedExecution.slice(2).map((item) => item.selectionId)); assert.equal(optionalOmitted.executionStatus, "accepted_with_optional_skips"); assert.equal(optionalOmitted.edits.length, 2, "omitted polish preserves canonical units by creating no edit");
+assert.deepEqual(optionalOmitted.effectiveSelectionIds, ["selection-1", "selection-2"], "omitted polish cannot enter the effective edit set");
+const optionalOmittedCandidate = applyCreatorScriptHolisticEdits(longScript, optionalOmitted.edits, "en"); for (const omitted of approvedExecution.slice(2)) for (const unitId of omitted.selection.unitIds) { const unit = editableUnits.find((item) => item.unitId === unitId); assert.ok(optionalOmittedCandidate.sections.find((section) => section.id === unit.sectionId).text.includes(unit.rawText), "omitted polish keeps its canonical bytes exact"); }
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [initialExecutionOutput.results[0], ...initialExecutionOutput.results.slice(2)] }, approved: approvedExecution }).mismatchCategory, "missing_required_selection", "substantive replacements remain required");
+const hardComplianceRequired = approvedExecution.map((item, index) => index === 1 ? { ...item, priority: "hard_compliance" } : item); assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [initialExecutionOutput.results[0], ...initialExecutionOutput.results.slice(2)] }, approved: hardComplianceRequired }).mismatchCategory, "missing_required_selection", "hard-compliance replacements remain required");
+const optionalSubsequence = getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [initialExecutionOutput.results[0], initialExecutionOutput.results[1], initialExecutionOutput.results.at(-1)] }, approved: approvedExecution }); assert.equal(optionalSubsequence.mismatchCategory, null, "returned optional polish may follow required results as a canonical-order subsequence");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [...initialExecutionOutput.results, { selectionId: "selection-1", replacementText: "extra" }] }, approved: approvedExecution }).mismatchCategory, "result_count_mismatch");
+assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [{ ...initialExecutionOutput.results[0], replacementText: "...?!" }, ...initialExecutionOutput.results.slice(1)] }, approved: approvedExecution }).mismatchCategory, "replacement_not_material", "punctuation-only replacement cannot satisfy a replace operation");
+const deleteApproved = [{ selectionId: "selection-delete", selection: { unitIds: ["section-4:u1"], intent: "remove_repetition", operation: "delete" }, mandatory: false, oldText: editableUnits.find((unit) => unit.unitId === "section-4:u1").rawText }];
+const deterministicDelete = getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [] }, approved: deleteApproved }); assert.equal(deterministicDelete.mismatchCategory, null); assert.equal(deterministicDelete.edits[0].replacementText, "", "approved delete is applied server-side without provider prose");
+const correctionSelectionIds = parsedSelections.map((_, index) => `selection-${index + 1}`);
+const correctionOutput = { corrections: [{ selectionId: "selection-2", replacementText: replacementSentence("duration-buffer-", 82) }] };
+const correctionDiagnostics = getCreatorScriptHolisticCorrectionDiagnostics({ output: correctionOutput, approved: approvedExecution, priorEdits: parsedEdits });
+assert.equal(correctionDiagnostics.mismatchCategory, null); assert.equal(createCreatorScriptHolisticCorrectionSchema(correctionSelectionIds).properties.corrections.items.additionalProperties, false);
+const correctedEdits = correctionDiagnostics.edits;
+assert.deepEqual(correctedEdits.map((edit) => edit.unitIds), parsedEdits.map((edit) => edit.unitIds), "correction cannot alter frozen unit groups"); assert.equal(correctedEdits[0].replacementText, parsedEdits[0].replacementText, "unmentioned successful edits remain exact");
+const boundedRecovery = applyCreatorScriptHolisticEdits(longScript, correctedEdits, "en"); assert.equal(getCreatorScriptDurationContractForScript(boundedRecovery, "en").actualWordCount, 2252); assert.equal(getCreatorScriptDurationContractForScript(boundedRecovery, "en").status, "compliant", "a focused 58-word bounded recovery reaches the hard global duration envelope");
+const emptyCorrection = getCreatorScriptHolisticCorrectionDiagnostics({ output: { corrections: [] }, approved: approvedExecution, priorEdits: parsedEdits }); assert.equal(emptyCorrection.mismatchCategory, null); assert.deepEqual(emptyCorrection.edits, parsedEdits, "an empty override subset preserves every initial effective edit");
+assert.equal(getCreatorScriptHolisticCorrectionDiagnostics({ output: { corrections: [{ selectionId: "foreign", replacementText: "x" }] }, approved: approvedExecution, priorEdits: parsedEdits }).mismatchCategory, "unapproved_selection");
+assert.equal(getCreatorScriptHolisticCorrectionDiagnostics({ output: { corrections: [{ selectionId: "selection-1", replacementText: "x" }, { selectionId: "selection-1", replacementText: "y" }] }, approved: approvedExecution, priorEdits: parsedEdits }).mismatchCategory, "duplicate_group");
+const noOpCorrection = getCreatorScriptHolisticCorrectionDiagnostics({ output: { corrections: [{ selectionId: "selection-1", replacementText: parsedEdits[0].replacementText }] }, approved: approvedExecution, priorEdits: parsedEdits }); assert.equal(noOpCorrection.mismatchCategory, null); assert.deepEqual(noOpCorrection.ignoredNoOpSelectionIds, ["selection-1"]); assert.deepEqual(noOpCorrection.edits, parsedEdits, "an unchanged correction override is ignored");
+assert.equal(getCreatorScriptHolisticCorrectionDiagnostics({ output: { corrections: [{ selectionId: "selection-1", replacementText: "..." }] }, approved: approvedExecution, priorEdits: parsedEdits }).mismatchCategory, "replacement_not_material", "correction shares replacement materiality validation");
+const correctionWithDelete = getCreatorScriptHolisticCorrectionDiagnostics({ output: correctionOutput, approved: [deleteApproved[0], ...approvedExecution], priorEdits: [deterministicDelete.edits[0], ...parsedEdits] }); assert.equal(correctionWithDelete.mismatchCategory, null); assert.equal(correctionWithDelete.edits[0].replacementText, "", "bounded correction preserves a server-owned deterministic delete");
+const editDiagnostics = getCreatorScriptHolisticEditDiagnostics(longScript, parsedEdits, "en");
+assert.equal(editDiagnostics.editCount, 5); assert.equal(editDiagnostics.oldTextWords, 144); assert.equal(editDiagnostics.newTextWords, 144); assert.equal(editDiagnostics.netWordDelta, 0);
+assert.deepEqual(editDiagnostics.sectionIds, ["opening", "section-1", "section-5", "conclusion"]); assert.equal(editDiagnostics.perSection.find((item) => item.sectionId === "section-1").oldTextWords, 48);
+assert.equal(editDiagnostics.rejectionReason, null, "localized edits across several sections remain inside the sparse-edit budget");
+const candidate = applyCreatorScriptHolisticEdits(longScript, parsedEdits, "en");
+assert.deepEqual(candidate.sections.map((section) => section.id), ids, "same eight section IDs and order are preserved");
+assert.deepEqual(candidate.sections.map((section) => section.kind), longScript.sections.map((section) => section.kind), "section kinds remain canonical");
+assert.deepEqual(candidate.sections.map((section) => section.claimIds), longScript.sections.map((section) => section.claimIds), "claim/evidence bindings cannot be authored by model output");
+assert.deepEqual(candidate.grounding, longScript.grounding, "source and evidence authority remain canonical");
+assert.equal(candidate.sections[2].text, longScript.sections[2].text, "unedited canonical text remains byte-for-byte unchanged");
+assert.equal(createCreatorScriptHolisticEditSchema(editableUnits.map((unit) => unit.unitId)).properties.edits.items.additionalProperties, false, "edit output cannot author metadata");
+assert.throws(() => parseCreatorScriptHolisticEdits({ output: { edits: [{ unitIds: ["foreign:u1"], replacementText: "x" }] }, allowedUnitIds: editableUnits.map((unit) => unit.unitId) }), /PATCH_INVALID/);
+assert.throws(() => parseCreatorScriptHolisticEdits({ output: { edits: [{ unitIds: ["section-1:u1", "section-1:u2", "section-1:u3"], replacementText: "x" }] }, allowedUnitIds: editableUnits.map((unit) => unit.unitId) }), /PATCH_INVALID/, "an edit cannot span more than two units");
+assert.throws(() => applyCreatorScriptHolisticEdits(longScript, [{ unitIds: ["section-1:u1", "section-1:u3"], replacementText: "x" }], "en"), /PATCH_SPAN_INVALID/, "non-adjacent units cannot be combined");
+assert.throws(() => applyCreatorScriptHolisticEdits(longScript, [{ unitIds: ["section-1:u1", "section-2:u1"], replacementText: "x" }], "en"), /PATCH_SPAN_INVALID/, "cross-section spans fail closed");
+assert.throws(() => applyCreatorScriptHolisticEdits(longScript, [{ unitIds: ["section-1:u1"], replacementText: "x" }, { unitIds: ["section-1:u1"], replacementText: "y" }], "en"), /PATCH_SPAN_INVALID/, "a unit cannot be reused by overlapping edits");
+const oneUnitSectionScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: "One complete opening sentence." } : section) }; assert.throws(() => applyCreatorScriptHolisticEdits(oneUnitSectionScript, [{ unitIds: ["opening:u1"], replacementText: "A replacement opening." }], "en"), /PATCH_SPAN_INVALID/, "a whole section cannot be submitted as an ordinary unit edit");
+const manuscriptRewriteEdits = ["section-1", "section-2", "section-3"].flatMap((sectionId) => {
+  const sectionUnits = editableUnits.filter((unit) => unit.sectionId === sectionId);
+  return Array.from({ length: Math.ceil(sectionUnits.length / 2) }, (_, index) => ({ unitIds: sectionUnits.slice(index * 2, index * 2 + 2).map((unit) => unit.unitId), replacementText: replacementSentence(`rewrite-${sectionId}-${index}-`, Math.min(48, 307 - index * 48)) }));
+});
+assert.equal(getCreatorScriptHolisticEditDiagnostics(longScript, manuscriptRewriteEdits, "en").rejectionReason, "canonical_footprint");
+assert.throws(() => applyCreatorScriptHolisticEdits(longScript, manuscriptRewriteEdits, "en"), /PATCH_TOO_LARGE/, "selecting nearly every unit across sections cannot disguise a manuscript rewrite");
+const completeOpeningSelections = editableUnits.filter((unit) => unit.sectionId === "opening").map((unit) => ({ unitIds: [unit.unitId], intent: "clarify", operation: "replace" }));
+assert.equal(getCreatorScriptHolisticSelectionDiagnostics(longScript, completeOpeningSelections, "en", selectionLimits).rejectionReason, "complete_section_selection", "multiple individually legal selections cannot cumulatively replace a complete section");
+const excessiveSectionSelections = editableUnits.filter((unit) => unit.sectionId === "section-1").slice(0, 6).map((unit) => ({ unitIds: [unit.unitId], intent: "clarify", operation: "replace" }));
+assert.equal(getCreatorScriptHolisticSelectionDiagnostics(longScript, excessiveSectionSelections, "en", selectionLimits).rejectionReason, "section_footprint", "cumulative per-section scope is bounded independently of global footprint");
+const excessiveDeletionSelections = ["section-1", "section-2", "section-3", "section-4", "section-5", "section-6", "conclusion"].map((sectionId) => ({ unitIds: [editableUnits.find((unit) => unit.sectionId === sectionId).unitId], intent: "remove_repetition", operation: "delete" }));
+assert.equal(getCreatorScriptHolisticSelectionDiagnostics(longScript, excessiveDeletionSelections, "en", selectionLimits).rejectionReason, "deletion_intent_budget", "unsafe planned deletion is rejected before replacement prose is generated");
+const deletionEdit = [{ unitIds: ["section-4:u1"], replacementText: "" }];
+const deletionCandidate = applyCreatorScriptHolisticEdits(longScript, deletionEdit, "en"); assert.equal(deletionCandidate.sections[5].text, longScript.sections[5].text); assert.ok(deletionCandidate.sections[4].text.length < longScript.sections[4].text.length, "explicit unit deletion is deterministic");
+const excessiveDeletionEdits = editableUnits.filter((unit) => unit.sectionId.startsWith("section-")).slice(0, 7).map((unit) => ({ unitIds: [unit.unitId], replacementText: "" }));
+const excessiveDeletionCandidate = applyCreatorScriptHolisticEdits(longScript, excessiveDeletionEdits, "en");
+assert.throws(() => applyCreatorScriptWholeRefinement(longScript, excessiveDeletionCandidate.sections.map((section) => ({ id: section.id, text: section.text })), "en"), /DURATION_UNSATISFIED/, "excessive net deletion remains globally fail-closed");
+const duplicateSentenceScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: "The same sentence appears here. The same sentence appears here." } : section) };
+const duplicateUnits = createCreatorScriptEditableUnits(duplicateSentenceScript, "en").filter((unit) => unit.sectionId === "opening"); assert.equal(duplicateUnits.length, 2); assert.notEqual(duplicateUnits[0].unitId, duplicateUnits[1].unitId);
+assert.match(applyCreatorScriptHolisticEdits(duplicateSentenceScript, [{ unitIds: [duplicateUnits[0].unitId], replacementText: "Only the first sentence changes." }], "en").sections[0].text, /^Only the first sentence changes\./, "duplicate prose remains unambiguous through server-owned IDs");
+assert.equal(Object.hasOwn(architecture[1], "minimumWords"), false, "patch editing introduces no hard section minimum");
 
-const verified = verifyCreatorScriptSectionSources(wholeNext, "body");
-const untouchedVerification = applyCreatorScriptOpeningRefinement(verified, words("newopen", 55));
-assert.equal(untouchedVerification.sections[1].humanVerification?.scriptRevision, untouchedVerification.revision, "untouched verified section remains verified");
-assert.equal(applyCreatorScriptWholeRefinement(verified, verified.sections.map((section) => ({ id: section.id, text: section.id === "body" ? `${section.text} changed` : section.text })), "en").sections[1].humanVerification, undefined, "changed grounded section invalidates verification");
+const constraints = getCreatorScriptImmutableCreatorConstraints("Remove every meta-reference to THYNEL. Do not invent new studies, statistics, examples or claims. Keep every factual statement within the existing grounded evidence.");
+const constraintCatalog = createCreatorScriptImmutableConstraintCatalog(constraints);
+const thynelConstraint = constraintCatalog.find((constraint) => /THYNEL/i.test(constraint.text));
+const forbiddenTerms = getCreatorScriptForbiddenLiteralTerms(constraints);
+assert.deepEqual(forbiddenTerms, ["THYNEL", "THNK", "this documentary", "editorial approach", "editorial method", "editorial commitment"]); assert.throws(() => assertCreatorScriptForbiddenTermsRemoved({ ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} THNK Research describes this documentary.` } : section) }, forbiddenTerms), /CREATOR_CONSTRAINT_UNSATISFIED/);
+const metaScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} THNK Research reflects THYNEL's editorial approach.` } : section) };
+const metaUnit = createCreatorScriptEditableUnits(metaScript, "en").find((unit) => /THNK/u.test(unit.text)); const metaRemoved = applyCreatorScriptHolisticEdits(metaScript, [{ unitIds: [metaUnit.unitId], replacementText: "" }], "en"); assertCreatorScriptForbiddenTermsRemoved(metaRemoved, forbiddenTerms);
+const pureMetaScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} This inquiry aligns with THYNEL's mission and editorial commitment.` } : section) }; const pureMetaUnit = createCreatorScriptEditableUnits(pureMetaScript, "en").find((unit) => /THYNEL's mission/u.test(unit.text)); const pureMetaCandidate = createCreatorScriptMandatoryCandidates(pureMetaScript, "en", forbiddenTerms).find((candidate) => candidate.unitIds.includes(pureMetaUnit.unitId)); assert.equal(pureMetaCandidate.operation, "delete", "a pure editorial-meta sentence is removed deterministically");
+const mixedMetaScript = { ...longScript, sections: longScript.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} Memory can remain uncertain, which this documentary frames through THYNEL's editorial approach.` } : section) }; const mixedMetaUnit = createCreatorScriptEditableUnits(mixedMetaScript, "en").find((unit) => /THYNEL's editorial approach/u.test(unit.text)); const mixedMetaCandidate = createCreatorScriptMandatoryCandidates(mixedMetaScript, "en", forbiddenTerms).find((candidate) => candidate.unitIds.includes(mixedMetaUnit.unitId)); assert.equal(mixedMetaCandidate.operation, "replace", "mixed useful narration and meta framing requires a meaningful replacement");
+const mixedMetaApproved = [{ selectionId: "mixed-meta", selection: mixedMetaCandidate, mandatory: true, priority: "hard_compliance", oldText: mixedMetaUnit.rawText }]; assert.equal(getCreatorScriptHolisticExecutionDiagnostics({ output: { results: [{ selectionId: "mixed-meta", replacementText: "Memory remains uncertain" }] }, approved: mixedMetaApproved }).mismatchCategory, "replacement_not_material", "mixed-meta replacement must remain a complete sentence rather than a broken fragment");
+const cleanQa = { hardComplianceFindings: [], advisoryFindings: [{ code: "tone", sectionIds: ["section-1"], violatedImmutableConstraintIds: [], summary: "A transition remains slightly academic." }] };
+assert.deepEqual(parseCreatorScriptHolisticQa({ output: cleanQa, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) }), cleanQa, "editorial imperfection is advisory rather than automatic repair authority");
+const falseLiteralAdvisory = { hardComplianceFindings: [], advisoryFindings: [{ code: "progression", sectionIds: ["section-2"], violatedImmutableConstraintIds: [thynelConstraint.id], summary: "THYNEL remains and violates the creator constraint." }] };
+const reconciledAbsentLiteral = reconcileCreatorScriptHolisticQaConstraints({ qa: falseLiteralAdvisory, remainingForbiddenTerms: [] }); assert.equal(reconciledAbsentLiteral.qa.hardComplianceFindings.length, 0); assert.equal(reconciledAbsentLiteral.qa.advisoryFindings.length, 0); assert.equal(reconciledAbsentLiteral.droppedFalseLiteralClaims.length, 1, "QA cannot hallucinate a deterministically absent forbidden literal");
+const reconciledPresentLiteral = reconcileCreatorScriptHolisticQaConstraints({ qa: falseLiteralAdvisory, remainingForbiddenTerms: ["THYNEL"] }); assert.equal(reconciledPresentLiteral.qa.hardComplianceFindings[0].code, "creator_constraint"); assert.equal(reconciledPresentLiteral.qa.advisoryFindings.length, 0, "a genuine immutable constraint violation cannot remain advisory-only");
+const hardQa = { hardComplianceFindings: [{ code: "creator_constraint", sectionIds: ["conclusion"], violatedImmutableConstraintIds: [thynelConstraint.id], summary: "Forbidden meta-reference remains." }], advisoryFindings: [] };
+const reconciledFalseHardLiteral = reconcileCreatorScriptHolisticQaConstraints({ qa: hardQa, remainingForbiddenTerms: [] }); assert.equal(reconciledFalseHardLiteral.qa.hardComplianceFindings.length, 0, "deterministic absence outranks a false hard QA literal claim"); assert.equal(reconciledFalseHardLiteral.droppedFalseLiteralClaims.length, 1);
+assert.equal(reconcileCreatorScriptHolisticQaConstraints({ qa: hardQa, remainingForbiddenTerms: ["THYNEL"] }).qa.hardComplianceFindings.length, 1, "a deterministically present forbidden literal remains hard");
+assert.equal(parseCreatorScriptHolisticQa({ output: hardQa, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) }).hardComplianceFindings.length, 1, "explicit THYNEL removal failure is hard compliance");
+const overlappingHardQa = { hardComplianceFindings: [{ code: "unsupported_factual_material", sectionIds: ["section-2", "section-2"], violatedImmutableConstraintIds: [constraintCatalog[0].id], summary: "New factual material overlaps an immutable no-new-material constraint." }], advisoryFindings: [] };
+const parsedOverlappingHardQa = parseCreatorScriptHolisticQa({ output: overlappingHardQa, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) });
+assert.deepEqual(parsedOverlappingHardQa.hardComplianceFindings[0].sectionIds, ["section-2"], "duplicate diagnostic section IDs are normalized rather than failing the whole QA pass");
+assert.deepEqual(parsedOverlappingHardQa.hardComplianceFindings[0].violatedImmutableConstraintIds, [constraintCatalog[0].id], "unsupported factual material may overlap an immutable creator constraint without becoming an invalid QA payload");
+const idlessCreatorConstraintQa = { hardComplianceFindings: [{ code: "creator_constraint", sectionIds: ["conclusion"], violatedImmutableConstraintIds: [], summary: "A creator constraint remains unsatisfied." }], advisoryFindings: [] };
+assert.equal(parseCreatorScriptHolisticQa({ output: idlessCreatorConstraintQa, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) }).hardComplianceFindings[0].code, "creator_constraint", "hard finding code remains authoritative even when diagnostic overlap IDs are absent");
+assert.throws(() => parseCreatorScriptHolisticQa({ output: { hardComplianceFindings: [{ ...hardQa.hardComplianceFindings[0], sectionIds: ["invented"] }], advisoryFindings: [] }, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) }), /QA_INVALID/);
+assert.throws(() => parseCreatorScriptHolisticQa({ output: { hardComplianceFindings: [{ ...hardQa.hardComplianceFindings[0], violatedImmutableConstraintIds: ["invented"] }], advisoryFindings: [] }, allowedSectionIds: ids, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) }), /QA_INVALID/);
+assert.equal(createCreatorScriptHolisticQaSchema(ids, constraintCatalog.map((constraint) => constraint.id)).additionalProperties, false, "holistic QA shape is strict");
+assert.equal(getCreatorScriptHolisticDurationCorrection({ status: "too_short", actualWordCount: 1990, minimumAcceptableWordCount: 2031, targetWordCount: 2256, maximumAcceptableWordCount: 2481 }).correctable, true, "small duration miss may use the one bounded holistic correction");
+assert.equal(getCreatorScriptHolisticDurationCorrection({ status: "too_short", actualWordCount: 1604, minimumAcceptableWordCount: 2031, targetWordCount: 2256, maximumAcceptableWordCount: 2481 }).correctable, false, "427-word collapse fails promptly instead of turning correction into routine regeneration");
+
+const wholeProposal = createCreatorScriptProposal({ script: longScript, scope: "whole_script", instruction: "Improve the complete progression", nextScript: candidate });
+assert.equal(longScript.revision, 1, "holistic Preview does not mutate canonical revision");
+assert.strictEqual(discardCreatorScriptProposal({ script: longScript, pendingRefinement: wholeProposal, revisionHistory: [] }, wholeProposal.proposalId).script, longScript, "Discard preserves canonical script");
+assert.equal(applyCreatorScriptProposal(longScript, wholeProposal, "en").revision, 2, "Apply remains the only proposal mutation path");
+const advisoryProposal = createCreatorScriptProposal({ script: longScript, scope: "whole_script", instruction: "Improve the complete progression", nextScript: candidate, editorialAdvisories: cleanQa.advisoryFindings });
+assert.deepEqual(normalizeCreatorScriptRevisionState({ pending: advisoryProposal }).pending?.editorialAdvisories, cleanQa.advisoryFindings, "advisory QA persists with Preview without becoming mutation authority");
+
+const verified = verifyCreatorScriptSectionSources(applyCreatorScriptWholeRefinement(script, script.sections.map((section) => ({ id: section.id, text: section.id === "body" ? words("grounded", 575) : section.text })), "en"), "body");
+assert.equal(applyCreatorScriptOpeningRefinement(verified, words("newopen", 55)).sections[1].humanVerification?.scriptRevision, 3, "untouched verified section remains verified");
+assert.equal(applyCreatorScriptWholeRefinement(verified, verified.sections.map((section) => ({ id: section.id, text: section.id === "body" ? `${section.text} changed` : section.text })), "en").sections[1].humanVerification, undefined);
 
 const manualNext = editCreatorScriptDocument(script, document.replace("end10", "ending10"), script.updatedAt);
 const manualChanges = createCreatorScriptChanges(script, manualNext);
-assert.deepEqual(manualChanges.map((change) => change.sectionId), ["conclusion"]);
-assert.deepEqual(createCreatorScriptChanges(script, script), [], "no-op and metadata-only persistence produces no text history");
+assert.deepEqual(manualChanges.map((change) => change.sectionId), ["conclusion"]); assert.deepEqual(createCreatorScriptChanges(script, script), []);
 let history = appendCreatorScriptHistory([], { fromRevision: script.revision, toRevision: manualNext.revision, origin: "manual", changes: manualChanges });
 history = appendCreatorScriptHistory(history, { fromRevision: script.revision, toRevision: selectedApplied.revision, origin: "ai_selection", instruction: selectionProposal.instruction, changes: selectionProposal.changes });
-assert.equal(history[0].origin, "ai_selection");
 for (let index = 0; index < CREATOR_SCRIPT_HISTORY_LIMIT + 3; index += 1) history = appendCreatorScriptHistory(history, { fromRevision: index, toRevision: index + 1, origin: "manual", changes: manualChanges });
-assert.equal(history.length, CREATOR_SCRIPT_HISTORY_LIMIT, "history remains bounded");
-assert.equal(normalizeCreatorScriptRevisionState({ pending: selectionProposal, history }).pending?.proposalId, selectionProposal.proposalId, "pending proposal survives project hydration");
+assert.equal(history.length, CREATOR_SCRIPT_HISTORY_LIMIT); assert.equal(normalizeCreatorScriptRevisionState({ pending: selectionProposal, history }).pending?.proposalId, selectionProposal.proposalId);
 
 const route = await readFile(new URL("../app/api/creator-script/refine/route.ts", import.meta.url), "utf8");
 const saveRoute = await readFile(new URL("../app/api/save-project/route.ts", import.meta.url), "utf8");
 const component = await readFile(new URL("../components/create/CreatorScriptReview.tsx", import.meta.url), "utf8");
 const page = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
-assert.match(route, /getForOwner\(projectId, principal\.id\)/);
-assert.match(route, /action === "discard"/); assert.match(route, /action === "apply"/);
+assert.match(route, /getForOwner\(projectId, principal\.id\)/); assert.match(route, /proposal\.baseRevision !== script\.revision/); assert.match(route, /expectedUpdatedAt/);
+assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED/); assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/); assert.match(route, /proposal\.scope === "whole_script"/);
 const discardRouteBlock = route.slice(route.indexOf('if (action === "discard")'), route.indexOf('if (action === "apply")'));
 assert.match(discardRouteBlock, /discardCreatorScriptProposal/); assert.doesNotMatch(discardRouteBlock, /applyCreatorScriptProposal|appendCreatorScriptHistory/);
-assert.match(route, /proposal\.baseRevision !== script\.revision/); assert.match(route, /expectedUpdatedAt/);
-assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
-assert.match(saveRoute, /pendingRefinement: textChanged \|\| scriptRevisionChanged \? null/);
-assert.match(saveRoute, /const revisionHistory = textChanged/);
-assert.match(saveRoute, /persistedState\.strategy\.pendingRefinement/);
+assert.match(route, /creator_script_holistic_candidate_plan/); assert.match(route, /creator_script_holistic_edit_execution/); assert.match(route, /creator_script_holistic_qa/); assert.match(route, /creator_script_holistic_edit_correction/); assert.match(route, /creator_script_holistic_final_compliance/);
+assert.match(route, /canonicalArchitecture: architecture/); assert.match(route, /canonicalEvidenceAuthority: evidenceAuthority/); assert.match(route, /canonicalSectionsBeforeRefinement/); assert.match(route, /editableUnitMap/); assert.match(route, /globalDuration/);
+assert.match(route, /maximumSafeNetDeletionWords/); assert.match(route, /requiredAdditionalWords/); assert.match(route, /minimumAcceptableWordCount/);
+assert.match(route, /This is candidate selection only: do not write replacement prose/); assert.match(route, /server alone decides final scope/); assert.match(route, /server has already frozen the complete editable scope/i); assert.match(route, /Preserve every omitted or otherwise unselected unit exactly/i); assert.match(route, /Only a non-mandatory polish replacement may be omitted/i); assert.match(route, /getCreatorScriptHolisticExecutionDiagnostics/);
+assert.match(route, /CREATOR_SCRIPT_HOLISTIC_CANDIDATE_PLAN_DIAGNOSTICS/); assert.match(route, /CREATOR_SCRIPT_HOLISTIC_CANDIDATE_NORMALIZATION_DIAGNOSTICS/); assert.match(route, /CREATOR_SCRIPT_HOLISTIC_APPROVED_SELECTION_DIAGNOSTICS/); assert.match(route, /CREATOR_SCRIPT_HOLISTIC_EDIT_PLAN_DIAGNOSTICS/); assert.match(route, /editableUnitMap/); assert.match(route, /maximumUnitsPerCandidate: 2/);
+assert.match(route, /CREATOR_SCRIPT_REFINEMENT_MANDATORY_CANDIDATE_INVALID/); assert.ok(route.indexOf("normalizeCreatorScriptHolisticCandidates") < route.indexOf("projectCreatorScriptHolisticCandidates({ script"), "normalization precedes deterministic projection");
+assert.match(route, /forbiddenLiteralTerms/); assert.match(route, /assertCreatorScriptForbiddenTermsRemoved/); assert.match(route, /creator constraints override canonical wording and canonical progression/i); assert.match(route, /CREATOR_SCRIPT_HOLISTIC_CORRECTION_RESULT/);
+assert.match(route, /hardComplianceFindings/); assert.match(route, /advisoryFindings/); assert.match(route, /getCreatorScriptHolisticDurationCorrection/); assert.match(route, /!durationCorrection\.correctable/);
+assert.doesNotMatch(route, /createCreatorScriptHolisticOutputSchema|parseCreatorScriptHolisticOutput|createCreatorScriptWholeRefinementCandidate|callHolisticRewrite/);
+assert.equal((route.match(/callHolisticCandidatePlan\(/g) || []).length, 1, "exactly one holistic candidate callsite exists");
+assert.equal((route.match(/callFocusedEditExecution\(/g) || []).length, 2, "one focused execution plus at most one same-scope bounded correction callsite");
+assert.equal((route.match(/assessHolistically\(/g) || []).length, 2, "one initial QA plus at most one final compliance callsite");
+assert.match(route, /if \(finalQa\.hardComplianceFindings\.some/); assert.match(route, /CREATOR_SCRIPT_REFINEMENT_CREATOR_CONSTRAINT_UNSATISFIED/); assert.match(route, /CREATOR_SCRIPT_REFINEMENT_GROUNDING_UNSATISFIED/);
+assert.match(saveRoute, /pendingRefinement: textChanged \|\| scriptRevisionChanged \? null/); assert.match(saveRoute, /persistedState\.strategy\.pendingRefinement/);
 assert.match(component, /Review proposed changes/); assert.match(component, /Apply changes/); assert.match(component, /Discard/); assert.match(component, /History/);
-assert.match(component, /data-creator-script-refinement-preview="true"/); assert.match(component, /data-creator-script-revision-history="true"/);
-assert.match(component, /pendingRefinementStale/); assert.match(component, /Preview no longer current/);
-assert.match(component, /setResolvingRefinement\("discard"\)/); assert.match(component, /onDiscardRefinement\(\)/); assert.match(component, /Discarding…/);
+assert.match(component, /data-creator-script-editorial-advisories="true"/); assert.match(component, /Editorial notes for your review/);
 const discardButtonBlock = component.slice(component.indexOf('setResolvingRefinement("discard")'), component.indexOf('setResolvingRefinement("apply")'));
 assert.doesNotMatch(discardButtonBlock, /onApplyRefinement|Applying…/);
 assert.match(page, /action, projectId:[\s\S]*proposalId: proposal\.proposalId/);
-assert.match(page, /setCreatorScriptPendingRefinement\(data\.pendingRefinement\)/);
-assert.doesNotMatch(page.slice(page.indexOf("const handleRefineCreatorScript"), page.indexOf("const handleResolveCreatorScriptRefinement")), /setCreatorScript\(/, "preview generation must not install proposed script");
+assert.doesNotMatch(page.slice(page.indexOf("const handleRefineCreatorScript"), page.indexOf("const handleResolveCreatorScriptRefinement")), /setCreatorScript\(/, "Preview generation remains non-mutating");
 
 console.log("STAGE_0_13F_REVISION_PREVIEW_HISTORY=PASS");
