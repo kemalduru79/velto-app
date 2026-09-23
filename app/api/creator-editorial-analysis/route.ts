@@ -6,6 +6,7 @@ import {
   createEditorialGroundingCandidateSpans,
   createValidatedEditorialAnalysisWithOneRepair,
   MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+  type EditorialGroundingRepairInput,
 } from "@/lib/research/editorialGroundingRepair";
 import { normalizeEditorialAnalysisRequest } from "@/lib/research/editorialAnalysisRequest";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
@@ -15,6 +16,8 @@ import {
 } from "@/lib/research/sourceAssessment";
 import { createResearchTopicReadiness } from "@/lib/research/topicEvidenceReadiness";
 import { createCreatorEditorialCandidateCapabilityDiagnostics } from "@/lib/research/creatorLongFormEvidenceReadiness";
+import { repairCollapsedCanonicalEditorialSelection } from "@/lib/research/editorialCanonicalSelectionRepair";
+import type { ResearchClaimEvidenceGraph } from "@/lib/research/claimEvidenceGraph";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -165,29 +168,30 @@ export async function POST(request: Request) {
       sourceCount: normalized.sources.length,
       ...createCreatorEditorialCandidateCapabilityDiagnostics(candidateSpans),
     }));
+    const editorialResponseText = {
+      format: {
+        type: "json_schema" as const,
+        name: "creator_editorial_analysis",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
+            evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
+            links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
+          },
+          required: ["claims", "evidence", "links"],
+        },
+      },
+    };
     const response = await client.responses.create({
       model,
       input: [
         { role: "system", content: systemPrompt },
         { role: "user", content: JSON.stringify(userPrompt) },
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "creator_editorial_analysis",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
-              evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
-              links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
-            },
-            required: ["claims", "evidence", "links"],
-          },
-        },
-      },
+      text: editorialResponseText,
       temperature: 0.2,
     });
     await recordOpenAITextEconomics({
@@ -199,70 +203,71 @@ export async function POST(request: Request) {
     });
 
     const proposal = parseModelJson(response.output_text || "");
-    let graph;
+    let graph: ResearchClaimEvidenceGraph;
     let groundingRepairAttempted = false;
+    const runGroundingRepair = async ({
+      diagnosticCategory,
+      invalidEvidence,
+      candidateSpans: repairCandidateSpans,
+      failingSourceId,
+    }: EditorialGroundingRepairInput) => {
+      groundingRepairAttempted = true;
+      const repairResponse = await client.responses.create({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              "Select only canonical grounding spans for the supplied invalid evidence.",
+              "Use only the supplied candidate spans and evidence context. Do not add research or source material.",
+              "Each repair must contain exactly evidenceId and spanId.",
+              "Never write or return excerpt text. Select the span that actually supports the intended evidence or claim.",
+              "Include all grounding-invalid evidence you can identify in this one response.",
+              "Do not return source ids, claims, links, context notes, or proposal structures.",
+              'Return strict JSON only in the shape {"repairs":[{"evidenceId":"...","spanId":"..."}]}.',
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              diagnosticCategory,
+              failingSourceId,
+              invalidEvidence,
+              candidateSpans: repairCandidateSpans,
+            }),
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "creator_editorial_grounding_repair",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                repairs: { type: "array", minItems: 1, maxItems: invalidEvidence.length, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string", enum: invalidEvidence.map((item) => item.evidenceId) }, spanId: { type: "string", enum: repairCandidateSpans.map((span) => span.spanId) } }, required: ["evidenceId", "spanId"] } },
+              },
+              required: ["repairs"],
+            },
+          },
+        },
+        temperature: 0,
+      });
+      await recordOpenAITextEconomics({
+        route: "/api/creator-editorial-analysis",
+        operationType: "creator_editorial_grounding_repair",
+        model,
+        response: repairResponse,
+        userId: secured.context.user.id,
+      });
+      return parseModelJson(repairResponse.output_text || "");
+    };
     try {
       graph = await createValidatedEditorialAnalysisWithOneRepair({
         sources: normalized.sources,
         proposal,
-        repair: async ({
-          diagnosticCategory,
-          invalidEvidence,
-          candidateSpans,
-          failingSourceId,
-        }) => {
-          groundingRepairAttempted = true;
-          const repairResponse = await client.responses.create({
-            model,
-            input: [
-              {
-                role: "system",
-                content: [
-                  "Select only canonical grounding spans for the supplied invalid evidence.",
-                  "Use only the supplied candidate spans and evidence context. Do not add research or source material.",
-                  "Each repair must contain exactly evidenceId and spanId.",
-                  "Never write or return excerpt text. Select the span that actually supports the intended evidence or claim.",
-                  "Include all grounding-invalid evidence you can identify in this one response.",
-                  "Do not return source ids, claims, links, context notes, or proposal structures.",
-                  'Return strict JSON only in the shape {"repairs":[{"evidenceId":"...","spanId":"..."}]}.',
-                ].join(" "),
-              },
-              {
-                role: "user",
-                content: JSON.stringify({
-                  diagnosticCategory,
-                  failingSourceId,
-                  invalidEvidence,
-                  candidateSpans,
-                }),
-              },
-            ],
-            text: {
-              format: {
-                type: "json_schema",
-                name: "creator_editorial_grounding_repair",
-                strict: true,
-                schema: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    repairs: { type: "array", minItems: 1, maxItems: invalidEvidence.length, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string", enum: invalidEvidence.map((item) => item.evidenceId) }, spanId: { type: "string", enum: candidateSpans.map((span) => span.spanId) } }, required: ["evidenceId", "spanId"] } },
-                  },
-                  required: ["repairs"],
-                },
-              },
-            },
-            temperature: 0,
-          });
-          await recordOpenAITextEconomics({
-            route: "/api/creator-editorial-analysis",
-            operationType: "creator_editorial_grounding_repair",
-            model,
-            response: repairResponse,
-            userId: secured.context.user.id,
-          });
-          return parseModelJson(repairResponse.output_text || "");
-        },
+        repair: runGroundingRepair,
       });
     } catch (error) {
       const diagnostic = error instanceof Error ? error.message : "Editorial analysis grounding failed.";
@@ -281,6 +286,66 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
+
+    const selectionRepair = await repairCollapsedCanonicalEditorialSelection({
+      candidateSpans,
+      graph,
+      requestRepair: async () => {
+        const repairResponse = await client.responses.create({
+          model,
+          input: [
+            {
+              role: "system",
+              content: [
+                systemPrompt,
+                "The valid first pass collapsed to one canonical authority despite candidate spans from multiple grounded sources.",
+                "Re-examine only the same supplied candidate spans for materially distinct supported claims, concrete demonstration evidence, material limits or boundaries, contextual evidence, and genuine contradictory or alternative findings that the first pass missed.",
+                "Preserve exact sourceId/spanId selections and the semantic distinction between supports, contextualizes, and contradicts.",
+                "Prefer supplied concrete procedure, result, or case evidence and supplied real limitations when relevant.",
+                "Do not create quota filler, redundant paraphrased claims, token counterarguments, unsupported uncertainty, invented study metadata, or invented source facts.",
+                "If the supplied material supports no additional materially distinct authority, a minimal graph is acceptable.",
+              ].join(" "),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                ...userPrompt,
+                validFirstPass: {
+                  claims: graph.claims,
+                  evidence: graph.evidence.map((item) => ({
+                    evidenceId: item.evidenceId,
+                    sourceId: item.sourceId,
+                    excerpt: item.excerpt,
+                    contextNote: item.contextNote,
+                  })),
+                  links: graph.links,
+                },
+              }),
+            },
+          ],
+          text: editorialResponseText,
+          temperature: 0.1,
+        });
+        await recordOpenAITextEconomics({
+          route: "/api/creator-editorial-analysis",
+          operationType: "creator_editorial_canonical_selection_repair",
+          model,
+          response: repairResponse,
+          userId: secured.context.user.id,
+        });
+        return parseModelJson(repairResponse.output_text || "");
+      },
+      validateRepair: async (repairProposal) => createValidatedEditorialAnalysisWithOneRepair({
+        sources: normalized.sources,
+        proposal: repairProposal as Parameters<typeof createValidatedEditorialAnalysisWithOneRepair>[0]["proposal"],
+        repair: runGroundingRepair,
+      }),
+    });
+    graph = selectionRepair.graph;
+    console.info(
+      "CREATOR_EDITORIAL_CANONICAL_SELECTION_REPAIR",
+      JSON.stringify(selectionRepair.diagnostic),
+    );
 
     const sourceAssessments = graph.sources.map((source) =>
       assessResearchSource(

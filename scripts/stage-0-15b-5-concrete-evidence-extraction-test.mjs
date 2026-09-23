@@ -101,6 +101,11 @@ assert.match(route, /prefer a claim-relevant candidate marked concrete_observati
 assert.match(route, /Concrete preference means extraction only/);
 assert.match(route, /THEORY, EDITORIAL_INFERENCE, METAPHYSICAL_CLAIM/);
 assert.match(route, /Set contextNote only when the selected source span explicitly supplies/);
-assert.equal((route.match(/client\.responses\.create\(/g) || []).length, 2, "no provider stage was added");
+assert.equal(
+  (route.match(/client\.responses\.create\(/g) || []).length,
+  3,
+  "B.6E adds only its one bounded canonical-selection call to the existing analysis and grounding-repair calls",
+);
+assert.match(route, /repairCollapsedCanonicalEditorialSelection/);
 
 console.log("Stage 0.15B.5 concrete grounded evidence extraction tests passed.");
