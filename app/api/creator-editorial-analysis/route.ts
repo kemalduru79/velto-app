@@ -14,6 +14,7 @@ import {
   classifyResearchSourceDirectness,
 } from "@/lib/research/sourceAssessment";
 import { createResearchTopicReadiness } from "@/lib/research/topicEvidenceReadiness";
+import { createCreatorEditorialCandidateCapabilityDiagnostics } from "@/lib/research/creatorLongFormEvidenceReadiness";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -160,6 +161,10 @@ export async function POST(request: Request) {
 
     const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    console.info("CREATOR_EDITORIAL_CANDIDATE_CAPABILITY_DIAGNOSTICS", JSON.stringify({
+      sourceCount: normalized.sources.length,
+      ...createCreatorEditorialCandidateCapabilityDiagnostics(candidateSpans),
+    }));
     const response = await client.responses.create({
       model,
       input: [

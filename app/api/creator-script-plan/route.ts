@@ -34,6 +34,7 @@ import {
 import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvidenceBinding";
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
+  createCreatorLongFormEvidenceCapabilityEvaluation,
   createCreatorLongFormEvidenceReadiness,
   createCreatorScriptSectionClaimRouting,
 } from "../../../lib/research/creatorLongFormEvidenceReadiness";
@@ -752,6 +753,26 @@ async function executeCreatorScriptOperation(input: {
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
     );
+    const evidenceCapabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation({
+      context: input.editorialContext,
+      plan: sectionBudgetPlan,
+    });
+    const boundedCapabilityInventory = evidenceCapabilityEvaluation.inventory.slice(0, 40);
+    console.info("CREATOR_LONG_FORM_EVIDENCE_CAPABILITY_DIAGNOSTICS", JSON.stringify({
+      inventoryCount: evidenceCapabilityEvaluation.inventory.length,
+      inventory: boundedCapabilityInventory,
+      truncatedInventoryCount: Math.max(
+        0,
+        evidenceCapabilityEvaluation.inventory.length - boundedCapabilityInventory.length,
+      ),
+      demonstrationSectionId: evidenceCapabilityEvaluation.demonstrationSectionId,
+      limitsSectionId: evidenceCapabilityEvaluation.limitsSectionId,
+      counterviewSectionId: evidenceCapabilityEvaluation.counterviewSectionId,
+      hasGroundedDemonstrationCapability:
+        evidenceCapabilityEvaluation.hasGroundedDemonstrationCapability,
+      hasUncertaintyCapability: evidenceCapabilityEvaluation.hasUncertaintyCapability,
+      hasCounterviewCapability: evidenceCapabilityEvaluation.hasCounterviewCapability,
+    }));
     const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
       context: input.editorialContext,
       plan: sectionBudgetPlan,
