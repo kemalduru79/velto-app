@@ -92,6 +92,35 @@ function unique(values: string[]) {
   return [...new Set(values)];
 }
 
+function concreteDemonstrationClaimId(context: ScriptPlannerEditorialContext) {
+  const evidenceById = new Map(context.evidence.map((item) => [item.evidenceId, item]));
+  const typePriority = new Map([
+    ["RESEARCH_FINDING", 0],
+    ["PRIMARY_SOURCE_CLAIM", 1],
+    ["FACT", 2],
+  ]);
+  return context.claims
+    .filter((claim) => EMPIRICAL_CLAIM_TYPES.has(claim.claimType))
+    .flatMap((claim, claimIndex) => claim.supportingEvidenceIds.flatMap((evidenceId) => {
+      const evidence = evidenceById.get(evidenceId);
+      return evidence?.excerpt &&
+          classifyEditorialGroundingSpanSpecificity(evidence.excerpt) === "concrete_observation"
+        ? [{ claimId: claim.claimId, claimIndex, priority: typePriority.get(claim.claimType) ?? 3 }]
+        : [];
+    }))
+    .toSorted((left, right) => left.priority - right.priority || left.claimIndex - right.claimIndex)[0]
+    ?.claimId || null;
+}
+
+function uncertaintyClaimId(context: ScriptPlannerEditorialContext) {
+  return context.claims.find((claim) => claim.contextualEvidenceIds.length > 0)?.claimId ||
+    context.claims.find((claim) =>
+      UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) &&
+      claim.supportingEvidenceIds.length > 0
+    )?.claimId ||
+    null;
+}
+
 /**
  * Returns the exact claim routing used by section-native generation. Keeping
  * this in one pure helper prevents readiness and provider context from drifting.
@@ -101,6 +130,8 @@ export function createCreatorScriptSectionClaimRouting(input: {
   plan: CreatorScriptSectionBudget[];
 }): CreatorScriptSectionClaimRouting[] {
   const bodySections = input.plan.filter((section) => section.kind === "body");
+  const demonstrationClaimId = concreteDemonstrationClaimId(input.context);
+  const limitsClaimId = uncertaintyClaimId(input.context);
   return input.plan.map((section) => {
     const bodyIndex = section.kind === "body"
       ? bodySections.findIndex((item) => item.id === section.id)
@@ -112,14 +143,22 @@ export function createCreatorScriptSectionClaimRouting(input: {
         : input.context.claims.filter((_, claimIndex) =>
             bodySections.length === 0 || claimIndex % bodySections.length === bodyIndex
           );
-    const usedFallback = section.kind === "body" && relevantClaims.length === 0;
+    const roleClaimId = roleOwns(section, "grounded_demonstration") || roleOwns(section, "concrete_case")
+      ? demonstrationClaimId
+      : roleOwns(section, "limits") || roleOwns(section, "uncertainty") || roleOwns(section, "scope_conditions")
+        ? limitsClaimId
+        : null;
+    const usedFallback = section.kind === "body" && relevantClaims.length === 0 && !roleClaimId;
     const claims = relevantClaims.length > 0
       ? relevantClaims
       : input.context.claims.slice(0, Math.min(2, input.context.claims.length));
     return {
       sectionId: section.id,
       sectionKind: section.kind,
-      claimIds: claims.map((claim) => claim.claimId),
+      claimIds: unique([
+        ...(roleClaimId ? [roleClaimId] : []),
+        ...claims.map((claim) => claim.claimId),
+      ]),
       usedFallback,
     };
   });

@@ -300,7 +300,11 @@ export async function POST(request: Request) {
     const selectionRepair = await repairCollapsedCanonicalEditorialSelection({
       candidateSpans,
       graph,
-      requestRepair: async ({ discoveryCandidateSpans }) => {
+      requestRepair: async ({
+        discoveryCandidateSpans,
+        missingCapabilities,
+        repairTriggerReasons,
+      }) => {
         const discoverySourceIds = new Set(
           discoveryCandidateSpans.map((span) => span.sourceId),
         );
@@ -314,6 +318,9 @@ export async function POST(request: Request) {
                 "The existing valid base graph is fixed authority. Preserve every base claim, evidence item, and link exactly, including its identifiers, text, source, context, and stance.",
                 "The first pass collapsed to one canonical authority despite grounded discovery candidates from multiple uncovered sources.",
                 "Inspect only the supplied discovery candidate spans for materially distinct supported claims, concrete demonstration evidence, material limits or boundaries, contextual evidence, and genuine contradictory or alternative findings that the first pass missed.",
+                "The supplied missingCapabilities list identifies long-form roles that the valid base graph cannot currently serve; it is permission to inspect, not evidence that qualifying authority exists.",
+                "When demonstration is missing, look for an exact supplied concrete empirical observation, procedure, case, or result linked to a FACT, PRIMARY_SOURCE_CLAIM, or RESEARCH_FINDING.",
+                "When uncertainty is missing, look for exact supplied scope limits, boundary conditions, alternative explanations, qualifications, opposing findings, or uncertainty-bearing context.",
                 "Return one complete graph containing the unchanged base graph plus any genuinely supported additional authority.",
                 "Preserve exact sourceId/spanId selections and the semantic distinction between supports, contextualizes, and contradicts.",
                 "Prefer supplied concrete procedure, result, or case evidence and supplied real limitations when relevant.",
@@ -345,6 +352,8 @@ export async function POST(request: Request) {
                   discoverySourceIds.has(source.sourceId)
                 ),
                 discoveryCandidateSpans,
+                missingCapabilities,
+                repairTriggerReasons,
                 requiredJsonShape: userPrompt.requiredJsonShape,
                 rules: userPrompt.rules,
               }),

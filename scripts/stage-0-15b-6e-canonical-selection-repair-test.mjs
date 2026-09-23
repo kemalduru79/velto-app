@@ -3,14 +3,16 @@ import {
   repairCollapsedCanonicalEditorialSelection,
 } from "../lib/research/editorialCanonicalSelectionRepair.ts";
 
-const sources = ["source-a", "source-b", "source-c"].map((sourceId) => ({
+const sources = ["source-a", "source-b", "source-c"].map((sourceId, index) => ({
   sourceId,
   adapterId: "fixture",
   mediaKind: "article",
   title: sourceId,
   publisher: "Fixture",
   publishedAt: null,
-  summary: `${sourceId} grounded material.`,
+  summary: index === 0
+    ? `${sourceId} grounded conceptual material.`
+    : `Researchers asked 120 participants to compare records and found a measured difference for ${sourceId}.`,
   url: `https://example.test/${sourceId}`,
 }));
 const spans = sources.map((source, index) => ({

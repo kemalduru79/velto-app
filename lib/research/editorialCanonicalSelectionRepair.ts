@@ -1,17 +1,28 @@
 import type { ResearchClaimEvidenceGraph } from "./claimEvidenceGraph.ts";
-import type { EditorialGroundingCandidateSpan } from "./editorialGroundingRepair.ts";
+import {
+  classifyEditorialGroundingSpanSpecificity,
+  type EditorialGroundingCandidateSpan,
+} from "./editorialGroundingRepair.ts";
+
+export type EditorialCanonicalCapability = "demonstration" | "uncertainty";
+export type EditorialCanonicalRepairTriggerReason =
+  | "canonical_collapse"
+  | "missing_demonstration"
+  | "missing_uncertainty";
 
 export type EditorialCanonicalSelectionRepairReason =
   | "not_pathologically_collapsed"
   | "repair_accepted"
   | "repair_still_collapsed"
   | "repair_dropped_base"
+  | "repair_target_capability_unsatisfied"
   | "repair_not_materially_distinct"
   | "repair_invalid"
   | "repair_provider_failed";
 
 export type EditorialCanonicalSelectionRepairDiagnostic = {
   repairTriggered: boolean;
+  repairTriggerReasons: EditorialCanonicalRepairTriggerReason[];
   candidateSpanCount: number;
   distinctCandidateSourceCount: number;
   concreteCandidateSpanCount: number;
@@ -24,10 +35,16 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   beforeClaimCount: number;
   beforeEvidenceCount: number;
   beforeDistinctSourceCount: number;
+  beforeHasDemonstrationCapability: boolean;
+  beforeHasUncertaintyCapability: boolean;
   repairProviderDispatched: boolean;
   afterClaimCount: number;
   afterEvidenceCount: number;
   afterDistinctSourceCount: number;
+  afterHasDemonstrationCapability: boolean;
+  afterHasUncertaintyCapability: boolean;
+  finalDemonstrationEvidenceId: string | null;
+  finalUncertaintyEvidenceId: string | null;
   repairAccepted: boolean;
   reasonCode: EditorialCanonicalSelectionRepairReason;
 };
@@ -35,7 +52,53 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
 export const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS = 24;
 const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS_PER_SOURCE = 3;
 
-function sourceBalancedSpans(spans: EditorialGroundingCandidateSpan[]) {
+const EMPIRICAL_CLAIM_TYPES = new Set([
+  "FACT",
+  "PRIMARY_SOURCE_CLAIM",
+  "RESEARCH_FINDING",
+]);
+const UNCERTAINTY_BEARING_CLAIM_TYPES = new Set([
+  "THEORY",
+  "FORECAST",
+  "HYPOTHESIS",
+  "METAPHYSICAL_CLAIM",
+  "EDITORIAL_INFERENCE",
+]);
+
+export function createCanonicalEditorialCapabilitySnapshot(
+  graph: ResearchClaimEvidenceGraph,
+) {
+  const claimById = new Map(graph.claims.map((claim) => [claim.claimId, claim]));
+  const evidenceById = new Map(graph.evidence.map((evidence) => [evidence.evidenceId, evidence]));
+  const demonstration = graph.links.find((link) => {
+    const claim = claimById.get(link.claimId);
+    const evidence = evidenceById.get(link.evidenceId);
+    return link.stance === "supports" &&
+      Boolean(claim && EMPIRICAL_CLAIM_TYPES.has(claim.claimType)) &&
+      Boolean(evidence?.excerpt) &&
+      classifyEditorialGroundingSpanSpecificity(evidence?.excerpt || "") === "concrete_observation";
+  });
+  const uncertainty = graph.links.find((link) => {
+    const claim = claimById.get(link.claimId);
+    return link.stance === "contextualizes" ||
+      (link.stance === "supports" && Boolean(
+        claim && UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType)
+      ));
+  });
+  return {
+    hasDemonstrationCapability: Boolean(demonstration),
+    hasUncertaintyCapability: Boolean(uncertainty),
+    demonstrationClaimId: demonstration?.claimId || null,
+    demonstrationEvidenceId: demonstration?.evidenceId || null,
+    uncertaintyClaimId: uncertainty?.claimId || null,
+    uncertaintyEvidenceId: uncertainty?.evidenceId || null,
+  };
+}
+
+function sourceBalancedSpans(
+  spans: EditorialGroundingCandidateSpan[],
+  missingCapabilities: EditorialCanonicalCapability[],
+) {
   const originalSourceOrder = [...new Set(spans.map((span) => span.sourceId))];
   const counterSourceIds = new Set(spans.filter((span) =>
     span.researchPurposes?.includes("counter_evidence")
@@ -64,6 +127,19 @@ function sourceBalancedSpans(spans: EditorialGroundingCandidateSpan[]) {
     ] as const;
   }));
   const selected: EditorialGroundingCandidateSpan[] = [];
+  const selectSeed = (candidate: EditorialGroundingCandidateSpan | undefined) => {
+    if (!candidate || selected.some((span) => span.spanId === candidate.spanId)) return;
+    const queue = queues.get(candidate.sourceId);
+    const queueIndex = queue?.findIndex((span) => span.spanId === candidate.spanId) ?? -1;
+    if (queue && queueIndex >= 0) queue.splice(queueIndex, 1);
+    selected.push(candidate);
+  };
+  if (missingCapabilities.includes("demonstration")) {
+    selectSeed(spans.find((span) => span.evidenceSpecificity === "concrete_observation"));
+  }
+  if (missingCapabilities.includes("uncertainty")) {
+    selectSeed(spans.find((span) => span.researchPurposes?.includes("counter_evidence")));
+  }
   while (selected.length < MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS) {
     let added = false;
     for (const sourceId of sourceOrder) {
@@ -81,6 +157,7 @@ function sourceBalancedSpans(spans: EditorialGroundingCandidateSpan[]) {
 export function createCanonicalEditorialDiscoveryBundle(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
+  missingCapabilities?: EditorialCanonicalCapability[];
 }) {
   const representedSourceIds = new Set(input.graph.evidence.map((item) => item.sourceId));
   const uncovered = input.candidateSpans.filter(
@@ -88,7 +165,7 @@ export function createCanonicalEditorialDiscoveryBundle(input: {
   );
   const discoveryPool = uncovered.length > 0 ? uncovered : input.candidateSpans;
   return {
-    spans: sourceBalancedSpans(discoveryPool),
+    spans: sourceBalancedSpans(discoveryPool, input.missingCapabilities || []),
     representedSourceIds: [...representedSourceIds],
     excludedAlreadyRepresentedSourceCount: uncovered.length > 0
       ? new Set(input.candidateSpans.filter((span) =>
@@ -137,29 +214,42 @@ export function shouldRepairCanonicalEditorialSelection(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
 }) {
+  return createCanonicalEditorialRepairTriggerReasons(input).length > 0;
+}
+
+export function createCanonicalEditorialRepairTriggerReasons(input: {
+  candidateSpans: EditorialGroundingCandidateSpan[];
+  graph: ResearchClaimEvidenceGraph;
+}): EditorialCanonicalRepairTriggerReason[] {
   const candidateSourceCount = new Set(
     input.candidateSpans.map((span) => span.sourceId),
   ).size;
   const summary = graphSummary(input.graph);
-  return input.candidateSpans.length > 1 &&
+  const capabilities = createCanonicalEditorialCapabilitySnapshot(input.graph);
+  const reasons: EditorialCanonicalRepairTriggerReason[] = [];
+  if (input.candidateSpans.length > 1 &&
     candidateSourceCount > 1 &&
     summary.claimCount === 1 &&
     summary.evidenceCount === 1 &&
-    summary.distinctSourceCount === 1;
+    summary.distinctSourceCount === 1) {
+    reasons.push("canonical_collapse");
+  }
+  if (!capabilities.hasDemonstrationCapability && input.candidateSpans.some(
+    (span) => span.evidenceSpecificity === "concrete_observation"
+  )) reasons.push("missing_demonstration");
+  if (!capabilities.hasUncertaintyCapability && input.candidateSpans.some(
+    (span) => span.researchPurposes?.includes("counter_evidence")
+  )) reasons.push("missing_uncertainty");
+  return reasons;
 }
 
 function repairImprovesCanonicalAuthority(input: {
   before: ResearchClaimEvidenceGraph;
   after: ResearchClaimEvidenceGraph;
+  triggerReasons: EditorialCanonicalRepairTriggerReason[];
 }) {
   const before = graphSummary(input.before);
   const after = graphSummary(input.after);
-  if (
-    after.claimCount <= 1 || after.evidenceCount <= 1 || after.distinctSourceCount <= 1 ||
-    after.linkedClaimCount <= 1 || after.linkedEvidenceCount <= 1 || after.linkedSourceCount <= 1
-  ) {
-    return { accepted: false, reasonCode: "repair_still_collapsed" as const };
-  }
   const basePreserved = input.before.claims.every((baseClaim) =>
     input.after.claims.some((claim) =>
       claim.claimId === baseClaim.claimId &&
@@ -183,11 +273,33 @@ function repairImprovesCanonicalAuthority(input: {
   if (!basePreserved) {
     return { accepted: false, reasonCode: "repair_dropped_base" as const };
   }
-  const materiallyDistinct = !after.hasDuplicateClaimAuthority &&
+  const withoutDuplicates = !after.hasDuplicateClaimAuthority &&
+    !after.hasDuplicateEvidenceAuthority;
+  if (!withoutDuplicates) {
+    return { accepted: false, reasonCode: "repair_not_materially_distinct" as const };
+  }
+  if (input.triggerReasons.includes("canonical_collapse") && (
+    after.claimCount <= 1 || after.evidenceCount <= 1 || after.distinctSourceCount <= 1 ||
+    after.linkedClaimCount <= 1 || after.linkedEvidenceCount <= 1 || after.linkedSourceCount <= 1
+  )) {
+    return { accepted: false, reasonCode: "repair_still_collapsed" as const };
+  }
+  const afterCapabilities = createCanonicalEditorialCapabilitySnapshot(input.after);
+  const targetsSatisfied = !input.triggerReasons.includes("missing_demonstration") ||
+      afterCapabilities.hasDemonstrationCapability;
+  const uncertaintySatisfied = !input.triggerReasons.includes("missing_uncertainty") ||
+      afterCapabilities.hasUncertaintyCapability;
+  if (!targetsSatisfied || !uncertaintySatisfied) {
+    return { accepted: false, reasonCode: "repair_target_capability_unsatisfied" as const };
+  }
+  const materiallyDistinct =
     !after.hasDuplicateEvidenceAuthority &&
-    after.distinctClaimCount > before.distinctClaimCount &&
     after.distinctEvidenceCount > before.distinctEvidenceCount &&
-    after.distinctSourceCount > before.distinctSourceCount;
+    after.linkedEvidenceCount > before.linkedEvidenceCount &&
+    (!input.triggerReasons.includes("canonical_collapse") || (
+      after.distinctClaimCount > before.distinctClaimCount &&
+      after.distinctSourceCount > before.distinctSourceCount
+    ));
   return materiallyDistinct
     ? { accepted: true, reasonCode: "repair_accepted" as const }
     : { accepted: false, reasonCode: "repair_not_materially_distinct" as const };
@@ -199,6 +311,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
   requestRepair: (repairInput: {
     discoveryCandidateSpans: EditorialGroundingCandidateSpan[];
     representedSourceIds: string[];
+    missingCapabilities: EditorialCanonicalCapability[];
+    repairTriggerReasons: EditorialCanonicalRepairTriggerReason[];
   }) => Promise<unknown>;
   validateRepair: (proposal: unknown) => Promise<ResearchClaimEvidenceGraph>;
 }) {
@@ -212,7 +326,16 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     span.researchPurposes?.includes("counter_evidence")
   ).length;
   const before = graphSummary(input.graph);
-  const discovery = createCanonicalEditorialDiscoveryBundle(input);
+  const beforeCapabilities = createCanonicalEditorialCapabilitySnapshot(input.graph);
+  const repairTriggerReasons = createCanonicalEditorialRepairTriggerReasons(input);
+  const missingCapabilities: EditorialCanonicalCapability[] = [
+    ...(repairTriggerReasons.includes("missing_demonstration") ? ["demonstration" as const] : []),
+    ...(repairTriggerReasons.includes("missing_uncertainty") ? ["uncertainty" as const] : []),
+  ];
+  const discovery = createCanonicalEditorialDiscoveryBundle({
+    ...input,
+    missingCapabilities,
+  });
   const discoverySourceCount = new Set(discovery.spans.map((span) => span.sourceId)).size;
   const discoveryConcreteCount = discovery.spans.filter(
     (span) => span.evidenceSpecificity === "concrete_observation",
@@ -233,6 +356,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     beforeClaimCount: before.claimCount,
     beforeEvidenceCount: before.evidenceCount,
     beforeDistinctSourceCount: before.distinctSourceCount,
+    beforeHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
+    beforeHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
   };
 
   if (!shouldRepairCanonicalEditorialSelection(input)) {
@@ -241,10 +366,15 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       diagnostic: {
         ...baseDiagnostic,
         repairTriggered: false,
+        repairTriggerReasons,
         repairProviderDispatched: false,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
+        afterHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
+        afterHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
+        finalDemonstrationEvidenceId: beforeCapabilities.demonstrationEvidenceId,
+        finalUncertaintyEvidenceId: beforeCapabilities.uncertaintyEvidenceId,
         repairAccepted: false,
         reasonCode: "not_pathologically_collapsed",
       } satisfies EditorialCanonicalSelectionRepairDiagnostic,
@@ -256,6 +386,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     rawRepair = await input.requestRepair({
       discoveryCandidateSpans: discovery.spans,
       representedSourceIds: discovery.representedSourceIds,
+      missingCapabilities,
+      repairTriggerReasons,
     });
   } catch {
     return {
@@ -263,10 +395,15 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       diagnostic: {
         ...baseDiagnostic,
         repairTriggered: true,
+        repairTriggerReasons,
         repairProviderDispatched: true,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
+        afterHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
+        afterHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
+        finalDemonstrationEvidenceId: beforeCapabilities.demonstrationEvidenceId,
+        finalUncertaintyEvidenceId: beforeCapabilities.uncertaintyEvidenceId,
         repairAccepted: false,
         reasonCode: "repair_provider_failed",
       } satisfies EditorialCanonicalSelectionRepairDiagnostic,
@@ -282,10 +419,15 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       diagnostic: {
         ...baseDiagnostic,
         repairTriggered: true,
+        repairTriggerReasons,
         repairProviderDispatched: true,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
+        afterHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
+        afterHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
+        finalDemonstrationEvidenceId: beforeCapabilities.demonstrationEvidenceId,
+        finalUncertaintyEvidenceId: beforeCapabilities.uncertaintyEvidenceId,
         repairAccepted: false,
         reasonCode: "repair_invalid",
       } satisfies EditorialCanonicalSelectionRepairDiagnostic,
@@ -293,19 +435,30 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
   }
 
   const after = graphSummary(repairedGraph);
+  const afterCapabilities = createCanonicalEditorialCapabilitySnapshot(repairedGraph);
   const selection = repairImprovesCanonicalAuthority({
     before: input.graph,
     after: repairedGraph,
+    triggerReasons: repairTriggerReasons,
   });
   return {
     graph: selection.accepted ? repairedGraph : input.graph,
     diagnostic: {
       ...baseDiagnostic,
       repairTriggered: true,
+      repairTriggerReasons,
       repairProviderDispatched: true,
       afterClaimCount: after.claimCount,
       afterEvidenceCount: after.evidenceCount,
       afterDistinctSourceCount: after.distinctSourceCount,
+      afterHasDemonstrationCapability: afterCapabilities.hasDemonstrationCapability,
+      afterHasUncertaintyCapability: afterCapabilities.hasUncertaintyCapability,
+      finalDemonstrationEvidenceId: selection.accepted
+        ? afterCapabilities.demonstrationEvidenceId
+        : beforeCapabilities.demonstrationEvidenceId,
+      finalUncertaintyEvidenceId: selection.accepted
+        ? afterCapabilities.uncertaintyEvidenceId
+        : beforeCapabilities.uncertaintyEvidenceId,
       repairAccepted: selection.accepted,
       reasonCode: selection.reasonCode,
     } satisfies EditorialCanonicalSelectionRepairDiagnostic,

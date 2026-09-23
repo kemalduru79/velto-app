@@ -12,7 +12,9 @@ const sources = Array.from({ length: 9 }, (_, index) => ({
   title: `Source ${index + 1}`,
   publisher: "Fixture",
   publishedAt: null,
-  summary: `Grounded source ${index + 1} material.`,
+  summary: index === 0
+    ? "Grounded source 1 conceptual material."
+    : `Researchers asked 120 participants to compare records and found a measured result for source ${index + 1}.`,
   url: `https://example.test/source-${index + 1}`,
 }));
 
@@ -43,7 +45,7 @@ function graph(authorities) {
 const baseAuthority = {
   claim: "Memory is reconstructive.",
   sourceId: "source-1",
-  excerpt: "Grounded source 1 material.",
+  excerpt: sources[0].summary,
 };
 const base = graph([baseAuthority]);
 const liveShapeSpans = sources.flatMap((source, sourceIndex) =>
@@ -80,7 +82,7 @@ assert.ok(
 const additionalAuthority = {
   claim: "A distinct grounded limitation applies.",
   sourceId: "source-2",
-  excerpt: "Grounded source 2 material.",
+  excerpt: sources[1].summary,
   claimType: "RESEARCH_FINDING",
   contextNote: "A supplied boundary.",
 };
@@ -118,14 +120,14 @@ const droppedBase = graph([{
 }]);
 const baseDrop = await run({ repaired: droppedBase });
 assert.equal(baseDrop.result.graph, base);
-assert.equal(baseDrop.result.diagnostic.reasonCode, "repair_still_collapsed");
+assert.equal(baseDrop.result.diagnostic.reasonCode, "repair_dropped_base");
 
 const droppedBaseButDiverse = graph([
   { ...additionalAuthority, claimId: "claim-new-1", evidenceId: "evidence-new-1" },
   {
     claim: "Another unrelated authority.",
     sourceId: "source-3",
-    excerpt: "Grounded source 3 material.",
+    excerpt: sources[2].summary,
     claimId: "claim-new-2",
     evidenceId: "evidence-new-2",
   },
