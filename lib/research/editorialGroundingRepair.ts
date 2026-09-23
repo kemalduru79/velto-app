@@ -13,6 +13,7 @@ export type EditorialGroundingCandidateSpan = {
   spanId: string;
   sourceId: string;
   text: string;
+  evidenceSpecificity: "concrete_observation" | "abstract_or_conceptual";
 };
 
 export type EditorialGroundingRepairSelection = {
@@ -93,6 +94,27 @@ function boundedPassageRanges(text: string) {
   return passages;
 }
 
+const CONCRETE_SUBJECT_PATTERN = /\b(?:participants?|subjects?|respondents?|patients?|children|adults?|workers?|households?|firms?|occupations?|tasks?|systems?|models?|records?|cases?)\b/iu;
+const CONCRETE_ACTION_PATTERN = /\b(?:asked|assigned|compared|completed|exposed|found|identified|included|increased|decreased|measured|observed|performed|recorded|recalled|reported|showed|surveyed|tested|were\s+(?:asked|assigned|exposed|shown)|differed|changed)\b/iu;
+const CONCRETE_DESIGN_PATTERN = /\b(?:after|before|between|during|following|experiment|procedure|trial|survey|interview|comparison|compared\s+with|versus|control\s+group)\b/iu;
+const CONCRETE_RESULT_PATTERN = /(?:\b\d+(?:\.\d+)?\b|%|\b(?:higher|lower|more|less|greater|fewer|rate|ratio|difference|effect|result)\b)/iu;
+
+/**
+ * Marks exact grounded spans that contain an observable subject plus an action,
+ * or an explicit design/result combination. This is advisory extraction
+ * metadata only: it never adds facts or upgrades an epistemic claim type.
+ */
+export function classifyEditorialGroundingSpanSpecificity(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const subjectAndAction = CONCRETE_SUBJECT_PATTERN.test(normalized)
+    && CONCRETE_ACTION_PATTERN.test(normalized);
+  const designAndResult = CONCRETE_DESIGN_PATTERN.test(normalized)
+    && (CONCRETE_ACTION_PATTERN.test(normalized) || CONCRETE_RESULT_PATTERN.test(normalized));
+  return subjectAndAction || designAndResult
+    ? "concrete_observation" as const
+    : "abstract_or_conceptual" as const;
+}
+
 export function createEditorialGroundingCandidateSpans(
   sources: ResearchSource[],
 ) {
@@ -112,10 +134,17 @@ export function createEditorialGroundingCandidateSpans(
         spanId: `span-${sourceIndex + 1}-${spanIndex + 1}`,
         sourceId: source.sourceId,
         text: summary.slice(range.start, range.end),
+        evidenceSpecificity: classifyEditorialGroundingSpanSpecificity(
+          summary.slice(range.start, range.end),
+        ),
       });
     });
   });
-  return spans;
+  return spans.toSorted((left, right) => {
+    if (left.sourceId !== right.sourceId) return 0;
+    return Number(right.evidenceSpecificity === "concrete_observation")
+      - Number(left.evidenceSpecificity === "concrete_observation");
+  });
 }
 
 function objectRecord(value: unknown) {
