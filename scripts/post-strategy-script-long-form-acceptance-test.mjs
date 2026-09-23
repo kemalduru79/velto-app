@@ -15,6 +15,7 @@ import {
   createCreatorScriptNarrationAuthority,
   createCreatorScriptNarrationControlPlan,
   createCreatorScriptNarrationEditorialContext,
+  createCreatorScriptDistinctivenessRepairContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
@@ -342,6 +343,7 @@ assert.ok(mixedDurationIds.length > 0);
 
 let mixedRepairCalls = 0;
 const mixedRepairTargetIds = new Set();
+let mixedRepairPromptInspections = 0;
 const mixedFailureRepaired = await generateCreatorScriptWithDurationContract({
   durationSec: 960,
   language: "en",
@@ -356,7 +358,28 @@ const mixedFailureRepaired = await generateCreatorScriptWithDurationContract({
     const distinctivenessIds = getCreatorScriptEditorialDistinctivenessFailures(script, plan960)
       .map((section) => section.id);
     [...durationIds, ...distinctivenessIds].forEach((sectionId) => mixedRepairTargetIds.add(sectionId));
-    return distinctMemoryScript;
+    const repairContext = createCreatorScriptDistinctivenessRepairContext(script, plan960);
+    const overlapFailure = repairContext.find((failure) =>
+      failure.failureType === "heading_token_overlap" && failure.comparedSectionId
+    );
+    assert.ok(overlapFailure, "mock repair receives canonical heading-overlap context");
+    assert.equal(overlapFailure.currentHeading, script.sections.find((section) => section.id === overlapFailure.sectionId)?.heading);
+    assert.equal(overlapFailure.comparedHeading, script.sections.find((section) => section.id === overlapFailure.comparedSectionId)?.heading);
+    assert.ok((overlapFailure.overlapRatio ?? 0) >= 0.72);
+    mixedRepairPromptInspections += 1;
+    return mergeCreatorScriptReplacementSections({
+      script,
+      plan: plan960,
+      replacements: [...new Set([...durationIds, ...distinctivenessIds])].map((sectionId) => {
+        const budget = plan960.find((section) => section.id === sectionId);
+        const section = script.sections.find((item) => item.id === sectionId);
+        return {
+          ...section,
+          heading: budget.role,
+          text: words(budget.targetWords),
+        };
+      }),
+    });
   },
   validateFinal: (script) => {
     assertCreatorScriptHasSafeSectionStructure(script, plan960);
@@ -364,6 +387,7 @@ const mixedFailureRepaired = await generateCreatorScriptWithDurationContract({
   },
 });
 assert.equal(mixedRepairCalls, 1, "mixed duration and distinctiveness failures use one bounded repair operation");
+assert.equal(mixedRepairPromptInspections, 1, "corrected heading is returned only after inspecting the exact canonical failure relationship");
 assert.ok(mixedDurationIds.every((sectionId) => mixedRepairTargetIds.has(sectionId)), "mixed repair includes duration targets");
 assert.ok(mixedDistinctivenessIds.every((sectionId) => mixedRepairTargetIds.has(sectionId)), "mixed repair includes distinctiveness targets");
 assert.equal(mixedFailureRepaired.diagnostics.status, "compliant");
@@ -992,6 +1016,8 @@ assert.match(route, /requiredDirection === "expand" && distinctivenessFailures\.
 assert.match(route, /mixedRepairDispatched = currentDuration\.status !== "compliant"[\s\S]*distinctivenessFailures\.length > 0/);
 assert.match(route, /shouldRetryRepair:[\s\S]*!mixedRepairDispatched[\s\S]*creatorScriptRepairMateriallyImproved/);
 assert.match(route, /distinctivenessFailureSectionIds:[\s\S]*repairTargets:[\s\S]*creator_full_script_duration_repair/);
+assert.match(route, /distinctivenessRepairContext,[\s\S]*replacement heading MUST be materially different from the conflicting heading/);
+assert.match(route, /For heading_token_overlap,[\s\S]*Rewriting or expanding only the body is insufficient|Rewriting or expanding only the body is insufficient[\s\S]*For heading_token_overlap/);
 assert.match(route, /task: "Return only new grounded narration additions for the supplied immutable safe sections\."/);
 assert.match(route, /applyCreatorScriptAdditiveExpansion/);
 assert.match(route, /Do not rewrite, summarize, paraphrase, delete, or return existing prose/);

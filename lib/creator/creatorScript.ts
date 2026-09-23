@@ -888,6 +888,24 @@ export function getCreatorScriptEditorialDistinctivenessFailures(
   return plan.filter((section) => failureIds.has(section.id));
 }
 
+export function createCreatorScriptDistinctivenessRepairContext(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+) {
+  const sectionById = new Map(script.sections.map((section) => [section.id, section]));
+  return getCreatorScriptEditorialDistinctivenessDiagnostics(script, plan).map((failure) => ({
+    sectionId: failure.sectionId,
+    comparedSectionId: failure.comparedSectionId ?? null,
+    failureType: failure.failureType,
+    overlapRatio: failure.overlapRatio ?? null,
+    meaningfulHeadingTokenCount: failure.meaningfulHeadingTokenCount,
+    currentHeading: sectionById.get(failure.sectionId)?.heading || "",
+    comparedHeading: failure.comparedSectionId
+      ? sectionById.get(failure.comparedSectionId)?.heading || ""
+      : null,
+  }));
+}
+
 export type CreatorScriptEditorialDistinctivenessDiagnostic = {
   sectionId: string;
   comparedSectionId?: string;

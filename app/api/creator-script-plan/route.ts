@@ -43,6 +43,7 @@ import {
   createCreatorScriptNarrationAuthority,
   createCreatorScriptNarrationControlPlan,
   createCreatorScriptNarrationEditorialContext,
+  createCreatorScriptDistinctivenessRepairContext,
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
@@ -1088,9 +1089,15 @@ async function executeCreatorScriptOperation(input: {
             currentScript,
             sectionBudgetPlan,
           );
-          const distinctivenessFailures = getCreatorScriptEditorialDistinctivenessFailures(
+          const distinctivenessRepairContext = createCreatorScriptDistinctivenessRepairContext(
             currentScript,
             sectionBudgetPlan,
+          );
+          const distinctivenessFailureIds = new Set(
+            distinctivenessRepairContext.map((failure) => failure.sectionId),
+          );
+          const distinctivenessFailures = sectionBudgetPlan.filter((section) =>
+            distinctivenessFailureIds.has(section.id)
           );
           if (
             currentDuration.status !== "compliant"
@@ -1362,6 +1369,7 @@ async function executeCreatorScriptOperation(input: {
                   sectionControl: narrationControlPlan.find((control) => control.sectionId === section.id),
                 })),
                 distinctivenessFailureSectionIds: distinctivenessFailures.map((section) => section.id),
+                distinctivenessRepairContext,
                 repairTargets: repairTargets.map((target) => ({
                   sectionId: target.sectionId,
                   beforeWords: target.beforeWords,
@@ -1383,6 +1391,8 @@ async function executeCreatorScriptOperation(input: {
                   "For requiredDirection=expand, each replacement must be longer than beforeWords and must add at least minimumRequiredGain words to reach requiredFinalMinWords. A shorter replacement or one still below the hard minimum is not a successful expansion. Use grounded, role-owned explanation, causal reasoning, supported implications or comparison, uncertainty, synthesis, and useful transitions only.",
                   "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
                   "Any section listed in distinctivenessFailureSectionIds must be rewritten to perform its sectionControlPlan owns work so its heading and primary claim no longer duplicate another section.",
+                  "For every distinctivenessRepairContext item, the replacement heading MUST be materially different from the conflicting heading while preserving the failing section's canonical role. Rewriting or expanding only the body is insufficient.",
+                  "For heading_token_overlap, avoid reproducing the meaningful overlapping heading vocabulary where semantically possible. Do not alter unrelated sections or place section ids, failure labels, ratios, or repair diagnostics in headings or narration.",
                   "sectionControlPlan is control-only metadata. Apply owns/excludes/establishedPremises silently and never verbalize structural labels, inquiry intent, or reserved work.",
                   "For a conclusion, state the resulting implication directly and make the final sentence the open question without labeling either one or inventorying prior sections.",
                   "Preserve the master question, strategy authority, source authority, and evidence uncertainty.",
