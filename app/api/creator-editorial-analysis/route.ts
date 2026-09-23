@@ -102,7 +102,9 @@ export async function POST(request: Request) {
       "For FACT, PRIMARY_SOURCE_CLAIM, and RESEARCH_FINDING claims, prefer a claim-relevant candidate marked concrete_observation over an abstract_or_conceptual thesis summary when the supplied source contains one.",
       "Concrete preference means extraction only: never infer or manufacture a researcher, participant, sample, procedure, comparison, number, result, case, or limitation absent from the selected span.",
       "THEORY, EDITORIAL_INFERENCE, METAPHYSICAL_CLAIM, and other legitimately conceptual claims may remain supported by abstract_or_conceptual spans; never force fake empirical structure.",
+      "Inspect the supplied candidate spans for material scope conditions, factual or methodological boundaries, alternative explanations, counter-findings, and uncertainty-bearing context. Preserve such material when it exists; never invent it when it does not.",
       "If a source has no supplied candidate span, do not create evidence from that source.",
+      "Use supports only when evidence directly supports a claim. Use contextualizes only when evidence materially narrows, conditions, qualifies, scopes, or supplies a relevant boundary without contradicting the core claim. Use contradicts only when evidence materially conflicts with a claim, supplies a genuine alternative finding, or supports an opposing proposition.",
       "Use contradicts only for material counter-evidence or alternative findings, not for rhetorical disagreement.",
       "Return strict JSON only with no markdown or commentary.",
     ].join(" ");
@@ -149,6 +151,9 @@ export async function POST(request: Request) {
         "When primary sources are available for distinct claims, prefer coverage across those claims instead of repeatedly supporting only one claim.",
         "A primary searchLane is retrieval intent only; it does not override the supplied directness classification.",
         "Include material counter-evidence when the supplied sources contain it.",
+        "When an exact supplied span materially limits, qualifies, contextualizes, or contradicts a FACT or RESEARCH_FINDING, preserve that span through a contextualizes or contradicts link as appropriate; the claim may retain its existing epistemic type.",
+        "Do not use contextualizes as a generic secondary-support bucket, relabel ordinary support as uncertainty, create token counterarguments for balance, or create a claim or evidence object merely to satisfy a coverage quota.",
+        "If no supplied candidate span contains a material limitation, boundary, alternative explanation, counter-finding, or uncertainty-bearing context, return no invented contextual or contradictory authority.",
         "Do not use certainty language to upgrade a forecast, theory, hypothesis, opinion, inference, or metaphysical claim.",
       ],
     };

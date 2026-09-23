@@ -146,6 +146,20 @@ const counterReady = createCreatorLongFormEvidenceReadiness({
 });
 assert.equal(counterReady.eligible, true);
 
+const factContextClaims = empiricalClaims.map((item, index) => index === 3
+  ? claim("c4", "FACT", ["e4"], { contextualEvidenceIds: ["e5"] })
+  : item);
+const sixFactContextReady = createCreatorLongFormEvidenceReadiness({
+  context: context({
+    claims: factContextClaims,
+    evidence: empiricalContext.evidence,
+    sources: empiricalContext.sources,
+  }),
+  plan: limitsPlan,
+  sectionNative,
+});
+assert.equal(sixFactContextReady.eligible, true, "a FACT remains factual while exact contextual evidence supplies limits authority");
+
 const shortPlan = createCreatorScriptSectionBudgetPlan({ targetDurationSec: 300, language: "en", hasMaterialCounterview: false });
 const shortDuration = getCreatorScriptDurationContract({ targetDurationSec: 300, language: "en", actualWordCount: 0 });
 const short = createCreatorLongFormEvidenceReadiness({
