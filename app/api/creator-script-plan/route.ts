@@ -34,6 +34,10 @@ import {
 import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvidenceBinding";
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
+  createCreatorLongFormEvidenceReadiness,
+  createCreatorScriptSectionClaimRouting,
+} from "../../../lib/research/creatorLongFormEvidenceReadiness";
+import {
   createCreatorScript,
   assertCreatorScriptNarrationIsProductionSafe,
   assertCreatorScriptHasDistinctEditorialSections,
@@ -222,21 +226,9 @@ function createSectionNativeEditorialContext(input: {
   plan: ReturnType<typeof createCreatorScriptSectionBudgetPlan>;
   sectionIndex: number;
 }) {
-  const section = input.plan[input.sectionIndex];
-  const bodySections = input.plan.filter((item) => item.kind === "body");
-  const bodyIndex = section.kind === "body"
-    ? bodySections.findIndex((item) => item.id === section.id)
-    : -1;
-  const relevantClaims = section.kind === "conclusion"
-    ? input.context.claims
-    : section.kind === "opening"
-      ? input.context.claims.slice(0, Math.min(4, input.context.claims.length))
-      : input.context.claims.filter((_, claimIndex) =>
-          bodySections.length === 0 || claimIndex % bodySections.length === bodyIndex
-        );
-  const claims = relevantClaims.length > 0
-    ? relevantClaims
-    : input.context.claims.slice(0, Math.min(2, input.context.claims.length));
+  const route = createCreatorScriptSectionClaimRouting(input)[input.sectionIndex];
+  const claimIds = new Set(route?.claimIds || []);
+  const claims = input.context.claims.filter((claim) => claimIds.has(claim.claimId));
   const evidenceIds = new Set(claims.flatMap((claim) => [
     ...claim.supportingEvidenceIds,
     ...claim.counterEvidenceIds,
@@ -760,6 +752,26 @@ async function executeCreatorScriptOperation(input: {
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
     );
+    const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
+      context: input.editorialContext,
+      plan: sectionBudgetPlan,
+      sectionNative,
+    });
+    if (!longFormEvidenceReadiness.eligible) {
+      console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
+        editorialAnalysisStatus: "accepted",
+        ...groundingDiagnostics,
+        sectionPlanCount: sectionBudgetPlan.length,
+        longFormEvidenceReadiness,
+        exactBlockingCode: "CREATOR_SCRIPT_GROUNDING_BLOCKED",
+        repairAttempted: null,
+        scriptProviderDispatched: false,
+      });
+      return NextResponse.json(
+        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED" },
+        { status: 422 },
+      );
+    }
     const generationUnits = sectionNative
       ? sectionBudgetPlan.map((section) => [section])
       : [sectionBudgetPlan];
