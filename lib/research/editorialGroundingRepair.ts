@@ -3,6 +3,7 @@ import {
   type EditorialAnalysisProposal,
 } from "./editorialAnalysisContract.ts";
 import type { ResearchSource } from "./sourceContract.ts";
+import type { ResearchSearchLanePurpose } from "./researchOrchestration.ts";
 
 const UNGROUNDED_EXCERPT_PREFIX = "EDITORIAL_EVIDENCE_EXCERPT_NOT_GROUNDED:";
 const MAX_BASE_SPANS_PER_SOURCE = 12;
@@ -14,6 +15,7 @@ export type EditorialGroundingCandidateSpan = {
   sourceId: string;
   text: string;
   evidenceSpecificity: "concrete_observation" | "abstract_or_conceptual";
+  researchPurposes?: ResearchSearchLanePurpose[];
 };
 
 export type EditorialGroundingRepairSelection = {

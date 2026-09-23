@@ -1,11 +1,21 @@
 import type { ResearchSource } from "./sourceContract.ts";
 import type { ResearchSourceMetadataValue } from "./sourceContract.ts";
+import type { ResearchSearchLanePurpose } from "./researchOrchestration.ts";
 
 export type EditorialAnalysisRequest = {
   topic: string;
   sources: ResearchSource[];
   creatorProfile: unknown;
+  sourceResearchPurposes: Record<string, ResearchSearchLanePurpose[]>;
 };
+
+const RESEARCH_PURPOSES = new Set<ResearchSearchLanePurpose>([
+  "baseline",
+  "primary_source",
+  "supporting_evidence",
+  "counter_evidence",
+  "recent_context",
+]);
 
 function clean(value: unknown, maxLength: number) {
   return typeof value === "string"
@@ -82,5 +92,26 @@ export function normalizeEditorialAnalysisRequest(value: unknown): EditorialAnal
     sourceIds.add(source.sourceId);
   }
 
-  return { topic, sources, creatorProfile: body.creatorProfile ?? {} };
+  const rawPurposes = body.sourceResearchPurposes &&
+      typeof body.sourceResearchPurposes === "object" &&
+      !Array.isArray(body.sourceResearchPurposes)
+    ? body.sourceResearchPurposes as Record<string, unknown>
+    : {};
+  const sourceResearchPurposes = Object.fromEntries(
+    Object.entries(rawPurposes).flatMap(([sourceId, purposes]) => {
+      if (!sourceIds.has(sourceId) || !Array.isArray(purposes)) return [];
+      const normalized = [...new Set(purposes.filter(
+        (purpose): purpose is ResearchSearchLanePurpose =>
+          typeof purpose === "string" && RESEARCH_PURPOSES.has(purpose as ResearchSearchLanePurpose)
+      ))];
+      return normalized.length > 0 ? [[sourceId, normalized]] : [];
+    }),
+  );
+
+  return {
+    topic,
+    sources,
+    creatorProfile: body.creatorProfile ?? {},
+    sourceResearchPurposes,
+  };
 }

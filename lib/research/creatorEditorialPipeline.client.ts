@@ -266,6 +266,19 @@ export async function runCreatorEditorialScriptPipeline(
       message: "Grounded research returned no usable sources.",
     });
   }
+  const sourceResearchPurposes: Record<string, string[]> = {};
+  for (const laneValue of asArray(research.lanes)) {
+    const lane = asRecord(laneValue);
+    const purpose = clean(lane?.purpose, 80);
+    if (!purpose) continue;
+    for (const sourceIdValue of asArray(lane?.sourceIds)) {
+      const sourceId = clean(sourceIdValue, 300);
+      if (!sourceId) continue;
+      sourceResearchPurposes[sourceId] = [
+        ...new Set([...(sourceResearchPurposes[sourceId] || []), purpose]),
+      ];
+    }
+  }
 
   const editorial = await postJson({
     stage: "editorial_analysis",
@@ -275,6 +288,7 @@ export async function runCreatorEditorialScriptPipeline(
     body: {
       topic,
       sources,
+      sourceResearchPurposes,
       creatorProfile: input.creatorProfile ?? {},
     },
   });

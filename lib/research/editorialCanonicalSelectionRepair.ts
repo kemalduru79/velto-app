@@ -15,9 +15,11 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   candidateSpanCount: number;
   distinctCandidateSourceCount: number;
   concreteCandidateSpanCount: number;
+  candidateCounterPurposeCount: number;
   discoveryCandidateSpanCount: number;
   discoveryDistinctSourceCount: number;
   discoveryConcreteCandidateCount: number;
+  discoveryCounterPurposeCount: number;
   excludedAlreadyRepresentedSourceCount: number;
   beforeClaimCount: number;
   beforeEvidenceCount: number;
@@ -34,7 +36,14 @@ export const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS = 24;
 const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS_PER_SOURCE = 3;
 
 function sourceBalancedSpans(spans: EditorialGroundingCandidateSpan[]) {
-  const sourceOrder = [...new Set(spans.map((span) => span.sourceId))];
+  const originalSourceOrder = [...new Set(spans.map((span) => span.sourceId))];
+  const counterSourceIds = new Set(spans.filter((span) =>
+    span.researchPurposes?.includes("counter_evidence")
+  ).map((span) => span.sourceId));
+  const sourceOrder = [
+    ...originalSourceOrder.filter((sourceId) => counterSourceIds.has(sourceId)),
+    ...originalSourceOrder.filter((sourceId) => !counterSourceIds.has(sourceId)),
+  ];
   const queues = new Map(sourceOrder.map((sourceId) => {
     const sourceSpans = spans.filter((span) => span.sourceId === sourceId);
     const concrete = sourceSpans.filter(
@@ -199,19 +208,27 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
   const concreteCandidateSpanCount = input.candidateSpans.filter(
     (span) => span.evidenceSpecificity === "concrete_observation",
   ).length;
+  const candidateCounterPurposeCount = input.candidateSpans.filter((span) =>
+    span.researchPurposes?.includes("counter_evidence")
+  ).length;
   const before = graphSummary(input.graph);
   const discovery = createCanonicalEditorialDiscoveryBundle(input);
   const discoverySourceCount = new Set(discovery.spans.map((span) => span.sourceId)).size;
   const discoveryConcreteCount = discovery.spans.filter(
     (span) => span.evidenceSpecificity === "concrete_observation",
   ).length;
+  const discoveryCounterPurposeCount = discovery.spans.filter((span) =>
+    span.researchPurposes?.includes("counter_evidence")
+  ).length;
   const baseDiagnostic = {
     candidateSpanCount: input.candidateSpans.length,
     distinctCandidateSourceCount: candidateSourceCount,
     concreteCandidateSpanCount,
+    candidateCounterPurposeCount,
     discoveryCandidateSpanCount: discovery.spans.length,
     discoveryDistinctSourceCount: discoverySourceCount,
     discoveryConcreteCandidateCount: discoveryConcreteCount,
+    discoveryCounterPurposeCount,
     excludedAlreadyRepresentedSourceCount: discovery.excludedAlreadyRepresentedSourceCount,
     beforeClaimCount: before.claimCount,
     beforeEvidenceCount: before.evidenceCount,

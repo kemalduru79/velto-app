@@ -91,10 +91,15 @@ export async function POST(request: Request) {
         publisher: source.publisher,
         publishedAt: source.publishedAt,
         summary: source.summary,
+        researchPurposes: normalized.sourceResearchPurposes[source.sourceId] || [],
       };
     });
     const candidateSpans = createEditorialGroundingCandidateSpans(normalized.sources)
-      .slice(0, MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST);
+      .slice(0, MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST)
+      .map((span) => ({
+        ...span,
+        researchPurposes: normalized.sourceResearchPurposes[span.sourceId] || [],
+      }));
     const eligibleSourceIds = new Set(candidateSpans.map((span) => span.sourceId));
     const systemPrompt = [
       "You are the evidence-aware editorial analyst for CreatorLab, an adult 18+ documentary and creator workflow.",
@@ -107,6 +112,8 @@ export async function POST(request: Request) {
       "Concrete preference means extraction only: never infer or manufacture a researcher, participant, sample, procedure, comparison, number, result, case, or limitation absent from the selected span.",
       "THEORY, EDITORIAL_INFERENCE, METAPHYSICAL_CLAIM, and other legitimately conceptual claims may remain supported by abstract_or_conceptual spans; never force fake empirical structure.",
       "Inspect the supplied candidate spans for material scope conditions, factual or methodological boundaries, alternative explanations, counter-findings, and uncertainty-bearing context. Preserve such material when it exists; never invent it when it does not.",
+      "A counter_evidence research purpose means the material was retrieved to test or qualify the baseline explanation; it does not mean the span necessarily contradicts a claim.",
+      "Inspect counter_evidence candidates for genuine opposing findings, alternative explanations, boundaries, limitations, scope qualifications, and uncertainty-bearing context, but choose stance only from what the exact span supports.",
       "If a source has no supplied candidate span, do not create evidence from that source.",
       "Use supports only when evidence directly supports a claim. Use contextualizes only when evidence materially narrows, conditions, qualifies, scopes, or supplies a relevant boundary without contradicting the core claim. Use contradicts only when evidence materially conflicts with a claim, supplies a genuine alternative finding, or supports an opposing proposition.",
       "Use contradicts only for material counter-evidence or alternative findings, not for rhetorical disagreement.",
@@ -167,6 +174,9 @@ export async function POST(request: Request) {
     console.info("CREATOR_EDITORIAL_CANDIDATE_CAPABILITY_DIAGNOSTICS", JSON.stringify({
       sourceCount: normalized.sources.length,
       ...createCreatorEditorialCandidateCapabilityDiagnostics(candidateSpans),
+      candidateCounterPurposeCount: candidateSpans.filter((span) =>
+        span.researchPurposes?.includes("counter_evidence")
+      ).length,
     }));
     const editorialResponseText = {
       format: {
@@ -307,6 +317,8 @@ export async function POST(request: Request) {
                 "Return one complete graph containing the unchanged base graph plus any genuinely supported additional authority.",
                 "Preserve exact sourceId/spanId selections and the semantic distinction between supports, contextualizes, and contradicts.",
                 "Prefer supplied concrete procedure, result, or case evidence and supplied real limitations when relevant.",
+                "A counter_evidence research purpose only indicates that the material was retrieved to test or qualify the baseline explanation; it does not establish a contradictory stance.",
+                "For counter_evidence discovery spans, select supports, contextualizes, or contradicts only according to the exact grounded material.",
                 "Do not replace or drop the base graph. Do not create quota filler, redundant paraphrased claims, token counterarguments, unsupported uncertainty, invented study metadata, or invented source facts.",
                 "If the discovery material supports no additional materially distinct authority, return the base graph unchanged.",
               ].join(" "),
