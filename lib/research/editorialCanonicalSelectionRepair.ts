@@ -5,6 +5,7 @@ export type EditorialCanonicalSelectionRepairReason =
   | "not_pathologically_collapsed"
   | "repair_accepted"
   | "repair_still_collapsed"
+  | "repair_dropped_base"
   | "repair_not_materially_distinct"
   | "repair_invalid"
   | "repair_provider_failed";
@@ -14,6 +15,10 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   candidateSpanCount: number;
   distinctCandidateSourceCount: number;
   concreteCandidateSpanCount: number;
+  discoveryCandidateSpanCount: number;
+  discoveryDistinctSourceCount: number;
+  discoveryConcreteCandidateCount: number;
+  excludedAlreadyRepresentedSourceCount: number;
   beforeClaimCount: number;
   beforeEvidenceCount: number;
   beforeDistinctSourceCount: number;
@@ -24,6 +29,65 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   repairAccepted: boolean;
   reasonCode: EditorialCanonicalSelectionRepairReason;
 };
+
+export const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS = 24;
+const MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS_PER_SOURCE = 3;
+
+function sourceBalancedSpans(spans: EditorialGroundingCandidateSpan[]) {
+  const sourceOrder = [...new Set(spans.map((span) => span.sourceId))];
+  const queues = new Map(sourceOrder.map((sourceId) => {
+    const sourceSpans = spans.filter((span) => span.sourceId === sourceId);
+    const concrete = sourceSpans.filter(
+      (span) => span.evidenceSpecificity === "concrete_observation",
+    );
+    const conceptual = sourceSpans.filter(
+      (span) => span.evidenceSpecificity === "abstract_or_conceptual",
+    );
+    const ordered = [
+      ...concrete.slice(0, 1),
+      ...conceptual.slice(0, 1),
+      ...concrete.slice(1),
+      ...conceptual.slice(1),
+    ];
+    return [
+      sourceId,
+      ordered.slice(0, MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS_PER_SOURCE),
+    ] as const;
+  }));
+  const selected: EditorialGroundingCandidateSpan[] = [];
+  while (selected.length < MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS) {
+    let added = false;
+    for (const sourceId of sourceOrder) {
+      const next = queues.get(sourceId)?.shift();
+      if (!next) continue;
+      selected.push(next);
+      added = true;
+      if (selected.length === MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS) break;
+    }
+    if (!added) break;
+  }
+  return selected;
+}
+
+export function createCanonicalEditorialDiscoveryBundle(input: {
+  candidateSpans: EditorialGroundingCandidateSpan[];
+  graph: ResearchClaimEvidenceGraph;
+}) {
+  const representedSourceIds = new Set(input.graph.evidence.map((item) => item.sourceId));
+  const uncovered = input.candidateSpans.filter(
+    (span) => !representedSourceIds.has(span.sourceId),
+  );
+  const discoveryPool = uncovered.length > 0 ? uncovered : input.candidateSpans;
+  return {
+    spans: sourceBalancedSpans(discoveryPool),
+    representedSourceIds: [...representedSourceIds],
+    excludedAlreadyRepresentedSourceCount: uncovered.length > 0
+      ? new Set(input.candidateSpans.filter((span) =>
+          representedSourceIds.has(span.sourceId)
+        ).map((span) => span.sourceId)).size
+      : 0,
+  };
+}
 
 function normalizedIdentity(value: string | null) {
   return (value || "").replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US");
@@ -87,6 +151,29 @@ function repairImprovesCanonicalAuthority(input: {
   ) {
     return { accepted: false, reasonCode: "repair_still_collapsed" as const };
   }
+  const basePreserved = input.before.claims.every((baseClaim) =>
+    input.after.claims.some((claim) =>
+      claim.claimId === baseClaim.claimId &&
+      claim.claimType === baseClaim.claimType &&
+      claim.text === baseClaim.text
+    )
+  ) && input.before.evidence.every((baseEvidence) =>
+    input.after.evidence.some((evidence) =>
+      evidence.evidenceId === baseEvidence.evidenceId &&
+      evidence.sourceId === baseEvidence.sourceId &&
+      evidence.excerpt === baseEvidence.excerpt &&
+      evidence.contextNote === baseEvidence.contextNote
+    )
+  ) && input.before.links.every((baseLink) =>
+    input.after.links.some((link) =>
+      link.claimId === baseLink.claimId &&
+      link.evidenceId === baseLink.evidenceId &&
+      link.stance === baseLink.stance
+    )
+  );
+  if (!basePreserved) {
+    return { accepted: false, reasonCode: "repair_dropped_base" as const };
+  }
   const materiallyDistinct = !after.hasDuplicateClaimAuthority &&
     !after.hasDuplicateEvidenceAuthority &&
     after.distinctClaimCount > before.distinctClaimCount &&
@@ -100,7 +187,10 @@ function repairImprovesCanonicalAuthority(input: {
 export async function repairCollapsedCanonicalEditorialSelection(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
-  requestRepair: () => Promise<unknown>;
+  requestRepair: (repairInput: {
+    discoveryCandidateSpans: EditorialGroundingCandidateSpan[];
+    representedSourceIds: string[];
+  }) => Promise<unknown>;
   validateRepair: (proposal: unknown) => Promise<ResearchClaimEvidenceGraph>;
 }) {
   const candidateSourceCount = new Set(
@@ -110,10 +200,19 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     (span) => span.evidenceSpecificity === "concrete_observation",
   ).length;
   const before = graphSummary(input.graph);
+  const discovery = createCanonicalEditorialDiscoveryBundle(input);
+  const discoverySourceCount = new Set(discovery.spans.map((span) => span.sourceId)).size;
+  const discoveryConcreteCount = discovery.spans.filter(
+    (span) => span.evidenceSpecificity === "concrete_observation",
+  ).length;
   const baseDiagnostic = {
     candidateSpanCount: input.candidateSpans.length,
     distinctCandidateSourceCount: candidateSourceCount,
     concreteCandidateSpanCount,
+    discoveryCandidateSpanCount: discovery.spans.length,
+    discoveryDistinctSourceCount: discoverySourceCount,
+    discoveryConcreteCandidateCount: discoveryConcreteCount,
+    excludedAlreadyRepresentedSourceCount: discovery.excludedAlreadyRepresentedSourceCount,
     beforeClaimCount: before.claimCount,
     beforeEvidenceCount: before.evidenceCount,
     beforeDistinctSourceCount: before.distinctSourceCount,
@@ -137,7 +236,10 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
 
   let rawRepair: unknown;
   try {
-    rawRepair = await input.requestRepair();
+    rawRepair = await input.requestRepair({
+      discoveryCandidateSpans: discovery.spans,
+      representedSourceIds: discovery.representedSourceIds,
+    });
   } catch {
     return {
       graph: input.graph,

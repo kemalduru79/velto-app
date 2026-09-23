@@ -104,8 +104,8 @@ assert.equal(providerFailure.result.diagnostic.reasonCode, "repair_provider_fail
 assert.equal(providerFailure.providerCalls, 1);
 
 const duplicateAuthority = graph([
-  { claim: "Repeated claim", sourceId: "source-a", excerpt: sources[0].summary },
-  { claim: "Repeated claim", sourceId: "source-b", excerpt: sources[1].summary },
+  { claim: "One supported proposition", sourceId: "source-a", excerpt: sources[0].summary },
+  { claim: "One supported proposition", sourceId: "source-b", excerpt: sources[1].summary },
 ]);
 const duplicate = await run({ repair: duplicateAuthority });
 assert.equal(duplicate.result.graph, collapsed);

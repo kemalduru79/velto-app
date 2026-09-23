@@ -290,7 +290,10 @@ export async function POST(request: Request) {
     const selectionRepair = await repairCollapsedCanonicalEditorialSelection({
       candidateSpans,
       graph,
-      requestRepair: async () => {
+      requestRepair: async ({ discoveryCandidateSpans }) => {
+        const discoverySourceIds = new Set(
+          discoveryCandidateSpans.map((span) => span.sourceId),
+        );
         const repairResponse = await client.responses.create({
           model,
           input: [
@@ -298,28 +301,40 @@ export async function POST(request: Request) {
               role: "system",
               content: [
                 systemPrompt,
-                "The valid first pass collapsed to one canonical authority despite candidate spans from multiple grounded sources.",
-                "Re-examine only the same supplied candidate spans for materially distinct supported claims, concrete demonstration evidence, material limits or boundaries, contextual evidence, and genuine contradictory or alternative findings that the first pass missed.",
+                "The existing valid base graph is fixed authority. Preserve every base claim, evidence item, and link exactly, including its identifiers, text, source, context, and stance.",
+                "The first pass collapsed to one canonical authority despite grounded discovery candidates from multiple uncovered sources.",
+                "Inspect only the supplied discovery candidate spans for materially distinct supported claims, concrete demonstration evidence, material limits or boundaries, contextual evidence, and genuine contradictory or alternative findings that the first pass missed.",
+                "Return one complete graph containing the unchanged base graph plus any genuinely supported additional authority.",
                 "Preserve exact sourceId/spanId selections and the semantic distinction between supports, contextualizes, and contradicts.",
                 "Prefer supplied concrete procedure, result, or case evidence and supplied real limitations when relevant.",
-                "Do not create quota filler, redundant paraphrased claims, token counterarguments, unsupported uncertainty, invented study metadata, or invented source facts.",
-                "If the supplied material supports no additional materially distinct authority, a minimal graph is acceptable.",
+                "Do not replace or drop the base graph. Do not create quota filler, redundant paraphrased claims, token counterarguments, unsupported uncertainty, invented study metadata, or invented source facts.",
+                "If the discovery material supports no additional materially distinct authority, return the base graph unchanged.",
               ].join(" "),
             },
             {
               role: "user",
               content: JSON.stringify({
-                ...userPrompt,
-                validFirstPass: {
+                topic: userPrompt.topic,
+                allowedClaimTypes: userPrompt.allowedClaimTypes,
+                editorialConstitution: userPrompt.editorialConstitution,
+                existingValidBaseGraph: {
                   claims: graph.claims,
                   evidence: graph.evidence.map((item) => ({
                     evidenceId: item.evidenceId,
                     sourceId: item.sourceId,
-                    excerpt: item.excerpt,
+                    spanId: candidateSpans.find((span) =>
+                      span.sourceId === item.sourceId && span.text === item.excerpt
+                    )?.spanId,
                     contextNote: item.contextNote,
                   })),
                   links: graph.links,
                 },
+                discoverySources: sourceMaterial.filter((source) =>
+                  discoverySourceIds.has(source.sourceId)
+                ),
+                discoveryCandidateSpans,
+                requiredJsonShape: userPrompt.requiredJsonShape,
+                rules: userPrompt.rules,
               }),
             },
           ],
