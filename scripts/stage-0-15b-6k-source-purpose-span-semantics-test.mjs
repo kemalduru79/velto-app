@@ -113,6 +113,7 @@ function graph({ includeLimit = false, includeOrdinarySupport = false } = {}) {
 
 const base = graph();
 const completed = graph({ includeLimit: true });
+const completedCapabilities = createCanonicalEditorialCapabilitySnapshot(completed);
 const discovery = createCanonicalEditorialDiscoveryBundle({
   candidateSpans,
   sourceResearchPurposes,
@@ -136,7 +137,16 @@ const repaired = await repairCollapsedCanonicalEditorialSelection({
   requestRepair: async (input) => {
     providerCalls += 1;
     capturedRepairInput = input;
-    return { repairOutcome: "additions_found", canonicalGraph: completed };
+    return {
+      repairOutcome: "additions_found",
+      capabilityResolutions: [{
+        capability: "uncertainty",
+        outcome: "resolved",
+        claimId: completedCapabilities.uncertaintyClaimId,
+        evidenceId: completedCapabilities.uncertaintyEvidenceId,
+      }],
+      canonicalGraph: completed,
+    };
   },
   validateRepair: async (proposal) => proposal,
 });
@@ -157,7 +167,11 @@ const ordinarySupportOnly = await repairCollapsedCanonicalEditorialSelection({
   graph: base,
   requestRepair: async () => {
     providerCalls += 1;
-    return { repairOutcome: "no_qualifying_addition", canonicalGraph: base };
+    return {
+      repairOutcome: "no_qualifying_addition",
+      capabilityResolutions: [{ capability: "uncertainty", outcome: "not_found", claimId: null, evidenceId: null }],
+      canonicalGraph: base,
+    };
   },
   validateRepair: async (proposal) => proposal,
 });
@@ -171,12 +185,13 @@ const unsupportedUncertainty = await repairCollapsedCanonicalEditorialSelection(
   graph: base,
   requestRepair: async () => ({
     repairOutcome: "additions_found",
+    capabilityResolutions: [{ capability: "uncertainty", outcome: "not_found", claimId: null, evidenceId: null }],
     canonicalGraph: graph({ includeOrdinarySupport: true }),
   }),
   validateRepair: async (proposal) => proposal,
 });
 assert.equal(unsupportedUncertainty.graph, base);
-assert.equal(unsupportedUncertainty.diagnostic.reasonCode, "repair_target_capability_unsatisfied");
+assert.equal(unsupportedUncertainty.diagnostic.reasonCode, "requested_capability_not_resolved");
 assert.equal(unsupportedUncertainty.diagnostic.afterHasUncertaintyCapability, false);
 
 const healthy = await repairCollapsedCanonicalEditorialSelection({

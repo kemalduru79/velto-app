@@ -53,9 +53,18 @@ async function run({ first = base, outcome = "additions_found", candidate = comp
     candidateSpans: candidates,
     sourceResearchPurposes,
     graph: first,
-    requestRepair: async () => {
+    requestRepair: async (input) => {
       providerCalls += 1;
-      return { repairOutcome: outcome, canonicalGraph: candidate };
+      const snapshot = createCanonicalEditorialCapabilitySnapshot(candidate);
+      return {
+        repairOutcome: outcome,
+        capabilityResolutions: input.missingCapabilities.map((capability) => {
+          const claimId = capability === "demonstration" ? snapshot.demonstrationClaimId : snapshot.uncertaintyClaimId;
+          const evidenceId = capability === "demonstration" ? snapshot.demonstrationEvidenceId : snapshot.uncertaintyEvidenceId;
+          return { capability, outcome: claimId && evidenceId ? "resolved" : "not_found", claimId, evidenceId };
+        }),
+        canonicalGraph: candidate,
+      };
     },
     validateRepair: async (proposal) => {
       if (invalid) throw new Error("invalid grounded addition");
@@ -118,7 +127,7 @@ for (const fixture of [additions, noAddition, falseAddition, invalidAddition, he
 
 const route = await readFile(new URL("../app/api/creator-editorial-analysis/route.ts", import.meta.url), "utf8");
 assert.ok(route.includes('enum: ["additions_found", "no_qualifying_addition"]'));
-assert.ok(route.includes('required: ["repairOutcome", "canonicalGraph"]'));
+assert.ok(route.includes('required: ["repairOutcome", "capabilityResolutions", "canonicalGraph"]'));
 assert.ok(route.includes('repairOutcome: "additions_found | no_qualifying_addition"'));
 assert.ok(route.includes("You MUST choose exactly one repairOutcome"));
 assert.ok(route.includes("Do not return the unchanged base graph under additions_found"));

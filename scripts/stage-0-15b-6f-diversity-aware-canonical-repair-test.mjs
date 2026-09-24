@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  createCanonicalEditorialCapabilitySnapshot,
   createCanonicalEditorialDiscoveryBundle,
   repairCollapsedCanonicalEditorialSelection,
 } from "../lib/research/editorialCanonicalSelectionRepair.ts";
+
+function capabilityResolutions(missingCapabilities, value) {
+  const snapshot = createCanonicalEditorialCapabilitySnapshot(value);
+  return missingCapabilities.map((capability) => {
+    const claimId = capability === "demonstration" ? snapshot.demonstrationClaimId : snapshot.uncertaintyClaimId;
+    const evidenceId = capability === "demonstration" ? snapshot.demonstrationEvidenceId : snapshot.uncertaintyEvidenceId;
+    return { capability, outcome: claimId && evidenceId ? "resolved" : "not_found", claimId, evidenceId };
+  });
+}
 
 const sources = Array.from({ length: 9 }, (_, index) => ({
   sourceId: `source-${index + 1}`,
@@ -99,7 +109,7 @@ async function run({ first = base, repaired = improved, repairOutcome = "additio
     requestRepair: async (input) => {
       calls += 1;
       repairInput = input;
-      return { repairOutcome, canonicalGraph: repaired };
+      return { repairOutcome, capabilityResolutions: capabilityResolutions(input.missingCapabilities, repaired), canonicalGraph: repaired };
     },
     validateRepair: async (proposal) => proposal,
   });

@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import {
+  createCanonicalEditorialCapabilitySnapshot,
   repairCollapsedCanonicalEditorialSelection,
 } from "../lib/research/editorialCanonicalSelectionRepair.ts";
+
+function capabilityResolutions(missingCapabilities, value) {
+  const snapshot = createCanonicalEditorialCapabilitySnapshot(value);
+  return missingCapabilities.map((capability) => {
+    const claimId = capability === "demonstration" ? snapshot.demonstrationClaimId : snapshot.uncertaintyClaimId;
+    const evidenceId = capability === "demonstration" ? snapshot.demonstrationEvidenceId : snapshot.uncertaintyEvidenceId;
+    return { capability, outcome: claimId && evidenceId ? "resolved" : "not_found", claimId, evidenceId };
+  });
+}
 
 const sources = ["source-a", "source-b", "source-c"].map((sourceId, index) => ({
   sourceId,
@@ -60,10 +70,10 @@ async function run({ first = collapsed, repair = healthy, repairOutcome = "addit
     candidateSpans: spans,
     sourceResearchPurposes: {},
     graph: first,
-    requestRepair: async () => {
+    requestRepair: async (input) => {
       providerCalls += 1;
       if (failProvider) throw new Error("provider failed");
-      return { repairOutcome, canonicalGraph: repair };
+      return { repairOutcome, capabilityResolutions: capabilityResolutions(input.missingCapabilities, repair), canonicalGraph: repair };
     },
     validateRepair: async (proposal) => {
       validationCalls += 1;

@@ -25,12 +25,28 @@ export type EditorialCanonicalSelectionRepairReason =
   | "repair_not_materially_distinct"
   | "no_qualifying_addition"
   | "declared_additions_but_no_material_change"
+  | "declared_resolution_invalid"
+  | "requested_capability_not_resolved"
   | "repair_invalid"
   | "repair_provider_failed";
 
 export type EditorialCanonicalRepairOutcome =
   | "additions_found"
   | "no_qualifying_addition";
+
+type EditorialCanonicalCapabilityResolution = {
+  capability: EditorialCanonicalCapability;
+  outcome: "resolved" | "not_found";
+  claimId: string | null;
+  evidenceId: string | null;
+};
+
+type EditorialCanonicalCapabilityResolutionDiagnostic = {
+  capability: EditorialCanonicalCapability;
+  outcome: "requested" | "resolved" | "not_found";
+  claimId: string | null;
+  evidenceId: string | null;
+};
 
 type EditorialCanonicalAuthorityDiagnostic = {
   claimId: string;
@@ -69,6 +85,9 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   beforeHasDemonstrationCapability: boolean;
   beforeHasUncertaintyCapability: boolean;
   repairProviderDispatched: boolean;
+  requestedCapabilityResolutions: EditorialCanonicalCapabilityResolutionDiagnostic[];
+  declaredCapabilityResolutions: EditorialCanonicalCapabilityResolution[];
+  validatedCapabilityResolutions: EditorialCanonicalCapabilityResolution[];
   providerParsedClaimCount: number | null;
   providerParsedEvidenceCount: number | null;
   providerParsedLinkCount: number | null;
@@ -273,21 +292,79 @@ function parseRepairResponse(value: unknown) {
   const repairOutcome = response?.repairOutcome;
   if (
     !response ||
-    Object.keys(response).sort().join(",") !== "canonicalGraph,repairOutcome" ||
+    Object.keys(response).sort().join(",") !== "canonicalGraph,capabilityResolutions,repairOutcome" ||
     (repairOutcome !== "additions_found" && repairOutcome !== "no_qualifying_addition") ||
-    !graph
+    !graph || !Array.isArray(response.capabilityResolutions)
   ) {
     throw new Error("EDITORIAL_CANONICAL_REPAIR_RESPONSE_INVALID");
+  }
+  const capabilityResolutions = response.capabilityResolutions.map((value) => {
+    const item = record(value);
+    if (!item || Object.keys(item).sort().join(",") !== "capability,claimId,evidenceId,outcome") {
+      throw new Error("EDITORIAL_CANONICAL_REPAIR_CAPABILITY_RESOLUTION_INVALID");
+    }
+    const { capability, outcome, claimId, evidenceId } = item;
+    if (
+      (capability !== "demonstration" && capability !== "uncertainty") ||
+      (outcome !== "resolved" && outcome !== "not_found") ||
+      (claimId !== null && typeof claimId !== "string") ||
+      (evidenceId !== null && typeof evidenceId !== "string") ||
+      (outcome === "resolved" && (!claimId || !evidenceId)) ||
+      (outcome === "not_found" && (claimId !== null || evidenceId !== null))
+    ) {
+      throw new Error("EDITORIAL_CANONICAL_REPAIR_CAPABILITY_RESOLUTION_INVALID");
+    }
+    return { capability, outcome, claimId, evidenceId } as EditorialCanonicalCapabilityResolution;
+  });
+  if (new Set(capabilityResolutions.map((item) => item.capability)).size !== capabilityResolutions.length) {
+    throw new Error("EDITORIAL_CANONICAL_REPAIR_CAPABILITY_RESOLUTION_DUPLICATE");
   }
   return {
     repairOutcome: repairOutcome as EditorialCanonicalRepairOutcome,
     canonicalGraph: graph,
+    capabilityResolutions,
     counts: {
       claims: arrayCount(graph.claims),
       evidence: arrayCount(graph.evidence),
       links: arrayCount(graph.links),
     },
   };
+}
+
+function validateDeclaredCapabilityResolutions(input: {
+  graph: ResearchClaimEvidenceGraph;
+  requestedCapabilities: EditorialCanonicalCapability[];
+  declared: EditorialCanonicalCapabilityResolution[];
+}) {
+  const claimById = new Map(input.graph.claims.map((claim) => [claim.claimId, claim]));
+  const evidenceById = new Map(input.graph.evidence.map((evidence) => [evidence.evidenceId, evidence]));
+  if (
+    input.declared.length !== input.requestedCapabilities.length ||
+    input.declared.some((item) => !input.requestedCapabilities.includes(item.capability))
+  ) return null;
+  const validated: EditorialCanonicalCapabilityResolution[] = [];
+  for (const item of input.declared) {
+    const claim = item.claimId ? claimById.get(item.claimId) : null;
+    const evidence = item.evidenceId ? evidenceById.get(item.evidenceId) : null;
+    const link = claim && evidence ? input.graph.links.find((candidate) =>
+      candidate.claimId === claim.claimId && candidate.evidenceId === evidence.evidenceId
+    ) : null;
+    const actuallyResolved = item.capability === "demonstration"
+      ? Boolean(
+          claim && evidence && link?.stance === "supports" &&
+          EMPIRICAL_CLAIM_TYPES.has(claim.claimType) &&
+          classifyEditorialGroundingSpanSpecificity(evidence.excerpt || "") === "concrete_observation"
+        )
+      : Boolean(
+          claim && evidence && link && (
+            link.stance === "contextualizes" ||
+            (link.stance === "supports" && UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType))
+          )
+        );
+    if ((item.outcome === "resolved") !== actuallyResolved) return null;
+    validated.push(item);
+  }
+  return validated;
 }
 
 function cleanDiagnosticId(value: unknown) {
@@ -440,8 +517,8 @@ function repairImprovesCanonicalAuthority(input: {
     return { accepted: false, reasonCode: "repair_not_materially_distinct" as const };
   }
   if (input.triggerReasons.includes("canonical_collapse") && (
-    after.claimCount <= 1 || after.evidenceCount <= 1 || after.distinctSourceCount <= 1 ||
-    after.linkedClaimCount <= 1 || after.linkedEvidenceCount <= 1 || after.linkedSourceCount <= 1
+    after.evidenceCount <= 1 || after.distinctSourceCount <= 1 ||
+    after.linkedEvidenceCount <= 1 || after.linkedSourceCount <= 1
   )) {
     return { accepted: false, reasonCode: "repair_still_collapsed" as const };
   }
@@ -458,7 +535,6 @@ function repairImprovesCanonicalAuthority(input: {
     after.distinctEvidenceCount > before.distinctEvidenceCount &&
     after.linkedEvidenceCount > before.linkedEvidenceCount &&
     (!input.triggerReasons.includes("canonical_collapse") || (
-      after.distinctClaimCount > before.distinctClaimCount &&
       after.distinctSourceCount > before.distinctSourceCount
     ));
   return materiallyDistinct
@@ -497,6 +573,12 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     ...(repairTriggerReasons.includes("missing_demonstration") ? ["demonstration" as const] : []),
     ...(repairTriggerReasons.includes("missing_uncertainty") ? ["uncertainty" as const] : []),
   ];
+  const requestedCapabilityResolutions = missingCapabilities.map((capability) => ({
+    capability,
+    outcome: "requested" as const,
+    claimId: null,
+    evidenceId: null,
+  }));
   const discovery = createCanonicalEditorialDiscoveryBundle({
     ...input,
     missingCapabilities,
@@ -527,6 +609,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     beforeDistinctSourceCount: before.distinctSourceCount,
     beforeHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
     beforeHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
+    requestedCapabilityResolutions,
   };
   const noProviderCounts = {
     providerParsedClaimCount: null,
@@ -537,6 +620,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     postValidationLinkCount: null,
     returnedAuthorities: [],
     validatedAuthorities: [],
+    declaredCapabilityResolutions: [],
+    validatedCapabilityResolutions: [],
     finalRepairClaimCount: before.claimCount,
     finalRepairEvidenceCount: before.evidenceCount,
     finalRepairDistinctSourceCount: before.distinctSourceCount,
@@ -624,6 +709,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     providerParsedEvidenceCount: parsedRepair.counts.evidence,
     providerParsedLinkCount: parsedRepair.counts.links,
     returnedAuthorities: parsedAuthorityDiagnostics(parsedRepair.canonicalGraph),
+    declaredCapabilityResolutions: parsedRepair.capabilityResolutions,
   };
   let repairedGraph: ResearchClaimEvidenceGraph;
   try {
@@ -641,6 +727,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
         postValidationEvidenceCount: null,
         postValidationLinkCount: null,
         validatedAuthorities: [],
+        validatedCapabilityResolutions: [],
         finalRepairClaimCount: before.claimCount,
         finalRepairEvidenceCount: before.evidenceCount,
         finalRepairDistinctSourceCount: before.distinctSourceCount,
@@ -669,8 +756,20 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       returnedAuthorities: providerCounts.returnedAuthorities,
     }),
   };
+  const validatedCapabilityResolutions = validateDeclaredCapabilityResolutions({
+    graph: repairedGraph,
+    requestedCapabilities: missingCapabilities,
+    declared: parsedRepair.capabilityResolutions,
+  });
   const unchanged = sameCanonicalAuthority(input.graph, repairedGraph);
-  const selection = parsedRepair.repairOutcome === "no_qualifying_addition"
+  const requestedCapabilityUnresolved = missingCapabilities.some((capability) =>
+    !parsedRepair.capabilityResolutions.some((item) =>
+      item.capability === capability && item.outcome === "resolved"
+    )
+  );
+  const selection = !validatedCapabilityResolutions
+    ? { accepted: false, reasonCode: "declared_resolution_invalid" as const }
+    : parsedRepair.repairOutcome === "no_qualifying_addition"
     ? {
         accepted: false,
         reasonCode: unchanged
@@ -682,6 +781,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
           accepted: false,
           reasonCode: "declared_additions_but_no_material_change" as const,
         }
+      : requestedCapabilityUnresolved
+        ? { accepted: false, reasonCode: "requested_capability_not_resolved" as const }
       : repairImprovesCanonicalAuthority({
           before: input.graph,
           after: repairedGraph,
@@ -698,6 +799,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       repairProviderDispatched: true,
       ...providerCounts,
       ...postValidationCounts,
+      validatedCapabilityResolutions: validatedCapabilityResolutions || [],
       finalRepairClaimCount: final.claimCount,
       finalRepairEvidenceCount: final.evidenceCount,
       finalRepairDistinctSourceCount: final.distinctSourceCount,

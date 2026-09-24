@@ -112,7 +112,16 @@ async function runRepair({ before, after = before, repairOutcome = "additions_fo
       providerCalls += 1;
       request = input;
       if (failProvider) throw new Error("provider unavailable");
-      return { repairOutcome, canonicalGraph: after };
+      const snapshot = createCanonicalEditorialCapabilitySnapshot(after);
+      return {
+        repairOutcome,
+        capabilityResolutions: input.missingCapabilities.map((capability) => {
+          const claimId = capability === "demonstration" ? snapshot.demonstrationClaimId : snapshot.uncertaintyClaimId;
+          const evidenceId = capability === "demonstration" ? snapshot.demonstrationEvidenceId : snapshot.uncertaintyEvidenceId;
+          return { capability, outcome: claimId && evidenceId ? "resolved" : "not_found", claimId, evidenceId };
+        }),
+        canonicalGraph: after,
+      };
     },
     validateRepair: async (proposal) => proposal,
   });
@@ -205,7 +214,7 @@ const noRealLimit = await runRepair({
   after: graph({ includeDemo: true, extraFacts: 4 }),
 });
 assert.equal(noRealLimit.result.diagnostic.repairAccepted, false);
-assert.equal(noRealLimit.result.diagnostic.reasonCode, "repair_target_capability_unsatisfied");
+assert.equal(noRealLimit.result.diagnostic.reasonCode, "requested_capability_not_resolved");
 
 const supportingCounter = graph({ includeDemo: true, extraFacts: 3 });
 assert.equal(createCanonicalEditorialCapabilitySnapshot(supportingCounter).hasUncertaintyCapability, false);

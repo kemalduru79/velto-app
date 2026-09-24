@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { writeFile, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import {
+  createCanonicalEditorialCapabilitySnapshot,
   repairCollapsedCanonicalEditorialSelection,
 } from "../lib/research/editorialCanonicalSelectionRepair.ts";
 
@@ -48,11 +49,20 @@ function graph({ completed = false } = {}) {
 
 const base = graph();
 const completed = graph({ completed: true });
+const completedCapabilities = createCanonicalEditorialCapabilitySnapshot(completed);
 const result = await repairCollapsedCanonicalEditorialSelection({
   candidateSpans: candidates,
   sourceResearchPurposes,
   graph: base,
-  requestRepair: async () => ({ repairOutcome: "additions_found", canonicalGraph: {
+  requestRepair: async () => ({
+    repairOutcome: "additions_found",
+    capabilityResolutions: [{
+      capability: "uncertainty",
+      outcome: "resolved",
+      claimId: completedCapabilities.uncertaintyClaimId,
+      evidenceId: completedCapabilities.uncertaintyEvidenceId,
+    }],
+    canonicalGraph: {
     claims: completed.claims,
     evidence: completed.evidence.map((item, index) => ({
       evidenceId: item.evidenceId,
@@ -61,7 +71,8 @@ const result = await repairCollapsedCanonicalEditorialSelection({
       contextNote: item.contextNote,
     })),
     links: completed.links,
-  } }),
+    },
+  }),
   validateRepair: async () => completed,
 });
 
