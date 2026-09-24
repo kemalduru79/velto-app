@@ -97,7 +97,7 @@ const candidates = Array.from({ length: 120 }, (_, index) => {
   };
 });
 
-async function runRepair({ before, after = before, failProvider = false }) {
+async function runRepair({ before, after = before, repairOutcome = "additions_found", failProvider = false }) {
   let providerCalls = 0;
   let researchCalls = 0;
   let request = null;
@@ -108,7 +108,7 @@ async function runRepair({ before, after = before, failProvider = false }) {
       providerCalls += 1;
       request = input;
       if (failProvider) throw new Error("provider unavailable");
-      return after;
+      return { repairOutcome, canonicalGraph: after };
     },
     validateRepair: async (proposal) => proposal,
   });

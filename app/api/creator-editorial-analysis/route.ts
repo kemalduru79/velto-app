@@ -178,21 +178,22 @@ export async function POST(request: Request) {
         span.researchPurposes?.includes("counter_evidence")
       ).length,
     }));
+    const editorialGraphSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
+        evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
+        links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
+      },
+      required: ["claims", "evidence", "links"],
+    };
     const editorialResponseText = {
       format: {
         type: "json_schema" as const,
         name: "creator_editorial_analysis",
         strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
-            evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
-            links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
-          },
-          required: ["claims", "evidence", "links"],
-        },
+        schema: editorialGraphSchema,
       },
     };
     const response = await client.responses.create({
@@ -321,13 +322,16 @@ export async function POST(request: Request) {
                 "The supplied missingCapabilities list identifies long-form roles that the valid base graph cannot currently serve; it is permission to inspect, not evidence that qualifying authority exists.",
                 "When demonstration is missing, look for an exact supplied concrete empirical observation, procedure, case, or result linked to a FACT, PRIMARY_SOURCE_CLAIM, or RESEARCH_FINDING.",
                 "When uncertainty is missing, look for exact supplied scope limits, boundary conditions, alternative explanations, qualifications, opposing findings, or uncertainty-bearing context.",
-                "Return one complete graph containing the unchanged base graph plus any genuinely supported additional authority.",
+                "You are performing a targeted completion analysis. You MUST choose exactly one repairOutcome: additions_found or no_qualifying_addition.",
+                "Use additions_found only when exact supplied spans support one or more materially distinct additional authorities needed by the requested capabilities. Then return the complete canonicalGraph containing the unchanged base graph plus all valid additions.",
+                "Use no_qualifying_addition only after inspecting the supplied discovery spans and concluding that none supports a valid additional authority for the requested capabilities. Then return the unchanged base graph as canonicalGraph.",
+                "Do not return the unchanged base graph under additions_found. Do not add filler merely to avoid no_qualifying_addition.",
                 "Preserve exact sourceId/spanId selections and the semantic distinction between supports, contextualizes, and contradicts.",
                 "Prefer supplied concrete procedure, result, or case evidence and supplied real limitations when relevant.",
                 "A counter_evidence research purpose only indicates that the material was retrieved to test or qualify the baseline explanation; it does not establish a contradictory stance.",
                 "For counter_evidence discovery spans, select supports, contextualizes, or contradicts only according to the exact grounded material.",
                 "Do not replace or drop the base graph. Do not create quota filler, redundant paraphrased claims, token counterarguments, unsupported uncertainty, invented study metadata, or invented source facts.",
-                "If the discovery material supports no additional materially distinct authority, return the base graph unchanged.",
+                "Return only the repairOutcome and canonicalGraph wrapper required by the strict response schema.",
               ].join(" "),
             },
             {
@@ -354,12 +358,33 @@ export async function POST(request: Request) {
                 discoveryCandidateSpans,
                 missingCapabilities,
                 repairTriggerReasons,
-                requiredJsonShape: userPrompt.requiredJsonShape,
+                requiredJsonShape: {
+                  repairOutcome: "additions_found | no_qualifying_addition",
+                  canonicalGraph: userPrompt.requiredJsonShape,
+                },
                 rules: userPrompt.rules,
               }),
             },
           ],
-          text: editorialResponseText,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "creator_editorial_canonical_selection_repair",
+              strict: true,
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  repairOutcome: {
+                    type: "string",
+                    enum: ["additions_found", "no_qualifying_addition"],
+                  },
+                  canonicalGraph: editorialGraphSchema,
+                },
+                required: ["repairOutcome", "canonicalGraph"],
+              },
+            },
+          },
           temperature: 0.1,
         });
         await recordOpenAITextEconomics({

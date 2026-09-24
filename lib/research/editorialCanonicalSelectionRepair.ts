@@ -17,8 +17,14 @@ export type EditorialCanonicalSelectionRepairReason =
   | "repair_dropped_base"
   | "repair_target_capability_unsatisfied"
   | "repair_not_materially_distinct"
+  | "no_qualifying_addition"
+  | "declared_additions_but_no_material_change"
   | "repair_invalid"
   | "repair_provider_failed";
+
+export type EditorialCanonicalRepairOutcome =
+  | "additions_found"
+  | "no_qualifying_addition";
 
 export type EditorialCanonicalSelectionRepairDiagnostic = {
   repairTriggered: boolean;
@@ -38,6 +44,15 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   beforeHasDemonstrationCapability: boolean;
   beforeHasUncertaintyCapability: boolean;
   repairProviderDispatched: boolean;
+  providerParsedClaimCount: number | null;
+  providerParsedEvidenceCount: number | null;
+  providerParsedLinkCount: number | null;
+  postValidationClaimCount: number | null;
+  postValidationEvidenceCount: number | null;
+  postValidationLinkCount: number | null;
+  finalRepairClaimCount: number;
+  finalRepairEvidenceCount: number;
+  finalRepairDistinctSourceCount: number;
   afterClaimCount: number;
   afterEvidenceCount: number;
   afterDistinctSourceCount: number;
@@ -210,6 +225,48 @@ function graphSummary(graph: ResearchClaimEvidenceGraph) {
   };
 }
 
+function record(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function arrayCount(value: unknown) {
+  return Array.isArray(value) ? value.length : null;
+}
+
+function parseRepairResponse(value: unknown) {
+  const response = record(value);
+  const graph = record(response?.canonicalGraph);
+  const repairOutcome = response?.repairOutcome;
+  if (
+    !response ||
+    Object.keys(response).sort().join(",") !== "canonicalGraph,repairOutcome" ||
+    (repairOutcome !== "additions_found" && repairOutcome !== "no_qualifying_addition") ||
+    !graph
+  ) {
+    throw new Error("EDITORIAL_CANONICAL_REPAIR_RESPONSE_INVALID");
+  }
+  return {
+    repairOutcome: repairOutcome as EditorialCanonicalRepairOutcome,
+    canonicalGraph: graph,
+    counts: {
+      claims: arrayCount(graph.claims),
+      evidence: arrayCount(graph.evidence),
+      links: arrayCount(graph.links),
+    },
+  };
+}
+
+function sameCanonicalAuthority(
+  left: ResearchClaimEvidenceGraph,
+  right: ResearchClaimEvidenceGraph,
+) {
+  return JSON.stringify(left.claims) === JSON.stringify(right.claims) &&
+    JSON.stringify(left.evidence) === JSON.stringify(right.evidence) &&
+    JSON.stringify(left.links) === JSON.stringify(right.links);
+}
+
 export function shouldRepairCanonicalEditorialSelection(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
@@ -359,6 +416,17 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     beforeHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
     beforeHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
   };
+  const noProviderCounts = {
+    providerParsedClaimCount: null,
+    providerParsedEvidenceCount: null,
+    providerParsedLinkCount: null,
+    postValidationClaimCount: null,
+    postValidationEvidenceCount: null,
+    postValidationLinkCount: null,
+    finalRepairClaimCount: before.claimCount,
+    finalRepairEvidenceCount: before.evidenceCount,
+    finalRepairDistinctSourceCount: before.distinctSourceCount,
+  };
 
   if (!shouldRepairCanonicalEditorialSelection(input)) {
     return {
@@ -368,6 +436,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
         repairTriggered: false,
         repairTriggerReasons,
         repairProviderDispatched: false,
+        ...noProviderCounts,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
@@ -397,6 +466,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
         repairTriggered: true,
         repairTriggerReasons,
         repairProviderDispatched: true,
+        ...noProviderCounts,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
@@ -410,9 +480,9 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     };
   }
 
-  let repairedGraph: ResearchClaimEvidenceGraph;
+  let parsedRepair: ReturnType<typeof parseRepairResponse>;
   try {
-    repairedGraph = await input.validateRepair(rawRepair);
+    parsedRepair = parseRepairResponse(rawRepair);
   } catch {
     return {
       graph: input.graph,
@@ -421,6 +491,43 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
         repairTriggered: true,
         repairTriggerReasons,
         repairProviderDispatched: true,
+        ...noProviderCounts,
+        afterClaimCount: before.claimCount,
+        afterEvidenceCount: before.evidenceCount,
+        afterDistinctSourceCount: before.distinctSourceCount,
+        afterHasDemonstrationCapability: beforeCapabilities.hasDemonstrationCapability,
+        afterHasUncertaintyCapability: beforeCapabilities.hasUncertaintyCapability,
+        finalDemonstrationEvidenceId: beforeCapabilities.demonstrationEvidenceId,
+        finalUncertaintyEvidenceId: beforeCapabilities.uncertaintyEvidenceId,
+        repairAccepted: false,
+        reasonCode: "repair_invalid",
+      } satisfies EditorialCanonicalSelectionRepairDiagnostic,
+    };
+  }
+
+  const providerCounts = {
+    providerParsedClaimCount: parsedRepair.counts.claims,
+    providerParsedEvidenceCount: parsedRepair.counts.evidence,
+    providerParsedLinkCount: parsedRepair.counts.links,
+  };
+  let repairedGraph: ResearchClaimEvidenceGraph;
+  try {
+    repairedGraph = await input.validateRepair(parsedRepair.canonicalGraph);
+  } catch {
+    return {
+      graph: input.graph,
+      diagnostic: {
+        ...baseDiagnostic,
+        repairTriggered: true,
+        repairTriggerReasons,
+        repairProviderDispatched: true,
+        ...providerCounts,
+        postValidationClaimCount: null,
+        postValidationEvidenceCount: null,
+        postValidationLinkCount: null,
+        finalRepairClaimCount: before.claimCount,
+        finalRepairEvidenceCount: before.evidenceCount,
+        finalRepairDistinctSourceCount: before.distinctSourceCount,
         afterClaimCount: before.claimCount,
         afterEvidenceCount: before.evidenceCount,
         afterDistinctSourceCount: before.distinctSourceCount,
@@ -436,18 +543,43 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
 
   const after = graphSummary(repairedGraph);
   const afterCapabilities = createCanonicalEditorialCapabilitySnapshot(repairedGraph);
-  const selection = repairImprovesCanonicalAuthority({
-    before: input.graph,
-    after: repairedGraph,
-    triggerReasons: repairTriggerReasons,
-  });
+  const postValidationCounts = {
+    postValidationClaimCount: after.claimCount,
+    postValidationEvidenceCount: after.evidenceCount,
+    postValidationLinkCount: repairedGraph.links.length,
+  };
+  const unchanged = sameCanonicalAuthority(input.graph, repairedGraph);
+  const selection = parsedRepair.repairOutcome === "no_qualifying_addition"
+    ? {
+        accepted: false,
+        reasonCode: unchanged
+          ? "no_qualifying_addition" as const
+          : "repair_invalid" as const,
+      }
+    : unchanged
+      ? {
+          accepted: false,
+          reasonCode: "declared_additions_but_no_material_change" as const,
+        }
+      : repairImprovesCanonicalAuthority({
+          before: input.graph,
+          after: repairedGraph,
+          triggerReasons: repairTriggerReasons,
+        });
+  const finalGraph = selection.accepted ? repairedGraph : input.graph;
+  const final = graphSummary(finalGraph);
   return {
-    graph: selection.accepted ? repairedGraph : input.graph,
+    graph: finalGraph,
     diagnostic: {
       ...baseDiagnostic,
       repairTriggered: true,
       repairTriggerReasons,
       repairProviderDispatched: true,
+      ...providerCounts,
+      ...postValidationCounts,
+      finalRepairClaimCount: final.claimCount,
+      finalRepairEvidenceCount: final.evidenceCount,
+      finalRepairDistinctSourceCount: final.distinctSourceCount,
       afterClaimCount: after.claimCount,
       afterEvidenceCount: after.evidenceCount,
       afterDistinctSourceCount: after.distinctSourceCount,

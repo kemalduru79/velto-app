@@ -52,7 +52,7 @@ const healthy = graph([
   { claim: "A distinct grounded finding", sourceId: "source-b", excerpt: sources[1].summary },
 ]);
 
-async function run({ first = collapsed, repair = healthy, failProvider = false, failValidation = false }) {
+async function run({ first = collapsed, repair = healthy, repairOutcome = "additions_found", failProvider = false, failValidation = false }) {
   let providerCalls = 0;
   let validationCalls = 0;
   let researchCalls = 0;
@@ -62,7 +62,7 @@ async function run({ first = collapsed, repair = healthy, failProvider = false, 
     requestRepair: async () => {
       providerCalls += 1;
       if (failProvider) throw new Error("provider failed");
-      return repair;
+      return { repairOutcome, canonicalGraph: repair };
     },
     validateRepair: async (proposal) => {
       validationCalls += 1;
@@ -83,7 +83,7 @@ assert.equal(successful.result.diagnostic.concreteCandidateSpanCount, 2);
 const stillCollapsed = await run({ repair: collapsed });
 assert.equal(stillCollapsed.providerCalls, 1);
 assert.equal(stillCollapsed.result.graph, collapsed);
-assert.equal(stillCollapsed.result.diagnostic.reasonCode, "repair_still_collapsed");
+assert.equal(stillCollapsed.result.diagnostic.reasonCode, "declared_additions_but_no_material_change");
 
 const invalid = await run({ failValidation: true });
 assert.equal(invalid.providerCalls, 1);
@@ -96,9 +96,10 @@ assert.equal(healthyFirstPass.providerCalls, 0);
 assert.equal(healthyFirstPass.result.graph, healthy);
 assert.equal(healthyFirstPass.result.diagnostic.reasonCode, "not_pathologically_collapsed");
 
-const genuineSingleClaim = await run({ repair: collapsed });
+const genuineSingleClaim = await run({ repair: collapsed, repairOutcome: "no_qualifying_addition" });
 assert.equal(genuineSingleClaim.result.graph, collapsed, "no diversity is forced");
 assert.equal(genuineSingleClaim.providerCalls, 1);
+assert.equal(genuineSingleClaim.result.diagnostic.reasonCode, "no_qualifying_addition");
 
 const providerFailure = await run({ failProvider: true });
 assert.equal(providerFailure.result.graph, collapsed);

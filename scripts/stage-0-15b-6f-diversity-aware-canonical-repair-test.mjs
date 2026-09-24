@@ -88,7 +88,7 @@ const additionalAuthority = {
 };
 const improved = graph([baseAuthority, additionalAuthority]);
 
-async function run({ first = base, repaired = improved }) {
+async function run({ first = base, repaired = improved, repairOutcome = "additions_found" }) {
   let calls = 0;
   let repairInput = null;
   const result = await repairCollapsedCanonicalEditorialSelection({
@@ -97,7 +97,7 @@ async function run({ first = base, repaired = improved }) {
     requestRepair: async (input) => {
       calls += 1;
       repairInput = input;
-      return repaired;
+      return { repairOutcome, canonicalGraph: repaired };
     },
     validateRepair: async (proposal) => proposal,
   });
@@ -139,10 +139,11 @@ assert.equal(diverseBaseDrop.result.diagnostic.reasonCode, "repair_dropped_base"
 const stillCollapsed = await run({ repaired: base });
 assert.equal(stillCollapsed.calls, 1);
 assert.equal(stillCollapsed.result.graph, base);
-assert.equal(stillCollapsed.result.diagnostic.reasonCode, "repair_still_collapsed");
+assert.equal(stillCollapsed.result.diagnostic.reasonCode, "declared_additions_but_no_material_change");
 
-const noRealAddition = await run({ repaired: base });
+const noRealAddition = await run({ repaired: base, repairOutcome: "no_qualifying_addition" });
 assert.equal(noRealAddition.result.diagnostic.repairAccepted, false);
+assert.equal(noRealAddition.result.diagnostic.reasonCode, "no_qualifying_addition");
 assert.equal(noRealAddition.calls, 1);
 
 const healthy = graph([baseAuthority, additionalAuthority]);
