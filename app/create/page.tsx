@@ -1070,6 +1070,15 @@ type CreatorProductionScene = {
   emotion: string;
   motionHint: string;
   visualPrompt?: string;
+  audioUrl?: string;
+  audioPath?: string;
+  audioSourceText?: string;
+  audioSettingsKey?: string;
+  dialogueAudioUrl?: string;
+  dialogueAudioPath?: string;
+  dialogueAudioSourceText?: string;
+  dialogueAudioSettingsKey?: string;
+  timing?: SceneTiming;
   continuity?: CreatorSceneContinuityState;
   intelligence?: SceneIntelligence;
   targetDurationSec?: number;
@@ -8142,6 +8151,15 @@ const generateSceneImage = async (
       emotion: scene.emotion,
       motionHint: scene.motionHint,
       visualPrompt: scene.visualPrompt,
+      audioUrl: scene.audioUrl,
+      audioPath: scene.audioPath,
+      audioSourceText: scene.audioSourceText,
+      audioSettingsKey: scene.audioSettingsKey,
+      dialogueAudioUrl: scene.dialogueAudioUrl,
+      dialogueAudioPath: scene.dialogueAudioPath,
+      dialogueAudioSourceText: scene.dialogueAudioSourceText,
+      dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey,
+      timing: scene.timing,
       continuity: scene.continuity,
       intelligence: scene.intelligence,
       targetDurationSec: scene.targetDurationSec,
@@ -17094,21 +17112,28 @@ const generateSceneImage = async (
       targetDurationSec: safeTargetDurationSec,
       visualBlockCount: requiredVisualBlocks,
     };
+    const targetCreatorSceneId = existingScene.creatorSceneId;
+    if (!targetCreatorSceneId) {
+      setError(
+        uiLanguage === "en"
+          ? "The editable scene is missing its stable identity."
+          : "Düzenlenebilir sahnenin kalıcı kimliği bulunamadı.",
+      );
+      return false;
+    }
 
     pushCreatorUndoSnapshot(
       uiLanguage === "en"
         ? `Edit scene ${sceneId} script`
         : `Sahne ${sceneId} metnini düzenle`,
     );
-    clearSceneAudioData(sceneId);
-    clearSceneDialogueAudioData(sceneId);
     clearVideoPollForScene(sceneId);
     invalidateFinalVideoForProductionChange();
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
 
     const updateScriptFields = <T extends Scene | CreatorProductionScene,>(scene: T): T => {
-      if (scene.id !== sceneId) return scene;
+      if (scene.creatorSceneId !== targetCreatorSceneId) return scene;
 
       const sceneForBlocks = {
         ...existingScene,
@@ -17136,25 +17161,21 @@ const generateSceneImage = async (
 
     setScenes((prev) =>
       prev.map((scene) =>
-        scene.id === sceneId
+        scene.creatorSceneId === targetCreatorSceneId
           ? {
               ...updateScriptFields(scene),
-              audioUrl: "",
-              audioPath: "",
-              audioSourceText: "",
-              audioSettingsKey: "",
-              dialogueAudioUrl: "",
-              dialogueAudioPath: "",
-              dialogueAudioSourceText: "",
-              dialogueAudioSettingsKey: "",
               videoUrl: "",
               videoStatus: "idle",
               videoJobId: "",
               videoDurationSeconds: 0,
-              timing: buildSceneTiming(0, 0, {
+              timing: buildSceneTiming(
+                scene.timing?.narrationDuration || 0,
+                scene.timing?.dialogueDuration || 0,
+                {
                 audioFirst: true,
                 plannedDuration: safeTargetDurationSec,
-              }),
+                },
+              ),
             }
           : scene,
       ),
@@ -17172,6 +17193,7 @@ const generateSceneImage = async (
           }
         : prev,
     );
+    setRefinedCreatorScenes((prev) => prev.map(updateScriptFields));
     setSceneScriptDrafts((prev) => {
       const next = { ...prev };
       delete next[sceneId];
