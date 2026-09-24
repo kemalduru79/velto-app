@@ -1591,32 +1591,106 @@ export function regenerateCreatorScriptSection(script: CreatorScript, sectionId:
   return normalizeCreatorScript({ ...script, sections, revision: script.revision + 1, updatedAt, approval: null });
 }
 
+const CREATOR_SCRIPT_SENTENCE_ABBREVIATIONS = new Set([
+  "dr.", "doç.", "etc.", "mr.", "mrs.", "ms.", "no.", "prof.", "sn.", "st.", "örn.", "vb.", "vd.", "vs.", "yrd.",
+]);
+
+function splitCreatorScriptSentences(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const sentences: string[] = [];
+  let start = 0;
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const punctuation = normalized[index];
+    if (punctuation !== "." && punctuation !== "?" && punctuation !== "!") continue;
+    if (punctuation === "." && /\d/.test(normalized[index - 1] ?? "") && /\d/.test(normalized[index + 1] ?? "")) continue;
+
+    let end = index + 1;
+    while (end < normalized.length && normalized[end] === punctuation) end += 1;
+    while (end < normalized.length && /["'”’\)\]}]/.test(normalized[end])) end += 1;
+    if (end < normalized.length && !/\s/.test(normalized[end])) continue;
+
+    if (punctuation === ".") {
+      const prefix = normalized.slice(start, index + 1);
+      const token = prefix.match(/(?:^|\s)([^\s]+)$/)?.[1]?.toLocaleLowerCase("en-US") ?? "";
+      if (CREATOR_SCRIPT_SENTENCE_ABBREVIATIONS.has(token) || /^(?:[a-z]\.){2,}$/i.test(token)) continue;
+    }
+
+    const sentence = normalized.slice(start, end).trim();
+    if (sentence) sentences.push(sentence);
+    start = end;
+    while (start < normalized.length && /\s/.test(normalized[start])) start += 1;
+    index = start - 1;
+  }
+
+  const remainder = normalized.slice(start).trim();
+  if (remainder) sentences.push(remainder);
+  return sentences;
+}
+
+function packCreatorScriptSentences(sentences: readonly string[], requestedCount: number) {
+  const count = Math.min(Math.max(1, requestedCount), sentences.length);
+  if (count === 1) return [sentences.join(" ")];
+  const weights = sentences.map((sentence) => sentence.split(/\s+/).filter(Boolean).length);
+  const groups: string[] = [];
+  let sentenceIndex = 0;
+  let remainingWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+  for (let groupIndex = 0; groupIndex < count; groupIndex += 1) {
+    const groupsRemaining = count - groupIndex;
+    if (groupsRemaining === 1) {
+      groups.push(sentences.slice(sentenceIndex).join(" "));
+      break;
+    }
+    const maximumEnd = sentences.length - (groupsRemaining - 1);
+    const targetWeight = remainingWeight / groupsRemaining;
+    let end = sentenceIndex;
+    let groupWeight = 0;
+    while (end < maximumEnd) {
+      const nextWeight = weights[end];
+      if (end > sentenceIndex && Math.abs(groupWeight - targetWeight) <= Math.abs(groupWeight + nextWeight - targetWeight)) break;
+      groupWeight += nextWeight;
+      end += 1;
+    }
+    groups.push(sentences.slice(sentenceIndex, end).join(" "));
+    sentenceIndex = end;
+    remainingWeight -= groupWeight;
+  }
+  return groups;
+}
+
 export function createCreatorScriptSceneSegments(script: CreatorScript, sceneCount: number) {
-  const sectionWords = script.sections.map((section) => section.text.split(/\s+/).filter(Boolean));
-  const totalWords = sectionWords.reduce((sum, words) => sum + words.length, 0);
+  const sectionSentences = script.sections.map((section) => splitCreatorScriptSentences(section.text));
+  const sectionWordCounts = sectionSentences.map((sentences) => sentences.reduce(
+    (sum, sentence) => sum + sentence.split(/\s+/).filter(Boolean).length,
+    0,
+  ));
+  const totalWords = sectionWordCounts.reduce((sum, wordCount) => sum + wordCount, 0);
   const safeCount = Math.max(
     script.sections.length,
     Math.min(36, Math.max(1, totalWords), Math.round(sceneCount)),
   );
   const allocations = script.sections.map(() => 1);
   for (let remaining = safeCount - script.sections.length; remaining > 0; remaining -= 1) {
-    let selected = 0;
+    let selected = -1;
     let selectedPressure = -1;
-    sectionWords.forEach((words, index) => {
-      const pressure = words.length / allocations[index];
+    sectionSentences.forEach((sentences, index) => {
+      if (allocations[index] >= sentences.length) return;
+      const pressure = sectionWordCounts[index] / allocations[index];
       if (pressure > selectedPressure) {
         selected = index;
         selectedPressure = pressure;
       }
     });
+    if (selected < 0) break;
     allocations[selected] += 1;
   }
   const segments = script.sections.flatMap((section, sectionIndex) => {
-    const words = sectionWords[sectionIndex];
-    const count = Math.min(allocations[sectionIndex], Math.max(1, words.length));
-    return Array.from({ length: count }, (_, index) => ({
+    const sentences = sectionSentences[sectionIndex];
+    return packCreatorScriptSentences(sentences, allocations[sectionIndex]).map((narration) => ({
       sectionId: section.id,
-      narration: words.slice(Math.floor(index * words.length / count), Math.floor((index + 1) * words.length / count)).join(" "),
+      narration,
       claimIds: section.claimIds,
     }));
   });
