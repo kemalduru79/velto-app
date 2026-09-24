@@ -142,6 +142,8 @@ export type CreatorScriptExpansionTarget = {
   availablePlacementAnchors: Array<{ id: "before_terminal_sentence"; placementMode: "server_exact_offset" }>;
 };
 
+export const CREATOR_SCRIPT_MIN_ATOMIC_ADDITIVE_GAIN_WORDS = 20;
+
 export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSectionBudget[]) {
   const establishedPremises: string[] = [];
   return plan.map((section) => {
@@ -197,6 +199,18 @@ export function createCreatorScriptAdditiveExpansionPlan(input: {
     .filter((item) => item.capacity > 0 && item.anchors.length > 0);
   const allocations = new Map(ranked.map((item) => [item.section.id, 0]));
   let remaining = Math.max(0, Math.floor(input.globalDeficitWords));
+  if (remaining > 0 && remaining <= CREATOR_SCRIPT_MIN_ATOMIC_ADDITIVE_GAIN_WORDS) {
+    const atomicTarget = ranked.find((item) =>
+      item.section.kind === "body" &&
+      item.capacity >= CREATOR_SCRIPT_MIN_ATOMIC_ADDITIVE_GAIN_WORDS
+    );
+    if (!atomicTarget) return [];
+    allocations.set(
+      atomicTarget.section.id,
+      CREATOR_SCRIPT_MIN_ATOMIC_ADDITIVE_GAIN_WORDS,
+    );
+    remaining = 0;
+  }
   for (const kind of ["body", "opening", "conclusion"] as const) {
     const tier = ranked.filter((item) => item.section.kind === kind);
     while (remaining > 0) {
