@@ -58,6 +58,7 @@ async function run({ first = collapsed, repair = healthy, repairOutcome = "addit
   let researchCalls = 0;
   const result = await repairCollapsedCanonicalEditorialSelection({
     candidateSpans: spans,
+    sourceResearchPurposes: {},
     graph: first,
     requestRepair: async () => {
       providerCalls += 1;

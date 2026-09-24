@@ -93,9 +93,12 @@ const candidates = Array.from({ length: 120 }, (_, index) => {
     sourceId: source.sourceId,
     text: source.summary,
     evidenceSpecificity: sourceIndex === 1 ? "concrete_observation" : "abstract_or_conceptual",
-    researchPurposes: sourceIndex === 2 ? ["counter_evidence"] : ["baseline"],
   };
 });
+const sourceResearchPurposes = Object.fromEntries(sources.map((source, index) => [
+  source.sourceId,
+  index === 2 ? ["counter_evidence"] : ["baseline"],
+]));
 
 async function runRepair({ before, after = before, repairOutcome = "additions_found", failProvider = false }) {
   let providerCalls = 0;
@@ -103,6 +106,7 @@ async function runRepair({ before, after = before, repairOutcome = "additions_fo
   let request = null;
   const result = await repairCollapsedCanonicalEditorialSelection({
     candidateSpans: candidates,
+    sourceResearchPurposes,
     graph: before,
     requestRepair: async (input) => {
       providerCalls += 1;

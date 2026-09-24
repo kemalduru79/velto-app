@@ -19,8 +19,12 @@ const sources = [
 const candidates = sources.map((source, index) => ({
   spanId: `span-${index + 1}-1`, sourceId: source.sourceId, text: source.summary,
   evidenceSpecificity: index === 0 ? "concrete_observation" : "abstract_or_conceptual",
-  researchPurposes: index === 1 ? ["counter_evidence"] : ["baseline"],
 }));
+const sourceResearchPurposes = {
+  "source-1": ["baseline"],
+  "source-2": ["counter_evidence"],
+  "source-3": ["baseline"],
+};
 
 function graph({ uncertainty = false, diversity = false } = {}) {
   const claims = [{ claimId: "claim-base", claimType: "RESEARCH_FINDING", text: "A procedure produced a measured difference." }];
@@ -47,6 +51,7 @@ async function run({ first = base, outcome = "additions_found", candidate = comp
   let researchCalls = 0;
   const result = await repairCollapsedCanonicalEditorialSelection({
     candidateSpans: candidates,
+    sourceResearchPurposes,
     graph: first,
     requestRepair: async () => {
       providerCalls += 1;

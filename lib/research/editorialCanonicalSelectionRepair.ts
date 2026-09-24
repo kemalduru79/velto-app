@@ -3,6 +3,12 @@ import {
   classifyEditorialGroundingSpanSpecificity,
   type EditorialGroundingCandidateSpan,
 } from "./editorialGroundingRepair.ts";
+import type { ResearchSearchLanePurpose } from "./researchOrchestration.ts";
+
+export type EditorialCanonicalSourceResearchPurposes = Record<
+  string,
+  ResearchSearchLanePurpose[]
+>;
 
 export type EditorialCanonicalCapability = "demonstration" | "uncertainty";
 export type EditorialCanonicalRepairTriggerReason =
@@ -46,12 +52,13 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   candidateSpanCount: number;
   distinctCandidateSourceCount: number;
   concreteCandidateSpanCount: number;
-  candidateCounterPurposeCount: number;
+  candidateFromCounterPurposeSourceCount: number;
+  counterPurposeSourceCount: number;
   discoveryCandidateSpanCount: number;
   discoveryDistinctSourceCount: number;
   discoveryConcreteCandidateCount: number;
-  discoveryCounterPurposeCount: number;
-  counterPurposeDiscoveryCandidates: Array<{
+  discoveryFromCounterPurposeSourceCount: number;
+  discoveryFromCounterPurposeSources: Array<{
     spanId: string;
     sourceId: string;
   }>;
@@ -133,15 +140,18 @@ export function createCanonicalEditorialCapabilitySnapshot(
 function sourceBalancedSpans(
   spans: EditorialGroundingCandidateSpan[],
   missingCapabilities: EditorialCanonicalCapability[],
+  sourceResearchPurposes: EditorialCanonicalSourceResearchPurposes,
 ) {
   const originalSourceOrder = [...new Set(spans.map((span) => span.sourceId))];
-  const counterSourceIds = new Set(spans.filter((span) =>
-    span.researchPurposes?.includes("counter_evidence")
-  ).map((span) => span.sourceId));
-  const sourceOrder = [
-    ...originalSourceOrder.filter((sourceId) => counterSourceIds.has(sourceId)),
-    ...originalSourceOrder.filter((sourceId) => !counterSourceIds.has(sourceId)),
-  ];
+  const counterSourceIds = new Set(originalSourceOrder.filter((sourceId) =>
+    sourceResearchPurposes[sourceId]?.includes("counter_evidence")
+  ));
+  const sourceOrder = missingCapabilities.includes("uncertainty")
+    ? [
+        ...originalSourceOrder.filter((sourceId) => counterSourceIds.has(sourceId)),
+        ...originalSourceOrder.filter((sourceId) => !counterSourceIds.has(sourceId)),
+      ]
+    : originalSourceOrder;
   const queues = new Map(sourceOrder.map((sourceId) => {
     const sourceSpans = spans.filter((span) => span.sourceId === sourceId);
     const concrete = sourceSpans.filter(
@@ -172,9 +182,6 @@ function sourceBalancedSpans(
   if (missingCapabilities.includes("demonstration")) {
     selectSeed(spans.find((span) => span.evidenceSpecificity === "concrete_observation"));
   }
-  if (missingCapabilities.includes("uncertainty")) {
-    selectSeed(spans.find((span) => span.researchPurposes?.includes("counter_evidence")));
-  }
   while (selected.length < MAX_EDITORIAL_CANONICAL_DISCOVERY_SPANS) {
     let added = false;
     for (const sourceId of sourceOrder) {
@@ -193,6 +200,7 @@ export function createCanonicalEditorialDiscoveryBundle(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
   missingCapabilities?: EditorialCanonicalCapability[];
+  sourceResearchPurposes: EditorialCanonicalSourceResearchPurposes;
 }) {
   const representedSourceIds = new Set(input.graph.evidence.map((item) => item.sourceId));
   const uncovered = input.candidateSpans.filter(
@@ -200,7 +208,11 @@ export function createCanonicalEditorialDiscoveryBundle(input: {
   );
   const discoveryPool = uncovered.length > 0 ? uncovered : input.candidateSpans;
   return {
-    spans: sourceBalancedSpans(discoveryPool, input.missingCapabilities || []),
+    spans: sourceBalancedSpans(
+      discoveryPool,
+      input.missingCapabilities || [],
+      input.sourceResearchPurposes,
+    ),
     representedSourceIds: [...representedSourceIds],
     excludedAlreadyRepresentedSourceCount: uncovered.length > 0
       ? new Set(input.candidateSpans.filter((span) =>
@@ -360,6 +372,7 @@ function sameCanonicalAuthority(
 export function shouldRepairCanonicalEditorialSelection(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
+  sourceResearchPurposes: EditorialCanonicalSourceResearchPurposes;
 }) {
   return createCanonicalEditorialRepairTriggerReasons(input).length > 0;
 }
@@ -367,6 +380,7 @@ export function shouldRepairCanonicalEditorialSelection(input: {
 export function createCanonicalEditorialRepairTriggerReasons(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
+  sourceResearchPurposes: EditorialCanonicalSourceResearchPurposes;
 }): EditorialCanonicalRepairTriggerReason[] {
   const candidateSourceCount = new Set(
     input.candidateSpans.map((span) => span.sourceId),
@@ -384,8 +398,8 @@ export function createCanonicalEditorialRepairTriggerReasons(input: {
   if (!capabilities.hasDemonstrationCapability && input.candidateSpans.some(
     (span) => span.evidenceSpecificity === "concrete_observation"
   )) reasons.push("missing_demonstration");
-  if (!capabilities.hasUncertaintyCapability && input.candidateSpans.some(
-    (span) => span.researchPurposes?.includes("counter_evidence")
+  if (!capabilities.hasUncertaintyCapability && input.candidateSpans.some((span) =>
+    input.sourceResearchPurposes[span.sourceId]?.includes("counter_evidence")
   )) reasons.push("missing_uncertainty");
   return reasons;
 }
@@ -455,6 +469,7 @@ function repairImprovesCanonicalAuthority(input: {
 export async function repairCollapsedCanonicalEditorialSelection(input: {
   candidateSpans: EditorialGroundingCandidateSpan[];
   graph: ResearchClaimEvidenceGraph;
+  sourceResearchPurposes: EditorialCanonicalSourceResearchPurposes;
   requestRepair: (repairInput: {
     discoveryCandidateSpans: EditorialGroundingCandidateSpan[];
     representedSourceIds: string[];
@@ -469,8 +484,11 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
   const concreteCandidateSpanCount = input.candidateSpans.filter(
     (span) => span.evidenceSpecificity === "concrete_observation",
   ).length;
-  const candidateCounterPurposeCount = input.candidateSpans.filter((span) =>
-    span.researchPurposes?.includes("counter_evidence")
+  const counterPurposeSourceIds = new Set(input.candidateSpans.filter((span) =>
+    input.sourceResearchPurposes[span.sourceId]?.includes("counter_evidence")
+  ).map((span) => span.sourceId));
+  const candidateFromCounterPurposeSourceCount = input.candidateSpans.filter((span) =>
+    counterPurposeSourceIds.has(span.sourceId)
   ).length;
   const before = graphSummary(input.graph);
   const beforeCapabilities = createCanonicalEditorialCapabilitySnapshot(input.graph);
@@ -487,20 +505,21 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
   const discoveryConcreteCount = discovery.spans.filter(
     (span) => span.evidenceSpecificity === "concrete_observation",
   ).length;
-  const discoveryCounterPurposeCount = discovery.spans.filter((span) =>
-    span.researchPurposes?.includes("counter_evidence")
+  const discoveryFromCounterPurposeSourceCount = discovery.spans.filter((span) =>
+    counterPurposeSourceIds.has(span.sourceId)
   ).length;
   const baseDiagnostic = {
     candidateSpanCount: input.candidateSpans.length,
     distinctCandidateSourceCount: candidateSourceCount,
     concreteCandidateSpanCount,
-    candidateCounterPurposeCount,
+    candidateFromCounterPurposeSourceCount,
+    counterPurposeSourceCount: counterPurposeSourceIds.size,
     discoveryCandidateSpanCount: discovery.spans.length,
     discoveryDistinctSourceCount: discoverySourceCount,
     discoveryConcreteCandidateCount: discoveryConcreteCount,
-    discoveryCounterPurposeCount,
-    counterPurposeDiscoveryCandidates: discovery.spans.filter((span) =>
-      span.researchPurposes?.includes("counter_evidence")
+    discoveryFromCounterPurposeSourceCount,
+    discoveryFromCounterPurposeSources: discovery.spans.filter((span) =>
+      counterPurposeSourceIds.has(span.sourceId)
     ).map((span) => ({ spanId: span.spanId, sourceId: span.sourceId })),
     excludedAlreadyRepresentedSourceCount: discovery.excludedAlreadyRepresentedSourceCount,
     beforeClaimCount: before.claimCount,

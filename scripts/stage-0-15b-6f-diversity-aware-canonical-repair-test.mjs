@@ -61,6 +61,7 @@ const liveShapeSpans = sources.flatMap((source, sourceIndex) =>
 
 const discovery = createCanonicalEditorialDiscoveryBundle({
   candidateSpans: liveShapeSpans,
+  sourceResearchPurposes: {},
   graph: base,
 });
 assert.equal(discovery.spans.some((span) => span.sourceId === "source-1"), false);
@@ -93,6 +94,7 @@ async function run({ first = base, repaired = improved, repairOutcome = "additio
   let repairInput = null;
   const result = await repairCollapsedCanonicalEditorialSelection({
     candidateSpans: liveShapeSpans,
+    sourceResearchPurposes: {},
     graph: first,
     requestRepair: async (input) => {
       calls += 1;

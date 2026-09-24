@@ -60,16 +60,21 @@ const spans = sources.map((source, index) => ({
   evidenceSpecificity: index % 2 === 0
     ? "concrete_observation"
     : "abstract_or_conceptual",
-  researchPurposes: index === 25 ? ["counter_evidence"] : ["baseline"],
 }));
+const sourceResearchPurposes = Object.fromEntries(sources.map((source, index) => [
+  source.sourceId,
+  index === 25 ? ["counter_evidence"] : ["baseline"],
+]));
 const discovery = createCanonicalEditorialDiscoveryBundle({
   candidateSpans: spans,
+  sourceResearchPurposes,
+  missingCapabilities: ["uncertainty"],
   graph: baseGraph,
 });
 assert.equal(discovery.spans.length, 24);
 assert.equal(
   discovery.spans.some((span) =>
-    span.sourceId === "source-26" && span.researchPurposes.includes("counter_evidence")
+    span.sourceId === "source-26"
   ),
   true,
   "counter-purpose provenance is retained before remaining discovery slots fill",
@@ -95,13 +100,15 @@ assert.equal(graphWithStance("contextualizes").links[0].stance, "contextualizes"
 assert.equal(graphWithStance("contradicts").links[0].stance, "contradicts");
 
 const noCounter = createCanonicalEditorialDiscoveryBundle({
-  candidateSpans: spans.map((span) => ({ ...span, researchPurposes: ["baseline"] })),
+  candidateSpans: spans,
+  sourceResearchPurposes: Object.fromEntries(sources.map((source) => [source.sourceId, ["baseline"]])),
+  missingCapabilities: ["uncertainty"],
   graph: baseGraph,
 });
 assert.equal(
-  noCounter.spans.some((span) => span.researchPurposes.includes("counter_evidence")),
+  noCounter.spans.some((span) => Object.hasOwn(span, "researchPurposes")),
   false,
-  "absence of counter provenance does not invent uncertainty",
+  "source-purpose provenance is not copied onto candidate spans",
 );
 
 const client = await readFile(
@@ -114,9 +121,9 @@ const route = await readFile(
 );
 assert.match(client, /sourceResearchPurposes/);
 assert.match(client, /research\.lanes/);
-assert.match(route, /candidateCounterPurposeCount/);
-assert.match(route, /counter_evidence research purpose means/);
-assert.match(route, /does not mean the span necessarily contradicts/);
+assert.match(route, /candidateFromCounterPurposeSourceCount/);
+assert.match(route, /Research purpose describes why a source was retrieved/);
+assert.match(route, /does not classify any individual candidate span/);
 assert.equal((route.match(/client\.responses\.create\(/g) || []).length, 3);
 
 console.log("Stage 0.15B.6G counter/uncertainty provenance preservation: PASS");
