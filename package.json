@@ -65,6 +65,7 @@
     "test:script-duration-contract": "node --experimental-strip-types scripts/post-0-13c-c-script-duration-contract-test.mjs",
     "test:strategy-script-authority": "node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs",
     "test:long-form-grounded-acceptance": "node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs",
+    "test:stage-0-16b": "node --experimental-strip-types scripts/stage-0-16b-role-useful-editorial-breadth-test.mjs",
     "test:project-lifecycle-authority": "node --experimental-strip-types scripts/post-long-form-project-lifecycle-authority-test.mjs",
     "test:creatorlab-new-project-persistence": "node --experimental-strip-types scripts/post-creatorlab-new-project-persistence-test.mjs",
     "test:post-0-13b-workflow": "node --experimental-strip-types scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",

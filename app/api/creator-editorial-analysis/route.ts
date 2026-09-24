@@ -45,6 +45,40 @@ function parseModelJson(raw: string) {
   }
 }
 
+function createInitialProviderSelectionDiagnostics(value: unknown) {
+  const proposal = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const claims = Array.isArray(proposal.claims) ? proposal.claims : [];
+  const evidence = Array.isArray(proposal.evidence) ? proposal.evidence : [];
+  const links = Array.isArray(proposal.links) ? proposal.links : [];
+  const claimTypeCounts: Record<string, number> = {};
+  for (const value of claims) {
+    const item = value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+    const claimType = typeof item.claimType === "string"
+      ? item.claimType.slice(0, 80)
+      : "invalid_or_missing";
+    claimTypeCounts[claimType] = (claimTypeCounts[claimType] || 0) + 1;
+  }
+  const sourceIds = evidence.flatMap((value) => {
+    const item = value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+    return typeof item.sourceId === "string" && item.sourceId
+      ? [item.sourceId]
+      : [];
+  });
+  return {
+    initialProviderParsedClaimCount: claims.length,
+    initialProviderParsedEvidenceCount: evidence.length,
+    initialProviderParsedLinkCount: links.length,
+    initialProviderDistinctSourceCount: new Set(sourceIds).size,
+    initialProviderClaimTypeCounts: claimTypeCounts,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const secured = await enforceCreatorApiBoundary<Record<string, unknown>>(
@@ -108,6 +142,10 @@ export async function POST(request: Request) {
       "Concrete preference means extraction only: never infer or manufacture a researcher, participant, sample, procedure, comparison, number, result, case, or limitation absent from the selected span.",
       "THEORY, EDITORIAL_INFERENCE, METAPHYSICAL_CLAIM, and other legitimately conceptual claims may remain supported by abstract_or_conceptual spans; never force fake empirical structure.",
       "Inspect the supplied candidate spans for material scope conditions, factual or methodological boundaries, alternative explanations, counter-findings, and uncertainty-bearing context. Preserve such material when it exists; never invent it when it does not.",
+      "Do not stop after identifying the first sufficient grounded authority. When supplied spans support them, preserve materially distinct, nonredundant authorities that can serve different documentary functions.",
+      "Treat phenomenon or definition, mechanism or causal process, concrete empirical observation or case, limitation or reliability boundary, social or relational formation, and downstream consequence as selection lenses only, never as required slots or quotas.",
+      "Select fewer materially distinct authorities instead of many redundant paraphrases. Claims are not materially distinct merely because their wording differs.",
+      "Atomicity governs the shape of each claim; it does not require minimizing the number of materially distinct grounded claims.",
       "Research purpose describes why a source was retrieved; it does not classify any individual candidate span.",
       "A counter_evidence source purpose means the source was retrieved to test or qualify the baseline explanation; it does not mean any span from that source contradicts or contextualizes a claim.",
       "Inspect spans from counter-purpose sources for genuine opposing findings, alternative explanations, boundaries, limitations, scope qualifications, and uncertainty-bearing context, but choose stance only from what the exact span supports.",
@@ -151,6 +189,12 @@ export async function POST(request: Request) {
       },
       rules: [
         "Prefer atomic claims that can be independently supported or reviewed.",
+        "Preserve materially distinct grounded authorities useful to different documentary functions when the supplied candidate spans support them; do not stop at the first sufficient authority.",
+        "Use these only as selection lenses when grounded material exists: phenomenon or definition; mechanism or causal process; concrete empirical observation or case; limitation, qualification, or reliability boundary; social, relational, or cultural formation; downstream consequence or real-world implication.",
+        "Do not create a claim merely to fill a selection lens, source quota, section quota, or target count. Legitimately narrow material may return one claim.",
+        "Do not inflate claim count by paraphrasing one proposition several ways. For example, reconstructive memory, memory not being literal playback, and recall rebuilding the past are redundant when they express the same supported proposition.",
+        "Treat authorities such as a reconstructive mechanism, an observed distortion result, a grounded reliability qualification, social shaping, and a downstream consequence as materially distinct only when exact supplied spans independently support those different propositions.",
+        "Atomicity governs claim shape, not graph minimality. Preserve multiple atomic claims only when they represent materially distinct grounded authority.",
         "Do not create more than 30 claims.",
         "Do not create evidence without an exact supplied sourceId and its exact candidate spanId.",
         "Keep claim text concise and distinct from evidence: the claim states the proposition, while the selected evidence span should preserve the strongest available grounded observation, procedure, comparison, case, or result that supports it.",
@@ -214,6 +258,10 @@ export async function POST(request: Request) {
     });
 
     const proposal = parseModelJson(response.output_text || "");
+    console.info(
+      "CREATOR_EDITORIAL_INITIAL_SELECTION_DIAGNOSTICS",
+      JSON.stringify(createInitialProviderSelectionDiagnostics(proposal)),
+    );
     let graph: ResearchClaimEvidenceGraph;
     let groundingRepairAttempted = false;
     const runGroundingRepair = async ({
