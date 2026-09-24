@@ -35,6 +35,15 @@ export type CreatorEvidenceUnit = {
 };
 
 const MAX_PACK_UNITS = 40;
+const MAX_PROMPT_PACK_UNITS = 5;
+const MAX_PROMPT_BINDINGS_PER_STANCE = 1;
+export const CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS = 12_000;
+
+function compactText(value: string | null, maxLength: number) {
+  return typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) || null
+    : null;
+}
 
 function uniqueStable(values: string[]) {
   return [...new Set(values)];
@@ -119,4 +128,69 @@ export function buildCreatorEvidencePack(input: {
   }
   const limit = Math.min(input.maxUnits, MAX_PACK_UNITS);
   return createCreatorEvidenceUnits(input.context).slice(0, limit);
+}
+
+/**
+ * Creates a bounded prompt projection without adding facts or detaching any
+ * evidence from its canonical claim/source identity.
+ */
+export function buildCreatorEvidencePromptPack(input: {
+  context: ScriptPlannerEditorialContext;
+  maxUnits?: number;
+}) {
+  const requestedLimit = input.maxUnits ?? MAX_PROMPT_PACK_UNITS;
+  const maxUnits = Math.min(requestedLimit, MAX_PROMPT_PACK_UNITS);
+  const units = buildCreatorEvidencePack({ context: input.context, maxUnits });
+  const projected = units.map((unit) => {
+    const compactBindings = (bindings: CreatorEvidenceBinding[]) => bindings
+      .slice(0, MAX_PROMPT_BINDINGS_PER_STANCE)
+      .map((binding) => ({
+        evidenceId: binding.evidenceId,
+        sourceId: binding.sourceId,
+        excerpt: compactText(binding.excerpt, 420),
+        contextNote: compactText(binding.contextNote, 180),
+        locator: binding.locator,
+      }));
+    const supportingEvidence = compactBindings(unit.supportingEvidence);
+    const counterEvidence = compactBindings(unit.counterEvidence);
+    const contextualEvidence = compactBindings(unit.contextualEvidence);
+    const includedSourceIds = new Set([
+      ...supportingEvidence,
+      ...counterEvidence,
+      ...contextualEvidence,
+    ].map((binding) => binding.sourceId));
+    return {
+      claimId: unit.claimId,
+      finding: compactText(unit.finding, 600) || "",
+      epistemicStatus: unit.epistemicStatus,
+      supportingEvidence,
+      counterEvidence,
+      contextualEvidence,
+      sourceRefs: unit.sourceRefs
+        .filter((source) => includedSourceIds.has(source.sourceId))
+        .map((source) => ({
+          sourceId: source.sourceId,
+          title: compactText(source.title, 240) || "",
+          publisher: compactText(source.publisher, 160) || "",
+          author: compactText(source.author, 160),
+          publishedAt: compactText(source.publishedAt, 80),
+          directness: source.directness,
+          reviewStatus: source.reviewStatus,
+        })),
+    };
+  });
+  const bounded = [] as typeof projected;
+  for (const unit of projected) {
+    if (JSON.stringify([...bounded, unit]).length > CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS) break;
+    bounded.push(unit);
+  }
+  return bounded;
+}
+
+export function selectCreatorEvidencePromptPackForClaims<T extends { claimId: string }>(input: {
+  pack: T[];
+  claimIds: string[];
+}) {
+  const allowedClaimIds = new Set(input.claimIds);
+  return input.pack.filter((unit) => allowedClaimIds.has(unit.claimId));
 }

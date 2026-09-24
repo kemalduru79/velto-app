@@ -39,6 +39,10 @@ import {
   createCreatorScriptSectionClaimRouting,
 } from "../../../lib/research/creatorLongFormEvidenceReadiness";
 import {
+  buildCreatorEvidencePromptPack,
+  selectCreatorEvidencePromptPackForClaims,
+} from "../../../lib/research/creatorEvidencePack";
+import {
   createCreatorScript,
   assertCreatorScriptNarrationIsProductionSafe,
   assertCreatorScriptHasDistinctEditorialSections,
@@ -803,6 +807,10 @@ async function executeCreatorScriptOperation(input: {
     });
     const narrationEditorialContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
     const narrationAllowedClaimIds = narrationEditorialContext.claims.map((claim) => claim.claimId);
+    const evidenceMomentPack = buildCreatorEvidencePromptPack({
+      context: narrationEditorialContext,
+      maxUnits: 5,
+    });
     const createInitialResponse = (
       requestedSections: typeof sectionBudgetPlan,
       unitIndex: number,
@@ -852,6 +860,55 @@ async function executeCreatorScriptOperation(input: {
             usage: "Control context only. Perform these principles in the narration; never describe, quote, explain, or attribute them in spoken text.",
             appliedByServer: true,
           },
+          evidenceMomentContext: {
+            usage: "Control-only source-bound evidence. IDs are backstage metadata and must never be spoken.",
+            units: selectCreatorEvidencePromptPackForClaims({
+              pack: evidenceMomentPack,
+              claimIds: sectionNative
+                ? createSectionNativeEditorialContext({
+                    context: narrationEditorialContext,
+                    plan: sectionBudgetPlan,
+                    sectionIndex: unitIndex,
+                  }).claims.map((claim) => claim.claimId)
+                : narrationAllowedClaimIds,
+            }),
+          },
+          concreteEvidenceMomentGuidance: sectionNative &&
+            requestedSections[0].id === "section-3" &&
+            evidenceCapabilityEvaluation.inventory.some((item) =>
+              item.routedSectionIds.includes(requestedSections[0].id) &&
+              item.stance === "supports" &&
+              item.specificityClassification === "concrete_observation"
+            )
+            ? {
+                usage: "Control-only narration guidance for the grounded demonstration section.",
+                objective: "Realize one strongest supplied concrete evidence moment; do not substitute a generic research summary.",
+                sequence: [
+                  "supplied setup, procedure, or observed situation",
+                  "supplied observed result",
+                  "what that result demonstrates about this section's mechanism",
+                  "why it matters to the episode's master question",
+                ],
+                rules: [
+                  "Lead with recognizable supplied specifics before broad interpretation.",
+                  "Phrases such as research shows, studies suggest, or experiments demonstrate may introduce evidence but cannot replace the concrete evidence moment.",
+                  "Test or demonstrate the mechanism; do not restate Section 2's mechanism explanation.",
+                  "Use only details present in evidenceMomentContext. Never invent researchers, study titles, sample sizes, dates, institutions, procedures, results, limitations, or attribution.",
+                  "Keep the grounded finding distinct from the editorial implication and do not imply more than the evidence supports.",
+                ],
+              }
+            : null,
+          evidenceUsePriority: sectionNative
+            ? requestedSections[0].id === "section-3"
+              ? "strongest_relevant_evidence_moments"
+              : requestedSections[0].id === "section-4"
+                ? "relevant_counter_or_context_evidence_when_available"
+                : requestedSections[0].kind === "opening"
+                  ? "hook_and_question_before_evidence_detail"
+                  : requestedSections[0].kind === "conclusion"
+                    ? "synthesis_without_new_evidence_dumping"
+                    : "role_relevant_evidence_only"
+            : "role_relevant_evidence_only",
           editorialContext: sectionNative
             ? createSectionNativeEditorialContext({
                 context: narrationEditorialContext,
@@ -881,6 +938,10 @@ async function executeCreatorScriptOperation(input: {
             "Treat editorialSectionPlan as non-narratable control metadata. Execute owns, excludes, establishedPremises, and narrationDirective silently; never quote, paraphrase, label, or explain those controls.",
             "Treat establishedPremises as already known. Perform only the requested section's new owns work; never re-teach an established premise or append a summary that repeats it.",
             "Do not announce a section's function, the inquiry's intent, structural progression, or reserved later work in spoken narration.",
+            "Use the strongest relevant supplied evidence units as concrete documentary evidence moments: state the grounded finding and what was observed, add a boundary only when supplied, then connect it to this section's role and the master question.",
+            "Do not merely summarize the evidence pack or turn the script into a study list. Prefer specific supplied observations over generic authority phrases when the evidence supports specificity.",
+            "Never invent study details, limitations, researchers, samples, dates, numbers, procedures, or results. Mark editorial implications as questions, suggestions, or complications rather than presenting them as directly proven findings.",
+            "Keep evidence and source ids backstage. Use natural documentary narration rather than academic citation syntax.",
             hasMaterialCounterview
               ? "The counterview section must seriously test the master thesis using supplied counter-evidence or alternative findings; token balance language is not sufficient."
               : "Do not invent a counterview. Use the supplied limits-and-uncertainty role to test the thesis only within grounded support.",

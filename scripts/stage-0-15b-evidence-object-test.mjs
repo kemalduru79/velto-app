@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import {
   buildCreatorEvidencePack,
+  buildCreatorEvidencePromptPack,
+  CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS,
   createCreatorEvidenceUnits,
+  selectCreatorEvidencePromptPackForClaims,
 } from "../lib/research/creatorEvidencePack.ts";
 import {
   normalizeScriptPlannerEditorialContext,
@@ -126,6 +129,79 @@ assert.throws(
   /CREATOR_EVIDENCE_PACK_LIMIT_INVALID/,
 );
 
+const memoryPromptPack = buildCreatorEvidencePromptPack({ context: memoryContext });
+const memoryPromptPackCharacters = JSON.stringify(memoryPromptPack).length;
+assert.equal(memoryPromptPack.length, 4, "Prompt packing does not fabricate a five-unit quota");
+assert.deepEqual(buildCreatorEvidencePromptPack({ context: memoryContext }), memoryPromptPack, "Prompt projection is deterministic");
+assert.equal(memoryPromptPack[0].supportingEvidence[0].evidenceId, "e-reconstruction");
+assert.equal(memoryPromptPack[0].supportingEvidence[0].sourceId, "s-memory");
+assert.equal(memoryPromptPack[0].counterEvidence[0].sourceId, "s-limits");
+assert.deepEqual(memoryPromptPack[0].sourceRefs.map((item) => item.sourceId), ["s-memory", "s-limits"]);
+assert.deepEqual(
+  selectCreatorEvidencePromptPackForClaims({
+    pack: memoryPromptPack,
+    claimIds: ["post-event-information", "autobiographical-memory"],
+  }).map((unit) => unit.claimId),
+  ["post-event-information", "autobiographical-memory"],
+  "Section-scoped evidence keeps canonical order and excludes foreign claims",
+);
+assert.deepEqual(selectCreatorEvidencePromptPackForClaims({ pack: memoryPromptPack, claimIds: [] }), []);
+assert.equal("limitation" in memoryPromptPack[1], false, "Prompt projection does not synthesize unsupported limitations");
+assert.equal("sampleSize" in memoryPromptPack[1], false, "Prompt projection does not synthesize study metadata");
+assert.ok(memoryPromptPackCharacters < 8_000, "Memory evidence prompt delta remains compact");
+assert.ok(memoryPromptPackCharacters <= CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS);
+assert.deepEqual(buildCreatorEvidencePromptPack({ context: context({ claims: [], evidence: [], sources: [] }) }), [], "Empty evidence remains a safe empty prompt pack");
+
+const concreteMomentExcerpt = "Researchers showed participants conflicting details after an event; the participants later reported details that were not in the original event.";
+const concreteMomentContext = context({
+  claims: [{
+    claimId: "concrete-memory-demonstration",
+    claimType: "RESEARCH_FINDING",
+    text: "Post-event information can alter a later report.",
+    supportingEvidenceIds: ["e-concrete-moment"],
+    counterEvidenceIds: [],
+    contextualEvidenceIds: [],
+  }],
+  evidence: [{
+    evidenceId: "e-concrete-moment",
+    sourceId: "s-concrete-moment",
+    excerpt: concreteMomentExcerpt,
+    contextNote: null,
+    locator,
+  }],
+  sources: [source("s-concrete-moment", "Concrete memory observation")],
+});
+const concreteMomentPromptPack = buildCreatorEvidencePromptPack({ context: concreteMomentContext });
+assert.equal(
+  concreteMomentPromptPack[0].supportingEvidence[0].excerpt,
+  concreteMomentExcerpt,
+  "A concrete supplied procedure/result remains available for Section 3 narration",
+);
+assert.equal("sampleSize" in concreteMomentPromptPack[0], false);
+
+const abstractMomentPromptPack = buildCreatorEvidencePromptPack({
+  context: context({
+    claims: [{
+      claimId: "abstract-memory-framing",
+      claimType: "THEORY",
+      text: "Memory can be understood as reconstructive.",
+      supportingEvidenceIds: ["e-abstract-moment"],
+      counterEvidenceIds: [],
+      contextualEvidenceIds: [],
+    }],
+    evidence: [{
+      evidenceId: "e-abstract-moment",
+      sourceId: "s-abstract-moment",
+      excerpt: "Memory is reconstructive.",
+      contextNote: null,
+      locator,
+    }],
+    sources: [source("s-abstract-moment", "Abstract memory framing")],
+  }),
+});
+assert.equal(abstractMomentPromptPack[0].supportingEvidence[0].excerpt, "Memory is reconstructive.");
+assert.doesNotMatch(JSON.stringify(abstractMomentPromptPack), /participants|procedure|sample size/i);
+
 const sourceMissing = structuredClone(memoryContext);
 sourceMissing.sources = sourceMissing.sources.filter((item) => item.sourceId !== "s-misinformation");
 assert.equal(
@@ -162,5 +238,16 @@ assert.equal(workUnits[0].epistemicStatus, "FORECAST");
 assert.equal(workUnits[0].supportingEvidence[0].evidenceId, "e-work");
 assert.equal(workUnits[0].counterEvidence[0].evidenceId, "e-work-counter");
 assert.deepEqual(workUnits[0].sourceRefs.map((item) => item.sourceId), ["s-work", "s-work-counter"]);
+const workPromptPack = buildCreatorEvidencePromptPack({ context: workContext });
+assert.equal(workPromptPack.length, 1);
+assert.equal(workPromptPack[0].epistemicStatus, "FORECAST", "Cross-domain epistemic authority survives prompt projection");
+assert.equal(workPromptPack[0].counterEvidence[0].evidenceId, "e-work-counter");
+assert.match(workPromptPack[0].supportingEvidence[0].contextNote || "", /forecast, not an observed job-loss total/i);
 
+console.log("CREATOR_EVIDENCE_PROMPT_PACK_DIAGNOSTICS", {
+  memoryUnitCount: memoryPromptPack.length,
+  memorySerializedCharacters: memoryPromptPackCharacters,
+  crossDomainUnitCount: workPromptPack.length,
+  crossDomainSerializedCharacters: JSON.stringify(workPromptPack).length,
+});
 console.log("STAGE_0_15B_EVIDENCE_OBJECT=PASS");
