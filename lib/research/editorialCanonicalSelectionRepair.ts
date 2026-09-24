@@ -26,6 +26,20 @@ export type EditorialCanonicalRepairOutcome =
   | "additions_found"
   | "no_qualifying_addition";
 
+type EditorialCanonicalAuthorityDiagnostic = {
+  claimId: string;
+  claimType: string;
+  evidenceId: string;
+  selectedSpanId: string | null;
+  sourceId: string;
+  stance: string;
+};
+
+type EditorialCanonicalValidatedAuthorityDiagnostic =
+  EditorialCanonicalAuthorityDiagnostic & {
+    hasUncertaintyCapability: boolean;
+  };
+
 export type EditorialCanonicalSelectionRepairDiagnostic = {
   repairTriggered: boolean;
   repairTriggerReasons: EditorialCanonicalRepairTriggerReason[];
@@ -37,6 +51,10 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   discoveryDistinctSourceCount: number;
   discoveryConcreteCandidateCount: number;
   discoveryCounterPurposeCount: number;
+  counterPurposeDiscoveryCandidates: Array<{
+    spanId: string;
+    sourceId: string;
+  }>;
   excludedAlreadyRepresentedSourceCount: number;
   beforeClaimCount: number;
   beforeEvidenceCount: number;
@@ -50,6 +68,8 @@ export type EditorialCanonicalSelectionRepairDiagnostic = {
   postValidationClaimCount: number | null;
   postValidationEvidenceCount: number | null;
   postValidationLinkCount: number | null;
+  returnedAuthorities: EditorialCanonicalAuthorityDiagnostic[];
+  validatedAuthorities: EditorialCanonicalValidatedAuthorityDiagnostic[];
   finalRepairClaimCount: number;
   finalRepairEvidenceCount: number;
   finalRepairDistinctSourceCount: number;
@@ -258,6 +278,76 @@ function parseRepairResponse(value: unknown) {
   };
 }
 
+function cleanDiagnosticId(value: unknown) {
+  return typeof value === "string" ? value.slice(0, 300) : "";
+}
+
+function parsedAuthorityDiagnostics(graph: Record<string, unknown>) {
+  const claims = Array.isArray(graph.claims) ? graph.claims : [];
+  const evidence = Array.isArray(graph.evidence) ? graph.evidence : [];
+  const links = Array.isArray(graph.links) ? graph.links : [];
+  const claimById = new Map(claims.flatMap((value) => {
+    const item = record(value);
+    const claimId = cleanDiagnosticId(item?.claimId);
+    return claimId ? [[claimId, item]] : [];
+  }));
+  const evidenceById = new Map(evidence.flatMap((value) => {
+    const item = record(value);
+    const evidenceId = cleanDiagnosticId(item?.evidenceId);
+    return evidenceId ? [[evidenceId, item]] : [];
+  }));
+  return links.slice(0, 180).flatMap((value) => {
+    const link = record(value);
+    const claimId = cleanDiagnosticId(link?.claimId);
+    const evidenceId = cleanDiagnosticId(link?.evidenceId);
+    const claim = claimById.get(claimId);
+    const item = evidenceById.get(evidenceId);
+    return claim && item ? [{
+      claimId,
+      claimType: cleanDiagnosticId(claim.claimType),
+      evidenceId,
+      selectedSpanId: cleanDiagnosticId(item.spanId) || null,
+      sourceId: cleanDiagnosticId(item.sourceId),
+      stance: cleanDiagnosticId(link?.stance),
+    }] : [];
+  });
+}
+
+function validatedAuthorityDiagnostics(input: {
+  graph: ResearchClaimEvidenceGraph;
+  candidateSpans: EditorialGroundingCandidateSpan[];
+  returnedAuthorities: EditorialCanonicalAuthorityDiagnostic[];
+}) {
+  const claimById = new Map(input.graph.claims.map((claim) => [claim.claimId, claim]));
+  const evidenceById = new Map(input.graph.evidence.map((evidence) => [evidence.evidenceId, evidence]));
+  const returnedByEvidenceId = new Map(input.returnedAuthorities.map((item) => [item.evidenceId, item]));
+  return input.graph.links.slice(0, 180).flatMap((link) => {
+    const claim = claimById.get(link.claimId);
+    const evidence = evidenceById.get(link.evidenceId);
+    if (!claim || !evidence) return [];
+    const returnedSpanId = returnedByEvidenceId.get(evidence.evidenceId)?.selectedSpanId;
+    const returnedSpan = input.candidateSpans.find((span) =>
+      span.spanId === returnedSpanId &&
+      span.sourceId === evidence.sourceId &&
+      span.text === evidence.excerpt
+    );
+    const selectedSpanId = returnedSpan?.spanId || input.candidateSpans.find((span) =>
+      span.sourceId === evidence.sourceId && span.text === evidence.excerpt
+    )?.spanId || null;
+    return [{
+      claimId: claim.claimId,
+      claimType: claim.claimType,
+      evidenceId: evidence.evidenceId,
+      selectedSpanId,
+      sourceId: evidence.sourceId,
+      stance: link.stance,
+      hasUncertaintyCapability: link.stance === "contextualizes" || (
+        link.stance === "supports" && UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType)
+      ),
+    }];
+  });
+}
+
 function sameCanonicalAuthority(
   left: ResearchClaimEvidenceGraph,
   right: ResearchClaimEvidenceGraph,
@@ -409,6 +499,9 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     discoveryDistinctSourceCount: discoverySourceCount,
     discoveryConcreteCandidateCount: discoveryConcreteCount,
     discoveryCounterPurposeCount,
+    counterPurposeDiscoveryCandidates: discovery.spans.filter((span) =>
+      span.researchPurposes?.includes("counter_evidence")
+    ).map((span) => ({ spanId: span.spanId, sourceId: span.sourceId })),
     excludedAlreadyRepresentedSourceCount: discovery.excludedAlreadyRepresentedSourceCount,
     beforeClaimCount: before.claimCount,
     beforeEvidenceCount: before.evidenceCount,
@@ -423,6 +516,8 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     postValidationClaimCount: null,
     postValidationEvidenceCount: null,
     postValidationLinkCount: null,
+    returnedAuthorities: [],
+    validatedAuthorities: [],
     finalRepairClaimCount: before.claimCount,
     finalRepairEvidenceCount: before.evidenceCount,
     finalRepairDistinctSourceCount: before.distinctSourceCount,
@@ -509,6 +604,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     providerParsedClaimCount: parsedRepair.counts.claims,
     providerParsedEvidenceCount: parsedRepair.counts.evidence,
     providerParsedLinkCount: parsedRepair.counts.links,
+    returnedAuthorities: parsedAuthorityDiagnostics(parsedRepair.canonicalGraph),
   };
   let repairedGraph: ResearchClaimEvidenceGraph;
   try {
@@ -525,6 +621,7 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
         postValidationClaimCount: null,
         postValidationEvidenceCount: null,
         postValidationLinkCount: null,
+        validatedAuthorities: [],
         finalRepairClaimCount: before.claimCount,
         finalRepairEvidenceCount: before.evidenceCount,
         finalRepairDistinctSourceCount: before.distinctSourceCount,
@@ -547,6 +644,11 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
     postValidationClaimCount: after.claimCount,
     postValidationEvidenceCount: after.evidenceCount,
     postValidationLinkCount: repairedGraph.links.length,
+    validatedAuthorities: validatedAuthorityDiagnostics({
+      graph: repairedGraph,
+      candidateSpans: input.candidateSpans,
+      returnedAuthorities: providerCounts.returnedAuthorities,
+    }),
   };
   const unchanged = sameCanonicalAuthority(input.graph, repairedGraph);
   const selection = parsedRepair.repairOutcome === "no_qualifying_addition"
