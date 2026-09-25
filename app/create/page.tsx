@@ -54,6 +54,7 @@ import CreatorUploadPicker from "@/components/create/CreatorUploadPicker";
 import CreatorVisualAssetCleanupAction from "@/components/create/CreatorVisualAssetCleanupAction";
 import CreatorVisualStorageStatus from "@/components/create/CreatorVisualStorageStatus";
 import CreatorSceneProductionStatus, {
+  deriveCreatorSceneReviewReasons,
   deriveCreatorSceneTriageStatus,
   getCreatorSceneTriageLabel,
 } from "@/components/create/CreatorSceneProductionStatus";
@@ -19116,6 +19117,17 @@ const generateSceneImage = async (
       motionRequired,
       motionReady,
     });
+    const review = deriveCreatorSceneReviewReasons({
+      failed: scene.videoStatus === "error",
+      narrationState,
+      dialogueState,
+      videoState,
+      continuityAudit,
+      scriptHealthStatus: scriptHealth.status,
+      splitRecommended: scene.timing?.splitRecommended,
+      recommendedSplitCount: scene.timing?.recommendedSplitCount,
+      language: uiLanguage === "en" ? "en" : "tr",
+    });
 
     return {
       id: scene.id,
@@ -19140,6 +19152,8 @@ const generateSceneImage = async (
       outputType: getCreatorEffectiveSceneOutputMode(scene),
       productionTreatment: productionDecision ? CREATOR_PRODUCTION_TREATMENT_LABELS[productionDecision.selectedTreatment][uiLanguage === "en" ? "en" : "tr"] : undefined,
       productionExplanation: productionDecision?.explanation,
+      reviewReasons: review.reasons,
+      reviewAdvisories: review.advisories,
     };
   });
   const creatorMusicConfirmationRequired =
@@ -32908,6 +32922,24 @@ const generateSceneImage = async (
                           </summary>
 
                           <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-5">
+                            {sceneOperationalSummary?.status === "review" && sceneOperationalSummary.reviewReasons.length > 0 && (
+                              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950" data-scene-review-reasons="true">
+                                <strong className="block text-sm">{uiLanguage === "en" ? "Review required" : "Kontrol gerekli"}</strong>
+                                <ul className="mt-2 space-y-2 text-xs leading-5">
+                                  {sceneOperationalSummary.reviewReasons.map((reason) => (
+                                    <li key={reason.code}>
+                                      <span className="font-semibold">{reason.message}</span>
+                                      {reason.action && <span className="block text-amber-800">{uiLanguage === "en" ? "Recommended action: " : "Önerilen aksiyon: "}{reason.action}</span>}
+                                    </li>
+                                  ))}
+                                  {sceneOperationalSummary.reviewAdvisories.map((advisory) => (
+                                    <li key={advisory.code} className="text-amber-800">
+                                      {advisory.message} {advisory.action}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
                             {(scenePrimaryActionUsesCredits || sceneDraftHealth.status !== "ready" || motionFailed) && <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
                               <div>
                                 <span>

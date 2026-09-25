@@ -1,3 +1,6 @@
+import type { CreatorSceneReviewReason } from "@/lib/creator/sceneReviewReasons";
+export { deriveCreatorSceneReviewReasons } from "@/lib/creator/sceneReviewReasons";
+
 export type CreatorSceneTriageStatus =
   | "ready"
   | "needs_action"
@@ -15,6 +18,8 @@ export type CreatorSceneProductionSummary = {
   outputType: "image" | "video";
   productionTreatment?: string;
   productionExplanation?: string;
+  reviewReasons: CreatorSceneReviewReason[];
+  reviewAdvisories: CreatorSceneReviewReason[];
 };
 
 export const deriveCreatorSceneTriageStatus = ({
@@ -122,6 +127,7 @@ export default function CreatorSceneProductionStatus({
       >
           {scenes.map((scene) => {
             const focused = focusedSceneId === scene.id;
+            const compactReviewReason = scene.status === "review" ? scene.reviewReasons[0] : undefined;
             return (
               <li key={scene.id}>
                 <div
@@ -148,7 +154,7 @@ export default function CreatorSceneProductionStatus({
                   <span className="creatorlab-p2c-scene-operation-copy">
                     <strong>{scene.title}</strong>
                     <small>
-                      {scene.durationSec.toFixed(0)}s · {scene.outputType === "video" ? "Video" : language === "en" ? "Image" : "Görsel"} · {getCreatorSceneTriageLabel(scene.status, language)}
+                      {scene.durationSec.toFixed(0)}s · {scene.outputType === "video" ? "Video" : language === "en" ? "Image" : "Görsel"} · {getCreatorSceneTriageLabel(scene.status, language)}{compactReviewReason ? ` · ${compactReviewReason.compactLabel}` : ""}
                     </small>
                   </span>
                   <span className="creatorlab-p2c-scene-operation-progress" aria-hidden="true">
@@ -157,7 +163,7 @@ export default function CreatorSceneProductionStatus({
                     ))}
                   </span>
                   <span className="creatorlab-p2c-scene-operation-status">
-                    {getCreatorSceneTriageLabel(scene.status, language)}
+                    {getCreatorSceneTriageLabel(scene.status, language)}{compactReviewReason ? ` · ${compactReviewReason.compactLabel}` : ""}
                   </span>
                   </button>
                 </div>
