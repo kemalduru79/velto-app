@@ -5,6 +5,37 @@ export type CreatorSceneIdentity = {
 
 export type CreatorAudioCurrentness = "current" | "stale" | "missing" | "not_required";
 
+const CREATOR_VOICE_ROUTE_KEY_PATTERN = /creator-voice-v1:([^:]+):([^:]+):([^:]+):(.*?):([^:]+):(-?\d+(?:\.\d+)?):(-?\d+(?:\.\d+)?):(safe|tight|blocked):(\d+):(\d+):(explicit|fallback)/;
+
+export function normalizeCreatorAudioSettingsKeyForCurrentness(settingsKey?: string) {
+  return String(settingsKey || "").replace(
+    CREATOR_VOICE_ROUTE_KEY_PATTERN,
+    (_match, qualityMode, format, role, voiceProfile, voiceStrategy, _targetDuration, _routeSpeed, _timingStatus, _sceneIndex, _sceneCount, voiceIdentity) => [
+      "creator-voice-v1",
+      qualityMode,
+      format,
+      role,
+      voiceProfile,
+      voiceStrategy,
+      "timing-volatile",
+      "speed-volatile",
+      "status-volatile",
+      "index-volatile",
+      "count-volatile",
+      voiceIdentity,
+    ].join(":"),
+  );
+}
+
+export function areCreatorAudioSettingsKeysCompatible(
+  settingsKey?: string,
+  currentSettingsKey?: string,
+) {
+  if (!settingsKey || !currentSettingsKey) return settingsKey === currentSettingsKey;
+  return normalizeCreatorAudioSettingsKeyForCurrentness(settingsKey) ===
+    normalizeCreatorAudioSettingsKeyForCurrentness(currentSettingsKey);
+}
+
 export function deriveCreatorAudioCurrentness({
   spokenText,
   audioUrl,
@@ -20,7 +51,8 @@ export function deriveCreatorAudioCurrentness({
 }): CreatorAudioCurrentness {
   if (!String(spokenText || "").trim()) return "not_required";
   if (!String(audioUrl || "").trim()) return "missing";
-  return sourceText === spokenText && settingsKey === currentSettingsKey
+  return sourceText === spokenText &&
+    areCreatorAudioSettingsKeysCompatible(settingsKey, currentSettingsKey)
     ? "current"
     : "stale";
 }

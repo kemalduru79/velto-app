@@ -6550,12 +6550,13 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       `${effectiveVoiceProfileId}:${effectiveVoiceId || "profile-default"}`,
     );
 
-    return !!(
-      scene.audioUrl &&
-      scene.audioSourceText &&
-      scene.audioSourceText === scene.narration &&
-      scene.audioSettingsKey === currentSettingsKey
-    );
+    return deriveCreatorAudioCurrentness({
+      spokenText: scene.narration,
+      audioUrl: scene.audioUrl,
+      sourceText: scene.audioSourceText,
+      settingsKey: scene.audioSettingsKey,
+      currentSettingsKey,
+    }) === "current";
   };
 
   const getSceneDialogueAudioStatus = (scene: Scene) => {
@@ -7158,13 +7159,14 @@ const generateSceneImage = async (
     );
 
     let creatorOperationId = options.creatorOperationId || "";
-    if (
-      scene.audioUrl &&
-      scene.audioSourceText &&
-      scene.audioSourceText === scene.narration &&
-      scene.audioSettingsKey === currentSettingsKey
-    ) {
-      return scene.audioUrl;
+    if (deriveCreatorAudioCurrentness({
+      spokenText: scene.narration,
+      audioUrl: scene.audioUrl,
+      sourceText: scene.audioSourceText,
+      settingsKey: scene.audioSettingsKey,
+      currentSettingsKey,
+    }) === "current") {
+      return scene.audioUrl!;
     }
 
     if (!canRunCreatorMediaAction("voice_over")) {
@@ -7414,13 +7416,14 @@ const generateSceneImage = async (
     );
 
     let creatorOperationId = options.creatorOperationId || "";
-    if (
-      scene.dialogueAudioUrl &&
-      scene.dialogueAudioSourceText &&
-      scene.dialogueAudioSourceText === scene.dialogue &&
-      scene.dialogueAudioSettingsKey === currentSettingsKey
-    ) {
-      return scene.dialogueAudioUrl;
+    if (deriveCreatorAudioCurrentness({
+      spokenText: scene.dialogue,
+      audioUrl: scene.dialogueAudioUrl,
+      sourceText: scene.dialogueAudioSourceText,
+      settingsKey: scene.dialogueAudioSettingsKey,
+      currentSettingsKey,
+    }) === "current") {
+      return scene.dialogueAudioUrl!;
     }
 
     if (!canRunCreatorMediaAction("voice_over")) {
