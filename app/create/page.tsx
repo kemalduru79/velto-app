@@ -1149,7 +1149,9 @@ type CreatorUndoEntry = {
   scenes: Scene[];
   productionPackage: CreatorProductionPackage | null;
   refinedScenes: CreatorProductionScene[];
+  audioTimeline: CreatorAudioTimeline | null | undefined;
   selectedCreatorSceneId: string | null;
+  focusedCreatorSceneId: string | null;
   directorState: {
     input: string;
     selectedStrategyDirectionId: string;
@@ -8080,7 +8082,12 @@ const generateSceneImage = async (
         ? cloneCreatorHistoryValue(creatorProductionPackage)
         : null,
       refinedScenes: cloneCreatorHistoryValue(refinedCreatorScenes),
+      audioTimeline: creatorAudioTimeline
+        ? cloneCreatorHistoryValue(creatorAudioTimeline)
+        : creatorAudioTimeline,
       selectedCreatorSceneId: selectedCreatorEditorSceneId,
+      focusedCreatorSceneId:
+        scenes.find((scene) => scene.id === creatorFocusedSceneId)?.creatorSceneId || null,
       directorState: {
         input,
         selectedStrategyDirectionId: creatorSelectedStrategyDirectionId,
@@ -8111,9 +8118,18 @@ const generateSceneImage = async (
       entry.productionPackage ? cloneCreatorHistoryValue(entry.productionPackage) : null,
     );
     setRefinedCreatorScenes(cloneCreatorHistoryValue(entry.refinedScenes));
+    setCreatorAudioTimeline(
+      entry.audioTimeline
+        ? cloneCreatorHistoryValue(entry.audioTimeline)
+        : entry.audioTimeline,
+    );
     setSelectedCreatorEditorSceneId(
       selectCreatorSceneId(restoredScenes, entry.selectedCreatorSceneId),
     );
+    const restoredFocusedScene = restoredScenes.find(
+      (scene) => scene.creatorSceneId === entry.focusedCreatorSceneId,
+    );
+    setCreatorFocusedSceneId(restoredFocusedScene?.id ?? restoredScenes[0]?.id ?? null);
     setInput(entry.directorState.input);
     setCreatorSelectedStrategyDirectionId(entry.directorState.selectedStrategyDirectionId);
     setCreatorSelectedHookPattern(entry.directorState.selectedHookPattern);
@@ -8132,6 +8148,10 @@ const generateSceneImage = async (
     );
     setCreatorAssetCompareSelection({});
     setSceneScriptDrafts({});
+    setSceneInstructions({});
+    setCreatorSceneInspectorTabs({});
+    setCreatorAssetHistoryOpen({});
+    setSceneScriptFitFeedback({});
     setEditingSceneId(null);
     setCreatorTimelinePreviewPlan(null);
     setCreatorEditPlan(null);
@@ -8216,9 +8236,17 @@ const generateSceneImage = async (
       prev.length > 0 ? nextProjection : prev,
     );
     setSelectedCreatorEditorSceneId(selectedCreatorSceneId);
+    const nextFocusedScene = nextScenes.find(
+      (scene) => scene.creatorSceneId === selectedCreatorSceneId,
+    );
+    setCreatorFocusedSceneId(nextFocusedScene?.id ?? nextScenes[0]?.id ?? null);
     setCreatorSelectedSceneIds([]);
     setCreatorAssetCompareSelection({});
     setSceneScriptDrafts({});
+    setSceneInstructions({});
+    setCreatorSceneInspectorTabs({});
+    setCreatorAssetHistoryOpen({});
+    setSceneScriptFitFeedback({});
     setEditingSceneId(null);
     setBatchRenderItems([]);
     setCreatorTimelinePreviewPlan(null);
@@ -8301,9 +8329,37 @@ const generateSceneImage = async (
     setSaveMessage(uiLanguage === "en" ? "Blank scene added." : "Boş sahne eklendi.");
   };
 
-  const deleteSelectedCreatorEditorScene = () => {
-    if (!selectedCreatorEditorSceneId) return;
-    const result = removeCreatorScene(scenes, selectedCreatorEditorSceneId);
+  const creatorSceneStructuralOperationsDisabled =
+    isBatchRendering ||
+    creatorMediaPreflightLoading ||
+    isPreparingAudio ||
+    loadingAudioSceneId !== null ||
+    loadingDialogueSceneId !== null ||
+    redrawLoadingId !== null ||
+    creatorVisualDirectionLoadingId !== null ||
+    sceneScriptFitLoadingId !== null ||
+    Boolean(imageDispatchCountdown) ||
+    Boolean(videoDispatchCountdown) ||
+    activeVisualGenerationSceneIds.length > 0 ||
+    scenes.some((scene) =>
+      scene.videoStatus === "processing" || scene.videoStatus === "delayed"
+    );
+
+  const deleteCreatorScene = (creatorSceneId: string) => {
+    if (creatorSceneStructuralOperationsDisabled || scenes.length <= 1) return;
+    const sceneIndex = scenes.findIndex(
+      (scene) => scene.creatorSceneId === creatorSceneId,
+    );
+    if (sceneIndex < 0) return;
+
+    const confirmed = window.confirm(
+      uiLanguage === "en"
+        ? `Delete Scene ${sceneIndex + 1}? The scene will be removed from this project. Existing media will not be deleted, and you can undo this change.`
+        : `Sahne ${sceneIndex + 1} silinsin mi? Sahne bu projeden kaldırılacak. Üretilen medya silinmeyecek ve bu değişikliği geri alabilirsiniz.`,
+    );
+    if (!confirmed) return;
+
+    const result = removeCreatorScene(scenes, creatorSceneId);
     if (!result.removed) return;
 
     applyCreatorEditorStructuralChange({
@@ -8312,6 +8368,11 @@ const generateSceneImage = async (
       undoLabel: "Delete scene",
       feedback: uiLanguage === "en" ? "Scene deleted — Undo is available." : "Sahne silindi — Geri al kullanılabilir.",
     });
+  };
+
+  const deleteSelectedCreatorEditorScene = () => {
+    if (!selectedCreatorEditorSceneId) return;
+    deleteCreatorScene(selectedCreatorEditorSceneId);
   };
 
   const duplicateSelectedCreatorEditorScene = () => {
@@ -32579,13 +32640,7 @@ const generateSceneImage = async (
                     onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}
                     audioTimeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
                     onAudioTimelineChange={applyCreatorAudioTimelineChange}
-                    sceneOperationsDisabled={
-                      isBatchRendering ||
-                      scenes.some((scene) =>
-                        scene.videoStatus === "processing" ||
-                        scene.videoStatus === "delayed"
-                      )
-                    }
+                    sceneOperationsDisabled={creatorSceneStructuralOperationsDisabled}
                     language={uiLanguage === "en" ? "en" : "tr"}
                   />
                 )}
@@ -33168,13 +33223,29 @@ const generateSceneImage = async (
                                       )}
                                     </div>
                                     {!isEditingScene && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openCreatorSceneEditor(scene)}
-                                        className="min-h-11 shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                      >
-                                        {uiLanguage === "en" ? "Edit script" : "Metni düzenle"}
-                                      </button>
+                                      <div className="flex shrink-0 flex-wrap gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => openCreatorSceneEditor(scene)}
+                                          className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          {uiLanguage === "en" ? "Edit script" : "Metni düzenle"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          data-delete-creator-scene={scene.creatorSceneId || "missing"}
+                                          aria-label={uiLanguage === "en" ? `Delete Scene ${index + 1}` : `Sahne ${index + 1} sil`}
+                                          onClick={() => scene.creatorSceneId && deleteCreatorScene(scene.creatorSceneId)}
+                                          disabled={
+                                            !scene.creatorSceneId ||
+                                            scenes.length <= 1 ||
+                                            creatorSceneStructuralOperationsDisabled
+                                          }
+                                          className="min-h-11 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          {uiLanguage === "en" ? "Delete Scene" : "Sahneyi Sil"}
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
 
