@@ -15,12 +15,15 @@ export type CreatorRecommendedAssetHistoryItem = {
 
 export type CreatorRecommendedVisualScene = {
   id: number;
+  creatorSceneId?: string;
   image?: string;
   videoUrl?: string;
   videoStatus?: string;
   videoJobId?: string;
   videoQueueJobId?: string;
   videoDurationSeconds?: number;
+  videoGenerationSignature?: string;
+  videoPendingGenerationSignature?: string;
   renderMode?: "image" | "video";
   assetHistory?: CreatorRecommendedAssetHistoryItem[];
 };
@@ -36,6 +39,7 @@ export type CreatorRecommendedVideoResult = {
   videoJobId: string;
   videoQueueJobId?: string;
   videoDurationSeconds: number;
+  videoGenerationSignature?: string;
 };
 
 export type CreatorRecommendedVisualOutcome = {
@@ -44,6 +48,27 @@ export type CreatorRecommendedVisualOutcome = {
   treatment: CreatorProductionTreatment;
   error?: string;
 };
+
+export class CreatorVideoReconciliationPendingError extends Error {
+  readonly videoQueueJobId: string;
+  readonly videoStatus: "processing" | "delayed";
+  readonly videoGenerationSignature?: string;
+
+  constructor(
+    message: string,
+    input: {
+      videoQueueJobId: string;
+      videoStatus?: "processing" | "delayed";
+      videoGenerationSignature?: string;
+    },
+  ) {
+    super(message);
+    this.name = "CreatorVideoReconciliationPendingError";
+    this.videoQueueJobId = input.videoQueueJobId;
+    this.videoStatus = input.videoStatus || "processing";
+    this.videoGenerationSignature = input.videoGenerationSignature;
+  }
+}
 
 const NON_GENERATIVE_TREATMENTS = new Set<CreatorProductionTreatment>([
   "source_clip",
@@ -254,6 +279,8 @@ export async function executeCreatorRecommendedVisualBatch<
             videoJobId: video.videoJobId,
             videoQueueJobId: video.videoQueueJobId,
             videoDurationSeconds: video.videoDurationSeconds,
+            videoGenerationSignature: video.videoGenerationSignature,
+            videoPendingGenerationSignature: undefined,
           } as TScene;
           executedTreatment = treatment;
           break;
@@ -287,6 +314,16 @@ export async function executeCreatorRecommendedVisualBatch<
     } catch (error) {
       // Preserve any completed prerequisite (for example, an image created
       // before a routed video failure) rather than discarding paid success.
+      if (error instanceof CreatorVideoReconciliationPendingError) {
+        scene = {
+          ...scene,
+          renderMode: "video",
+          videoStatus: error.videoStatus,
+          videoJobId: error.videoQueueJobId,
+          videoQueueJobId: error.videoQueueJobId,
+          videoPendingGenerationSignature: error.videoGenerationSignature,
+        } as TScene;
+      }
       workingScenes[index] = scene;
       const outcome: CreatorRecommendedVisualOutcome = {
         sceneId: scene.id,

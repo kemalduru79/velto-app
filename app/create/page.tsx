@@ -109,6 +109,7 @@ import {
   type CreatorSceneProductionDecision,
 } from "@/lib/creator/productionIntelligence";
 import {
+  CreatorVideoReconciliationPendingError,
   executeCreatorRecommendedVisualBatch,
   estimateCreatorRecommendedVisualManifest,
   hasCreatorUsableVisual,
@@ -266,6 +267,15 @@ import {
   selectCreatorSceneId,
   synchronizeCreatorSceneProjectionIds,
 } from "@/lib/creator/editorState";
+import {
+  bindCreatorVideoQueueReconciliationJob,
+  claimCreatorVideoQueueReconciliation,
+  getCreatorVideoQueueOwnerKey,
+  isCreatorVideoQueueReconciliationLocallyOwned,
+  releaseCreatorVideoQueueReconciliation,
+  shouldResumeCreatorVideoQueueReconciliation,
+  type CreatorVideoQueueReconciliationOwners,
+} from "@/lib/creator/videoQueueReconciliationOwnership";
 import {
   createCreatorFinalVideoReadiness,
   type CreatorFinalVideoReadinessReport,
@@ -4287,6 +4297,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const videoPollIntervalsRef = useRef<Record<string, NodeJS.Timeout>>({});
   const videoStorageInFlightRef = useRef<Record<string, boolean>>({});
   const delayedVideoPollKeysRef = useRef<Set<string>>(new Set());
+  const locallyAwaitedVideoQueueJobsRef = useRef<CreatorVideoQueueReconciliationOwners>(new Map());
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
 
   useEffect(() => {
@@ -5902,7 +5913,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const getVideoPollKey = (sceneId: number, creatorSceneId?: string) =>
-    isCreatorSceneId(creatorSceneId) ? creatorSceneId : String(sceneId);
+    getCreatorVideoQueueOwnerKey({
+      sceneId,
+      creatorSceneId: isCreatorSceneId(creatorSceneId) ? creatorSceneId : undefined,
+    });
 
   const matchesVideoScene = (
     scene: Scene,
@@ -7849,6 +7863,12 @@ const generateSceneImage = async (
     creatorSceneId?: string,
     generationSignature?: string,
   ) => {
+    if (isCreatorVideoQueueReconciliationLocallyOwned(
+      locallyAwaitedVideoQueueJobsRef.current,
+      { sceneId, creatorSceneId, queueJobId },
+    )) {
+      return;
+    }
     if (!isQueueJobId(queueJobId)) {
       failClosedLegacyCreatorVideo(sceneId, creatorSceneId);
       return;
@@ -9344,8 +9364,12 @@ const generateSceneImage = async (
   const waitForQueuedVideoAndStore = async (
     scene: Scene,
     queueJobId: string,
+    generationSignature?: string,
   ) => {
     const accessToken = await getAccessTokenOrThrow();
+    const creatorSceneId = isCreatorSceneId(scene.creatorSceneId)
+      ? scene.creatorSceneId
+      : undefined;
 
     if (!isQueueJobId(queueJobId)) {
       throw new Error(
@@ -9357,7 +9381,7 @@ const generateSceneImage = async (
 
     setScenes((prev) =>
       prev.map((item) =>
-        item.id === scene.id
+        matchesVideoScene(item, scene.id, creatorSceneId)
           ? {
               ...item,
               videoJobId: queueJobId,
@@ -9394,10 +9418,20 @@ const generateSceneImage = async (
           throw new Error("Video takip işi tamamlandı ancak video adresi alınamadı.");
         }
 
-        return {
-          videoUrl: await storeCompletedVideo({ queueJobId }),
-          videoQueueJobId: queueJobId,
-        };
+        try {
+          return {
+            videoUrl: await storeCompletedVideo({ queueJobId }),
+            videoQueueJobId: queueJobId,
+          };
+        } catch (error) {
+          throw new CreatorVideoReconciliationPendingError(
+            error instanceof Error ? error.message : "Video storage is temporarily unavailable.",
+            {
+              videoQueueJobId: queueJobId,
+              videoGenerationSignature: generationSignature,
+            },
+          );
+        }
       }
 
       if (jobStatus === "cancelled") {
@@ -9407,6 +9441,16 @@ const generateSceneImage = async (
 
       if (jobStatus === "failed") {
         notifyCreditAccountChanged();
+        setScenes((prev) => prev.map((item) =>
+          matchesVideoScene(item, scene.id, creatorSceneId)
+            ? {
+                ...item,
+                videoStatus: "error",
+                videoJobId: queueJobId,
+                videoQueueJobId: queueJobId,
+              }
+            : item
+        ));
         throw new Error(
           data.job.failureMessage ||
             (uiLanguage === "en"
@@ -9418,18 +9462,24 @@ const generateSceneImage = async (
       await wait(3000);
     }
 
-    throw new Error(
+    throw new CreatorVideoReconciliationPendingError(
       uiLanguage === "en"
         ? "Video background job timed out."
         : "Video arka plan işi zaman aşımına uğradı.",
+      {
+        videoQueueJobId: queueJobId,
+        videoStatus: "delayed",
+        videoGenerationSignature: generationSignature,
+      },
     );
   };
 
 
-  const generateSceneVideoAndWait = async (
+  const generateSceneVideoAndWaitOwned = async (
     scene: Scene,
     creatorOperationId?: string,
     batchChildOperationKey?: string,
+    reconciliationOwnerKey?: string,
   ) => {
     if (!scene.image) {
       throw new Error("Video için önce sahne görseli hazırlanmalı.");
@@ -9442,15 +9492,22 @@ const generateSceneImage = async (
       throw new Error("VELTO_CREATOR_OPERATION_ID_REQUIRED");
     }
 
-    clearVideoPollForScene(scene.id);
+    const creatorSceneId = isCreatorLabFlow && isCreatorSceneId(scene.creatorSceneId)
+      ? scene.creatorSceneId
+      : undefined;
+    const generationSignature = isCreatorLabFlow
+      ? getCreatorVideoGenerationSignature(scene)
+      : undefined;
+    clearVideoPollForScene(scene.id, creatorSceneId);
 
     setScenes((prev) =>
       prev.map((item) =>
-        item.id === scene.id
+        matchesVideoScene(item, scene.id, creatorSceneId)
           ? {
               ...item,
               videoStatus: "processing",
               videoUrl: "",
+              videoPendingGenerationSignature: generationSignature,
             }
           : item
       )
@@ -9479,6 +9536,7 @@ const generateSceneImage = async (
           productProfile: isCreatorLabFlow ? "creatorlab" : "storyverse",
           projectId: currentProjectId || undefined,
           sceneId: scene.id,
+          creatorSceneId,
           qualityMode: isCreatorLabFlow ? creatorQualityMode : "standard",
           creatorFormat: isCreatorLabFlow ? creatorFormat : undefined,
           imageUrl: scene.image,
@@ -9513,6 +9571,24 @@ const generateSceneImage = async (
     ) {
       throw new Error(data?.error || "Video oluşturma başlatılamadı.");
     }
+    const queueJobId = isCreatorLabFlow ? String(data.queueJobId || "") : "";
+    if (isCreatorLabFlow && !isQueueJobId(queueJobId)) {
+      throw new Error(
+        uiLanguage === "en"
+          ? "Video tracking job could not be created."
+          : "Video takip işi oluşturulamadı.",
+      );
+    }
+    if (isCreatorLabFlow && reconciliationOwnerKey) {
+      const ownershipBound = bindCreatorVideoQueueReconciliationJob(
+        locallyAwaitedVideoQueueJobsRef.current,
+        reconciliationOwnerKey,
+        queueJobId,
+      );
+      if (!ownershipBound) {
+        throw new Error("CREATOR_VIDEO_QUEUE_RECONCILIATION_OWNERSHIP_LOST");
+      }
+    }
     const storageAdmissionId = isCreatorLabFlow ? "" : String(data.storageAdmissionId || "");
     if (!isCreatorLabFlow && !storageAdmissionId) {
       throw new Error("Video storage admission could not be created.");
@@ -9520,13 +9596,15 @@ const generateSceneImage = async (
 
     setScenes((prev) =>
       prev.map((item) =>
-        item.id === scene.id
+        matchesVideoScene(item, scene.id, creatorSceneId)
           ? {
               ...item,
-              videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
+              videoJobId: isCreatorLabFlow ? queueJobId : data.taskId,
+              videoQueueJobId: queueJobId || undefined,
               videoStorageAdmissionId: storageAdmissionId || undefined,
               videoStatus: "processing",
               videoDurationSeconds: Number(data.duration) || 0,
+              videoPendingGenerationSignature: generationSignature,
             }
           : item
       )
@@ -9537,7 +9615,8 @@ const generateSceneImage = async (
     const queuedVideo = isCreatorLabFlow
       ? await waitForQueuedVideoAndStore(
           scene,
-          String(data.queueJobId || ""),
+          queueJobId,
+          generationSignature,
         )
       : {
           videoUrl: await waitForRunwayVideoAndStore(scene, data.taskId, storageAdmissionId),
@@ -9547,15 +9626,17 @@ const generateSceneImage = async (
 
     setScenes((prev) =>
       prev.map((item) =>
-        item.id === scene.id
+        matchesVideoScene(item, scene.id, creatorSceneId)
           ? {
               ...item,
               videoStatus: "done",
               videoUrl,
-              videoJobId: isCreatorLabFlow ? data.queueJobId : data.taskId,
+              videoJobId: isCreatorLabFlow ? queueJobId : data.taskId,
               videoQueueJobId: queuedVideo.videoQueueJobId || undefined,
               videoStorageAdmissionId: undefined,
               videoDurationSeconds: Number(data.duration) || 0,
+              videoGenerationSignature: generationSignature,
+              videoPendingGenerationSignature: undefined,
             }
           : item
       )
@@ -9563,10 +9644,50 @@ const generateSceneImage = async (
 
     return {
       videoUrl,
-      videoJobId: String(isCreatorLabFlow ? data.queueJobId : data.taskId),
+      videoJobId: String(isCreatorLabFlow ? queueJobId : data.taskId),
       videoQueueJobId: queuedVideo.videoQueueJobId || "",
       videoDurationSeconds: Number(data.duration) || 0,
+      videoGenerationSignature: generationSignature,
     };
+  };
+
+  const generateSceneVideoAndWait = async (
+    scene: Scene,
+    creatorOperationId?: string,
+    batchChildOperationKey?: string,
+  ) => {
+    if (!isCreatorLabFlow) {
+      return generateSceneVideoAndWaitOwned(
+        scene,
+        creatorOperationId,
+        batchChildOperationKey,
+      );
+    }
+    const reconciliationOwnerKey = claimCreatorVideoQueueReconciliation(
+      locallyAwaitedVideoQueueJobsRef.current,
+      {
+        sceneId: scene.id,
+        creatorSceneId: isCreatorSceneId(scene.creatorSceneId)
+          ? scene.creatorSceneId
+          : undefined,
+      },
+    );
+    if (!reconciliationOwnerKey) {
+      throw new Error("CREATOR_VIDEO_QUEUE_RECONCILIATION_ALREADY_OWNED");
+    }
+    try {
+      return await generateSceneVideoAndWaitOwned(
+        scene,
+        creatorOperationId,
+        batchChildOperationKey,
+        reconciliationOwnerKey,
+      );
+    } finally {
+      releaseCreatorVideoQueueReconciliation(
+        locallyAwaitedVideoQueueJobsRef.current,
+        reconciliationOwnerKey,
+      );
+    }
   };
 
   const requestCancelSceneVideo = async (
@@ -18496,21 +18617,26 @@ const generateSceneImage = async (
   useEffect(() => {
     scenes.forEach((scene) => {
       const pollKey = getVideoPollKey(scene.id, scene.creatorSceneId);
+      const queueJobId = isQueueJobId(scene.videoQueueJobId)
+        ? scene.videoQueueJobId!.trim()
+        : isQueueJobId(scene.videoJobId)
+          ? scene.videoJobId!.trim()
+          : "";
       const resumableStatus =
         scene.videoStatus === "processing" || scene.videoStatus === "delayed";
-      if (
-        !resumableStatus ||
-        videoPollIntervalsRef.current[pollKey] ||
-        delayedVideoPollKeysRef.current.has(pollKey)
-      ) {
+      const locallyOwned = isCreatorVideoQueueReconciliationLocallyOwned(
+          locallyAwaitedVideoQueueJobsRef.current,
+          { sceneId: scene.id, creatorSceneId: scene.creatorSceneId, queueJobId },
+        );
+      if (!shouldResumeCreatorVideoQueueReconciliation({
+        resumable: resumableStatus,
+        pollActive: Boolean(videoPollIntervalsRef.current[pollKey]),
+        delayed: delayedVideoPollKeysRef.current.has(pollKey),
+        locallyOwned,
+      })) {
         return;
       }
       if (isCreatorLabFlow) {
-        const queueJobId = isQueueJobId(scene.videoQueueJobId)
-          ? scene.videoQueueJobId!.trim()
-          : isQueueJobId(scene.videoJobId)
-            ? scene.videoJobId!.trim()
-            : "";
         if (queueJobId) pollVideoQueueJob(
           scene.id,
           queueJobId,
