@@ -1,4 +1,5 @@
 import RunwayML from "@runwayml/sdk";
+import { assertRunwayVideoPromptWithinLimit } from "../../creator/videoPromptPolicy.ts";
 import { createLogger } from "@/lib/observability";
 import {
   isProviderConfigured,
@@ -179,6 +180,7 @@ export class RunwayVideoProvider implements VideoProvider {
   }
 
   async createTask(input: VideoProviderCreateInput) {
+    assertRunwayVideoPromptWithinLimit(input.promptText);
     const model = input.runtimeProfile ? validatedModel(input.runtimeProfile.model) : getModel();
     const task = await createRunwayTask(getClient(), model, input);
     const normalized = normalizeTask(task);

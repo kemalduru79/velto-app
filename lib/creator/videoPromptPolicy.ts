@@ -64,3 +64,67 @@ export function buildCreatorVideoProviderPrompt(input: {
     "Preserve subject identity and visual continuity. Avoid frozen frames, abrupt morphing and unrelated scene changes.",
   ].filter(Boolean).join(" ");
 }
+
+function shortenCreatorVideoPromptField(value: string, maximumCharacters: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maximumCharacters) return normalized;
+  const candidate = normalized.slice(0, maximumCharacters + 1);
+  const sentenceBoundary = Math.max(
+    candidate.lastIndexOf(". "),
+    candidate.lastIndexOf("? "),
+    candidate.lastIndexOf("! "),
+    candidate.lastIndexOf("; "),
+  );
+  const minimumUsefulBoundary = Math.floor(maximumCharacters * 0.55);
+  const cleanEnd = sentenceBoundary >= minimumUsefulBoundary
+    ? sentenceBoundary + 1
+    : candidate.slice(0, maximumCharacters).lastIndexOf(" ");
+  return normalized.slice(0, Math.max(1, cleanEnd)).trimEnd();
+}
+
+export function buildRunwaySafeCreatorVideoPrompt(input: {
+  text?: unknown;
+  motionHint?: unknown;
+  cameraDirection?: unknown;
+  emotion?: unknown;
+}) {
+  const semanticPrompt = buildCreatorVideoProviderPrompt(input);
+  if (semanticPrompt.length <= RUNWAY_VIDEO_PROMPT_TARGET_CHARACTERS) {
+    assertRunwayVideoPromptWithinLimit(semanticPrompt);
+    return semanticPrompt;
+  }
+
+  const motion = shortenCreatorVideoPromptField(
+    normalizeCreatorVideoMotionDirection(input.motionHint),
+    160,
+  );
+  const camera = shortenCreatorVideoPromptField(
+    normalizeCreatorVideoCameraDirection(input.cameraDirection),
+    120,
+  );
+  const context = shortenCreatorVideoPromptField(String(input.text || ""), 170);
+  const emotion = shortenCreatorVideoPromptField(String(input.emotion || ""), 40);
+  const prompt = [
+    "Create polished cinematic motion from the supplied image.",
+    motion ? `Motion: ${motion}` : "Motion: restrained natural subject and environmental movement.",
+    camera ? `Camera: ${camera}` : "Camera: stable cinematic framing with gentle drift.",
+    context ? `Context: ${context}` : "",
+    emotion ? `Tone: ${emotion}` : "",
+    "Preserve source framing, subject scale, identity, field of view and composition.",
+    "Keep important subjects and edge details inside frame.",
+    "No zoom, push-in, crop, close-up, digital enlargement or progressive magnification.",
+    "No generated text, captions, subtitles, titles, logos, watermarks or typography.",
+    "No frozen frames, abrupt morphing or unrelated scene changes.",
+  ].filter(Boolean).join(" ");
+
+  assertRunwayVideoPromptWithinLimit(prompt);
+  return prompt;
+}
+export const RUNWAY_VIDEO_PROMPT_HARD_MAX_CHARACTERS = 1_000;
+export const RUNWAY_VIDEO_PROMPT_TARGET_CHARACTERS = 950;
+
+export function assertRunwayVideoPromptWithinLimit(promptText: string) {
+  if (promptText.length > RUNWAY_VIDEO_PROMPT_HARD_MAX_CHARACTERS) {
+    throw new Error("RUNWAY_VIDEO_PROMPT_LIMIT_EXCEEDED");
+  }
+}

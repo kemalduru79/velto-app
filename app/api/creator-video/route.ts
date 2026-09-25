@@ -33,7 +33,7 @@ import {
   validateCreatorVideoRequestBoundary,
 } from "@/lib/security/creatorVideoTaskBindingBoundary";
 import { CREATOR_VIDEO_WORKER_STALE_SECONDS } from "@/lib/creator/videoGeneration";
-import { buildCreatorVideoProviderPrompt } from "@/lib/creator/videoPromptPolicy";
+import { buildCreatorVideoProviderPrompt, buildRunwaySafeCreatorVideoPrompt } from "@/lib/creator/videoPromptPolicy";
 import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 import { inferCreatorProductionSignals } from "@/lib/creator/productionIntelligence";
 import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/video/creatorSmartRouting";
@@ -344,7 +344,9 @@ async function postHandler(req: NextRequest) {
       imageUrl: imageUrl as string,
       lastFrameUrl,
       referenceImageUrls: references,
-      promptText: buildCreatorVideoProviderPrompt(body),
+      promptText: selection.provider.key === "runway"
+        ? buildRunwaySafeCreatorVideoPrompt(body)
+        : buildCreatorVideoProviderPrompt(body),
       requestedRatio: requestedRatio(body),
       durationSec: durationPolicy.durationSec,
       runtimeProfile: routedProfile ? { model: routedProfile.model, resolution: routedProfile.resolution, audioMode: routedProfile.audioMode, profileKey: routedProfile.profileKey, pricingVersion: smartRoute.pricingVersion || undefined } : undefined,
