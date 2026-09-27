@@ -48,6 +48,7 @@ import type { CreatorProductionSubstep } from "@/components/create/CreatorProduc
 import CreatorProductionSetupSummary from "@/components/create/CreatorProductionSetupSummary";
 import { createCreatorProductionSetupPresentation } from "@/components/create/creatorProductionSetupPresentation";
 import CreatorEditor from "@/components/create/CreatorEditor";
+import CreatorVideoTrimControl from "@/components/create/CreatorVideoTrimControl";
 import { useCreatorAudioPreviewPlayback } from "@/components/create/useCreatorAudioPreviewPlayback";
 import CreatorStockPicker from "@/components/create/CreatorStockPicker";
 import CreatorUploadPicker from "@/components/create/CreatorUploadPicker";
@@ -268,8 +269,11 @@ import {
   normalizeCreatorSceneTrim,
   projectCanonicalCreatorScenes,
   removeCreatorScene,
+  matchesExpectedCreatorVideoSource,
   selectCreatorSceneId,
   synchronizeCreatorSceneProjectionIds,
+  updateCreatorSceneTrimById,
+  resolveCreatorSceneVideoSourceDuration,
 } from "@/lib/creator/editorState";
 import {
   bindCreatorVideoQueueReconciliationJob,
@@ -3709,6 +3713,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [sceneInstructions, setSceneInstructions] = useState<Record<number, string>>({});
   const [sceneScriptDrafts, setSceneScriptDrafts] = useState<Record<number, CreatorSceneScriptDraft>>({});
   const [creatorSceneInspectorTabs, setCreatorSceneInspectorTabs] = useState<Record<number, CreatorSceneInspectorTab>>({});
+  const [creatorSceneVideoSourceDurations, setCreatorSceneVideoSourceDurations] = useState<
+    Record<string, { videoUrl: string; durationSec: number }>
+  >({});
+  const creatorSceneVideoPreviewRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const [creatorVisualDirectionLoadingId, setCreatorVisualDirectionLoadingId] = useState<number | null>(null);
   const [creatorSelectedSceneIds, setCreatorSelectedSceneIds] = useState<number[]>([]);
   const [creatorAssetHistoryOpen, setCreatorAssetHistoryOpen] = useState<Record<number, boolean>>({});
@@ -8430,57 +8438,50 @@ const generateSceneImage = async (
     });
   };
 
-  const updateSelectedCreatorSceneTrim = ({
+  const updateCreatorSceneTrim = ({
+    creatorSceneId,
     clipInSec,
     clipOutSec,
     sourceDurationSec,
+    verifiedSourceDurationSec,
   }: {
+    creatorSceneId: string;
+    clipInSec?: number;
+    clipOutSec?: number;
+    sourceDurationSec?: number;
+    verifiedSourceDurationSec?: number;
+  }) => {
+    const result = updateCreatorSceneTrimById({
+      scenes,
+      creatorSceneId,
+      clipInSec,
+      clipOutSec,
+      sourceDurationSec,
+      verifiedSourceDurationSec,
+    });
+    if (!result.changed) return;
+    const targetSceneId = scenes.find((scene) => scene.creatorSceneId === creatorSceneId)?.id;
+
+    applyCreatorEditorStructuralChange({
+      nextScenes: result.scenes,
+      selectedCreatorSceneId: creatorSceneId,
+      undoLabel: result.reset ? "Reset scene trim" : "Trim scene video",
+      feedback: result.reset
+        ? uiLanguage === "en" ? "Video trim reset." : "Video kırpma sıfırlandı."
+        : uiLanguage === "en" ? "Video trim updated." : "Video kırpma güncellendi.",
+    });
+    if (targetSceneId !== undefined) {
+      setCreatorSceneInspectorTabs({ [targetSceneId]: "visual" });
+    }
+  };
+
+  const updateSelectedCreatorSceneTrim = (trim: {
     clipInSec?: number;
     clipOutSec?: number;
     sourceDurationSec?: number;
   }) => {
     if (!selectedCreatorEditorSceneId) return;
-    const selectedScene = scenes.find(
-      (scene) => scene.creatorSceneId === selectedCreatorEditorSceneId,
-    );
-    if (!selectedScene?.videoUrl) return;
-
-    const resetRequested = clipInSec === undefined && clipOutSec === undefined;
-    const normalized = resetRequested
-      ? null
-      : normalizeCreatorSceneTrim({
-          clipInSec,
-          clipOutSec,
-          sourceDurationSec: Number(sourceDurationSec),
-          sourceType: "video",
-        });
-    if (!resetRequested && !normalized?.isTrimmed) return;
-
-    const nextScenes = scenes.map((scene) =>
-      scene.creatorSceneId === selectedCreatorEditorSceneId
-        ? {
-            ...scene,
-            clipInSec: normalized?.clipInSec,
-            clipOutSec: normalized?.clipOutSec,
-          }
-        : scene,
-    );
-    if (
-      nextScenes.every(
-        (scene, index) =>
-          scene.clipInSec === scenes[index]?.clipInSec &&
-          scene.clipOutSec === scenes[index]?.clipOutSec,
-      )
-    ) return;
-
-    applyCreatorEditorStructuralChange({
-      nextScenes,
-      selectedCreatorSceneId: selectedCreatorEditorSceneId,
-      undoLabel: resetRequested ? "Reset scene trim" : "Trim scene video",
-      feedback: resetRequested
-        ? uiLanguage === "en" ? "Video trim reset." : "Video kırpma sıfırlandı."
-        : uiLanguage === "en" ? "Video trim updated." : "Video kırpma güncellendi.",
-    });
+    updateCreatorSceneTrim({ creatorSceneId: selectedCreatorEditorSceneId, ...trim });
   };
 
   const saveSelectedCreatorSceneText = (edit: {
@@ -31711,14 +31712,6 @@ const generateSceneImage = async (
                       <span>{uiLanguage === "en" ? "Confirm the selected premium music before final production." : "Final üretimden önce seçilen premium müziği onayla."}</span>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    data-production-primary-continue="true"
-                    onClick={() => selectCreatorProductionSubstep("create_review")}
-                    className="creatorlab-setup-primary-action"
-                  >
-                    {uiLanguage === "en" ? "Continue to Create & Review" : "Üret ve İncele'ye Devam Et"}
-                  </button>
                 </section>
 
                 <details
@@ -32480,6 +32473,16 @@ const generateSceneImage = async (
 
                   </div>
                 </details>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    data-production-primary-continue="true"
+                    onClick={() => selectCreatorProductionSubstep("create_review")}
+                    className="creatorlab-setup-primary-action"
+                  >
+                    {uiLanguage === "en" ? "Continue to Create & Review" : "Üret ve İncele'ye Devam Et"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -32993,6 +32996,35 @@ const generateSceneImage = async (
                         admittedSceneIds: activeVisualGenerationSceneIds,
                         processingSceneIds: creatorProcessingVisualSceneIds,
                       });
+                      const stableCreatorSceneId = scene.creatorSceneId || "";
+                      const cachedSceneVideoSource =
+                        creatorSceneVideoSourceDurations[stableCreatorSceneId];
+                      const sceneVideoSourceDurationSec = resolveCreatorSceneVideoSourceDuration({
+                        cachedSource: cachedSceneVideoSource,
+                        videoUrl: scene.videoUrl,
+                        persistedDurationSec: scene.videoDurationSeconds,
+                      });
+                      const verifiedSceneVideoSourceDurationSec =
+                        cachedSceneVideoSource?.videoUrl === scene.videoUrl &&
+                        Number.isFinite(cachedSceneVideoSource?.durationSec) &&
+                        Number(cachedSceneVideoSource?.durationSec) > 0
+                          ? Number(cachedSceneVideoSource.durationSec)
+                          : undefined;
+                      const sceneCardTrim = normalizeCreatorSceneTrim({
+                        clipInSec: scene.clipInSec,
+                        clipOutSec: scene.clipOutSec,
+                        sourceDurationSec: sceneVideoSourceDurationSec,
+                        sourceType: "video",
+                      });
+                      const sceneTrimDisabled =
+                        sceneVisualActionBlocked ||
+                        sceneVisualCountdownActive ||
+                        sceneVisualGenerating ||
+                        sceneVideoDispatchCountdownActive ||
+                        scene.videoStatus === "processing" ||
+                        scene.videoStatus === "delayed" ||
+                        isBatchRendering ||
+                        creatorMediaPreflightLoading;
                       const hasDialogue = Boolean(scene.dialogue?.trim());
                       const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
                       const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
@@ -33711,9 +33743,59 @@ const generateSceneImage = async (
                                     {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
                                       <video
                                         data-creator-scene-video-preview="contain"
+                                        ref={(element) => {
+                                          creatorSceneVideoPreviewRefs.current[stableCreatorSceneId] = element;
+                                        }}
                                         src={scene.videoUrl}
                                         controls
                                         playsInline
+                                        preload="metadata"
+                                        onLoadedMetadata={(event) => {
+                                          const videoUrl = scene.videoUrl || "";
+                                          if (!matchesExpectedCreatorVideoSource({
+                                            expectedUrl: videoUrl,
+                                            currentSrc: event.currentTarget.currentSrc,
+                                            baseUrl: event.currentTarget.ownerDocument?.baseURI,
+                                          })) return;
+                                          const duration = event.currentTarget.duration;
+                                          if (!Number.isFinite(duration) || duration <= 0) return;
+                                          setCreatorSceneVideoSourceDurations((current) => {
+                                            const cached = current[stableCreatorSceneId];
+                                            return cached?.videoUrl === videoUrl && cached.durationSec === duration
+                                              ? current
+                                              : { ...current, [stableCreatorSceneId]: { videoUrl, durationSec: duration } };
+                                          });
+                                          const trim = normalizeCreatorSceneTrim({
+                                            clipInSec: scene.clipInSec,
+                                            clipOutSec: scene.clipOutSec,
+                                            sourceDurationSec: duration,
+                                            sourceType: "video",
+                                          });
+                                          if (trim.isTrimmed) event.currentTarget.currentTime = trim.clipInSec || 0;
+                                        }}
+                                        onPlay={(event) => {
+                                          if (!sceneCardTrim.isTrimmed) return;
+                                          const start = sceneCardTrim.clipInSec || 0;
+                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
+                                          if (event.currentTarget.currentTime < start || event.currentTarget.currentTime >= end - 0.02) {
+                                            event.currentTarget.currentTime = start;
+                                          }
+                                        }}
+                                        onTimeUpdate={(event) => {
+                                          if (!sceneCardTrim.isTrimmed) return;
+                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
+                                          if (event.currentTarget.currentTime >= end - 0.02) {
+                                            event.currentTarget.currentTime = end;
+                                            event.currentTarget.pause();
+                                          }
+                                        }}
+                                        onSeeking={(event) => {
+                                          if (!sceneCardTrim.isTrimmed) return;
+                                          const start = sceneCardTrim.clipInSec || 0;
+                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
+                                          if (event.currentTarget.currentTime < start) event.currentTarget.currentTime = start;
+                                          if (event.currentTarget.currentTime > end) event.currentTarget.currentTime = end;
+                                        }}
                                         className="aspect-video w-full bg-slate-950 object-contain"
                                       />
                                     ) : scene.image ? (
@@ -33792,6 +33874,43 @@ const generateSceneImage = async (
                                       </div>
                                     </div>
                                   </div>
+
+                                  {stableCreatorSceneId && sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" && (
+                                    <section className="rounded-xl border border-slate-200 bg-white p-4" data-creator-scene-card-video-trim={stableCreatorSceneId}>
+                                      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                                        <div>
+                                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                            {uiLanguage === "en" ? "Media & Timing" : "Medya ve Zamanlama"}
+                                          </span>
+                                          <strong className="mt-1 block text-sm text-slate-950">
+                                            {uiLanguage === "en" ? "Trim Video" : "Videoyu Kırp"}
+                                          </strong>
+                                        </div>
+                                        <span className="text-xs text-slate-500">
+                                          {uiLanguage === "en" ? "Source" : "Kaynak"}: {sceneVideoSourceDurationSec.toFixed(1)}s
+                                        </span>
+                                      </div>
+                                      <CreatorVideoTrimControl
+                                        sourceDurationSec={sceneVideoSourceDurationSec}
+                                        clipInSec={scene.clipInSec}
+                                        clipOutSec={scene.clipOutSec}
+                                        targetDurationSec={targetDurationSec}
+                                        speechDurationSec={measuredAudioDurationSec}
+                                        speechTailBufferSec={scene.timing?.speechTailBuffer}
+                                        language={uiLanguage === "en" ? "en" : "tr"}
+                                        disabled={sceneTrimDisabled}
+                                        onPreviewBoundary={(seconds) => {
+                                          const video = creatorSceneVideoPreviewRefs.current[stableCreatorSceneId];
+                                          if (video) video.currentTime = seconds;
+                                        }}
+                                        onCommitTrim={(trim) => updateCreatorSceneTrim({
+                                          creatorSceneId: stableCreatorSceneId,
+                                          ...trim,
+                                          verifiedSourceDurationSec: verifiedSceneVideoSourceDurationSec,
+                                        })}
+                                      />
+                                    </section>
+                                  )}
 
                                   {sceneVisualCountdownActive && (
                                     <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">

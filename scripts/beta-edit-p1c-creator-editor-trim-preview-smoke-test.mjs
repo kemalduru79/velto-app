@@ -65,8 +65,8 @@ matches(editorUi, /Start \(seconds\)|Başlangıç \(saniye\)/, "Start control ex
 matches(editorUi, /End \(seconds\)|Bitiş \(saniye\)/, "End control exists"); // 25
 matches(editorUi, /Reset Trim|Kırpmayı Sıfırla/, "Reset exists"); // 26
 check(editor.includes("onLoadedMetadata={handleVideoMetadata}") && editor.includes("videoRef.current?.duration"), "metadata supplies source duration"); // 27
-matches(page, /if \(!resetRequested && !normalized\?\.isTrimmed\) return;/, "invalid trim not persisted"); // 28
-const trimHandler = page.slice(page.indexOf("const updateSelectedCreatorSceneTrim"), page.indexOf("const toggleCreatorAssetCompare"));
+matches(helperSource, /if \(!reset && !normalized\?\.isTrimmed\)/, "invalid trim not persisted"); // 28
+const trimHandler = page.slice(page.indexOf("const updateCreatorSceneTrim"), page.indexOf("const toggleCreatorAssetCompare"));
 absent(trimHandler, /fetch\(|credit|provider|generate/i, "trim update free"); // 29
 absent(trimHandler, /fetch\(|credit|provider|generate/i, "reset free"); // 30
 absent(editorUi, /react-player|video\.js|plyr/i, "no custom player package"); // 31
@@ -107,8 +107,8 @@ check(fixtures.every(([start, end]) => {
   return browser.isTrimmed === server.isTrimmed && browser.visualDurationSec === Number(server.visualDurationSec.toFixed(3));
 }), "preview/export fixtures agree"); // 59
 
-matches(page, /clipInSec: scene\.clipInSec[\s\S]*clipOutSec: scene\.clipOutSec[\s\S]*const updateSelectedCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates final output through deterministic signature mismatch"); // 60
-check(trimHandler.includes('resetRequested ? "Reset scene trim"') && trimHandler.includes("applyCreatorEditorStructuralChange"), "reset uses invalidating mutation path"); // 61
+matches(page, /clipInSec: scene\.clipInSec[\s\S]*clipOutSec: scene\.clipOutSec[\s\S]*const updateCreatorSceneTrim[\s\S]*applyCreatorEditorStructuralChange/, "trim invalidates final output through deterministic signature mismatch"); // 60
+check(trimHandler.includes('result.reset ? "Reset scene trim"') && trimHandler.includes("applyCreatorEditorStructuralChange"), "reset uses invalidating mutation path"); // 61
 absent(editorUi + helperSource, /fetch\(|axios\.|\.request\(|\/api\/creator-(?:video|image)/i, "no provider calls added"); // 62
 absent(editorUi + helperSource, /fetch\(|\/api\/creator-(?:video|image)/i, "no direct generation calls added"); // 63
 const changed = execFileSync("git", ["status", "--short"], { encoding: "utf8" });

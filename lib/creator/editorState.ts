@@ -178,6 +178,114 @@ export function getCreatorSceneEffectiveDuration({
   return roundCreatorClipSeconds(Math.max(visual, target, speech > 0 ? speech + tail : 0));
 }
 
+export function updateCreatorSceneTrimById<
+  TScene extends CreatorSceneIdentity & {
+    videoUrl?: string;
+    videoDurationSeconds?: number;
+    clipInSec?: number;
+    clipOutSec?: number;
+  },
+>({
+  scenes,
+  creatorSceneId,
+  clipInSec,
+  clipOutSec,
+  sourceDurationSec,
+  verifiedSourceDurationSec,
+}: {
+  scenes: readonly TScene[];
+  creatorSceneId: string;
+  clipInSec?: number;
+  clipOutSec?: number;
+  sourceDurationSec?: number;
+  verifiedSourceDurationSec?: number;
+}): { scenes: TScene[]; changed: boolean; reset: boolean } {
+  const target = scenes.find((scene) => scene.creatorSceneId === creatorSceneId);
+  const reset = clipInSec === undefined && clipOutSec === undefined;
+  if (!target?.videoUrl) return { scenes: [...scenes], changed: false, reset };
+
+  const normalized = reset
+    ? null
+    : normalizeCreatorSceneTrim({
+        clipInSec,
+        clipOutSec,
+        sourceDurationSec: Number(sourceDurationSec),
+        sourceType: "video",
+      });
+  if (!reset && !normalized?.isTrimmed) {
+    return { scenes: [...scenes], changed: false, reset };
+  }
+
+  const nextScenes = scenes.map((scene) =>
+    scene.creatorSceneId === creatorSceneId
+      ? {
+          ...scene,
+          videoDurationSeconds:
+            !reset &&
+            Number.isFinite(verifiedSourceDurationSec) &&
+            Number(verifiedSourceDurationSec) > 0
+              ? roundCreatorClipSeconds(Number(verifiedSourceDurationSec))
+              : scene.videoDurationSeconds,
+          clipInSec: normalized?.clipInSec,
+          clipOutSec: normalized?.clipOutSec,
+        }
+      : scene,
+  );
+  const changed = nextScenes.some((scene, index) =>
+    scene.videoDurationSeconds !== scenes[index]?.videoDurationSeconds ||
+    scene.clipInSec !== scenes[index]?.clipInSec ||
+    scene.clipOutSec !== scenes[index]?.clipOutSec);
+  return { scenes: changed ? nextScenes : [...scenes], changed, reset };
+}
+
+export function resolveCreatorSceneVideoSourceDuration({
+  cachedSource,
+  videoUrl,
+  persistedDurationSec,
+}: {
+  cachedSource?: { videoUrl: string; durationSec: number };
+  videoUrl?: string;
+  persistedDurationSec?: number;
+}): number {
+  const cachedDuration = cachedSource?.durationSec;
+  if (
+    cachedSource?.videoUrl === videoUrl &&
+    Number.isFinite(cachedDuration) &&
+    Number(cachedDuration) > 0
+  ) {
+    return Number(cachedDuration);
+  }
+  return Number.isFinite(persistedDurationSec) && Number(persistedDurationSec) > 0
+    ? Number(persistedDurationSec)
+    : 0;
+}
+
+export function matchesExpectedCreatorVideoSource({
+  expectedUrl,
+  currentSrc,
+  baseUrl,
+}: {
+  expectedUrl?: string;
+  currentSrc?: string;
+  baseUrl?: string;
+}): boolean {
+  const expected = expectedUrl?.trim();
+  const current = currentSrc?.trim();
+  if (!expected || !current) return false;
+
+  try {
+    const resolvedExpected = baseUrl
+      ? new URL(expected, baseUrl).href
+      : new URL(expected).href;
+    const resolvedCurrent = baseUrl
+      ? new URL(current, baseUrl).href
+      : new URL(current).href;
+    return resolvedExpected === resolvedCurrent;
+  } catch {
+    return false;
+  }
+}
+
 type CreatorSceneWithDispatchState = CreatorSceneIdentity & {
   videoJobId?: string;
   videoQueueJobId?: string;
