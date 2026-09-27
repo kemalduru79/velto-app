@@ -1,3 +1,8 @@
+import {
+  normalizeVideoClipDuration,
+  type VideoQualityTier,
+} from "../video/videoDurationPolicy.ts";
+
 // The worker defaults to a 15s registry heartbeat; three missed heartbeats
 // fail closed while tolerating one transient delayed write.
 export const CREATOR_VIDEO_WORKER_STALE_SECONDS = 45;
@@ -41,6 +46,33 @@ export function buildLegacyCreatorVideoGenerationSignature(input: CreatorVideoGe
 
 export type CreatorVideoCurrentness = "missing" | "processing" | "delayed" | "error" | "current" | "stale";
 
+function normalizeCreatorVideoSignatureForCurrentness(signature?: string) {
+  const value = String(signature || "");
+  const prefix = "creator-video-v2:";
+  if (!value.startsWith(prefix)) return value;
+  try {
+    const payload = JSON.parse(value.slice(prefix.length)) as Record<string, unknown>;
+    const qualityMode = String(payload.qualityMode || "standard") as VideoQualityTier;
+    return `${prefix}${JSON.stringify({
+      ...payload,
+      duration: normalizeVideoClipDuration(payload.duration, qualityMode).durationSec,
+    })}`;
+  } catch {
+    return value;
+  }
+}
+
+export function areCreatorVideoGenerationSignaturesCompatible(
+  generationSignature?: string,
+  currentSignature?: string,
+) {
+  if (!generationSignature || !currentSignature) {
+    return generationSignature === currentSignature;
+  }
+  return normalizeCreatorVideoSignatureForCurrentness(generationSignature) ===
+    normalizeCreatorVideoSignatureForCurrentness(currentSignature);
+}
+
 export function deriveCreatorVideoCurrentness(input: {
   videoUrl?: string; videoStatus?: string; generationSignature?: string;
   currentSignature: string; legacyCurrentSignature?: string; legacyBaseline?: boolean;
@@ -49,7 +81,10 @@ export function deriveCreatorVideoCurrentness(input: {
   if (input.videoStatus === "delayed") return "delayed";
   if (!String(input.videoUrl || "").trim()) return input.videoStatus === "error" ? "error" : "missing";
   if (!input.generationSignature) return input.legacyBaseline === false ? "stale" : "current";
-  return input.generationSignature === input.currentSignature ||
+  return areCreatorVideoGenerationSignaturesCompatible(
+    input.generationSignature,
+    input.currentSignature,
+  ) ||
     (Boolean(input.legacyCurrentSignature) && input.generationSignature === input.legacyCurrentSignature)
     ? "current"
     : "stale";
