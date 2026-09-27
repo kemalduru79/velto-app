@@ -13,6 +13,7 @@ import { CreatorAudioRenderabilityError, resolveCreatorAudioRenderability } from
 import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
+import { createCreatorVisualCoveragePlan } from "@/lib/creator/visualCoverage";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import {
   creatorGovernanceExportBlockResponse,
@@ -149,7 +150,11 @@ export async function POST(request: Request) {
         exportPayload.scenes = resolveCanonicalCreatorExportScenes(
           Array.isArray(body.scenes) ? body.scenes.filter(
             (scene): scene is Record<string, unknown> => Boolean(scene && typeof scene === "object" && !Array.isArray(scene)),
-          ) : [],
+          ).map((scene) => {
+            const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId.trim() : "";
+            const persistedScene = persistedScenes.get(creatorSceneId);
+            return persistedScene ? { ...scene, assetHistory: persistedScene.assetHistory } : scene;
+          }) : [],
         ).map((scene) => {
           const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
           const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
@@ -162,8 +167,27 @@ export async function POST(request: Request) {
           }
           const persistedScene = persistedScenes.get(scene.creatorSceneId);
           if (!persistedScene) throw new CreatorExportSceneError("invalid_scene_identity");
+          const persistedTiming = persistedScene.timing && typeof persistedScene.timing === "object" && !Array.isArray(persistedScene.timing)
+            ? persistedScene.timing as { targetSceneDuration?: number }
+            : undefined;
+          const visualCoveragePlan = createCreatorVisualCoveragePlan({
+            creatorSceneId: scene.creatorSceneId,
+            image: typeof persistedScene.image === "string" ? persistedScene.image : undefined,
+            videoUrl: typeof persistedScene.videoUrl === "string" ? persistedScene.videoUrl : undefined,
+            videoStatus: typeof persistedScene.videoStatus === "string" ? persistedScene.videoStatus : undefined,
+            videoDurationSeconds: Number(persistedScene.videoDurationSeconds),
+            clipInSec: Number(persistedScene.clipInSec),
+            clipOutSec: Number(persistedScene.clipOutSec),
+            targetDurationSec: Number(persistedScene.targetDurationSec || persistedTiming?.targetSceneDuration),
+            timing: persistedTiming,
+            assetHistory: Array.isArray(persistedScene.assetHistory) ? persistedScene.assetHistory : undefined,
+            visualBlockPlan: Array.isArray(persistedScene.visualBlockPlan) ? persistedScene.visualBlockPlan : undefined,
+          });
           return {
             ...scene,
+            image: typeof persistedScene.image === "string" ? persistedScene.image : "",
+            videoUrl: typeof persistedScene.videoUrl === "string" ? persistedScene.videoUrl : "",
+            visualCoveragePlan,
             narration: persistedScene.narration,
             dialogue: persistedScene.dialogue,
             audioUrl: persistedScene.audioUrl,

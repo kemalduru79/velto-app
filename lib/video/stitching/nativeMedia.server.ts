@@ -5,6 +5,8 @@ import path from "path";
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
 import type { TimelineScenePlan } from "../timelineSync";
+import type { CreatorVisualCoverageBeat } from "../../creator/visualCoverage";
+import { validateCreatorVisualCoveragePlan } from "../../creator/visualCoverage";
 import {
   matchAudioDurationToScene,
   type AudioDurationMatch,
@@ -30,6 +32,8 @@ export type StitchSceneInput = {
   audioUrl?: string;
   dialogueAudioUrl?: string;
   durationSec?: number;
+  creatorSceneId?: string;
+  visualCoveragePlan?: CreatorVisualCoverageBeat[];
   timing?: {
     targetSceneDuration?: number;
     estimatedSpeechSeconds?: number;
@@ -311,12 +315,15 @@ async function createVideoClipSegmentFromSource({
   sourceVideoPath,
   outputVideoPath,
   durationSec,
+  sourceStartSec = 0,
 }: {
   sourceVideoPath: string;
   outputVideoPath: string;
   durationSec: number;
+  sourceStartSec?: number;
 }) {
   await runFfmpeg([
+    ...(sourceStartSec > 0 ? ["-ss", String(sourceStartSec)] : []),
     "-i",
     sourceVideoPath,
     "-vf",
@@ -512,6 +519,59 @@ async function createFallbackVisualFillerVideoBase({
   };
 }
 
+async function createVisualCoverageVideoBase({
+  scene,
+  tempDir,
+  index,
+  durationSec,
+  outputVideoPath,
+}: {
+  scene: StitchSceneInput;
+  tempDir: string;
+  index: number;
+  durationSec: number;
+  outputVideoPath: string;
+}) {
+  const beats = scene.visualCoveragePlan || [];
+  const validation = validateCreatorVisualCoveragePlan({
+    creatorSceneId: scene.creatorSceneId || "",
+    targetDurationSec: durationSec,
+    beats,
+  });
+  if (!validation.fullyCovered || !validation.motionCovered) {
+    throw new Error(`Scene ${scene.id ?? index + 1} visual coverage plan is invalid or incomplete.`);
+  }
+
+  const segmentPaths: string[] = [];
+  for (let beatIndex = 0; beatIndex < beats.length; beatIndex += 1) {
+    const beat = beats[beatIndex];
+    const segmentPath = path.join(tempDir, `scene_${index}_coverage_${beatIndex}.mp4`);
+    if (beat.kind === "video") {
+      const sourcePath = path.join(tempDir, `scene_${index}_coverage_${beatIndex}_source.mp4`);
+      await downloadToFile(beat.sourceUrl, sourcePath);
+      await createVideoClipSegmentFromSource({
+        sourceVideoPath: sourcePath,
+        outputVideoPath: segmentPath,
+        durationSec: beat.durationSec,
+        sourceStartSec: beat.sourceStartSec,
+      });
+    } else if (beat.renderer === "native_zoompan_v1") {
+      await createImageMotionVideoBase({
+        imageUrl: beat.sourceUrl,
+        tempDir,
+        index: index * 100 + beatIndex + 1,
+        durationSec: beat.durationSec,
+        outputVideoPath: segmentPath,
+        motionPreset: beat.motionPreset,
+      });
+    } else {
+      throw new Error(`Scene ${scene.id ?? index + 1} coverage contains an unrenderable beat.`);
+    }
+    segmentPaths.push(segmentPath);
+  }
+  await concatVideoSegments(segmentPaths, beats.map((beat) => beat.durationSec), outputVideoPath);
+}
+
 async function createSilentAudio(outputPath: string, durationSec: number) {
   await runFfmpeg([
     "-f",
@@ -663,6 +723,19 @@ export async function createSceneVideoBase(
   durationSec: number,
 ) {
   const outputVideoPath = path.join(tempDir, `scene_${index}_video.mp4`);
+
+  if (scene.visualCoveragePlan?.length) {
+    await createVisualCoverageVideoBase({ scene, tempDir, index, durationSec, outputVideoPath });
+    return {
+      videoPath: outputVideoPath,
+      fillerPlan: createVisualFillerPlan({
+        targetDurationSec: durationSec,
+        sourceDurationSec: durationSec,
+        hasVideo: true,
+        hasReferenceImage: Boolean(scene.imageUrl),
+      }),
+    };
+  }
 
   if (scene.videoUrl) {
     const sourceVideoPath = path.join(

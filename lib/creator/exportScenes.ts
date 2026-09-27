@@ -3,6 +3,7 @@ type CreatorExportSceneLike = Record<string, unknown> & {
   exportSource?: unknown;
   image?: unknown;
   videoUrl?: unknown;
+  visualCoveragePlan?: unknown;
 };
 
 export class CreatorExportSceneError extends Error {
@@ -30,6 +31,23 @@ export function resolveCanonicalCreatorExportScenes<T extends CreatorExportScene
       ...canonical
     } = scene;
     const exportSource = scene.exportSource === "video" ? "video" : "image";
+    const coverage = Array.isArray(scene.visualCoveragePlan)
+      ? scene.visualCoveragePlan.filter((beat): beat is Record<string, unknown> =>
+          Boolean(beat && typeof beat === "object" && !Array.isArray(beat)))
+      : [];
+    const historyUrls = Array.isArray(scene.assetHistory)
+      ? scene.assetHistory.flatMap((asset) => {
+          if (!asset || typeof asset !== "object" || Array.isArray(asset)) return [];
+          const url = (asset as Record<string, unknown>).url;
+          return typeof url === "string" && url.trim() ? [url] : [];
+        })
+      : [];
+    const availableUrls = new Set(
+      [scene.image, scene.videoUrl, ...historyUrls].filter((value): value is string =>
+        typeof value === "string" && Boolean(value.trim())),
+    );
+    const validCoverage = coverage.length > 0 && coverage.every((beat) =>
+      typeof beat.sourceUrl === "string" && availableUrls.has(beat.sourceUrl));
     const selectedMedia = exportSource === "video" ? scene.videoUrl : scene.image;
     if (typeof selectedMedia !== "string" || !selectedMedia.trim()) {
       throw new CreatorExportSceneError("missing_selected_media");
@@ -38,8 +56,9 @@ export function resolveCanonicalCreatorExportScenes<T extends CreatorExportScene
       ...canonical,
       creatorSceneId,
       exportSource,
-      image: exportSource === "image" && typeof scene.image === "string" ? scene.image : "",
-      videoUrl: exportSource === "video" && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+      image: (exportSource === "image" || validCoverage) && typeof scene.image === "string" ? scene.image : "",
+      videoUrl: (exportSource === "video" || validCoverage) && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+      visualCoveragePlan: validCoverage ? coverage : [],
     };
   });
 }

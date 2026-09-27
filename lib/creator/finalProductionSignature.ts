@@ -15,6 +15,16 @@ type FinalProductionScene = {
   clipOutSec?: number;
   audioUrl?: string;
   dialogueAudioUrl?: string;
+  visualCoveragePlan?: Array<{
+    startSec?: number;
+    endSec?: number;
+    durationSec?: number;
+    kind?: string;
+    sourceUrl?: string;
+    sourceStartSec?: number;
+    renderer?: string;
+    motionPreset?: string;
+  }>;
   timing?: {
     targetSceneDuration?: number;
     narrationDuration?: number;
@@ -86,6 +96,18 @@ export function buildCreatorFinalProductionSignature(input: {
           dialogueDuration: Number(scene.timing?.dialogueDuration || 0),
           speechTailBuffer: Number(scene.timing?.speechTailBuffer || 0),
         },
+        ...(scene.visualCoveragePlan?.length ? {
+          visualCoveragePlan: scene.visualCoveragePlan.map((beat) => ({
+            startSec: Number(beat.startSec || 0),
+            endSec: Number(beat.endSec || 0),
+            durationSec: Number(beat.durationSec || 0),
+            kind: beat.kind || "",
+            source: canonicalCreatorMediaIdentity(beat.sourceUrl),
+            sourceStartSec: Number(beat.sourceStartSec || 0),
+            renderer: beat.renderer || "",
+            motionPreset: beat.motionPreset || "",
+          })),
+        } : {}),
       })),
     ...(Object.prototype.hasOwnProperty.call(input, "audioTimeline")
       ? { audioTimeline: input.audioTimeline === null ? null : renderAudioTimeline(input.audioTimeline!) }

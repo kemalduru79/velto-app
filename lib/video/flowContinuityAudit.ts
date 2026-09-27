@@ -14,6 +14,14 @@ export type FlowContinuityVisualBlock = {
   source?: string;
 };
 
+export type FlowContinuityCoverageBeat = {
+  startSec?: number;
+  endSec?: number;
+  durationSec?: number;
+  kind?: string;
+  renderer?: string;
+};
+
 export type FlowContinuityAuditInputScene = {
   id: string | number;
   source: FlowContinuitySource;
@@ -25,6 +33,7 @@ export type FlowContinuityAuditInputScene = {
   videoDurationSec?: number;
   fallbackVideoDurationSec?: number;
   visualBlocks?: FlowContinuityVisualBlock[];
+  visualCoveragePlan?: FlowContinuityCoverageBeat[];
 };
 
 export type FlowContinuitySceneAudit = {
@@ -32,7 +41,7 @@ export type FlowContinuitySceneAudit = {
   severity: FlowContinuitySeverity;
   risks: FlowContinuityRiskCode[];
   source: FlowContinuitySource;
-  durationSource: "timeline_blocks" | "video_request" | "fallback" | "image_scene" | "missing";
+  durationSource: "coverage_plan" | "timeline_blocks" | "video_request" | "fallback" | "image_scene" | "missing";
   narrationDurationSec: number;
   dialogueDurationSec: number;
   audioDurationSec: number;
@@ -115,6 +124,19 @@ function getVisualDuration(scene: FlowContinuityAuditInputScene) {
     };
   }
 
+  if (Array.isArray(scene.visualCoveragePlan) && scene.visualCoveragePlan.length > 0) {
+    let cursor = 0;
+    for (const beat of scene.visualCoveragePlan) {
+      const start = Number(beat?.startSec);
+      const end = Number(beat?.endSec);
+      const duration = safeDuration(beat?.durationSec);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start ||
+        Math.abs(start - cursor) > 0.02 || Math.abs(duration - (end - start)) > 0.02) break;
+      cursor = end;
+    }
+    if (cursor > 0) return { durationSec: round(cursor), durationSource: "coverage_plan" as const };
+  }
+
   if (scene.source === "video") {
     const videoDurationSec = safeDuration(scene.videoDurationSec);
 
@@ -192,9 +214,20 @@ export function auditFlowContinuityScene(
   const audioOverflowSec = round(
     Math.max(0, audioDurationSec - targetDurationSec),
   );
-  const motionCoverageExpected = hasMotionCoverage(scene.visualBlocks);
+  const coveragePlan = Array.isArray(scene.visualCoveragePlan)
+    ? scene.visualCoveragePlan
+    : [];
+  const hasCoveragePlan = coveragePlan.length > 0;
+  const coverageMotionExpected = hasCoveragePlan &&
+    coveragePlan.every((beat) =>
+      beat.kind === "video" || beat.renderer === "native_zoompan_v1");
+  const motionCoverageExpected = hasCoveragePlan
+    ? coverageMotionExpected
+    : hasMotionCoverage(scene.visualBlocks);
+  const staticCoverageSec = coveragePlan.reduce((sum, beat) =>
+    sum + (beat.kind === "image" && beat.renderer !== "native_zoompan_v1" ? safeDuration(beat.durationSec) : 0), 0);
   const staticHoldSec =
-    scene.source === "image" && !motionCoverageExpected
+    staticCoverageSec > 0 ? staticCoverageSec : scene.source === "image" && !motionCoverageExpected
       ? targetDurationSec
       : scene.source === "video"
         ? uncoveredDurationSec
@@ -226,11 +259,12 @@ export function auditFlowContinuityScene(
   }
 
   if (
-    scene.source === "image" &&
+    (scene.source === "image" || staticCoverageSec > 0) &&
     !motionCoverageExpected &&
     staticHoldSec > STATIC_HOLD_WARNING_SECONDS
   ) {
     risks.push("static_hold_unverified");
+    if (staticCoverageSec > 0) risks.push("freeze_frame_risk");
   }
 
   return {

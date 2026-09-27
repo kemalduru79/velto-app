@@ -80,6 +80,10 @@ import {
   isCreatorPremiumMusicTrackId,
 } from "@/lib/creator/musicLibrary";
 import { resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
+import {
+  createCreatorVisualCoveragePlan,
+  type CreatorVisualCoverageBeat,
+} from "@/lib/creator/visualCoverage";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -849,6 +853,7 @@ type Scene = {
   speechWordCount?: number;
   scriptHealth?: CreatorScriptHealth;
   visualBlockPlan?: CreatorVisualBlockPlan[];
+  visualCoveragePlan?: CreatorVisualCoverageBeat[];
   assetHistory?: CreatorSceneAssetVersion[];
   sceneRole?: import("@/lib/creator/productionIntelligence").CreatorSceneRole;
   contentNature?: import("@/lib/creator/productionIntelligence").CreatorContentNature;
@@ -1097,6 +1102,7 @@ type CreatorProductionScene = {
   speechWordCount?: number;
   scriptHealth?: CreatorScriptHealth;
   visualBlockPlan?: CreatorVisualBlockPlan[];
+  visualCoveragePlan?: CreatorVisualCoverageBeat[];
   clipInSec?: number;
   clipOutSec?: number;
   scriptRevision?: number;
@@ -5363,6 +5369,13 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         (item) => Number(item.id) === Number(scene.id),
       );
       const exportSource = getSceneExportSource(scene);
+      const visualCoveragePlan = createCreatorVisualCoveragePlan({
+        ...scene,
+        targetDurationSec:
+          scene.timing?.targetSceneDuration ||
+          timelineScene?.targetVisualSeconds ||
+          TARGET_SCENE_DURATION_SECONDS,
+      });
 
       return {
         id: scene.id,
@@ -5393,6 +5406,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           timelineScene?.recommendedClipSeconds ||
           DEFAULT_VIDEO_DURATION_SECONDS,
         visualBlocks: timelineScene?.visualBlocks,
+        visualCoveragePlan,
         hasReferenceImage: Boolean(scene.image),
       };
     });
@@ -5480,6 +5494,11 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
           dialogueAudioSourceText: scene.dialogueAudioSourceText || "",
           dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey || "",
           timing: scene.timing || null,
+          visualCoveragePlan: createCreatorVisualCoveragePlan({
+            ...scene,
+            targetDurationSec:
+              scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
+          }),
         };
       });
 
@@ -11314,6 +11333,11 @@ const generateSceneImage = async (
       ? resolveCanonicalCreatorExportScenes(validatedExportScenes.map((scene) => ({
           ...scene,
           exportSource: getSceneExportSource(scene),
+          visualCoveragePlan: createCreatorVisualCoveragePlan({
+            ...scene,
+            targetDurationSec:
+              scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
+          }),
         })))
       : validatedExportScenes;
     const flowContinuityAudit = exportFlowValidation?.audit || null;

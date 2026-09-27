@@ -388,11 +388,17 @@ function createNormalizedAudioFilter(durationSec) {
 }
 
 function createImageMotionFilter(durationSec, motionPreset = "slow_push_in") {
+  const frameCount = Math.max(1, Math.round(durationSec * OUTPUT_FPS));
+  const zoomPan = motionPreset === "soft_pan"
+    ? `zoompan=z='1.015':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
+    : motionPreset === "cutaway"
+      ? `zoompan=z='max(1.01,1.025-on*0.0002)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
+      : `zoompan=z='min(zoom+0.00015,1.025)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`;
   return [
     `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
     `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black`,
     "setsar=1",
-    `fps=${OUTPUT_FPS}`,
+    zoomPan,
     `trim=start=0:duration=${durationSec.toFixed(3)}`,
     "settb=AVTB",
     `setpts=N/(${OUTPUT_FPS}*TB)`,
@@ -991,6 +997,72 @@ async function createSceneClipWithAudio({
     fillerStrategy,
     fillerDurationSec: roundDuration(fillerDurationSec),
   };
+}
+
+function validateVisualCoveragePlan(scene, targetDuration) {
+  const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+  let cursor = 0;
+  const valid = beats.length > 0 && beats.every((beat) => {
+    const start = Number(beat?.startSec);
+    const end = Number(beat?.endSec);
+    const duration = Number(beat?.durationSec);
+    const renderable = beat?.kind === "video" ||
+      (beat?.kind === "image" && beat?.renderer === "native_zoompan_v1");
+    const beatValid = typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
+      Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(duration) &&
+      start >= 0 && end > start && Math.abs(start - cursor) <= 0.02 &&
+      Math.abs(duration - (end - start)) <= 0.02 && renderable;
+    cursor = end;
+    return beatValid;
+  });
+  return valid && Math.abs(cursor - targetDuration) <= 0.05 ? beats : [];
+}
+
+async function createVisualCoverageClipWithAudio({
+  scene,
+  audioPath,
+  outputPath,
+  targetDuration,
+  tempDir,
+  sceneIndex,
+}) {
+  const effectiveDuration = alignDurationToFrameGrid(targetDuration);
+  const beats = validateVisualCoveragePlan(scene, targetDuration);
+  if (beats.length === 0) throw new Error(`Scene ${scene.creatorSceneId || sceneIndex} visual coverage is invalid.`);
+
+  const inputs = [];
+  for (let index = 0; index < beats.length; index += 1) {
+    const beat = beats[index];
+    const sourcePath = path.join(tempDir, `scene-${sceneIndex}-coverage-${index}.${beat.kind === "video" ? "mp4" : "image"}`);
+    await downloadFile(beat.sourceUrl, sourcePath);
+    if (beat.kind === "image") inputs.push("-loop", "1", "-framerate", String(OUTPUT_FPS));
+    inputs.push("-i", sourcePath);
+  }
+  const audioInputIndex = beats.length;
+  if (audioPath) inputs.push("-i", audioPath);
+  else inputs.push("-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=${OUTPUT_AUDIO_SAMPLE_RATE}`);
+
+  const visualFilters = beats.map((beat, index) =>
+    `[${index}:v]${beat.kind === "image"
+      ? createImageMotionFilter(beat.durationSec, beat.motionPreset)
+      : Number(beat.sourceStartSec) > 0
+        ? createCreatorTrimmedVideoFilter({
+            clipInSec: Number(beat.sourceStartSec),
+            visualDurationSec: beat.durationSec,
+            effectiveDurationSec: beat.durationSec,
+          })
+        : createNormalizedVideoFilter(beat.durationSec)}[v${index}]`);
+  const labels = beats.map((_, index) => `[v${index}]`).join("");
+  await runFfmpeg([
+    "-y", ...inputs,
+    "-filter_complex",
+    [...visualFilters, `${labels}concat=n=${beats.length}:v=1:a=0[v]`,
+      `[${audioInputIndex}:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`].join(";"),
+    "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", String(OUTPUT_AUDIO_SAMPLE_RATE),
+    "-ac", "2", "-video_track_timescale", "90000", "-movflags", "+faststart", outputPath,
+  ]);
+  return { durationSec: effectiveDuration, fillerStrategy: "visual_coverage_plan", fillerDurationSec: 0 };
 }
 
 async function concatSceneClips(
@@ -1682,6 +1754,13 @@ function resolveCreatorExportSequence(scenes) {
     seen.add(creatorSceneId);
     const { assetHistory, compareAssetId, compareSelection, selectedHistoryAssetId, ...canonical } = scene;
     const exportSource = scene.exportSource === "video" ? "video" : "image";
+    const coverage = Array.isArray(scene.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+    // The authenticated CreatorLab route has already rebuilt this plan from
+    // persisted scene assets. This boundary validates shape/renderability;
+    // it does not need assetHistory (which is intentionally stripped).
+    const validCoverage = coverage.length > 0 && coverage.every((beat) =>
+      typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
+      (beat.kind === "video" || beat.kind === "image"));
     const selectedMedia = exportSource === "video" ? scene.videoUrl : scene.image;
     if (typeof selectedMedia !== "string" || !selectedMedia.trim()) {
       throw new Error("creator_export_scene_media_missing");
@@ -1690,8 +1769,9 @@ function resolveCreatorExportSequence(scenes) {
       ...canonical,
       creatorSceneId,
       exportSource,
-      image: exportSource === "image" && typeof scene.image === "string" ? scene.image : "",
-      videoUrl: exportSource === "video" && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+      image: (exportSource === "image" || validCoverage) && typeof scene.image === "string" ? scene.image : "",
+      videoUrl: (exportSource === "video" || validCoverage) && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+      visualCoveragePlan: validCoverage ? coverage : [],
     };
   });
 }
@@ -2012,7 +2092,16 @@ app.post("/export-movie", async (req, res) => {
 
 
       const clipResult =
-        sourceType === "video"
+        Array.isArray(scene.visualCoveragePlan) && scene.visualCoveragePlan.length > 0
+          ? await createVisualCoverageClipWithAudio({
+              scene,
+              audioPath: audioForClip,
+              outputPath: clipOutputPath,
+              targetDuration,
+              tempDir,
+              sceneIndex: i + 1,
+            })
+          : sourceType === "video"
           ? await createSceneClipWithAudio({
               videoPath: sourcePath,
               referenceImagePath,
