@@ -157,6 +157,11 @@ import CreatorScriptReview from "@/components/create/CreatorScriptReview";
 import { getCreatorScriptRefinementChangedRanges, getCreatorScriptRefinementReplacementRange } from "@/lib/creator/creatorScriptRefinement";
 import type { CreatorScriptPendingRefinement, CreatorScriptRevisionHistoryEntry } from "@/lib/creator/creatorScriptRevisions";
 import { creatorSceneOutputIsCurrent } from "@/lib/creator/creatorScriptApproval";
+import {
+  resolveCreatorSceneHydrationAuthority,
+  shouldPersistCreatorSceneProjection,
+  type CreatorSceneHydrationAuthority,
+} from "@/lib/creator/creatorScenePersistence";
 import { creatorSceneBuildRecoveryMessage, resolveCreatorScriptEditorialState } from "@/lib/creator/creatorEditorialQa";
 import {
   acceptGeneratedCreatorScript,
@@ -3689,10 +3694,18 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const [creatorSceneHydrationAuthority, setCreatorSceneHydrationAuthority] =
+    useState<CreatorSceneHydrationAuthority>("hydrated_empty");
+  const creatorSceneHydrationAuthorityRef =
+    useRef<CreatorSceneHydrationAuthority>("hydrated_empty");
   const creatorVisualScenesRef = useRef<Scene[]>([]);
 
   useEffect(() => {
     creatorVisualScenesRef.current = scenes;
+    if (!isHydratingRef.current && scenes.length > 0) {
+      creatorSceneHydrationAuthorityRef.current = "hydrated_populated";
+      setCreatorSceneHydrationAuthority("hydrated_populated");
+    }
   }, [scenes]);
 
   const [loadingSetup, setLoadingSetup] = useState(false);
@@ -6784,6 +6797,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setCharacters([]);
     setVisualBible(null);
     setScenes([]);
+    creatorSceneHydrationAuthorityRef.current = "hydrated_empty";
+    setCreatorSceneHydrationAuthority("hydrated_empty");
     setContinuePrompt("");
     setEditingSceneId(null);
     setSceneInstructions({});
@@ -9313,6 +9328,7 @@ const generateSceneImage = async (
   ) => {
     await persistProject(false, {
       sourceScenes: snapshotScenes,
+      persistScenes: true,
       forceInvalidateFinalVideo: invalidateFinalVideo,
     });
   };
@@ -12027,6 +12043,7 @@ const generateSceneImage = async (
       characters?: Character[];
       visualBible?: VisualBible | null;
       forceNewProject?: boolean;
+      persistScenes?: boolean;
     },
     binding: CreatorProjectSaveBinding,
   ) => {
@@ -12039,6 +12056,7 @@ const generateSceneImage = async (
     if (!requestBinding) return;
     const effectiveProjectId = requestBinding.projectId;
     const sourceScenes = lifecycleOverrides.sourceScenes ?? scenes;
+    const includeSceneProjection = lifecycleOverrides.persistScenes === true || !effectiveProjectId;
     const mentorResultForSave = Object.prototype.hasOwnProperty.call(
       lifecycleOverrides,
       "creatorMentorResult",
@@ -12193,13 +12211,15 @@ const generateSceneImage = async (
         visualBible: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "visualBible")
           ? lifecycleOverrides.visualBible
           : visualBible,
-        scenes: sourceScenes,
+        ...(includeSceneProjection ? { scenes: sourceScenes } : {}),
         creatorProductionPackage: persistedProductionPackage,
         ...creatorProjectStateRequestFields(
           isCreatorLabFlow ? "creator_lab" : "storyverse",
           creatorProjectState,
         ),
-        refinedCreatorScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes,
+        ...(includeSceneProjection
+          ? { refinedCreatorScenes: lifecycleOverrides.refinedCreatorScenes ?? refinedCreatorScenes }
+          : {}),
         creatorMentorResult: persistedMentorResult,
         youtubeMetadataResult: Object.prototype.hasOwnProperty.call(lifecycleOverrides, "youtubeMetadata")
           ? lifecycleOverrides.youtubeMetadata ?? null
@@ -12260,6 +12280,15 @@ const generateSceneImage = async (
     showManualMessage = false,
     lifecycleOverrides: Parameters<typeof executePersistProject>[1] = {},
   ) => {
+    if (
+      isCreatorLabFlow
+      && (
+        creatorSceneHydrationAuthorityRef.current === "unknown"
+        || creatorSceneHydrationAuthorityRef.current === "recovery_required"
+      )
+    ) {
+      return;
+    }
     const saveAttempt = projectSaveAttemptRef.current + 1;
     projectSaveAttemptRef.current = saveAttempt;
     creatorPersistenceCurrentRef.current = false;
@@ -12438,7 +12467,12 @@ const generateSceneImage = async (
     }
 
     try {
-      await persistProject(true);
+      await persistProject(true, {
+        persistScenes: shouldPersistCreatorSceneProjection({
+          authority: creatorSceneHydrationAuthorityRef.current,
+          sceneCount: scenes.length,
+        }),
+      });
     } catch (e: any) {
       setSaveMessage("");
       setError(
@@ -12466,11 +12500,14 @@ const generateSceneImage = async (
     const previousProjectId = currentProjectIdRef.current;
     const previousUpdatedAt = projectUpdatedAtRef.current;
     const previousPersistenceCurrent = creatorPersistenceCurrentRef.current;
+    const previousSceneHydrationAuthority = creatorSceneHydrationAuthorityRef.current;
     let loadSucceeded = false;
     const loadGeneration = invalidateProjectPersistence();
     creatorPersistenceCurrentRef.current = false;
     setCreatorScriptGenerationLoading(false);
     setCreatorSceneBuildLoading(false);
+    creatorSceneHydrationAuthorityRef.current = "unknown";
+    setCreatorSceneHydrationAuthority("unknown");
     isHydratingRef.current = true;
     skipAutosaveRef.current = true;
     currentProjectIdRef.current = projectIdToLoad;
@@ -12544,6 +12581,22 @@ const generateSceneImage = async (
       const loadedProjectScenes = isCreatorProject
         ? normalizeCreatorSceneIds(loadedProjectScenesBeforeIdentity)
         : loadedProjectScenesBeforeIdentity;
+      const loadedCreatorSceneHydrationAuthority = isCreatorProject
+        ? resolveCreatorSceneHydrationAuthority({
+            canonicalSceneCount: Array.isArray(canonicalCreatorState?.createReview.scenes)
+              ? canonicalCreatorState.createReview.scenes.length
+              : 0,
+            currentProductionPackageSceneCount:
+              normalizedSavedCreatorPackage?.scenes?.length
+              && creatorSceneOutputIsCurrent({
+                script: canonicalCreatorState?.strategy.script || null,
+                productionPackage: normalizedSavedCreatorPackage,
+                scenes: normalizedSavedCreatorPackage.scenes,
+              })
+                ? normalizedSavedCreatorPackage.scenes.length
+                : 0,
+          })
+        : "hydrated_empty";
       if (isCreatorProject && normalizedSavedCreatorPackage) {
         normalizedSavedCreatorPackage = {
           ...normalizedSavedCreatorPackage,
@@ -12630,6 +12683,8 @@ const generateSceneImage = async (
             }))
           : []
       );
+      creatorSceneHydrationAuthorityRef.current = loadedCreatorSceneHydrationAuthority;
+      setCreatorSceneHydrationAuthority(loadedCreatorSceneHydrationAuthority);
 
       const savedExportResultRecord =
         project.exported_movie_result &&
@@ -12983,6 +13038,8 @@ const generateSceneImage = async (
         currentProjectIdRef.current = previousProjectId;
         projectUpdatedAtRef.current = previousUpdatedAt;
         creatorPersistenceCurrentRef.current = previousPersistenceCurrent;
+        creatorSceneHydrationAuthorityRef.current = previousSceneHydrationAuthority;
+        setCreatorSceneHydrationAuthority(previousSceneHydrationAuthority);
         isHydratingRef.current = false;
         skipAutosaveRef.current = false;
       }
@@ -18708,7 +18765,12 @@ const generateSceneImage = async (
     autosaveTimerRef.current = setTimeout(async () => {
       const autosaveGeneration = projectGenerationRef.current;
       try {
-        await persistProject(false);
+        await persistProject(false, {
+          persistScenes: shouldPersistCreatorSceneProjection({
+            authority: creatorSceneHydrationAuthorityRef.current,
+            sceneCount: scenes.length,
+          }),
+        });
         if (autosaveGeneration !== projectGenerationRef.current) return;
         setSaveMessage(ui.autoSaved);
       } catch (saveError) {
@@ -32490,23 +32552,31 @@ const generateSceneImage = async (
               <div className="creatorlab-production-empty">
                 <div className="creatorlab-production-empty-icon" aria-hidden="true">▤</div>
                 <div>
-                  <strong>{uiLanguage === "en" ? "Prepare the editable scene plan" : "Düzenlenebilir sahne planını hazırla"}</strong>
+                  <strong>{creatorSceneHydrationAuthority === "recovery_required"
+                    ? uiLanguage === "en" ? "Saved scenes need recovery" : "Kaydedilmiş sahnelerin kurtarılması gerekiyor"
+                    : uiLanguage === "en" ? "Prepare the editable scene plan" : "Düzenlenebilir sahne planını hazırla"}</strong>
                   <p>
-                    {uiLanguage === "en"
-                      ? "This creates the storyboard structure only. Visual and voice generation starts later in Create & Review."
-                      : "Bu işlem yalnızca storyboard yapısını oluşturur. Görsel ve ses üretimi daha sonra Oluştur ve İncele aşamasında başlar."}
+                    {creatorSceneHydrationAuthority === "recovery_required"
+                      ? uiLanguage === "en"
+                        ? "A current production scene plan still exists, but the saved Create & Review state is inconsistent. Nothing has been rebuilt or discarded."
+                        : "Güncel bir üretim sahne planı hâlâ mevcut, ancak kaydedilmiş Oluştur ve İncele durumu tutarsız. Hiçbir şey yeniden oluşturulmadı veya silinmedi."
+                      : uiLanguage === "en"
+                        ? "This creates the storyboard structure only. Visual and voice generation starts later in Create & Review."
+                        : "Bu işlem yalnızca storyboard yapısını oluşturur. Görsel ve ses üretimi daha sonra Oluştur ve İncele aşamasında başlar."}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={buildStory}
-                  disabled={buildingStory}
-                  className="creatorlab-production-primary-action"
-                >
-                  {buildingStory
-                    ? uiLanguage === "en" ? "Preparing scenes..." : "Sahneler hazırlanıyor..."
-                    : uiLanguage === "en" ? "Prepare Scenes" : "Sahneleri Hazırla"}
-                </button>
+                {creatorSceneHydrationAuthority !== "recovery_required" && (
+                  <button
+                    type="button"
+                    onClick={buildStory}
+                    disabled={buildingStory}
+                    className="creatorlab-production-primary-action"
+                  >
+                    {buildingStory
+                      ? uiLanguage === "en" ? "Preparing scenes..." : "Sahneler hazırlanıyor..."
+                      : uiLanguage === "en" ? "Prepare Scenes" : "Sahneleri Hazırla"}
+                  </button>
+                )}
               </div>
             ) : (
               <>

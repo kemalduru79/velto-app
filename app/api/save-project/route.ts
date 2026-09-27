@@ -13,6 +13,7 @@ import {
 import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 import { assertCreatorScriptApprovalAuthority, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
+import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,12 @@ export async function POST(req: Request) {
     const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
     const hasScenes = Object.prototype.hasOwnProperty.call(body, "scenes");
     let scenes = Array.isArray(body.scenes) ? body.scenes : body.scenes === null ? null : undefined;
+    const hasRefinedCreatorScenes = Object.prototype.hasOwnProperty.call(body, "refinedCreatorScenes");
+    let refinedCreatorScenes = Array.isArray(body.refinedCreatorScenes)
+      ? body.refinedCreatorScenes
+      : body.refinedCreatorScenes === null
+        ? null
+        : undefined;
 
     if ((!projectId && (!title || !Array.isArray(scenes))) || (hasTitle && !title) || (hasScenes && scenes === undefined)) {
       return NextResponse.json(
@@ -69,6 +76,7 @@ export async function POST(req: Request) {
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
     let shouldInvalidateCreatorProduction = false;
     let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
+    let persistedCreatorStateForPartialSave: CreatorProjectStateSnapshot | null = null;
     if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
       return NextResponse.json(
         { error: "Creator project authority snapshot is invalid.", code: "CREATOR_PROJECT_STATE_INVALID" },
@@ -115,12 +123,73 @@ export async function POST(req: Request) {
       if (textChanged) {
         authoritativeCreatorState = invalidateCreatorSceneAuthorityForScriptChange(authoritativeCreatorState);
         if (hasScenes) scenes = [];
+      } else {
+        const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
+          ? persistedProject.scenes
+          : [];
+        const persistedScenes = persistedState.createReview.scenes.length > 0
+          ? persistedState.createReview.scenes
+          : persistedLegacyScenes;
+        const sceneSaveAuthority = resolveCreatorSceneSaveAuthority({
+          persistedScenes,
+          candidateScenes: candidateState.createReview.scenes,
+          incomingScenes: hasScenes ? scenes : undefined,
+          serverAuthorizedInvalidation: false,
+        });
+        scenes = sceneSaveAuthority.persistedColumnScenes;
+        if (sceneSaveAuthority.preserved) {
+          refinedCreatorScenes = hasRefinedCreatorScenes
+            ? persistedState.production.refinedScenes
+            : refinedCreatorScenes;
+          authoritativeCreatorState = {
+            ...authoritativeCreatorState,
+            production: {
+              ...authoritativeCreatorState.production,
+              refinedScenes: persistedState.production.refinedScenes,
+            },
+            createReview: {
+              ...authoritativeCreatorState.createReview,
+              scenes: sceneSaveAuthority.canonicalScenes,
+            },
+          };
+        } else {
+          authoritativeCreatorState = {
+            ...authoritativeCreatorState,
+            createReview: {
+              ...authoritativeCreatorState.createReview,
+              scenes: sceneSaveAuthority.canonicalScenes,
+            },
+          };
+        }
       }
     }
-    const exportedMovieResult = hasCreatorProjectState && has("exportedMovieResult")
+    if (flowType === "creator_lab" && projectId && !hasCreatorProjectState) {
+      const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
+      if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+      const persistedState = readCreatorProjectState(persistedProject);
+      persistedCreatorStateForPartialSave = persistedState;
+      const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
+        ? persistedProject.scenes
+        : [];
+      const persistedScenes = persistedState.createReview.scenes.length > 0
+        ? persistedState.createReview.scenes
+        : persistedLegacyScenes;
+      const sceneSaveAuthority = resolveCreatorSceneSaveAuthority({
+        persistedScenes,
+        candidateScenes: persistedScenes,
+        incomingScenes: hasScenes ? scenes : undefined,
+        serverAuthorizedInvalidation: false,
+      });
+      scenes = sceneSaveAuthority.persistedColumnScenes;
+      if (sceneSaveAuthority.preserved && hasRefinedCreatorScenes) {
+        refinedCreatorScenes = persistedState.production.refinedScenes;
+      }
+    }
+    const creatorStateForAttachment = authoritativeCreatorState || persistedCreatorStateForPartialSave;
+    const exportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
       ? attachCreatorProjectState(
           body.exportedMovieResult,
-          authoritativeCreatorState as CreatorProjectStateSnapshot,
+          creatorStateForAttachment,
         )
       : body.exportedMovieResult;
     const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
@@ -148,8 +217,8 @@ export async function POST(req: Request) {
         ...(has("youtubeThumbnailResult") ? { youtubeThumbnailResult: body.youtubeThumbnailResult } : {}),
         ...(has("sceneOptimizationResult") ? { sceneOptimizationResult: body.sceneOptimizationResult } : {}),
         ...(has("sceneOptimizationSummary") ? { sceneOptimizationSummary: body.sceneOptimizationSummary } : {}),
-        ...(has("refinedCreatorScenes")
-          ? { refinedCreatorScenes: body.refinedCreatorScenes }
+        ...(hasRefinedCreatorScenes
+          ? { refinedCreatorScenes }
           : {}),
         ...(shouldInvalidateCreatorProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}),
         expectedUpdatedAt,

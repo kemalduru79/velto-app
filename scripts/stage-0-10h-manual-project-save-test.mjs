@@ -15,7 +15,8 @@ assert.match(page, /onClick=\{\(\) => void saveProject\(\)\}/);
 assert.match(page, /"Saving…"/);
 assert.match(page, /"Saved"/);
 
-assert.match(saveProject, /await persistProject\(true\)/);
+assert.match(saveProject, /await persistProject\(true, \{/);
+assert.match(saveProject, /persistScenes: shouldPersistCreatorSceneProjection/);
 assert.match(saveProject, /clearTimeout\(autosaveTimerRef\.current\)/);
 assert.match(saveProject, /setIsSavingProject\(true\)/);
 assert.match(saveProject, /setSaveMessage\(""\)[\s\S]*e\?\.message/);
@@ -30,7 +31,8 @@ assert.match(persistProject, /!isCreatorLabFlow && sourceScenes\.length === 0/);
 assert.equal((persistProject.match(/fetch\("\/api\/save-project"/g) || []).length, 1);
 assert.match(persistProject, /projectSaveQueueRef\.current[\s\S]*executePersistProject/);
 
-assert.match(autosave, /await persistProject\(false\)/);
+assert.match(autosave, /await persistProject\(false, \{/);
+assert.match(autosave, /persistScenes: shouldPersistCreatorSceneProjection/);
 assert.match(autosave, /setSaveMessage\(ui\.autoSaved\)/);
 assert.doesNotMatch(autosave, /saveProject\(\)|setCreatorSelectedWorkspaceStep|navigateCreator/);
 
