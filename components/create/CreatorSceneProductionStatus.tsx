@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CreatorSceneReviewReason } from "@/lib/creator/sceneReviewReasons";
 export { deriveCreatorSceneReviewReasons } from "@/lib/creator/sceneReviewReasons";
 
@@ -71,6 +72,7 @@ export default function CreatorSceneProductionStatus({
   focusedSceneId,
   onFocusScene,
   language,
+  contextualAction,
   selectedSceneIds,
   onToggleSceneSelection,
 }: {
@@ -78,6 +80,7 @@ export default function CreatorSceneProductionStatus({
   focusedSceneId: number | null;
   onFocusScene: (sceneId: number) => void;
   language: "en" | "tr";
+  contextualAction?: ReactNode;
   selectedSceneIds: ReadonlySet<number>;
   onToggleSceneSelection: (sceneId: number) => void;
 }) {
@@ -115,6 +118,9 @@ export default function CreatorSceneProductionStatus({
             )}
           </p>
         </div>
+        {contextualAction && (
+          <div className="creatorlab-p2c-scene-operations-action">{contextualAction}</div>
+        )}
       </div>
 
       <div className="creatorlab-p2c-scene-navigator-label">

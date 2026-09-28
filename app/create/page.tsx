@@ -1175,6 +1175,7 @@ type CreatorUndoEntry = {
   productionPackage: CreatorProductionPackage | null;
   refinedScenes: CreatorProductionScene[];
   audioTimeline: CreatorAudioTimeline | null | undefined;
+  exportSignature: string;
   selectedCreatorSceneId: string | null;
   focusedCreatorSceneId: string | null;
   directorState: {
@@ -8150,6 +8151,7 @@ const generateSceneImage = async (
       audioTimeline: creatorAudioTimeline
         ? cloneCreatorHistoryValue(creatorAudioTimeline)
         : creatorAudioTimeline,
+      exportSignature,
       selectedCreatorSceneId: selectedCreatorEditorSceneId,
       focusedCreatorSceneId:
         scenes.find((scene) => scene.id === creatorFocusedSceneId)?.creatorSceneId || null,
@@ -8188,6 +8190,7 @@ const generateSceneImage = async (
         ? cloneCreatorHistoryValue(entry.audioTimeline)
         : entry.audioTimeline,
     );
+    setExportSignature(entry.exportSignature);
     setSelectedCreatorEditorSceneId(
       selectCreatorSceneId(restoredScenes, entry.selectedCreatorSceneId),
     );
@@ -8340,7 +8343,7 @@ const generateSceneImage = async (
   };
 
   const addCreatorEditorScene = () => {
-    if (!isCreatorLabFlow) return;
+    if (!isCreatorLabFlow || creatorSceneStructuralOperationsDisabled) return;
     const result = addCreatorScene(
       scenes,
       selectedCreatorEditorSceneId,
@@ -8375,23 +8378,13 @@ const generateSceneImage = async (
         }),
       }),
     );
-    pushCreatorUndoSnapshot("Add scene");
-    const nextProjection = projectCreatorEditorScenes(result.scenes);
-    setScenes(result.scenes);
-    setCreatorProductionPackage((prev) => prev ? {
-      ...prev,
-      scenes: nextProjection,
-      sceneCount: result.scenes.length,
-      timelineSyncPlan: undefined,
-    } : prev);
-    setRefinedCreatorScenes((prev) => prev.length > 0 ? nextProjection : prev);
-    setSelectedCreatorEditorSceneId(result.selectedCreatorSceneId);
-    setCreatorSelectedSceneIds([]);
-    setCreatorAssetCompareSelection({});
-    setCreatorTimelinePreviewPlan(null);
-    setCreatorEditPlan(null);
-    setError("");
-    setSaveMessage(uiLanguage === "en" ? "Blank scene added." : "Boş sahne eklendi.");
+    applyCreatorEditorStructuralChange({
+      nextScenes: result.scenes,
+      selectedCreatorSceneId: result.selectedCreatorSceneId,
+      undoLabel: "Add scene",
+      feedback: uiLanguage === "en" ? "Blank scene added." : "Boş sahne eklendi.",
+    });
+    setExportSignature("");
   };
 
   const creatorSceneStructuralOperationsDisabled =
@@ -32960,6 +32953,16 @@ const generateSceneImage = async (
                     selectedSceneIds={creatorSelectedSceneIdSet}
                     onToggleSceneSelection={toggleCreatorSceneSelection}
                     language={uiLanguage === "en" ? "en" : "tr"}
+                    contextualAction={!creatorEditorOpen ? (
+                      <button
+                        type="button"
+                        data-creator-editor-entry="true"
+                        onClick={() => setCreatorEditorOpen(true)}
+                        className="creatorlab-p2c-open-editor"
+                      >
+                        {uiLanguage === "en" ? "Open Editor" : "Editörü Aç"}
+                      </button>
+                    ) : undefined}
                   />
                   </div>
 

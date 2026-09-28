@@ -475,7 +475,8 @@ export default function CreatorEditor({
           type="button"
           aria-label={language === "en" ? "Add new scene" : "Yeni sahne ekle"}
           onClick={onAddScene}
-          className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
+          disabled={sceneOperationsDisabled}
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {language === "en" ? "+ Add Scene" : "+ Sahne Ekle"}
         </button>

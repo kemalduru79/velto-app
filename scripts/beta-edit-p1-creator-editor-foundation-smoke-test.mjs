@@ -106,7 +106,7 @@ matches(page, /isCreatorLabFlow && \(creatorStageVisibility\.production_setup \|
 const editorEntry = page.slice(page.indexOf("creatorEditorOpen && ("), page.indexOf("<CreatorEditor", page.indexOf("creatorEditorOpen && (")));
 check(page.includes("creatorEditorOpen && ("), "editor remains progressively disclosed"); // 46
 matches(page, /setCreatorEditorOpen\(true\)/, "editor has a real state transition"); // 47
-doesNotMatch(page, /contextualAction=\{!creatorEditorOpen/, "scene list has no dominant Open Editor action"); // 48
+matches(page, /contextualAction=\{!creatorEditorOpen[\s\S]*data-creator-editor-entry="true"[\s\S]*setCreatorEditorOpen\(true\)/, "scene list restores the contextual Open Editor entry"); // 48
 matches(page, /creatorEditorOpen && \(\s*<CreatorEditor/, "open state renders CreatorEditor"); // 49
 doesNotMatch(editor, /Edit Video|Videoyu Düzenle|setCreatorEditorOpen/, "CreatorEditor has no dead Edit Video control"); // 50
 doesNotMatch(editorEntry, /fetch\(|generate|buildStory|persistProject|saveProject/i, "opening editor does not generate or save"); // 51
