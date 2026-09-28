@@ -190,7 +190,8 @@ assert.ok(approvalHandler.indexOf('fetch("/api/creator-script/approve"') < appro
 assert.match(production, /resolvePersistedCreatorScriptAuthority/);
 assert.doesNotMatch(component, /createCreatorScriptSceneSegments|\/api\/creator-production/);
 assert.match(page, /onSaveDocument=\{handleSaveCreatorScriptDocument\}/);
-assert.match(page, /persistProject\(false, \{ creatorScript: nextScript \}\)/);
+assert.match(page, /type: "manual_document_edit"[\s\S]*expectedRevision: sourceScript\.revision[\s\S]*documentText: text/);
+assert.match(page, /type: "section_regeneration"[\s\S]*expectedRevision: sourceRevision[\s\S]*targetSectionId: sectionId/);
 assert.match(page, /Your existing script is unchanged; please try again/);
 assert.match(page, /profileSnapshot: creatorStrategyProfileSnapshot \|\| creatorProfile/);
 assert.match(page, /creatorProfile: creatorStrategyProfileSnapshot \|\| creatorProfile/);

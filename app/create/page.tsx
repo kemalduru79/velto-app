@@ -167,7 +167,6 @@ import {
   acceptGeneratedCreatorScript,
   canBuildScenesFromCreatorScript,
   createCreatorStrategyFingerprint,
-  editCreatorScriptDocument,
   getCreatorScriptDocumentText,
   getCreatorScriptDurationContractForScript,
   getCreatorScriptStatus,
@@ -3696,9 +3695,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [creatorSceneHydrationAuthority, setCreatorSceneHydrationAuthority] =
-    useState<CreatorSceneHydrationAuthority>("hydrated_empty");
+    useState<CreatorSceneHydrationAuthority>("unknown");
   const creatorSceneHydrationAuthorityRef =
-    useRef<CreatorSceneHydrationAuthority>("hydrated_empty");
+    useRef<CreatorSceneHydrationAuthority>("unknown");
   const creatorVisualScenesRef = useRef<Scene[]>([]);
 
   useEffect(() => {
@@ -12026,6 +12025,10 @@ const generateSceneImage = async (
       audioTimeline?: CreatorAudioTimeline | null;
       creatorMentorResult?: CreatorMentorResult | null;
       creatorScript?: CreatorScript | null;
+      creatorScriptMutation?:
+        | { type: "manual_document_edit"; expectedRevision: number; documentText: string }
+        | { type: "section_regeneration"; expectedRevision: number; targetSectionId: string; script: CreatorScript }
+        | { type: "generated_script_replacement"; expectedRevision: number | null; script: CreatorScript };
       creatorProductionPackage?: CreatorProductionPackage | null;
       refinedCreatorScenes?: CreatorProductionScene[];
       sceneOptimizationResult?: SceneOptimizationResult[];
@@ -12231,6 +12234,9 @@ const generateSceneImage = async (
         exportSignature: isCreatorLabFlow
           ? candidateFinalVideoSignature || null
           : finalVideoCurrent ? candidateFinalVideoSignature : null,
+        ...(lifecycleOverrides.creatorScriptMutation
+          ? { creatorScriptMutation: lifecycleOverrides.creatorScriptMutation }
+          : {}),
       }),
     });
 
@@ -14995,19 +15001,27 @@ const generateSceneImage = async (
       const nextScript = accepted.script;
       const replacement = await persistCreatorScriptReplacement({
         script: nextScript,
-        persist: () => persistProject(false, {
-          creatorMentorResult: persistedStrategyResult,
-          creatorScript: nextScript,
-          creatorProductionPackage: null,
-          refinedCreatorScenes: [],
-          sourceScenes: [],
-          forceInvalidateFinalVideo: true,
-          storedPublishPackageSignature: "",
-          packageDownloaded: false,
-          publishReady: false,
-          currentPublishSignature: "",
-          releaseConfirmations: CREATOR_RELEASE_CONFIRMATION_DEFAULTS,
-        }),
+        persist: async () => {
+          const saved = await persistProject(false, {
+            creatorMentorResult: persistedStrategyResult,
+            creatorScript: nextScript,
+            creatorScriptMutation: {
+              type: "generated_script_replacement",
+              expectedRevision: creatorScriptRef.current?.revision ?? null,
+              script: nextScript,
+            },
+            creatorProductionPackage: null,
+            refinedCreatorScenes: [],
+            sourceScenes: [],
+            forceInvalidateFinalVideo: true,
+            storedPublishPackageSignature: "",
+            packageDownloaded: false,
+            publishReady: false,
+            currentPublishSignature: "",
+            releaseConfirmations: CREATOR_RELEASE_CONFIRMATION_DEFAULTS,
+          });
+          return saved?.project ? readCreatorProjectState(saved.project).strategy.script || undefined : undefined;
+        },
         advanceAuthority: () => {
           const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
             projectId: currentProjectIdRef.current || currentProjectId,
@@ -15277,12 +15291,17 @@ const generateSceneImage = async (
     const sourceScript = creatorScriptRef.current;
     if (!sourceScript) return;
     try {
-      const nextScript = editCreatorScriptDocument(sourceScript, text);
-      creatorScriptRef.current = nextScript;
-      setCreatorScript(nextScript);
-      const saved = await persistProject(false, { creatorScript: nextScript });
+      const saved = await persistProject(false, {
+        creatorScriptMutation: {
+          type: "manual_document_edit",
+          expectedRevision: sourceScript.revision,
+          documentText: text,
+        },
+      });
       if (saved?.project) {
         const savedState = readCreatorProjectState(saved.project);
+        creatorScriptRef.current = savedState.strategy.script;
+        setCreatorScript(savedState.strategy.script);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
         setScenes([]);
@@ -15331,19 +15350,29 @@ const generateSceneImage = async (
       if (!operationIsActive() || !sourceRevisionIsActive()) return;
       if (!response.ok || !data?.creatorScript) throw new Error(data?.error || "Script section regeneration failed.");
       const nextScript = normalizeCreatorScript(data.creatorScript);
-      installedRevision = nextScript.revision;
-      creatorScriptRef.current = nextScript;
-      setCreatorScript(nextScript);
-      const saved = await persistProject(false, { creatorScript: nextScript });
-      if (!operationIsActive() || creatorScriptRef.current?.revision !== nextScript.revision) return;
+      const saved = await persistProject(false, {
+        creatorScript: nextScript,
+        creatorScriptMutation: {
+          type: "section_regeneration",
+          expectedRevision: sourceRevision,
+          targetSectionId: sectionId,
+          script: nextScript,
+        },
+      });
+      if (!operationIsActive() || !sourceRevisionIsActive()) return;
       if (saved?.project) {
         const savedState = readCreatorProjectState(saved.project);
+        const savedScript = savedState.strategy.script;
+        if (!savedScript) throw new Error("Script section regeneration did not persist an authoritative script.");
+        installedRevision = savedScript.revision;
+        creatorScriptRef.current = savedScript;
+        setCreatorScript(savedScript);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
         setScenes([]);
         setRefinedCreatorScenes([]);
         invalidateFinalVideoForProductionChange();
-      }
+      } else throw new Error("Script section regeneration could not be persisted.");
       setSaveMessage(sectionId === sourceScript.sections[0]?.id
         ? (uiLanguage === "en" ? "Opening strengthened. Review and approve the new revision." : "Açılış güçlendirildi. Yeni sürümü inceleyip onayla.")
         : (uiLanguage === "en" ? "Section regenerated. Review and approve the new revision." : "Bölüm yenilendi. Yeni sürümü inceleyip onayla."));
@@ -31673,7 +31702,7 @@ const generateSceneImage = async (
 
             {creatorScriptIsCurrent && creatorScript && (
               <CreatorScriptReview
-                key={creatorScript.revision}
+                key={`${currentProjectId || "unsaved"}:${creatorScript.revision}`}
                 script={creatorScript}
                 currentStrategyFingerprint={creatorStrategyFingerprint}
                 language={language}

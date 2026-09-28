@@ -14,6 +14,7 @@ import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorS
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 import { assertCreatorScriptApprovalAuthority, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
+import { resolveCreatorScriptMutationAuthority } from "@/lib/creator/creatorScriptMutationAuthority";
 
 export const runtime = "nodejs";
 
@@ -92,30 +93,51 @@ export async function POST(req: Request) {
       const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
       const persistedState = readCreatorProjectState(persistedProject);
       const candidateState = body.creatorProjectState as CreatorProjectStateSnapshot;
-      if (persistedScript && candidateState.strategy.script) {
+      let authoritativeScript;
+      try {
+        authoritativeScript = resolveCreatorScriptMutationAuthority({
+          persistedScript,
+          candidateScript: candidateState.strategy.script,
+          commandValue: body.creatorScriptMutation,
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "CREATOR_SCRIPT_MUTATION_INVALID";
+        const conflict = code === "CREATOR_SCRIPT_MUTATION_STALE" || code === "CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED";
+        return NextResponse.json({
+          error: code === "CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED"
+            ? "Script changes require an explicit mutation operation."
+            : conflict ? "Script changed. Reload before saving this edit." : "Script mutation transition is invalid.",
+          code,
+        }, { status: conflict ? 409 : 400 });
+      }
+      const authoritativeCandidateState = {
+        ...candidateState,
+        strategy: { ...candidateState.strategy, script: authoritativeScript },
+      };
+      if (persistedScript && authoritativeScript) {
         try {
-          assertCreatorScriptVerificationAuthority(persistedScript, candidateState.strategy.script);
-          assertCreatorScriptApprovalAuthority(persistedScript, candidateState.strategy.script);
+          assertCreatorScriptVerificationAuthority(persistedScript, authoritativeScript);
+          assertCreatorScriptApprovalAuthority(persistedScript, authoritativeScript);
         } catch (error) {
           const approvalForged = error instanceof Error && error.message === "CREATOR_SCRIPT_APPROVAL_FORGED";
           return NextResponse.json({ error: approvalForged ? "Script approval must be updated through the approval action." : "Script verification state must be updated through source review.", code: approvalForged ? "CREATOR_SCRIPT_APPROVAL_FORGED" : "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
         }
       }
-      const textChanged = creatorScriptTextChanged(persistedScript, candidateState.strategy.script);
+      const textChanged = creatorScriptTextChanged(persistedScript, authoritativeScript);
       shouldInvalidateCreatorProduction = textChanged;
-      const scriptRevisionChanged = Boolean(persistedScript && candidateState.strategy.script && persistedScript.revision !== candidateState.strategy.script.revision);
-      const revisionHistory = textChanged && persistedScript && candidateState.strategy.script
+      const scriptRevisionChanged = Boolean(persistedScript && authoritativeScript && persistedScript.revision !== authoritativeScript.revision);
+      const revisionHistory = textChanged && persistedScript && authoritativeScript
         ? appendCreatorScriptHistory(persistedState.strategy.revisionHistory || [], {
             fromRevision: persistedScript.revision,
-            toRevision: candidateState.strategy.script.revision,
+            toRevision: authoritativeScript.revision,
             origin: "manual",
-            changes: createCreatorScriptChanges(persistedScript, candidateState.strategy.script),
+            changes: createCreatorScriptChanges(persistedScript, authoritativeScript),
           })
         : persistedState.strategy.revisionHistory || [];
       authoritativeCreatorState = {
-        ...candidateState,
+        ...authoritativeCandidateState,
         strategy: {
-          ...candidateState.strategy,
+          ...authoritativeCandidateState.strategy,
           pendingRefinement: textChanged || scriptRevisionChanged ? null : persistedState.strategy.pendingRefinement || null,
           revisionHistory,
         },

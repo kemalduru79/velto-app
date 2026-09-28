@@ -151,13 +151,13 @@ export function createCreatorScriptReplacementState(
 
 export async function persistCreatorScriptReplacement(input: {
   script: CreatorScript;
-  persist: () => Promise<void>;
+  persist: () => Promise<CreatorScript | void>;
   advanceAuthority: () => boolean;
   isActive: () => boolean;
 }) {
-  await input.persist();
+  const persistedScript = await input.persist();
   if (!input.advanceAuthority() || !input.isActive()) return null;
-  return createCreatorScriptReplacementState(input.script);
+  return createCreatorScriptReplacementState(persistedScript || input.script);
 }
 
 export async function persistCreatorStrategyAuthority(input: {
