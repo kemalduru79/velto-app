@@ -93,6 +93,7 @@ export type CreatorScriptDurationStatus = "compliant" | "too_short" | "too_long"
 
 export const CREATOR_SCRIPT_MIN_DURATION_RATIO = 0.9;
 export const CREATOR_SCRIPT_MAX_DURATION_RATIO = 1.1;
+const CREATOR_SCRIPT_MIN_USABLE_CONCLUSION_DURATION_SEC = 6;
 
 export type CreatorScriptDurationContract = {
   targetDurationSec: number;
@@ -736,6 +737,30 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   const weights = [0.08, ...Array.from({ length: bodyCount }, () => 0.82 / bodyCount), 0.1];
   const targets = weights.map((weight) => Math.floor(duration.targetWordCount * weight));
   targets[targets.length - 1] += duration.targetWordCount - targets.reduce((sum, value) => sum + value, 0);
+  const conclusionIndex = targets.length - 1;
+  const minimumUsableConclusionWords = Math.round(
+    getCreatorScriptWordsPerSecond(input.language) * CREATOR_SCRIPT_MIN_USABLE_CONCLUSION_DURATION_SEC,
+  );
+  const minimumBodyWords = Math.max(bodyCount, Math.floor(duration.targetWordCount / 2) + 1);
+  const maximumConclusionWords = duration.targetWordCount - Math.max(1, targets[0]) - minimumBodyWords;
+  const conclusionTargetWords = Math.min(
+    Math.max(targets[conclusionIndex], minimumUsableConclusionWords),
+    maximumConclusionWords,
+  );
+  let conclusionShortfall = Math.max(0, conclusionTargetWords - targets[conclusionIndex]);
+  for (let index = conclusionIndex - 1; index > 0 && conclusionShortfall > 0; index -= 1) {
+    const transferableWords = Math.min(conclusionShortfall, Math.max(0, targets[index] - 1));
+    targets[index] -= transferableWords;
+    conclusionShortfall -= transferableWords;
+  }
+  targets[conclusionIndex] = conclusionTargetWords - conclusionShortfall;
+  if (targets[0] < 1) {
+    const donorIndex = targets.findIndex((targetWords, index) => index > 0 && index < conclusionIndex && targetWords > 1);
+    if (donorIndex >= 0) {
+      targets[donorIndex] -= 1;
+      targets[0] = 1;
+    }
+  }
   const longForm = duration.targetWordCount > getCreatorScriptSafeSingleCallTargetWords();
   const bodyFunctions: Array<Pick<CreatorScriptSectionBudget, "role" | "centralQuestion" | "progression" | "ownershipBoundary">> = [
     {
