@@ -9,6 +9,7 @@ import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { resolveRuntimeRelease } from "./runtimeIdentity.js";
 import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
+import { reconcileVisualCoveragePlan } from "./visualCoverage.js";
 
 const app = express();
 
@@ -999,25 +1000,6 @@ async function createSceneClipWithAudio({
   };
 }
 
-function validateVisualCoveragePlan(scene, targetDuration) {
-  const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
-  let cursor = 0;
-  const valid = beats.length > 0 && beats.every((beat) => {
-    const start = Number(beat?.startSec);
-    const end = Number(beat?.endSec);
-    const duration = Number(beat?.durationSec);
-    const renderable = beat?.kind === "video" ||
-      (beat?.kind === "image" && beat?.renderer === "native_zoompan_v1");
-    const beatValid = typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
-      Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(duration) &&
-      start >= 0 && end > start && Math.abs(start - cursor) <= 0.02 &&
-      Math.abs(duration - (end - start)) <= 0.02 && renderable;
-    cursor = end;
-    return beatValid;
-  });
-  return valid && Math.abs(cursor - targetDuration) <= 0.05 ? beats : [];
-}
-
 async function createVisualCoverageClipWithAudio({
   scene,
   audioPath,
@@ -1027,7 +1009,7 @@ async function createVisualCoverageClipWithAudio({
   sceneIndex,
 }) {
   const effectiveDuration = alignDurationToFrameGrid(targetDuration);
-  const beats = validateVisualCoveragePlan(scene, targetDuration);
+  const beats = reconcileVisualCoveragePlan(scene, targetDuration);
   if (beats.length === 0) throw new Error(`Scene ${scene.creatorSceneId || sceneIndex} visual coverage is invalid.`);
 
   const inputs = [];

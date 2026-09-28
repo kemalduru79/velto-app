@@ -110,7 +110,7 @@ assert.match(exportResolver, /visualCoveragePlan: validCoverage \? coverage : \[
 assert.match(exportRoute, /visualCoveragePlan = createCreatorVisualCoveragePlan/);
 const productionExportService = fs.readFileSync(new URL("../export-service/src/server.js", import.meta.url), "utf8");
 assert.match(productionExportService, /createVisualCoverageClipWithAudio/);
-assert.match(productionExportService, /validateVisualCoveragePlan/);
+assert.match(productionExportService, /reconcileVisualCoveragePlan/);
 assert.match(productionExportService, /concat=n=\$\{beats\.length\}:v=1:a=0/);
 assert.match(productionExportService, /zoompan=z=/);
 
