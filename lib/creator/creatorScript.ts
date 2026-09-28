@@ -1362,7 +1362,8 @@ export async function acceptCreatorScriptWithDurationRepair(input: {
       await input.repair(previousDiagnostics, currentScript, attempt),
     );
     currentDiagnostics = getCreatorScriptDurationContractForScript(currentScript, input.language);
-    if (currentDiagnostics.status === "compliant") {
+    const residualRepairRequired = Boolean(input.requiresRepair?.(currentScript));
+    if (currentDiagnostics.status === "compliant" && !residualRepairRequired) {
       input.validateFinal?.(currentScript);
       return {
         creatorScript: currentScript,
@@ -1370,6 +1371,19 @@ export async function acceptCreatorScriptWithDurationRepair(input: {
         repaired: true,
         repairAttempts: attempt,
       };
+    }
+    if (currentDiagnostics.status === "compliant" && residualRepairRequired) {
+      if (attempt < maxRepairAttempts) continue;
+      if (input.validateFinal) {
+        input.validateFinal(currentScript);
+        return {
+          creatorScript: currentScript,
+          diagnostics: currentDiagnostics,
+          repaired: true,
+          repairAttempts: attempt,
+        };
+      }
+      throw new CreatorScriptDurationUnsatisfiedError(currentDiagnostics);
     }
     if (
       attempt >= maxRepairAttempts

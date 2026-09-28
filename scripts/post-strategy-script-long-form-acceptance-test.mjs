@@ -1009,7 +1009,7 @@ assert.match(route, /sectionWordBudget: sectionNative \? \{\s*minWords: requeste
 assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} spoken words, aiming near \$\{requestedSections\[0\]\.targetWords\}/);
 assert.match(route, /This call returns one section only\. Do not try to fit the complete script's global word count into this section/);
 assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
-assert.match(route, /maxRepairAttempts: sectionNative \? 2 : 1/);
+assert.match(route, /maxRepairAttempts: 2/, "all generation modes share the same hard two-call ceiling for canonical residual repair");
 assert.match(route, /creatorScriptRepairMateriallyImproved/);
 assert.match(route, /repairTargets/);
 assert.match(route, /requiredDirection === "expand" && distinctivenessFailures\.length === 0[\s\S]*creatorScriptHasGroundingBlocker\(currentScript\)[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);

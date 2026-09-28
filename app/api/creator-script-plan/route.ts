@@ -1062,7 +1062,7 @@ async function executeCreatorScriptOperation(input: {
         requiresRepair: (script) =>
           getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0
           || getCreatorScriptEditorialDistinctivenessFailures(script, sectionBudgetPlan).length > 0,
-        maxRepairAttempts: sectionNative ? 2 : 1,
+        maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
           sectionNative
           && !mixedRepairDispatched
