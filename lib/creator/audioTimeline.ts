@@ -454,6 +454,156 @@ export function reconcileCreatorAudioTimeline(input: {
   return { timeline: { ...timeline, placements }, issues };
 }
 
+export type CreatorAudioTopologyIssueCode =
+  | "timeline_required"
+  | "scene_id_invalid"
+  | "scene_id_duplicate"
+  | "music_placement_not_active"
+  | "active_kind_not_renderable"
+  | "anchor_missing"
+  | "range_inverted"
+  | "music_overlap";
+
+export type CreatorAudioTopologyIssue = {
+  code: CreatorAudioTopologyIssueCode;
+  placementId?: string;
+  relatedPlacementId?: string;
+  sceneId?: string;
+};
+
+export type CreatorAudioTopologyReadiness = {
+  status: "ready" | "blocked";
+  issues: CreatorAudioTopologyIssue[];
+};
+
+type CreatorAudioTopologyBoundary = {
+  sceneIndex: number;
+  edgeIndex: 0 | 1;
+  offsetMs: number;
+};
+
+function compareCreatorAudioTopologyBoundary(
+  left: CreatorAudioTopologyBoundary,
+  right: CreatorAudioTopologyBoundary,
+) {
+  if (left.sceneIndex !== right.sceneIndex) return left.sceneIndex - right.sceneIndex;
+  if (left.edgeIndex !== right.edgeIndex) return left.edgeIndex - right.edgeIndex;
+  return left.offsetMs - right.offsetMs;
+}
+
+/**
+ * Pure pre-render validation against the current canonical CreatorLab scene topology.
+ * It intentionally does not derive absolute milliseconds; the renderer remains the
+ * final timing authority.
+ */
+export function validateCreatorAudioTimelineTopology(input: {
+  timeline: CreatorAudioTimeline | null | undefined;
+  sceneIds: string[];
+}): CreatorAudioTopologyReadiness {
+  const issues: CreatorAudioTopologyIssue[] = [];
+  if (!input.timeline) {
+    return { status: "blocked", issues: [{ code: "timeline_required" }] };
+  }
+
+  const timeline = normalizeCreatorAudioTimeline(input.timeline);
+  const normalizedSceneIds = input.sceneIds.map((sceneId) =>
+    typeof sceneId === "string" ? sceneId.trim() : "",
+  );
+  const sceneIndex = new Map<string, number>();
+
+  normalizedSceneIds.forEach((sceneId, index) => {
+    if (!sceneId) {
+      issues.push({ code: "scene_id_invalid" });
+      return;
+    }
+    if (sceneIndex.has(sceneId)) {
+      issues.push({ code: "scene_id_duplicate", sceneId });
+      return;
+    }
+    sceneIndex.set(sceneId, index);
+  });
+
+  const boundaryFor = (anchor: CreatorAudioSceneAnchor): CreatorAudioTopologyBoundary | null => {
+    const index = sceneIndex.get(anchor.sceneId);
+    if (index === undefined) return null;
+    return {
+      sceneIndex: index,
+      edgeIndex: anchor.edge === "start" ? 0 : 1,
+      offsetMs: anchor.offsetMs,
+    };
+  };
+
+  const validMusicRanges: Array<{
+    placementId: string;
+    start: CreatorAudioTopologyBoundary;
+    end: CreatorAudioTopologyBoundary;
+  }> = [];
+
+  for (const placement of timeline.placements) {
+    if (placement.kind !== "music") {
+      if (placement.status === "active") {
+        issues.push({ code: "active_kind_not_renderable", placementId: placement.id });
+      }
+      continue;
+    }
+
+    if (placement.status !== "active") {
+      issues.push({ code: "music_placement_not_active", placementId: placement.id });
+      continue;
+    }
+
+    const start = boundaryFor(placement.range.start);
+    const end = boundaryFor(placement.range.end);
+    if (!start || !end) {
+      if (!start) {
+        issues.push({
+          code: "anchor_missing",
+          placementId: placement.id,
+          sceneId: placement.range.start.sceneId,
+        });
+      }
+      if (!end && placement.range.end.sceneId !== placement.range.start.sceneId) {
+        issues.push({
+          code: "anchor_missing",
+          placementId: placement.id,
+          sceneId: placement.range.end.sceneId,
+        });
+      }
+      continue;
+    }
+
+    if (compareCreatorAudioTopologyBoundary(start, end) >= 0) {
+      issues.push({ code: "range_inverted", placementId: placement.id });
+      continue;
+    }
+
+    validMusicRanges.push({ placementId: placement.id, start, end });
+  }
+
+  validMusicRanges.sort((left, right) =>
+    compareCreatorAudioTopologyBoundary(left.start, right.start) ||
+    compareCreatorAudioTopologyBoundary(left.end, right.end) ||
+    left.placementId.localeCompare(right.placementId),
+  );
+
+  for (let index = 1; index < validMusicRanges.length; index += 1) {
+    const previous = validMusicRanges[index - 1];
+    const current = validMusicRanges[index];
+    if (compareCreatorAudioTopologyBoundary(current.start, previous.end) < 0) {
+      issues.push({
+        code: "music_overlap",
+        placementId: current.placementId,
+        relatedPlacementId: previous.placementId,
+      });
+    }
+  }
+
+  return {
+    status: issues.length === 0 ? "ready" : "blocked",
+    issues,
+  };
+}
+
 export type CreatorFinalizedAudioScene = {
   creatorSceneId: string;
   durationMs: number;
