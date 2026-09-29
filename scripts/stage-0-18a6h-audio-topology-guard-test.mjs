@@ -147,6 +147,35 @@ const overlapReadiness = validateCreatorAudioTimelineTopology({ timeline: overla
 assert.equal(overlapReadiness.status, "blocked");
 assert.ok(overlapReadiness.issues.some((issue) => issue.code === "music_overlap"));
 
+const nestedOverlap = timeline([
+  placement({
+    id: "primary-music:nested-long",
+    start: { sceneId: sceneIds[0], edge: "start" },
+    end: { sceneId: sceneIds[2], edge: "end" },
+  }),
+  placement({
+    id: "primary-music:nested-short",
+    asset: otherAsset,
+    start: { sceneId: sceneIds[1], edge: "start" },
+    end: { sceneId: sceneIds[1], edge: "end" },
+  }),
+  placement({
+    id: "primary-music:nested-tail",
+    asset: otherAsset,
+    start: { sceneId: sceneIds[2], edge: "start" },
+    end: { sceneId: sceneIds[2], edge: "end" },
+  }),
+]);
+const nestedReadiness = validateCreatorAudioTimelineTopology({ timeline: nestedOverlap, sceneIds });
+assert.ok(
+  nestedReadiness.issues.some((issue) =>
+    issue.code === "music_overlap" &&
+    issue.placementId === "primary-music:nested-tail" &&
+    issue.relatedPlacementId === "primary-music:nested-long"
+  ),
+  "nested long-range overlap must remain visible even when an intermediate short range ends earlier",
+);
+
 const reconciledIncident = reconcileCreatorAudioTimeline({
   timeline: timeline([stalePlacement]),
   previousScenes: [{ creatorSceneId: staleStart }],
