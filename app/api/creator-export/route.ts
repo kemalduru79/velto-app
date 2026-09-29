@@ -13,7 +13,7 @@ import { CreatorAudioRenderabilityError, resolveCreatorAudioRenderability } from
 import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
-import { createCreatorVisualCoveragePlan } from "@/lib/creator/visualCoverage";
+import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "@/lib/creator/visualCoverage";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import {
   creatorGovernanceExportBlockResponse,
@@ -178,7 +178,10 @@ export async function POST(request: Request) {
             videoDurationSeconds: Number(persistedScene.videoDurationSeconds),
             clipInSec: Number(persistedScene.clipInSec),
             clipOutSec: Number(persistedScene.clipOutSec),
-            targetDurationSec: Number(persistedScene.targetDurationSec || persistedTiming?.targetSceneDuration),
+            targetDurationSec: resolveCreatorVisualCoverageTargetDuration({
+              timingTargetDurationSec: persistedTiming?.targetSceneDuration,
+              fallbackTargetDurationSec: persistedScene.targetDurationSec,
+            }),
             timing: persistedTiming,
             assetHistory: Array.isArray(persistedScene.assetHistory) ? persistedScene.assetHistory : undefined,
             visualBlockPlan: Array.isArray(persistedScene.visualBlockPlan) ? persistedScene.visualBlockPlan : undefined,

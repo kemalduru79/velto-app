@@ -4,6 +4,10 @@ import {
   reconcileVisualCoveragePlan,
   validateVisualCoveragePlan,
 } from "../export-service/src/visualCoverage.js";
+import {
+  createCreatorVisualCoveragePlan,
+  resolveCreatorVisualCoverageTargetDuration,
+} from "../lib/creator/visualCoverage.ts";
 
 const creatorSceneId = "11111111-1111-4111-8111-111111111111";
 const imageBeat = (startSec, endSec) => ({
@@ -19,6 +23,37 @@ const imageBeat = (startSec, endSec) => ({
   renderer: "native_zoompan_v1",
 });
 
+const realSceneTarget = resolveCreatorVisualCoverageTargetDuration({
+  timingTargetDurationSec: 8.32,
+  fallbackTargetDurationSec: 10,
+});
+assert.equal(realSceneTarget, 8.32, "authoritative persisted timing must override the legacy scene target");
+const realSceneCoverage = createCreatorVisualCoveragePlan({
+  creatorSceneId,
+  image: "https://assets.test/current.jpg",
+  targetDurationSec: realSceneTarget,
+  timing: { targetSceneDuration: 8.32 },
+});
+assert.equal(realSceneCoverage.at(-1)?.endSec, 8.32, "the real failure shape must build renderer-aligned coverage");
+assert.equal(
+  reconcileVisualCoveragePlan({ creatorSceneId, visualCoveragePlan: realSceneCoverage }, 8.32).length,
+  1,
+  "renderer-aligned coverage must not enter unsupported shortening",
+);
+
+assert.equal(resolveCreatorVisualCoverageTargetDuration({
+  timingTargetDurationSec: undefined,
+  fallbackTargetDurationSec: 10,
+}), 10, "a valid legacy target remains the fallback when authoritative timing is absent");
+assert.equal(resolveCreatorVisualCoverageTargetDuration({
+  timingTargetDurationSec: Number.NaN,
+  fallbackTargetDurationSec: 10,
+}), 10, "invalid authoritative timing must use a valid legacy fallback");
+assert.equal(resolveCreatorVisualCoverageTargetDuration({
+  timingTargetDurationSec: -1,
+  fallbackTargetDurationSec: 10,
+}), 10, "non-positive authoritative timing must use a valid legacy fallback");
+
 const shortImageScene = { creatorSceneId, visualCoveragePlan: [imageBeat(0, 7.5)] };
 assert.equal(validateVisualCoveragePlan(shortImageScene, 8).length, 0, "unreconciled persisted coverage must expose the real renderer mismatch");
 const minimumReconciled = reconcileVisualCoveragePlan(shortImageScene, 8);
@@ -31,10 +66,17 @@ assert.deepEqual(minimumReconciled.map(({ startSec, endSec, durationSec, rendere
 
 const audioExtended = reconcileVisualCoveragePlan({
   creatorSceneId,
-  visualCoveragePlan: [imageBeat(0, 8)],
-}, 9.25);
-assert.equal(audioExtended.at(-1).endSec, 9.25, "audio plus tail may extend renderer-backed image motion");
-assert.equal(audioExtended.at(-1).durationSec, 9.25);
+  visualCoveragePlan: [imageBeat(0, 6.2)],
+}, 8);
+assert.equal(audioExtended.at(-1).endSec, 8, "the renderer minimum may extend 6.20s image motion to 8.00s");
+assert.equal(audioExtended.at(-1).durationSec, 8);
+
+const nearEqual = reconcileVisualCoveragePlan({
+  creatorSceneId,
+  visualCoveragePlan: [imageBeat(0, 9.34)],
+}, 9.341383);
+assert.equal(nearEqual.length, 1, "near-equal runtime targets remain valid inside the existing tolerance");
+assert.equal(nearEqual.at(-1).endSec, 9.34);
 
 const mixedReference = {
   creatorSceneId,
@@ -73,6 +115,9 @@ assert.deepEqual(reconcileVisualCoveragePlan(mixedReference, 18), [], "shorter r
 
 const service = fs.readFileSync(new URL("../export-service/src/server.js", import.meta.url), "utf8");
 assert.match(service, /const beats = reconcileVisualCoveragePlan\(scene, targetDuration\)/);
+const route = fs.readFileSync(new URL("../app/api/creator-export/route.ts", import.meta.url), "utf8");
+assert.match(route, /timingTargetDurationSec: persistedTiming\?\.targetSceneDuration/);
+assert.match(route, /fallbackTargetDurationSec: persistedScene\.targetDurationSec/);
 const reconciliation = fs.readFileSync(new URL("../export-service/src/visualCoverage.js", import.meta.url), "utf8");
 assert.doesNotMatch(reconciliation, /freeze.*frame/i);
 

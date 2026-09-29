@@ -46,6 +46,16 @@ const positive = (value: unknown) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
+export function resolveCreatorVisualCoverageTargetDuration({
+  timingTargetDurationSec,
+  fallbackTargetDurationSec,
+}: {
+  timingTargetDurationSec: unknown;
+  fallbackTargetDurationSec: unknown;
+}) {
+  return positive(timingTargetDurationSec) || positive(fallbackTargetDurationSec);
+}
+
 function distinctImageAssets(scene: CreatorVisualCoverageScene) {
   const seen = new Set<string>();
   const assets: Array<{ url: string; id?: string; sourceType: "scene_image" | "asset_history" }> = [];
