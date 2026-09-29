@@ -49,7 +49,7 @@ check(/invalidateFinalVideoForProductionChange/.test(renderModeHandler), "media 
 check(/creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete/.test(page), "toggle can mark an existing Final Video outdated");
 check(/if \(isCreatorLabFlow\) return;/.test(page), "CreatorLab preserves the old Final Video during toggle");
 check(/data-rebuild-final-video="true"/.test(page), "Rebuild Final Video remains available");
-check(/automaticTargetStep = Math\.min\(creatorProgressStep, 3\)/.test(page), "automatic workflow progression stops at Production");
+check(/if \(creatorProgressStep < previousProgressStep\)[\s\S]*Math\.min\(creatorNavigationRef\.current\.workspaceStep, creatorProgressStep\)/.test(page), "automatic workflow correction only moves backward and never jumps to Publish");
 check(!/setCreatorSelectedWorkspaceStep\(creatorProgressStep\)/.test(page), "passive readiness cannot navigate to Publish");
 check(/const navigateCreatorWorkspaceStep[\s\S]*setCreatorSelectedWorkspaceStep\(step\)/.test(page), "explicit workspace navigation still reaches Publish");
 check(/creatorProgressStep[\s\S]*creatorProductionPackage \|\| scenes\.length > 0[\s\S]*\? 3/.test(page), "refresh restores Production for edited media");
