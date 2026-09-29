@@ -6,7 +6,7 @@ import {
   settleMeteredOperation,
   type MeteredOperationReservation,
 } from "@/lib/credits/serverMetering";
-import { CreatorAudioTimelineError } from "@/lib/creator/audioTimeline";
+import { CreatorAudioTimelineError, validateCreatorAudioTimelineTopology } from "@/lib/creator/audioTimeline";
 import { readCreatorProjectState } from "@/lib/creator/projectState";
 import { authenticateRequest } from "@/lib/auth/server";
 import { CreatorAudioRenderabilityError, resolveCreatorAudioRenderability } from "@/lib/creator/audioRenderability.server";
@@ -110,6 +110,28 @@ export async function POST(request: Request) {
         ? "creatorlab"
         : "storyverse";
     const persistedCreatorState = productProfile === "creatorlab" ? readCreatorProjectState(project) : null;
+    if (productProfile === "creatorlab") {
+      const audioTopology = validateCreatorAudioTimelineTopology({
+        timeline: persistedCreatorState?.production.audioTimeline,
+        sceneIds: (persistedCreatorState?.createReview.scenes || []).map((scene) => {
+          if (!scene || typeof scene !== "object" || Array.isArray(scene)) return "";
+          const creatorSceneId = (scene as Record<string, unknown>).creatorSceneId;
+          return typeof creatorSceneId === "string" ? creatorSceneId.trim() : "";
+        }),
+      });
+      if (audioTopology.status !== "ready") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "creator_audio_topology_invalid",
+            error: "Project audio is out of sync with the current scene plan.",
+            creditReserved: false,
+            issues: audioTopology.issues.map((issue) => issue.code),
+          },
+          { status: 409, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+        );
+      }
+    }
     const qualityMode = body.qualityMode;
     const evidenceGovernance = project.flow_type === "creator_lab"
       ? (await resolveCreatorProjectUsedMediaGovernance({
