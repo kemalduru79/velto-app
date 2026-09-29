@@ -13154,6 +13154,16 @@ const generateSceneImage = async (
             creatorHydrationSemanticBaselineGenerationRef.current = null;
           }
           isHydratingRef.current = false;
+          setScenes((currentScenes) => (
+            shouldRestoreHydratedCreatorScenes({
+              authority: creatorSceneHydrationAuthorityRef.current,
+              currentSceneCount: currentScenes.length,
+              lastPopulatedSceneCount: creatorLastPopulatedScenesRef.current.length,
+              isHydrating: false,
+            })
+              ? creatorLastPopulatedScenesRef.current
+              : currentScenes
+          ));
           skipAutosaveRef.current = false;
         });
       });
