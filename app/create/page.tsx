@@ -160,6 +160,7 @@ import { creatorSceneOutputIsCurrent } from "@/lib/creator/creatorScriptApproval
 import {
   resolveCreatorSceneHydrationAuthority,
   shouldPersistCreatorSceneProjection,
+  shouldRestoreHydratedCreatorScenes,
   type CreatorSceneHydrationAuthority,
 } from "@/lib/creator/creatorScenePersistence";
 import {
@@ -3705,15 +3706,39 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useRef<CreatorSceneHydrationAuthority>("unknown");
   const creatorAutosaveSemanticBaselineRef = useRef<string | null>(null);
   const creatorAutosaveSemanticIntentRef = useRef("");
+  const creatorHydrationSemanticBaselineGenerationRef = useRef<number | null>(null);
+  const creatorLastPopulatedScenesRef = useRef<Scene[]>([]);
   const creatorVisualScenesRef = useRef<Scene[]>([]);
+
+  const clearCreatorScenesForAuthoritativeInvalidation = () => {
+    creatorLastPopulatedScenesRef.current = [];
+    creatorSceneHydrationAuthorityRef.current = "hydrated_empty";
+    setCreatorSceneHydrationAuthority("hydrated_empty");
+    clearCreatorScenesForAuthoritativeInvalidation();
+  };
 
   useEffect(() => {
     creatorVisualScenesRef.current = scenes;
-    if (!isHydratingRef.current && scenes.length > 0) {
-      creatorSceneHydrationAuthorityRef.current = "hydrated_populated";
-      setCreatorSceneHydrationAuthority("hydrated_populated");
+    if (!isCreatorLabFlow) return;
+
+    if (shouldRestoreHydratedCreatorScenes({
+      authority: creatorSceneHydrationAuthorityRef.current,
+      currentSceneCount: scenes.length,
+      lastPopulatedSceneCount: creatorLastPopulatedScenesRef.current.length,
+      isHydrating: isHydratingRef.current,
+    })) {
+      setScenes(creatorLastPopulatedScenesRef.current);
+      return;
     }
-  }, [scenes]);
+
+    if (scenes.length > 0) {
+      creatorLastPopulatedScenesRef.current = scenes;
+      if (!isHydratingRef.current) {
+        creatorSceneHydrationAuthorityRef.current = "hydrated_populated";
+        setCreatorSceneHydrationAuthority("hydrated_populated");
+      }
+    }
+  }, [isCreatorLabFlow, scenes]);
 
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
@@ -6803,7 +6828,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     setTitle("");
     setCharacters([]);
     setVisualBible(null);
-    setScenes([]);
+    clearCreatorScenesForAuthoritativeInvalidation();
     creatorSceneHydrationAuthorityRef.current = "hydrated_empty";
     setCreatorSceneHydrationAuthority("hydrated_empty");
     setContinuePrompt("");
@@ -12523,6 +12548,9 @@ const generateSceneImage = async (
     const previousUpdatedAt = projectUpdatedAtRef.current;
     const previousPersistenceCurrent = creatorPersistenceCurrentRef.current;
     const previousSceneHydrationAuthority = creatorSceneHydrationAuthorityRef.current;
+    const previousAutosaveSemanticBaseline = creatorAutosaveSemanticBaselineRef.current;
+    const previousHydrationSemanticBaselineGeneration = creatorHydrationSemanticBaselineGenerationRef.current;
+    const previousLastPopulatedScenes = creatorLastPopulatedScenesRef.current;
     let loadSucceeded = false;
     const loadGeneration = invalidateProjectPersistence();
     creatorPersistenceCurrentRef.current = false;
@@ -12562,9 +12590,6 @@ const generateSceneImage = async (
       const isCreatorProject = project.flow_type === "creator_lab";
       const canonicalCreatorState = isCreatorProject
         ? readCreatorProjectState(project)
-        : null;
-      creatorAutosaveSemanticBaselineRef.current = canonicalCreatorState
-        ? createCreatorAutosaveSemanticKey(canonicalCreatorState)
         : null;
       const savedCreatorPackage = (canonicalCreatorState?.production.package ?? null) as CreatorProductionPackage | null;
       const loadedContentLanguage: ContentLanguage =
@@ -12631,6 +12656,7 @@ const generateSceneImage = async (
       }
 
       isHydratingRef.current = true;
+      creatorHydrationSemanticBaselineGenerationRef.current = loadGeneration;
 
       clearAllVideoPolls();
       delayedVideoPollKeysRef.current.clear();
@@ -12664,48 +12690,48 @@ const generateSceneImage = async (
       setCreatorEditorOpen(false);
       setCreatorAssetCompareSelection({});
       setCreatorAssetHistoryOpen({});
-      setScenes(
-        loadedProjectScenes.length
-          ? loadedProjectScenes.map((scene: Scene) => ({
-              ...scene,
-              dialogueSpeakerCharacterId: isCreatorProject
-                ? normalizeCreatorDialogueSpeakerCharacterId(
-                    scene.dialogueSpeakerCharacterId,
-                    loadedCharacters,
-                  )
-                : undefined,
-              audioUrl: scene.audioUrl || "",
-              audioPath: scene.audioPath || "",
-              audioSourceText: scene.audioSourceText || "",
-              audioSettingsKey: scene.audioSettingsKey || "",
-              dialogueAudioUrl: scene.dialogueAudioUrl || "",
-              dialogueAudioPath: scene.dialogueAudioPath || "",
-              dialogueAudioSourceText: scene.dialogueAudioSourceText || "",
-              dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey || "",
-              narratorVoiceProfileId: scene.narratorVoiceProfileId
-                ? normalizeCreatorVoiceSelectionId(scene.narratorVoiceProfileId)
-                : undefined,
-              dialogueVoiceProfileId: scene.dialogueVoiceProfileId
-                ? normalizeCreatorVoiceSelectionId(scene.dialogueVoiceProfileId, "velto_warm")
-                : undefined,
-              narratorVoiceSelection: normalizeVoiceLibrarySelection(scene.narratorVoiceSelection),
-              dialogueVoiceSelection: normalizeVoiceLibrarySelection(scene.dialogueVoiceSelection),
-              videoUrl: scene.videoUrl || "",
-              videoStatus: scene.videoStatus || "idle",
-              videoJobId: scene.videoJobId || "",
-              renderMode:
-                scene.renderMode === "video"
-                  ? "video"
-                  : scene.renderMode === "image"
-                    ? "image"
-                    : undefined,
-              visualSourceMethod: persistedCreatorVisualSourceMethod(
-                normalizeCreatorVisualSourceMethod(scene.visualSourceMethod),
-              ),
-              timing: scene.timing || buildSceneTiming(0, 0),
-            }))
-          : []
-      );
+      const hydratedProjectScenes = loadedProjectScenes.length
+        ? loadedProjectScenes.map((scene: Scene) => ({
+            ...scene,
+            dialogueSpeakerCharacterId: isCreatorProject
+              ? normalizeCreatorDialogueSpeakerCharacterId(
+                  scene.dialogueSpeakerCharacterId,
+                  loadedCharacters,
+                )
+              : undefined,
+            audioUrl: scene.audioUrl || "",
+            audioPath: scene.audioPath || "",
+            audioSourceText: scene.audioSourceText || "",
+            audioSettingsKey: scene.audioSettingsKey || "",
+            dialogueAudioUrl: scene.dialogueAudioUrl || "",
+            dialogueAudioPath: scene.dialogueAudioPath || "",
+            dialogueAudioSourceText: scene.dialogueAudioSourceText || "",
+            dialogueAudioSettingsKey: scene.dialogueAudioSettingsKey || "",
+            narratorVoiceProfileId: scene.narratorVoiceProfileId
+              ? normalizeCreatorVoiceSelectionId(scene.narratorVoiceProfileId)
+              : undefined,
+            dialogueVoiceProfileId: scene.dialogueVoiceProfileId
+              ? normalizeCreatorVoiceSelectionId(scene.dialogueVoiceProfileId, "velto_warm")
+              : undefined,
+            narratorVoiceSelection: normalizeVoiceLibrarySelection(scene.narratorVoiceSelection),
+            dialogueVoiceSelection: normalizeVoiceLibrarySelection(scene.dialogueVoiceSelection),
+            videoUrl: scene.videoUrl || "",
+            videoStatus: scene.videoStatus || "idle",
+            videoJobId: scene.videoJobId || "",
+            renderMode:
+              scene.renderMode === "video"
+                ? "video"
+                : scene.renderMode === "image"
+                  ? "image"
+                  : undefined,
+            visualSourceMethod: persistedCreatorVisualSourceMethod(
+              normalizeCreatorVisualSourceMethod(scene.visualSourceMethod),
+            ),
+            timing: scene.timing || buildSceneTiming(0, 0),
+          }))
+        : [];
+      creatorLastPopulatedScenesRef.current = hydratedProjectScenes;
+      setScenes(hydratedProjectScenes);
       creatorSceneHydrationAuthorityRef.current = loadedCreatorSceneHydrationAuthority;
       setCreatorSceneHydrationAuthority(loadedCreatorSceneHydrationAuthority);
 
@@ -13063,6 +13089,9 @@ const generateSceneImage = async (
         creatorPersistenceCurrentRef.current = previousPersistenceCurrent;
         creatorSceneHydrationAuthorityRef.current = previousSceneHydrationAuthority;
         setCreatorSceneHydrationAuthority(previousSceneHydrationAuthority);
+        creatorAutosaveSemanticBaselineRef.current = previousAutosaveSemanticBaseline;
+        creatorHydrationSemanticBaselineGenerationRef.current = previousHydrationSemanticBaselineGeneration;
+        creatorLastPopulatedScenesRef.current = previousLastPopulatedScenes;
         isHydratingRef.current = false;
         skipAutosaveRef.current = false;
       }
@@ -13070,6 +13099,10 @@ const generateSceneImage = async (
         if (projectGenerationRef.current !== loadGeneration) return;
         window.requestAnimationFrame(() => {
           if (projectGenerationRef.current !== loadGeneration) return;
+          if (creatorHydrationSemanticBaselineGenerationRef.current === loadGeneration) {
+            creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntentRef.current;
+            creatorHydrationSemanticBaselineGenerationRef.current = null;
+          }
           isHydratingRef.current = false;
           skipAutosaveRef.current = false;
         });
@@ -14621,7 +14654,7 @@ const generateSceneImage = async (
       setTitle(nextPackage.title || "");
       setCharacters(nextCharacters);
       setVisualBible(nextVisualBible);
-      setScenes([]);
+      clearCreatorScenesForAuthoritativeInvalidation();
       setContinuePrompt("");
       setEditingSceneId(null);
       setSceneInstructions({});
@@ -15276,7 +15309,7 @@ const generateSceneImage = async (
         )
       );
       setVisualBible(nextPackage.visualBible || emptyVisualBible);
-      setScenes([]);
+      clearCreatorScenesForAuthoritativeInvalidation();
       setContinuePrompt("");
       setEditingSceneId(null);
       setSceneInstructions({});
@@ -15328,7 +15361,7 @@ const generateSceneImage = async (
         setCreatorScript(savedState.strategy.script);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
-        setScenes([]);
+        clearCreatorScenesForAuthoritativeInvalidation();
         setRefinedCreatorScenes([]);
         invalidateFinalVideoForProductionChange();
       }
@@ -15465,7 +15498,7 @@ const generateSceneImage = async (
         : null;
       setCreatorScriptRefinementHighlights(replacementRange ? [replacementRange] : getCreatorScriptRefinementChangedRanges(sourceScript, nextScript));
       creatorScriptRef.current = nextScript; setCreatorScript(nextScript);
-      setScenes([]); setRefinedCreatorScenes([]); invalidateFinalVideoForProductionChange();
+      clearCreatorScenesForAuthoritativeInvalidation(); setRefinedCreatorScenes([]); invalidateFinalVideoForProductionChange();
     }
     if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
     setError(""); setSaveMessage(action === "apply" ? "Script refinement applied." : "Refinement discarded.");
@@ -16939,7 +16972,6 @@ const generateSceneImage = async (
       setBuildingStory(true);
       setError("");
       setSaveMessage("");
-      setScenes([]);
       setCreatorUndoStack([]);
       setCreatorAssetCompareSelection({});
       setCreatorAssetHistoryOpen({});
@@ -18850,6 +18882,14 @@ const generateSceneImage = async (
     }),
   );
   creatorAutosaveSemanticIntentRef.current = creatorAutosaveSemanticIntent;
+  if (
+    isHydratingRef.current &&
+    creatorHydrationSemanticBaselineGenerationRef.current !== null &&
+    creatorHydrationSemanticBaselineGenerationRef.current === projectGenerationRef.current
+  ) {
+    creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntent;
+    creatorHydrationSemanticBaselineGenerationRef.current = null;
+  }
 
   useEffect(() => {
     if (skipAutosaveRef.current) {
