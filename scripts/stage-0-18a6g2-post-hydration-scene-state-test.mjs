@@ -42,7 +42,20 @@ const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url),
 assert.match(page, /const creatorHydrationSemanticBaselineGenerationRef = useRef<number \| null>\(null\)/);
 assert.match(page, /creatorHydrationSemanticBaselineGenerationRef\.current = loadGeneration/);
 assert.doesNotMatch(page, /creatorAutosaveSemanticBaselineRef\.current = canonicalCreatorState/, "hydration baseline must be derived from rendered normalized state, not raw persisted state");
-assert.match(page, /creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntent;[\s\S]{0,180}creatorHydrationSemanticBaselineGenerationRef\.current = null/);
+assert.match(page, /isHydratingRef\.current[\s\S]{0,320}creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntent;/);
+const hydrationRenderBlockStart = page.indexOf("if (\n    isHydratingRef.current &&\n    creatorHydrationSemanticBaselineGenerationRef.current !== null");
+assert.ok(hydrationRenderBlockStart >= 0, "hydration render baseline block must exist");
+const hydrationRenderBlockEnd = page.indexOf("\n  }", hydrationRenderBlockStart);
+assert.doesNotMatch(
+  page.slice(hydrationRenderBlockStart, hydrationRenderBlockEnd + 4),
+  /creatorHydrationSemanticBaselineGenerationRef\.current = null/,
+  "render-time hydration baseline updates must not release the generation marker early",
+);
+assert.match(
+  page,
+  /window\.requestAnimationFrame\([\s\S]{0,420}creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntentRef\.current;[\s\S]{0,120}creatorHydrationSemanticBaselineGenerationRef\.current = null;[\s\S]{0,140}isHydratingRef\.current = false;/,
+  "the final hydration boundary must capture the latest semantic intent before releasing autosave",
+);
 assert.match(page, /creatorLastPopulatedScenesRef\.current = hydratedProjectScenes;[\s\S]{0,80}setScenes\(hydratedProjectScenes\)/);
 assert.match(page, /shouldRestoreHydratedCreatorScenes\(\{[\s\S]{0,320}lastPopulatedSceneCount: creatorLastPopulatedScenesRef\.current\.length/);
 assert.match(page, /const clearCreatorScenesForAuthoritativeInvalidation = \(\) => \{[\s\S]{0,260}setScenes\(\[\]\);/);

@@ -18918,8 +18918,10 @@ const generateSceneImage = async (
     creatorHydrationSemanticBaselineGenerationRef.current !== null &&
     creatorHydrationSemanticBaselineGenerationRef.current === projectGenerationRef.current
   ) {
+    // Keep rebasing the semantic baseline across every hydration render.
+    // The generation marker is released only by loadProject's final double-rAF
+    // boundary, immediately before hydration/autosave are re-enabled.
     creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntent;
-    creatorHydrationSemanticBaselineGenerationRef.current = null;
   }
 
   useEffect(() => {
