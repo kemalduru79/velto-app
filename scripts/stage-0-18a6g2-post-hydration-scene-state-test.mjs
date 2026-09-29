@@ -40,7 +40,23 @@ assert.equal(shouldRestoreHydratedCreatorScenes({
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 
 assert.match(page, /const creatorHydrationSemanticBaselineGenerationRef = useRef<number \| null>\(null\)/);
+assert.match(page, /const \[creatorHydrationSettleGeneration, setCreatorHydrationSettleGeneration\] =[\s\S]{0,100}useState<number \| null>\(null\)/);
 assert.match(page, /creatorHydrationSemanticBaselineGenerationRef\.current = loadGeneration/);
+assert.match(
+  page,
+  /isCreatorProject &&[\s\S]{0,220}creatorHydrationSemanticBaselineGenerationRef\.current === loadGeneration[\s\S]{0,140}setCreatorHydrationSettleGeneration\(loadGeneration\);[\s\S]{0,100}return;/,
+  "CreatorLab hydration must enter an explicit settlement render before autosave is released",
+);
+assert.match(
+  page,
+  /creatorHydrationSettleGeneration !== null[\s\S]{0,650}shouldRestoreHydratedCreatorScenes\(\{[\s\S]{0,260}isHydrating: false,[\s\S]{0,260}setScenes\(creatorLastPopulatedScenesRef\.current\);[\s\S]{0,120}return;/,
+  "hydration settlement must restore a populated projection that disappeared during hydration",
+);
+assert.match(
+  page,
+  /creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntentRef\.current;[\s\S]{0,140}creatorHydrationSemanticBaselineGenerationRef\.current = null;[\s\S]{0,140}isHydratingRef\.current = false;[\s\S]{0,140}skipAutosaveRef\.current = false;/,
+  "autosave may only reopen after the settled scene projection rebases the semantic baseline",
+);
 assert.doesNotMatch(page, /creatorAutosaveSemanticBaselineRef\.current = canonicalCreatorState/, "hydration baseline must be derived from rendered normalized state, not raw persisted state");
 const hydrationRenderBlockStart = page.indexOf("if (\n    isHydratingRef.current &&\n    creatorHydrationSemanticBaselineGenerationRef.current !== null");
 assert.ok(hydrationRenderBlockStart >= 0, "hydration render baseline block must exist");
@@ -58,8 +74,8 @@ assert.doesNotMatch(
 );
 assert.match(
   page,
-  /window\.requestAnimationFrame\([\s\S]{0,420}creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntentRef\.current;[\s\S]{0,120}creatorHydrationSemanticBaselineGenerationRef\.current = null;[\s\S]{0,140}isHydratingRef\.current = false;/,
-  "the final hydration boundary must capture the latest semantic intent before releasing autosave",
+  /window\.requestAnimationFrame\([\s\S]{0,520}setCreatorHydrationSettleGeneration\(loadGeneration\);[\s\S]{0,100}return;/,
+  "the final hydration boundary must hand CreatorLab to the settlement render instead of releasing autosave directly",
 );
 assert.match(page, /creatorLastPopulatedScenesRef\.current = hydratedProjectScenes;[\s\S]{0,80}setScenes\(hydratedProjectScenes\)/);
 assert.match(page, /shouldRestoreHydratedCreatorScenes\(\{[\s\S]{0,320}lastPopulatedSceneCount: creatorLastPopulatedScenesRef\.current\.length/);
