@@ -200,7 +200,11 @@ import {
   readCreatorProjectState,
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
-import { reconcileCreatorAudioTimeline, type CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
+import {
+  reconcileCreatorAudioTimeline,
+  validateCreatorAudioTimelineTopology,
+  type CreatorAudioTimeline,
+} from "@/lib/creator/audioTimeline";
 import { deriveCreatorAudioPreviewPlan } from "@/lib/creator/audioPreviewPlan";
 import {
   createDefaultCreatorMusicTimeline,
@@ -11261,6 +11265,12 @@ const generateSceneImage = async (
                 : "Final video oluşturma geçici olarak kullanılamıyor. Dışa aktarma başlatılmadı.";
     }
 
+    if (gate.checks.audio === "blocked") {
+      return uiLanguage === "en"
+        ? "Project music is out of sync with the current scene plan. Review the music timeline before Build Final."
+        : "Proje müziği mevcut sahne planıyla senkron değil. Build Final öncesinde müzik timeline'ını kontrol et.";
+    }
+
     if (gate.status === "blocked") {
       return getCreatorFinalVideoReadinessMessage(creatorFinalVideoReadiness!);
     }
@@ -11317,6 +11327,10 @@ const generateSceneImage = async (
         return;
       }
 
+      const audioTopologyReadiness = validateCreatorAudioTimelineTopology({
+        timeline: creatorAudioTimeline,
+        sceneIds: scenes.map((scene) => scene.creatorSceneId?.trim() || ""),
+      });
       const readiness = createCreatorFinalVideoReadiness({
         scenes: scenes.map((scene) => ({
           ...scene,
@@ -11346,6 +11360,7 @@ const generateSceneImage = async (
       const finalProductionGate = createCreatorFinalProductionGate({
         readiness,
         exportServiceStatus,
+        audioTopologyReady: audioTopologyReadiness.status === "ready",
       });
 
       if (!finalProductionGate.canStartFinalVideo) {
@@ -17036,6 +17051,10 @@ const generateSceneImage = async (
           speechWordCount: scene.speechWordCount,
           scriptHealth: scene.scriptHealth,
           visualBlockPlan: scene.visualBlockPlan,
+          scriptRevision: scene.scriptRevision,
+          scriptSectionId: scene.scriptSectionId,
+          scriptSegmentIndex: scene.scriptSegmentIndex,
+          editorialClaimIds: scene.editorialClaimIds,
           timing: buildSceneTiming(0, 0, {
             audioFirst: true,
             plannedDuration:
@@ -17051,6 +17070,18 @@ const generateSceneImage = async (
           ),
         }));
 
+        if (creatorAudioTimeline) {
+          const reconciliationScene = (scene: Scene) => ({
+            creatorSceneId: scene.creatorSceneId || `legacy-${scene.id}`,
+            ...(scene.scriptSectionId ? { scriptSectionId: scene.scriptSectionId } : {}),
+            ...(Number.isInteger(scene.scriptSegmentIndex) ? { scriptSegmentIndex: scene.scriptSegmentIndex } : {}),
+          });
+          setCreatorAudioTimeline(reconcileCreatorAudioTimeline({
+            timeline: creatorAudioTimeline,
+            previousScenes: scenes.map(reconciliationScene),
+            nextScenes: packageScenes.map(reconciliationScene),
+          }).timeline);
+        }
         setScenes(packageScenes);
         setSaveMessage(
           uiLanguage === "en"
@@ -19035,6 +19066,12 @@ const generateSceneImage = async (
   const exportFlowValidation = isCreatorLabFlow
     ? buildExportFlowValidation(scenes)
     : null;
+  const creatorAudioTopologyReadiness = isCreatorLabFlow
+    ? validateCreatorAudioTimelineTopology({
+        timeline: creatorAudioTimeline,
+        sceneIds: scenes.map((scene) => scene.creatorSceneId?.trim() || ""),
+      })
+    : null;
   const creatorFinalVideoReadiness = isCreatorLabFlow
     ? createCreatorFinalVideoReadiness({
         scenes: scenes.map((scene) => ({
@@ -19064,6 +19101,7 @@ const generateSceneImage = async (
     ? createCreatorFinalProductionGate({
         readiness: creatorFinalVideoReadiness,
         exportServiceStatus: creatorExportServiceGateStatus,
+        audioTopologyReady: creatorAudioTopologyReadiness?.status === "ready",
       })
     : null;
   const creatorFinalProductionGateMessage = creatorFinalProductionGate
@@ -36487,11 +36525,12 @@ const generateSceneImage = async (
                         </button>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-6">
                         {([
                           ["Timeline", creatorFinalProductionGate.checks.timeline],
                           [uiLanguage === "en" ? "Visuals" : "Görseller", creatorFinalProductionGate.checks.visuals],
                           [uiLanguage === "en" ? "Voice" : "Ses", creatorFinalProductionGate.checks.voiceOver],
+                          [uiLanguage === "en" ? "Audio" : "Ses miks", creatorFinalProductionGate.checks.audio],
                           [uiLanguage === "en" ? "Continuity" : "Devamlılık", creatorFinalProductionGate.checks.continuity],
                           [uiLanguage === "en" ? "Final service" : "Final servis", creatorFinalProductionGate.checks.exportService],
                         ] as Array<[string, string]>).map(([label, status]) => (
