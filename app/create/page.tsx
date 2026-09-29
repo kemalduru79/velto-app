@@ -3714,7 +3714,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     creatorLastPopulatedScenesRef.current = [];
     creatorSceneHydrationAuthorityRef.current = "hydrated_empty";
     setCreatorSceneHydrationAuthority("hydrated_empty");
-    clearCreatorScenesForAuthoritativeInvalidation();
+    setScenes([]);
   };
 
   useEffect(() => {
@@ -15426,7 +15426,7 @@ const generateSceneImage = async (
         setCreatorScript(savedScript);
         setCreatorScriptPendingRefinement(savedState.strategy.pendingRefinement || null);
         setCreatorScriptRevisionHistory(savedState.strategy.revisionHistory || []);
-        setScenes([]);
+        clearCreatorScenesForAuthoritativeInvalidation();
         setRefinedCreatorScenes([]);
         invalidateFinalVideoForProductionChange();
       } else throw new Error("Script section regeneration could not be persisted.");
