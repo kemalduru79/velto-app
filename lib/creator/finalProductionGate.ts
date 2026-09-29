@@ -28,6 +28,7 @@ export type CreatorFinalProductionGateReport = {
     timeline: CreatorFinalProductionGateCheckStatus;
     visuals: CreatorFinalProductionGateCheckStatus;
     voiceOver: CreatorFinalProductionGateCheckStatus;
+    audio: CreatorFinalProductionGateCheckStatus;
     continuity: CreatorFinalProductionGateCheckStatus;
     evidenceGovernance: CreatorFinalProductionGateCheckStatus;
     exportService: CreatorFinalProductionGateCheckStatus;
@@ -41,10 +42,12 @@ export function createCreatorFinalProductionGate({
   readiness,
   exportServiceStatus,
   evidenceGovernance,
+  audioTopologyReady = true,
 }: {
   readiness: CreatorFinalVideoReadinessReport;
   exportServiceStatus: CreatorExportServiceGateStatus;
   evidenceGovernance?: CreatorEvidenceGovernanceReport | null;
+  audioTopologyReady?: boolean;
 }): CreatorFinalProductionGateReport {
   const timelineReady = ![
     "production_stage_required",
@@ -56,12 +59,12 @@ export function createCreatorFinalProductionGate({
   const continuityReview = readiness.status === "confirmation_required";
   const evidenceBlocked = evidenceGovernance?.status === "blocked";
   const evidenceReview = evidenceGovernance?.status === "review";
-  const localBlocked = !readiness.canStartFinalVideo;
+  const localBlocked = !readiness.canStartFinalVideo || !audioTopologyReady;
   const exportChecking =
     exportServiceStatus === "unchecked" || exportServiceStatus === "checking";
   const exportReady = exportServiceStatus === "ready";
   const canStartFinalVideo =
-    readiness.canStartFinalVideo && exportReady && !evidenceBlocked;
+    readiness.canStartFinalVideo && audioTopologyReady && exportReady && !evidenceBlocked;
   const reviewRequired = continuityReview || evidenceReview;
   const status: CreatorFinalProductionGateStatus = localBlocked || evidenceBlocked
     ? "blocked"
@@ -82,6 +85,7 @@ export function createCreatorFinalProductionGate({
       timeline: timelineReady ? "ready" : "blocked",
       visuals: visualsReady ? "ready" : "blocked",
       voiceOver: voiceReady ? "ready" : "blocked",
+      audio: audioTopologyReady ? "ready" : "blocked",
       continuity: continuityBlocked
         ? "blocked"
         : continuityReview
