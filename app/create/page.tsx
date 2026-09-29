@@ -12690,7 +12690,7 @@ const generateSceneImage = async (
       setCreatorEditorOpen(false);
       setCreatorAssetCompareSelection({});
       setCreatorAssetHistoryOpen({});
-      const hydratedProjectScenes = loadedProjectScenes.length
+      const hydratedProjectScenes: Scene[] = loadedProjectScenes.length
         ? loadedProjectScenes.map((scene: Scene) => ({
             ...scene,
             dialogueSpeakerCharacterId: isCreatorProject
