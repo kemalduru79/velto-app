@@ -3711,6 +3711,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const creatorAutosaveSemanticBaselineRef = useRef<string | null>(null);
   const creatorAutosaveSemanticIntentRef = useRef("");
   const creatorHydrationSemanticBaselineGenerationRef = useRef<number | null>(null);
+  const [creatorHydrationSettleGeneration, setCreatorHydrationSettleGeneration] =
+    useState<number | null>(null);
   const creatorLastPopulatedScenesRef = useRef<Scene[]>([]);
   const creatorVisualScenesRef = useRef<Scene[]>([]);
 
@@ -3723,6 +3725,30 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   useEffect(() => {
     creatorVisualScenesRef.current = scenes;
+
+    if (
+      isCreatorLabFlow &&
+      creatorHydrationSettleGeneration !== null &&
+      creatorHydrationSettleGeneration === projectGenerationRef.current &&
+      creatorHydrationSemanticBaselineGenerationRef.current === creatorHydrationSettleGeneration
+    ) {
+      if (shouldRestoreHydratedCreatorScenes({
+        authority: creatorSceneHydrationAuthorityRef.current,
+        currentSceneCount: scenes.length,
+        lastPopulatedSceneCount: creatorLastPopulatedScenesRef.current.length,
+        isHydrating: false,
+      })) {
+        setScenes(creatorLastPopulatedScenesRef.current);
+        return;
+      }
+
+      creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntentRef.current;
+      creatorHydrationSemanticBaselineGenerationRef.current = null;
+      isHydratingRef.current = false;
+      skipAutosaveRef.current = false;
+      setCreatorHydrationSettleGeneration(null);
+    }
+
     if (!isCreatorLabFlow) return;
 
     if (shouldRestoreHydratedCreatorScenes({
@@ -3742,7 +3768,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         setCreatorSceneHydrationAuthority("hydrated_populated");
       }
     }
-  }, [isCreatorLabFlow, scenes]);
+  }, [creatorHydrationSettleGeneration, isCreatorLabFlow, scenes]);
 
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
@@ -12573,6 +12599,7 @@ const generateSceneImage = async (
     setCreatorSceneBuildLoading(false);
     creatorSceneHydrationAuthorityRef.current = "unknown";
     creatorAutosaveSemanticBaselineRef.current = null;
+    setCreatorHydrationSettleGeneration(null);
     setCreatorSceneHydrationAuthority("unknown");
     isHydratingRef.current = true;
     skipAutosaveRef.current = true;
@@ -13107,6 +13134,7 @@ const generateSceneImage = async (
         creatorAutosaveSemanticBaselineRef.current = previousAutosaveSemanticBaseline;
         creatorHydrationSemanticBaselineGenerationRef.current = previousHydrationSemanticBaselineGeneration;
         creatorLastPopulatedScenesRef.current = previousLastPopulatedScenes;
+        setCreatorHydrationSettleGeneration(null);
         isHydratingRef.current = false;
         skipAutosaveRef.current = false;
       }
@@ -13114,6 +13142,13 @@ const generateSceneImage = async (
         if (projectGenerationRef.current !== loadGeneration) return;
         window.requestAnimationFrame(() => {
           if (projectGenerationRef.current !== loadGeneration) return;
+          if (
+            isCreatorProject &&
+            creatorHydrationSemanticBaselineGenerationRef.current === loadGeneration
+          ) {
+            setCreatorHydrationSettleGeneration(loadGeneration);
+            return;
+          }
           if (creatorHydrationSemanticBaselineGenerationRef.current === loadGeneration) {
             creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntentRef.current;
             creatorHydrationSemanticBaselineGenerationRef.current = null;
