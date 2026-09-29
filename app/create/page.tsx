@@ -162,6 +162,11 @@ import {
   shouldPersistCreatorSceneProjection,
   type CreatorSceneHydrationAuthority,
 } from "@/lib/creator/creatorScenePersistence";
+import {
+  createCreatorAutosaveSemanticKey,
+  resolveCreatorAddedSceneScriptRevision,
+  shouldPersistCreatorAutosaveIntent,
+} from "@/lib/creator/creatorHydrationPersistence";
 import { creatorSceneBuildRecoveryMessage, resolveCreatorScriptEditorialState } from "@/lib/creator/creatorEditorialQa";
 import {
   acceptGeneratedCreatorScript,
@@ -3698,6 +3703,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorSceneHydrationAuthority>("unknown");
   const creatorSceneHydrationAuthorityRef =
     useRef<CreatorSceneHydrationAuthority>("unknown");
+  const creatorAutosaveSemanticBaselineRef = useRef<string | null>(null);
+  const creatorAutosaveSemanticIntentRef = useRef("");
   const creatorVisualScenesRef = useRef<Scene[]>([]);
 
   useEffect(() => {
@@ -8343,12 +8350,24 @@ const generateSceneImage = async (
 
   const addCreatorEditorScene = () => {
     if (!isCreatorLabFlow || creatorSceneStructuralOperationsDisabled) return;
+    const scriptRevision = resolveCreatorAddedSceneScriptRevision({
+      script: creatorScript,
+      productionPackage: creatorProductionPackage,
+      scenes,
+    });
+    if (scriptRevision === null) {
+      setError(uiLanguage === "en"
+        ? "Approve the current script before adding a scene."
+        : "Sahne eklemeden önce güncel metni onayla.");
+      return;
+    }
     const result = addCreatorScene(
       scenes,
       selectedCreatorEditorSceneId,
       (creatorSceneId): Scene => ({
         id: 0,
         creatorSceneId,
+        scriptRevision,
         text: "",
         narration: "",
         dialogue: "",
@@ -12406,6 +12425,9 @@ const generateSceneImage = async (
       generation: projectGenerationRef.current,
       creatorProjectState: capturedCreatorProjectState,
     });
+    const persistedSemanticIntent = capturedCreatorProjectState
+      ? createCreatorAutosaveSemanticKey(capturedCreatorProjectState)
+      : creatorAutosaveSemanticIntentRef.current;
     setSaveMessage("");
     const queuedSave = projectSaveQueueRef.current
       .catch(() => undefined)
@@ -12419,6 +12441,7 @@ const generateSceneImage = async (
       const result = await queuedSave;
       if (saveAttempt === projectSaveAttemptRef.current && binding.generation === projectGenerationRef.current) {
         creatorPersistenceCurrentRef.current = true;
+        creatorAutosaveSemanticBaselineRef.current = persistedSemanticIntent;
       }
       return result;
     } catch (saveError) {
@@ -12506,6 +12529,7 @@ const generateSceneImage = async (
     setCreatorScriptGenerationLoading(false);
     setCreatorSceneBuildLoading(false);
     creatorSceneHydrationAuthorityRef.current = "unknown";
+    creatorAutosaveSemanticBaselineRef.current = null;
     setCreatorSceneHydrationAuthority("unknown");
     isHydratingRef.current = true;
     skipAutosaveRef.current = true;
@@ -12539,6 +12563,9 @@ const generateSceneImage = async (
       const canonicalCreatorState = isCreatorProject
         ? readCreatorProjectState(project)
         : null;
+      creatorAutosaveSemanticBaselineRef.current = canonicalCreatorState
+        ? createCreatorAutosaveSemanticKey(canonicalCreatorState)
+        : null;
       const savedCreatorPackage = (canonicalCreatorState?.production.package ?? null) as CreatorProductionPackage | null;
       const loadedContentLanguage: ContentLanguage =
         project.language === "en" ? "en" : "tr";
@@ -12560,10 +12587,7 @@ const generateSceneImage = async (
       const loadedCharacters = isCreatorProject
         ? normalizeCreatorLabCharacters(project.characters)
         : withDefaultGuideCharacter(project.characters);
-      const persistedCreatorSceneCandidates = canonicalCreatorState?.createReview.scenes ?? project.scenes;
-      const persistedCreatorScenes = isCreatorProject && !creatorSceneOutputIsCurrent({ script: canonicalCreatorState?.strategy.script || null, productionPackage: normalizedSavedCreatorPackage, scenes: Array.isArray(persistedCreatorSceneCandidates) ? persistedCreatorSceneCandidates : [] })
-        ? []
-        : persistedCreatorSceneCandidates;
+      const persistedCreatorScenes = canonicalCreatorState?.createReview.scenes ?? project.scenes;
       const loadedProjectScenesBeforeIdentity = Array.isArray(persistedCreatorScenes)
         ? persistedCreatorScenes.map((scene: Scene, index: number) =>
             isCreatorProject
@@ -18758,6 +18782,75 @@ const generateSceneImage = async (
     });
   }, [scenes, isCreatorLabFlow]);
 
+  const creatorAutosaveMentorResult = creatorMentorResult
+    ? {
+        ...creatorMentorResult,
+        strategySelection: {
+          directionId: creatorSelectedStrategyDirectionId,
+          hook: creatorSelectedHookPattern,
+        },
+      }
+    : null;
+  const creatorAutosaveProductionPackage = creatorProductionPackage
+    ? {
+        ...creatorProductionPackage,
+        outcome: creatorOutcome,
+        format: creatorFormat,
+        contentType: creatorContentType,
+        durationPreset: creatorDurationPreset,
+        durationSec: creatorVideoDurationSec,
+        qualityMode: creatorQualityMode,
+        targetPlatforms: creatorTargetPlatforms,
+        platformOutputPlan: creatorPlatformOutputPlan,
+        backgroundMusic: creatorBackgroundMusic,
+        visualContinuity: getCreatorVisualContinuitySnapshot(),
+        voicePreferences: creatorProductionPackage.voicePreferences || null,
+      }
+    : null;
+  const creatorAutosaveSemanticIntent = createCreatorAutosaveSemanticKey(
+    buildCreatorProjectState({
+      navigation: creatorNavigationRef.current,
+      brief: {
+        topic: normalizeCreatorTopicAuthority(input), language, country: creatorCountry,
+        ageGroup: creatorAgeGroup, contentType: creatorContentType,
+        ...(creatorOutcome ? { outcome: creatorOutcome } : {}),
+        format: creatorFormat, durationPreset: creatorDurationPreset,
+        durationSec: creatorVideoDurationSec, customDurationSec: creatorCustomDurationSec,
+        qualityMode: creatorQualityMode, targetPlatforms: creatorTargetPlatforms,
+      },
+      strategy: {
+        mentorResult: creatorAutosaveMentorResult,
+        selectedDirectionId: creatorSelectedStrategyDirectionId,
+        selectedHook: creatorSelectedHookPattern,
+        strategyFingerprint: creatorStrategyFingerprint,
+        profileSnapshot: creatorStrategyProfileSnapshot || creatorProfile,
+        script: creatorScript,
+        pendingRefinement: creatorScriptPendingRefinement,
+        revisionHistory: creatorScriptRevisionHistory,
+      },
+      production: {
+        package: creatorAutosaveProductionPackage,
+        refinedScenes: refinedCreatorScenes,
+        backgroundMusic: creatorBackgroundMusic,
+        ...creatorAudioTimelineSnapshotFields(creatorAudioTimeline),
+        projectContinuityMode: creatorProjectContinuityMode,
+        sceneContinuityModes: creatorSceneContinuityModes,
+        voicePreferences: creatorAutosaveProductionPackage?.voicePreferences || null,
+      },
+      createReview: { scenes },
+      publish: {
+        metadata: youtubeMetadataResult, thumbnail: youtubeThumbnailResult,
+        thumbnailDesign: creatorThumbnailStudio,
+        confirmations: creatorReleaseConfirmations,
+        packageDownloaded: creatorPackageDownloaded,
+        packageSignature: creatorPackageSignature,
+        finalVideoUrl: exportedMovieUrl,
+        finalVideoSignature: exportSignature,
+      },
+    }),
+  );
+  creatorAutosaveSemanticIntentRef.current = creatorAutosaveSemanticIntent;
+
   useEffect(() => {
     if (skipAutosaveRef.current) {
       skipAutosaveRef.current = false;
@@ -18769,6 +18862,16 @@ const generateSceneImage = async (
     }
 
     if (suspendAutosaveRef.current) {
+      return;
+    }
+
+    if (!shouldPersistCreatorAutosaveIntent({
+      baselineKey: creatorAutosaveSemanticBaselineRef.current,
+      currentKey: creatorAutosaveSemanticIntent,
+    })) {
+      if (creatorAutosaveSemanticBaselineRef.current === null) {
+        creatorAutosaveSemanticBaselineRef.current = creatorAutosaveSemanticIntent;
+      }
       return;
     }
 
@@ -18786,6 +18889,7 @@ const generateSceneImage = async (
 
     autosaveTimerRef.current = setTimeout(async () => {
       const autosaveGeneration = projectGenerationRef.current;
+      const persistedSemanticIntent = creatorAutosaveSemanticIntent;
       try {
         await persistProject(false, {
           persistScenes: shouldPersistCreatorSceneProjection({
@@ -18794,6 +18898,7 @@ const generateSceneImage = async (
           }),
         });
         if (autosaveGeneration !== projectGenerationRef.current) return;
+        creatorAutosaveSemanticBaselineRef.current = persistedSemanticIntent;
         setSaveMessage(ui.autoSaved);
       } catch (saveError) {
         if (autosaveGeneration !== projectGenerationRef.current) return;
@@ -18856,6 +18961,7 @@ const generateSceneImage = async (
     creatorPerformanceHistory,
     currentProjectId,
     isCreatorLabFlow,
+    creatorAutosaveSemanticIntent,
   ]);
 
   useEffect(() => {
