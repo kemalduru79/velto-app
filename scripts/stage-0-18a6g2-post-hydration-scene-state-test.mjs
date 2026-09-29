@@ -42,12 +42,17 @@ const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url),
 assert.match(page, /const creatorHydrationSemanticBaselineGenerationRef = useRef<number \| null>\(null\)/);
 assert.match(page, /creatorHydrationSemanticBaselineGenerationRef\.current = loadGeneration/);
 assert.doesNotMatch(page, /creatorAutosaveSemanticBaselineRef\.current = canonicalCreatorState/, "hydration baseline must be derived from rendered normalized state, not raw persisted state");
-assert.match(page, /isHydratingRef\.current[\s\S]{0,320}creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntent;/);
 const hydrationRenderBlockStart = page.indexOf("if (\n    isHydratingRef.current &&\n    creatorHydrationSemanticBaselineGenerationRef.current !== null");
 assert.ok(hydrationRenderBlockStart >= 0, "hydration render baseline block must exist");
 const hydrationRenderBlockEnd = page.indexOf("\n  }", hydrationRenderBlockStart);
+const hydrationRenderBlock = page.slice(hydrationRenderBlockStart, hydrationRenderBlockEnd + 4);
+assert.match(
+  hydrationRenderBlock,
+  /creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntent;/,
+  "hydration renders must keep rebasing the semantic autosave baseline",
+);
 assert.doesNotMatch(
-  page.slice(hydrationRenderBlockStart, hydrationRenderBlockEnd + 4),
+  hydrationRenderBlock,
   /creatorHydrationSemanticBaselineGenerationRef\.current = null/,
   "render-time hydration baseline updates must not release the generation marker early",
 );
