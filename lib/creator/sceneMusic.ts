@@ -1,5 +1,6 @@
 import {
   normalizeCreatorAudioTimeline,
+  reconcileCreatorAudioTimeline,
   type CreatorAudioAssetReference,
   type CreatorAudioPlacement,
   type CreatorAudioTimeline,
@@ -78,7 +79,26 @@ export function startOrChangeCreatorSceneMusic(input: {
   const current = normalizeCreatorAudioTimeline(input.timeline);
   const sceneIndex = input.sceneIds.indexOf(input.sceneId);
   if (sceneIndex < 0 || input.sceneIds.length === 0) throw new Error("CREATOR_SCENE_MUSIC_SCENE_INVALID");
-  const before = materializeAutoDefault(current, input.sceneIds).filter((item) => item.range.start.sceneId !== input.sceneId);
+
+  const reconciled = reconcileCreatorAudioTimeline({
+    timeline: current,
+    previousScenes: [],
+    nextScenes: input.sceneIds.map((creatorSceneId) => ({ creatorSceneId })),
+  }).timeline;
+  const currentSceneIds = new Set(input.sceneIds);
+  const selectedAssetId = input.choice.mode === "asset" ? input.choice.asset.assetId : null;
+  const replacesWholeCurrentTopology = sceneIndex === 0 && Boolean(selectedAssetId);
+  const before = materializeAutoDefault(reconciled, input.sceneIds)
+    .filter((item) => item.range.start.sceneId !== input.sceneId)
+    .filter((item) => {
+      const provenObsoleteSameAssetPrimary =
+        replacesWholeCurrentTopology &&
+        item.id.startsWith("primary-music:") &&
+        item.asset?.assetId === selectedAssetId &&
+        !currentSceneIds.has(item.range.start.sceneId) &&
+        !currentSceneIds.has(item.range.end.sceneId);
+      return !provenObsoleteSameAssetPrimary;
+    });
   const next = placement({ sceneId: input.sceneId, lastSceneId: input.sceneIds.at(-1)!, choice: input.choice });
   const closed = before.map((item) => {
     const startIndex = input.sceneIds.indexOf(item.range.start.sceneId);
@@ -87,7 +107,14 @@ export function startOrChangeCreatorSceneMusic(input: {
       ? { ...item, range: { ...item.range, end: anchor(input.sceneId, "start") } }
       : item;
   });
-  return { ...current, placements: [...current.placements.filter((item) => item.kind !== "music"), ...closed, next] };
+  return {
+    ...reconciled,
+    placements: [
+      ...reconciled.placements.filter((item) => item.kind !== "music"),
+      ...closed,
+      next,
+    ],
+  };
 }
 
 export function stopCreatorSceneMusicAfter(input: { timeline: CreatorAudioTimeline; sceneIds: string[]; sceneId: string }) {
