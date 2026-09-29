@@ -30,8 +30,9 @@ const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url),
 assert.doesNotMatch(page, /!creatorSceneOutputIsCurrent\([\s\S]{0,300}\? \[\]/, "currentness must not erase persisted scenes during hydration");
 assert.match(page, /const persistedCreatorScenes = canonicalCreatorState\?\.createReview\.scenes \?\? project\.scenes/);
 assert.match(page, /hasScenes: loadedProjectScenes\.length > 0/);
-assert.match(page, /creatorAutosaveSemanticBaselineRef\.current = canonicalCreatorState[\s\S]*createCreatorAutosaveSemanticKey\(canonicalCreatorState\)/);
-assert.doesNotMatch(page, /requestAnimationFrame\([\s\S]{0,300}creatorAutosaveSemanticBaselineRef\.current/);
+assert.doesNotMatch(page, /creatorAutosaveSemanticBaselineRef\.current = canonicalCreatorState/, "raw persisted state must not become the post-normalization hydration baseline");
+assert.match(page, /creatorHydrationSemanticBaselineGenerationRef\.current = loadGeneration/);
+assert.match(page, /creatorAutosaveSemanticBaselineRef\.current = creatorAutosaveSemanticIntent;/);
 assert.match(page, /creatorAutosaveSemanticBaselineRef\.current = persistedSemanticIntent/);
 assert.match(page, /persistedSemanticIntent = capturedCreatorProjectState[\s\S]*createCreatorAutosaveSemanticKey\(capturedCreatorProjectState\)/);
 
