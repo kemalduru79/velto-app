@@ -61,7 +61,7 @@ assert.equal(
     dependencies: packageJson.dependencies,
     devDependencies: packageJson.devDependencies,
   })).digest("hex"),
-  "d2abe587511bf80e20e19f6b170df2bf2445299343ebd4b619c6f52618a7a471",
+  "87a1b454412809e953de32eadbc9c533deb1edafcbfed9d5548d90e55986a0b5",
 );
 assert.equal(hash("package-lock.json"), "1d3ce079c07be440669c3ec43b5bcaa9a068a448355d4cf6ec9eb2ea4974c989");
 assert.equal(hash("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226");
