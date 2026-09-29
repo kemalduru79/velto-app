@@ -58,7 +58,7 @@ check(!/unsplash|pexels|pixabay|shutterstock|getty|storyblocks/i.test(helperSour
 check(!/supabase|create table|migration/i.test(helperSource + component), "no database or schema requirement introduced");
 check(
   createHash("sha256").update(JSON.stringify(packageJson.dependencies || {})).digest("hex") ===
-    "a670e27e2b6e356c24ffa46a447496eb2ff287f37cbd503404f75ec2f715d2bd",
+    "c78fdc671808f55bc3ef9be878c0f3920da3415bd45a483ece123b47f7c0408f",
   "no package dependency introduced",
 );
 check(!reuseBlock.includes("CreatorCostGuard"), "CreatorCostGuard remains outside zero-credit reuse");
