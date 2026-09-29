@@ -67,3 +67,15 @@ export function shouldPersistCreatorSceneProjection(input: {
 }) {
   return input.authority === "hydrated_populated" && input.sceneCount > 0;
 }
+
+export function shouldRestoreHydratedCreatorScenes(input: {
+  authority: CreatorSceneHydrationAuthority;
+  currentSceneCount: number;
+  lastPopulatedSceneCount: number;
+  isHydrating: boolean;
+}) {
+  return !input.isHydrating
+    && input.authority === "hydrated_populated"
+    && input.currentSceneCount === 0
+    && input.lastPopulatedSceneCount > 0;
+}
