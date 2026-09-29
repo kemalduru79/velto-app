@@ -49,7 +49,7 @@ assert.equal(hash("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad8
 assert.equal(hash("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226");
 assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
   "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
-  "hls.js", "next", "openai", "react", "react-dom",
+  "geist", "hls.js", "next", "openai", "react", "react-dom",
 ].sort());
 assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
   "@tailwindcss/postcss", "@types/node", "@types/react", "@types/react-dom",
