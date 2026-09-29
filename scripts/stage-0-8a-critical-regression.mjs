@@ -81,6 +81,8 @@ const tests = [
   "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
   "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
   "scripts/stage-0-11f-closure-go-no-go-test.mjs",
+  "scripts/stage-0-18a6g1-reload-hydration-autosave-test.mjs",
+  "scripts/stage-0-18a6g2-post-hydration-scene-state-test.mjs",
 ];
 
 for (const test of tests) {
