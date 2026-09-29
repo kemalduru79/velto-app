@@ -586,15 +586,24 @@ export function validateCreatorAudioTimelineTopology(input: {
     left.placementId.localeCompare(right.placementId),
   );
 
+  let furthestActiveRange = validMusicRanges[0];
   for (let index = 1; index < validMusicRanges.length; index += 1) {
-    const previous = validMusicRanges[index - 1];
     const current = validMusicRanges[index];
-    if (compareCreatorAudioTopologyBoundary(current.start, previous.end) < 0) {
+    if (
+      furthestActiveRange &&
+      compareCreatorAudioTopologyBoundary(current.start, furthestActiveRange.end) < 0
+    ) {
       issues.push({
         code: "music_overlap",
         placementId: current.placementId,
-        relatedPlacementId: previous.placementId,
+        relatedPlacementId: furthestActiveRange.placementId,
       });
+    }
+    if (
+      !furthestActiveRange ||
+      compareCreatorAudioTopologyBoundary(current.end, furthestActiveRange.end) > 0
+    ) {
+      furthestActiveRange = current;
     }
   }
 
