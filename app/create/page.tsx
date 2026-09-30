@@ -4731,11 +4731,20 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedFlow = params.get("flow");
-    setSelectedFlowKey(
+    const requestedProjectId = params.get(PROJECT_URL_PARAM)?.trim() || "";
+    const nextFlowKey =
       requestedFlow === "creator_lab" || requestedFlow === "creatorlab"
         ? "creator_lab"
-        : "storyverse",
-    );
+        : "storyverse";
+
+    setSelectedFlowKey(nextFlowKey);
+
+    if (nextFlowKey === "creator_lab" && !requestedProjectId) {
+      creatorSceneHydrationAuthorityRef.current = "hydrated_empty";
+      setCreatorSceneHydrationAuthority("hydrated_empty");
+      isHydratingRef.current = false;
+      skipAutosaveRef.current = false;
+    }
   }, []);
 
 
