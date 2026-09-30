@@ -406,6 +406,47 @@ export type CreatorAudioReconciliationIssue = {
   sceneId?: string;
 };
 
+export function reconcileSupersededCreatorPrimaryMusicPlacements(input: {
+  timeline: CreatorAudioTimeline;
+  sceneIds: string[];
+}): CreatorAudioTimeline {
+  const timeline = normalizeCreatorAudioTimeline(input.timeline);
+  const currentSceneIds = new Set(input.sceneIds.filter(Boolean));
+  const validActivePrimaryAssetIds = new Set(
+    timeline.placements
+      .filter((placement) =>
+        placement.kind === "music" &&
+        placement.status === "active" &&
+        placement.id.startsWith("primary-music:") &&
+        Boolean(placement.asset?.assetId) &&
+        currentSceneIds.has(placement.range.start.sceneId) &&
+        currentSceneIds.has(placement.range.end.sceneId)
+      )
+      .map((placement) => placement.asset!.assetId),
+  );
+
+  if (validActivePrimaryAssetIds.size === 0) return timeline;
+
+  const placements = timeline.placements.filter((placement) => {
+    if (
+      placement.kind !== "music" ||
+      !placement.id.startsWith("primary-music:") ||
+      !placement.asset?.assetId ||
+      !validActivePrimaryAssetIds.has(placement.asset.assetId)
+    ) {
+      return true;
+    }
+
+    const startIsCurrent = currentSceneIds.has(placement.range.start.sceneId);
+    const endIsCurrent = currentSceneIds.has(placement.range.end.sceneId);
+    return startIsCurrent || endIsCurrent;
+  });
+
+  return placements.length === timeline.placements.length
+    ? timeline
+    : { ...timeline, placements };
+}
+
 function hintMatches(left: CreatorAudioReconciliationScene, right: CreatorAudioReconciliationScene) {
   return Boolean(left.scriptSectionId) && left.scriptSectionId === right.scriptSectionId &&
     Number.isInteger(left.scriptSegmentIndex) && left.scriptSegmentIndex === right.scriptSegmentIndex;
@@ -451,7 +492,13 @@ export function reconcileCreatorAudioTimeline(input: {
       status: placement.musicSelection?.mode === "auto" ? "unresolved" as const : "active" as const,
     };
   });
-  return { timeline: { ...timeline, placements }, issues };
+  return {
+    timeline: reconcileSupersededCreatorPrimaryMusicPlacements({
+      timeline: { ...timeline, placements },
+      sceneIds: input.nextScenes.map((scene) => scene.creatorSceneId),
+    }),
+    issues,
+  };
 }
 
 export type CreatorAudioTopologyIssueCode =

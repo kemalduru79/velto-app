@@ -202,6 +202,7 @@ import {
 } from "@/lib/creator/projectState";
 import {
   reconcileCreatorAudioTimeline,
+  reconcileSupersededCreatorPrimaryMusicPlacements,
   validateCreatorAudioTimelineTopology,
   type CreatorAudioTimeline,
 } from "@/lib/creator/audioTimeline";
@@ -282,6 +283,7 @@ import {
   normalizeCreatorSceneIds,
   normalizeCreatorSceneTrim,
   projectCanonicalCreatorScenes,
+  reconcileCreatorFullVideoSourceDurations,
   removeCreatorScene,
   matchesExpectedCreatorVideoSource,
   selectCreatorSceneId,
@@ -3466,6 +3468,43 @@ type CreateWorkspaceProps = {
   onStartNewProject: () => void;
 };
 
+async function observeCreatorVideoSourceDuration(
+  videoUrl: string,
+): Promise<{ videoUrl: string; durationSec: number } | null> {
+  if (typeof document === "undefined" || !videoUrl.trim()) return null;
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    let settled = false;
+    const finish = (value: { videoUrl: string; durationSec: number } | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      video.removeAttribute("src");
+      video.load();
+      resolve(value);
+    };
+    const timeoutId = window.setTimeout(() => finish(null), 12_000);
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      if (!matchesExpectedCreatorVideoSource({
+        expectedUrl: videoUrl,
+        currentSrc: video.currentSrc,
+        baseUrl: document.baseURI,
+      })) {
+        finish(null);
+        return;
+      }
+      const durationSec = Number(video.duration);
+      finish(Number.isFinite(durationSec) && durationSec > 0
+        ? { videoUrl, durationSec }
+        : null);
+    };
+    video.onerror = () => finish(null);
+    video.src = videoUrl;
+    video.load();
+  });
+}
+
 function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
@@ -5599,14 +5638,15 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     });
   };
 
-  const getCurrentExportSignature = () => buildExportSignature(title, scenes);
+  const getCurrentExportSignature = (sourceScenes = scenes) =>
+    buildExportSignature(title, sourceScenes);
 
-  const hasReusableExport = () => {
+  const hasReusableExport = (sourceScenes = scenes) => {
     if (!exportedMovieUrl || !exportSignature) {
       return false;
     }
 
-    const currentSignature = getCurrentExportSignature();
+    const currentSignature = getCurrentExportSignature(sourceScenes);
     return exportSignature === currentSignature || (
       isCreatorLabFlow &&
       projectLegacyCreatorFinalProductionSignature(exportSignature) === currentSignature
@@ -11313,12 +11353,55 @@ const generateSceneImage = async (
   };
 
   const handleExportMovie = async (forceRebuild = false) => {
-    const currentSignature = buildExportSignature(title, scenes);
+    let exportAuthorityScenes = scenes;
+    if (isCreatorLabFlow) {
+      const observedSources = { ...creatorSceneVideoSourceDurations };
+      const observations = await Promise.all(exportAuthorityScenes.map(async (scene) => {
+        const creatorSceneId = scene.creatorSceneId?.trim() || "";
+        const videoUrl = scene.videoUrl?.trim() || "";
+        if (
+          !creatorSceneId ||
+          !videoUrl ||
+          scene.videoStatus !== "done" ||
+          Number.isFinite(scene.clipInSec) ||
+          Number.isFinite(scene.clipOutSec) ||
+          observedSources[creatorSceneId]?.videoUrl === videoUrl
+        ) return null;
+        const observation = await observeCreatorVideoSourceDuration(videoUrl);
+        return observation ? { creatorSceneId, observation } : null;
+      }));
+      for (const result of observations) {
+        if (result) observedSources[result.creatorSceneId] = result.observation;
+      }
+      const reconciliation = reconcileCreatorFullVideoSourceDurations({
+        scenes: exportAuthorityScenes,
+        observedSources,
+      });
+      if (reconciliation.changed) {
+        exportAuthorityScenes = reconciliation.scenes;
+        setScenes(exportAuthorityScenes);
+        setCreatorSceneVideoSourceDurations(observedSources);
+        try {
+          await persistProject(false, {
+            sourceScenes: exportAuthorityScenes,
+            persistScenes: true,
+          });
+        } catch (saveError) {
+          setSaveMessage("");
+          setError(uiLanguage === "en"
+            ? "The current video duration could not be saved. Export was not started."
+            : "Mevcut video süresi kaydedilemedi. Dışa aktarma başlatılmadı.");
+          console.error("creator video duration reconciliation save error:", saveError);
+          return;
+        }
+      }
+    }
+    const currentSignature = buildExportSignature(title, exportAuthorityScenes);
 
     if (
       !forceRebuild &&
       exportedMovieUrl &&
-      hasReusableExport()
+      hasReusableExport(exportAuthorityScenes)
     ) {
       setError("");
       setSaveMessage(ui.movieCreated);
@@ -11355,10 +11438,10 @@ const generateSceneImage = async (
 
       const audioTopologyReadiness = validateCreatorAudioTimelineTopology({
         timeline: creatorAudioTimeline,
-        sceneIds: scenes.map((scene) => scene.creatorSceneId?.trim() || ""),
+        sceneIds: exportAuthorityScenes.map((scene) => scene.creatorSceneId?.trim() || ""),
       });
       const readiness = createCreatorFinalVideoReadiness({
-        scenes: scenes.map((scene) => ({
+        scenes: exportAuthorityScenes.map((scene) => ({
           ...scene,
           narrationAudioCurrent:
             getCreatorNarrationAudioCurrentness(scene) === "current",
@@ -11367,7 +11450,7 @@ const generateSceneImage = async (
           videoCurrent: getCreatorVideoState(scene) === "current",
         })),
         timelineApproved: getCreatorTimelineMediaGate().approved,
-        flowValidation: buildExportFlowValidation(scenes),
+        flowValidation: buildExportFlowValidation(exportAuthorityScenes),
       });
 
       if (!readiness.canStartFinalVideo) {
@@ -11396,7 +11479,7 @@ const generateSceneImage = async (
       }
     }
 
-    const rawExportScenes = scenes.filter(
+    const rawExportScenes = exportAuthorityScenes.filter(
       (scene) => getSceneExportSource(scene) !== "none"
     );
 
@@ -11414,7 +11497,7 @@ const generateSceneImage = async (
       return;
     }
 
-    const exportFlowValidation = approveExportFlow(scenes);
+    const exportFlowValidation = approveExportFlow(exportAuthorityScenes);
 
     if (isCreatorLabFlow && !exportFlowValidation) {
       return;
@@ -12555,10 +12638,20 @@ const generateSceneImage = async (
     }
 
     try {
+      const durationReconciliation = isCreatorLabFlow
+        ? reconcileCreatorFullVideoSourceDurations({
+            scenes,
+            observedSources: creatorSceneVideoSourceDurations,
+          })
+        : { scenes, changed: false };
+      if (durationReconciliation.changed) {
+        setScenes(durationReconciliation.scenes);
+      }
       await persistProject(true, {
+        sourceScenes: durationReconciliation.scenes,
         persistScenes: shouldPersistCreatorSceneProjection({
           authority: creatorSceneHydrationAuthorityRef.current,
-          sceneCount: scenes.length,
+          sceneCount: durationReconciliation.scenes.length,
         }),
       });
     } catch (e: any) {
@@ -12903,9 +12996,13 @@ const generateSceneImage = async (
           isCreatorPremiumMusicTrackId,
       );
       setCreatorBackgroundMusic(hydratedBackgroundMusic);
-      setCreatorAudioTimeline(hydrateCreatorMusicTimeline({
+      const hydratedCreatorAudioTimeline = hydrateCreatorMusicTimeline({
         timeline: canonicalCreatorState?.production.audioTimeline,
         legacyMode: hydratedBackgroundMusic.mode,
+      });
+      setCreatorAudioTimeline(reconcileSupersededCreatorPrimaryMusicPlacements({
+        timeline: hydratedCreatorAudioTimeline,
+        sceneIds: loadedProjectScenes.map((scene) => scene.creatorSceneId?.trim() || ""),
       }));
 
       const savedQualityMode =

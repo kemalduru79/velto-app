@@ -83,6 +83,8 @@ export function createCreatorVisualCoveragePlan(
 ): CreatorVisualCoverageBeat[] {
   const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId.trim() : "";
   const targetDurationSec = positive(scene.targetDurationSec || scene.timing?.targetSceneDuration);
+  const videoUrl = typeof scene.videoUrl === "string" ? scene.videoUrl.trim() : "";
+  const sourceVideoDuration = positive(scene.videoDurationSeconds);
   if (!creatorSceneId || targetDurationSec <= 0) return [];
 
   const imageMotionRendererAvailable = options.imageMotionRendererAvailable !== false;
@@ -104,9 +106,7 @@ export function createCreatorVisualCoveragePlan(
     cursor = endSec;
   };
 
-  const videoUrl = typeof scene.videoUrl === "string" ? scene.videoUrl.trim() : "";
   if (videoUrl && scene.videoStatus === "done") {
-    const sourceVideoDuration = positive(scene.videoDurationSeconds);
     const clipInSec = Math.max(0, Number(scene.clipInSec) || 0);
     const clipOutSec = Math.min(sourceVideoDuration, positive(scene.clipOutSec) || sourceVideoDuration);
     const effectiveVideoDuration = clipOutSec > clipInSec

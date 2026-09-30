@@ -198,8 +198,12 @@ export async function POST(request: Request) {
             videoUrl: typeof persistedScene.videoUrl === "string" ? persistedScene.videoUrl : undefined,
             videoStatus: typeof persistedScene.videoStatus === "string" ? persistedScene.videoStatus : undefined,
             videoDurationSeconds: Number(persistedScene.videoDurationSeconds),
-            clipInSec: Number(persistedScene.clipInSec),
-            clipOutSec: Number(persistedScene.clipOutSec),
+            clipInSec: typeof persistedScene.clipInSec === "number" && Number.isFinite(persistedScene.clipInSec)
+              ? Number(persistedScene.clipInSec)
+              : undefined,
+            clipOutSec: typeof persistedScene.clipOutSec === "number" && Number.isFinite(persistedScene.clipOutSec)
+              ? Number(persistedScene.clipOutSec)
+              : undefined,
             targetDurationSec: resolveCreatorVisualCoverageTargetDuration({
               timingTargetDurationSec: persistedTiming?.targetSceneDuration,
               fallbackTargetDurationSec: persistedScene.targetDurationSec,

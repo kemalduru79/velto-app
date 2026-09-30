@@ -9,7 +9,10 @@ import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { resolveRuntimeRelease } from "./runtimeIdentity.js";
 import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
-import { reconcileVisualCoveragePlan } from "./visualCoverage.js";
+import {
+  reconcileVisualCoveragePlan,
+  resolveCoverageBackedSceneTargetDuration,
+} from "./visualCoverage.js";
 
 const app = express();
 
@@ -458,6 +461,11 @@ function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "imag
     safeAudioDuration > 0
       ? safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS
       : 0;
+
+  const coverageBackedTarget = resolveCoverageBackedSceneTargetDuration(scene);
+  if (Number.isFinite(coverageBackedTarget) && coverageBackedTarget > 0) {
+    return coverageBackedTarget;
+  }
 
   if (sourceType === "video" && safeSourceDuration > 0) {
     if (audioDrivenDuration > 0) {

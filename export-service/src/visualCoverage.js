@@ -7,6 +7,19 @@ const finiteNumber = (value) => {
 
 const roundDuration = (value) => Math.round(value * 100) / 100;
 
+export function resolveCoverageBackedSceneTargetDuration(scene) {
+  const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+  if (beats.length === 0) return Number.NaN;
+  const requestedTarget = finiteNumber(scene?.timing?.targetSceneDuration);
+  if (Number.isFinite(requestedTarget) && requestedTarget > 0) {
+    return requestedTarget;
+  }
+  const coverageTarget = finiteNumber(beats.at(-1)?.endSec);
+  return Number.isFinite(coverageTarget) && coverageTarget > 0
+    ? coverageTarget
+    : Number.NaN;
+}
+
 export function validateVisualCoveragePlan(scene, targetDuration) {
   const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
   const safeTargetDuration = finiteNumber(targetDuration);

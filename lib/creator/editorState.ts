@@ -96,6 +96,58 @@ export type NormalizedCreatorSceneTrim = CreatorSceneTrim & {
 const roundCreatorClipSeconds = (value: number) =>
   Number(value.toFixed(3));
 
+export type CreatorVideoSourceDurationObservation = {
+  videoUrl: string;
+  durationSec: number;
+};
+
+export function reconcileCreatorFullVideoSourceDurations<
+  TScene extends CreatorSceneIdentity & {
+    videoUrl?: string;
+    videoStatus?: string;
+    videoDurationSeconds?: number;
+    clipInSec?: number;
+    clipOutSec?: number;
+  },
+>({
+  scenes,
+  observedSources,
+}: {
+  scenes: readonly TScene[];
+  observedSources: Readonly<Record<string, CreatorVideoSourceDurationObservation | undefined>>;
+}): { scenes: TScene[]; changed: boolean; reconciledCreatorSceneIds: string[] } {
+  const reconciledCreatorSceneIds: string[] = [];
+  const nextScenes = scenes.map((scene) => {
+    const creatorSceneId = scene.creatorSceneId?.trim() || "";
+    const videoUrl = scene.videoUrl?.trim() || "";
+    const observation = observedSources[creatorSceneId];
+    const observedDuration = Number(observation?.durationSec);
+    const hasAuthoritativeTrim =
+      Number.isFinite(scene.clipInSec) || Number.isFinite(scene.clipOutSec);
+    if (
+      !creatorSceneId ||
+      !videoUrl ||
+      scene.videoStatus !== "done" ||
+      hasAuthoritativeTrim ||
+      observation?.videoUrl.trim() !== videoUrl ||
+      !Number.isFinite(observedDuration) ||
+      observedDuration <= 0
+    ) {
+      return scene;
+    }
+
+    const durationSec = roundCreatorClipSeconds(observedDuration);
+    if (scene.videoDurationSeconds === durationSec) return scene;
+    reconciledCreatorSceneIds.push(creatorSceneId);
+    return { ...scene, videoDurationSeconds: durationSec };
+  });
+  return {
+    scenes: reconciledCreatorSceneIds.length > 0 ? nextScenes : [...scenes],
+    changed: reconciledCreatorSceneIds.length > 0,
+    reconciledCreatorSceneIds,
+  };
+}
+
 export function constrainCreatorTrimProposal(
   handle: CreatorTrimHandle,
   seconds: number,
