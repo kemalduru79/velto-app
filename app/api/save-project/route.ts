@@ -12,9 +12,15 @@ import {
 } from "@/lib/creator/projectState";
 import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
-import { assertCreatorScriptApprovalAuthority, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
+import { assertCreatorScriptApprovalAuthority, creatorSceneOutputIsCurrent, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
 import { resolveCreatorScriptMutationAuthority } from "@/lib/creator/creatorScriptMutationAuthority";
+import {
+  createCreatorProductionInvalidationIdentity,
+  creatorProjectHasMeaningfulProduction,
+  requireCreatorProductionSnapshotBeforeInvalidation,
+} from "@/lib/creator/creatorProductionHistory";
+import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
 
 export const runtime = "nodejs";
 
@@ -65,6 +71,9 @@ export async function POST(req: Request) {
 
     const services = getPersistenceServices();
     const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
+    const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
+      ? body.expectedUpdatedAt.trim()
+      : null;
     const exportedMovieUrl = typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl.trim()
       ? body.exportedMovieUrl.trim()
       : body.exportedMovieUrl === null ? null : undefined;
@@ -76,6 +85,7 @@ export async function POST(req: Request) {
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
     let shouldInvalidateCreatorProduction = false;
+    let suppressStaleCreatorFinalProjection = false;
     let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
     let persistedCreatorStateForPartialSave: CreatorProjectStateSnapshot | null = null;
     if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
@@ -92,6 +102,11 @@ export async function POST(req: Request) {
       if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
       const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
       const persistedState = readCreatorProjectState(persistedProject);
+      suppressStaleCreatorFinalProjection = Boolean(persistedScript) && !creatorSceneOutputIsCurrent({
+        script: persistedScript,
+        productionPackage: persistedState.production.package,
+        scenes: persistedState.createReview.scenes,
+      });
       const candidateState = body.creatorProjectState as CreatorProjectStateSnapshot;
       let authoritativeScript;
       try {
@@ -143,7 +158,34 @@ export async function POST(req: Request) {
         },
       };
       if (textChanged) {
-        authoritativeCreatorState = invalidateCreatorSceneAuthorityForScriptChange(authoritativeCreatorState);
+        if (!expectedUpdatedAt) throw new Error("PROJECT_REVISION_REQUIRED");
+        const meaningfulProduction = persistedScript && authoritativeScript && creatorProjectHasMeaningfulProduction(persistedProject);
+        const capture = async () => {
+          if (!meaningfulProduction || !persistedScript || !authoritativeScript) return;
+          const mutationType = body.creatorScriptMutation && typeof body.creatorScriptMutation === "object"
+            ? String((body.creatorScriptMutation as Record<string, unknown>).type || "script_changed")
+            : "script_changed";
+          await captureCreatorProductionSnapshotBeforeInvalidation({
+            projectId,
+            ownerUserId: principal.id,
+            expectedUpdatedAt,
+            mutationId: createCreatorProductionInvalidationIdentity({
+              projectId,
+              reason: mutationType,
+              fromRevision: persistedScript.revision,
+              toRevision: authoritativeScript.revision,
+              nextScript: authoritativeScript,
+            }),
+            invalidationReason: mutationType,
+            sourceScriptRevision: persistedScript.revision,
+            scriptFingerprint: persistedScript.strategyFingerprint,
+            approvalFingerprint: JSON.stringify(persistedScript.approval || null),
+          });
+        };
+        authoritativeCreatorState = await requireCreatorProductionSnapshotBeforeInvalidation({
+          capture,
+          invalidate: () => invalidateCreatorSceneAuthorityForScriptChange(authoritativeCreatorState as CreatorProjectStateSnapshot),
+        });
         if (hasScenes) scenes = [];
       } else {
         const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
@@ -189,6 +231,11 @@ export async function POST(req: Request) {
       const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
       if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
       const persistedState = readCreatorProjectState(persistedProject);
+      suppressStaleCreatorFinalProjection = Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
+        script: persistedState.strategy.script,
+        productionPackage: persistedState.production.package,
+        scenes: persistedState.createReview.scenes,
+      });
       persistedCreatorStateForPartialSave = persistedState;
       const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
         ? persistedProject.scenes
@@ -207,16 +254,25 @@ export async function POST(req: Request) {
         refinedCreatorScenes = persistedState.production.refinedScenes;
       }
     }
-    const creatorStateForAttachment = authoritativeCreatorState || persistedCreatorStateForPartialSave;
+    let creatorStateForAttachment = authoritativeCreatorState || persistedCreatorStateForPartialSave;
+    creatorStateForAttachment = suppressStaleCreatorFinalProjection && creatorStateForAttachment
+      ? {
+          ...creatorStateForAttachment,
+          publish: {
+            ...creatorStateForAttachment.publish,
+            packageDownloaded: false,
+            packageSignature: "",
+            finalVideoUrl: "",
+            finalVideoSignature: "",
+          },
+        }
+      : creatorStateForAttachment;
     const exportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
       ? attachCreatorProjectState(
           body.exportedMovieResult,
           creatorStateForAttachment,
         )
       : body.exportedMovieResult;
-    const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
-      ? body.expectedUpdatedAt.trim()
-      : null;
     const result =
       await services.projectRepository.saveForOwner({
         projectId,
@@ -230,9 +286,9 @@ export async function POST(req: Request) {
         ...(has("visualBible") ? { visualBible: body.visualBible } : {}),
         ...(has("characters") ? { characters: body.characters as unknown[] | null } : {}),
         ...(hasScenes ? { scenes } : {}),
-        ...(has("exportedMovieUrl") ? { exportedMovieUrl } : {}),
+        ...(has("exportedMovieUrl") ? { exportedMovieUrl: suppressStaleCreatorFinalProjection ? null : exportedMovieUrl } : {}),
         ...(has("exportedMovieResult") ? { exportedMovieResult } : {}),
-        ...(has("exportSignature") ? { exportSignature: typeof body.exportSignature === "string" && body.exportSignature ? body.exportSignature : null } : {}),
+        ...(has("exportSignature") ? { exportSignature: suppressStaleCreatorFinalProjection ? null : typeof body.exportSignature === "string" && body.exportSignature ? body.exportSignature : null } : {}),
         ...(has("creatorMentorResult") ? { creatorMentorResult: body.creatorMentorResult } : {}),
         ...(has("creatorProductionPackage") ? { creatorProductionPackage: body.creatorProductionPackage } : {}),
         ...(has("youtubeMetadataResult") ? { youtubeMetadataResult: body.youtubeMetadataResult } : {}),

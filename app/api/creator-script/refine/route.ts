@@ -8,6 +8,8 @@ import { getCreatorScriptDurationContractForScript, getCreatorScriptSectionSourc
 import { applyCreatorScriptHolisticEdits, applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, assertCreatorScriptForbiddenTermsRemoved, createCreatorScriptEditableUnits, createCreatorScriptHolisticCandidateSchema, createCreatorScriptHolisticCorrectionSchema, createCreatorScriptHolisticExecutionSchema, createCreatorScriptHolisticQaSchema, createCreatorScriptImmutableConstraintCatalog, createCreatorScriptMandatoryCandidates, createCreatorScriptWholeRefinementPlan, CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED, getCreatorScriptForbiddenLiteralTerms, getCreatorScriptHolisticCorrectionDiagnostics, getCreatorScriptHolisticDurationCorrection, getCreatorScriptHolisticEditDiagnostics, getCreatorScriptHolisticExecutionDiagnostics, getCreatorScriptImmutableCreatorConstraints, getCreatorScriptRemainingForbiddenTerms, normalizeCreatorScriptHolisticCandidates, parseCreatorScriptHolisticCandidates, parseCreatorScriptHolisticQa, projectCreatorScriptHolisticCandidates, reconcileCreatorScriptHolisticQaConstraints, validateCreatorScriptSelection, type CreatorScriptHolisticQa, type CreatorScriptHolisticSelection, type CreatorScriptHolisticUnitEdit, type CreatorScriptRefinementScope } from "@/lib/creator/creatorScriptRefinement";
 import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorScriptProposal, discardCreatorScriptProposal } from "@/lib/creator/creatorScriptRevisions";
 import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
+import { createCreatorProductionInvalidationIdentity, creatorProjectHasMeaningfulProduction, requireCreatorProductionSnapshotBeforeInvalidation } from "@/lib/creator/creatorProductionHistory";
+import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
 
 export const runtime = "nodejs";
 
@@ -45,7 +47,30 @@ export async function POST(req: Request) {
       const nextScript = applyCreatorScriptProposal(script, proposal, state.brief.language);
       const origin = proposal.scope === "selection" ? "ai_selection" : proposal.scope === "opening" ? "ai_opening" : "ai_whole_script";
       const revisionHistory = appendCreatorScriptHistory(state.strategy.revisionHistory || [], { fromRevision: script.revision, toRevision: nextScript.revision, origin, instruction: proposal.instruction, changes: proposal.changes });
-      const nextState = invalidateCreatorSceneAuthorityForScriptChange({ ...state, strategy: { ...state.strategy, script: nextScript, pendingRefinement: null, revisionHistory } });
+      const expectedUpdatedAt = typeof project.updated_at === "string" ? project.updated_at : "";
+      if (!expectedUpdatedAt) throw new Error("PROJECT_REVISION_REQUIRED");
+      const nextState = await requireCreatorProductionSnapshotBeforeInvalidation({
+        capture: async () => {
+          if (!creatorProjectHasMeaningfulProduction(project)) return;
+          await captureCreatorProductionSnapshotBeforeInvalidation({
+            projectId,
+            ownerUserId: principal.id,
+            expectedUpdatedAt,
+            mutationId: createCreatorProductionInvalidationIdentity({
+              projectId,
+              reason: `refinement:${proposal.scope}:${proposal.proposalId}`,
+              fromRevision: script.revision,
+              toRevision: nextScript.revision,
+              nextScript,
+            }),
+            invalidationReason: `refinement:${proposal.scope}`,
+            sourceScriptRevision: script.revision,
+            scriptFingerprint: script.strategyFingerprint,
+            approvalFingerprint: JSON.stringify(script.approval || null),
+          });
+        },
+        invalidate: () => invalidateCreatorSceneAuthorityForScriptChange({ ...state, strategy: { ...state.strategy, script: nextScript, pendingRefinement: null, revisionHistory } }),
+      });
       const result = await saveState(nextState, true);
       return NextResponse.json({ success: true, action: "apply", creatorScript: nextScript, pendingRefinement: null, revisionHistory, project: result.project });
     }

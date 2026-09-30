@@ -59,6 +59,7 @@ import CreatorSceneProductionStatus, {
   deriveCreatorSceneTriageStatus,
   getCreatorSceneTriageLabel,
 } from "@/components/create/CreatorSceneProductionStatus";
+import CreatorProductionHistory from "@/components/create/CreatorProductionHistory";
 import { getCreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
 import {
   buildCreatorFinalProductionSignature,
@@ -32075,6 +32076,13 @@ const generateSceneImage = async (
                   : uiLanguage === "en" ? "Plan approved" : "Plan onaylandı"}
               </span>
             </header>
+
+            {currentProjectId && (
+              <CreatorProductionHistory
+                projectId={currentProjectId}
+                language={uiLanguage === "en" ? "en" : "tr"}
+              />
+            )}
 
             {creatorStageVisibility.create_review && (
               <>
