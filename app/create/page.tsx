@@ -12703,6 +12703,8 @@ const generateSceneImage = async (
     setError("");
     setSaveMessage("");
 
+    let isCreatorProject = false;
+
     try {
       const accessToken = await getAccessTokenOrThrow();
 
@@ -12723,7 +12725,7 @@ const generateSceneImage = async (
       }
 
       const project = data.project;
-      const isCreatorProject = project.flow_type === "creator_lab";
+      isCreatorProject = project.flow_type === "creator_lab";
       const canonicalCreatorState = isCreatorProject
         ? readCreatorProjectState(project)
         : null;
