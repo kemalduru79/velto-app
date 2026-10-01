@@ -3,7 +3,10 @@ import type {
   ResearchClaimType,
 } from "./claimEvidenceGraph.ts";
 import { researchClaimRequiresPrimarySource } from "./claimEvidenceGraph.ts";
-import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
+import {
+  researchSourceIsPrimaryForClaim,
+  type ResearchSourceAssessment,
+} from "./sourceAssessment.ts";
 
 export type ResearchTopicReadinessStatus = "blocked" | "review" | "ready";
 
@@ -69,6 +72,12 @@ export function createResearchTopicReadiness(input: {
   const evidenceById = new Map(
     graph.evidence.map((evidence) => [evidence.evidenceId, evidence]),
   );
+  const sourceById = new Map(
+    graph.sources.map((source) => [source.sourceId, source]),
+  );
+  const claimById = new Map(
+    graph.claims.map((claim) => [claim.claimId, claim]),
+  );
 
   const supportEvidenceIdsByClaim = new Map<string, string[]>();
   const contradictionEvidenceIdsByClaim = new Map<string, string[]>();
@@ -101,9 +110,20 @@ export function createResearchTopicReadiness(input: {
     .map((claim) => claim.claimId);
   const primarySourceCoveredClaimIds = primarySourceRequiredClaimIds.filter((claimId) =>
     (supportEvidenceIdsByClaim.get(claimId) || []).some((evidenceId) => {
+      const claim = claimById.get(claimId);
       const evidence = evidenceById.get(evidenceId);
-      if (!evidence) return false;
-      return assessmentBySourceId.get(evidence.sourceId)?.directness === "primary";
+      const source = evidence ? sourceById.get(evidence.sourceId) : null;
+      const assessment = evidence
+        ? assessmentBySourceId.get(evidence.sourceId)
+        : null;
+
+      if (!claim || !source) return false;
+
+      if (assessment?.directness === "primary") {
+        return true;
+      }
+
+      return researchSourceIsPrimaryForClaim(source, claim);
     }),
   );
 

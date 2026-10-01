@@ -222,17 +222,48 @@ export function reconcileClaimPropositionAuthorities(input: {
       !initialRequiresPrimary &&
       adjudicatedRequiresPrimary;
 
+    const sameWorkPrimarySemanticKinds = new Set<ResearchPropositionKind>([
+      "document_assertion",
+      "original_research_result",
+    ]);
+    const isSameWorkPrimarySemanticRefinement =
+      initialSemanticallyValid &&
+      originMatches &&
+      initialRequiresPrimary &&
+      adjudicatedRequiresPrimary &&
+      sameWorkPrimarySemanticKinds.has(initial.propositionKind) &&
+      sameWorkPrimarySemanticKinds.has(adjudicated.propositionKind);
+
+    const sameOriginNonPrimarySemanticKinds =
+      new Set<ResearchPropositionKind>([
+        "expert_synthesis",
+        "editorial_inference",
+      ]);
+    const isSameOriginNonPrimarySemanticRefinement =
+      initialSemanticallyValid &&
+      originMatches &&
+      !initialRequiresPrimary &&
+      !adjudicatedRequiresPrimary &&
+      sameOriginNonPrimarySemanticKinds.has(initial.propositionKind) &&
+      sameOriginNonPrimarySemanticKinds.has(adjudicated.propositionKind);
+
     if (
       initialSemanticallyValid &&
       !agrees &&
-      !isMonotonicPrimaryObligationUpgrade
+      !isMonotonicPrimaryObligationUpgrade &&
+      !isSameWorkPrimarySemanticRefinement &&
+      !isSameOriginNonPrimarySemanticRefinement
     ) {
       throw disagreement();
     }
 
-    const accepted = initialSemanticallyValid && !isMonotonicPrimaryObligationUpgrade
-      ? initial
-      : adjudicated;
+    const accepted =
+      !initialSemanticallyValid ||
+      isMonotonicPrimaryObligationUpgrade ||
+      isSameWorkPrimarySemanticRefinement ||
+      isSameOriginNonPrimarySemanticRefinement
+        ? adjudicated
+        : initial;
 
     validateResearchClaimPropositionAuthority(
       {

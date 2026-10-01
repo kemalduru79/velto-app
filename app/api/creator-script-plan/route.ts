@@ -74,6 +74,7 @@ import {
   getCreatorScriptEditorialDistinctivenessDiagnostics,
   getCreatorScriptEditorialDistinctivenessFailures,
   getCreatorScriptMaterialSectionFailures,
+  getCreatorScriptSafeSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
   getCreatorScriptSectionDiagnostics,
@@ -1060,8 +1061,18 @@ async function executeCreatorScriptOperation(input: {
           assertCreatorScriptNarrationIsProductionSafe({ sections: script.sections, authoritativeText: narrationAuthority });
         },
         requiresRepair: (script) =>
-          getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0
-          || getCreatorScriptEditorialDistinctivenessFailures(script, sectionBudgetPlan).length > 0,
+          getCreatorScriptMaterialSectionFailures(
+            script,
+            sectionBudgetPlan,
+          ).length > 0 ||
+          getCreatorScriptSafeSectionFailures(
+            script,
+            sectionBudgetPlan,
+          ).length > 0 ||
+          getCreatorScriptEditorialDistinctivenessFailures(
+            script,
+            sectionBudgetPlan,
+          ).length > 0,
         maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
           sectionNative
@@ -1172,17 +1183,32 @@ async function executeCreatorScriptOperation(input: {
             deficitWords: Math.max(0, initialDiagnostics.minimumAcceptableWordCount - initialDiagnostics.actualWordCount),
             excessWords: Math.max(0, initialDiagnostics.actualWordCount - initialDiagnostics.maximumAcceptableWordCount),
             firstPassDurationStatus: initialDiagnostics.status === "too_short" ? "under" : initialDiagnostics.status === "too_long" ? "over" : "compliant",
-            repairRequired: initialDiagnostics.status !== "compliant" || getCreatorScriptMaterialSectionFailures(script, sectionBudgetPlan).length > 0,
+            repairRequired:
+              initialDiagnostics.status !== "compliant" ||
+              getCreatorScriptMaterialSectionFailures(
+                script,
+                sectionBudgetPlan,
+              ).length > 0 ||
+              getCreatorScriptSafeSectionFailures(
+                script,
+                sectionBudgetPlan,
+              ).length > 0,
             sectionWordCounts: initialSectionDiagnostics.map((section) => ({ sectionId: section.id, actualWords: section.actualWords, targetWords: section.targetWords })),
           });
           logDistinctivenessDiagnostics("initial_generation", script);
           return script;
         },
         repair: async (currentScript, currentDuration) => {
-          const materialSectionFailures = getCreatorScriptMaterialSectionFailures(
-            currentScript,
-            sectionBudgetPlan,
-          );
+          const materialSectionFailures =
+            getCreatorScriptMaterialSectionFailures(
+              currentScript,
+              sectionBudgetPlan,
+            );
+          const safeSectionFailures =
+            getCreatorScriptSafeSectionFailures(
+              currentScript,
+              sectionBudgetPlan,
+            );
           const distinctivenessRepairContext = createCreatorScriptDistinctivenessRepairContext(
             currentScript,
             sectionBudgetPlan,
@@ -1202,6 +1228,7 @@ async function executeCreatorScriptOperation(input: {
           if (
             currentDuration.status === "compliant"
             && materialSectionFailures.length === 0
+            && safeSectionFailures.length === 0
             && distinctivenessFailures.length === 0
           ) {
             throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
@@ -1215,6 +1242,7 @@ async function executeCreatorScriptOperation(input: {
           });
           const repairIds = new Set([
             ...durationRepairSections.map((section) => section.id),
+            ...safeSectionFailures.map((section) => section.id),
             ...distinctivenessFailures.map((section) => section.id),
           ]);
           const sectionsToRepair = sectionDiagnostics.filter((section) => repairIds.has(section.id));

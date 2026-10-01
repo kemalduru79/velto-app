@@ -389,195 +389,273 @@ assert.equal(
 assert.equal(primaryRetryEditorialCount, 1);
 
 let primaryCollapseEditorialCount = 0;
+let primaryCollapseCoverageCount = 0;
 
-await assert.rejects(
-  () => runCreatorEditorialScriptPipeline({
-    accessToken: "test-token",
-    topic: "Elon Musk and the future of work",
-    scriptPlanRequest: {
-      operation: "generate_full_script",
-      projectId: "project-primary-collapse",
-      durationSec: 660,
-    },
-    fetchImpl: async (url, init) => {
-      const body = JSON.parse(String(init?.body || "{}"));
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: "Elon Musk and the future of work",
+  scriptPlanRequest: {
+    operation: "generate_full_script",
+    projectId: "project-primary-collapse",
+    durationSec: 660,
+  },
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
 
-      if (url === "/api/creator-script-plan") {
-        return jsonResponse({
-          success: true,
-          productionPackage: {},
-          scriptPlan: {},
-        });
-      }
+    if (url === "/api/creator-script-plan") {
+      return jsonResponse({
+        success: true,
+        productionPackage: {},
+        scriptPlan: {},
+        creatorScript: {},
+      });
+    }
 
-      if (url === "/api/creator-research") {
-        return jsonResponse({
-          success: true,
-          mode: "orchestrated",
-          sources: [
-            {
-              sourceId: body.claimType === "PRIMARY_SOURCE_CLAIM"
-                ? "primary:unverified"
-                : "web:secondary",
-              adapterId: body.claimType === "PRIMARY_SOURCE_CLAIM"
-                ? "primary"
-                : "web",
-              mediaKind: "webpage",
-              title: "Source",
-              url: body.claimType === "PRIMARY_SOURCE_CLAIM"
-                ? "https://example.com/unverified"
-                : "https://example.com/secondary",
-              sourceMetadata: {},
-            },
+    if (url === "/api/creator-research") {
+      const targeted =
+        body.claimType === "PRIMARY_SOURCE_CLAIM";
+
+      return jsonResponse({
+        success: true,
+        mode: "orchestrated",
+        sources: [{
+          sourceId: targeted
+            ? "primary:unverified"
+            : "web:secondary",
+          adapterId: targeted
+            ? "primary"
+            : "web",
+          mediaKind: "webpage",
+          title: "Source",
+          url: targeted
+            ? "https://example.com/unverified"
+            : "https://example.com/secondary",
+          sourceMetadata: {},
+        }],
+        lanes: [{
+          laneId: targeted
+            ? "primary-source"
+            : "baseline",
+          purpose: targeted
+            ? "primary_source"
+            : "baseline",
+          sourceIds: [
+            targeted
+              ? "primary:unverified"
+              : "web:secondary",
           ],
-          lanes: [
-            {
-              purpose: body.claimType === "PRIMARY_SOURCE_CLAIM"
-                ? "primary_source"
-                : "baseline",
-              sourceIds: [
-                body.claimType === "PRIMARY_SOURCE_CLAIM"
-                  ? "primary:unverified"
-                  : "web:secondary",
-              ],
-            },
+        }],
+      });
+    }
+
+    if (url === "/api/creator-editorial-analysis") {
+      primaryCollapseEditorialCount += 1;
+
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "review",
+          editorialReadinessScore: 60,
+          reviewReasons: [
+            "PRIMARY_SOURCE_COVERAGE_REQUIRED",
           ],
-        });
-      }
+          primarySourceRequiredClaimIds: [
+            "claim-primary",
+          ],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          claims: [{
+            claimId: "claim-primary",
+            claimType: "PRIMARY_SOURCE_CLAIM",
+            text:
+              "Musk says work may become optional as AI and robotics advance.",
+          }],
+        },
+      });
+    }
 
-      if (url === "/api/creator-editorial-analysis") {
-        primaryCollapseEditorialCount += 1;
+    if (
+      url ===
+      "/api/creator-editorial-primary-coverage"
+    ) {
+      primaryCollapseCoverageCount += 1;
 
-        if (primaryCollapseEditorialCount === 1) {
-          return jsonResponse({
-            success: true,
-            readiness: {
-              status: "review",
-              editorialReadinessScore: 60,
-              reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
-              primarySourceRequiredClaimIds: ["claim-primary"],
-              primarySourceCoveredClaimIds: [],
-            },
-          });
-        }
+      assert.deepEqual(
+        body.candidateSources,
+        [],
+        "unverified acquisition must reach trusted coverage repair with zero accepted primary candidates",
+      );
 
-        return jsonResponse({
-          success: true,
-          readiness: {
-            status: "ready",
-            editorialReadinessScore: 90,
-            reviewReasons: [],
-            primarySourceRequiredClaimIds: [],
-            primarySourceCoveredClaimIds: [],
-          },
-          scriptContext,
-        });
-      }
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "ready",
+          editorialReadinessScore: 90,
+          reviewReasons: [],
+          primarySourceRequiredClaimIds: [],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          ...body.frozenGraph,
+          claims: [],
+        },
+        excludedPrimaryClaimIds: [
+          "claim-primary",
+        ],
+        scriptContext,
+      });
+    }
 
-      return jsonResponse({ success: false, error: "unexpected" }, 500);
-    },
-  }),
-  (error) =>
-    error instanceof CreatorEditorialPipelineError &&
-    error.code === "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
-);
+    return jsonResponse(
+      {
+        success: false,
+        error: "unexpected",
+      },
+      500,
+    );
+  },
+});
+
 assert.equal(
   primaryCollapseEditorialCount,
   1,
-  "unverified acquisition must fail before a second editorial request",
+  "safe exclusion must not regenerate canonical editorial claims",
 );
 
-let irrelevantPrimaryEditorialCount = 0;
+assert.equal(
+  primaryCollapseCoverageCount,
+  1,
+  "unverified acquisition must reach exactly one trusted coverage repair",
+);
 
-await assert.rejects(
-  () => runCreatorEditorialScriptPipeline({
-    accessToken: "test-token",
-    topic: "Elon Musk and the future of work",
-    scriptPlanRequest: {
-      operation: "generate_full_script",
-      projectId: "project-primary-irrelevant",
-      durationSec: 660,
-    },
-    fetchImpl: async (url, init) => {
-      const body = JSON.parse(String(init?.body || "{}"));
+let safelyExcludedPrimaryEditorialCount = 0;
+let safelyExcludedPrimaryCoverageCount = 0;
 
-      if (url === "/api/creator-script-plan") {
-        return jsonResponse({ success: true, productionPackage: {}, scriptPlan: {} });
-      }
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: "Elon Musk and the future of work",
+  scriptPlanRequest: {
+    operation: "generate_full_script",
+    projectId: "project-primary-safe-exclusion",
+    durationSec: 660,
+  },
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
 
-      if (url === "/api/creator-research") {
-        const targeted = body.claimType === "PRIMARY_SOURCE_CLAIM";
-        return jsonResponse({
-          success: true,
-          mode: "orchestrated",
-          sources: targeted
-            ? [{
-                sourceId: "web:verified-but-irrelevant",
-                adapterId: "web",
-                mediaKind: "webpage",
-                title: "Direct transcript",
-                url: "https://example.com/direct-transcript",
-                sourceMetadata: {
-                  provenanceVerified: true,
-                  provenanceKind: "direct_transcript",
-                },
-              }]
-            : [{
-                sourceId: "web:secondary",
-                adapterId: "web",
-                mediaKind: "webpage",
-                title: "Secondary source",
-                url: "https://example.com/secondary",
-                sourceMetadata: {},
-              }],
-          lanes: [{
-            laneId: targeted ? "primary-transcript-interview" : "baseline",
-            purpose: targeted ? "primary_source" : "baseline",
-            sourceIds: [targeted ? "web:verified-but-irrelevant" : "web:secondary"],
-          }],
-        });
-      }
+    if (url === "/api/creator-script-plan") {
+      return jsonResponse({
+        success: true,
+        productionPackage: {},
+        scriptPlan: {},
+        creatorScript: {},
+      });
+    }
 
-      if (url === "/api/creator-editorial-analysis") {
-        irrelevantPrimaryEditorialCount += 1;
-        return jsonResponse({
-          success: true,
-          readiness: {
-            status: "review",
-            editorialReadinessScore: 60,
-            reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
-            primarySourceRequiredClaimIds: ["claim-primary"],
-            primarySourceCoveredClaimIds: [],
-          },
-          graph: {
-            claims: [{
-              claimId: "claim-primary",
-              claimType: "PRIMARY_SOURCE_CLAIM",
-              text: "Musk says work may become optional as AI and robotics advance.",
+    if (url === "/api/creator-research") {
+      const targeted = body.claimType === "PRIMARY_SOURCE_CLAIM";
+
+      return jsonResponse({
+        success: true,
+        mode: "orchestrated",
+        sources: targeted
+          ? [{
+              sourceId: "web:verified-but-irrelevant",
+              adapterId: "web",
+              mediaKind: "webpage",
+              title: "Direct transcript",
+              url: "https://example.com/direct-transcript",
+              sourceMetadata: {},
+            }]
+          : [{
+              sourceId: "web:secondary",
+              adapterId: "web",
+              mediaKind: "webpage",
+              title: "Secondary source",
+              url: "https://example.com/secondary",
+              sourceMetadata: {},
             }],
-          },
-        });
-      }
+        lanes: [{
+          laneId: targeted
+            ? "primary-transcript-interview"
+            : "baseline",
+          purpose: targeted
+            ? "primary_source"
+            : "baseline",
+          sourceIds: [
+            targeted
+              ? "web:verified-but-irrelevant"
+              : "web:secondary",
+          ],
+        }],
+      });
+    }
 
-      if (url === "/api/creator-editorial-primary-coverage") {
-        return jsonResponse({
-          success: false,
-          code: "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
-          error: "Required primary-source evidence could not be verified.",
-        }, 422);
-      }
+    if (url === "/api/creator-editorial-analysis") {
+      safelyExcludedPrimaryEditorialCount += 1;
 
-      return jsonResponse({ success: false, error: "unexpected" }, 500);
-    },
-  }),
-  (error) =>
-    error instanceof CreatorEditorialPipelineError &&
-    error.code === "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "review",
+          editorialReadinessScore: 60,
+          reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+          primarySourceRequiredClaimIds: ["claim-primary"],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          claims: [{
+            claimId: "claim-primary",
+            claimType: "PRIMARY_SOURCE_CLAIM",
+            text: "Musk says work may become optional as AI and robotics advance.",
+          }],
+        },
+      });
+    }
+
+    if (url === "/api/creator-editorial-primary-coverage") {
+      safelyExcludedPrimaryCoverageCount += 1;
+
+      assert.deepEqual(
+        body.candidateSources,
+        [],
+        "empty claim-qualified primary acquisition must still reach the trusted coverage endpoint",
+      );
+
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "ready",
+          editorialReadinessScore: 90,
+          reviewReasons: [],
+          primarySourceRequiredClaimIds: [],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          ...body.frozenGraph,
+          claims: [],
+        },
+        excludedPrimaryClaimIds: ["claim-primary"],
+        scriptContext,
+      });
+    }
+
+    return jsonResponse({
+      success: false,
+      error: "unexpected",
+    }, 500);
+  },
+});
+
+assert.equal(
+  safelyExcludedPrimaryEditorialCount,
+  1,
+  "safe exclusion must not regenerate the canonical editorial analysis",
 );
 assert.equal(
-  irrelevantPrimaryEditorialCount,
+  safelyExcludedPrimaryCoverageCount,
   1,
-  "verified acquisition permits evidence augmentation but never regenerates claims",
+  "one trusted primary-coverage repair attempt must produce the safe script authority",
 );
 
 const propositionAwareMultiClaimCalls = [];
@@ -749,7 +827,8 @@ assert.equal(
 );
 assert.equal(
   propositionAwareResearchCalls[1].body.subject,
-  "An empirical study reports a measurable relationship between work and non-financial motivation.",
+  "Original empirical study: An empirical study reports a measurable relationship between work and non-financial motivation.",
+  "original-research acquisition must include the canonical referenced work",
 );
 
 assert.equal(
@@ -758,7 +837,8 @@ assert.equal(
 );
 assert.equal(
   propositionAwareResearchCalls[2].body.subject,
-  "A named expert says technological change could make paid work less central.",
+  "Named expert: A named expert says technological change could make paid work less central.",
+  "attributed-statement acquisition must include the canonical attributed entity",
 );
 
 assert.equal(

@@ -40,6 +40,7 @@ import {
   filterCreatorScriptDistinctiveRepairReplacements,
   filterCreatorScriptRepairReplacements,
   getCreatorScriptMaterialSectionFailures,
+  getCreatorScriptSafeSectionFailures,
   getCreatorScriptNarrationSafetyViolations,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
@@ -536,6 +537,58 @@ const overMaximumReplacement = [{ ...wrongDirectionReplacement[0], text: words(p
 assert.deepEqual(filterCreatorScriptRepairReplacements({ script: globallySafeRealUseScript, plan: plan960, replacements: overMaximumReplacement }), [], "section maximum remains hard during repair");
 const overMaximumScript = createCreatorScript({ ...globallySafeRealUseScript, sections: globallySafeRealUseScript.sections.map((section) => section.id === "section-5" ? { ...section, text: words(plan960.find((budget) => budget.id === "section-5").maximumWords + 1) } : section) });
 assert.throws(() => assertCreatorScriptHasSafeSectionStructure(overMaximumScript, plan960), /SECTION_BUDGET_UNSATISFIED/, "section maximum remains a final hard gate");
+assert.equal(
+  getCreatorScriptDurationContractForScript(overMaximumScript, "en").status,
+  "compliant",
+  "a small local maximum miss can coexist with globally compliant duration",
+);
+assert.deepEqual(
+  getCreatorScriptSafeSectionFailures(overMaximumScript, plan960)
+    .map((section) => section.id),
+  ["section-5"],
+  "the exact final-safe local failure must be visible to the repair gate",
+);
+
+let localMaximumRepairCalls = 0;
+const repairedLocalMaximum = await generateCreatorScriptWithDurationContract({
+  durationSec: 960,
+  language: "en",
+  generateInitial: async () => overMaximumScript,
+  requiresRepair: (script) =>
+    getCreatorScriptMaterialSectionFailures(script, plan960).length > 0 ||
+    getCreatorScriptSafeSectionFailures(script, plan960).length > 0,
+  repair: async (script) => {
+    localMaximumRepairCalls += 1;
+    const budget = plan960.find(
+      (section) => section.id === "section-5",
+    );
+    return mergeCreatorScriptReplacementSections({
+      script,
+      plan: plan960,
+      replacements: [{
+        ...script.sections.find(
+          (section) => section.id === "section-5",
+        ),
+        text: words(budget.targetWords),
+      }],
+    });
+  },
+  validateFinal: (script) =>
+    assertCreatorScriptHasSafeSectionStructure(script, plan960),
+});
+assert.equal(
+  localMaximumRepairCalls,
+  1,
+  "globally compliant local-max overflow receives one bounded repair",
+);
+assert.equal(repairedLocalMaximum.repaired, true);
+assert.deepEqual(
+  getCreatorScriptSafeSectionFailures(
+    repairedLocalMaximum.creatorScript,
+    plan960,
+  ),
+  [],
+);
 
 const catastrophicallyUnevenFiveMinuteScript = createCreatorScript({
   ...fiveMinuteScript,
@@ -1009,6 +1062,16 @@ assert.match(route, /sectionWordBudget: sectionNative \? \{\s*minWords: requeste
 assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} spoken words, aiming near \$\{requestedSections\[0\]\.targetWords\}/);
 assert.match(route, /This call returns one section only\. Do not try to fit the complete script's global word count into this section/);
 assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
+assert.match(
+  route,
+  /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptSafeSectionFailures/,
+  "final-safe local section failures must participate in bounded repair eligibility",
+);
+assert.match(
+  route,
+  /safeSectionFailures[\s\S]*repairIds/,
+  "final-safe local failures must be included in the bounded repair target set",
+);
 assert.match(route, /maxRepairAttempts: 2/, "all generation modes share the same hard two-call ceiling for canonical residual repair");
 assert.match(route, /creatorScriptRepairMateriallyImproved/);
 assert.match(route, /repairTargets/);

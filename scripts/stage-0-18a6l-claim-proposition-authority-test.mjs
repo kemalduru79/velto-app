@@ -133,6 +133,91 @@ assert.equal(
   true,
 );
 
+const sameWorkSemanticRefinement = reconcileClaimPropositionAuthorities({
+  initialClaims: [{
+    claimId: "claim-same-work-refinement",
+    claimType: "THEORY",
+    text: "Post-work theorists argue that the modern ideology of work is no longer suited to contemporary challenges.",
+    propositionKind: "original_research_result",
+    origin: {
+      attributedEntity: null,
+      referencedWork: "Original post-work paper",
+    },
+  }],
+  adjudication: {
+    claims: [{
+      claimId: "claim-same-work-refinement",
+      propositionKind: "document_assertion",
+      origin: {
+        attributedEntity: null,
+        referencedWork: "Original post-work paper",
+      },
+    }],
+  },
+});
+
+assert.equal(
+  sameWorkSemanticRefinement[0].propositionKind,
+  "document_assertion",
+  "the adjudicator may refine document-vs-result semantics when canonical work authority is unchanged",
+);
+assert.deepEqual(
+  sameWorkSemanticRefinement[0].origin,
+  {
+    attributedEntity: null,
+    referencedWork: "Original post-work paper",
+  },
+);
+assert.equal(
+  researchClaimRequiresPrimarySource(sameWorkSemanticRefinement[0]),
+  true,
+  "same-work semantic refinement must preserve the primary-source obligation",
+);
+
+const sameOriginNonPrimaryRefinement =
+  reconcileClaimPropositionAuthorities({
+    initialClaims: [{
+      claimId: "claim-non-primary-refinement",
+      claimType: "EDITORIAL_INFERENCE",
+      text: "A post-work society may require new sources of identity and purpose.",
+      propositionKind: "editorial_inference",
+      origin: {
+        attributedEntity: "Named thinkers",
+        referencedWork: "Canonical commentary source",
+      },
+    }],
+    adjudication: {
+      claims: [{
+        claimId: "claim-non-primary-refinement",
+        propositionKind: "expert_synthesis",
+        origin: {
+          attributedEntity: "Named thinkers",
+          referencedWork: "Canonical commentary source",
+        },
+      }],
+    },
+  });
+
+assert.equal(
+  sameOriginNonPrimaryRefinement[0].propositionKind,
+  "expert_synthesis",
+  "same-origin expert-synthesis/editorial-inference refinement may be adjudicated",
+);
+assert.deepEqual(
+  sameOriginNonPrimaryRefinement[0].origin,
+  {
+    attributedEntity: "Named thinkers",
+    referencedWork: "Canonical commentary source",
+  },
+);
+assert.equal(
+  researchClaimRequiresPrimarySource(
+    sameOriginNonPrimaryRefinement[0],
+  ),
+  false,
+  "non-primary semantic refinement must not create a primary-source obligation",
+);
+
 const upgradedAttributedStatement = reconcileClaimPropositionAuthorities({
   initialClaims: [{
     claimId: "claim-attribution-upgrade",
@@ -543,6 +628,72 @@ const worldStateReadiness = createResearchTopicReadiness({
 });
 assert.deepEqual(worldStateReadiness.primarySourceRequiredClaimIds, []);
 assert.equal(editorialReadinessRequiresPrimaryAcquisition(worldStateReadiness), false);
+
+const canonicalDocumentSource = source("web:https://publisher.test/original-work", {
+  adapterId: "web",
+  mediaKind: "webpage",
+  title: "Original Work",
+  summary: "The original work directly states the proposition.",
+});
+
+assert.equal(
+  classifyResearchSourceDirectness(canonicalDocumentSource).directness,
+  "secondary",
+  "web retrieval alone must remain globally secondary",
+);
+
+const canonicalDocumentGraph = createResearchClaimEvidenceGraph({
+  sources: [canonicalDocumentSource],
+  claims: [{
+    claimId: "claim-canonical-document",
+    claimType: "THEORY",
+    text: "The original work advances a specific post-work argument.",
+    propositionKind: "document_assertion",
+    origin: {
+      attributedEntity: null,
+      referencedWork: canonicalDocumentSource.sourceId,
+    },
+  }],
+  evidence: [{
+    evidenceId: "evidence-canonical-document",
+    sourceId: canonicalDocumentSource.sourceId,
+    excerpt: canonicalDocumentSource.summary,
+    contextNote: null,
+    locator,
+  }],
+  links: [{
+    claimId: "claim-canonical-document",
+    evidenceId: "evidence-canonical-document",
+    stance: "supports",
+  }],
+});
+
+const canonicalDocumentReadiness = createResearchTopicReadiness({
+  graph: canonicalDocumentGraph,
+  sourceAssessments: [{
+    sourceId: canonicalDocumentSource.sourceId,
+    directness: "secondary",
+    provenanceStatus: "complete",
+    reviewStatus: "usable",
+    reviewReasons: [],
+  }],
+});
+
+assert.deepEqual(
+  canonicalDocumentReadiness.primarySourceRequiredClaimIds,
+  ["claim-canonical-document"],
+);
+assert.deepEqual(
+  canonicalDocumentReadiness.primarySourceCoveredClaimIds,
+  ["claim-canonical-document"],
+  "an exact canonical referencedWork/sourceId match must satisfy claim-relative primary authority",
+);
+assert.equal(
+  canonicalDocumentReadiness.reviewReasons.includes(
+    "PRIMARY_SOURCE_COVERAGE_REQUIRED",
+  ),
+  false,
+);
 
 const verifiedPrimary = source("source-primary", {
   adapterId: "primary",

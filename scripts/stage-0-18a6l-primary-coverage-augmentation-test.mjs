@@ -103,6 +103,29 @@ const transcriptSource = {
   },
 };
 
+const claimRelativeAuthoredSource = {
+  ...transcriptSource,
+  sourceId: "primary:ada-authored-article",
+  adapterId: "primary",
+  sourceMetadata: {},
+};
+
+const claimRelativeRequest = {
+  frozenGraph,
+  originalPrimaryRequiredClaimIds: ["claim-research", "claim-statement"],
+  candidateSources: [academicSource, claimRelativeAuthoredSource],
+  creatorProfile: {},
+};
+
+const claimRelativeContext =
+  createEditorialPrimaryCoverageRepairContext(claimRelativeRequest);
+
+assert.equal(
+  claimRelativeContext.candidatePrimarySources.length,
+  2,
+  "an exact canonical author match may establish primary authority for an attributed statement",
+);
+
 const request = {
   frozenGraph,
   originalPrimaryRequiredClaimIds: ["claim-research", "claim-statement"],
@@ -223,24 +246,81 @@ assert.throws(
   /EDITORIAL_PRIMARY_COVERAGE_SPAN_NOT_ALLOWED:span-unknown/,
 );
 
-assert.throws(
-  () => applyEditorialPrimaryCoverageRepair({
-    context,
-    selection: {
-      repairs: [{ claimId: "claim-research", spanId: researchSpan.spanId }],
-    },
-  }),
-  /EDITORIAL_PRIMARY_COVERAGE_UNRESOLVED:claim-statement/,
-  "one missing required claim must keep the whole operation fail-closed",
+const partiallyResolved = applyEditorialPrimaryCoverageRepair({
+  context,
+  selection: {
+    repairs: [{ claimId: "claim-research", spanId: researchSpan.spanId }],
+  },
+});
+
+assert.deepEqual(
+  partiallyResolved.unresolvedClaimIds,
+  ["claim-statement"],
+);
+assert.deepEqual(
+  partiallyResolved.excludedPrimaryClaimIds,
+  ["claim-statement"],
+);
+assert.ok(
+  partiallyResolved.graph.claims.some(
+    (claim) => claim.claimId === "claim-research",
+  ),
+);
+assert.ok(
+  !partiallyResolved.graph.claims.some(
+    (claim) => claim.claimId === "claim-statement",
+  ),
+  "unverified mandatory claim must not reach Script Planner authority",
+);
+assert.deepEqual(
+  partiallyResolved.readiness.primarySourceRequiredClaimIds,
+  ["claim-research"],
+);
+assert.deepEqual(
+  partiallyResolved.readiness.primarySourceCoveredClaimIds,
+  ["claim-research"],
+);
+assert.equal(
+  partiallyResolved.readiness.reviewReasons.includes(
+    "PRIMARY_SOURCE_COVERAGE_REQUIRED",
+  ),
+  false,
 );
 
-assert.throws(
-  () => applyEditorialPrimaryCoverageRepair({
+const fullyExcludedMandatoryClaims =
+  applyEditorialPrimaryCoverageRepair({
     context,
     selection: { repairs: [] },
-  }),
-  /EDITORIAL_PRIMARY_COVERAGE_UNRESOLVED:claim-research,claim-statement/,
-  "not-found/missing selections must fail closed",
+  });
+
+assert.deepEqual(
+  fullyExcludedMandatoryClaims.unresolvedClaimIds,
+  ["claim-research", "claim-statement"],
+);
+assert.deepEqual(
+  fullyExcludedMandatoryClaims.excludedPrimaryClaimIds,
+  ["claim-research", "claim-statement"],
+);
+assert.deepEqual(
+  fullyExcludedMandatoryClaims.graph.claims.map(
+    (claim) => claim.claimId,
+  ),
+  ["claim-world"],
+  "non-primary grounded claims remain available when unresolved mandatory claims are excluded",
+);
+assert.deepEqual(
+  fullyExcludedMandatoryClaims.readiness.primarySourceRequiredClaimIds,
+  [],
+);
+assert.deepEqual(
+  fullyExcludedMandatoryClaims.readiness.primarySourceCoveredClaimIds,
+  [],
+);
+assert.equal(
+  fullyExcludedMandatoryClaims.readiness.reviewReasons.includes(
+    "PRIMARY_SOURCE_COVERAGE_REQUIRED",
+  ),
+  false,
 );
 
 assert.throws(
@@ -250,6 +330,9 @@ assert.throws(
       ...transcriptSource,
       sourceId: "primary:search-intent-only",
       adapterId: "primary",
+      title: "Unrelated search result",
+      publisher: "Unrelated Publisher",
+      author: "Unrelated Author",
       sourceMetadata: {},
     }],
   }),
@@ -299,6 +382,47 @@ assert.throws(
   }),
   /EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_EDITORIAL_SOURCES_LIMIT_EXCEEDED/,
   "the existing 40-source ceiling must remain fail-closed",
+);
+
+const emptyCandidateContext =
+  createEditorialPrimaryCoverageRepairContext({
+    ...request,
+    candidateSources: [],
+  });
+
+assert.deepEqual(
+  emptyCandidateContext.candidatePrimarySources,
+  [],
+);
+assert.deepEqual(
+  emptyCandidateContext.candidateSpans,
+  [],
+  "zero primary candidates must remain a valid repair context",
+);
+
+const emptyCandidateSafeResult =
+  applyEditorialPrimaryCoverageRepair({
+    context: emptyCandidateContext,
+    selection: { repairs: [] },
+  });
+
+assert.deepEqual(
+  emptyCandidateSafeResult.excludedPrimaryClaimIds,
+  ["claim-research", "claim-statement"],
+  "all still-unverified mandatory claims must be explicitly excluded",
+);
+assert.deepEqual(
+  emptyCandidateSafeResult.graph.claims.map(
+    (claim) => claim.claimId,
+  ),
+  ["claim-world"],
+);
+assert.equal(
+  emptyCandidateSafeResult.readiness.reviewReasons.includes(
+    "PRIMARY_SOURCE_COVERAGE_REQUIRED",
+  ),
+  false,
+  "the derived script-safe graph must not retain unresolved primary obligations",
 );
 
 const route = fs.readFileSync(

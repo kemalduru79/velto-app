@@ -3,9 +3,12 @@ import {
   normalizeCreatorEvidenceVisualPlanningContext,
 } from "../creator/productionIntelligenceRequest.ts";
 import { createCreatorSceneDocumentaryContext } from "../creator/sceneDocumentaryContext.ts";
-import type { ResearchClaimEvidenceGraph } from "./claimEvidenceGraph.ts";
+import type {
+  ResearchClaim,
+  ResearchClaimEvidenceGraph,
+} from "./claimEvidenceGraph.ts";
 import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
-import { classifyResearchSourceDirectness } from "./sourceAssessment.ts";
+import { researchSourceIsPrimaryForClaim } from "./sourceAssessment.ts";
 import type { ResearchSource } from "./sourceContract.ts";
 import { createResearchSourceMediaReference } from "./sourceMediaReference.ts";
 import type { ScriptEvidenceBindingMap } from "./scriptEvidenceBinding.ts";
@@ -99,17 +102,23 @@ function asPositiveInteger(value: unknown) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function structurallyPrimarySourceIds(values: unknown[]) {
+function primarySourceIdsForClaim(
+  values: unknown[],
+  claim: ResearchClaim | null,
+) {
   return values.flatMap((value) => {
     const source = asRecord(value);
     if (!source) return [];
+
     const sourceId = clean(source.sourceId, 300);
     if (!sourceId) return [];
+
     const normalizedSource = {
       ...source,
       sourceMetadata: asRecord(source.sourceMetadata) || {},
     } as unknown as ResearchSource;
-    return classifyResearchSourceDirectness(normalizedSource).directness === "primary"
+
+    return researchSourceIsPrimaryForClaim(normalizedSource, claim)
       ? [sourceId]
       : [];
   });
@@ -352,6 +361,11 @@ export async function runCreatorEditorialScriptPipeline(
       );
 
       const propositionKind = clean(claim?.propositionKind, 80);
+      const origin = asRecord(claim?.origin);
+      const authoritySubject =
+        clean(origin?.attributedEntity, 240) ||
+        clean(origin?.referencedWork, 320);
+      const claimSubject = clean(claim?.text, 600) || topic;
 
       const retryClaimType =
         propositionKind === "original_research_result"
@@ -374,7 +388,10 @@ export async function runCreatorEditorialScriptPipeline(
         claimId,
         propositionKind: propositionKind || null,
         claimType: retryClaimType,
-        subject: clean(claim?.text, 600) || topic,
+        claim: (claim || null) as unknown as ResearchClaim | null,
+        subject: authoritySubject
+          ? `${authoritySubject}: ${claimSubject}`.slice(0, 600)
+          : claimSubject,
       };
     });
 
@@ -433,8 +450,7 @@ export async function runCreatorEditorialScriptPipeline(
         } as unknown as ResearchSource;
         if (
           !sourceId ||
-          classifyResearchSourceDirectness(normalizedSource).directness !==
-            "primary"
+          !researchSourceIsPrimaryForClaim(normalizedSource, target.claim)
         ) continue;
         const key = canonicalResearchUrl(url) || sourceId;
         if (!key) continue;
@@ -443,7 +459,7 @@ export async function runCreatorEditorialScriptPipeline(
       }
 
       const verifiedPrimarySourceIds =
-        structurallyPrimarySourceIds(primarySources);
+        primarySourceIdsForClaim(primarySources, target.claim);
 
       const lanes = asArray(primaryResearch.lanes).flatMap((value) => {
         const lane = asRecord(value);
@@ -471,26 +487,31 @@ export async function runCreatorEditorialScriptPipeline(
           : "verified_primary_missing",
       });
 
-      if (verifiedPrimarySourceIds.length === 0) {
-        console.info("CREATOR_EDITORIAL_PRIMARY_ACQUISITION", {
-          targets: acquisitionDiagnostics,
-          result: "verified_primary_missing",
-        });
+    }
 
-        throw new CreatorEditorialPipelineError({
-          stage: "editorial_analysis",
-          code: "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
-          message: "Required primary-source evidence could not be verified.",
-        });
-      }
+    if (candidatePrimarySources.size === 0) {
+      console.info("CREATOR_EDITORIAL_PRIMARY_ACQUISITION", {
+        targets: acquisitionDiagnostics,
+        verifiedPrimarySourceIds: [],
+        result: "verified_primary_missing_safe_exclusion_requested",
+      });
+
+      // No claim-qualified primary source was found. This is not sufficient
+      // reason to abort the entire script. The trusted server coverage endpoint
+      // receives an empty candidate set and derives a script-safe graph by
+      // excluding only still-unverified mandatory-primary claims.
     }
 
     console.info("CREATOR_EDITORIAL_PRIMARY_ACQUISITION", {
       targets: acquisitionDiagnostics,
-      verifiedPrimarySourceIds: structurallyPrimarySourceIds(
-        [...candidatePrimarySources.values()],
-      ),
-      result: "verified_primary_available",
+      verifiedPrimarySourceIds: [...candidatePrimarySources.values()]
+        .map((source) => clean(source.sourceId, 300))
+        .filter(Boolean),
+      result: acquisitionDiagnostics.some(
+        (diagnostic) => diagnostic.verifiedPrimarySourceIds.length === 0,
+      )
+        ? "pooled_primary_candidates_available"
+        : "verified_primary_available",
     });
 
     const augmentedEditorial = await postJson({
@@ -523,11 +544,31 @@ export async function runCreatorEditorialScriptPipeline(
         .filter(Boolean),
     );
 
+    const retryExcludedPrimaryClaimIds = asArray(
+      augmentedEditorial.excludedPrimaryClaimIds,
+    )
+      .map((value) => clean(value, 120))
+      .filter(Boolean);
+    const retryExcludedPrimaryClaimIdSet = new Set(
+      retryExcludedPrimaryClaimIds,
+    );
+
     const retryPrimaryCoverageResolved =
-      retryPrimaryRequiredClaimIds.length === firstPrimaryRequiredClaimIds.length &&
-      firstPrimaryRequiredClaimIds.every((claimId) =>
-        retryPrimaryRequiredClaimIds.includes(claimId) &&
+      retryExcludedPrimaryClaimIds.length ===
+        retryExcludedPrimaryClaimIdSet.size &&
+      retryExcludedPrimaryClaimIds.every((claimId) =>
+        firstPrimaryRequiredClaimIds.includes(claimId)
+      ) &&
+      retryPrimaryRequiredClaimIds.every((claimId) =>
+        firstPrimaryRequiredClaimIds.includes(claimId) &&
         retryPrimaryCoveredClaimIds.has(claimId)
+      ) &&
+      firstPrimaryRequiredClaimIds.every((claimId) =>
+        retryPrimaryCoveredClaimIds.has(claimId) ||
+        retryExcludedPrimaryClaimIdSet.has(claimId)
+      ) &&
+      [...retryPrimaryCoveredClaimIds].every(
+        (claimId) => !retryExcludedPrimaryClaimIdSet.has(claimId),
       ) &&
       !retryReviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED");
 

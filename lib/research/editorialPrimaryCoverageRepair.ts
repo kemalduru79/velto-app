@@ -15,6 +15,7 @@ import { canonicalResearchUrl } from "./orchestratedResearch.ts";
 import {
   assessResearchSource,
   classifyResearchSourceDirectness,
+  researchSourceIsPrimaryForClaim,
   type ResearchSourceAssessment,
 } from "./sourceAssessment.ts";
 import type { ResearchSource } from "./sourceContract.ts";
@@ -44,6 +45,7 @@ export type EditorialPrimaryCoverageRepairResult = {
   readiness: ResearchTopicReadinessReport;
   repairedClaimIds: string[];
   unresolvedClaimIds: string[];
+  excludedPrimaryClaimIds: string[];
 };
 
 function record(value: unknown) {
@@ -128,6 +130,7 @@ function sourceIdentity(source: ResearchSource) {
 function deduplicateCandidateSources(input: {
   frozenSources: ResearchSource[];
   candidateSources: ResearchSource[];
+  targetClaims: ResearchClaim[];
 }) {
   const frozenById = new Map(
     input.frozenSources.map((source) => [source.sourceId, source]),
@@ -135,7 +138,11 @@ function deduplicateCandidateSources(input: {
   const selectedByCanonicalUrl = new Map<string, ResearchSource>();
 
   for (const candidate of input.candidateSources) {
-    if (classifyResearchSourceDirectness(candidate).directness !== "primary") {
+    if (
+      !input.targetClaims.some((claim) =>
+        researchSourceIsPrimaryForClaim(candidate, claim)
+      )
+    ) {
       throw new Error(
         `EDITORIAL_PRIMARY_COVERAGE_SOURCE_NOT_PRIMARY:${candidate.sourceId}`,
       );
@@ -218,20 +225,30 @@ export function createEditorialPrimaryCoverageRepairContext(
     throw new Error("EDITORIAL_PRIMARY_COVERAGE_NO_REPAIR_REQUIRED");
   }
 
-  const candidateSources = normalizeSources(
-    body.candidateSources,
-    "EDITORIAL_PRIMARY_COVERAGE_CANDIDATE",
+  const targetClaimIdSet = new Set(targetClaimIds);
+  const targetClaims = frozenGraph.claims.filter((claim) =>
+    targetClaimIdSet.has(claim.claimId)
   );
+
+  const candidateSources =
+    Array.isArray(body.candidateSources) &&
+      body.candidateSources.length === 0
+      ? []
+      : normalizeSources(
+          body.candidateSources,
+          "EDITORIAL_PRIMARY_COVERAGE_CANDIDATE",
+        );
   const candidatePrimarySources = deduplicateCandidateSources({
     frozenSources: frozenGraph.sources,
     candidateSources,
+    targetClaims,
   });
   const candidateSpans = createEditorialGroundingCandidateSpans(
     candidatePrimarySources,
   );
-  if (candidateSpans.length === 0) {
-    throw new Error("EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_SPANS_REQUIRED");
-  }
+  // Zero candidate spans is a legitimate acquisition result. The route
+  // will skip provider selection and invoke the server-owned safe-exclusion
+  // path with an empty repair selection.
   if (candidateSpans.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
     throw new Error("EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_LIMIT_EXCEEDED");
   }
@@ -332,6 +349,9 @@ export function applyEditorialPrimaryCoverageRepair(input: {
   const candidateSourceById = new Map(
     input.context.candidatePrimarySources.map((source) => [source.sourceId, source]),
   );
+  const claimById = new Map(
+    input.context.frozenGraph.claims.map((claim) => [claim.claimId, claim]),
+  );
   const graphSources = [...input.context.frozenGraph.sources];
   const graphSourceById = new Map(
     graphSources.map((source) => [source.sourceId, source]),
@@ -351,9 +371,12 @@ export function applyEditorialPrimaryCoverageRepair(input: {
   for (const repair of selection.repairs) {
     const span = spanById.get(repair.spanId)!;
     const candidateSource = candidateSourceById.get(span.sourceId);
+    const targetClaim = claimById.get(repair.claimId);
+
     if (
       !candidateSource ||
-      classifyResearchSourceDirectness(candidateSource).directness !== "primary"
+      !targetClaim ||
+      !researchSourceIsPrimaryForClaim(candidateSource, targetClaim)
     ) {
       throw new Error(
         `EDITORIAL_PRIMARY_COVERAGE_SOURCE_NOT_PRIMARY:${span.sourceId}`,
@@ -426,31 +449,79 @@ export function applyEditorialPrimaryCoverageRepair(input: {
       classifyResearchSourceDirectness(source).directness,
     ),
   );
-  const readiness = createResearchTopicReadiness({ graph, sourceAssessments });
+  const augmentedReadiness = createResearchTopicReadiness({
+    graph,
+    sourceAssessments,
+  });
+
   if (!equalStringArrays(
     input.context.originalPrimaryRequiredClaimIds,
-    readiness.primarySourceRequiredClaimIds,
+    augmentedReadiness.primarySourceRequiredClaimIds,
   )) {
     throw new Error("EDITORIAL_PRIMARY_COVERAGE_REQUIRED_CLAIMS_CHANGED");
   }
-  const coveredClaimIds = new Set(readiness.primarySourceCoveredClaimIds);
-  const unresolvedClaimIds = input.context.originalPrimaryRequiredClaimIds.filter(
-    (claimId) => !coveredClaimIds.has(claimId),
+
+  const coveredClaimIds = new Set(
+    augmentedReadiness.primarySourceCoveredClaimIds,
   );
-  if (
-    unresolvedClaimIds.length > 0 ||
-    readiness.reviewReasons.includes("PRIMARY_SOURCE_COVERAGE_REQUIRED")
-  ) {
-    throw new Error(
-      `EDITORIAL_PRIMARY_COVERAGE_UNRESOLVED:${unresolvedClaimIds.join(",")}`,
+  const unresolvedClaimIds =
+    input.context.originalPrimaryRequiredClaimIds.filter(
+      (claimId) => !coveredClaimIds.has(claimId),
     );
+
+  if (unresolvedClaimIds.length === 0) {
+    return {
+      graph,
+      sourceAssessments,
+      readiness: augmentedReadiness,
+      repairedClaimIds,
+      unresolvedClaimIds: [],
+      excludedPrimaryClaimIds: [],
+    };
+  }
+
+  // Safe degradation:
+  // the frozen editorial graph above remains unchanged. We derive a separate
+  // script-authority graph that omits only claims whose mandatory primary
+  // authority could not be verified. Their links are removed as well, so the
+  // Script Planner cannot silently use them.
+  const excludedClaimIdSet = new Set(unresolvedClaimIds);
+  const scriptSafeClaims = graph.claims.filter(
+    (claim) => !excludedClaimIdSet.has(claim.claimId),
+  );
+
+  if (scriptSafeClaims.length === 0) {
+    throw new Error("EDITORIAL_PRIMARY_COVERAGE_NO_SAFE_CLAIMS");
+  }
+
+  const scriptSafeGraph = createResearchClaimEvidenceGraph({
+    sources: graph.sources,
+    claims: scriptSafeClaims,
+    evidence: graph.evidence,
+    links: graph.links.filter(
+      (link) => !excludedClaimIdSet.has(link.claimId),
+    ),
+  });
+
+  const scriptSafeReadiness = createResearchTopicReadiness({
+    graph: scriptSafeGraph,
+    sourceAssessments,
+  });
+
+  if (
+    scriptSafeReadiness.reviewReasons.includes(
+      "PRIMARY_SOURCE_COVERAGE_REQUIRED",
+    )
+  ) {
+    throw new Error("EDITORIAL_PRIMARY_COVERAGE_SAFE_GRAPH_INVALID");
   }
 
   return {
-    graph,
+    graph: scriptSafeGraph,
     sourceAssessments,
-    readiness,
+    readiness: scriptSafeReadiness,
     repairedClaimIds,
     unresolvedClaimIds,
+    excludedPrimaryClaimIds: unresolvedClaimIds,
   };
 }

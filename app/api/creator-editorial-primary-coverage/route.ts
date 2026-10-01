@@ -169,6 +169,72 @@ export async function POST(request: Request) {
       );
     }
 
+    if (context.candidateSpans.length === 0) {
+      try {
+        const result = applyEditorialPrimaryCoverageRepair({
+          context,
+          selection: { repairs: [] },
+        });
+
+        const scriptContext = createEditorialScriptContext({
+          profile: parseCreatorProfile(context.creatorProfile),
+          graph: result.graph,
+          sourceAssessments: result.sourceAssessments,
+        });
+
+        console.info(
+          "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
+          repairDiagnostic({
+            context,
+            repairedClaimIds: result.repairedClaimIds,
+            unresolvedClaimIds: result.unresolvedClaimIds,
+            finalPrimaryCoveredCount:
+              result.readiness.primarySourceCoveredClaimIds.length,
+            result: result.excludedPrimaryClaimIds.length > 0
+              ? "unresolved"
+              : "satisfied",
+          }),
+        );
+
+        return NextResponse.json({
+          success: true,
+          graph: result.graph,
+          sourceAssessments: result.sourceAssessments,
+          readiness: result.readiness,
+          scriptContext,
+          excludedPrimaryClaimIds:
+            result.excludedPrimaryClaimIds,
+        });
+      } catch (error) {
+        const diagnostic = error instanceof Error
+          ? error.message
+          : "EDITORIAL_PRIMARY_COVERAGE_EMPTY_CANDIDATE_FAILED";
+
+        console.warn(
+          "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
+          repairDiagnostic({
+            context,
+            repairedClaimIds: [],
+            unresolvedClaimIds: context.targetClaimIds,
+            finalPrimaryCoveredCount:
+              context.initialReadiness.primarySourceCoveredClaimIds.length,
+            result: "invalid",
+          }),
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            code: "EDITORIAL_PRIMARY_COVERAGE_UNRESOLVED",
+            error:
+              "Required primary-source evidence could not be verified.",
+            detailCode: diagnostic,
+          },
+          { status: 422 },
+        );
+      }
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         {
@@ -280,15 +346,43 @@ export async function POST(request: Request) {
     });
 
     try {
-      const result = applyEditorialPrimaryCoverageRepair({
-        context,
-        selection: parseModelJson(response.output_text || ""),
-      });
+      const selection = parseModelJson(response.output_text || "");
+
+      let result;
+      try {
+        result = applyEditorialPrimaryCoverageRepair({
+          context,
+          selection,
+        });
+      } catch (selectionError) {
+        const selectionDiagnostic = selectionError instanceof Error
+          ? selectionError.message
+          : "EDITORIAL_PRIMARY_COVERAGE_REPAIR_INVALID";
+
+        // A model-selected span may be relevant textually while still failing
+        // the server's claim-relative primary-authority check. Never accept
+        // that pairing. Instead discard the repair selection and derive the
+        // safe script graph by excluding still-unverified mandatory claims.
+        if (
+          !selectionDiagnostic.startsWith(
+            "EDITORIAL_PRIMARY_COVERAGE_SOURCE_NOT_PRIMARY:",
+          )
+        ) {
+          throw selectionError;
+        }
+
+        result = applyEditorialPrimaryCoverageRepair({
+          context,
+          selection: { repairs: [] },
+        });
+      }
+
       const scriptContext = createEditorialScriptContext({
         profile: parseCreatorProfile(context.creatorProfile),
         graph: result.graph,
         sourceAssessments: result.sourceAssessments,
       });
+
       console.info(
         "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
         repairDiagnostic({
@@ -297,15 +391,19 @@ export async function POST(request: Request) {
           unresolvedClaimIds: result.unresolvedClaimIds,
           finalPrimaryCoveredCount:
             result.readiness.primarySourceCoveredClaimIds.length,
-          result: "satisfied",
+          result: result.excludedPrimaryClaimIds.length > 0
+            ? "unresolved"
+            : "satisfied",
         }),
       );
+
       return NextResponse.json({
         success: true,
         graph: result.graph,
         sourceAssessments: result.sourceAssessments,
         readiness: result.readiness,
         scriptContext,
+        excludedPrimaryClaimIds: result.excludedPrimaryClaimIds,
       });
     } catch (error) {
       const diagnostic = error instanceof Error
@@ -318,6 +416,7 @@ export async function POST(request: Request) {
             "EDITORIAL_PRIMARY_COVERAGE_UNRESOLVED:".length,
           ).split(",").filter(Boolean)
         : context.targetClaimIds;
+
       console.warn(
         "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
         repairDiagnostic({
@@ -331,6 +430,7 @@ export async function POST(request: Request) {
           ) ? "unresolved" : "invalid",
         }),
       );
+
       return NextResponse.json(
         {
           success: false,

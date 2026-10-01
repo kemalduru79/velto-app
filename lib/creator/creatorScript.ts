@@ -1120,14 +1120,25 @@ export function assertCreatorScriptHasHealthySectionStructure(
   return script;
 }
 
-export function assertCreatorScriptHasSafeSectionStructure(
+export function getCreatorScriptSafeSectionFailures(
   script: CreatorScript,
   plan: CreatorScriptSectionBudget[],
 ) {
   assertCreatorScriptMatchesSectionPlan(script, plan);
-  if (getCreatorScriptSectionDiagnostics(script, plan).some((section) =>
-    section.missing || section.actualWords === 0 || section.excessWords > 0
-  )) throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
+  return getCreatorScriptSectionDiagnostics(script, plan).filter((section) =>
+    section.missing ||
+    section.actualWords === 0 ||
+    section.excessWords > 0
+  );
+}
+
+export function assertCreatorScriptHasSafeSectionStructure(
+  script: CreatorScript,
+  plan: CreatorScriptSectionBudget[],
+) {
+  if (getCreatorScriptSafeSectionFailures(script, plan).length > 0) {
+    throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
+  }
   return script;
 }
 
