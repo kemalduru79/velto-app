@@ -248,14 +248,562 @@ assert.deepEqual(providerFailureCalls.map((call) => call.url), [
 assert.equal(providerFailureCalls[0].body.operation, "validate_generation_authority");
 assert.equal(providerFailureCalls[3].body.operation, "generate_full_script");
 
+const primaryRetryCalls = [];
+let primaryRetryEditorialCount = 0;
+
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: "Elon Musk and the future of work",
+  scriptPlanRequest: {
+    operation: "generate_full_script",
+    projectId: "project-primary-retry",
+    durationSec: 660,
+  },
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
+    primaryRetryCalls.push({ url, body });
+
+    if (url === "/api/creator-script-plan") {
+      return jsonResponse({
+        success: true,
+        productionPackage: {},
+        scriptPlan: {},
+      });
+    }
+
+    if (url === "/api/creator-research") {
+      if (body.claimType === "PRIMARY_SOURCE_CLAIM") {
+        return jsonResponse({
+          success: true,
+          mode: "orchestrated",
+          sources: [
+            {
+              sourceId: "primary:elon-original",
+              adapterId: "web",
+              mediaKind: "webpage",
+              title: "Original statement",
+              url: "https://example.com/original",
+              sourceMetadata: {
+                provenanceVerified: true,
+                provenanceKind: "direct_transcript",
+              },
+            },
+          ],
+          lanes: [
+            {
+              laneId: "primary-transcript-interview",
+              purpose: "primary_source",
+              sourceIds: ["primary:elon-original"],
+            },
+          ],
+        });
+      }
+
+      return jsonResponse({
+        success: true,
+        mode: "orchestrated",
+        sources: [
+          {
+            sourceId: "web:secondary",
+            title: "Secondary commentary",
+            url: "https://example.com/secondary",
+          },
+        ],
+        lanes: [
+          {
+            purpose: "baseline",
+            sourceIds: ["web:secondary"],
+          },
+        ],
+      });
+    }
+
+    if (url === "/api/creator-editorial-analysis") {
+      primaryRetryEditorialCount += 1;
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "review",
+          editorialReadinessScore: 60,
+          reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+          primarySourceRequiredClaimIds: ["claim-primary"],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          claims: [{
+            claimId: "claim-primary",
+            claimType: "PRIMARY_SOURCE_CLAIM",
+            text: "Musk says work may become optional as AI and robotics advance.",
+          }],
+        },
+      });
+    }
+
+    if (url === "/api/creator-editorial-primary-coverage") {
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "ready",
+          editorialReadinessScore: 90,
+          reviewReasons: [],
+          primarySourceRequiredClaimIds: ["claim-primary"],
+          primarySourceCoveredClaimIds: ["claim-primary"],
+        },
+        graph: {
+          ...body.frozenGraph,
+          sources: body.candidateSources,
+        },
+        scriptContext,
+      });
+    }
+
+    return jsonResponse({ success: false, error: "unexpected" }, 500);
+  },
+});
+
+assert.deepEqual(
+  primaryRetryCalls.map((call) => call.url),
+  [
+    "/api/creator-script-plan",
+    "/api/creator-research",
+    "/api/creator-editorial-analysis",
+    "/api/creator-research",
+    "/api/creator-editorial-primary-coverage",
+    "/api/creator-script-plan",
+  ],
+);
+
+assert.equal(primaryRetryCalls[3].body.claimType, "PRIMARY_SOURCE_CLAIM");
+assert.equal(
+  primaryRetryCalls[3].body.subject,
+  "Musk says work may become optional as AI and robotics advance.",
+);
+assert.equal(primaryRetryCalls[4].body.candidateSources.length, 1);
+assert.deepEqual(primaryRetryCalls[4].body.originalPrimaryRequiredClaimIds, [
+  "claim-primary",
+]);
+assert.equal(
+  primaryRetryCalls[4].body.frozenGraph.claims[0].claimId,
+  "claim-primary",
+);
+assert.equal(primaryRetryEditorialCount, 1);
+
+let primaryCollapseEditorialCount = 0;
+
+await assert.rejects(
+  () => runCreatorEditorialScriptPipeline({
+    accessToken: "test-token",
+    topic: "Elon Musk and the future of work",
+    scriptPlanRequest: {
+      operation: "generate_full_script",
+      projectId: "project-primary-collapse",
+      durationSec: 660,
+    },
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+
+      if (url === "/api/creator-script-plan") {
+        return jsonResponse({
+          success: true,
+          productionPackage: {},
+          scriptPlan: {},
+        });
+      }
+
+      if (url === "/api/creator-research") {
+        return jsonResponse({
+          success: true,
+          mode: "orchestrated",
+          sources: [
+            {
+              sourceId: body.claimType === "PRIMARY_SOURCE_CLAIM"
+                ? "primary:unverified"
+                : "web:secondary",
+              adapterId: body.claimType === "PRIMARY_SOURCE_CLAIM"
+                ? "primary"
+                : "web",
+              mediaKind: "webpage",
+              title: "Source",
+              url: body.claimType === "PRIMARY_SOURCE_CLAIM"
+                ? "https://example.com/unverified"
+                : "https://example.com/secondary",
+              sourceMetadata: {},
+            },
+          ],
+          lanes: [
+            {
+              purpose: body.claimType === "PRIMARY_SOURCE_CLAIM"
+                ? "primary_source"
+                : "baseline",
+              sourceIds: [
+                body.claimType === "PRIMARY_SOURCE_CLAIM"
+                  ? "primary:unverified"
+                  : "web:secondary",
+              ],
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/creator-editorial-analysis") {
+        primaryCollapseEditorialCount += 1;
+
+        if (primaryCollapseEditorialCount === 1) {
+          return jsonResponse({
+            success: true,
+            readiness: {
+              status: "review",
+              editorialReadinessScore: 60,
+              reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+              primarySourceRequiredClaimIds: ["claim-primary"],
+              primarySourceCoveredClaimIds: [],
+            },
+          });
+        }
+
+        return jsonResponse({
+          success: true,
+          readiness: {
+            status: "ready",
+            editorialReadinessScore: 90,
+            reviewReasons: [],
+            primarySourceRequiredClaimIds: [],
+            primarySourceCoveredClaimIds: [],
+          },
+          scriptContext,
+        });
+      }
+
+      return jsonResponse({ success: false, error: "unexpected" }, 500);
+    },
+  }),
+  (error) =>
+    error instanceof CreatorEditorialPipelineError &&
+    error.code === "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
+);
+assert.equal(
+  primaryCollapseEditorialCount,
+  1,
+  "unverified acquisition must fail before a second editorial request",
+);
+
+let irrelevantPrimaryEditorialCount = 0;
+
+await assert.rejects(
+  () => runCreatorEditorialScriptPipeline({
+    accessToken: "test-token",
+    topic: "Elon Musk and the future of work",
+    scriptPlanRequest: {
+      operation: "generate_full_script",
+      projectId: "project-primary-irrelevant",
+      durationSec: 660,
+    },
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+
+      if (url === "/api/creator-script-plan") {
+        return jsonResponse({ success: true, productionPackage: {}, scriptPlan: {} });
+      }
+
+      if (url === "/api/creator-research") {
+        const targeted = body.claimType === "PRIMARY_SOURCE_CLAIM";
+        return jsonResponse({
+          success: true,
+          mode: "orchestrated",
+          sources: targeted
+            ? [{
+                sourceId: "web:verified-but-irrelevant",
+                adapterId: "web",
+                mediaKind: "webpage",
+                title: "Direct transcript",
+                url: "https://example.com/direct-transcript",
+                sourceMetadata: {
+                  provenanceVerified: true,
+                  provenanceKind: "direct_transcript",
+                },
+              }]
+            : [{
+                sourceId: "web:secondary",
+                adapterId: "web",
+                mediaKind: "webpage",
+                title: "Secondary source",
+                url: "https://example.com/secondary",
+                sourceMetadata: {},
+              }],
+          lanes: [{
+            laneId: targeted ? "primary-transcript-interview" : "baseline",
+            purpose: targeted ? "primary_source" : "baseline",
+            sourceIds: [targeted ? "web:verified-but-irrelevant" : "web:secondary"],
+          }],
+        });
+      }
+
+      if (url === "/api/creator-editorial-analysis") {
+        irrelevantPrimaryEditorialCount += 1;
+        return jsonResponse({
+          success: true,
+          readiness: {
+            status: "review",
+            editorialReadinessScore: 60,
+            reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+            primarySourceRequiredClaimIds: ["claim-primary"],
+            primarySourceCoveredClaimIds: [],
+          },
+          graph: {
+            claims: [{
+              claimId: "claim-primary",
+              claimType: "PRIMARY_SOURCE_CLAIM",
+              text: "Musk says work may become optional as AI and robotics advance.",
+            }],
+          },
+        });
+      }
+
+      if (url === "/api/creator-editorial-primary-coverage") {
+        return jsonResponse({
+          success: false,
+          code: "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
+          error: "Required primary-source evidence could not be verified.",
+        }, 422);
+      }
+
+      return jsonResponse({ success: false, error: "unexpected" }, 500);
+    },
+  }),
+  (error) =>
+    error instanceof CreatorEditorialPipelineError &&
+    error.code === "EDITORIAL_PIPELINE_PRIMARY_SOURCE_UNRESOLVED",
+);
+assert.equal(
+  irrelevantPrimaryEditorialCount,
+  1,
+  "verified acquisition permits evidence augmentation but never regenerates claims",
+);
+
+const propositionAwareMultiClaimCalls = [];
+let propositionAwareEditorialCount = 0;
+
+await runCreatorEditorialScriptPipeline({
+  accessToken: "test-token",
+  topic: "Work, meaning, and technological change",
+  scriptPlanRequest: {
+    operation: "generate_full_script",
+    projectId: "project-proposition-aware-multi-claim",
+    durationSec: 660,
+  },
+  fetchImpl: async (url, init) => {
+    const body = JSON.parse(String(init?.body || "{}"));
+    propositionAwareMultiClaimCalls.push({ url, body });
+
+    if (url === "/api/creator-script-plan") {
+      return jsonResponse({
+        success: true,
+        productionPackage: {},
+        scriptPlan: {},
+        creatorScript: {},
+      });
+    }
+
+    if (url === "/api/creator-research") {
+      if (body.claimType === "RESEARCH_FINDING") {
+        return jsonResponse({
+          success: true,
+          mode: "orchestrated",
+          sources: [{
+            sourceId: "academic:original-study",
+            adapterId: "academic",
+            mediaKind: "paper",
+            title: "Original empirical study",
+            url: "https://example.org/original-study",
+            sourceMetadata: {},
+          }],
+          lanes: [{
+            laneId: "supporting-evidence",
+            purpose: "supporting_evidence",
+            sourceIds: ["academic:original-study"],
+          }],
+        });
+      }
+
+      if (body.claimType === "PRIMARY_SOURCE_CLAIM") {
+        return jsonResponse({
+          success: true,
+          mode: "orchestrated",
+          sources: [{
+            sourceId: "primary:direct-statement",
+            adapterId: "web",
+            mediaKind: "webpage",
+            title: "Direct statement transcript",
+            url: "https://example.org/direct-statement",
+            sourceMetadata: {
+              provenanceVerified: true,
+              provenanceKind: "direct_transcript",
+            },
+          }],
+          lanes: [{
+            laneId: "primary-transcript-interview",
+            purpose: "primary_source",
+            sourceIds: ["primary:direct-statement"],
+          }],
+        });
+      }
+
+      return jsonResponse({
+        success: true,
+        mode: "orchestrated",
+        sources: [{
+          sourceId: "web:baseline-multi",
+          adapterId: "web",
+          mediaKind: "webpage",
+          title: "Baseline secondary source",
+          url: "https://example.org/baseline-multi",
+          sourceMetadata: {},
+        }],
+        lanes: [{
+          laneId: "baseline",
+          purpose: "baseline",
+          sourceIds: ["web:baseline-multi"],
+        }],
+      });
+    }
+
+    if (url === "/api/creator-editorial-analysis") {
+      propositionAwareEditorialCount += 1;
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "review",
+          editorialReadinessScore: 60,
+          reviewReasons: ["PRIMARY_SOURCE_COVERAGE_REQUIRED"],
+          primarySourceRequiredClaimIds: [
+            "claim-research",
+            "claim-statement",
+          ],
+          primarySourceCoveredClaimIds: [],
+        },
+        graph: {
+          claims: [
+            {
+              claimId: "claim-research",
+              claimType: "RESEARCH_FINDING",
+              text: "An empirical study reports a measurable relationship between work and non-financial motivation.",
+              propositionKind: "original_research_result",
+              origin: {
+                attributedEntity: null,
+                referencedWork: "Original empirical study",
+              },
+            },
+            {
+              claimId: "claim-statement",
+              claimType: "EXPERT_OPINION",
+              text: "A named expert says technological change could make paid work less central.",
+              propositionKind: "attributed_statement",
+              origin: {
+                attributedEntity: "Named expert",
+                referencedWork: null,
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    if (url === "/api/creator-editorial-primary-coverage") {
+      return jsonResponse({
+        success: true,
+        readiness: {
+          status: "ready",
+          editorialReadinessScore: 90,
+          reviewReasons: [],
+          primarySourceRequiredClaimIds: [
+            "claim-research",
+            "claim-statement",
+          ],
+          primarySourceCoveredClaimIds: [
+            "claim-research",
+            "claim-statement",
+          ],
+        },
+        graph: {
+          ...body.frozenGraph,
+          sources: body.candidateSources,
+        },
+        scriptContext,
+      });
+    }
+
+    return jsonResponse({ success: false, error: "unexpected" }, 500);
+  },
+});
+
+const propositionAwareResearchCalls =
+  propositionAwareMultiClaimCalls.filter(
+    (call) => call.url === "/api/creator-research",
+  );
+
+assert.equal(propositionAwareResearchCalls.length, 3);
+
+assert.equal(
+  propositionAwareResearchCalls[1].body.claimType,
+  "RESEARCH_FINDING",
+);
+assert.equal(
+  propositionAwareResearchCalls[1].body.subject,
+  "An empirical study reports a measurable relationship between work and non-financial motivation.",
+);
+
+assert.equal(
+  propositionAwareResearchCalls[2].body.claimType,
+  "PRIMARY_SOURCE_CLAIM",
+);
+assert.equal(
+  propositionAwareResearchCalls[2].body.subject,
+  "A named expert says technological change could make paid work less central.",
+);
+
+assert.equal(
+  propositionAwareEditorialCount,
+  1,
+  "claim authority must come from exactly one full editorial analysis",
+);
+
+const propositionAwareCoverageRepairCall =
+  propositionAwareMultiClaimCalls.filter(
+    (call) => call.url === "/api/creator-editorial-primary-coverage",
+  )[0];
+
+assert.ok(
+  propositionAwareCoverageRepairCall.body.candidateSources.some(
+    (source) => source.sourceId === "academic:original-study",
+  ),
+);
+
+assert.ok(
+  propositionAwareCoverageRepairCall.body.candidateSources.some(
+    (source) => source.sourceId === "primary:direct-statement",
+  ),
+);
+assert.deepEqual(
+  propositionAwareCoverageRepairCall.body.originalPrimaryRequiredClaimIds,
+  ["claim-research", "claim-statement"],
+);
+assert.deepEqual(
+  propositionAwareCoverageRepairCall.body.frozenGraph.claims.map(
+    (claim) => claim.claimId,
+  ),
+  ["claim-research", "claim-statement"],
+);
+
 const helper = fs.readFileSync("lib/research/creatorEditorialPipeline.client.ts", "utf8");
 assert.match(helper, /url: "\/api\/creator-research"/);
 assert.match(helper, /url: "\/api\/creator-editorial-analysis"/);
+assert.match(helper, /url: "\/api\/creator-editorial-primary-coverage"/);
 assert.match(helper, /url: "\/api\/creator-script-plan"/);
 assert.match(helper, /scriptContext,/);
 assert.match(helper, /intentionally fails closed/);
-assert.equal((helper.match(/url: "\/api\/creator-research"/g) || []).length, 1);
+assert.equal((helper.match(/url: "\/api\/creator-research"/g) || []).length, 2);
 assert.equal((helper.match(/url: "\/api\/creator-editorial-analysis"/g) || []).length, 1);
+assert.equal((helper.match(/url: "\/api\/creator-editorial-primary-coverage"/g) || []).length, 1);
 assert.doesNotMatch(helper, /providerRequestId|providerCostUsd|rawProviderPayload/);
 
 const createPage = fs.readFileSync("app/create/page.tsx", "utf8");

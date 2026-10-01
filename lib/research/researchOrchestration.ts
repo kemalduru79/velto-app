@@ -102,6 +102,17 @@ export function createResearchOrchestrationPlan(input: {
         maxResults,
       ),
     );
+    if (claimType === "PRIMARY_SOURCE_CLAIM") {
+      lanes.push(
+        lane(
+          "primary-transcript-interview",
+          "primary_source",
+          `${subject} transcript interview`,
+          "primary",
+          maxResults,
+        ),
+      );
+    }
   } else if (claimType && ACADEMIC_CLAIM_TYPES.has(claimType)) {
     lanes.push(
       lane(

@@ -6,7 +6,7 @@ import {
 } from "../lib/research/orchestratedResearch.ts";
 import { createResearchOrchestrationPlan } from "../lib/research/researchOrchestration.ts";
 
-const source = (id, url, title = id) => ({
+const source = (id, url, title = id, overrides = {}) => ({
   sourceId: id,
   adapterId: "web",
   mediaKind: "webpage",
@@ -22,6 +22,7 @@ const source = (id, url, title = id) => ({
   durationSec: null,
   metrics: {},
   sourceMetadata: {},
+  ...overrides,
 });
 
 assert.equal(
@@ -83,6 +84,90 @@ assert.equal(result.economics.providerRequestCount, plan.lanes.length);
 assert.equal(result.economics.knownProviderCostUsd, 0.06);
 assert.equal(result.economics.costComplete, false);
 assert.equal(result.lanes[0].sourceIds[0], result.lanes[1].sourceIds[0]);
+
+const duplicatePlan = {
+  version: "0.10H-1F",
+  subject: "topic",
+  claimType: "PRIMARY_SOURCE_CLAIM",
+  lanes: [
+    { laneId: "baseline", purpose: "baseline", required: true, input: { query: "topic", category: "web", maxResults: 5 } },
+    { laneId: "primary-transcript-interview", purpose: "primary_source", required: true, input: { query: "topic transcript interview", category: "primary", maxResults: 5 } },
+  ],
+};
+
+let upgradeCall = 0;
+const upgraded = await executeResearchOrchestration({
+  plan: duplicatePlan,
+  provider: {
+    async search() {
+      upgradeCall += 1;
+      return {
+        sources: upgradeCall === 1
+          ? [source("web:duplicate", "https://example.org/transcript?utm_source=baseline", "Commentary")]
+          : [source("primary:duplicate", "https://example.org/transcript", "Direct transcript", {
+              adapterId: "primary",
+              sourceMetadata: { provenanceVerified: true, provenanceKind: "direct_transcript" },
+            })],
+        providerRequestId: `upgrade-${upgradeCall}`,
+        providerCostUsd: 0.01,
+      };
+    },
+  },
+});
+assert.equal(upgraded.sources.length, 1);
+assert.equal(upgraded.sources[0].sourceId, "web:duplicate");
+assert.equal(upgraded.sources[0].title, "Direct transcript");
+assert.equal(upgraded.sources[0].sourceMetadata.provenanceVerified, true);
+assert.equal(upgraded.lanes[0].sourceIds[0], upgraded.lanes[1].sourceIds[0]);
+
+let downgradeCall = 0;
+const notDowngraded = await executeResearchOrchestration({
+  plan: duplicatePlan,
+  provider: {
+    async search() {
+      downgradeCall += 1;
+      return {
+        sources: downgradeCall === 1
+          ? [source("web:verified", "https://example.org/transcript", "Direct transcript", {
+              sourceMetadata: { provenanceVerified: true, provenanceKind: "direct_transcript" },
+            })]
+          : [source("primary:unverified", "https://example.org/transcript", "Primary-lane commentary", {
+              adapterId: "primary",
+            })],
+        providerRequestId: `downgrade-${downgradeCall}`,
+        providerCostUsd: 0.01,
+      };
+    },
+  },
+});
+assert.equal(notDowngraded.sources.length, 1);
+assert.equal(notDowngraded.sources[0].title, "Direct transcript");
+assert.equal(notDowngraded.sources[0].sourceMetadata.provenanceVerified, true);
+
+let intentOnlyCall = 0;
+const primaryIntentDoesNotUpgrade = await executeResearchOrchestration({
+  plan: duplicatePlan,
+  provider: {
+    async search() {
+      intentOnlyCall += 1;
+      return {
+        sources: intentOnlyCall === 1
+          ? [source("web:unverified", "https://example.org/commentary", "Baseline commentary")]
+          : [source("primary:unverified", "https://example.org/commentary", "Primary-lane commentary", {
+              adapterId: "primary",
+            })],
+        providerRequestId: `intent-only-${intentOnlyCall}`,
+        providerCostUsd: 0.01,
+      };
+    },
+  },
+});
+assert.equal(primaryIntentDoesNotUpgrade.sources.length, 1);
+assert.equal(primaryIntentDoesNotUpgrade.sources[0].title, "Baseline commentary");
+assert.equal(
+  primaryIntentDoesNotUpgrade.sources[0].sourceMetadata.provenanceVerified,
+  undefined,
+);
 
 const optionalFailurePlan = {
   version: "0.10H-1F",

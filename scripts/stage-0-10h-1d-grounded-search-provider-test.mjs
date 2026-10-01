@@ -87,6 +87,40 @@ assert.equal(primary.sources[0].mediaKind, "webpage");
 assert.equal(primary.sources[0].sourceMetadata.provenanceVerified, true);
 assert.equal(primary.sources[0].sourceMetadata.provenanceKind, "government_publication");
 
+const directTranscript = adaptExaSearchResponse({
+  results: [{
+    id: "transcript-1",
+    title: "CNBC Exclusive: CNBC Transcript: Elon Musk Sits Down With David Faber",
+    url: "https://www.cnbc.com/2023/05/16/cnbc-exclusive-cnbc-transcript-elon-musk-sits-down-with-cnbcs-david-faber-live-on-cnbc-tonight-.html",
+    text: "A direct transcript of the interview.",
+  }],
+}, "web");
+assert.equal(
+  directTranscript.sources[0].sourceMetadata.provenanceVerified,
+  true,
+);
+assert.equal(
+  directTranscript.sources[0].sourceMetadata.provenanceKind,
+  "direct_transcript",
+);
+
+const transcriptCommentary = adaptExaSearchResponse({
+  results: [{
+    id: "transcript-commentary-1",
+    title: "What Elon Musk's interview transcript tells us about AI",
+    url: "https://example.com/analysis-of-transcript",
+    text: "Third-party commentary about an interview.",
+  }],
+}, "web");
+assert.equal(
+  transcriptCommentary.sources[0].sourceMetadata.provenanceVerified,
+  false,
+);
+assert.equal(
+  transcriptCommentary.sources[0].sourceMetadata.provenanceKind,
+  null,
+);
+
 const commentaryFromPrimaryLane = adaptExaSearchResponse({
   results: [{
     id: "commentary-1",

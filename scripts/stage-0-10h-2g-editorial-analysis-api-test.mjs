@@ -84,6 +84,19 @@ assert.match(route, /EDITORIAL_ANALYSIS_GROUNDING_FAILED/);
 assert.match(route, /searchLane is retrieval intent only/);
 assert.match(route, /prefer coverage across those claims/);
 assert.match(route, /classificationReason/);
+assert.match(route, /CREATOR_EDITORIAL_REQUEST_REJECTED/);
+for (const diagnosticField of [
+  "reasonCode",
+  "sourceCount",
+  "sourceResearchPurposeKeyCount",
+  "duplicateCanonicalUrlCount",
+  "duplicateSourceIdCount",
+]) {
+  assert.match(route, new RegExp(`\\b${diagnosticField}\\b`));
+}
+assert.match(route, /reasonCode:\s*message\.split\(":",\s*1\)\[0\]/);
+assert.match(route, /error:\s*errorMessage/);
+assert.match(route, /\{\s*status:\s*400\s*\}/);
 for (const forbiddenMarker of [
   "providerRequestId",
   "rawProviderPayload",

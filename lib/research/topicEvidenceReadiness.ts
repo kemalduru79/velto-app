@@ -2,6 +2,7 @@ import type {
   ResearchClaimEvidenceGraph,
   ResearchClaimType,
 } from "./claimEvidenceGraph.ts";
+import { researchClaimRequiresPrimarySource } from "./claimEvidenceGraph.ts";
 import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
 
 export type ResearchTopicReadinessStatus = "blocked" | "review" | "ready";
@@ -96,7 +97,7 @@ export function createResearchTopicReadiness(input: {
     .map((claim) => claim.claimId);
 
   const primarySourceRequiredClaimIds = graph.claims
-    .filter((claim) => claim.claimType === "PRIMARY_SOURCE_CLAIM")
+    .filter(researchClaimRequiresPrimarySource)
     .map((claim) => claim.claimId);
   const primarySourceCoveredClaimIds = primarySourceRequiredClaimIds.filter((claimId) =>
     (supportEvidenceIdsByClaim.get(claimId) || []).some((evidenceId) => {

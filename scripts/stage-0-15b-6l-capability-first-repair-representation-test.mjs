@@ -98,6 +98,34 @@ assert.deepEqual(liveShape.result.diagnostic.validatedCapabilityResolutions, [{
   capability: "uncertainty", outcome: "resolved", claimId: "claim-base", evidenceId: "evidence-limit",
 }]);
 
+const mispointedButStructurallyResolved = await run({
+  candidate: contextualizedGraph(),
+  resolutions: [{
+    capability: "uncertainty",
+    outcome: "resolved",
+    claimId: "claim-base",
+    evidenceId: "evidence-base",
+  }],
+});
+assert.equal(
+  mispointedButStructurallyResolved.result.diagnostic.repairAccepted,
+  true,
+  "a wrong provider declaration must not discard a structurally valid capability already proven by the validated graph",
+);
+assert.equal(
+  mispointedButStructurallyResolved.result.diagnostic.reasonCode,
+  "repair_accepted",
+);
+assert.deepEqual(
+  mispointedButStructurallyResolved.result.diagnostic.validatedCapabilityResolutions,
+  [{
+    capability: "uncertainty",
+    outcome: "resolved",
+    claimId: "claim-base",
+    evidenceId: "evidence-limit",
+  }],
+);
+
 const observedLiveFailure = await run({
   candidate: supportOnlyGraph(),
   resolutions: [{ capability: "uncertainty", outcome: "not_found", claimId: null, evidenceId: null }],
@@ -137,7 +165,7 @@ const healthy = await run({ first: contextualizedGraph(), candidate: contextuali
 assert.equal(healthy.providerCalls, 0);
 assert.equal(healthy.result.diagnostic.reasonCode, "not_pathologically_collapsed");
 
-for (const fixture of [liveShape, observedLiveFailure, invalidDeclaration, falseContextualization, noMaterial, theoreticalResult, healthy]) {
+for (const fixture of [liveShape, mispointedButStructurallyResolved, observedLiveFailure, invalidDeclaration, falseContextualization, noMaterial, theoreticalResult, healthy]) {
   assert.ok(fixture.providerCalls <= 1);
   assert.equal(fixture.researchCalls, 0);
 }

@@ -55,24 +55,52 @@ function publisherFromUrl(rawUrl: string) {
   }
 }
 
-function verifiedProvenanceFromUrl(rawUrl: string) {
+function verifiedProvenanceFromItem(
+  item: ExaSearchResultItem,
+  rawUrl: string,
+) {
   try {
     const url = new URL(rawUrl);
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
     const path = url.pathname.toLowerCase();
-    const governmentHost = host.endsWith(".gov") || /\.gov\.[a-z]{2}$/u.test(host);
+    const title = clean(item.title, 500).toLowerCase();
+
+    const governmentHost =
+      host.endsWith(".gov") || /\.gov\.[a-z]{2}$/u.test(host);
     if (governmentHost) {
-      return { provenanceVerified: true, provenanceKind: "government_publication" };
+      return {
+        provenanceVerified: true,
+        provenanceKind: "government_publication",
+      };
     }
+
     const originalAcademicRecord =
       host === "doi.org" ||
       (host === "arxiv.org" && /^\/(abs|pdf)\//u.test(path));
     if (originalAcademicRecord) {
-      return { provenanceVerified: true, provenanceKind: "original_academic_paper" };
+      return {
+        provenanceVerified: true,
+        provenanceKind: "original_academic_paper",
+      };
+    }
+
+    const explicitTranscriptTitle =
+      /\btranscript\s*:/u.test(title) ||
+      /^(?:full|complete|official)\s+transcript\b/u.test(title);
+
+    const transcriptUrl =
+      /(?:^|[-_/])transcript(?:[-_/]|$)/u.test(path);
+
+    if (explicitTranscriptTitle && transcriptUrl) {
+      return {
+        provenanceVerified: true,
+        provenanceKind: "direct_transcript",
+      };
     }
   } catch {
     // Invalid URLs are rejected by the canonical source contract downstream.
   }
+
   return { provenanceVerified: false, provenanceKind: null };
 }
 
@@ -107,7 +135,7 @@ function adaptItem(
   const highlights = Array.isArray(item.highlights)
     ? item.highlights.map((value) => clean(value, 1_200)).filter(Boolean)
     : [];
-  const verifiedProvenance = verifiedProvenanceFromUrl(url);
+  const verifiedProvenance = verifiedProvenanceFromItem(item, url);
 
   return {
     sourceId: createResearchSourceId(adapterId, externalId),

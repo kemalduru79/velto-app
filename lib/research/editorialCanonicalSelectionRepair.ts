@@ -367,6 +367,29 @@ function validateDeclaredCapabilityResolutions(input: {
   return validated;
 }
 
+function createStructuralCapabilityResolutions(input: {
+  graph: ResearchClaimEvidenceGraph;
+  requestedCapabilities: EditorialCanonicalCapability[];
+}): EditorialCanonicalCapabilityResolution[] {
+  const snapshot = createCanonicalEditorialCapabilitySnapshot(input.graph);
+
+  return input.requestedCapabilities.map((capability) => {
+    const claimId = capability === "demonstration"
+      ? snapshot.demonstrationClaimId
+      : snapshot.uncertaintyClaimId;
+    const evidenceId = capability === "demonstration"
+      ? snapshot.demonstrationEvidenceId
+      : snapshot.uncertaintyEvidenceId;
+
+    return {
+      capability,
+      outcome: claimId && evidenceId ? "resolved" : "not_found",
+      claimId: claimId || null,
+      evidenceId: evidenceId || null,
+    };
+  });
+}
+
 function cleanDiagnosticId(value: unknown) {
   return typeof value === "string" ? value.slice(0, 300) : "";
 }
@@ -492,7 +515,9 @@ function repairImprovesCanonicalAuthority(input: {
     input.after.claims.some((claim) =>
       claim.claimId === baseClaim.claimId &&
       claim.claimType === baseClaim.claimType &&
-      claim.text === baseClaim.text
+      claim.text === baseClaim.text &&
+      claim.propositionKind === baseClaim.propositionKind &&
+      JSON.stringify(claim.origin) === JSON.stringify(baseClaim.origin)
     )
   ) && input.before.evidence.every((baseEvidence) =>
     input.after.evidence.some((evidence) =>
@@ -756,17 +781,51 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
       returnedAuthorities: providerCounts.returnedAuthorities,
     }),
   };
-  const validatedCapabilityResolutions = validateDeclaredCapabilityResolutions({
+  const declaredCapabilityResolutions = validateDeclaredCapabilityResolutions({
     graph: repairedGraph,
     requestedCapabilities: missingCapabilities,
     declared: parsedRepair.capabilityResolutions,
   });
-  const unchanged = sameCanonicalAuthority(input.graph, repairedGraph);
-  const requestedCapabilityUnresolved = missingCapabilities.some((capability) =>
-    !parsedRepair.capabilityResolutions.some((item) =>
-      item.capability === capability && item.outcome === "resolved"
-    )
+  const structuralCapabilityResolutions = createStructuralCapabilityResolutions({
+    graph: repairedGraph,
+    requestedCapabilities: missingCapabilities,
+  });
+  const structurallyResolvedCapabilities = new Set(
+    structuralCapabilityResolutions
+      .filter((item) => item.outcome === "resolved")
+      .map((item) => item.capability),
   );
+
+  const validatedCapabilityResolutions =
+    declaredCapabilityResolutions ??
+    (
+      parsedRepair.repairOutcome === "additions_found" &&
+      structurallyResolvedCapabilities.size > 0
+        ? structuralCapabilityResolutions
+        : null
+    );
+
+  const resolvedCapabilities = new Set(
+    (validatedCapabilityResolutions || [])
+      .filter((item) => item.outcome === "resolved")
+      .map((item) => item.capability),
+  );
+
+  const unchanged = sameCanonicalAuthority(input.graph, repairedGraph);
+  const requestedCapabilityUnresolved = missingCapabilities.some(
+    (capability) => !resolvedCapabilities.has(capability),
+  );
+
+  const effectiveTriggerReasons = requestedCapabilityUnresolved
+    ? repairTriggerReasons.filter((reason) =>
+        reason === "canonical_collapse" ||
+        (reason === "missing_demonstration" &&
+          resolvedCapabilities.has("demonstration")) ||
+        (reason === "missing_uncertainty" &&
+          resolvedCapabilities.has("uncertainty"))
+      )
+    : repairTriggerReasons;
+
   const selection = !validatedCapabilityResolutions
     ? { accepted: false, reasonCode: "declared_resolution_invalid" as const }
     : parsedRepair.repairOutcome === "no_qualifying_addition"
@@ -781,13 +840,13 @@ export async function repairCollapsedCanonicalEditorialSelection(input: {
           accepted: false,
           reasonCode: "declared_additions_but_no_material_change" as const,
         }
-      : requestedCapabilityUnresolved
+      : requestedCapabilityUnresolved && resolvedCapabilities.size === 0
         ? { accepted: false, reasonCode: "requested_capability_not_resolved" as const }
-      : repairImprovesCanonicalAuthority({
-          before: input.graph,
-          after: repairedGraph,
-          triggerReasons: repairTriggerReasons,
-        });
+        : repairImprovesCanonicalAuthority({
+            before: input.graph,
+            after: repairedGraph,
+            triggerReasons: effectiveTriggerReasons,
+          });
   const finalGraph = selection.accepted ? repairedGraph : input.graph;
   const final = graphSummary(finalGraph);
   return {

@@ -11,6 +11,35 @@ assert.ok(fact.lanes.some((lane) => lane.purpose === "primary_source"));
 assert.ok(fact.lanes.some((lane) => lane.purpose === "counter_evidence"));
 assert.ok(fact.lanes.length <= 4);
 
+const primaryClaim = createResearchOrchestrationPlan({
+  subject: "a public statement about the future of work",
+  claimType: "PRIMARY_SOURCE_CLAIM",
+  maxResultsPerLane: 5,
+});
+assert.deepEqual(
+  primaryClaim.lanes.map((lane) => [lane.laneId, lane.purpose, lane.input.query]),
+  [
+    ["baseline", "baseline", "a public statement about the future of work"],
+    [
+      "primary-source",
+      "primary_source",
+      "a public statement about the future of work original source official transcript statement document",
+    ],
+    [
+      "primary-transcript-interview",
+      "primary_source",
+      "a public statement about the future of work transcript interview",
+    ],
+    [
+      "counter-evidence",
+      "counter_evidence",
+      "a public statement about the future of work limitations alternative explanations counter evidence criticism",
+    ],
+  ],
+);
+assert.equal(primaryClaim.lanes.length, 4);
+assert.ok(primaryClaim.lanes.every((lane) => lane.input.maxResults === 5));
+
 const unclassified = createResearchOrchestrationPlan({
   subject: "the future of optional work",
 });

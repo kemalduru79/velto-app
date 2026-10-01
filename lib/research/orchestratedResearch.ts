@@ -1,5 +1,6 @@
 import type { ResearchSearchProvider } from "../providers/research/types.ts";
 import type { ResearchSource } from "./sourceContract.ts";
+import { classifyResearchSourceDirectness } from "./sourceAssessment.ts";
 import type {
   ResearchOrchestrationPlan,
   ResearchSearchLane,
@@ -71,6 +72,11 @@ function roundedUsd(value: number) {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+function hasVerifiedFirstPartyProvenance(source: ResearchSource) {
+  return classifyResearchSourceDirectness(source).reason ===
+    "verified_first_party_provenance";
+}
+
 /**
  * Executes a pre-built research plan sequentially through the existing provider
  * contract. It deduplicates overlapping sources across lanes and preserves lane
@@ -108,6 +114,18 @@ export async function executeResearchOrchestration(input: {
           canonicalSourceId = source.sourceId;
           canonicalSourceIds.set(key, canonicalSourceId);
           canonicalSources.set(canonicalSourceId, source);
+        } else {
+          const retained = canonicalSources.get(canonicalSourceId);
+          if (
+            retained &&
+            !hasVerifiedFirstPartyProvenance(retained) &&
+            hasVerifiedFirstPartyProvenance(source)
+          ) {
+            canonicalSources.set(canonicalSourceId, {
+              ...source,
+              sourceId: canonicalSourceId,
+            });
+          }
         }
 
         if (!sourceIds.includes(canonicalSourceId)) {

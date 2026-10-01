@@ -1,5 +1,8 @@
 import {
   isResearchClaimType,
+  isResearchPropositionKind,
+  researchClaimRequiresPrimarySource,
+  validateResearchClaimPropositionAuthority,
   type ResearchClaim,
   type ResearchClaimEvidenceLink,
   type ResearchEvidence,
@@ -25,6 +28,8 @@ export type ScriptPlannerEditorialContext = {
     claimId: string;
     claimType: ResearchClaim["claimType"];
     text: string;
+    propositionKind?: ResearchClaim["propositionKind"];
+    origin?: ResearchClaim["origin"];
     supportingEvidenceIds: string[];
     counterEvidenceIds: string[];
     contextualEvidenceIds: string[];
@@ -160,14 +165,36 @@ function normalizeClaims(value: unknown) {
     if (!isResearchClaimType(raw.claimType)) {
       throw new Error(`EDITORIAL_CONTEXT_CLAIM_TYPE_INVALID:${claimId}`);
     }
-    return {
+    const hasPropositionAuthority = raw.propositionKind !== undefined || raw.origin !== undefined;
+    const rawOrigin = asRecord(raw.origin);
+    if (hasPropositionAuthority && (
+      !isResearchPropositionKind(raw.propositionKind) ||
+      !rawOrigin ||
+      Object.keys(rawOrigin).sort().join(",") !== "attributedEntity,referencedWork" ||
+      (rawOrigin.attributedEntity !== null && typeof rawOrigin.attributedEntity !== "string") ||
+      (rawOrigin.referencedWork !== null && typeof rawOrigin.referencedWork !== "string")
+    )) {
+      throw new Error(`EDITORIAL_CONTEXT_CLAIM_PROPOSITION_INVALID:${claimId}`);
+    }
+    const claim = {
       claimId,
       claimType: raw.claimType,
       text: requiredText(raw.text, `EDITORIAL_CONTEXT_CLAIM_TEXT:${claimId}`, 1_600),
+      ...(hasPropositionAuthority && isResearchPropositionKind(raw.propositionKind) && rawOrigin
+        ? {
+            propositionKind: raw.propositionKind,
+            origin: {
+              attributedEntity: nullableText(rawOrigin.attributedEntity, 500),
+              referencedWork: nullableText(rawOrigin.referencedWork, 500),
+            },
+          }
+        : {}),
       supportingEvidenceIds: uniqueIds(raw.supportingEvidenceIds),
       counterEvidenceIds: uniqueIds(raw.counterEvidenceIds),
       contextualEvidenceIds: uniqueIds(raw.contextualEvidenceIds),
     };
+    validateResearchClaimPropositionAuthority(claim);
+    return claim;
   });
 }
 
@@ -310,11 +337,11 @@ export function createScriptPlannerGroundingDiagnostics(
       Boolean(claimId) && values.indexOf(claimId) === index
     );
   const primaryRequiredClaimIds = context.claims
-    .filter((claim) => claim.claimType === "PRIMARY_SOURCE_CLAIM")
+    .filter(researchClaimRequiresPrimarySource)
     .map((claim) => claim.claimId);
   const primaryCoveredClaimIds = context.claims
     .filter((claim) =>
-      claim.claimType === "PRIMARY_SOURCE_CLAIM" &&
+      researchClaimRequiresPrimarySource(claim) &&
       claim.supportingEvidenceIds.some((evidenceId) => {
         const evidence = evidenceById.get(evidenceId);
         return evidence && sourceById.get(evidence.sourceId)?.directness === "primary";
@@ -382,6 +409,12 @@ export function createScriptPlannerEvidenceGraph(
     claimId: claim.claimId,
     claimType: claim.claimType,
     text: claim.text,
+    ...(claim.propositionKind && claim.origin
+      ? {
+          propositionKind: claim.propositionKind,
+          origin: { ...claim.origin },
+        }
+      : {}),
   }));
   const links: ResearchClaimEvidenceLink[] = [];
   const seen = new Set<string>();

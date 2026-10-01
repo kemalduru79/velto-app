@@ -20,6 +20,8 @@ export type EditorialScriptContext = {
     claimId: string;
     claimType: ResearchClaimEvidenceGraph["claims"][number]["claimType"];
     text: string;
+    propositionKind?: ResearchClaimEvidenceGraph["claims"][number]["propositionKind"];
+    origin?: ResearchClaimEvidenceGraph["claims"][number]["origin"];
     supportingEvidenceIds: string[];
     counterEvidenceIds: string[];
     contextualEvidenceIds: string[];
@@ -108,6 +110,12 @@ export function createEditorialScriptContext(input: {
       claimId: claim.claimId,
       claimType: claim.claimType,
       text: claim.text,
+      ...(claim.propositionKind && claim.origin
+        ? {
+            propositionKind: claim.propositionKind,
+            origin: { ...claim.origin },
+          }
+        : {}),
       supportingEvidenceIds: evidenceIdsByStance(input.graph, claim.claimId, "supports"),
       counterEvidenceIds: evidenceIdsByStance(input.graph, claim.claimId, "contradicts"),
       contextualEvidenceIds: evidenceIdsByStance(input.graph, claim.claimId, "contextualizes"),

@@ -1,6 +1,8 @@
 import {
   createResearchClaimEvidenceGraph,
   isResearchClaimType,
+  isResearchPropositionKind,
+  validateResearchClaimPropositionAuthority,
   type ClaimEvidenceStance,
   type ResearchClaimEvidenceGraph,
 } from "./claimEvidenceGraph.ts";
@@ -11,6 +13,8 @@ export type EditorialAnalysisProposal = {
     claimId?: unknown;
     claimType?: unknown;
     text?: unknown;
+    propositionKind?: unknown;
+    origin?: unknown;
   }>;
   evidence?: Array<{
     evidenceId?: unknown;
@@ -41,6 +45,18 @@ function clean(value: unknown, maxLength: number) {
     : "";
 }
 
+function record(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function nullableText(value: unknown, maxLength: number) {
+  if (value === null) return null;
+  const normalized = clean(value, maxLength);
+  return normalized || null;
+}
+
 function normalizedForGrounding(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("en-US");
 }
@@ -63,6 +79,9 @@ function assertGroundedExcerpt(source: ResearchSource, excerpt: string) {
 export function createValidatedEditorialAnalysis(input: {
   sources: ResearchSource[];
   proposal: EditorialAnalysisProposal;
+  requirePropositionAuthority?: boolean;
+  allowAmbiguousPropositionAuthority?: boolean;
+  provisionalPropositionAuthority?: boolean;
 }): ResearchClaimEvidenceGraph {
   const rawClaims = Array.isArray(input.proposal.claims) ? input.proposal.claims : [];
   const rawEvidence = Array.isArray(input.proposal.evidence) ? input.proposal.evidence : [];
@@ -87,7 +106,38 @@ export function createValidatedEditorialAnalysis(input: {
     if (!isResearchClaimType(claimType)) {
       throw new Error(`EDITORIAL_CLAIM_TYPE_INVALID:${claimId}`);
     }
-    return { claimId, claimType, text };
+    const propositionKind = raw.propositionKind;
+    const rawOrigin = record(raw.origin);
+    const hasPropositionAuthority = propositionKind !== undefined || raw.origin !== undefined;
+    if (hasPropositionAuthority && (
+      !isResearchPropositionKind(propositionKind) ||
+      !rawOrigin ||
+      Object.keys(rawOrigin).sort().join(",") !== "attributedEntity,referencedWork" ||
+      (rawOrigin.attributedEntity !== null && typeof rawOrigin.attributedEntity !== "string") ||
+      (rawOrigin.referencedWork !== null && typeof rawOrigin.referencedWork !== "string")
+    )) {
+      throw new Error(`EDITORIAL_CLAIM_PROPOSITION_AUTHORITY_INVALID:${claimId}`);
+    }
+    const claim = {
+      claimId,
+      claimType,
+      text,
+      ...(hasPropositionAuthority && isResearchPropositionKind(propositionKind) && rawOrigin
+        ? {
+            propositionKind,
+            origin: {
+              attributedEntity: nullableText(rawOrigin.attributedEntity, 500),
+              referencedWork: nullableText(rawOrigin.referencedWork, 500),
+            },
+          }
+        : {}),
+    };
+    validateResearchClaimPropositionAuthority(claim, {
+      required: input.requirePropositionAuthority === true,
+      allowAmbiguous: input.allowAmbiguousPropositionAuthority === true,
+      provisional: input.provisionalPropositionAuthority === true,
+    });
+    return claim;
   });
 
   const normalizedEvidence = rawEvidence.map((raw, index) => {
@@ -136,10 +186,18 @@ export function createValidatedEditorialAnalysis(input: {
     link,
   ])).values()];
 
-  return createResearchClaimEvidenceGraph({
-    sources: [...input.sources],
-    claims,
-    evidence,
-    links,
-  });
+  return createResearchClaimEvidenceGraph(
+    {
+      sources: [...input.sources],
+      claims,
+      evidence,
+      links,
+    },
+    {
+      allowAmbiguousPropositionAuthority:
+        input.allowAmbiguousPropositionAuthority === true,
+      provisionalPropositionAuthority:
+        input.provisionalPropositionAuthority === true,
+    },
+  );
 }

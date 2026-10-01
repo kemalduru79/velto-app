@@ -2,6 +2,7 @@ import {
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
+import { researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
 
 export const CREATOR_SCRIPT_VERSION = 1 as const;
 
@@ -421,6 +422,11 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
   const primarySourceCoveredClaimIds = new Set(
     editorialContext.readiness.primarySourceCoveredClaimIds,
   );
+  const primarySourceRequiredClaimIds = new Set(
+    editorialContext.claims
+      .filter(researchClaimRequiresPrimarySource)
+      .map((claim) => claim.claimId),
+  );
   const rawSections = script.sections.map((section, index) => {
     const normalized = normalizeSection(section, index, allowedClaimIds);
     return {
@@ -429,7 +435,7 @@ export function normalizeCreatorScript(value: unknown): CreatorScript {
         (claimId) => {
           const claim = claimById.get(claimId);
           return (claim?.supportingEvidenceIds.length || 0) === 0 ||
-            (claim?.claimType === "PRIMARY_SOURCE_CLAIM" &&
+            (primarySourceRequiredClaimIds.has(claimId) &&
               !primarySourceCoveredClaimIds.has(claimId));
         },
       ),

@@ -6,10 +6,12 @@ import {
   createEditorialGroundingCandidateSpans,
   createValidatedEditorialAnalysisWithOneRepair,
   MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+  selectEditorialGroundingCandidateSpansForRequest,
   type EditorialGroundingRepairInput,
 } from "@/lib/research/editorialGroundingRepair";
 import { normalizeEditorialAnalysisRequest } from "@/lib/research/editorialAnalysisRequest";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
+import { canonicalResearchUrl } from "@/lib/research/orchestratedResearch";
 import {
   assessResearchSource,
   classifyResearchSourceDirectness,
@@ -17,7 +19,16 @@ import {
 import { createResearchTopicReadiness } from "@/lib/research/topicEvidenceReadiness";
 import { createCreatorEditorialCandidateCapabilityDiagnostics } from "@/lib/research/creatorLongFormEvidenceReadiness";
 import { repairCollapsedCanonicalEditorialSelection } from "@/lib/research/editorialCanonicalSelectionRepair";
-import type { ResearchClaimEvidenceGraph } from "@/lib/research/claimEvidenceGraph";
+import {
+  RESEARCH_PROPOSITION_KINDS,
+  createResearchClaimEvidenceGraph,
+  type ResearchClaim,
+  type ResearchClaimEvidenceGraph,
+} from "@/lib/research/claimEvidenceGraph";
+import {
+  ClaimPropositionAuthorityDisagreementError,
+  reconcileClaimPropositionAuthorities,
+} from "@/lib/research/claimPropositionAuthority";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -45,6 +56,55 @@ function parseModelJson(raw: string) {
   }
 }
 
+function diagnosticRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function diagnosticText(value: unknown, maxLength: number) {
+  return typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim().slice(0, maxLength)
+    : "";
+}
+
+function duplicateValueCount(values: string[]) {
+  return values.length - new Set(values).size;
+}
+
+function createEditorialRequestRejectionDiagnostic(
+  body: unknown,
+  error: unknown,
+) {
+  const rawBody = diagnosticRecord(body);
+  const sources = Array.isArray(rawBody?.sources) ? rawBody.sources : [];
+  const rawPurposes = diagnosticRecord(rawBody?.sourceResearchPurposes);
+  const normalizedSourceIds: string[] = [];
+  const canonicalUrls: string[] = [];
+
+  for (const value of sources) {
+    const source = diagnosticRecord(value);
+    const sourceId = diagnosticText(source?.sourceId, 300);
+    const url = diagnosticText(source?.url, 2_000);
+    if (sourceId) normalizedSourceIds.push(sourceId);
+    const canonicalUrl = canonicalResearchUrl(url);
+    if (canonicalUrl) canonicalUrls.push(canonicalUrl);
+  }
+
+  const message = error instanceof Error
+    ? error.message
+    : "Editorial analysis input is invalid.";
+  return {
+    reasonCode: message.split(":", 1)[0],
+    sourceCount: sources.length,
+    sourceResearchPurposeKeyCount: rawPurposes
+      ? Object.keys(rawPurposes).length
+      : 0,
+    duplicateCanonicalUrlCount: duplicateValueCount(canonicalUrls),
+    duplicateSourceIdCount: duplicateValueCount(normalizedSourceIds),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const secured = await enforceCreatorApiBoundary<Record<string, unknown>>(
@@ -57,11 +117,18 @@ export async function POST(request: Request) {
     try {
       normalized = normalizeEditorialAnalysisRequest(secured.context.body);
     } catch (error) {
+      const errorMessage = error instanceof Error
+        ? error.message
+        : "Editorial analysis input is invalid.";
+      console.warn(
+        "CREATOR_EDITORIAL_REQUEST_REJECTED",
+        createEditorialRequestRejectionDiagnostic(secured.context.body, error),
+      );
       return NextResponse.json(
         {
           success: false,
           code: "EDITORIAL_ANALYSIS_INVALID",
-          error: error instanceof Error ? error.message : "Editorial analysis input is invalid.",
+          error: errorMessage,
         },
         { status: 400 },
       );
@@ -94,13 +161,20 @@ export async function POST(request: Request) {
         researchPurposes: normalized.sourceResearchPurposes[source.sourceId] || [],
       };
     });
-    const candidateSpans = createEditorialGroundingCandidateSpans(normalized.sources)
-      .slice(0, MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST);
+    const allCandidateSpans = createEditorialGroundingCandidateSpans(normalized.sources);
+    const candidateSpans = selectEditorialGroundingCandidateSpansForRequest(
+      allCandidateSpans,
+      MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+    );
     const eligibleSourceIds = new Set(candidateSpans.map((span) => span.sourceId));
     const systemPrompt = [
       "You are the evidence-aware editorial analyst for CreatorLab, an adult 18+ documentary and creator workflow.",
       "Use only the supplied research material. Never invent facts, evidence, quotes, dates, statistics, source ids, or source text.",
       "Classify every claim using exactly one allowed epistemic claim type.",
+      "Independently classify every claim's propositionKind as world_state, attributed_statement, document_assertion, original_research_result, expert_synthesis, editorial_inference, or ambiguous.",
+      "propositionKind is claim-origin authority, not an alternate epistemic claim type: attributed_statement identifies a proposition about what a named person or organization said; document_assertion identifies what a specific document states; original_research_result identifies a result attributed to its originating study or work.",
+      "For attributed_statement provide attributedEntity. For document_assertion and original_research_result provide referencedWork. Use null for origin fields that do not apply. A world_state must have both origin fields null.",
+      "Use ambiguous when the supplied material cannot safely distinguish claim-origin semantics. Never hide ambiguity by choosing world_state.",
       "A metaphysical proposition remains METAPHYSICAL_CLAIM unless the supplied material supports a different explicit classification; do not silently convert belief into fact.",
       "FORECAST, HYPOTHESIS, THEORY, EXPERT_OPINION and EDITORIAL_INFERENCE must retain their uncertainty.",
       "Evidence must select an exact supplied candidate spanId owned by its sourceId. Never write evidence excerpt text.",
@@ -135,7 +209,13 @@ export async function POST(request: Request) {
       candidateSpans,
       requiredJsonShape: {
         claims: [
-          { claimId: "claim-1", claimType: "FACT", text: "atomic claim" },
+          {
+            claimId: "claim-1",
+            claimType: "FACT",
+            text: "atomic claim",
+            propositionKind: "world_state",
+            origin: { attributedEntity: null, referencedWork: null },
+          },
         ],
         evidence: [
           {
@@ -154,8 +234,9 @@ export async function POST(request: Request) {
         "Do not create more than 30 claims.",
         "Do not create evidence without an exact supplied sourceId and its exact candidate spanId.",
         "Keep claim text concise and distinct from evidence: the claim states the proposition, while the selected evidence span should preserve the strongest available grounded observation, procedure, comparison, case, or result that supports it.",
+        "Every claim must include propositionKind and the complete origin object. claimType remains epistemic/editorial metadata and must not be used as a substitute for propositionKind.",
         "Set contextNote only when the selected source span explicitly supplies a condition, scope, procedure-specific boundary, or limitation; otherwise return null.",
-        "Use PRIMARY_SOURCE_CLAIM for a claim where original or first-party evidence is preferred or required for full evidence readiness; secondary traceable evidence may support it while leaving primary-source coverage for human review.",
+        "Use PRIMARY_SOURCE_CLAIM only as an epistemic/editorial treatment for a claim presented through direct-source authority. Primary-source obligation is derived independently from propositionKind and must not be added or removed by changing claimType.",
         "When primary sources are available for distinct claims, prefer coverage across those claims instead of repeatedly supporting only one claim.",
         "A primary searchLane is retrieval intent only; it does not override the supplied directness classification.",
         "Include material counter-evidence when the supplied sources contain it.",
@@ -170,6 +251,11 @@ export async function POST(request: Request) {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     console.info("CREATOR_EDITORIAL_CANDIDATE_CAPABILITY_DIAGNOSTICS", JSON.stringify({
       sourceCount: normalized.sources.length,
+      candidateDistinctSourceCount: new Set(
+        allCandidateSpans.map((span) => span.sourceId),
+      ).size,
+      eligibleCandidateSourceCount: eligibleSourceIds.size,
+      eligibleCandidateSourceIds: [...eligibleSourceIds],
       ...createCreatorEditorialCandidateCapabilityDiagnostics(candidateSpans),
       counterPurposeSourceCount: new Set(sourceMaterial.filter((source) =>
         source.researchPurposes.includes("counter_evidence")
@@ -182,7 +268,7 @@ export async function POST(request: Request) {
       type: "object",
       additionalProperties: false,
       properties: {
-        claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" } }, required: ["claimId", "claimType", "text"] } },
+        claims: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, claimType: { type: "string", enum: userPrompt.allowedClaimTypes }, text: { type: "string" }, propositionKind: { type: "string", enum: [...RESEARCH_PROPOSITION_KINDS] }, origin: { type: "object", additionalProperties: false, properties: { attributedEntity: { type: ["string", "null"] }, referencedWork: { type: ["string", "null"] } }, required: ["attributedEntity", "referencedWork"] } }, required: ["claimId", "claimType", "text", "propositionKind", "origin"] } },
         evidence: { type: "array", maxItems: 90, items: { type: "object", additionalProperties: false, properties: { evidenceId: { type: "string" }, sourceId: { type: "string", enum: [...eligibleSourceIds].length ? [...eligibleSourceIds] : ["__NO_CANONICAL_SOURCE__"] }, spanId: { type: "string", enum: candidateSpans.length ? candidateSpans.map((span) => span.spanId) : ["__NO_CANONICAL_SPAN__"] }, contextNote: { type: ["string", "null"] } }, required: ["evidenceId", "sourceId", "spanId", "contextNote"] } },
         links: { type: "array", maxItems: 180, items: { type: "object", additionalProperties: false, properties: { claimId: { type: "string" }, evidenceId: { type: "string" }, stance: { type: "string", enum: ["supports", "contradicts", "contextualizes"] } }, required: ["claimId", "evidenceId", "stance"] } },
       },
@@ -279,6 +365,9 @@ export async function POST(request: Request) {
         sources: normalized.sources,
         proposal,
         repair: runGroundingRepair,
+        requirePropositionAuthority: true,
+        allowAmbiguousPropositionAuthority: true,
+        provisionalPropositionAuthority: true,
       });
     } catch (error) {
       const diagnostic = error instanceof Error ? error.message : "Editorial analysis grounding failed.";
@@ -317,7 +406,7 @@ export async function POST(request: Request) {
               role: "system",
               content: [
                 systemPrompt,
-                "The existing valid base graph is fixed authority. Preserve every base claim, evidence item, and link exactly, including its identifiers, text, source, context, and stance.",
+                "The existing valid base graph is fixed authority. Preserve every base claim, evidence item, and link exactly, including its identifiers, claimType, text, propositionKind, origin, source, context, and stance.",
                 "The first pass collapsed to one canonical authority despite grounded discovery candidates from multiple uncovered sources.",
                 "Inspect only the supplied discovery candidate spans for materially distinct supported claims, concrete demonstration evidence, material limits or boundaries, contextual evidence, and genuine contradictory or alternative findings that the first pass missed.",
                 "The supplied missingCapabilities list identifies long-form roles that the valid base graph cannot currently serve; it is permission to inspect, not evidence that qualifying authority exists.",
@@ -326,6 +415,9 @@ export async function POST(request: Request) {
                 "When an exact supplied span materially narrows, qualifies, scopes, or limits an existing factual claim, add the grounded evidence and link it directly to that existing claim with contextualizes. A new claim is not required for a genuine qualification.",
                 "Alternatively, an exact supplied span may support a legitimately uncertainty-bearing claim type under the existing claim taxonomy.",
                 "Do not mark ordinary support as contextualizes and do not declare a capability resolved unless the returned graph structurally resolves it.",
+                "Capability resolution must reference the exact claimId/evidenceId pair of an actual returned link; never point a resolution at evidence linked to a different claim.",
+                "For demonstration, resolved is valid only when that exact link has stance supports, the claim type is FACT, PRIMARY_SOURCE_CLAIM, or RESEARCH_FINDING, and the selected evidence span is a concrete observation. EXPERT_OPINION does not satisfy demonstration capability.",
+                "For uncertainty, resolved is valid only when that exact link is contextualizes, or when stance is supports and the claim type is THEORY, FORECAST, HYPOTHESIS, METAPHYSICAL_CLAIM, or EDITORIAL_INFERENCE. EXPERT_OPINION plus supports does not satisfy uncertainty capability.",
                 "When demonstration is missing, look for an exact supplied concrete empirical observation, procedure, case, or result linked to a FACT, PRIMARY_SOURCE_CLAIM, or RESEARCH_FINDING.",
                 "When uncertainty is missing, look for exact supplied scope limits, boundary conditions, alternative explanations, qualifications, opposing findings, or uncertainty-bearing context.",
                 "You are performing a targeted completion analysis. You MUST choose exactly one repairOutcome: additions_found or no_qualifying_addition.",
@@ -435,6 +527,9 @@ export async function POST(request: Request) {
         sources: normalized.sources,
         proposal: repairProposal as Parameters<typeof createValidatedEditorialAnalysisWithOneRepair>[0]["proposal"],
         repair: runGroundingRepair,
+        requirePropositionAuthority: true,
+        allowAmbiguousPropositionAuthority: true,
+        provisionalPropositionAuthority: true,
       }),
     });
     graph = selectionRepair.graph;
@@ -442,6 +537,130 @@ export async function POST(request: Request) {
       "CREATOR_EDITORIAL_CANONICAL_SELECTION_REPAIR",
       JSON.stringify(selectionRepair.diagnostic),
     );
+
+    try {
+      const claimIds = graph.claims.map((claim) => claim.claimId);
+      if (
+        claimIds.length === 0 ||
+        new Set(claimIds).size !== claimIds.length
+      ) {
+        throw new Error("EDITORIAL_CLAIM_ORIGIN_ADJUDICATION_INVALID");
+      }
+      const adjudicationResponse = await client.responses.create({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              "Adjudicate only the proposition-origin classification of each supplied canonical claim using its exact text, selected evidence, source metadata, and links.",
+              "Return exactly one item for every supplied claimId and no other claimId.",
+              "Do not rewrite, reinterpret, add, or remove claim ids, claim text, claimType, evidence, links, sources, or stance.",
+              "Use attributed_statement only for a proposition about what a named person or organization said; include attributedEntity.",
+              "Use document_assertion only for a proposition about what a specific document states; include referencedWork.",
+              "Use original_research_result only for a result attributed to its originating study or work; include referencedWork.",
+              "Use world_state only for a proposition that does not depend on attribution to a speaker, document, or originating research work; both origin fields must be null.",
+              "Use expert_synthesis or editorial_inference only when those are the proposition's actual origin semantics.",
+              "Use ambiguous instead of silently choosing world_state when the supplied authority does not safely determine the origin semantics.",
+              "Return strict JSON only.",
+            ].join(" "),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              claims: graph.claims,
+              evidence: graph.evidence,
+              links: graph.links,
+              sources: sourceMaterial.filter((source) => eligibleSourceIds.has(source.sourceId)),
+            }),
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "creator_editorial_claim_origin_adjudication",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                claims: {
+                  type: "array",
+                  minItems: claimIds.length,
+                  maxItems: claimIds.length,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      claimId: { type: "string", enum: claimIds },
+                      propositionKind: {
+                        type: "string",
+                        enum: [...RESEARCH_PROPOSITION_KINDS],
+                      },
+                      origin: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          attributedEntity: { type: ["string", "null"] },
+                          referencedWork: { type: ["string", "null"] },
+                        },
+                        required: ["attributedEntity", "referencedWork"],
+                      },
+                    },
+                    required: ["claimId", "propositionKind", "origin"],
+                  },
+                },
+              },
+              required: ["claims"],
+            },
+          },
+        },
+        temperature: 0,
+      });
+      await recordOpenAITextEconomics({
+        route: "/api/creator-editorial-analysis",
+        operationType: "creator_editorial_claim_origin_adjudication",
+        model,
+        response: adjudicationResponse,
+        userId: secured.context.user.id,
+      });
+      const reconciledClaims = reconcileClaimPropositionAuthorities({
+        initialClaims: graph.claims,
+        adjudication: parseModelJson(adjudicationResponse.output_text || ""),
+      }) as ResearchClaim[];
+      graph = createResearchClaimEvidenceGraph({
+        sources: graph.sources,
+        claims: reconciledClaims,
+        evidence: graph.evidence,
+        links: graph.links,
+      });
+    } catch (error) {
+      const diagnostic = error instanceof Error
+        ? error.message
+        : "EDITORIAL_CLAIM_ORIGIN_ADJUDICATION_INVALID";
+      const ambiguous = diagnostic.startsWith("EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS");
+      if (error instanceof ClaimPropositionAuthorityDisagreementError) {
+        console.error(
+          "CREATOR_EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT",
+          error.disagreement,
+        );
+      }
+      console.error("CREATOR_EDITORIAL_CLAIM_ORIGIN_FAILED", {
+        category: ambiguous ? "ambiguous" : "invalid",
+        diagnostic,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          code: ambiguous
+            ? "EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS"
+            : "EDITORIAL_CLAIM_ORIGIN_ADJUDICATION_INVALID",
+          error: ambiguous
+            ? "Claim origin could not be resolved safely. Please retry."
+            : "Claim origin validation could not be completed. Please retry.",
+        },
+        { status: 422 },
+      );
+    }
 
     const sourceAssessments = graph.sources.map((source) =>
       assessResearchSource(

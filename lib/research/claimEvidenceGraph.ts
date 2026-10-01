@@ -15,10 +15,32 @@ export const RESEARCH_CLAIM_TYPES = [
 
 export type ResearchClaimType = (typeof RESEARCH_CLAIM_TYPES)[number];
 
+export const RESEARCH_PROPOSITION_KINDS = [
+  "world_state",
+  "attributed_statement",
+  "document_assertion",
+  "original_research_result",
+  "expert_synthesis",
+  "editorial_inference",
+  "ambiguous",
+] as const;
+
+export type ResearchPropositionKind =
+  (typeof RESEARCH_PROPOSITION_KINDS)[number];
+
+export type ResearchClaimOrigin = {
+  attributedEntity: string | null;
+  referencedWork: string | null;
+};
+
 export type ResearchClaim = {
   claimId: string;
   claimType: ResearchClaimType;
   text: string;
+  /** Absent only on persisted graphs created before proposition authority. */
+  propositionKind?: ResearchPropositionKind;
+  /** Absent only on persisted graphs created before proposition authority. */
+  origin?: ResearchClaimOrigin;
 };
 
 export type ResearchEvidenceLocator = {
@@ -56,9 +78,119 @@ export type ResearchClaimEvidenceGraph = {
 };
 
 const CLAIM_TYPE_SET = new Set<string>(RESEARCH_CLAIM_TYPES);
+const PROPOSITION_KIND_SET = new Set<string>(RESEARCH_PROPOSITION_KINDS);
+const PRIMARY_SOURCE_PROPOSITION_KINDS = new Set<ResearchPropositionKind>([
+  "attributed_statement",
+  "document_assertion",
+  "original_research_result",
+]);
 
 export function isResearchClaimType(value: unknown): value is ResearchClaimType {
   return typeof value === "string" && CLAIM_TYPE_SET.has(value);
+}
+
+export function isResearchPropositionKind(
+  value: unknown,
+): value is ResearchPropositionKind {
+  return typeof value === "string" && PROPOSITION_KIND_SET.has(value);
+}
+
+function hasText(value: unknown) {
+  return typeof value === "string" && Boolean(value.trim());
+}
+
+export function hasCanonicalPropositionAuthority(
+  claim: Pick<ResearchClaim, "propositionKind" | "origin">,
+) {
+  return isResearchPropositionKind(claim.propositionKind) && Boolean(claim.origin);
+}
+
+export function validateResearchClaimPropositionAuthority(
+  claim: Pick<ResearchClaim, "claimId" | "claimType" | "propositionKind" | "origin">,
+  options: {
+    required?: boolean;
+    allowAmbiguous?: boolean;
+    provisional?: boolean;
+  } = {},
+) {
+  const hasKind = claim.propositionKind !== undefined;
+  const hasOrigin = claim.origin !== undefined;
+  if (!hasKind && !hasOrigin) {
+    if (options.required) {
+      throw new Error(`CLAIM_PROPOSITION_AUTHORITY_REQUIRED:${claim.claimId}`);
+    }
+    return;
+  }
+  if (!hasKind || !hasOrigin || !isResearchPropositionKind(claim.propositionKind)) {
+    throw new Error(`CLAIM_PROPOSITION_AUTHORITY_INVALID:${claim.claimId}`);
+  }
+  if (
+    !claim.origin ||
+    typeof claim.origin !== "object" ||
+    Array.isArray(claim.origin) ||
+    !Object.hasOwn(claim.origin, "attributedEntity") ||
+    !Object.hasOwn(claim.origin, "referencedWork") ||
+    (claim.origin.attributedEntity !== null &&
+      typeof claim.origin.attributedEntity !== "string") ||
+    (claim.origin.referencedWork !== null &&
+      typeof claim.origin.referencedWork !== "string")
+  ) {
+    throw new Error(`CLAIM_ORIGIN_INVALID:${claim.claimId}`);
+  }
+
+  if (options.provisional === true) {
+    if (claim.propositionKind === "ambiguous" && !options.allowAmbiguous) {
+      throw new Error(`EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:${claim.claimId}`);
+    }
+    return;
+  }
+
+  const attributedEntity = claim.origin.attributedEntity;
+  const referencedWork = claim.origin.referencedWork;
+  if (
+    claim.propositionKind === "attributed_statement" &&
+    !hasText(attributedEntity)
+  ) {
+    throw new Error(`CLAIM_ATTRIBUTED_ENTITY_REQUIRED:${claim.claimId}`);
+  }
+  if (
+    (claim.propositionKind === "document_assertion" ||
+      claim.propositionKind === "original_research_result") &&
+    !hasText(referencedWork)
+  ) {
+    throw new Error(`CLAIM_REFERENCED_WORK_REQUIRED:${claim.claimId}`);
+  }
+  if (
+    claim.propositionKind === "world_state" &&
+    (hasText(attributedEntity) || hasText(referencedWork))
+  ) {
+    throw new Error(`CLAIM_WORLD_STATE_ORIGIN_INVALID:${claim.claimId}`);
+  }
+  if (
+    claim.claimType === "PRIMARY_SOURCE_CLAIM" &&
+    claim.propositionKind === "world_state"
+  ) {
+    throw new Error(`CLAIM_PRIMARY_SOURCE_WORLD_STATE_INVALID:${claim.claimId}`);
+  }
+  if (claim.propositionKind === "ambiguous" && !options.allowAmbiguous) {
+    throw new Error(`EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:${claim.claimId}`);
+  }
+}
+
+/**
+ * Canonical primary-source obligation authority.
+ *
+ * The claim-type fallback applies only to persisted legacy claims that contain
+ * no proposition authority at all. Partially present or malformed authority is
+ * rejected by validation and never reaches this helper as a legacy claim.
+ */
+export function researchClaimRequiresPrimarySource(
+  claim: Pick<ResearchClaim, "claimType" | "propositionKind" | "origin">,
+) {
+  if (hasCanonicalPropositionAuthority(claim)) {
+    return PRIMARY_SOURCE_PROPOSITION_KINDS.has(claim.propositionKind!);
+  }
+  return claim.claimType === "PRIMARY_SOURCE_CLAIM";
 }
 
 function assertUniqueIds(
@@ -92,7 +224,10 @@ export function createResearchClaimEvidenceGraph(input: {
   claims: ResearchClaim[];
   evidence: ResearchEvidence[];
   links: ResearchClaimEvidenceLink[];
-}): ResearchClaimEvidenceGraph {
+}, options: {
+  allowAmbiguousPropositionAuthority?: boolean;
+  provisionalPropositionAuthority?: boolean;
+} = {}): ResearchClaimEvidenceGraph {
   const sourceIds = assertUniqueIds(
     input.sources.map((source) => ({ id: source.sourceId })),
     "SOURCE",
@@ -113,6 +248,10 @@ export function createResearchClaimEvidenceGraph(input: {
     if (!claim.text.trim()) {
       throw new Error(`CLAIM_TEXT_REQUIRED:${claim.claimId}`);
     }
+    validateResearchClaimPropositionAuthority(claim, {
+      allowAmbiguous: options.allowAmbiguousPropositionAuthority === true,
+      provisional: options.provisionalPropositionAuthority === true,
+    });
   }
 
   for (const item of input.evidence) {

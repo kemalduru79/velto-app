@@ -13,6 +13,48 @@ import {
   getCreatorScriptDurationContract,
   shouldUseCreatorScriptSectionNativeGeneration,
 } from "../lib/creator/creatorScript.ts";
+import { selectEditorialGroundingCandidateSpansForRequest } from "../lib/research/editorialGroundingRepair.ts";
+
+const sourceBalancedFixture = Array.from({ length: 19 }, (_, sourceIndex) =>
+  Array.from({ length: 23 }, (_, spanIndex) => ({
+    spanId: `balanced-span-${sourceIndex + 1}-${spanIndex + 1}`,
+    sourceId: `balanced-source-${sourceIndex + 1}`,
+    text: `Grounded candidate ${sourceIndex + 1}.${spanIndex + 1}`,
+    evidenceSpecificity: "abstract_or_conceptual",
+  }))
+).flat();
+const sourceBalancedSelection = selectEditorialGroundingCandidateSpansForRequest(
+  sourceBalancedFixture,
+  120,
+);
+const repeatSourceBalancedSelection = selectEditorialGroundingCandidateSpansForRequest(
+  sourceBalancedFixture,
+  120,
+);
+const originalSpanIds = new Set(sourceBalancedFixture.map((span) => span.spanId));
+
+assert.equal(
+  sourceBalancedFixture.slice(0, 120).some((span) => span.sourceId === "balanced-source-19"),
+  false,
+);
+assert.equal(sourceBalancedSelection.length, 120);
+assert.equal(new Set(sourceBalancedSelection.map((span) => span.sourceId)).size, 19);
+assert.ok(sourceBalancedSelection.some((span) => span.sourceId === "balanced-source-1"));
+assert.ok(sourceBalancedSelection.some((span) => span.sourceId === "balanced-source-19"));
+assert.deepEqual(sourceBalancedSelection, repeatSourceBalancedSelection);
+assert.ok(sourceBalancedSelection.every((span) => originalSpanIds.has(span.spanId)));
+for (let sourceIndex = 1; sourceIndex <= 19; sourceIndex += 1) {
+  const selectedSourceSpanIds = sourceBalancedSelection
+    .filter((span) => span.sourceId === `balanced-source-${sourceIndex}`)
+    .map((span) => span.spanId);
+  assert.deepEqual(
+    selectedSourceSpanIds,
+    sourceBalancedFixture
+      .filter((span) => span.sourceId === `balanced-source-${sourceIndex}`)
+      .slice(0, selectedSourceSpanIds.length)
+      .map((span) => span.spanId),
+  );
+}
 
 const sources = Array.from({ length: 9 }, (_, index) => ({
   sourceId: `source-${index + 1}`,
@@ -195,6 +237,81 @@ const latestRouting = createCreatorScriptSectionClaimRouting({ context: latestCo
 assert.ok(latestRouting.find((route) => route.sectionId === "section-3").claimIds.includes("claim-demo"));
 assert.ok(latestRouting.find((route) => route.sectionId === "section-4").claimIds.includes("claim-limit"));
 assert.equal(createCreatorLongFormEvidenceReadiness({ context: latestContext, plan, sectionNative }).eligible, true);
+
+
+const partialCandidate = graph({ includeUncertainty: true });
+
+const partialInvalidDeclaration =
+  await repairCollapsedCanonicalEditorialSelection({
+    candidateSpans: candidates,
+    sourceResearchPurposes,
+    graph: graph({}),
+    requestRepair: async () => ({
+      repairOutcome: "additions_found",
+      capabilityResolutions: [
+        {
+          capability: "demonstration",
+          outcome: "resolved",
+          claimId: "claim-base",
+          evidenceId: "evidence-base",
+        },
+        {
+          capability: "uncertainty",
+          outcome: "resolved",
+          claimId: "claim-base",
+          evidenceId: "evidence-limit",
+        },
+      ],
+      canonicalGraph: partialCandidate,
+    }),
+    validateRepair: async (proposal) => proposal,
+  });
+
+assert.equal(partialInvalidDeclaration.diagnostic.repairAccepted, true);
+assert.equal(partialInvalidDeclaration.diagnostic.reasonCode, "repair_accepted");
+assert.equal(
+  partialInvalidDeclaration.diagnostic.afterHasDemonstrationCapability,
+  false,
+);
+assert.equal(
+  partialInvalidDeclaration.diagnostic.afterHasUncertaintyCapability,
+  true,
+);
+assert.deepEqual(
+  partialInvalidDeclaration.diagnostic.validatedCapabilityResolutions,
+  [
+    {
+      capability: "demonstration",
+      outcome: "not_found",
+      claimId: null,
+      evidenceId: null,
+    },
+    {
+      capability: "uncertainty",
+      outcome: "resolved",
+      claimId: "claim-limit",
+      evidenceId: "evidence-limit",
+    },
+  ],
+);
+
+const partialContext = contextFromGraph(partialInvalidDeclaration.graph);
+const partialReadiness = createCreatorLongFormEvidenceReadiness({
+  context: partialContext,
+  plan,
+  sectionNative,
+});
+
+assert.equal(partialReadiness.eligible, false);
+assert.ok(
+  partialReadiness.reasonCodes.includes(
+    "missing_grounded_demonstration_capability",
+  ),
+);
+assert.equal(
+  partialReadiness.reasonCodes.includes("missing_uncertainty_capability"),
+  false,
+);
 
 const wrongRouteContext = contextFromGraph(graph({ includeDemo: true, includeUncertainty: true, extraFacts: 5 }));
 const wrongRouteEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation({ context: wrongRouteContext, plan });

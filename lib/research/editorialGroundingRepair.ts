@@ -147,6 +147,40 @@ export function createEditorialGroundingCandidateSpans(
   });
 }
 
+/**
+ * Applies the request-wide grounding budget without allowing verbose early
+ * sources to exclude later sources. Spans retain their existing per-source
+ * rank, while source groups retain first-encounter order.
+ */
+export function selectEditorialGroundingCandidateSpansForRequest(
+  candidateSpans: EditorialGroundingCandidateSpan[],
+  maxCount: number,
+) {
+  const limit = Math.max(0, Math.trunc(maxCount));
+  if (limit === 0 || candidateSpans.length === 0) return [];
+
+  const spansBySource = new Map<string, EditorialGroundingCandidateSpan[]>();
+  for (const span of candidateSpans) {
+    const sourceSpans = spansBySource.get(span.sourceId);
+    if (sourceSpans) sourceSpans.push(span);
+    else spansBySource.set(span.sourceId, [span]);
+  }
+
+  const selected: EditorialGroundingCandidateSpan[] = [];
+  for (let rank = 0; selected.length < limit; rank += 1) {
+    let added = false;
+    for (const sourceSpans of spansBySource.values()) {
+      const span = sourceSpans[rank];
+      if (!span) continue;
+      selected.push(span);
+      added = true;
+      if (selected.length === limit) break;
+    }
+    if (!added) break;
+  }
+  return selected;
+}
+
 function objectRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -304,6 +338,9 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
   sources: ResearchSource[];
   proposal: EditorialAnalysisProposal;
   repair: (repairInput: EditorialGroundingRepairInput) => Promise<unknown>;
+  requirePropositionAuthority?: boolean;
+  allowAmbiguousPropositionAuthority?: boolean;
+  provisionalPropositionAuthority?: boolean;
 }) {
   const proposalUsesSpanSelections = (Array.isArray(input.proposal.evidence)
     ? input.proposal.evidence
@@ -329,6 +366,9 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
             candidateSpans: initialCandidateSpans,
           })
         : input.proposal,
+      requirePropositionAuthority: input.requirePropositionAuthority,
+      allowAmbiguousPropositionAuthority: input.allowAmbiguousPropositionAuthority,
+      provisionalPropositionAuthority: input.provisionalPropositionAuthority,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -359,6 +399,9 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
         selection,
         candidateSpans,
       }),
+      requirePropositionAuthority: input.requirePropositionAuthority,
+      allowAmbiguousPropositionAuthority: input.allowAmbiguousPropositionAuthority,
+      provisionalPropositionAuthority: input.provisionalPropositionAuthority,
     });
   }
 }
