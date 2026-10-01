@@ -34,7 +34,11 @@ assert.doesNotMatch(productionHandler, /setCreatorMentorResult\(null\)/);
 
 assert.match(autosaveEffect, /isCreatorLabFlow[\s\S]*!input\.trim\(\) && !title\.trim\(\)/);
 assert.doesNotMatch(autosaveEffect, /\|\| !creatorMentorResult/);
-assert.match(autosaveEffect, /await persistProject\(false\)/);
+assert.match(
+  autosaveEffect,
+  /await persistProject\(false,\s*\{[\s\S]*persistScenes:\s*shouldPersistCreatorSceneProjection\(\{/,
+  "CreatorLab autosave persists current semantic intent while guarding scene projection authority",
+);
 assert.match(autosaveEffect, /}, 2000\)/);
 
 assert.match(hydration, /setCreatorMentorResult\(loadedMentorResult \|\| null\)/);
