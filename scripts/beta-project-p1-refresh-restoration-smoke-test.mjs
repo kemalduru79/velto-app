@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { resolveCreatorWorkspaceTarget } from "../lib/creator/stageNavigation.ts";
+import {
+  parseCreatorProductionSubstepParam,
+  resolveCreatorRestoredNavigation,
+  resolveCreatorWorkspaceTarget,
+  serializeCreatorProductionSubstepParam,
+} from "../lib/creator/stageNavigation.ts";
 
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const loadRoute = fs.readFileSync(
@@ -38,19 +43,71 @@ assert.match(page, /Project could not be opened\./);
 assert.match(page, /if \(currentProjectId && currentProjectId !== projectId\) \{\s*resetStoryFlow\(\)/);
 assert.match(page, /const resetStoryFlow = \(\) => \{[\s\S]*setCurrentProjectId\(""\)[\s\S]*replaceProjectUrlIdentity\(""\)/);
 
-assert.match(page, /if \(value === "setup"\) return "setup"/);
-assert.match(page, /if \(value === "review"\) return "create_review"/);
-assert.match(page, /return null;/);
-assert.match(page, /substep === "create_review" \? "review" : "setup"/);
+assert.equal(parseCreatorProductionSubstepParam("setup"), "setup");
+assert.equal(parseCreatorProductionSubstepParam("review"), "create_review");
+assert.equal(parseCreatorProductionSubstepParam("invalid"), null);
+assert.equal(parseCreatorProductionSubstepParam(null), null);
+assert.equal(parseCreatorProductionSubstepParam(undefined), null);
+assert.equal(serializeCreatorProductionSubstepParam("create_review"), "review");
+assert.equal(serializeCreatorProductionSubstepParam("setup"), "setup");
+const restorableProject = {
+  hasStrategy: true,
+  hasProductionPackage: true,
+  canOpenPublish: false,
+};
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "create_review" },
+  productionSubstepIntent: "setup",
+  hasScenes: true,
+}), { workspaceStep: 3, productionSubstep: "setup" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "setup" },
+  productionSubstepIntent: "create_review",
+  hasScenes: true,
+}), { workspaceStep: 3, productionSubstep: "create_review" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "create_review" },
+  productionSubstepIntent: "create_review",
+  hasScenes: false,
+}), { workspaceStep: 3, productionSubstep: "setup" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  persisted: { workspaceStep: 2, productionSubstep: "setup" },
+  productionSubstepIntent: "create_review",
+  hasStrategy: true,
+  hasProductionPackage: false,
+  hasScenes: true,
+  canOpenPublish: false,
+}), { workspaceStep: 2, productionSubstep: "setup" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "setup" },
+  productionSubstepIntent: null,
+  hasScenes: true,
+}), { workspaceStep: 3, productionSubstep: "setup" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "create_review" },
+  hasScenes: true,
+}), { workspaceStep: 3, productionSubstep: "create_review" });
+assert.deepEqual(resolveCreatorRestoredNavigation({
+  ...restorableProject,
+  persisted: { workspaceStep: 3, productionSubstep: "create_review" },
+  hasScenes: false,
+}), { workspaceStep: 3, productionSubstep: "setup" });
+assert.match(page, /parseCreatorProductionSubstepParam\([\s\S]*new URLSearchParams\(window\.location\.search\)\.get\(PRODUCTION_URL_PARAM\)/);
 assert.match(page, /url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
-assert.match(page, /const selectCreatorProductionSubstep = \(substep: CreatorProductionSubstep\) => \{[\s\S]*setCreatorProductionSubstep\(substep\)[\s\S]*replaceProductionSubstepUrl\(substep\)/);
+assert.match(page, /serializeCreatorProductionSubstepParam\(substep\)/);
+assert.match(page, /const selectCreatorProductionSubstep = \(substep: CreatorProductionSubstep, persist = true\) => \{[\s\S]*setCreatorProductionSubstep\(substep\)[\s\S]*replaceProductionSubstepUrl\(substep\)/);
 assert.match(page, /onClick=\{\(\) => selectCreatorProductionSubstep\("create_review"\)\}/);
 assert.match(page, /const target = resolveCreatorWorkspaceTarget\(step\)/);
 assert.deepEqual(resolveCreatorWorkspaceTarget(3), { workspaceStep: 3, productionSubstep: "setup" });
 assert.deepEqual(resolveCreatorWorkspaceTarget(4), { workspaceStep: 3, productionSubstep: "create_review" });
 assert.deepEqual(resolveCreatorWorkspaceTarget(5), { workspaceStep: 4 });
 assert.match(page, /onEdit=\{\(\) => selectCreatorProductionSubstep\("setup"\)\}/);
-assert.match(page, /getProductionSubstepFromUrl\(\) \|\|[\s\S]*loadedProjectScenes\.length > 0 \? "create_review" : "setup"/);
+assert.match(page, /resolveCreatorRestoredNavigation\(\{[\s\S]*persisted: canonicalCreatorState\?\.navigation,[\s\S]*productionSubstepIntent: parseCreatorProductionSubstepParam[\s\S]*hasScenes: loadedProjectScenes\.length > 0/);
 assert.match(page, /const url = new URL\(window\.location\.href\);[\s\S]*url\.searchParams\.set\([\s\S]*PRODUCTION_URL_PARAM/);
 assert.match(page, /onStartNewProject=\{\(\) => \{[\s\S]*window\.history\.replaceState\(null, "", "\/create\?flow=creator_lab"\)/);
 

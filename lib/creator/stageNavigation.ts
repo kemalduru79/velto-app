@@ -22,16 +22,32 @@ export const CREATOR_VISIBLE_WORKFLOW_STAGES = [
 ] as const;
 
 export type CreatorVisibleWorkflowStep = typeof CREATOR_VISIBLE_WORKFLOW_STAGES[number]["id"];
+export type CreatorProductionSubstep = "setup" | "create_review";
 export type CreatorProjectNavigation = {
   workspaceStep: CreatorProductionStage;
-  productionSubstep: "setup" | "create_review";
+  productionSubstep: CreatorProductionSubstep;
 };
+
+export function parseCreatorProductionSubstepParam(
+  value: string | null | undefined,
+): CreatorProductionSubstep | null {
+  if (value === "setup") return "setup";
+  if (value === "review") return "create_review";
+  return null;
+}
+
+export function serializeCreatorProductionSubstepParam(
+  substep: CreatorProductionSubstep,
+): "setup" | "review" {
+  return substep === "create_review" ? "review" : "setup";
+}
 
 export const canOpenCreatorPublish = (input: { productionComplete: boolean; publishComplete: boolean }) =>
   input.productionComplete || input.publishComplete;
 
 export function resolveCreatorRestoredNavigation(input: {
   persisted?: Partial<CreatorProjectNavigation> | null;
+  productionSubstepIntent?: CreatorProductionSubstep | null;
   hasStrategy: boolean;
   hasProductionPackage: boolean;
   hasScenes: boolean;
@@ -44,6 +60,15 @@ export function resolveCreatorRestoredNavigation(input: {
       : input.hasStrategy
         ? 2
         : 1;
+  if (input.productionSubstepIntent && maximumStep >= 3) {
+    return {
+      workspaceStep: 3,
+      productionSubstep:
+        input.productionSubstepIntent === "create_review" && input.hasScenes
+          ? "create_review"
+          : "setup",
+    };
+  }
   const requested = Number.isInteger(input.persisted?.workspaceStep)
     ? Math.max(1, Math.min(4, Number(input.persisted?.workspaceStep))) as CreatorProductionStage
     : maximumStep;

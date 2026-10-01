@@ -147,11 +147,13 @@ import {
   creatorStageAfterSuccess,
   canOpenCreatorPublish,
   CREATOR_VISIBLE_WORKFLOW_STAGES,
+  parseCreatorProductionSubstepParam,
   resolveCreatorVisibleWorkflowProgress,
   resolveCreatorRestoredNavigation,
   resolveCreatorVisibleWorkflowStep,
   resolveCreatorWorkspaceTarget,
   resolveCreatorStageVisibility,
+  serializeCreatorProductionSubstepParam,
 } from "@/lib/creator/stageNavigation";
 import { createCreatorPublishPreflight } from "@/lib/creator/publishPreflight";
 import CreatorScriptReview from "@/components/create/CreatorScriptReview";
@@ -1440,7 +1442,7 @@ function replaceProductionSubstepUrl(substep: CreatorProductionSubstep) {
   const url = new URL(window.location.href);
   url.searchParams.set(
     PRODUCTION_URL_PARAM,
-    substep === "create_review" ? "review" : "setup",
+    serializeCreatorProductionSubstepParam(substep),
   );
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
@@ -13131,6 +13133,9 @@ const generateSceneImage = async (
       const restoredNavigation = isCreatorProject
         ? resolveCreatorRestoredNavigation({
             persisted: canonicalCreatorState?.navigation,
+            productionSubstepIntent: parseCreatorProductionSubstepParam(
+              new URLSearchParams(window.location.search).get(PRODUCTION_URL_PARAM),
+            ),
             hasStrategy: Boolean(canonicalCreatorState?.strategy.mentorResult || canonicalCreatorState?.strategy.script),
             hasProductionPackage: Boolean(normalizedSavedCreatorPackage),
             hasScenes: loadedProjectScenes.length > 0,
