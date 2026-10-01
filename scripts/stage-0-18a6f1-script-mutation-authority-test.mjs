@@ -132,6 +132,11 @@ const regenerationHandler = page.slice(
   page.indexOf("const handleRegenerateCreatorScriptSection"),
   page.indexOf("const handleReviewCreatorScriptSources"),
 );
+const sceneInvalidationHelperStart = page.indexOf("const clearCreatorScenesForAuthoritativeInvalidation");
+const sceneInvalidationHelper = page.slice(
+  sceneInvalidationHelperStart,
+  page.indexOf("useEffect(() => {", sceneInvalidationHelperStart),
+);
 
 const authorityRejection = route.indexOf("CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED");
 const repositorySave = route.indexOf("projectRepository.saveForOwner");
@@ -145,15 +150,21 @@ assert.match(page, /type: "section_regeneration"[\s\S]*expectedRevision: sourceR
 const regenerationPersist = regenerationHandler.indexOf("const saved = await persistProject");
 const installSavedRef = regenerationHandler.indexOf("creatorScriptRef.current = savedScript");
 const installSavedState = regenerationHandler.indexOf("setCreatorScript(savedScript)");
-const clearScenes = regenerationHandler.indexOf("setScenes([])");
+const clearScenes = regenerationHandler.indexOf("clearCreatorScenesForAuthoritativeInvalidation()");
 const clearRefinedScenes = regenerationHandler.indexOf("setRefinedCreatorScenes([])");
 const invalidateFinal = regenerationHandler.indexOf("invalidateFinalVideoForProductionChange()");
 assert.ok(regenerationPersist > 0);
 assert.ok(installSavedRef > regenerationPersist && installSavedState > regenerationPersist);
 assert.ok(clearScenes > installSavedState && clearRefinedScenes > installSavedState && invalidateFinal > installSavedState);
-assert.doesNotMatch(regenerationHandler.slice(0, regenerationPersist), /creatorScriptRef\.current = nextScript|setCreatorScript\(nextScript\)|setScenes\(\[\]\)|setRefinedCreatorScenes\(\[\]\)|invalidateFinalVideoForProductionChange\(\)/);
+assert.ok(clearRefinedScenes > clearScenes && invalidateFinal > clearRefinedScenes);
+assert.doesNotMatch(regenerationHandler.slice(0, regenerationPersist), /creatorScriptRef\.current = nextScript|setCreatorScript\(nextScript\)|clearCreatorScenesForAuthoritativeInvalidation\(\)|setRefinedCreatorScenes\(\[\]\)|invalidateFinalVideoForProductionChange\(\)/);
 assert.match(regenerationHandler, /if \(!operationIsActive\(\) \|\| !sourceRevisionIsActive\(\)\) return;[\s\S]*const saved = await persistProject[\s\S]*if \(!operationIsActive\(\) \|\| !sourceRevisionIsActive\(\)\) return;/);
 assert.match(regenerationHandler, /const savedScript = savedState\.strategy\.script[\s\S]*creatorScriptRef\.current = savedScript[\s\S]*setCreatorScript\(savedScript\)/);
+assert.ok(sceneInvalidationHelperStart > 0);
+assert.match(sceneInvalidationHelper, /creatorLastPopulatedScenesRef\.current = \[\]/);
+assert.match(sceneInvalidationHelper, /creatorSceneHydrationAuthorityRef\.current = "hydrated_empty"/);
+assert.match(sceneInvalidationHelper, /setCreatorSceneHydrationAuthority\("hydrated_empty"\)/);
+assert.match(sceneInvalidationHelper, /setScenes\(\[\]\)/);
 assert.match(page, /type: "generated_script_replacement"/);
 assert.match(page, /key=\{`\$\{currentProjectId \|\| "unsaved"\}:\$\{creatorScript\.revision\}`\}/);
 assert.match(page, /useState<CreatorSceneHydrationAuthority>\("unknown"\)/);
