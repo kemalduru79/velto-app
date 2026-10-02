@@ -39,6 +39,11 @@ export type EditorialGroundingRepairInput = {
 
 type TextRange = { start: number; end: number };
 
+export type EditorialGroundingPassage = TextRange & {
+  text: string;
+  evidenceSpecificity: EditorialGroundingCandidateSpan["evidenceSpecificity"];
+};
+
 function trimmedRange(text: string, start: number, end: number): TextRange | null {
   while (start < end && /\s/u.test(text[start])) start += 1;
   while (end > start && /\s/u.test(text[end - 1])) end -= 1;
@@ -115,28 +120,45 @@ export function classifyEditorialGroundingSpanSpecificity(text: string) {
     : "abstract_or_conceptual" as const;
 }
 
+/**
+ * Shared V1/V2 segmentation authority. It preserves the existing sentence and
+ * adjacent-passage boundaries without assigning an identity to those ranges.
+ */
+export function createEditorialGroundingPassages(
+  text: string,
+): EditorialGroundingPassage[] {
+  const passages = boundedPassageRanges(text);
+  const ranges = [...passages];
+  for (
+    let index = 0;
+    index + 1 < passages.length &&
+    ranges.length < MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE;
+    index += 1
+  ) ranges.push({ start: passages[index].start, end: passages[index + 1].end });
+  return ranges.map((range) => {
+    const passageText = text.slice(range.start, range.end);
+    return {
+      ...range,
+      text: passageText,
+      evidenceSpecificity: classifyEditorialGroundingSpanSpecificity(
+        passageText,
+      ),
+    };
+  });
+}
+
 export function createEditorialGroundingCandidateSpans(
   sources: ResearchSource[],
 ) {
   const spans: EditorialGroundingCandidateSpan[] = [];
   sources.forEach((source, sourceIndex) => {
     const summary = source.summary || "";
-    const passages = boundedPassageRanges(summary);
-    const ranges = [...passages];
-    for (
-      let index = 0;
-      index + 1 < passages.length &&
-      ranges.length < MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE;
-      index += 1
-    ) ranges.push({ start: passages[index].start, end: passages[index + 1].end });
-    ranges.forEach((range, spanIndex) => {
+    createEditorialGroundingPassages(summary).forEach((passage, spanIndex) => {
       spans.push({
         spanId: `span-${sourceIndex + 1}-${spanIndex + 1}`,
         sourceId: source.sourceId,
-        text: summary.slice(range.start, range.end),
-        evidenceSpecificity: classifyEditorialGroundingSpanSpecificity(
-          summary.slice(range.start, range.end),
-        ),
+        text: passage.text,
+        evidenceSpecificity: passage.evidenceSpecificity,
       });
     });
   });

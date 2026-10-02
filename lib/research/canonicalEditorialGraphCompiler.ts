@@ -110,7 +110,9 @@ export function compileCanonicalEditorialGraph(input: {
   spanCatalog: readonly CanonicalEditorialEvidenceSpan[];
 }): ResearchClaimEvidenceGraph {
   const proposal = normalizeEditorialProposalV2(input.proposal);
-  const sources = input.sources.map((source) => ({ ...source }));
+  const sources = input.sources
+    .map((source) => ({ ...source }))
+    .toSorted((left, right) => left.sourceId.localeCompare(right.sourceId));
   const sourceById = new Map<string, ResearchSource>();
   for (const source of sources) {
     if (!source.sourceId.trim()) {

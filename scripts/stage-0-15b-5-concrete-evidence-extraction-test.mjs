@@ -101,11 +101,32 @@ assert.match(route, /prefer a claim-relevant candidate marked concrete_observati
 assert.match(route, /Concrete preference means extraction only/);
 assert.match(route, /THEORY, EDITORIAL_INFERENCE, METAPHYSICAL_CLAIM/);
 assert.match(route, /Set contextNote only when the selected source span explicitly supplies/);
+const expectedProviderOperations = [
+  "creator_editorial_analysis",
+  "creator_editorial_grounding_repair",
+  "creator_editorial_canonical_selection_repair",
+  "creator_editorial_claim_origin_adjudication",
+];
+const responseSchemaOperations = [...route.matchAll(
+  /name: "(creator_editorial_(?:analysis|grounding_repair|canonical_selection_repair|claim_origin_adjudication))"/g,
+)].map((match) => match[1]);
+assert.deepEqual(
+  responseSchemaOperations,
+  expectedProviderOperations,
+  "editorial analysis exposes exactly the accepted semantic provider operations",
+);
 assert.equal(
   (route.match(/client\.responses\.create\(/g) || []).length,
-  3,
-  "B.6E adds only its one bounded canonical-selection call to the existing analysis and grounding-repair calls",
+  expectedProviderOperations.length,
+  "each accepted semantic provider operation owns exactly one bounded call site",
 );
+for (const operation of expectedProviderOperations) {
+  assert.match(
+    route,
+    new RegExp(`operationType: "${operation}"`),
+    `${operation} retains explicit economics/audit attribution`,
+  );
+}
 assert.match(route, /repairCollapsedCanonicalEditorialSelection/);
 
 console.log("Stage 0.15B.5 concrete grounded evidence extraction tests passed.");
