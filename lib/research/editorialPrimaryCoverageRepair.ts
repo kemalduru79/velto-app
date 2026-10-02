@@ -7,10 +7,10 @@ import {
 import { researchSourceQualifiesAsPrimaryForClaim } from "./claimAuthorityResolver.ts";
 import { createValidatedEditorialAnalysis } from "./editorialAnalysisContract.ts";
 import {
-  createEditorialGroundingCandidateSpans,
   MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
   type EditorialGroundingCandidateSpan,
 } from "./editorialGroundingRepair.ts";
+import { createEditorialEvidenceSpanCatalog } from "./editorialEvidenceSpanCatalog.ts";
 import { normalizeEditorialAnalysisRequest } from "./editorialAnalysisRequest.ts";
 import { canonicalResearchUrl } from "./orchestratedResearch.ts";
 import {
@@ -246,9 +246,9 @@ export function createEditorialPrimaryCoverageRepairContext(
     candidateSources,
     targetClaims,
   });
-  const candidateSpans = createEditorialGroundingCandidateSpans(
+  const candidateSpans = createEditorialEvidenceSpanCatalog(
     candidatePrimarySources,
-  );
+  ).spans;
   // Zero candidate spans is a legitimate acquisition result. The route
   // will skip provider selection and invoke the server-owned safe-exclusion
   // path with an empty repair selection.
@@ -290,36 +290,39 @@ function parseRepairSelection(input: {
   );
   const selectedClaimIds = new Set<string>();
 
-  return {
-    repairs: selection.repairs.map((value) => {
-      const repair = record(value);
-      if (
-        !repair ||
-        Object.keys(repair).sort().join(",") !== "claimId,spanId"
-      ) {
-        throw new Error("EDITORIAL_PRIMARY_COVERAGE_SELECTION_INVALID");
-      }
-      const claimId = clean(repair.claimId, 120);
-      const spanId = clean(repair.spanId, 300);
-      if (!targetClaimIds.has(claimId)) {
-        throw new Error(
-          `EDITORIAL_PRIMARY_COVERAGE_TARGET_NOT_ALLOWED:${claimId}`,
-        );
-      }
-      if (!candidateSpanIds.has(spanId)) {
-        throw new Error(
-          `EDITORIAL_PRIMARY_COVERAGE_SPAN_NOT_ALLOWED:${spanId}`,
-        );
-      }
-      if (selectedClaimIds.has(claimId)) {
-        throw new Error(
-          `EDITORIAL_PRIMARY_COVERAGE_TARGET_DUPLICATE:${claimId}`,
-        );
-      }
-      selectedClaimIds.add(claimId);
-      return { claimId, spanId };
-    }),
-  };
+  const repairs = selection.repairs.map((value) => {
+    const repair = record(value);
+    if (
+      !repair ||
+      Object.keys(repair).sort().join(",") !== "claimId,spanId"
+    ) {
+      throw new Error("EDITORIAL_PRIMARY_COVERAGE_SELECTION_INVALID");
+    }
+    const claimId = clean(repair.claimId, 120);
+    const spanId = clean(repair.spanId, 300);
+    if (!targetClaimIds.has(claimId)) {
+      throw new Error(
+        `EDITORIAL_PRIMARY_COVERAGE_TARGET_NOT_ALLOWED:${claimId}`,
+      );
+    }
+    if (!candidateSpanIds.has(spanId)) {
+      throw new Error(
+        `EDITORIAL_PRIMARY_COVERAGE_SPAN_NOT_ALLOWED:${spanId}`,
+      );
+    }
+    if (selectedClaimIds.has(claimId)) {
+      throw new Error(
+        `EDITORIAL_PRIMARY_COVERAGE_TARGET_DUPLICATE:${claimId}`,
+      );
+    }
+    selectedClaimIds.add(claimId);
+    return { claimId, spanId };
+  }).toSorted((left, right) =>
+    left.claimId.localeCompare(right.claimId) ||
+    left.spanId.localeCompare(right.spanId)
+  );
+
+  return { repairs };
 }
 
 function nextEvidenceId(existingEvidenceIds: Set<string>, ordinal: number) {

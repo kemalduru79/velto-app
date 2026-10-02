@@ -463,7 +463,9 @@ function normalizeResearchResultFromCheckpoint(value: CreatorScriptBuildJson | n
   return normalizeResearchResult(raw.result);
 }
 
-function normalizeEditorialResultFromCheckpoint(value: CreatorScriptBuildJson | null) {
+export function normalizeCreatorScriptBuildEditorialResultFromCheckpoint(
+  value: CreatorScriptBuildJson | null,
+) {
   const raw = record(value);
   if (!raw || raw.version !== "0.19E2A-editorial-checkpoint-output-v1") {
     throw new Error("CREATOR_SCRIPT_BUILD_EDITORIAL_CHECKPOINT_OUTPUT_INVALID");
@@ -1054,7 +1056,9 @@ async function runEditorialStage(input: {
   });
   const existingCheckpoint = build.checkpoints.editorial || null;
   if (existingCheckpoint?.status === "COMPLETED") {
-    const editorial = normalizeEditorialResultFromCheckpoint(existingCheckpoint.outputReference);
+    const editorial = normalizeCreatorScriptBuildEditorialResultFromCheckpoint(
+      existingCheckpoint.outputReference,
+    );
     build = await input.dependencies.repository.transition({
       ownerId: build.ownerId,
       buildId: build.buildId,
