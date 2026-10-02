@@ -120,10 +120,19 @@ const route = await readFile(
   "utf8",
 );
 assert.match(client, /sourceResearchPurposes/);
-assert.match(client, /research\.lanes/);
+assert.match(
+  client,
+  /for \(const laneValue of asArray\(payload\.lanes\)\)/,
+);
+assert.match(client, /addResearchPurposes\(research\)/);
+assert.match(client, /addResearchPurposes\(primaryResearch\)/);
 assert.match(route, /candidateFromCounterPurposeSourceCount/);
 assert.match(route, /Research purpose describes why a source was retrieved/);
 assert.match(route, /does not classify any individual candidate span/);
-assert.equal((route.match(/client\.responses\.create\(/g) || []).length, 3);
+assert.equal(
+  (route.match(/client\.responses\.create\(/g) || []).length,
+  4,
+  "analysis, grounding repair, canonical selection repair, and proposition-origin adjudication remain bounded",
+);
 
 console.log("Stage 0.15B.6G counter/uncertainty provenance preservation: PASS");

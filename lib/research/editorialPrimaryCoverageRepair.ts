@@ -4,6 +4,7 @@ import {
   type ResearchClaimEvidenceGraph,
   type ResearchEvidence,
 } from "./claimEvidenceGraph.ts";
+import { researchSourceQualifiesAsPrimaryForClaim } from "./claimAuthorityResolver.ts";
 import { createValidatedEditorialAnalysis } from "./editorialAnalysisContract.ts";
 import {
   createEditorialGroundingCandidateSpans,
@@ -15,7 +16,6 @@ import { canonicalResearchUrl } from "./orchestratedResearch.ts";
 import {
   assessResearchSource,
   classifyResearchSourceDirectness,
-  researchSourceIsPrimaryForClaim,
   type ResearchSourceAssessment,
 } from "./sourceAssessment.ts";
 import type { ResearchSource } from "./sourceContract.ts";
@@ -140,7 +140,10 @@ function deduplicateCandidateSources(input: {
   for (const candidate of input.candidateSources) {
     if (
       !input.targetClaims.some((claim) =>
-        researchSourceIsPrimaryForClaim(candidate, claim)
+        researchSourceQualifiesAsPrimaryForClaim({
+          source: candidate,
+          claim,
+        })
       )
     ) {
       throw new Error(
@@ -376,7 +379,10 @@ export function applyEditorialPrimaryCoverageRepair(input: {
     if (
       !candidateSource ||
       !targetClaim ||
-      !researchSourceIsPrimaryForClaim(candidateSource, targetClaim)
+      !researchSourceQualifiesAsPrimaryForClaim({
+        source: candidateSource,
+        claim: targetClaim,
+      })
     ) {
       throw new Error(
         `EDITORIAL_PRIMARY_COVERAGE_SOURCE_NOT_PRIMARY:${span.sourceId}`,

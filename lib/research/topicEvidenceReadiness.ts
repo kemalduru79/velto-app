@@ -2,11 +2,8 @@ import type {
   ResearchClaimEvidenceGraph,
   ResearchClaimType,
 } from "./claimEvidenceGraph.ts";
-import { researchClaimRequiresPrimarySource } from "./claimEvidenceGraph.ts";
-import {
-  researchSourceIsPrimaryForClaim,
-  type ResearchSourceAssessment,
-} from "./sourceAssessment.ts";
+import { resolveClaimAuthority } from "./claimAuthorityResolver.ts";
+import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
 
 export type ResearchTopicReadinessStatus = "blocked" | "review" | "ready";
 
@@ -66,6 +63,13 @@ export function createResearchTopicReadiness(input: {
   sourceAssessments: ResearchSourceAssessment[];
 }): ResearchTopicReadinessReport {
   const { graph } = input;
+  const authority = resolveClaimAuthority({
+    graph,
+    sourceAssessments: input.sourceAssessments,
+  });
+  const authorityByClaimId = new Map(
+    authority.claims.map((resolution) => [resolution.claimId, resolution]),
+  );
   const assessmentBySourceId = new Map(
     input.sourceAssessments.map((assessment) => [assessment.sourceId, assessment]),
   );
@@ -75,57 +79,34 @@ export function createResearchTopicReadiness(input: {
   const sourceById = new Map(
     graph.sources.map((source) => [source.sourceId, source]),
   );
-  const claimById = new Map(
-    graph.claims.map((claim) => [claim.claimId, claim]),
-  );
-
-  const supportEvidenceIdsByClaim = new Map<string, string[]>();
   const contradictionEvidenceIdsByClaim = new Map<string, string[]>();
 
   for (const link of graph.links) {
-    const target = link.stance === "supports"
-      ? supportEvidenceIdsByClaim
-      : link.stance === "contradicts"
-        ? contradictionEvidenceIdsByClaim
-        : null;
-    if (!target) continue;
-    const current = target.get(link.claimId) || [];
+    if (link.stance !== "contradicts") continue;
+    const current = contradictionEvidenceIdsByClaim.get(link.claimId) || [];
     current.push(link.evidenceId);
-    target.set(link.claimId, current);
+    contradictionEvidenceIdsByClaim.set(link.claimId, current);
   }
 
   const evidenceRequiredClaims = graph.claims.filter(
     (claim) => !EVIDENCE_OPTIONAL_CLAIM_TYPES.has(claim.claimType),
   );
   const supportedClaimIds = evidenceRequiredClaims
-    .filter((claim) => (supportEvidenceIdsByClaim.get(claim.claimId) || []).length > 0)
+    .filter((claim) =>
+      (authorityByClaimId.get(claim.claimId)?.supportingEvidenceIds.length || 0) > 0
+    )
     .map((claim) => claim.claimId);
   const supportedClaimIdSet = new Set(supportedClaimIds);
   const unsupportedClaimIds = evidenceRequiredClaims
     .filter((claim) => !supportedClaimIdSet.has(claim.claimId))
     .map((claim) => claim.claimId);
 
-  const primarySourceRequiredClaimIds = graph.claims
-    .filter(researchClaimRequiresPrimarySource)
-    .map((claim) => claim.claimId);
-  const primarySourceCoveredClaimIds = primarySourceRequiredClaimIds.filter((claimId) =>
-    (supportEvidenceIdsByClaim.get(claimId) || []).some((evidenceId) => {
-      const claim = claimById.get(claimId);
-      const evidence = evidenceById.get(evidenceId);
-      const source = evidence ? sourceById.get(evidence.sourceId) : null;
-      const assessment = evidence
-        ? assessmentBySourceId.get(evidence.sourceId)
-        : null;
-
-      if (!claim || !source) return false;
-
-      if (assessment?.directness === "primary") {
-        return true;
-      }
-
-      return researchSourceIsPrimaryForClaim(source, claim);
-    }),
-  );
+  const primarySourceRequiredClaimIds = authority.claims
+    .filter((resolution) => resolution.requiresPrimary)
+    .map((resolution) => resolution.claimId);
+  const primarySourceCoveredClaimIds = authority.claims
+    .filter((resolution) => resolution.status === "SUPPORTED_PRIMARY")
+    .map((resolution) => resolution.claimId);
 
   const counterEvidenceRecommendedClaimIds = graph.claims
     .filter((claim) => COUNTER_EVIDENCE_RECOMMENDED_TYPES.has(claim.claimType))

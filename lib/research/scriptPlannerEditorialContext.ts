@@ -1,13 +1,15 @@
 import {
+  createResearchClaimEvidenceGraph,
   isResearchClaimType,
   isResearchPropositionKind,
-  researchClaimRequiresPrimarySource,
   validateResearchClaimPropositionAuthority,
   type ResearchClaim,
   type ResearchClaimEvidenceLink,
   type ResearchEvidence,
   type ResearchEvidenceLocator,
 } from "./claimEvidenceGraph.ts";
+import { resolveClaimAuthority } from "./claimAuthorityResolver.ts";
+import type { ResearchSource } from "./sourceContract.ts";
 import type {
   ResearchSourceDirectness,
   ResearchSourceReviewStatus,
@@ -271,6 +273,103 @@ function assertReferences(context: ScriptPlannerEditorialContext) {
   }
 }
 
+const RESEARCH_SOURCE_ADAPTER_IDS = new Set<ResearchSource["adapterId"]>([
+  "youtube",
+  "web",
+  "primary",
+  "academic",
+  "news",
+]);
+const RESEARCH_SOURCE_MEDIA_KINDS = new Set<ResearchSource["mediaKind"]>([
+  "video",
+  "article",
+  "paper",
+  "document",
+  "webpage",
+  "other",
+]);
+
+function createScriptPlannerAuthorityGraph(
+  context: ScriptPlannerEditorialContext,
+) {
+  const evidenceGraph = createScriptPlannerEvidenceGraph(context);
+  return createResearchClaimEvidenceGraph({
+    sources: context.sources.map((source): ResearchSource => ({
+      sourceId: source.sourceId,
+      adapterId: RESEARCH_SOURCE_ADAPTER_IDS.has(
+          source.searchLane as ResearchSource["adapterId"],
+        )
+        ? source.searchLane as ResearchSource["adapterId"]
+        : "web",
+      mediaKind: RESEARCH_SOURCE_MEDIA_KINDS.has(
+          source.sourceKind as ResearchSource["mediaKind"],
+        )
+        ? source.sourceKind as ResearchSource["mediaKind"]
+        : "other",
+      externalId: null,
+      title: source.title,
+      url: source.url,
+      publisher: source.publisher,
+      author: source.author,
+      publishedAt: source.publishedAt,
+      language: null,
+      summary: null,
+      thumbnailUrl: null,
+      durationSec: null,
+      metrics: {},
+      sourceMetadata: {},
+    })),
+    claims: evidenceGraph.claims,
+    evidence: evidenceGraph.evidence,
+    links: evidenceGraph.links,
+  });
+}
+
+function resolveScriptPlannerClaimAuthority(
+  context: ScriptPlannerEditorialContext,
+) {
+  return resolveClaimAuthority({
+    graph: createScriptPlannerAuthorityGraph(context),
+    sourceAssessments: context.sources.map((source) => ({
+      sourceId: source.sourceId,
+      directness: source.directness,
+      provenanceStatus: "unknown",
+      reviewStatus: source.reviewStatus,
+      reviewReasons: [],
+    })),
+  });
+}
+
+function sameIds(left: string[], right: string[]) {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function assertScriptPlannerPrimaryAuthority(
+  context: ScriptPlannerEditorialContext,
+) {
+  const authority = resolveScriptPlannerClaimAuthority(context);
+  const primarySourceRequiredClaimIds = authority.claims
+    .filter((resolution) => resolution.requiresPrimary)
+    .map((resolution) => resolution.claimId);
+  const primarySourceCoveredClaimIds = authority.claims
+    .filter((resolution) => resolution.status === "SUPPORTED_PRIMARY")
+    .map((resolution) => resolution.claimId);
+
+  if (
+    !sameIds(
+      context.readiness.primarySourceRequiredClaimIds,
+      primarySourceRequiredClaimIds,
+    ) ||
+    !sameIds(
+      context.readiness.primarySourceCoveredClaimIds,
+      primarySourceCoveredClaimIds,
+    )
+  ) {
+    throw new Error("EDITORIAL_CONTEXT_PRIMARY_AUTHORITY_MISMATCH");
+  }
+}
+
 /**
  * Converts the H-2E editorial context into a bounded, provider-neutral prompt
  * contract for the existing Script Planner. Unknown client fields are dropped.
@@ -302,6 +401,7 @@ export function normalizeScriptPlannerEditorialContext(
     sources: normalizeSources(raw.sources),
   };
   assertReferences(context);
+  assertScriptPlannerPrimaryAuthority(context);
   return context;
 }
 
@@ -309,11 +409,9 @@ export function normalizeScriptPlannerEditorialContext(
 export function createScriptPlannerGroundingDiagnostics(
   context: ScriptPlannerEditorialContext,
 ): ScriptPlannerGroundingDiagnostics {
+  const authority = resolveScriptPlannerClaimAuthority(context);
   const allowedClaimIds = new Set(context.claims.map((claim) => claim.claimId));
   const evidenceIds = new Set(context.evidence.map((item) => item.evidenceId));
-  const evidenceById = new Map(
-    context.evidence.map((item) => [item.evidenceId, item]),
-  );
   const sourceById = new Map(
     context.sources.map((source) => [source.sourceId, source]),
   );
@@ -336,18 +434,12 @@ export function createScriptPlannerGroundingDiagnostics(
     .filter((claimId, index, values) =>
       Boolean(claimId) && values.indexOf(claimId) === index
     );
-  const primaryRequiredClaimIds = context.claims
-    .filter(researchClaimRequiresPrimarySource)
-    .map((claim) => claim.claimId);
-  const primaryCoveredClaimIds = context.claims
-    .filter((claim) =>
-      researchClaimRequiresPrimarySource(claim) &&
-      claim.supportingEvidenceIds.some((evidenceId) => {
-        const evidence = evidenceById.get(evidenceId);
-        return evidence && sourceById.get(evidence.sourceId)?.directness === "primary";
-      })
-    )
-    .map((claim) => claim.claimId);
+  const primaryRequiredClaimIds = authority.claims
+    .filter((resolution) => resolution.requiresPrimary)
+    .map((resolution) => resolution.claimId);
+  const primaryCoveredClaimIds = authority.claims
+    .filter((resolution) => resolution.status === "SUPPORTED_PRIMARY")
+    .map((resolution) => resolution.claimId);
   const primaryCoveredClaimIdSet = new Set(primaryCoveredClaimIds);
   const primaryMissingClaimIds = primaryRequiredClaimIds.filter(
     (claimId) => !primaryCoveredClaimIdSet.has(claimId),

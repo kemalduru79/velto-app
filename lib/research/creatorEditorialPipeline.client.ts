@@ -7,8 +7,8 @@ import type {
   ResearchClaim,
   ResearchClaimEvidenceGraph,
 } from "./claimEvidenceGraph.ts";
+import { researchSourceQualifiesAsPrimaryForClaim } from "./claimAuthorityResolver.ts";
 import type { ResearchSourceAssessment } from "./sourceAssessment.ts";
-import { researchSourceIsPrimaryForClaim } from "./sourceAssessment.ts";
 import type { ResearchSource } from "./sourceContract.ts";
 import { createResearchSourceMediaReference } from "./sourceMediaReference.ts";
 import type { ScriptEvidenceBindingMap } from "./scriptEvidenceBinding.ts";
@@ -118,7 +118,10 @@ function primarySourceIdsForClaim(
       sourceMetadata: asRecord(source.sourceMetadata) || {},
     } as unknown as ResearchSource;
 
-    return researchSourceIsPrimaryForClaim(normalizedSource, claim)
+    return researchSourceQualifiesAsPrimaryForClaim({
+      source: normalizedSource,
+      claim,
+    })
       ? [sourceId]
       : [];
   });
@@ -450,7 +453,10 @@ export async function runCreatorEditorialScriptPipeline(
         } as unknown as ResearchSource;
         if (
           !sourceId ||
-          !researchSourceIsPrimaryForClaim(normalizedSource, target.claim)
+          !researchSourceQualifiesAsPrimaryForClaim({
+            source: normalizedSource,
+            claim: target.claim,
+          })
         ) continue;
         const key = canonicalResearchUrl(url) || sourceId;
         if (!key) continue;

@@ -227,8 +227,12 @@ const allowed = new Set([
   "scripts/stage-0-10h-1d-grounded-search-provider-test.mjs",
   "scripts/stage-0-10h-1e-creator-research-api-test.mjs",
   "lib/research/topicEvidenceReadiness.ts",
+  "lib/research/editorialPrimaryCoverageRepair.ts",
+  "lib/research/claimAuthorityResolver.ts",
   "scripts/stage-0-10h-2b-evidence-aware-topic-readiness-test.mjs",
   "scripts/stage-0-10h-2e-editorial-script-context-test.mjs",
+  "scripts/stage-0-15b-6g-counter-provenance-preservation-test.mjs",
+  "scripts/stage-0-19c-claim-authority-resolver-test.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 
