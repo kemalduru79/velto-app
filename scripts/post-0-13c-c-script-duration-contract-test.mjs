@@ -184,7 +184,8 @@ assert.equal(getCreatorScriptStatus(regenerated, fingerprint), "draft");
 
 const route = await readFile(new URL("../app/api/creator-script-plan/route.ts", import.meta.url), "utf8");
 assert.match(route, /creator_full_script_duration_repair/);
-assert.match(route, /generateCreatorScriptWithDurationContract/);
+assert.match(route, /acceptCreatorScriptWithAcceptanceRepair/);
+assert.match(route, /evaluateCreatorScriptAcceptance/);
 assert.match(route, /CreatorScriptDurationInvalidError/);
 assert.match(route, /minimumAcceptableWordCount/);
 assert.match(route, /maximumAcceptableWordCount/);

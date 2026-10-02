@@ -1416,6 +1416,91 @@ export async function acceptCreatorScriptWithDurationRepair(input: {
   throw new CreatorScriptDurationUnsatisfiedError(currentDiagnostics);
 }
 
+export type CreatorScriptAcceptanceDecision = {
+  accepted: boolean;
+  repairRequired: boolean;
+};
+
+export class CreatorScriptPolicyUnsatisfiedError<
+  TReport extends CreatorScriptAcceptanceDecision = CreatorScriptAcceptanceDecision,
+> extends Error {
+  code = "CREATOR_SCRIPT_POLICY_UNSATISFIED" as const;
+  report: TReport;
+
+  constructor(report: TReport) {
+    super("The generated script remained outside the canonical acceptance policy.");
+    this.name = "CreatorScriptPolicyUnsatisfiedError";
+    this.report = report;
+  }
+}
+
+/**
+ * Bounded repair orchestration for a caller-owned deterministic acceptance
+ * report. This function deliberately knows no script policy: the same report
+ * decides initial dispatch, retry eligibility, and final acceptance.
+ */
+export async function acceptCreatorScriptWithAcceptanceRepair<
+  TReport extends CreatorScriptAcceptanceDecision,
+>(input: {
+  firstScript: CreatorScript;
+  evaluate: (script: CreatorScript) => TReport;
+  repair: (
+    report: TReport,
+    script: CreatorScript,
+    attempt: number,
+  ) => Promise<CreatorScript>;
+  allowRepair?: boolean;
+  maxRepairAttempts?: number;
+  shouldRetryRepair?: (input: {
+    previous: TReport;
+    current: TReport;
+    attempt: number;
+  }) => boolean;
+}) {
+  let currentScript = normalizeCreatorScript(input.firstScript);
+  let currentReport = input.evaluate(currentScript);
+  if (currentReport.accepted) {
+    return {
+      creatorScript: currentScript,
+      report: currentReport,
+      repaired: false,
+      repairAttempts: 0,
+    };
+  }
+  if (input.allowRepair === false || !currentReport.repairRequired) {
+    throw new CreatorScriptPolicyUnsatisfiedError(currentReport);
+  }
+
+  const maxRepairAttempts = Math.max(1, Math.min(2, input.maxRepairAttempts ?? 1));
+  for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
+    const previousReport = currentReport;
+    currentScript = normalizeCreatorScript(
+      await input.repair(previousReport, currentScript, attempt),
+    );
+    currentReport = input.evaluate(currentScript);
+    if (currentReport.accepted) {
+      return {
+        creatorScript: currentScript,
+        report: currentReport,
+        repaired: true,
+        repairAttempts: attempt,
+      };
+    }
+    if (
+      !currentReport.repairRequired
+      || attempt >= maxRepairAttempts
+      || !input.shouldRetryRepair?.({
+        previous: previousReport,
+        current: currentReport,
+        attempt,
+      })
+    ) {
+      throw new CreatorScriptPolicyUnsatisfiedError(currentReport);
+    }
+  }
+  throw new CreatorScriptPolicyUnsatisfiedError(currentReport);
+}
+
 export function creatorScriptRepairMateriallyImproved(input: {
   previous: CreatorScriptDurationContract;
   current: CreatorScriptDurationContract;

@@ -43,10 +43,9 @@ import {
   selectCreatorEvidencePromptPackForClaims,
 } from "../../../lib/research/creatorEvidencePack";
 import {
+  acceptCreatorScriptWithAcceptanceRepair,
   createCreatorScript,
   assertCreatorScriptNarrationIsProductionSafe,
-  assertCreatorScriptHasDistinctEditorialSections,
-  assertCreatorScriptHasSafeSectionStructure,
   assertCreatorScriptMatchesSectionPlan,
   countCreatorScriptWords,
   createCreatorScriptNarrationAuthority,
@@ -59,35 +58,32 @@ import {
   CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY,
   createCreatorScriptSectionBudgetPlan,
   createCreatorScriptRepairTargets,
-  createCreatorScriptAdditiveExpansionPlan,
   applyCreatorScriptAdditiveExpansion,
-  creatorScriptRepairMateriallyImproved,
-  creatorScriptHasGroundingBlocker,
   CreatorScriptDurationInvalidError,
   CreatorScriptDurationUnsatisfiedError,
+  CreatorScriptPolicyUnsatisfiedError,
   generateCreatorScriptSectionUnits,
-  generateCreatorScriptWithDurationContract,
   getCreatorScriptDurationContract,
   getCreatorScriptDurationContractForScript,
-  getCreatorScriptDurationRepairSections,
   getCreatorScriptRepairReplacementDiagnostics,
-  getCreatorScriptEditorialDistinctivenessDiagnostics,
-  getCreatorScriptEditorialDistinctivenessFailures,
-  getCreatorScriptMaterialSectionFailures,
-  getCreatorScriptSafeSectionFailures,
   getCreatorScriptOutputTokenBudget,
   getCreatorScriptSafeSingleCallTargetWords,
   getCreatorScriptSectionDiagnostics,
-  isCreatorScriptResidualRepairEligible,
   mergeCreatorScriptSectionUnits,
   mergeCreatorScriptReplacementSections,
-  filterCreatorScriptDistinctiveRepairReplacements,
   normalizeCreatorScript,
   regenerateCreatorScriptSection,
   shouldUseCreatorScriptSectionNativeGeneration,
   selectCreatorScriptExpansionCandidates,
   validateCreatorScriptGenerationDuration,
 } from "../../../lib/creator/creatorScript";
+import {
+  creatorScriptAcceptanceMateriallyImproved,
+  evaluateCreatorScriptAcceptance,
+  getCreatorScriptAcceptanceExpansionTargets,
+  getCreatorScriptAcceptanceFailure,
+  type CreatorScriptAcceptanceReport,
+} from "../../../lib/creator/creatorScriptAcceptance";
 
 type CreatorSceneInput = {
   id?: unknown;
@@ -718,7 +714,7 @@ async function executeCreatorScriptOperation(input: {
       scriptProviderDispatched: false,
     });
     return NextResponse.json(
-      { error: "Editorial grounding is blocked.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED" },
+      { error: "Editorial grounding is blocked.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING" },
       { status: 422 },
     );
   }
@@ -794,7 +790,7 @@ async function executeCreatorScriptOperation(input: {
         scriptProviderDispatched: false,
       });
       return NextResponse.json(
-        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED" },
+        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING" },
         { status: 422 },
       );
     }
@@ -991,8 +987,13 @@ async function executeCreatorScriptOperation(input: {
     const providerStatuses: Array<{ sectionId: string; status: string; incompleteReason: string | null }> = [];
     let initialSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
     let repairedSectionIds: string[] = [];
-    const logDistinctivenessDiagnostics = (phase: string, script: Parameters<typeof getCreatorScriptEditorialDistinctivenessDiagnostics>[0]) => {
-      const failures = getCreatorScriptEditorialDistinctivenessDiagnostics(script, sectionBudgetPlan);
+    const logDistinctivenessDiagnostics = (phase: string, report: CreatorScriptAcceptanceReport) => {
+      const failures = report.violations
+        .filter((violation) => violation.code === "EDITORIAL_DISTINCTIVENESS")
+        .map((violation) => ({
+          sectionId: violation.sectionId,
+          ...violation.diagnostics,
+        }));
       if (failures.length > 0) console.info("CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_DIAGNOSTICS", { phase, failures });
       return failures;
     };
@@ -1050,35 +1051,23 @@ async function executeCreatorScriptOperation(input: {
         canonicalFailureCategory: failureCategory,
       });
     };
-    try {
-      const accepted = await generateCreatorScriptWithDurationContract({
-        durationSec,
+    const evaluateAcceptance = (script: Parameters<typeof evaluateCreatorScriptAcceptance>[0]["script"]) =>
+      evaluateCreatorScriptAcceptance({
+        script,
+        sectionPlan: sectionBudgetPlan,
         language,
+        narrationAuthority,
+      });
+    try {
+      const accepted = await acceptCreatorScriptWithAcceptanceRepair({
         allowRepair: true,
-        validateFinal: (script) => {
-          assertCreatorScriptHasSafeSectionStructure(script, sectionBudgetPlan);
-          assertCreatorScriptHasDistinctEditorialSections(script, sectionBudgetPlan);
-          assertCreatorScriptNarrationIsProductionSafe({ sections: script.sections, authoritativeText: narrationAuthority });
-        },
-        requiresRepair: (script) =>
-          getCreatorScriptMaterialSectionFailures(
-            script,
-            sectionBudgetPlan,
-          ).length > 0 ||
-          getCreatorScriptSafeSectionFailures(
-            script,
-            sectionBudgetPlan,
-          ).length > 0 ||
-          getCreatorScriptEditorialDistinctivenessFailures(
-            script,
-            sectionBudgetPlan,
-          ).length > 0,
         maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
           sectionNative
           && !mixedRepairDispatched
-          && creatorScriptRepairMateriallyImproved({ previous, current }),
-        generateInitial: async () => {
+          && creatorScriptAcceptanceMateriallyImproved({ previous, current }),
+        evaluate: evaluateAcceptance,
+        firstScript: await (async () => {
           const generateUnit = async (
             requestedSections: typeof sectionBudgetPlan,
             unitIndex: number,
@@ -1138,10 +1127,15 @@ async function executeCreatorScriptOperation(input: {
               sections: returnedSections,
               plan: requestedSections,
             });
-            assertCreatorScriptNarrationIsProductionSafe({
-              sections: orderedUnit.map((section) => ({ id: asString((section as Record<string, unknown>).id), text: asString((section as Record<string, unknown>).text) })),
-              authoritativeText: narrationAuthority,
-            });
+            // Preserve the section-native fail-fast boundary so an unsafe early
+            // unit cannot cause otherwise avoidable provider calls. Complete
+            // scripts are still accepted only by the unified report below.
+            if (sectionNative) {
+              assertCreatorScriptNarrationIsProductionSafe({
+                sections: orderedUnit.map((section) => ({ id: asString((section as Record<string, unknown>).id), text: asString((section as Record<string, unknown>).text) })),
+                authoritativeText: narrationAuthority,
+              });
+            }
             for (const section of orderedUnit) {
               const sectionRecord = section as Record<string, unknown>;
               const sectionId = asString(sectionRecord.id);
@@ -1175,6 +1169,7 @@ async function executeCreatorScriptOperation(input: {
           firstActualWords = initialDiagnostics.actualWordCount;
           firstDurationStatus = initialDiagnostics.status;
           initialSectionDiagnostics = getCreatorScriptSectionDiagnostics(script, sectionBudgetPlan);
+          const initialAcceptance = evaluateAcceptance(script);
           console.info("CREATOR_SCRIPT_FIRST_PASS_RELIABILITY_DIAGNOSTICS", {
             totalWords: initialDiagnostics.actualWordCount,
             targetWords: initialDiagnostics.targetWordCount,
@@ -1183,92 +1178,63 @@ async function executeCreatorScriptOperation(input: {
             deficitWords: Math.max(0, initialDiagnostics.minimumAcceptableWordCount - initialDiagnostics.actualWordCount),
             excessWords: Math.max(0, initialDiagnostics.actualWordCount - initialDiagnostics.maximumAcceptableWordCount),
             firstPassDurationStatus: initialDiagnostics.status === "too_short" ? "under" : initialDiagnostics.status === "too_long" ? "over" : "compliant",
-            repairRequired:
-              initialDiagnostics.status !== "compliant" ||
-              getCreatorScriptMaterialSectionFailures(
-                script,
-                sectionBudgetPlan,
-              ).length > 0 ||
-              getCreatorScriptSafeSectionFailures(
-                script,
-                sectionBudgetPlan,
-              ).length > 0,
+            repairRequired: initialAcceptance.repairRequired,
+            blockingViolationCodes: initialAcceptance.blockingViolations.map((violation) => violation.code),
+            repairSectionIds: initialAcceptance.repairSectionIds,
             sectionWordCounts: initialSectionDiagnostics.map((section) => ({ sectionId: section.id, actualWords: section.actualWords, targetWords: section.targetWords })),
           });
-          logDistinctivenessDiagnostics("initial_generation", script);
+          logDistinctivenessDiagnostics("initial_generation", initialAcceptance);
           return script;
-        },
-        repair: async (currentScript, currentDuration) => {
-          const materialSectionFailures =
-            getCreatorScriptMaterialSectionFailures(
-              currentScript,
-              sectionBudgetPlan,
-            );
-          const safeSectionFailures =
-            getCreatorScriptSafeSectionFailures(
-              currentScript,
-              sectionBudgetPlan,
-            );
+        })(),
+        repair: async (currentReport, currentScript) => {
+          const currentDuration = currentReport.duration;
           const distinctivenessRepairContext = createCreatorScriptDistinctivenessRepairContext(
             currentScript,
             sectionBudgetPlan,
-          );
+          ).filter((failure) => currentReport.repairableViolations.some((violation) =>
+            violation.code === "EDITORIAL_DISTINCTIVENESS"
+            && violation.sectionId === failure.sectionId
+          ));
           const distinctivenessFailureIds = new Set(
-            distinctivenessRepairContext.map((failure) => failure.sectionId),
+            currentReport.repairableViolations
+              .filter((violation) => violation.code === "EDITORIAL_DISTINCTIVENESS")
+              .map((violation) => violation.sectionId)
+              .filter((sectionId): sectionId is string => Boolean(sectionId)),
           );
           const distinctivenessFailures = sectionBudgetPlan.filter((section) =>
             distinctivenessFailureIds.has(section.id)
           );
-          if (
-            currentDuration.status !== "compliant"
-            && !isCreatorScriptResidualRepairEligible(currentDuration)
-          ) {
-            throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
-          }
-          if (
-            currentDuration.status === "compliant"
-            && materialSectionFailures.length === 0
-            && safeSectionFailures.length === 0
-            && distinctivenessFailures.length === 0
-          ) {
-            throw new Error("CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED");
-          }
           repairCallCount += 1;
-          const sectionDiagnostics = getCreatorScriptSectionDiagnostics(currentScript, sectionBudgetPlan);
-          const durationRepairSections = getCreatorScriptDurationRepairSections({
-            script: currentScript,
-            plan: sectionBudgetPlan,
-            duration: currentDuration,
-          });
-          const repairIds = new Set([
-            ...durationRepairSections.map((section) => section.id),
-            ...safeSectionFailures.map((section) => section.id),
-            ...distinctivenessFailures.map((section) => section.id),
-          ]);
+          const sectionDiagnostics = currentReport.sections;
+          const repairIds = new Set(currentReport.repairSectionIds);
           const sectionsToRepair = sectionDiagnostics.filter((section) => repairIds.has(section.id));
           if (sectionsToRepair.length === 0) {
-            throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
+            throw new Error("CREATOR_SCRIPT_ACCEPTANCE_REPAIR_TARGETS_REQUIRED");
           }
-          const requiredDirection = currentDuration.status === "compliant"
-            ? distinctivenessFailures.length > 0 ? "differentiate_sections" : "rebalance_sections"
-            : currentDuration.status === "too_long" ? "compress" : "expand";
-          mixedRepairDispatched = currentDuration.status !== "compliant"
-            && distinctivenessFailures.length > 0;
+          const repairStrategies = new Set(
+            currentReport.repairableViolations.map((violation) => violation.repairStrategy),
+          );
+          const hasMixedRepairStrategies = repairStrategies.size > 1;
+          const requiredDirection = hasMixedRepairStrategies
+            ? "rebalance_sections"
+            : currentDuration.status === "compliant"
+              ? distinctivenessFailures.length > 0 ? "differentiate_sections" : "rebalance_sections"
+              : currentDuration.status === "too_long" ? "compress" : "expand";
+          mixedRepairDispatched = hasMixedRepairStrategies;
           const repairTargets = createCreatorScriptRepairTargets({
             sections: sectionsToRepair,
             direction: requiredDirection,
           });
-          if (requiredDirection === "expand" && distinctivenessFailures.length === 0) {
-            normalizeCreatorScript(currentScript);
-            if (creatorScriptHasGroundingBlocker(currentScript)) throw new Error("CREATOR_SCRIPT_GROUNDING_BLOCKED");
-            assertCreatorScriptHasSafeSectionStructure(currentScript, sectionBudgetPlan);
-            assertCreatorScriptHasDistinctEditorialSections(currentScript, sectionBudgetPlan);
-            assertCreatorScriptNarrationIsProductionSafe({ sections: currentScript.sections, authoritativeText: narrationAuthority });
+          const additiveExpansionEligible = requiredDirection === "expand"
+            && currentReport.repairableViolations.every((violation) =>
+              violation.code === "GLOBAL_DURATION_TOO_SHORT"
+            );
+          if (additiveExpansionEligible) {
             const globalDeficitWords = Math.max(0, currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount);
-            const expansionTargets = createCreatorScriptAdditiveExpansionPlan({
+            const expansionTargets = getCreatorScriptAcceptanceExpansionTargets({
               script: currentScript,
-              plan: sectionBudgetPlan,
-              globalDeficitWords,
+              report: currentReport,
+              sectionPlan: sectionBudgetPlan,
             });
             if (expansionTargets.length === 0) throw new CreatorScriptDurationUnsatisfiedError(currentDuration);
             console.info("CREATOR_SCRIPT_DURATION_EXPANSION_PLAN", {
@@ -1380,11 +1346,14 @@ async function executeCreatorScriptOperation(input: {
                   const candidate = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: [replacement], plan: sectionBudgetPlan });
                   afterWords = countCreatorScriptWords(replacement.text);
                   if (additionWords <= 0 || additionWords > target.maxAdditionalWords || afterWords <= target.currentWords) throw new Error("wrong_direction_expand");
-                  normalizeCreatorScript(candidate);
-                  if (creatorScriptHasGroundingBlocker(candidate)) throw new Error("CREATOR_SCRIPT_GROUNDING_BLOCKED");
-                  assertCreatorScriptHasSafeSectionStructure(candidate, sectionBudgetPlan);
-                  assertCreatorScriptHasDistinctEditorialSections(candidate, sectionBudgetPlan);
-                  assertCreatorScriptNarrationIsProductionSafe({ sections: candidate.sections, authoritativeText: narrationAuthority });
+                  const candidateReport = evaluateAcceptance(candidate);
+                  if (
+                    !candidateReport.accepted
+                    && !creatorScriptAcceptanceMateriallyImproved({
+                      previous: currentReport,
+                      current: candidateReport,
+                    })
+                  ) throw new Error("CREATOR_SCRIPT_EXPANSION_POLICY_NOT_IMPROVED");
                   validatedCandidates.push({ sectionId: target.sectionId, gainWords: afterWords - target.currentWords, replacement });
                   acceptedAddition = true;
                   reason = "accepted_additive_progress";
@@ -1434,11 +1403,6 @@ async function executeCreatorScriptOperation(input: {
               ...acceptedReplacements.map((replacement) => asString(replacement.id)),
             ]));
             const expandedScript = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: acceptedReplacements, plan: sectionBudgetPlan });
-            normalizeCreatorScript(expandedScript);
-            if (creatorScriptHasGroundingBlocker(expandedScript)) throw new Error("CREATOR_SCRIPT_GROUNDING_BLOCKED");
-            assertCreatorScriptHasSafeSectionStructure(expandedScript, sectionBudgetPlan);
-            assertCreatorScriptHasDistinctEditorialSections(expandedScript, sectionBudgetPlan);
-            assertCreatorScriptNarrationIsProductionSafe({ sections: expandedScript.sections, authoritativeText: narrationAuthority });
             postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(expandedScript, sectionBudgetPlan);
             return expandedScript;
           }
@@ -1541,10 +1505,6 @@ async function executeCreatorScriptOperation(input: {
             sections: Array.isArray(parsedRepair.sections) ? parsedRepair.sections : [],
             plan: sectionsToRepair,
           });
-          assertCreatorScriptNarrationIsProductionSafe({
-            sections: validatedReplacements.map((section) => ({ id: asString((section as Record<string, unknown>).id), text: asString((section as Record<string, unknown>).text) })),
-            authoritativeText: narrationAuthority,
-          });
           const replacementDiagnostics = getCreatorScriptRepairReplacementDiagnostics({
             script: currentScript,
             plan: sectionBudgetPlan,
@@ -1557,42 +1517,25 @@ async function executeCreatorScriptOperation(input: {
           const directionallyValidReplacements = replacementDiagnostics
             .filter((diagnostic) => diagnostic.accepted)
             .map((diagnostic) => diagnostic.replacement);
-          const distinctiveRepair = filterCreatorScriptDistinctiveRepairReplacements({
-            script: currentScript,
-            replacements: directionallyValidReplacements,
-            plan: sectionBudgetPlan,
-          });
-          console.info("CREATOR_SCRIPT_EDITORIAL_DISTINCTIVENESS_DIAGNOSTICS", {
-            phase: `repair_candidate_${repairCallCount}`,
-            failures: distinctiveRepair.failures,
-            rejectedSectionIds: distinctiveRepair.rejectedSectionIds,
-          });
-          if (distinctiveRepair.replacements.length === 0) {
+          if (directionallyValidReplacements.length === 0) {
             postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(currentScript, sectionBudgetPlan);
             return currentScript;
           }
           repairedSectionIds = Array.from(new Set([
             ...repairedSectionIds,
-            ...distinctiveRepair.replacements.map((replacement) => asString((replacement as Record<string, unknown>).id)),
+            ...directionallyValidReplacements.map((replacement) => asString((replacement as Record<string, unknown>).id)),
           ]));
           const repairedScript = mergeCreatorScriptReplacementSections({
             script: currentScript,
-            replacements: distinctiveRepair.replacements,
+            replacements: directionallyValidReplacements,
             plan: sectionBudgetPlan,
           });
-          logDistinctivenessDiagnostics(`post_repair_${repairCallCount}`, repairedScript);
+          logDistinctivenessDiagnostics(`post_repair_${repairCallCount}`, evaluateAcceptance(repairedScript));
           postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(repairedScript, sectionBudgetPlan);
           return repairedScript;
         },
       });
-      const finalDuration = getCreatorScriptDurationContract({
-        targetDurationSec: durationSec,
-        language,
-        actualWordCount: accepted.creatorScript.sections.reduce(
-          (sum, section) => sum + countCreatorScriptWords(section.text),
-          0,
-        ),
-      });
+      const finalDuration = accepted.report.duration;
       console.info("CREATOR_SCRIPT_DURATION_ACCEPTED", {
         targetDurationSec: durationSec,
         targetWordCount: finalDuration.targetWordCount,
@@ -1618,6 +1561,29 @@ async function executeCreatorScriptOperation(input: {
         "rejected",
         error instanceof Error ? error.message : "CREATOR_SCRIPT_MODEL_INVALID",
       );
+      if (error instanceof CreatorScriptPolicyUnsatisfiedError) {
+        const report = error.report as CreatorScriptAcceptanceReport;
+        const failure = getCreatorScriptAcceptanceFailure(report);
+        console.error("CREATOR_SCRIPT_ACCEPTANCE_REJECTED", {
+          version: report.version,
+          category: failure.category,
+          code: failure.code,
+          violationCodes: report.violations.map((violation) => violation.code),
+          repairableViolationCodes: report.repairableViolations.map((violation) => violation.code),
+          blockingViolationCodes: report.blockingViolations.map((violation) => violation.code),
+          repairSectionIds: report.repairSectionIds,
+          repairCallCount,
+        });
+        return NextResponse.json(
+          {
+            error: failure.message,
+            code: failure.code,
+            category: failure.category,
+            diagnostics: report,
+          },
+          { status: 422 },
+        );
+      }
       if (error instanceof CreatorScriptDurationUnsatisfiedError) {
         console.error("CREATOR_SCRIPT_DURATION_UNSATISFIED", {
           targetDurationSec: error.diagnostics.targetDurationSec,
@@ -1637,12 +1603,34 @@ async function executeCreatorScriptOperation(input: {
           repairOccurred: repairCallCount > 0,
         });
         return NextResponse.json(
-          { error: error.message, code: error.code, direction: error.diagnostics.status, diagnostics: error.diagnostics },
+          { error: error.message, code: error.code, category: "SCRIPT_POLICY", direction: error.diagnostics.status, diagnostics: error.diagnostics },
           { status: 422 },
         );
       }
+      const internalFailure = error instanceof Error
+        && [
+          "CREATOR_SCRIPT_ACCEPTANCE_INTERNAL_CONTRADICTION",
+          "CREATOR_SCRIPT_ACCEPTANCE_REPAIR_TARGETS_REQUIRED",
+        ].includes(error.message);
+      const narrationSafetyFailure = error instanceof Error
+        && [
+          "CREATOR_SCRIPT_NARRATION_EDITORIAL_LEAKAGE",
+          "CREATOR_SCRIPT_NARRATION_UNSUPPORTED_NAMED_AUTHORITY",
+        ].includes(error.message);
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Creator script output is invalid.", code: "CREATOR_SCRIPT_MODEL_INVALID" },
+        {
+          error: error instanceof Error ? error.message : "Creator script output is invalid.",
+          code: internalFailure
+            ? "CREATOR_SCRIPT_INTERNAL_ERROR"
+            : narrationSafetyFailure
+              ? (error as Error).message
+              : "CREATOR_SCRIPT_MODEL_INVALID",
+          category: internalFailure
+            ? "INTERNAL"
+            : narrationSafetyFailure
+              ? "SCRIPT_POLICY"
+              : "MODEL_CONTRACT",
+        },
         { status: 422 },
       );
     }

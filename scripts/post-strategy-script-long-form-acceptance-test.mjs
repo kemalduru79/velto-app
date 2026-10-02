@@ -1049,7 +1049,7 @@ assert.match(route, /CREATOR_SCRIPT_SECTION_UNIT_VALIDATION_DIAGNOSTICS/);
 assert.doesNotMatch(route, /requiredJsonShape:\s*\{[\s\S]{0,220}sections:[\s\S]{0,220}id: section\.id/);
 assert.doesNotMatch(route, /previousSectionRole:/);
 assert.doesNotMatch(route, /sectionDiagnostics,\s*sectionsToRepair,|repairTargets,\s*requiredJsonShape/);
-assert.match(route, /getCreatorScriptEditorialDistinctivenessFailures/);
+assert.match(route, /evaluateCreatorScriptAcceptance/);
 assert.match(route, /differentiate_sections/);
 assert.match(route, /Treat establishedPremises as already known[\s\S]*never re-teach an established premise/);
 assert.match(route, /counterview section must seriously test the master thesis/);
@@ -1061,23 +1061,22 @@ assert.match(route, /Local ranges guide first-pass completeness; the server's ca
 assert.match(route, /sectionWordBudget: sectionNative \? \{\s*minWords: requestedSections\[0\]\.minimumWords,\s*targetWords: requestedSections\[0\]\.targetWords,\s*maxWords: requestedSections\[0\]\.maximumWords/);
 assert.match(route, /Write this complete section between \$\{requestedSections\[0\]\.minimumWords\} and \$\{requestedSections\[0\]\.maximumWords\} spoken words, aiming near \$\{requestedSections\[0\]\.targetWords\}/);
 assert.match(route, /This call returns one section only\. Do not try to fit the complete script's global word count into this section/);
-assert.match(route, /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptMaterialSectionFailures/);
 assert.match(
   route,
-  /requiresRepair: \(script\) =>[\s\S]*getCreatorScriptSafeSectionFailures/,
-  "final-safe local section failures must participate in bounded repair eligibility",
+  /repairRequired: initialAcceptance\.repairRequired/,
+  "the canonical acceptance report owns bounded repair eligibility",
 );
 assert.match(
   route,
-  /safeSectionFailures[\s\S]*repairIds/,
-  "final-safe local failures must be included in the bounded repair target set",
+  /repairIds = new Set\(currentReport\.repairSectionIds\)/,
+  "the canonical acceptance report owns the bounded repair target set",
 );
 assert.match(route, /maxRepairAttempts: 2/, "all generation modes share the same hard two-call ceiling for canonical residual repair");
-assert.match(route, /creatorScriptRepairMateriallyImproved/);
+assert.match(route, /creatorScriptAcceptanceMateriallyImproved/);
 assert.match(route, /repairTargets/);
-assert.match(route, /requiredDirection === "expand" && distinctivenessFailures\.length === 0[\s\S]*creatorScriptHasGroundingBlocker\(currentScript\)[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
-assert.match(route, /mixedRepairDispatched = currentDuration\.status !== "compliant"[\s\S]*distinctivenessFailures\.length > 0/);
-assert.match(route, /shouldRetryRepair:[\s\S]*!mixedRepairDispatched[\s\S]*creatorScriptRepairMateriallyImproved/);
+assert.match(route, /additiveExpansionEligible = requiredDirection === "expand"[\s\S]*currentReport\.repairableViolations\.every[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
+assert.match(route, /repairStrategies = new Set\([\s\S]*currentReport\.repairableViolations[\s\S]*mixedRepairDispatched = hasMixedRepairStrategies/);
+assert.match(route, /shouldRetryRepair:[\s\S]*!mixedRepairDispatched[\s\S]*creatorScriptAcceptanceMateriallyImproved/);
 assert.match(route, /distinctivenessFailureSectionIds:[\s\S]*repairTargets:[\s\S]*creator_full_script_duration_repair/);
 assert.match(route, /distinctivenessRepairContext,[\s\S]*replacement heading MUST be materially different from the conflicting heading/);
 assert.match(route, /For heading_token_overlap,[\s\S]*Rewriting or expanding only the body is insufficient|Rewriting or expanding only the body is insufficient[\s\S]*For heading_token_overlap/);
