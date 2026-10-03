@@ -1,3 +1,5 @@
+import type { VeltoProjectApiRecord } from "@/lib/persistence/projects/types";
+
 import type {
   CreatorScriptBuildCheckpoint,
   CreatorScriptBuildCheckpointStage,
@@ -26,8 +28,8 @@ export type TransitionCreatorScriptBuildInput = {
   ownerId: string;
   buildId: string;
   expectedState: CreatorScriptBuildState;
-  // PERSISTED is reserved for the future atomic project-installation boundary.
-  // E1 must not let a generic state transition claim persistence.
+  // PERSISTED is reserved for the atomic project-installation boundary.
+  // Generic transitions must never claim durable project installation.
   nextState: Exclude<CreatorScriptBuildState, "PERSISTED">;
   failure?: CreatorScriptBuildFailure | null;
   resultAuthority?: CreatorScriptBuildJson | null;
@@ -59,6 +61,22 @@ export type TransitionCreatorScriptBuildOperationInput = {
   failure?: CreatorScriptBuildFailure | null;
 };
 
+export type PersistAcceptedCreatorScriptBuildInput = {
+  ownerId: string;
+  buildId: string;
+  expectedProjectRevision: string;
+  installedProjectRevision: string;
+  creatorProjectState: CreatorScriptBuildJson;
+  invalidateProduction: boolean;
+  checkpoint: CreatorScriptBuildCheckpoint;
+};
+
+export type PersistAcceptedCreatorScriptBuildResult = {
+  status: "PERSISTED" | "STALE";
+  build: CreatorScriptBuildRecord;
+  project: VeltoProjectApiRecord;
+};
+
 export interface CreatorScriptBuildRepository {
   request(input: RequestCreatorScriptBuildInput): Promise<RequestCreatorScriptBuildResult>;
   getForOwner(buildId: string, ownerId: string): Promise<CreatorScriptBuildRecord | null>;
@@ -79,4 +97,7 @@ export interface CreatorScriptBuildRepository {
   transitionOperation(
     input: TransitionCreatorScriptBuildOperationInput,
   ): Promise<CreatorScriptBuildOperation>;
+  persistAccepted(
+    input: PersistAcceptedCreatorScriptBuildInput,
+  ): Promise<PersistAcceptedCreatorScriptBuildResult>;
 }

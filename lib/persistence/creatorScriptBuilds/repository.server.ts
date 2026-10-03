@@ -16,8 +16,11 @@ import {
   type CreatorScriptBuildState,
 } from "@/lib/creator/creatorScriptBuild";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { VeltoProjectApiRecord } from "@/lib/persistence/projects/types";
 import type {
   CreatorScriptBuildRepository,
+  PersistAcceptedCreatorScriptBuildInput,
+  PersistAcceptedCreatorScriptBuildResult,
   RequestCreatorScriptBuildInput,
   RequestCreatorScriptBuildOperationInput,
   RequestCreatorScriptBuildResult,
@@ -83,14 +86,20 @@ function rpcEnvelope(value: unknown) {
   };
 }
 
-function mutationFailure(prefix: string, error: { message?: string } | null, data: unknown): never {
+function mutationFailure(
+  prefix: string,
+  error: { message?: string } | null,
+  data: unknown,
+): never {
   if (error) throw new Error(`${prefix}:${error.message || "UNKNOWN"}`);
   if (!data) throw new Error(`${prefix}:NOT_FOUND_OR_STALE`);
   throw new Error(prefix);
 }
 
 export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildRepository {
-  async request(input: RequestCreatorScriptBuildInput): Promise<RequestCreatorScriptBuildResult> {
+  async request(
+    input: RequestCreatorScriptBuildInput,
+  ): Promise<RequestCreatorScriptBuildResult> {
     const idempotencyKey = createCreatorScriptBuildIdempotencyKey({
       ownerId: input.ownerId,
       snapshot: input.snapshot,
@@ -110,7 +119,9 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
         p_snapshot: input.snapshot,
       },
     );
-    if (error) throw new Error(`CREATOR_SCRIPT_BUILD_REQUEST_FAILED:${error.message}`);
+    if (error) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_REQUEST_FAILED:${error.message}`);
+    }
     const envelope = rpcEnvelope(data);
     const build = mapBuild(envelope.value);
     if (
@@ -126,7 +137,9 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
     return {
       build,
       created: envelope.created,
-      resolution: envelope.created ? "CREATED" : resolveCreatorScriptBuildDuplicate(build),
+      resolution: envelope.created
+        ? "CREATED"
+        : resolveCreatorScriptBuildDuplicate(build),
     };
   }
 
@@ -137,7 +150,9 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
       .eq("id", buildId)
       .eq("owner_user_id", ownerId)
       .maybeSingle();
-    if (error) throw new Error(`CREATOR_SCRIPT_BUILD_READ_FAILED:${error.message}`);
+    if (error) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_READ_FAILED:${error.message}`);
+    }
     return data ? mapBuild(data as Row) : null;
   }
 
@@ -148,13 +163,16 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
       .eq("idempotency_key", idempotencyKey)
       .eq("owner_user_id", ownerId)
       .maybeSingle();
-    if (error) throw new Error(`CREATOR_SCRIPT_BUILD_READ_FAILED:${error.message}`);
+    if (error) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_READ_FAILED:${error.message}`);
+    }
     return data ? mapBuild(data as Row) : null;
   }
 
   async transition(input: TransitionCreatorScriptBuildInput) {
     assertCreatorScriptBuildTransition(input.expectedState, input.nextState);
-    const terminalFailure = input.nextState === "FAILED" || input.nextState === "STALE";
+    const terminalFailure =
+      input.nextState === "FAILED" || input.nextState === "STALE";
     if (terminalFailure !== Boolean(input.failure)) {
       throw new Error("CREATOR_SCRIPT_BUILD_FAILURE_CONTRACT_INVALID");
     }
@@ -170,7 +188,9 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
       .eq("state", input.expectedState)
       .select("*")
       .maybeSingle();
-    if (error || !data) mutationFailure("CREATOR_SCRIPT_BUILD_TRANSITION_FAILED", error, data);
+    if (error || !data) {
+      mutationFailure("CREATOR_SCRIPT_BUILD_TRANSITION_FAILED", error, data);
+    }
     return mapBuild(data as Row);
   }
 
@@ -189,7 +209,9 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
         p_checkpoint: input.checkpoint,
       },
     );
-    if (error || !data) mutationFailure("CREATOR_SCRIPT_BUILD_CHECKPOINT_FAILED", error, data);
+    if (error || !data) {
+      mutationFailure("CREATOR_SCRIPT_BUILD_CHECKPOINT_FAILED", error, data);
+    }
     return mapBuild(record(data));
   }
 
@@ -207,7 +229,11 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
         p_contract_version: input.contractVersion,
       },
     );
-    if (error) throw new Error(`CREATOR_SCRIPT_BUILD_OPERATION_REQUEST_FAILED:${error.message}`);
+    if (error) {
+      throw new Error(
+        `CREATOR_SCRIPT_BUILD_OPERATION_REQUEST_FAILED:${error.message}`,
+      );
+    }
     const envelope = rpcEnvelope(data);
     const operation = mapOperation(envelope.value);
     if (
@@ -226,7 +252,11 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
     return { operation, created: envelope.created };
   }
 
-  async getOperationForOwner(operationId: string, buildId: string, ownerId: string) {
+  async getOperationForOwner(
+    operationId: string,
+    buildId: string,
+    ownerId: string,
+  ) {
     const { data, error } = await createServerSupabaseClient()
       .from("velto_creator_script_build_operations")
       .select("*")
@@ -234,14 +264,20 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
       .eq("build_id", buildId)
       .eq("owner_user_id", ownerId)
       .maybeSingle();
-    if (error) throw new Error(`CREATOR_SCRIPT_BUILD_OPERATION_READ_FAILED:${error.message}`);
+    if (error) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_OPERATION_READ_FAILED:${error.message}`);
+    }
     return data ? mapOperation(data as Row) : null;
   }
 
   async transitionOperation(input: TransitionCreatorScriptBuildOperationInput) {
-    assertCreatorScriptBuildOperationTransition(input.expectedState, input.nextState);
+    assertCreatorScriptBuildOperationTransition(
+      input.expectedState,
+      input.nextState,
+    );
     const expectsResult = input.nextState === "COMPLETED";
-    const expectsFailure = input.nextState === "FAILED" || input.nextState === "OUTCOME_UNCERTAIN";
+    const expectsFailure =
+      input.nextState === "FAILED" || input.nextState === "OUTCOME_UNCERTAIN";
     if (expectsResult !== (input.resultReference != null)) {
       throw new Error("CREATOR_SCRIPT_BUILD_OPERATION_RESULT_CONTRACT_INVALID");
     }
@@ -261,7 +297,69 @@ export class SupabaseCreatorScriptBuildRepository implements CreatorScriptBuildR
       .eq("state", input.expectedState)
       .select("*")
       .maybeSingle();
-    if (error || !data) mutationFailure("CREATOR_SCRIPT_BUILD_OPERATION_TRANSITION_FAILED", error, data);
+    if (error || !data) {
+      mutationFailure(
+        "CREATOR_SCRIPT_BUILD_OPERATION_TRANSITION_FAILED",
+        error,
+        data,
+      );
+    }
     return mapOperation(data as Row);
+  }
+
+  async persistAccepted(
+    input: PersistAcceptedCreatorScriptBuildInput,
+  ): Promise<PersistAcceptedCreatorScriptBuildResult> {
+    assertCreatorScriptBuildCheckpointIdentity({
+      buildId: input.buildId,
+      checkpoint: input.checkpoint,
+    });
+    if (
+      input.checkpoint.stage !== "persistence"
+      || input.checkpoint.status !== "COMPLETED"
+      || input.checkpoint.operationId !== null
+    ) {
+      throw new Error("CREATOR_SCRIPT_BUILD_PERSISTENCE_CHECKPOINT_INVALID");
+    }
+
+    const { data, error } = await createServerSupabaseClient().rpc(
+      "velto_creator_script_build_persist",
+      {
+        p_owner_user_id: input.ownerId,
+        p_build_id: input.buildId,
+        p_expected_project_revision: input.expectedProjectRevision,
+        p_installed_project_revision: input.installedProjectRevision,
+        p_creator_project_state: input.creatorProjectState,
+        p_invalidate_production: input.invalidateProduction,
+        p_persistence_checkpoint: input.checkpoint,
+      },
+    );
+    if (error) {
+      throw new Error(
+        `CREATOR_SCRIPT_BUILD_PERSISTENCE_FAILED:${error.message}`,
+      );
+    }
+    const envelope = record(data);
+    const status = String(envelope.status || "");
+    if (status !== "PERSISTED" && status !== "STALE") {
+      throw new Error("CREATOR_SCRIPT_BUILD_PERSISTENCE_RESULT_INVALID");
+    }
+    const build = mapBuild(record(envelope.build));
+    const project = record(envelope.project) as VeltoProjectApiRecord;
+    if (
+      build.ownerId !== input.ownerId
+      || build.buildId !== input.buildId
+      || project.id !== build.projectId
+      || project.owner_user_id !== input.ownerId
+      || (status === "PERSISTED" && build.state !== "PERSISTED")
+      || (status === "STALE" && build.state !== "STALE")
+    ) {
+      throw new Error("CREATOR_SCRIPT_BUILD_PERSISTENCE_RESULT_INVALID");
+    }
+    return {
+      status,
+      build,
+      project,
+    };
   }
 }
