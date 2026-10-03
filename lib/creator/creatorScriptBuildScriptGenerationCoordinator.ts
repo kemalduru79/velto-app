@@ -579,7 +579,7 @@ function createStageResult(input: {
   });
 }
 
-function normalizeCheckpointResult(input: {
+export function normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint(input: {
   buildId: string;
   value: CreatorScriptBuildJson | null;
   authority: CreatorScriptBuildScriptGenerationInput;
@@ -879,7 +879,7 @@ export async function runCreatorScriptBuildScriptGenerationCoordinator(input: {
   if (existingCheckpoint?.status === "COMPLETED") {
     let generation: CreatorScriptBuildScriptGenerationStageResult;
     try {
-      generation = normalizeCheckpointResult({
+      generation = normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint({
         buildId: build.buildId,
         value: existingCheckpoint.outputReference,
         authority: generationInput,
