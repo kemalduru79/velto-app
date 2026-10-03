@@ -25,6 +25,9 @@ import {
   CreatorScriptBuildCoordinatorBlockedError,
 } from "../lib/creator/creatorScriptBuildResearchEditorialCoordinator.ts";
 import {
+  createCreatorScriptBuildRuntime,
+} from "../lib/creator/creatorScriptBuildRuntime.server.ts";
+import {
   attachCreatorProjectState,
   readCreatorProjectState,
 } from "../lib/creator/projectState.ts";
@@ -445,15 +448,31 @@ class MemoryRepository {
 class MemoryProjectRepository {
   constructor(memory) {
     this.memory = memory;
+    this.reads = 0;
   }
 
   async getForOwner(requestedProjectId, requestedOwnerId) {
+    this.reads += 1;
     if (
       requestedProjectId !== this.memory.project.id ||
       requestedOwnerId !== this.memory.project.owner_user_id
     ) return null;
     return clone(this.memory.project);
   }
+}
+
+function zeroProviderExecutors() {
+  const execute = async () => {
+    throw new Error("provider must not run while projecting persisted status");
+  };
+  return {
+    executeResearch: execute,
+    executeEditorialProposal: execute,
+    executePrimaryAcquisition: execute,
+    executePrimaryCoverageSelection: execute,
+    executeScriptGeneration: execute,
+    executeScriptRepair: execute,
+  };
 }
 
 function textWithWords(prefix, wordCount) {
@@ -588,6 +607,68 @@ let persistedFixture;
   assert.equal(state.strategy.pendingRefinement, null);
   assert.deepEqual(state.strategy.revisionHistory, []);
   assert.equal(result.project.updated_at, persistenceNow);
+}
+
+// PERSISTED status is immutable build authority, not a projection of the
+// project's later mutable script or updated_at value.
+{
+  const repository = persistedFixture.repository;
+  const projectRepository = persistedFixture.projectRepository;
+  const acceptedScript = clone(
+    repository.build.resultAuthority.acceptance.script,
+  );
+  const persistedProject = clone(repository.project);
+  const persistedWritesBefore = repository.persistCalls.length;
+  const projectReadsBefore = projectRepository.reads;
+  const runtime = createCreatorScriptBuildRuntime({
+    buildRepository: repository,
+    projectRepository,
+    providers: zeroProviderExecutors(),
+  });
+
+  const originalStatus = await runtime.status({ ownerId, buildId });
+  assert.deepEqual(
+    serializable(originalStatus.creatorScript),
+    serializable(acceptedScript),
+  );
+  assert.equal(
+    originalStatus.persistence.installedProjectRevision,
+    persistenceNow,
+  );
+
+  const laterState = readCreatorProjectState(repository.project);
+  const laterScript = {
+    ...acceptedScript,
+    title: "A Later, Different Script",
+  };
+  repository.project = {
+    ...repository.project,
+    updated_at: "2026-10-03T10:30:00.000Z",
+    exported_movie_result: {
+      ...(repository.project.exported_movie_result || {}),
+      creatorProjectState: {
+        ...laterState,
+        strategy: {
+          ...laterState.strategy,
+          script: laterScript,
+        },
+      },
+    },
+  };
+  const historicalStatus = await runtime.status({ ownerId, buildId });
+  assert.deepEqual(
+    serializable(historicalStatus.creatorScript),
+    serializable(acceptedScript),
+  );
+  assert.notEqual(historicalStatus.creatorScript.title, laterScript.title);
+  assert.equal(
+    historicalStatus.persistence.installedProjectRevision,
+    persistenceNow,
+  );
+  assert.equal(historicalStatus.projectUpdatedAt, undefined);
+  assert.equal(projectRepository.reads, projectReadsBefore);
+  assert.equal(repository.persistCalls.length, persistedWritesBefore);
+  repository.project = persistedProject;
 }
 
 // 8. PERSISTED re-entry validates durable project/checkpoint authority and does no write.

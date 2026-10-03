@@ -436,7 +436,116 @@ function dependencies(repository, overrides = {}) {
   assert.equal(repository.build.failure.category, "MODEL_CONTRACT");
 }
 
-// 8. Owner scoping stays at the repository boundary.
+// 8. A deterministic post-response model-contract failure is durable, does
+// not become OUTCOME_UNCERTAIN, and cannot execute the provider twice.
+{
+  const repository = new MemoryRepository();
+  const knownFailureCode =
+    "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID";
+  let modelContractCalls = 0;
+  const first = dependencies(repository, {
+    executeEditorialProposal: async () => {
+      modelContractCalls += 1;
+      throw new CreatorScriptBuildStageExecutionError({
+        category: "MODEL_CONTRACT",
+        code: knownFailureCode,
+        retryability: "NON_RETRYABLE",
+      });
+    },
+  });
+  await assert.rejects(
+    runCreatorScriptBuildResearchEditorialCoordinator({
+      ownerId,
+      buildId,
+      dependencies: first.deps,
+    }),
+    (error) =>
+      error instanceof CreatorScriptBuildCoordinatorBlockedError &&
+      error.code === knownFailureCode,
+  );
+  assert.equal(modelContractCalls, 1);
+  assert.equal(repository.build.state, "FAILED");
+  assert.equal(repository.build.failure.category, "MODEL_CONTRACT");
+  assert.equal(repository.build.failure.retryability, "NON_RETRYABLE");
+  const editorialOperation = [...repository.operations.values()].find(
+    (operation) => operation.stage === "editorial",
+  );
+  assert.equal(editorialOperation.state, "FAILED");
+  assert.equal(
+    [...repository.operations.values()].some(
+      (operation) => operation.state === "OUTCOME_UNCERTAIN",
+    ),
+    false,
+  );
+  assert.deepEqual(first.counts(), { researchCalls: 1, editorialCalls: 0 });
+
+  const second = dependencies(repository, {
+    executeResearch: async () => { throw new Error("must not rerun research"); },
+    executeEditorialProposal: async () => {
+      modelContractCalls += 1;
+      throw new Error("must not rerun editorial");
+    },
+  });
+  const terminal = await runCreatorScriptBuildResearchEditorialCoordinator({
+    ownerId,
+    buildId,
+    dependencies: second.deps,
+  });
+  assert.equal(terminal.build.state, "FAILED");
+  assert.deepEqual(second.counts(), { researchCalls: 0, editorialCalls: 0 });
+  assert.equal(modelContractCalls, 1);
+}
+
+// 9. A genuinely ambiguous editorial provider execution retains the existing
+// reconciliation-required path and is not automatically executed again.
+{
+  const repository = new MemoryRepository();
+  let ambiguousCalls = 0;
+  const first = dependencies(repository, {
+    executeEditorialProposal: async () => {
+      ambiguousCalls += 1;
+      throw new Error("simulated ambiguous provider transport");
+    },
+  });
+  await assert.rejects(
+    runCreatorScriptBuildResearchEditorialCoordinator({
+      ownerId,
+      buildId,
+      dependencies: first.deps,
+    }),
+    (error) =>
+      error instanceof CreatorScriptBuildCoordinatorBlockedError &&
+      error.code === "CREATOR_SCRIPT_BUILD_OPERATION_RECONCILIATION_REQUIRED",
+  );
+  assert.equal(ambiguousCalls, 1);
+  const editorialOperation = [...repository.operations.values()].find(
+    (operation) => operation.stage === "editorial",
+  );
+  assert.equal(editorialOperation.state, "OUTCOME_UNCERTAIN");
+  assert.equal(repository.build.state, "RESEARCH_READY");
+
+  const second = dependencies(repository, {
+    executeResearch: async () => { throw new Error("must not rerun research"); },
+    executeEditorialProposal: async () => {
+      ambiguousCalls += 1;
+      throw new Error("must not rerun editorial");
+    },
+  });
+  await assert.rejects(
+    runCreatorScriptBuildResearchEditorialCoordinator({
+      ownerId,
+      buildId,
+      dependencies: second.deps,
+    }),
+    (error) =>
+      error instanceof CreatorScriptBuildCoordinatorBlockedError &&
+      error.code === "CREATOR_SCRIPT_BUILD_OPERATION_RECONCILIATION_REQUIRED",
+  );
+  assert.equal(ambiguousCalls, 1);
+  assert.deepEqual(second.counts(), { researchCalls: 0, editorialCalls: 0 });
+}
+
+// 10. Owner scoping stays at the repository boundary.
 {
   const repository = new MemoryRepository();
   const { deps } = dependencies(repository);
@@ -450,7 +559,7 @@ function dependencies(repository, overrides = {}) {
   );
 }
 
-// 9. A confirmed completed paid operation is reused after a crash before checkpoint completion.
+// 11. A confirmed completed paid operation is reused after a crash before checkpoint completion.
 {
   const repository = new MemoryRepository();
   const originalSaveCheckpoint = repository.saveCheckpoint.bind(repository);

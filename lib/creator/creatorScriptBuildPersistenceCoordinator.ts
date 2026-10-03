@@ -334,7 +334,7 @@ function createPersistenceCheckpoint(input: {
   };
 }
 
-function normalizePersistenceCheckpoint(input: {
+export function normalizeCreatorScriptBuildPersistenceCheckpoint(input: {
   build: CreatorScriptBuildRecord;
   authority: CreatorScriptBuildAcceptedResultAuthority;
 }) {
@@ -492,7 +492,7 @@ async function resumePersisted(input: {
   let persistence: CreatorScriptBuildPersistenceStageResult;
   try {
     authority = normalizeAcceptedAuthority(input.build);
-    persistence = normalizePersistenceCheckpoint({
+    persistence = normalizeCreatorScriptBuildPersistenceCheckpoint({
       build: input.build,
       authority,
     });
@@ -754,7 +754,7 @@ export async function runCreatorScriptBuildPersistenceCoordinator(input: {
   let normalizedPersistence: CreatorScriptBuildPersistenceStageResult;
   try {
     normalizedAuthority = normalizeAcceptedAuthority(build);
-    normalizedPersistence = normalizePersistenceCheckpoint({
+    normalizedPersistence = normalizeCreatorScriptBuildPersistenceCheckpoint({
       build,
       authority: normalizedAuthority,
     });
