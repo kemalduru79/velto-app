@@ -328,6 +328,13 @@ import {
   runCreatorEditorialScriptPipeline,
   type CreatorEditorialPipelineProductionIntelligenceContext,
 } from "@/lib/research/creatorEditorialPipeline.client";
+import {
+  CreatorScriptBuildClientError,
+  creatorScriptBuildProgressMessage,
+  creatorScriptBuildV2ClientEnabled,
+  creatorScriptBuildV2RecoveryMessage,
+  runCreatorScriptBuildV2,
+} from "@/lib/creator/creatorScriptBuildClient";
 import { createCreatorProjectReadiness } from "@/lib/creator/projectReadiness";
 import {
   createCreatorArtifactHistory,
@@ -15163,6 +15170,58 @@ const generateSceneImage = async (
       if (!strategyAuthorityPersisted) return;
       const accessToken = await getAccessTokenOrThrow();
       if (!operationIsActive()) return;
+
+      if (creatorScriptBuildV2ClientEnabled()) {
+        const v2Result = await runCreatorScriptBuildV2({
+          accessToken,
+          projectId: operationOrigin.projectId,
+          expectedProjectUpdatedAt: projectUpdatedAtRef.current,
+          onProgress: (projection) => {
+            if (!operationIsActive()) return;
+            setSaveMessage(
+              creatorScriptBuildProgressMessage({
+                state: projection.state,
+                language: uiLanguage === "en" ? "en" : "tr",
+              }),
+            );
+          },
+        });
+        if (!operationIsActive()) return;
+
+        if (
+          v2Result.state !== "PERSISTED" ||
+          !v2Result.creatorScript ||
+          !v2Result.persistence?.installedProjectRevision
+        ) {
+          throw new CreatorScriptBuildClientError({
+            code: v2Result.state === "STALE"
+              ? "PROJECT_STALE"
+              : "BUILD_FAILED",
+            status: v2Result.state === "STALE" ? 409 : 422,
+          });
+        }
+
+        const installedProjectRevision =
+          v2Result.persistence.installedProjectRevision;
+        await loadProject(operationOrigin.projectId);
+
+        if (projectUpdatedAtRef.current !== installedProjectRevision) {
+          setError(
+            uiLanguage === "en"
+              ? "The script was saved, but the project changed before the authoritative refresh completed. The latest project state was loaded; review it before rebuilding."
+              : "Metin kaydedildi ancak yetkili yenileme tamamlanmadan proje değişti. Projenin en güncel hali yüklendi; yeniden oluşturmadan önce kontrol et.",
+          );
+          return;
+        }
+
+        setSaveMessage(
+          uiLanguage === "en"
+            ? "Full script ready for review."
+            : "Tam metin incelemeye hazır.",
+        );
+        return;
+      }
+
       console.info("CREATOR_SCRIPT_REQUEST_AUTHORITY", {
         projectId: operationOrigin.projectId,
         operationGeneration: operationOrigin.generation,
@@ -15284,6 +15343,15 @@ const generateSceneImage = async (
       setSaveMessage(uiLanguage === "en" ? "Full script ready for review." : "Tam metin incelemeye hazır.");
     } catch (error) {
       if (!operationIsActive()) return;
+      if (error instanceof CreatorScriptBuildClientError) {
+        setError(
+          creatorScriptBuildV2RecoveryMessage({
+            code: error.code,
+            language: uiLanguage === "en" ? "en" : "tr",
+          }),
+        );
+        return;
+      }
       const message = error instanceof Error ? error.message : "";
       setError(message.startsWith("CREATOR_SCRIPT_")
         ? uiLanguage === "en"
