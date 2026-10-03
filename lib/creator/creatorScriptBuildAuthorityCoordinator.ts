@@ -764,12 +764,18 @@ async function executeAuthorityOperation(input: {
   return { build, operationId: operation.operationId, value };
 }
 
-function normalizeAuthorityCheckpointResult(value: CreatorScriptBuildJson | null) {
+export function normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(
+  value: CreatorScriptBuildJson | null,
+) {
   const raw = record(value);
-  if (raw?.version !== "0.19E2B-authority-checkpoint-output-v1") {
+  const result = record(raw?.result);
+  if (
+    raw?.version !== "0.19E2B-authority-checkpoint-output-v1" ||
+    result?.version !== "0.19E2B-authority-result-v1"
+  ) {
     throw new Error("CREATOR_SCRIPT_BUILD_AUTHORITY_CHECKPOINT_OUTPUT_INVALID");
   }
-  return raw.result as unknown as CreatorScriptBuildAuthorityStageResult;
+  return result as unknown as CreatorScriptBuildAuthorityStageResult;
 }
 
 function createAuthorityResult(input: {
@@ -845,7 +851,7 @@ export async function runCreatorScriptBuildAuthorityCoordinator(input: {
   });
   const existingCheckpoint = build.checkpoints.authority || null;
   if (existingCheckpoint?.status === "COMPLETED") {
-    const authority = normalizeAuthorityCheckpointResult(
+    const authority = normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(
       existingCheckpoint.outputReference,
     );
     build = await input.dependencies.repository.transition({
