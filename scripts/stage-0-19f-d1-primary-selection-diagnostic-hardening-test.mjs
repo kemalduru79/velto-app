@@ -31,13 +31,13 @@ function rejected(value, reason) {
   }
 }
 
-const duplicate = rejected({ repairs: [
+const deduplicated = normalizePrimarySelection({ repairs: [
   { claimId: "claim-a", spanId: "span-a" },
   { claimId: "claim-a", spanId: "span-b" },
-] }, "DUPLICATE_CLAIM_ID");
-assert.equal(duplicate.normalizationItemIndex, 1);
-assert.equal(duplicate.normalizationPreviousItemIndex, 0);
-assert.equal(duplicate.normalizationDuplicateClaimIndexes, "0:1");
+] }, input);
+assert.deepEqual(deduplicated, {
+  repairs: [{ claimId: "claim-a", spanId: "span-a" }],
+});
 
 const unknownClaim = rejected({ repairs: [
   { claimId: "claim-unknown", spanId: "span-a" },
@@ -67,7 +67,7 @@ const proseAsIdentifier = rejected({ repairs: [{
 }] }, "CLAIM_ID_INVALID");
 assert.match(proseAsIdentifier.normalizationIdentifier, /^sha256:[0-9a-f]{16}$/u);
 
-for (const diagnostics of [duplicate, unknownClaim, unknownSpan, malformed, proseAsIdentifier]) {
+for (const diagnostics of [unknownClaim, unknownSpan, malformed, proseAsIdentifier]) {
   const serialized = JSON.stringify(diagnostics);
   assert.doesNotMatch(serialized, /private claim prose|private evidence prose|RAW EVIDENCE MUST NOT LEAK|RAW SOURCE BODY MUST NOT LEAK/u);
   assert.ok(serialized.length < 4_000);

@@ -788,6 +788,7 @@ export function createCreatorScriptBuildProviderExecutors(input: {
           "Select exact supplied canonical spans that directly support the allowlisted target claims.",
           "Do not create, rewrite, reinterpret, add, or remove claims, sources, evidence prose, or links.",
           "Use only supplied claimId and spanId values. Omit a target when no span directly supports it.",
+          "Return at most one repair per claimId. Never repeat a claimId; if multiple spans could support the same claim, select the single strongest direct span.",
           "Return strict JSON only.",
         ].join(" "),
         user: value,

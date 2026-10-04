@@ -494,8 +494,8 @@ export function normalizePrimarySelection(
   const allowedClaimIds = new Set(input.targetClaims.map((claim) => claim.claimId));
   const allowedSpanIds = new Set(input.candidateSpans.map((span) => span.spanId));
   const selectedClaimIds = new Set<string>();
-  return {
-    repairs: repairs.map((item, itemIndex) => {
+  const normalizedRepairs: Array<{ claimId: string; spanId: string }> = [];
+  repairs.forEach((item, itemIndex) => {
       const repair = record(item);
       if (!repair) {
         return reject("ITEM_INVALID", {
@@ -532,20 +532,12 @@ export function normalizePrimarySelection(
         });
       }
       if (selectedClaimIds.has(claimId)) {
-        const previousItemIndex = repairs.findIndex((candidate, index) =>
-          index < itemIndex && clean(record(candidate)?.claimId, 120) === claimId
-        );
-        reject("DUPLICATE_CLAIM_ID", {
-          normalizationPath: `$.repairs[${itemIndex}].claimId`,
-          normalizationItemIndex: itemIndex,
-          normalizationPreviousItemIndex: previousItemIndex,
-          normalizationIdentifier: safeDiagnosticToken(claimId, 120),
-        });
+        return;
       }
       selectedClaimIds.add(claimId);
-      return { claimId, spanId };
-    }),
-  };
+      normalizedRepairs.push({ claimId, spanId });
+    });
+  return { repairs: normalizedRepairs };
 }
 
 function checkpoint(input: {
