@@ -48,6 +48,9 @@ import type {
 import type { CreatorScriptBuildProviderExecutors } from "./creatorScriptBuildRuntime.server.ts";
 
 const MODEL = () => process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const PRIMARY_SELECTION_PROVIDER_CORRELATION = Symbol.for(
+  "velto.creatorScriptBuild.primarySelectionProviderCorrelation",
+);
 
 function operationIdentity(kind: string, input: unknown, ownerId: string, projectId: string) {
   return `creator-script-build-v2:${kind}:${createHash("sha256")
@@ -169,7 +172,22 @@ async function runOpenAIJson(input: {
     userId: input.ownerId,
     projectId: input.projectId,
   });
-  return parseCreatorScriptBuildModelJson(response.output_text || "");
+  const parsed = parseCreatorScriptBuildModelJson(response.output_text || "");
+  if (
+    input.operationType === "creator_script_build_primary_coverage_selection" &&
+    parsed && typeof parsed === "object"
+  ) {
+    Object.defineProperty(parsed, PRIMARY_SELECTION_PROVIDER_CORRELATION, {
+      configurable: false,
+      enumerable: false,
+      writable: false,
+      value: Object.freeze({
+        requestId: typeof response._request_id === "string" ? response._request_id : null,
+        responseId: typeof response.id === "string" ? response.id : null,
+      }),
+    });
+  }
+  return parsed;
 }
 
 function editorialProposalSchema(input: CreatorScriptBuildEditorialExecutionInput) {

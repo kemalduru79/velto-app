@@ -149,6 +149,22 @@ export type CreatorScriptBuildAuthorityCoordinatorDependencies = Readonly<{
 
 type AuthorityOperationKind = "acquisition" | "selection";
 
+const PRIMARY_SELECTION_PROVIDER_CORRELATION = Symbol.for(
+  "velto.creatorScriptBuild.primarySelectionProviderCorrelation",
+);
+
+type BoundedDiagnostics = Record<string, string | number | boolean | null>;
+
+export class CreatorScriptBuildPrimarySelectionNormalizationError extends Error {
+  readonly diagnostics: Readonly<BoundedDiagnostics>;
+
+  constructor(diagnostics: BoundedDiagnostics) {
+    super("CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_RESULT_INVALID");
+    this.name = "CreatorScriptBuildPrimarySelectionNormalizationError";
+    this.diagnostics = Object.freeze({ ...diagnostics });
+  }
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -159,6 +175,83 @@ function clean(value: unknown, maxLength: number) {
   return typeof value === "string"
     ? value.replace(/\s+/gu, " ").trim().slice(0, maxLength)
     : "";
+}
+
+function valueType(value: unknown) {
+  return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+}
+
+function safeDiagnosticToken(value: string, maxLength: number) {
+  const normalized = clean(value, maxLength);
+  return /^[A-Za-z0-9][A-Za-z0-9:._/-]*$/u.test(normalized)
+    ? normalized
+    : `sha256:${createHash("sha256").update(normalized, "utf8").digest("hex").slice(0, 16)}`;
+}
+
+function boundedKeys(value: Record<string, unknown> | null) {
+  return value
+    ? Object.keys(value).slice(0, 20).map((key) => safeDiagnosticToken(key, 80)).join(",").slice(0, 500)
+    : "";
+}
+
+function boundedUnexpectedKeys(value: Record<string, unknown>, allowedKeys: string[]) {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(value)
+    .filter((key) => !allowed.has(key))
+    .slice(0, 20)
+    .map((key) => safeDiagnosticToken(key, 80))
+    .join(",")
+    .slice(0, 500);
+}
+
+function primarySelectionStructuralSummary(
+  value: unknown,
+  input: CreatorScriptBuildPrimarySelectionInput,
+): BoundedDiagnostics {
+  const raw = record(value);
+  const repairs = raw && Array.isArray(raw.repairs) ? raw.repairs : null;
+  const allowedClaimIds = new Set(input.targetClaims.map((claim) => claim.claimId));
+  const allowedSpanIds = new Set(input.candidateSpans.map((span) => span.spanId));
+  const claimIndexes = new Map<string, number>();
+  const duplicateClaimIndexes: string[] = [];
+  let claimIdsMatchAll = true;
+  let spanIdsMatchAll = true;
+  const itemKeys = repairs?.slice(0, 20).map((item, index) => {
+    const repair = record(item);
+    const claimId = clean(repair?.claimId, 120);
+    const spanId = clean(repair?.spanId, 300);
+    if (!repair || !allowedClaimIds.has(claimId)) claimIdsMatchAll = false;
+    if (!repair || !allowedSpanIds.has(spanId)) spanIdsMatchAll = false;
+    if (repair && claimIndexes.has(claimId)) {
+      duplicateClaimIndexes.push(`${claimIndexes.get(claimId)}:${index}`);
+    } else if (repair) {
+      claimIndexes.set(claimId, index);
+    }
+    return `${index}:${boundedKeys(repair)}`;
+  }).join(";").slice(0, 1_000) || "";
+  return {
+    normalizationRootType: valueType(value),
+    normalizationRootKeys: boundedKeys(raw),
+    normalizationRepairsCount: repairs?.length ?? -1,
+    normalizationItemKeys: itemKeys,
+    normalizationDuplicateClaimIndexes: duplicateClaimIndexes.join(",").slice(0, 300),
+    normalizationClaimIdsMatchAll: claimIdsMatchAll,
+    normalizationSpanIdsMatchAll: spanIdsMatchAll,
+  };
+}
+
+function primarySelectionProviderDiagnostics(value: unknown): BoundedDiagnostics {
+  if (!value || typeof value !== "object") return {};
+  const correlation = (value as Record<PropertyKey, unknown>)[PRIMARY_SELECTION_PROVIDER_CORRELATION];
+  const raw = record(correlation);
+  return {
+    ...(typeof raw?.requestId === "string"
+      ? { providerRequestId: clean(raw.requestId, 160) }
+      : {}),
+    ...(typeof raw?.responseId === "string"
+      ? { providerResponseId: clean(raw.responseId, 160) }
+      : {}),
+  };
 }
 
 function buildJson(value: unknown): CreatorScriptBuildJson {
@@ -368,36 +461,86 @@ function createSelectionInput(
   });
 }
 
-function normalizePrimarySelection(
+export function normalizePrimarySelection(
   value: unknown,
   input: CreatorScriptBuildPrimarySelectionInput,
 ) {
+  const reject = (reason: string, diagnostics: BoundedDiagnostics = {}): never => {
+    throw new CreatorScriptBuildPrimarySelectionNormalizationError({
+      normalizationReason: reason,
+      ...primarySelectionStructuralSummary(value, input),
+      ...diagnostics,
+    });
+  };
   const raw = record(value);
-  if (!raw || Object.keys(raw).join(",") !== "repairs" || !Array.isArray(raw.repairs)) {
-    throw new Error("CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_RESULT_INVALID");
+  if (!raw) return reject("ROOT_INVALID", { normalizationPath: "$", normalizationValueType: valueType(value) });
+  if (Object.keys(raw).join(",") !== "repairs") {
+    reject("ROOT_KEYS_INVALID", {
+      normalizationPath: "$",
+      normalizationUnexpectedKeys: boundedUnexpectedKeys(raw, ["repairs"]),
+    });
   }
-  if (raw.repairs.length > input.targetClaims.length) {
-    throw new Error("CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_RESULT_INVALID");
+  if (!Array.isArray(raw.repairs)) {
+    return reject("REPAIRS_NOT_ARRAY", { normalizationPath: "$.repairs", normalizationValueType: valueType(raw.repairs) });
+  }
+  const repairs = raw.repairs;
+  if (repairs.length > input.targetClaims.length) {
+    reject("REPAIRS_OVER_MAX", {
+      normalizationPath: "$.repairs",
+      normalizationArrayLength: repairs.length,
+      normalizationAllowedMaximum: input.targetClaims.length,
+    });
   }
   const allowedClaimIds = new Set(input.targetClaims.map((claim) => claim.claimId));
   const allowedSpanIds = new Set(input.candidateSpans.map((span) => span.spanId));
   const selectedClaimIds = new Set<string>();
   return {
-    repairs: raw.repairs.map((value) => {
-      const repair = record(value);
-      if (!repair || Object.keys(repair).sort().join(",") !== "claimId,spanId") {
-        throw new Error("CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_RESULT_INVALID");
+    repairs: repairs.map((item, itemIndex) => {
+      const repair = record(item);
+      if (!repair) {
+        return reject("ITEM_INVALID", {
+          normalizationPath: `$.repairs[${itemIndex}]`,
+          normalizationItemIndex: itemIndex,
+          normalizationValueType: valueType(item),
+        });
+      }
+      if (Object.keys(repair).sort().join(",") !== "claimId,spanId") {
+        reject("ITEM_KEYS_INVALID", {
+          normalizationPath: `$.repairs[${itemIndex}]`,
+          normalizationItemIndex: itemIndex,
+          normalizationUnexpectedKeys: boundedUnexpectedKeys(repair, ["claimId", "spanId"]),
+        });
       }
       const claimId = clean(repair.claimId, 120);
       const spanId = clean(repair.spanId, 300);
       if (!allowedClaimIds.has(claimId)) {
-        throw new Error(`CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_CLAIM_INVALID:${claimId}`);
+        reject("CLAIM_ID_INVALID", {
+          normalizationPath: `$.repairs[${itemIndex}].claimId`,
+          normalizationItemIndex: itemIndex,
+          normalizationClaimIdMatch: false,
+          normalizationValueType: valueType(repair.claimId),
+          normalizationIdentifier: safeDiagnosticToken(claimId, 120),
+        });
       }
       if (!allowedSpanIds.has(spanId)) {
-        throw new Error(`CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_SPAN_INVALID:${spanId}`);
+        reject("SPAN_ID_INVALID", {
+          normalizationPath: `$.repairs[${itemIndex}].spanId`,
+          normalizationItemIndex: itemIndex,
+          normalizationSpanIdMatch: false,
+          normalizationValueType: valueType(repair.spanId),
+          normalizationIdentifier: safeDiagnosticToken(spanId, 300),
+        });
       }
       if (selectedClaimIds.has(claimId)) {
-        throw new Error(`CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_DUPLICATE:${claimId}`);
+        const previousItemIndex = repairs.findIndex((candidate, index) =>
+          index < itemIndex && clean(record(candidate)?.claimId, 120) === claimId
+        );
+        reject("DUPLICATE_CLAIM_ID", {
+          normalizationPath: `$.repairs[${itemIndex}].claimId`,
+          normalizationItemIndex: itemIndex,
+          normalizationPreviousItemIndex: previousItemIndex,
+          normalizationIdentifier: safeDiagnosticToken(claimId, 120),
+        });
       }
       selectedClaimIds.add(claimId);
       return { claimId, spanId };
@@ -726,13 +869,25 @@ async function executeAuthorityOperation(input: {
   let value: unknown;
   try {
     value = input.normalize(rawResult);
-  } catch {
+  } catch (error) {
+    const normalizationDiagnostics =
+      input.kind === "selection" &&
+        error instanceof CreatorScriptBuildPrimarySelectionNormalizationError
+        ? error.diagnostics
+        : {};
     const failure = authorityFailure({
       category: "MODEL_CONTRACT",
       code: input.kind === "acquisition"
         ? "CREATOR_SCRIPT_BUILD_PRIMARY_ACQUISITION_RESULT_INVALID"
         : "CREATOR_SCRIPT_BUILD_PRIMARY_SELECTION_RESULT_INVALID",
       operationId: operation.operationId,
+      diagnostics: input.kind === "selection"
+        ? {
+            ...normalizationDiagnostics,
+            ...primarySelectionProviderDiagnostics(rawResult),
+            operationId: operation.operationId,
+          }
+        : {},
     });
     await input.dependencies.repository.transitionOperation({
       ownerId: build.ownerId,
