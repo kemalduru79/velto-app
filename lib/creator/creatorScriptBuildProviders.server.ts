@@ -1,9 +1,7 @@
 import {
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
-  CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD,
   CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
-  CREATOR_SCRIPT_JSON_TOKEN_RESERVE,
   CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
   createCreatorScriptNarrationControlPlan,
 } from "./creatorScript.ts";
@@ -49,6 +47,9 @@ import type {
 import type {
   CreatorScriptBuildScriptRepairInput,
 } from "./creatorScriptBuildScriptRepairCoordinator.ts";
+import {
+  getCreatorScriptBuildRepairCorrectiveMaxOutputTokens,
+} from "./creatorScriptBuildRepairOutputBudget.ts";
 import type { CreatorScriptBuildProviderExecutors } from "./creatorScriptBuildRuntime.server.ts";
 
 const MODEL = () => process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -691,27 +692,6 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
   };
 }
 
-export function getCreatorScriptBuildRepairCorrectiveMaxOutputTokens(
-  value: Pick<
-    CreatorScriptBuildScriptRepairInput,
-    "mode" | "candidate" | "replacementTargets"
-  >,
-) {
-  if (
-    value.mode !== "replacement" ||
-    !value.candidate ||
-    value.candidate.ordinal <= 1 ||
-    value.replacementTargets.length !== 1
-  ) {
-    return null;
-  }
-  const target = value.replacementTargets[0];
-  if (!target || target.requiredFinalMaxWords <= 0) return null;
-  return Math.ceil(
-    target.requiredFinalMaxWords * CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD,
-  ) + CREATOR_SCRIPT_JSON_TOKEN_RESERVE;
-}
-
 function replacementLengthInstructions(value: CreatorScriptBuildScriptRepairInput) {
   if (value.mode !== "replacement") return "";
   const target = value.replacementTargets[0];
@@ -782,7 +762,14 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     schema: repairSchema(value),
     temperature: 0.1,
     maxOutputTokens:
-      getCreatorScriptBuildRepairCorrectiveMaxOutputTokens(value) || undefined,
+      getCreatorScriptBuildRepairCorrectiveMaxOutputTokens({
+        mode: value.mode,
+        candidateOrdinal: value.candidate?.ordinal ?? null,
+        requiredFinalMaxWords:
+          value.mode === "replacement"
+            ? value.replacementTargets[0]?.requiredFinalMaxWords ?? null
+            : null,
+      }) || undefined,
   });
 }
 
