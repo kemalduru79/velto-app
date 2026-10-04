@@ -1,7 +1,9 @@
 import {
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD,
   CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
+  CREATOR_SCRIPT_JSON_TOKEN_RESERVE,
   CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
   createCreatorScriptNarrationControlPlan,
 } from "./creatorScript.ts";
@@ -146,6 +148,7 @@ async function runOpenAIJson(input: {
   schemaName: string;
   schema: Record<string, unknown>;
   temperature: number;
+  maxOutputTokens?: number;
 }) {
   const model = MODEL();
   const response = await openAI().responses.create({
@@ -163,6 +166,9 @@ async function runOpenAIJson(input: {
       },
     },
     temperature: input.temperature,
+    ...(Number.isInteger(input.maxOutputTokens) && Number(input.maxOutputTokens) > 0
+      ? { max_output_tokens: Number(input.maxOutputTokens) }
+      : {}),
   }, input.operationType === "creator_script_build_editorial_proposal" ||
      input.operationType === "creator_script_build_claim_origin_adjudication" ? { maxRetries: 0 } : undefined);
   await recordOpenAITextEconomics({
@@ -685,6 +691,27 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
   };
 }
 
+export function getCreatorScriptBuildRepairCorrectiveMaxOutputTokens(
+  value: Pick<
+    CreatorScriptBuildScriptRepairInput,
+    "mode" | "candidate" | "replacementTargets"
+  >,
+) {
+  if (
+    value.mode !== "replacement" ||
+    !value.candidate ||
+    value.candidate.ordinal <= 1 ||
+    value.replacementTargets.length !== 1
+  ) {
+    return null;
+  }
+  const target = value.replacementTargets[0];
+  if (!target || target.requiredFinalMaxWords <= 0) return null;
+  return Math.ceil(
+    target.requiredFinalMaxWords * CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD,
+  ) + CREATOR_SCRIPT_JSON_TOKEN_RESERVE;
+}
+
 function replacementLengthInstructions(value: CreatorScriptBuildScriptRepairInput) {
   if (value.mode !== "replacement") return "";
   const target = value.replacementTargets[0];
@@ -754,6 +781,8 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     schemaName: "creator_script_build_script_repair",
     schema: repairSchema(value),
     temperature: 0.1,
+    maxOutputTokens:
+      getCreatorScriptBuildRepairCorrectiveMaxOutputTokens(value) || undefined,
   });
 }
 
