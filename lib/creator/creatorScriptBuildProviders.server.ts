@@ -45,6 +45,7 @@ import type {
   CreatorScriptBuildScriptGenerationInput,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
 import {
+  createCreatorScriptBuildSectionLengthRecoveryBand,
   runCreatorScriptBuildSectionGenerationWithBoundedRetry,
 } from "./creatorScriptBuildSectionGenerationGuard.ts";
 import type {
@@ -536,7 +537,7 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Treat sectionControl and futureSectionOwnership as non-narratable control metadata. sectionControl is binding for the active section; futureSectionOwnership identifies intellectual work that must be left for later sections.",
   "Treat completedSections as established audience knowledge. Reuse only the minimum words needed for continuity; do not re-explain their thesis, mechanism, evidence, examples, paradoxes, or closing questions.",
   "The active section text MUST contain at least activeSection.minimumWords words, should aim for activeSection.targetWords words, and MUST NOT exceed activeSection.maximumWords words.",
-  "When sectionLengthRecovery is present, the previous candidate violated this exact word envelope. Correct that failure directly: obey the supplied minimumWords, targetWords, maximumWords, previousWordCount, and previousReason. Do not return another candidate outside the envelope.",
+  "When sectionLengthRecovery is present, the previous candidate violated this exact word envelope. Correct that failure directly. The hard acceptance envelope remains minimumWords through maximumWords, but the corrective retry MUST land inside recoveryMinimumWords through recoveryMaximumWords. Do not aim at the failed boundary; aim near targetWords.",
   "Do not compress the section merely because the full documentary is long. Complete the substantive work owned by this section without repeating completedSections.",
   "Use completedSections only for continuity and to avoid repetition; do not rewrite or return them.",
   "sectionClaimAuthority is binding evidence authority for the active section. Use only its permittedClaimIds.",
@@ -616,16 +617,24 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                 })),
               completedSections,
               ...(previousValidation
-                ? {
-                    sectionLengthRecovery: {
-                      ordinal,
-                      previousWordCount: previousValidation.wordCount,
-                      previousReason: previousValidation.reason,
-                      minimumWords: previousValidation.minimumWords,
-                      targetWords: previousValidation.targetWords,
-                      maximumWords: previousValidation.maximumWords,
-                    },
-                  }
+                ? (() => {
+                    const recoveryBand =
+                      createCreatorScriptBuildSectionLengthRecoveryBand(
+                        previousValidation,
+                      );
+                    return {
+                      sectionLengthRecovery: {
+                        ordinal,
+                        previousWordCount: previousValidation.wordCount,
+                        previousReason: previousValidation.reason,
+                        minimumWords: previousValidation.minimumWords,
+                        targetWords: previousValidation.targetWords,
+                        maximumWords: previousValidation.maximumWords,
+                        recoveryMinimumWords: recoveryBand.minimumWords,
+                        recoveryMaximumWords: recoveryBand.maximumWords,
+                      },
+                    };
+                  })()
                 : {}),
             },
             schemaName: "creator_script_build_script_generation_section",

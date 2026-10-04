@@ -38,6 +38,27 @@ export function validateCreatorScriptBuildGeneratedSectionLength(input: {
   });
 }
 
+export function createCreatorScriptBuildSectionLengthRecoveryBand(
+  validation: CreatorScriptBuildSectionLengthValidation,
+) {
+  if (validation.reason === "below_minimum") {
+    return Object.freeze({
+      minimumWords: validation.targetWords,
+      maximumWords: validation.maximumWords,
+    });
+  }
+  if (validation.reason === "above_maximum") {
+    return Object.freeze({
+      minimumWords: validation.minimumWords,
+      maximumWords: validation.targetWords,
+    });
+  }
+  return Object.freeze({
+    minimumWords: validation.minimumWords,
+    maximumWords: validation.maximumWords,
+  });
+}
+
 export async function runCreatorScriptBuildSectionGenerationWithBoundedRetry<T>(input: {
   budget: CreatorScriptSectionBudget;
   execute: (recovery: Readonly<{
