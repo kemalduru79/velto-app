@@ -2,6 +2,7 @@ import { CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_POLICY_VERSION } from "./creatorSc
 import { createHash } from "node:crypto";
 import {
   applyCreatorScriptAdditiveExpansion,
+  creatorScriptAdditiveExpansionIntroducesLocalRepetition,
   countCreatorScriptWords,
   createCreatorScriptNarrationAuthority,
   createCreatorScriptRepairTargets,
@@ -708,7 +709,7 @@ function assembleAdditiveProposal(input: {
   const currentById = new Map(
     input.currentScript.sections.map((section) => [section.id, section]),
   );
-  const validatedCandidates = input.repairInput.expansionTargets.map(
+  const validatedCandidates = input.repairInput.expansionTargets.flatMap(
     (target, index) => {
       const allowedClaimIds = allowedClaimIdsForRepairSection(
         input.repairInput,
@@ -739,6 +740,12 @@ function assembleAdditiveProposal(input: {
           "CREATOR_SCRIPT_BUILD_REPAIR_WRONG_DIRECTION",
         );
       }
+      if (creatorScriptAdditiveExpansionIntroducesLocalRepetition({
+        sectionText: currentSection.text,
+        additionalText,
+      })) {
+        return [];
+      }
       const applied = applyCreatorScriptAdditiveExpansion({
         section: currentSection,
         placementAnchorId,
@@ -756,11 +763,11 @@ function assembleAdditiveProposal(input: {
         claimIds: [...new Set([...currentSection.claimIds, ...claimIds])],
         evidenceReviewRequired: false,
       };
-      return {
+      return [{
         sectionId: target.sectionId,
         gainWords: countCreatorScriptWords(replacement.text) - target.currentWords,
         value: replacement,
-      };
+      }];
     },
   );
   const deficitWords = input.repairInput.expansionTargets.reduce(
@@ -776,8 +783,8 @@ function assembleAdditiveProposal(input: {
   });
   if (selected.length === 0) {
     throw new CreatorScriptBuildRepairError(
-      "INTERNAL",
-      "CREATOR_SCRIPT_BUILD_REPAIR_SELECTION_EMPTY",
+      "SCRIPT_POLICY",
+      "CREATOR_SCRIPT_BUILD_REPAIR_LOCAL_REPETITION",
     );
   }
   const replacementById = new Map(

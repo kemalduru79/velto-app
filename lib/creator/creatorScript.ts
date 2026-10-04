@@ -461,6 +461,35 @@ export function selectCreatorScriptExpansionCandidates<T>(input: {
   return selected || [];
 }
 
+function creatorScriptSentencePrefixKeys(value: string, prefixLength = 5) {
+  return value
+    .replace(/\r\n/gu, "\n")
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) =>
+      sentence
+        .toLocaleLowerCase()
+        .replace(/’/gu, "'")
+        .replace(/[^\p{L}\p{N}']+/gu, " ")
+        .trim()
+        .split(/\s+/u)
+        .filter(Boolean)
+    )
+    .filter((tokens) => tokens.length >= prefixLength)
+    .map((tokens) => tokens.slice(0, prefixLength).join(" "));
+}
+
+export function creatorScriptAdditiveExpansionIntroducesLocalRepetition(input: {
+  sectionText: string;
+  additionalText: string;
+}) {
+  const existingPrefixes = new Set(
+    creatorScriptSentencePrefixKeys(input.sectionText),
+  );
+  return creatorScriptSentencePrefixKeys(input.additionalText).some((prefix) =>
+    existingPrefixes.has(prefix)
+  );
+}
+
 export function applyCreatorScriptAdditiveExpansion(input: {
   section: CreatorScriptSection;
   placementAnchorId: string;

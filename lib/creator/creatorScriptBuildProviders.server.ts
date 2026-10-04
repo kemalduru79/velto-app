@@ -746,7 +746,7 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
       "Preserve all untargeted text and all server-owned script metadata.",
       "Use only permitted grounded claim IDs. Do not invent evidence, facts, studies, examples, anecdotes, or authority.",
       "sectionClaimAuthority is binding per-section evidence authority. Never attach a globally permitted claim to a section unless that section's own permittedClaimIds includes it. For conceptual_only sections, add no claimIds and do not imply empirical support.",
-      "For additive mode, return only the requested additions at supplied placement anchors. For replacement mode, return only the single requested section with the exact server-supplied sectionId.",
+      "For additive mode, return only genuinely new supporting material at supplied placement anchors. Do not restate, paraphrase, summarize, or reuse the same sentence opening as material already present in that section, especially its terminal sentence. For replacement mode, return only the single requested section with the exact server-supplied sectionId.",
       lengthInstructions,
       "Return strict JSON only.",
     ].join(" "),
