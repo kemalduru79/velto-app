@@ -1014,7 +1014,7 @@ for (const state of [
   );
   const revisionAuthorityMigrationSource = fs.readFileSync(
     new URL(
-      "../supabase/migrations/20261004210000_stage_0_19f_d3_script_persistence_revision_authority.sql",
+      "../supabase/migrations/20261004202522_stage_0_19f_d3_script_persistence_revision_authority.sql",
       import.meta.url,
     ),
     "utf8",
