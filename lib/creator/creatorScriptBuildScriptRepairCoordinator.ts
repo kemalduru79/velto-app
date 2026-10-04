@@ -1294,7 +1294,6 @@ async function executeRepairOperation(input: {
       expectedState: "PENDING",
       nextState: "FAILED",
       failure,
-      resultReference: buildJson({ version: "0.19E3B-script-repair-invalid-proposal-v2", request: input.repairInput, proposal: rawProposal, diagnostics: failure.diagnostics }),
     });
     throw new CreatorScriptBuildRepairError(
       repairError.category,

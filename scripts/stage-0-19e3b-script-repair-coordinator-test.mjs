@@ -450,6 +450,20 @@ for (const forbiddenClaimId of ["claim-unknown", "claim-excluded"]) {
   assert.equal(counts().providerCalls, 1);
   assert.equal(repository.build.state, "FAILED");
   assert.equal(repository.build.failure.category, "GROUNDING");
+  assert.equal(
+    repository.build.failure.code,
+    "CREATOR_SCRIPT_BUILD_REPAIR_CLAIM_NOT_PERMITTED",
+  );
+  const repairOperations = [...repository.operations.values()].filter(
+    (operation) => operation.operationType === "creator_script_build_script_repair",
+  );
+  assert.equal(repairOperations.length, 1);
+  assert.equal(repairOperations[0].state, "FAILED");
+  assert.equal(repairOperations[0].resultReference, null);
+  assert.equal(
+    repairOperations[0].failure?.code,
+    "CREATOR_SCRIPT_BUILD_REPAIR_CLAIM_NOT_PERMITTED",
+  );
 }
 
 // 43. Compression must move toward the existing canonical envelope.

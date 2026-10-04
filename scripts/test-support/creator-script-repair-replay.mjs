@@ -336,6 +336,19 @@ class MemoryRepository {
     assert.ok(operation);
     assert.equal(operation.state, input.expectedState);
     assertCreatorScriptBuildOperationTransition(input.expectedState, input.nextState);
+    const expectsResult = input.nextState === "COMPLETED";
+    const expectsFailure =
+      input.nextState === "FAILED" || input.nextState === "OUTCOME_UNCERTAIN";
+    assert.equal(
+      input.resultReference != null,
+      expectsResult,
+      "repair test repository must match production resultReference contract",
+    );
+    assert.equal(
+      Boolean(input.failure),
+      expectsFailure,
+      "repair test repository must match production failure contract",
+    );
     const next = {
       ...operation,
       state: input.nextState,
