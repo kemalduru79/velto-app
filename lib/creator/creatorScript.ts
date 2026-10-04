@@ -1456,7 +1456,8 @@ export function getCreatorScriptOutputTokenBudget(targetWordCount: number) {
 export const CREATOR_SCRIPT_MIN_OUTPUT_TOKENS = 1_500;
 export const CREATOR_SCRIPT_JSON_TOKEN_RESERVE = 300;
 export const CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD = 1.5;
-export const CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO = 0.15;
+export const CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO = 0.12;
+export const CREATOR_SCRIPT_MAX_LONG_FORM_RESIDUAL_REPAIR_RATIO = 0.15;
 
 export function getCreatorScriptSafeSingleCallTargetWords() {
   return Math.floor(
@@ -1530,9 +1531,13 @@ export function isCreatorScriptResidualRepairEligible(
   const distanceToEnvelope = diagnostics.status === "too_short"
     ? diagnostics.minimumAcceptableWordCount - diagnostics.actualWordCount
     : diagnostics.actualWordCount - diagnostics.maximumAcceptableWordCount;
+  const residualRepairRatio =
+    shouldUseCreatorScriptSectionNativeGeneration(diagnostics.targetWordCount)
+      ? CREATOR_SCRIPT_MAX_LONG_FORM_RESIDUAL_REPAIR_RATIO
+      : CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO;
   return distanceToEnvelope > 0 &&
     distanceToEnvelope <= Math.ceil(
-      diagnostics.targetWordCount * CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO,
+      diagnostics.targetWordCount * residualRepairRatio,
     );
 }
 
