@@ -5,6 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { createRequire } from "node:module";
 import * as contract from "../lib/creator/creatorScriptBuildProviderContract.ts";
+import * as creatorScript from "../lib/creator/creatorScript.ts";
 import * as graph from "../lib/research/claimEvidenceGraph.ts";
 import { reconcileClaimPropositionAuthorities } from "../lib/research/claimPropositionAuthority.ts";
 import { createCreatorScriptBuildEditorialRecoveryContext } from "../lib/creator/creatorScriptBuildEditorialAdjudicationRecovery.ts";
@@ -18,6 +19,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/creator/creatorScript
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports, process: {env:{}}, require: name => {
   if (name === "node:crypto") return require(name);
+  if (name === "./creatorScript.ts") return creatorScript;
   if (name === "./creatorScriptBuildProviderContract.ts") return contract;
   if (name === "./creatorScriptBuildResearchEditorialCoordinator.ts") return {CreatorScriptBuildStageExecutionError};
   if (name === "../research/claimEvidenceGraph.ts") return graph;
