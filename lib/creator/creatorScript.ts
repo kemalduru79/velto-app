@@ -203,9 +203,17 @@ function findProductionPlanApprovedThemes(value: unknown): string[] | null {
     if (!/^productionPlan$/iu.test(key) || !Array.isArray(item)) continue;
     for (const instruction of item) {
       if (typeof instruction !== "string") continue;
-      const match = instruction.match(/\b(?:main\s+)?themes?\s*:\s*(.+)$/iu);
-      if (!match?.[1]) continue;
-      const themes = splitApprovedThemeList(match[1]);
+      const lowerInstruction = instruction.toLocaleLowerCase();
+      const markers = ["main themes:", "themes:", "thematic sections:", "thematic section:"];
+      const marker = markers.find((item) => lowerInstruction.includes(item));
+      if (!marker) continue;
+      const markerIndex = lowerInstruction.indexOf(marker);
+      let themeClause = instruction.slice(markerIndex + marker.length).trim();
+      const transitionSuffixIndex = themeClause.toLocaleLowerCase().indexOf(", with ");
+      if (transitionSuffixIndex >= 0) {
+        themeClause = themeClause.slice(0, transitionSuffixIndex).trim();
+      }
+      const themes = splitApprovedThemeList(themeClause);
       if (themes.length >= 2 && themes.length <= 10) return themes;
     }
   }
