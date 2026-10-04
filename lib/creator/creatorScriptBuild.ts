@@ -244,6 +244,8 @@ function normalizeContractVersions(value: unknown): CreatorScriptBuildContractVe
   return deepFreeze(normalized);
 }
 
+export const CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS = 20_000 as const;
+
 export function createCreatorScriptBuildSnapshot(input: {
   projectId: string;
   expectedProjectRevision: string;
@@ -281,7 +283,11 @@ export function createCreatorScriptBuildSnapshot(input: {
     language: input.language,
     requestedDurationSeconds: input.requestedDurationSeconds,
     strategy: {
-      topic: requireText(input.strategy.topic, "topic", 4_000),
+      topic: requireText(
+      input.strategy.topic,
+      "topic",
+      CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS,
+    ),
       researchSubject: normalizeOptionalText(input.strategy.researchSubject, "researchSubject", 2_000),
       title: requireText(input.strategy.title, "title", 1_000),
       contentType: requireText(input.strategy.contentType, "contentType", 160),

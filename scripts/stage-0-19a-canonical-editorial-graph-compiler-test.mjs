@@ -294,13 +294,37 @@ assert.throws(
   }),
   /CANONICAL_EDITORIAL_SPAN_NOT_FOUND:source-a:span-missing/,
 );
-assert.throws(
-  () => compileCanonicalEditorialGraph({
+// E6G: a known source/known span mismatch uses frozen span ownership.
+const canonicalizedMismatchGraph = compileCanonicalEditorialGraph({
+  proposal: {
+    items: [{
+      claim: worldStateClaim,
+      evidenceSelections: [{
+        sourceId: "source-b",
+        spanId: "span-a-observation",
+        stance: "supports",
+      }],
+    }],
+  },
+  sources,
+  spanCatalog,
+});
+assert.equal(canonicalizedMismatchGraph.evidence.length, 1);
+assert.equal(canonicalizedMismatchGraph.evidence[0].sourceId, "source-a");
+assert.equal(canonicalizedMismatchGraph.evidence[0].excerpt, spanCatalog[0].text);
+assert.deepEqual(canonicalizedMismatchGraph.links, [{
+  claimId: canonicalizedMismatchGraph.claims[0].claimId,
+  evidenceId: canonicalizedMismatchGraph.evidence[0].evidenceId,
+  stance: "supports",
+}]);
+assert.deepEqual(
+  canonicalizedMismatchGraph,
+  compileCanonicalEditorialGraph({
     proposal: {
       items: [{
         claim: worldStateClaim,
         evidenceSelections: [{
-          sourceId: "source-b",
+          sourceId: "source-a",
           spanId: "span-a-observation",
           stance: "supports",
         }],
@@ -309,7 +333,7 @@ assert.throws(
     sources,
     spanCatalog,
   }),
-  /CANONICAL_EDITORIAL_SPAN_SOURCE_MISMATCH/,
+  "the mismatched source must not affect canonical graph authority or identity",
 );
 
 // 8-9. Duplicate semantic claims are explicitly rejected; the same normalized

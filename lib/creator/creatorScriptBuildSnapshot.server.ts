@@ -1,4 +1,5 @@
 import {
+  CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS,
   createCreatorScriptBuildSnapshot,
   type CreatorScriptBuildSnapshot,
 } from "./creatorScriptBuild.ts";
@@ -21,10 +22,10 @@ export const CREATOR_SCRIPT_BUILD_CONTRACT_VERSIONS = Object.freeze({
   claimAuthorityResolver: "0.19C",
   creatorScriptAcceptance: "0.19D",
   creatorScriptBuild: "0.19E1",
-  creatorScriptResearchEditorialCoordinator: "0.19E2A",
+  creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
   creatorScriptBuildAuthorityCoordinator: "0.19E2B",
   creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
-  creatorScriptBuildScriptRepairCoordinator: "0.19E3B",
+  creatorScriptBuildScriptRepairCoordinator: "0.19E3B-S3",
   creatorScriptBuildAcceptanceCoordinator: "0.19E3C",
   creatorScriptBuildPersistenceCoordinator: "0.19E4",
   creatorScriptBuildRuntime: CREATOR_SCRIPT_BUILD_RUNTIME_VERSION,
@@ -266,7 +267,7 @@ export async function createCreatorScriptBuildSnapshotFromProject(input: {
       topic: requiredText(
         state.brief.topic,
         "CREATOR_SCRIPT_BUILD_TOPIC_REQUIRED",
-        4_000,
+        CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS,
       ),
       researchSubject: researchSubject || null,
       title: direction.selected.title,

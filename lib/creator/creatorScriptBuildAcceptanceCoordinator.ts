@@ -32,10 +32,7 @@ import {
   normalizeCreatorScriptBuildAuthorityResultFromCheckpoint,
 } from "./creatorScriptBuildAuthorityCoordinator.ts";
 import {
-  CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS,
-  CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION,
-  CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION,
-  CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
+  replayCreatorScriptBuildCompletedRepair,
   type CreatorScriptBuildScriptRepairStageResult,
 } from "./creatorScriptBuildScriptRepairCoordinator.ts";
 import {
@@ -431,134 +428,20 @@ function loadGeneration(build: CreatorScriptBuildRecord) {
  * stored report summary. This is a checkpoint-format validation boundary, not a
  * second repair policy: all policy truth is recomputed by 0.19D below.
  */
-function loadCompletedRepair(input: {
+async function loadCompletedRepair(input: {
   build: CreatorScriptBuildRecord;
   generation: CreatorScriptBuildScriptGenerationStageResult;
-}): CreatorScriptBuildScriptRepairStageResult {
-  const checkpoint = input.build.checkpoints.repair || null;
-  if (
-    !checkpoint ||
-    checkpoint.status === "PENDING" ||
-    checkpoint.status === "RUNNING"
-  ) {
+  repository: CreatorScriptBuildRepository;
+}): Promise<CreatorScriptBuildScriptRepairStageResult> {
+  const checkpoint = input.build.checkpoints.repair;
+  if (!checkpoint || checkpoint.status === "PENDING" || checkpoint.status === "RUNNING") {
     throw new CreatorScriptBuildRepairPhaseIncompleteError();
   }
-  if (
-    checkpoint.status !== "COMPLETED" ||
-    checkpoint.contractVersion !==
-      CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION
-  ) {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
-  }
-
-  const envelope = record(checkpoint.outputReference);
-  const raw = record(envelope?.result);
-  if (
-    envelope?.version !== "0.19E3B-script-repair-checkpoint-output-v1" ||
-    raw?.version !== "0.19E3B-script-repair-result-v1" ||
-    !equalCanonical(raw.sectionPlan, input.generation.sectionPlan)
-  ) {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
-  }
-
-  const attemptCount = Number(raw.attemptCount);
-  const operationIds = Array.isArray(raw.operationIds)
-    ? raw.operationIds.map((value) => clean(value, 300))
-    : [];
-  if (
-    !Number.isInteger(attemptCount) ||
-    attemptCount < 1 ||
-    attemptCount > CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS ||
-    operationIds.length !== attemptCount ||
-    operationIds.some((value) => !value) ||
-    new Set(operationIds).size !== operationIds.length ||
-    checkpoint.operationId !== operationIds.at(-1)
-  ) {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
-  }
-
-  let script: CreatorScript;
   try {
-    script = normalizeCreatorScript(raw.script);
-    assertCreatorScriptMatchesSectionPlan(
-      script,
-      [...input.generation.sectionPlan],
-    );
+    return await replayCreatorScriptBuildCompletedRepair(input);
   } catch {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
+    throw new CreatorScriptBuildAcceptanceError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID");
   }
-  if (
-    script.revision !== input.generation.script.revision + attemptCount ||
-    script.title !== input.generation.script.title ||
-    script.targetDurationSec !== input.generation.script.targetDurationSec ||
-    script.strategyFingerprint !== input.generation.script.strategyFingerprint ||
-    script.generatedAt !== input.generation.script.generatedAt ||
-    script.approval !== null ||
-    !equalCanonical(
-      script.grounding.context,
-      input.generation.script.grounding.context,
-    ) ||
-    script.sections.some((section, index) =>
-      section.id !== input.generation.sectionPlan[index]?.id ||
-      section.kind !== input.generation.sectionPlan[index]?.kind ||
-      section.humanVerification != null
-    )
-  ) {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
-  }
-
-  const initialReport = evaluateFinal({
-    script: input.generation.script,
-    sectionPlan: input.generation.sectionPlan,
-    snapshot: input.build.snapshot,
-  });
-  const finalReport = evaluateFinal({
-    script,
-    sectionPlan: input.generation.sectionPlan,
-    snapshot: input.build.snapshot,
-  });
-  const normalized: CreatorScriptBuildScriptRepairStageResult = deepFreeze({
-    version: "0.19E3B-script-repair-result-v1",
-    script,
-    sectionPlan: [...input.generation.sectionPlan],
-    attemptCount,
-    operationIds,
-    reportSummary: {
-      initialReportVersion: initialReport.version,
-      finalReportVersion: finalReport.version,
-      initialHardViolationCount: hardViolationCount(initialReport),
-      finalHardViolationCount: hardViolationCount(finalReport),
-      finalRepairableViolationCount: finalReport.repairableViolations.length,
-      finalBlockingViolationCount: finalReport.blockingViolations.length,
-    },
-    contractVersions: {
-      coordinator: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION,
-      operation: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
-      checkpoint: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION,
-    },
-  });
-  if (!equalCanonical(raw, normalized)) {
-    throw new CreatorScriptBuildAcceptanceError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_INVALID",
-    );
-  }
-  return normalized;
 }
 
 function acceptanceCheckpointSourceStage(
@@ -890,7 +773,7 @@ async function resumeAcceptedBuild(input: {
     const sourceStage = acceptanceCheckpointSourceStage(checkpointValue);
     const generation = loadGeneration(input.build);
     const source = sourceStage === "repair"
-      ? loadCompletedRepair({ build: input.build, generation })
+      ? await loadCompletedRepair({ build: input.build, generation, repository: input.dependencies.repository })
       : generation;
     const script = source.script;
     const sectionPlan = source.sectionPlan;
@@ -1008,7 +891,7 @@ export async function runCreatorScriptBuildAcceptanceCoordinator(input: {
 
   if (build.state === "REPAIRING") {
     try {
-      const repair = loadCompletedRepair({ build, generation });
+      const repair = await loadCompletedRepair({ build, generation, repository: input.dependencies.repository });
       sourceStage = "repair";
       script = repair.script;
       sectionPlan = repair.sectionPlan;

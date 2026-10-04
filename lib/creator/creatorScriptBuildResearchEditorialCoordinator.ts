@@ -1,3 +1,4 @@
+import { createCreatorScriptBuildEditorialRecoveryContext, type CreatorScriptBuildEditorialRecoveryContext } from "./creatorScriptBuildEditorialAdjudicationRecovery.ts";
 import { createHash } from "node:crypto";
 import {
   canonicalCreatorScriptBuildJson,
@@ -40,15 +41,15 @@ import type {
 import type { ResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
 
 export const CREATOR_SCRIPT_BUILD_RESEARCH_EDITORIAL_COORDINATOR_VERSION =
-  "0.19E2A" as const;
+  "0.19E2A-A2" as const;
 export const CREATOR_SCRIPT_BUILD_RESEARCH_OPERATION_CONTRACT_VERSION =
   "creator-script-build-research-v1" as const;
 export const CREATOR_SCRIPT_BUILD_EDITORIAL_OPERATION_CONTRACT_VERSION =
-  "creator-script-build-editorial-proposal-v1" as const;
+  "creator-script-build-editorial-proposal-v3" as const;
 export const CREATOR_SCRIPT_BUILD_RESEARCH_CHECKPOINT_VERSION =
   "creator-script-build-research-checkpoint-v1" as const;
 export const CREATOR_SCRIPT_BUILD_EDITORIAL_CHECKPOINT_VERSION =
-  "creator-script-build-editorial-checkpoint-v1" as const;
+  "creator-script-build-editorial-checkpoint-v3" as const;
 export const CREATOR_SCRIPT_BUILD_STAGE_SEMANTIC_VERSION =
   "creator-script-build-stage-semantic-v1" as const;
 
@@ -154,6 +155,7 @@ export type CreatorScriptBuildResearchExecutor = (
 
 export type CreatorScriptBuildEditorialProposalExecutor = (
   input: CreatorScriptBuildEditorialExecutionInput,
+  recovery?: CreatorScriptBuildEditorialRecoveryContext,
 ) => Promise<unknown>;
 
 export type CreatorScriptBuildResearchEditorialCoordinatorDependencies = Readonly<{
@@ -1114,6 +1116,10 @@ async function runEditorialStage(input: {
     contractVersion: CREATOR_SCRIPT_BUILD_EDITORIAL_OPERATION_CONTRACT_VERSION,
   });
   const operation = requested.operation;
+  const recovery = createCreatorScriptBuildEditorialRecoveryContext({
+    repository: input.dependencies.repository, build, parentOperationId: operation.operationId,
+    assertAuthority: () => assertCurrentProjectAuthority({ dependencies: input.dependencies, build, stage: "editorial" }),
+  });
 
   if (operation.state === "FAILED") {
     return await handleExistingFailedOperation({
@@ -1126,7 +1132,8 @@ async function runEditorialStage(input: {
       now: input.now,
     });
   }
-  if (operation.state === "OUTCOME_UNCERTAIN" || (operation.state === "PENDING" && !requested.created)) {
+  if (operation.state === "OUTCOME_UNCERTAIN" || (operation.state === "PENDING" && !requested.created &&
+      !await recovery.canResume(buildJson(executionMaterial.executionInput)))) {
     throw new CreatorScriptBuildCoordinatorBlockedError({
       code: "CREATOR_SCRIPT_BUILD_OPERATION_RECONCILIATION_REQUIRED",
       buildId: build.buildId,
@@ -1159,8 +1166,9 @@ async function runEditorialStage(input: {
     });
     let rawProposal: unknown;
     try {
-      rawProposal = await input.dependencies.executeEditorialProposal(executionMaterial.executionInput);
+      rawProposal = await input.dependencies.executeEditorialProposal(executionMaterial.executionInput, recovery.context);
     } catch (error) {
+      if (error instanceof CreatorScriptBuildCoordinatorBlockedError) throw error;
       const executionError = error instanceof CreatorScriptBuildStageExecutionError
         ? error
         : new CreatorScriptBuildStageExecutionError({

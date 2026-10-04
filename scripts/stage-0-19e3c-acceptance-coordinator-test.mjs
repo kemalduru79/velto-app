@@ -77,10 +77,10 @@ function createSnapshot(overrides = {}) {
       claimAuthorityResolver: "0.19C",
       creatorScriptAcceptance: "0.19D",
       creatorScriptBuild: "0.19E1",
-      creatorScriptResearchEditorialCoordinator: "0.19E2A",
+      creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
       creatorScriptBuildAuthorityCoordinator: "0.19E2B",
       creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
-      creatorScriptBuildScriptRepairCoordinator: "0.19E3B",
+      creatorScriptBuildScriptRepairCoordinator: "0.19E3B-S3",
       creatorScriptBuildAcceptanceCoordinator:
         CREATOR_SCRIPT_BUILD_ACCEPTANCE_COORDINATOR_VERSION,
     },
@@ -430,7 +430,7 @@ async function prepare(shape = "accepted") {
 function repairProposal(input, gainMode = "full") {
   assert.equal(input.mode, "additive");
   return {
-    version: "0.19E3B-script-repair-proposal-v1",
+    version: "0.19E3B-script-repair-proposal-v2",
     mode: "additive",
     additions: input.expansionTargets.map((target, index) => ({
       placementAnchorId: target.availablePlacementAnchors[0].id,

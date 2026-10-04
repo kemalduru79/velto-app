@@ -72,7 +72,7 @@ function createSnapshot(overrides = {}) {
       claimAuthorityResolver: "0.19C",
       creatorScriptAcceptance: "0.19D",
       creatorScriptBuild: "0.19E1",
-      creatorScriptResearchEditorialCoordinator: "0.19E2A",
+      creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
       creatorScriptBuildAuthorityCoordinator: "0.19E2B",
       creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
     },
@@ -612,11 +612,15 @@ let successfulRepository;
   assert.equal(repository.requestedOperations.length, 0);
   assert.equal(repository.build.state, "FAILED");
   assert.equal(repository.build.failure.category, "GROUNDING");
-  assert.ok(repository.build.failure.diagnostics.reasonCount > 0);
-  assert.match(
-    repository.build.failure.diagnostics.reasonCodes,
-    /missing_grounded_demonstration_capability/u,
-  );
+  // E6K/E6P adapt unsupported demonstration/uncertainty roles before readiness.
+  // The final plan remains blocked by four sections sharing one claim/evidence.
+  const diagnostics = repository.build.failure.diagnostics;
+  assert.equal(diagnostics.reasonCodes, "collapsed_body_authority");
+  assert.equal(diagnostics.reasonCount, 1);
+  assert.equal(diagnostics.sectionNative, true);
+  assert.equal(diagnostics.readinessApplicable, true);
+  assert.equal(diagnostics.collapsedBodySectionCount, 4);
+  assert.equal(diagnostics.fallbackBodySectionCount, 3);
 }
 
 // The shared readiness helper remains non-applicable for short/non-section-native work.

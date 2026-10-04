@@ -371,7 +371,9 @@ export async function runCreatorScriptBuildV2(input: {
     });
   }
 
-  const fetchImpl = input.fetchImpl || fetch;
+  const fetchImpl: FetchLike =
+    input.fetchImpl ||
+    ((...args) => fetch(...args));
   const maxAdvances = Number.isInteger(input.maxAdvances)
     ? Math.max(1, Math.min(50, Number(input.maxAdvances)))
     : CREATOR_SCRIPT_BUILD_MAX_ADVANCES;

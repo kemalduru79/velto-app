@@ -121,6 +121,11 @@ function uncertaintyClaimId(context: ScriptPlannerEditorialContext) {
     null;
 }
 
+function counterviewClaimId(context: ScriptPlannerEditorialContext) {
+  return context.claims.find((claim) => claim.counterEvidenceIds.length > 0)?.claimId ||
+    null;
+}
+
 /**
  * Returns the exact claim routing used by section-native generation. Keeping
  * this in one pure helper prevents readiness and provider context from drifting.
@@ -132,6 +137,7 @@ export function createCreatorScriptSectionClaimRouting(input: {
   const bodySections = input.plan.filter((section) => section.kind === "body");
   const demonstrationClaimId = concreteDemonstrationClaimId(input.context);
   const limitsClaimId = uncertaintyClaimId(input.context);
+  const counterClaimId = counterviewClaimId(input.context);
   return input.plan.map((section) => {
     const bodyIndex = section.kind === "body"
       ? bodySections.findIndex((item) => item.id === section.id)
@@ -145,9 +151,11 @@ export function createCreatorScriptSectionClaimRouting(input: {
           );
     const roleClaimId = roleOwns(section, "grounded_demonstration") || roleOwns(section, "concrete_case")
       ? demonstrationClaimId
-      : roleOwns(section, "limits") || roleOwns(section, "uncertainty") || roleOwns(section, "scope_conditions")
-        ? limitsClaimId
-        : null;
+      : roleOwns(section, "counterview") || roleOwns(section, "thesis_stress_test")
+        ? counterClaimId
+        : roleOwns(section, "limits") || roleOwns(section, "uncertainty") || roleOwns(section, "scope_conditions")
+          ? limitsClaimId
+          : null;
     const usedFallback = section.kind === "body" && relevantClaims.length === 0 && !roleClaimId;
     const claims = relevantClaims.length > 0
       ? relevantClaims
@@ -177,6 +185,10 @@ function isEvidenceDependentBodyRole(section: CreatorScriptSectionBudget) {
     "causal_process",
     "grounded_demonstration",
     "concrete_case",
+    "grounded_synthesis",
+    "evidence_interpretation",
+    "grounded_tension",
+    "evidence_boundary",
     "counterview",
     "thesis_stress_test",
     "limits",
@@ -306,9 +318,89 @@ export function createCreatorLongFormEvidenceCapabilityEvaluation(input: {
 }
 
 /**
+ * Keeps long-form structure honest when the canonical evidence is substantial
+ * but does not contain a concrete observational case. The demonstration slot
+ * remains evidence-dependent and keeps its id/kind/word budget, but its
+ * intellectual role is downgraded from "demonstrate a concrete case" to
+ * "synthesize supported findings". No factual authority is added or upgraded.
+ *
+ * Other readiness blockers remain untouched and are re-evaluated against the
+ * adapted plan by the caller.
+ */
+export function adaptCreatorLongFormSectionPlanToEvidenceCapability(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}): CreatorScriptSectionBudget[] {
+  const evaluation = createCreatorLongFormEvidenceCapabilityEvaluation(input);
+  if (
+    !evaluation.demonstrationSectionId ||
+    evaluation.hasGroundedDemonstrationCapability
+  ) {
+    return input.plan;
+  }
+
+  return input.plan.map((section) => {
+    if (section.id !== evaluation.demonstrationSectionId) return section;
+    return {
+      ...section,
+      role: "Synthesize the strongest grounded findings without inventing a concrete case",
+      centralQuestion:
+        "What do the strongest supported findings establish, and what remains interpretation rather than direct observation?",
+      progression:
+        "Moves from causal explanation to grounded evidence synthesis while preserving the specificity actually available in the evidence.",
+      ownershipBoundary: {
+        usage: "control_only_never_narrate" as const,
+        owns: ["grounded_synthesis", "evidence_interpretation"],
+        excludes: [
+          "mechanism_reteaching",
+          "invented_case",
+          "unsupported_specificity",
+          "limits",
+          "social_formation",
+          "material_consequence",
+        ],
+      },
+    };
+  });
+}
+
+/**
  * Answers whether a valid canonical graph can responsibly serve the actual
  * section-native long-form plan. It does not score research or promote sources.
  */
+export function adaptCreatorLongFormSectionPlanToUncertaintyCapability(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}) {
+  const capabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation(input);
+  const limitsSectionId = capabilityEvaluation.limitsSectionId;
+  if (!limitsSectionId || capabilityEvaluation.hasUncertaintyCapability) {
+    return input.plan;
+  }
+  return input.plan.map((section) =>
+    section.id !== limitsSectionId
+      ? section
+      : {
+          ...section,
+          role: "Develop the strongest grounded tension and evidence boundary without inventing uncertainty",
+          centralQuestion: "What tension do the supported findings establish, and what can we responsibly conclude without adding unsupported uncertainty?",
+          progression: "Moves from the established evidence to a grounded tension between supported findings while preserving the boundary of what the evidence actually establishes.",
+          ownershipBoundary: {
+            usage: "control_only_never_narrate" as const,
+            owns: ["grounded_tension", "evidence_boundary"],
+            excludes: [
+              "invented_uncertainty",
+              "unsupported_scope_condition",
+              "mechanism_summary",
+              "evidence_summary",
+              "social_formation",
+              "material_consequence",
+            ],
+          },
+        }
+  );
+}
+
 export function createCreatorLongFormEvidenceReadiness(input: {
   context: ScriptPlannerEditorialContext;
   plan: CreatorScriptSectionBudget[];

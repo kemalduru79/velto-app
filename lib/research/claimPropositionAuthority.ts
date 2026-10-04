@@ -7,6 +7,8 @@ import {
   type ResearchPropositionKind,
 } from "./claimEvidenceGraph.ts";
 
+export const CLAIM_PROPOSITION_AUTHORITY_VERSION = "claim-proposition-authority-v2" as const;
+
 export type ClaimPropositionAuthority = {
   claimId: string;
   propositionKind: ResearchPropositionKind;
@@ -32,7 +34,9 @@ export class ClaimPropositionAuthorityDisagreementError extends Error {
 
   constructor(disagreement: ClaimPropositionAuthorityDisagreement) {
     super([
-      "EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS",
+      disagreement.adjudicatedKind === "ambiguous"
+        ? "EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS"
+        : "EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT",
       disagreement.claimId,
       `initialKind=${disagreement.initialKind}`,
       `adjudicatedKind=${disagreement.adjudicatedKind}`,
@@ -106,6 +110,22 @@ function sameOrigin(left: ResearchClaimOrigin, right: ResearchClaimOrigin) {
     left.referencedWork === right.referencedWork;
 }
 
+function isOriginDeattribution(
+  initial: ResearchClaimOrigin,
+  adjudicated: ResearchClaimOrigin,
+) {
+  const fields = ["attributedEntity", "referencedWork"] as const;
+  let changed = false;
+
+  for (const field of fields) {
+    if (initial[field] === adjudicated[field]) continue;
+    if (adjudicated[field] !== null) return false;
+    changed = true;
+  }
+
+  return changed;
+}
+
 /**
  * Reconciles exactly one provider adjudication against the initial proposal.
  * The adjudicator has authority only over proposition classification; all other
@@ -130,9 +150,18 @@ export function reconcileClaimPropositionAuthorities(input: {
   const initialAuthorities = initialClaims.map((claim) =>
     normalizeAuthority(claim, { requireClaimType: true })
   );
-  const adjudicatedAuthorities = adjudication.claims.map((claim) =>
-    normalizeAuthority(claim, { requireClaimType: false })
-  );
+  const adjudicatedAuthorities = adjudication.claims.map((claim) => {
+    const authority = normalizeAuthority(claim, { requireClaimType: false });
+    return authority.propositionKind === "world_state"
+      ? {
+          ...authority,
+          origin: {
+            attributedEntity: null,
+            referencedWork: null,
+          },
+        }
+      : authority;
+  });
   const initialIds = initialAuthorities.map((claim) => claim.claimId);
   const adjudicatedIds = adjudicatedAuthorities.map((claim) => claim.claimId);
   if (
@@ -234,6 +263,27 @@ export function reconcileClaimPropositionAuthorities(input: {
       sameWorkPrimarySemanticKinds.has(initial.propositionKind) &&
       sameWorkPrimarySemanticKinds.has(adjudicated.propositionKind);
 
+    // One directed refinement only. Raw equality prevents normalization from
+    // concealing an entity/work substitution; adjudication cannot rewrite prose
+    // or evidence, which are retained from the initial proposal below.
+    const initialRaw = record(initialClaims[initialIds.indexOf(initial.claimId)])!;
+    const adjudicatedRaw = record(adjudication.claims[adjudicatedIds.indexOf(initial.claimId)])!;
+    const initialRawOrigin = record(initialRaw.origin)!;
+    const adjudicatedRawOrigin = record(adjudicatedRaw.origin)!;
+    const isSameOriginResearchAttributionRefinement =
+      initialSemanticallyValid &&
+      initial.propositionKind === "original_research_result" &&
+      adjudicated.propositionKind === "attributed_statement" &&
+      initialRequiresPrimary && adjudicatedRequiresPrimary &&
+      originMatches && Boolean(adjudicated.origin.attributedEntity) &&
+      initialRawOrigin.attributedEntity === adjudicatedRawOrigin.attributedEntity &&
+      initialRawOrigin.referencedWork === adjudicatedRawOrigin.referencedWork &&
+      typeof initialRaw.text === "string" && Boolean(initialRaw.text.trim()) &&
+      Object.keys(adjudicatedRaw).sort().join(",") === "claimId,origin,propositionKind";
+    if (initial.propositionKind === "original_research_result" &&
+        adjudicated.propositionKind === "attributed_statement" &&
+        !isSameOriginResearchAttributionRefinement) throw disagreement();
+
     const sameOriginNonPrimarySemanticKinds =
       new Set<ResearchPropositionKind>([
         "expert_synthesis",
@@ -247,12 +297,24 @@ export function reconcileClaimPropositionAuthorities(input: {
       sameOriginNonPrimarySemanticKinds.has(initial.propositionKind) &&
       sameOriginNonPrimarySemanticKinds.has(adjudicated.propositionKind);
 
+    const isSameKindEditorialDeattributionRefinement =
+      initialSemanticallyValid &&
+      claimType === "EDITORIAL_INFERENCE" &&
+      kindMatches &&
+      !originMatches &&
+      !initialRequiresPrimary &&
+      !adjudicatedRequiresPrimary &&
+      sameOriginNonPrimarySemanticKinds.has(initial.propositionKind) &&
+      isOriginDeattribution(initial.origin, adjudicated.origin);
+
     if (
       initialSemanticallyValid &&
       !agrees &&
       !isMonotonicPrimaryObligationUpgrade &&
       !isSameWorkPrimarySemanticRefinement &&
-      !isSameOriginNonPrimarySemanticRefinement
+      !isSameOriginResearchAttributionRefinement &&
+      !isSameOriginNonPrimarySemanticRefinement &&
+      !isSameKindEditorialDeattributionRefinement
     ) {
       throw disagreement();
     }
@@ -261,7 +323,9 @@ export function reconcileClaimPropositionAuthorities(input: {
       !initialSemanticallyValid ||
       isMonotonicPrimaryObligationUpgrade ||
       isSameWorkPrimarySemanticRefinement ||
-      isSameOriginNonPrimarySemanticRefinement
+      isSameOriginResearchAttributionRefinement ||
+      isSameOriginNonPrimarySemanticRefinement ||
+      isSameKindEditorialDeattributionRefinement
         ? adjudicated
         : initial;
 

@@ -37,6 +37,8 @@ import type { CreatorScriptBuildRepository } from "../persistence/creatorScriptB
 import { createResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
 import { createEditorialScriptContext } from "../research/editorialScriptContext.ts";
 import {
+  adaptCreatorLongFormSectionPlanToEvidenceCapability,
+  adaptCreatorLongFormSectionPlanToUncertaintyCapability,
   createCreatorLongFormEvidenceReadiness,
   type CreatorLongFormEvidenceReadiness,
 } from "../research/creatorLongFormEvidenceReadiness.ts";
@@ -311,7 +313,7 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
   const hasMaterialCounterview = editorialContext.claims.some(
     (claim) => claim.counterEvidenceIds.length > 0,
   );
-  const sectionPlan = createCreatorScriptSectionBudgetPlan({
+  const baseSectionPlan = createCreatorScriptSectionBudgetPlan({
     targetDurationSec: duration,
     language: input.snapshot.language,
     hasMaterialCounterview,
@@ -324,6 +326,18 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
   const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
     durationContract.targetWordCount,
   );
+  const demonstrationAdaptiveSectionPlan = sectionNative
+    ? adaptCreatorLongFormSectionPlanToEvidenceCapability({
+        context: editorialContext,
+        plan: baseSectionPlan,
+      })
+    : baseSectionPlan;
+  const sectionPlan = sectionNative
+    ? adaptCreatorLongFormSectionPlanToUncertaintyCapability({
+        context: editorialContext,
+        plan: demonstrationAdaptiveSectionPlan,
+      })
+    : baseSectionPlan;
   const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
     context: editorialContext,
     plan: sectionPlan,

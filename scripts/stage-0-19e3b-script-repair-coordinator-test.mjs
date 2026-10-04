@@ -46,558 +46,10 @@ import {
   classifyResearchSourceDirectness,
 } from "../lib/research/sourceAssessment.ts";
 
-const ownerId = "00000000-0000-4000-8000-000000000003";
-const otherOwnerId = "00000000-0000-4000-8000-000000000099";
-const buildId = "30000000-0000-4000-8000-000000000003";
-const projectId = "00000000-0000-4000-8000-000000000001";
-const revision = "2026-10-03T10:00:00.000Z";
-const generationNow = "2026-10-03T10:00:01.000Z";
-const repairNow = "2026-10-03T10:00:02.000Z";
-
-function clone(value) {
-  return structuredClone(value);
-}
-
-function createSnapshot(overrides = {}) {
-  return createCreatorScriptBuildSnapshot({
-    projectId,
-    expectedProjectRevision: revision,
-    strategyFingerprint: "strategy-fingerprint-e3b",
-    language: "en",
-    requestedDurationSeconds: overrides.requestedDurationSeconds || 120,
-    strategy: {
-      topic: "Memory and identity",
-      researchSubject: "How reconstructive memory shapes identity",
-      title: "The Memory That Made You",
-      contentType: "documentary essay",
-      format: "short documentary",
-      selectedDirectionId: "direction-a",
-      selectedHook: "What if memory changes while identity depends on it?",
-      approvedStrategy: {
-        framing: "identity",
-        selectedDirectionId: "direction-a",
-      },
-    },
-    creatorProfile: {
-      brandName: "",
-      brandVoice: "documentary",
-      defaultAudience: "educated general audience",
-      defaultFormat: "youtube_video",
-    },
-    contractVersions: {
-      canonicalEditorialGraph: "0.19A",
-      editorialEvidenceSpanCatalog: "0.19B",
-      claimAuthorityResolver: "0.19C",
-      creatorScriptAcceptance: "0.19D",
-      creatorScriptBuild: "0.19E1",
-      creatorScriptResearchEditorialCoordinator: "0.19E2A",
-      creatorScriptBuildAuthorityCoordinator: "0.19E2B",
-      creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
-      creatorScriptBuildScriptRepairCoordinator: "0.19E3B",
-    },
-  });
-}
-
-const secondarySource = {
-  sourceId: "web:https://secondary.example/memory",
-  adapterId: "web",
-  mediaKind: "article",
-  externalId: null,
-  title: "Memory in context",
-  url: "https://secondary.example/memory",
-  publisher: "Secondary Review",
-  author: "A. Reporter",
-  publishedAt: "2026-01-01",
-  language: "en",
-  summary: "Memory contributes to identity while a grounded counter-reading remains possible.",
-  thumbnailUrl: null,
-  durationSec: null,
-  metrics: {},
-  sourceMetadata: {},
-};
-
-function authorityFixture() {
-  const graph = createResearchClaimEvidenceGraph({
-    sources: [secondarySource],
-    claims: [
-      {
-        claimId: "claim-safe",
-        claimType: "FACT",
-        text: "Autobiographical memory contributes to identity.",
-        propositionKind: "world_state",
-        origin: { attributedEntity: null, referencedWork: null },
-      },
-      {
-        claimId: "claim-excluded",
-        claimType: "FACT",
-        text: "An excluded researcher made a primary-source statement.",
-        propositionKind: "attributed_statement",
-        origin: { attributedEntity: "Excluded Researcher", referencedWork: null },
-      },
-    ],
-    evidence: [
-      {
-        evidenceId: "evidence-safe",
-        sourceId: secondarySource.sourceId,
-        excerpt: "Memory contributes to identity.",
-        contextNote: "Grounded contextual account.",
-        locator: {
-          section: "overview",
-          page: null,
-          timecodeStartSec: null,
-          timecodeEndSec: null,
-        },
-      },
-      {
-        evidenceId: "evidence-excluded",
-        sourceId: secondarySource.sourceId,
-        excerpt: "A secondary account repeats an attributed statement.",
-        contextNote: null,
-        locator: {
-          section: null,
-          page: null,
-          timecodeStartSec: null,
-          timecodeEndSec: null,
-        },
-      },
-    ],
-    links: [
-      { claimId: "claim-safe", evidenceId: "evidence-safe", stance: "supports" },
-      {
-        claimId: "claim-excluded",
-        evidenceId: "evidence-excluded",
-        stance: "supports",
-      },
-    ],
-  });
-  const sourceAssessments = graph.sources.map((source) =>
-    assessResearchSource(source, classifyResearchSourceDirectness(source).directness)
-  );
-  const finalAuthority = resolveClaimAuthority({ graph, sourceAssessments });
-  return {
-    version: "0.19E2B-authority-result-v1",
-    graph,
-    sourceAssessments,
-    initialAuthority: finalAuthority,
-    finalAuthority,
-    acquisitionPlan: [],
-    acquisitionOperationId: null,
-    selectionOperationId: null,
-    repairedClaimIds: [],
-    unresolvedClaimIds: [],
-    excludedPrimaryClaimIds: ["claim-excluded"],
-    permittedClaimIds: ["claim-safe"],
-    spanCatalogVersion: "0.19B",
-    segmentationVersion: "editorial-grounding-segmentation-v1",
-  };
-}
-
-const authority = authorityFixture();
-
-function authorityCheckpoint(authorityValue = authority) {
-  return {
-    checkpointId: createCreatorScriptBuildCheckpointId({
-      buildId,
-      stage: "authority",
-      contractVersion: "creator-script-build-authority-checkpoint-v1",
-    }),
-    stage: "authority",
-    status: "COMPLETED",
-    contractVersion: "creator-script-build-authority-checkpoint-v1",
-    operationId: null,
-    outputReference: {
-      version: "0.19E2B-authority-checkpoint-output-v1",
-      result: authorityValue,
-    },
-    diagnostics: {},
-    startedAt: revision,
-    completedAt: revision,
-  };
-}
-
-function buildRecord(snapshot, overrides = {}) {
-  return {
-    buildId,
-    ownerId,
-    projectId,
-    idempotencyKey: createCreatorScriptBuildIdempotencyKey({ ownerId, snapshot }),
-    state: "AUTHORITY_RESOLVED",
-    snapshot,
-    checkpoints: { authority: authorityCheckpoint() },
-    failure: null,
-    resultAuthority: null,
-    createdAt: revision,
-    updatedAt: revision,
-    ...overrides,
-  };
-}
-
-class MemoryRepository {
-  constructor(initialBuild, operations = []) {
-    this.build = clone(initialBuild);
-    this.operations = new Map(
-      operations.map((operation) => [operation.operationId, clone(operation)]),
-    );
-    this.transitions = [];
-    this.requestedOperations = [];
-    this.checkpointWrites = [];
-  }
-
-  async request() { throw new Error("unused"); }
-  async getForOwner(requestedBuildId, requestedOwnerId) {
-    return requestedBuildId === this.build.buildId &&
-        requestedOwnerId === this.build.ownerId
-      ? clone(this.build)
-      : null;
-  }
-  async getByIdempotencyForOwner() { return null; }
-  async transition(input) {
-    assert.equal(input.ownerId, this.build.ownerId);
-    assert.equal(input.buildId, this.build.buildId);
-    assert.equal(input.expectedState, this.build.state);
-    assertCreatorScriptBuildTransition(input.expectedState, input.nextState);
-    if (
-      input.resultAuthority != null &&
-      input.nextState !== "ACCEPTED" && input.nextState !== "PERSISTED"
-    ) throw new Error("RESULT_AUTHORITY_STATE_INVALID");
-    this.transitions.push(`${input.expectedState}->${input.nextState}`);
-    this.build = {
-      ...this.build,
-      state: input.nextState,
-      failure: input.failure || null,
-      resultAuthority: input.resultAuthority ?? this.build.resultAuthority,
-      updatedAt: repairNow,
-    };
-    return clone(this.build);
-  }
-  async saveCheckpoint(input) {
-    assert.equal(input.ownerId, this.build.ownerId);
-    assert.equal(input.buildId, this.build.buildId);
-    assert.equal(input.expectedBuildState, this.build.state);
-    assertCreatorScriptBuildCheckpointIdentity({
-      buildId: input.buildId,
-      checkpoint: input.checkpoint,
-    });
-    const previous = this.build.checkpoints[input.checkpoint.stage] || null;
-    const allowed = !previous
-      ? ["PENDING", "RUNNING"].includes(input.checkpoint.status)
-      : previous.status === "PENDING"
-        ? ["RUNNING", "COMPLETED", "FAILED"].includes(input.checkpoint.status)
-        : previous.status === "RUNNING"
-          ? ["COMPLETED", "FAILED"].includes(input.checkpoint.status)
-          : false;
-    if (!allowed && JSON.stringify(previous) !== JSON.stringify(input.checkpoint)) {
-      throw new Error("CHECKPOINT_TRANSITION_INVALID");
-    }
-    this.checkpointWrites.push(clone(input.checkpoint));
-    this.build = {
-      ...this.build,
-      checkpoints: {
-        ...this.build.checkpoints,
-        [input.checkpoint.stage]: clone(input.checkpoint),
-      },
-    };
-    return clone(this.build);
-  }
-  async requestOperation(input) {
-    this.requestedOperations.push(clone(input));
-    const operationId = createCreatorScriptBuildOperationId(input);
-    const existing = this.operations.get(operationId);
-    if (existing) return { operation: clone(existing), created: false };
-    const operation = {
-      operationId,
-      buildId: input.buildId,
-      ownerId: input.ownerId,
-      stage: input.stage,
-      operationType: input.operationType,
-      semanticFingerprint: input.semanticFingerprint,
-      contractVersion: input.contractVersion,
-      state: "PENDING",
-      resultReference: null,
-      failure: null,
-      createdAt: repairNow,
-      updatedAt: repairNow,
-    };
-    this.operations.set(operationId, operation);
-    return { operation: clone(operation), created: true };
-  }
-  async getOperationForOwner(operationId, requestedBuildId, requestedOwnerId) {
-    const operation = this.operations.get(operationId);
-    if (
-      !operation || operation.buildId !== requestedBuildId ||
-      operation.ownerId !== requestedOwnerId
-    ) return null;
-    return clone(operation);
-  }
-  async transitionOperation(input) {
-    const operation = this.operations.get(input.operationId);
-    assert.ok(operation);
-    assert.equal(operation.state, input.expectedState);
-    assertCreatorScriptBuildOperationTransition(input.expectedState, input.nextState);
-    const next = {
-      ...operation,
-      state: input.nextState,
-      resultReference: input.resultReference ?? null,
-      failure: input.failure || null,
-      updatedAt: repairNow,
-    };
-    this.operations.set(input.operationId, next);
-    return clone(next);
-  }
-}
-
-function textWithWords(prefix, wordCount, suffix = "") {
-  assert.ok(wordCount >= 6, `word count too small: ${wordCount}`);
-  const words = Array.from({ length: wordCount }, (_, index) =>
-    `${prefix}${index + 1}`
-  );
-  words[2] = `${words[2]}.`;
-  if (suffix) words.splice(Math.max(3, words.length - 4), 1, suffix);
-  words[words.length - 1] = `${words.at(-1)}.`;
-  return words.join(" ");
-}
-
-function sectionCounts(input, shape) {
-  const counts = input.sectionPlan.map((section) => section.targetWords);
-  const totalTarget = counts.reduce((sum, value) => sum + value, 0);
-  const minimum = Math.ceil(totalTarget * 0.9);
-  if (shape === "accepted" || shape === "distinctiveness") return counts;
-  const desiredTotal = shape === "repairable_short" ? minimum - 30
-    : shape === "blocking_short" ? minimum - 40
-    : shape === "repairable_long" ? Math.floor(totalTarget * 1.1) + 10
-    : totalTarget;
-  const bodyIndex = input.sectionPlan.findIndex((section) => section.kind === "body");
-  counts[bodyIndex] += desiredTotal - totalTarget;
-  assert.ok(counts[bodyIndex] >= 6);
-  return counts;
-}
-
-function generationProposal(input, shape) {
-  const counts = sectionCounts(input, shape);
-  let bodyNumber = 0;
-  return {
-    version: "0.19E3A-script-generation-proposal-v1",
-    sections: input.sectionPlan.map((section, index) => {
-      if (section.kind === "body") bodyNumber += 1;
-      const heading = shape === "distinctiveness" && section.kind === "body"
-        ? "Shared Memory Pattern"
-        : section.kind === "opening"
-          ? "Unsettled Beginning"
-          : section.kind === "conclusion"
-            ? "Identity Beyond Recall"
-            : `Memory Mechanism ${bodyNumber}`;
-      return {
-        heading,
-        text: textWithWords(`${section.kind}${index}word`, counts[index]),
-        claimIds: index === 1 ? [input.permittedClaimIds[0]] : [],
-      };
-    }),
-  };
-}
-
-async function prepare(shape = "repairable_short", options = {}) {
-  const snapshot = createSnapshot({
-    requestedDurationSeconds: options.requestedDurationSeconds ||
-      (shape === "distinctiveness" ? 300 : 120),
-  });
-  const repository = new MemoryRepository(buildRecord(snapshot));
-  let generationCalls = 0;
-  await runCreatorScriptBuildScriptGenerationCoordinator({
-    ownerId,
-    buildId,
-    dependencies: {
-      repository,
-      getCurrentProjectRevision: async () => revision,
-      executeScriptGeneration: async (input) => {
-        generationCalls += 1;
-        return generationProposal(input, shape);
-      },
-      now: () => generationNow,
-    },
-  });
-  assert.equal(generationCalls, 1);
-  repository.transitions.length = 0;
-  repository.requestedOperations.length = 0;
-  repository.checkpointWrites.length = 0;
-  return { repository, snapshot };
-}
-
-function loadSetup(repository) {
-  const authorityResult = normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(
-    repository.build.checkpoints.authority.outputReference,
-  );
-  const generationInput = createCreatorScriptBuildScriptGenerationInput({
-    snapshot: repository.build.snapshot,
-    authority: authorityResult,
-  });
-  const generation = normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint({
-    buildId,
-    value: repository.build.checkpoints.script_generation.outputReference,
-    authority: generationInput,
-  });
-  const report = evaluateCreatorScriptAcceptance({
-    script: generation.script,
-    sectionPlan: [...generation.sectionPlan],
-    language: repository.build.snapshot.language,
-    narrationAuthority: createCreatorScriptNarrationAuthority({
-      editorialContext: generation.script.grounding.context,
-      creatorProvidedText: [
-        repository.build.snapshot.strategy.topic,
-        repository.build.snapshot.strategy.title,
-        repository.build.snapshot.strategy.approvedStrategy,
-      ],
-    }),
-  });
-  const repairInput = report.repairRequired
-    ? createCreatorScriptBuildScriptRepairInput({
-        snapshot: repository.build.snapshot,
-        script: generation.script,
-        sectionPlan: generation.sectionPlan,
-        report,
-        attempt: 1,
-      })
-    : null;
-  return { generation, report, repairInput };
-}
-
-function wordsForTarget(prefix, targetWords, suffix = "") {
-  return textWithWords(prefix, Math.max(6, targetWords), suffix);
-}
-
-function repairProposal(input, options = {}) {
-  const forged = {
-    title: "provider title",
-    targetDurationSec: 1,
-    strategyFingerprint: "provider fingerprint",
-    revision: 99,
-    approval: { approvedRevision: 99 },
-    grounding: { context: { provider: true } },
-    generatedAt: "1900-01-01T00:00:00.000Z",
-    updatedAt: "1900-01-01T00:00:00.000Z",
-  };
-  if (input.mode === "additive") {
-    return {
-      version: "0.19E3B-script-repair-proposal-v1",
-      mode: "additive",
-      ...forged,
-      additions: input.expansionTargets.map((target, index) => ({
-        id: "provider-target",
-        kind: "conclusion",
-        placementAnchorId: options.invalidAnchor
-          ? "provider-anchor"
-          : target.availablePlacementAnchors[0].id,
-        additionalText: wordsForTarget(
-          `addition${input.attempt}${index}word`,
-          options.additionWords?.(target, input) ?? target.requestedGainWords,
-          options.unsafeNarration ? "THYNEL" : "",
-        ),
-        claimIds: options.claimIds || [],
-        humanVerification: { scriptRevision: 99 },
-        evidenceReviewRequired: true,
-      })),
-    };
-  }
-  const currentById = new Map(
-    input.currentScriptAuthority.sections.map((section) => [section.id, section]),
-  );
-  return {
-    version: "0.19E3B-script-repair-proposal-v1",
-    mode: "replacement",
-    ...forged,
-    sections: input.replacementTargets.map((target, index) => {
-      const current = currentById.get(target.sectionId);
-      const defaultWords = target.direction === "compress"
-        ? target.requiredFinalMaxWords
-        : target.requiredFinalTargetWords;
-      return {
-        id: "provider-section-id",
-        kind: "conclusion",
-        heading: options.sameHeading
-          ? "Shared Memory Pattern"
-          : `Distinct Repair ${index + 1} ${target.sectionId}`,
-        text: wordsForTarget(
-          `replacement${input.attempt}${index}word`,
-          options.replacementWords?.(target, input) ?? defaultWords,
-          options.unsafeNarration ? "this documentary explores" : "",
-        ),
-        claimIds: options.claimIds || current.claimIds,
-        evidenceReviewRequired: true,
-        humanVerification: { scriptRevision: 99 },
-      };
-    }),
-  };
-}
-
-function dependencies(repository, options = {}) {
-  let providerCalls = 0;
-  let authorityCalls = 0;
-  const repairInputs = [];
-  return {
-    deps: {
-      repository,
-      getCurrentProjectRevision: async () => {
-        authorityCalls += 1;
-        return options.currentRevision
-          ? options.currentRevision(authorityCalls)
-          : revision;
-      },
-      executeScriptRepair: async (input) => {
-        providerCalls += 1;
-        repairInputs.push(clone(input));
-        if (options.executeScriptRepair) {
-          return await options.executeScriptRepair(input, providerCalls);
-        }
-        return repairProposal(input, options.proposalOptions || {});
-      },
-      now: options.now || (() => repairNow),
-    },
-    counts: () => ({ providerCalls, authorityCalls }),
-    inputs: () => clone(repairInputs),
-  };
-}
-
-async function expectBlocked(promise, code) {
-  await assert.rejects(promise, (error) => {
-    assert.ok(error instanceof CreatorScriptBuildCoordinatorBlockedError);
-    assert.equal(error.code, code);
-    return true;
-  });
-}
-
-function repairOperationFixture(repository, state, overrides = {}) {
-  const { repairInput } = loadSetup(repository);
-  assert.ok(repairInput);
-  const semanticFingerprint =
-    createCreatorScriptBuildScriptRepairSemanticFingerprint(repairInput);
-  const operationId = createCreatorScriptBuildScriptRepairOperationId({
-    buildId,
-    repairInput,
-  });
-  return {
-    operationId,
-    buildId,
-    ownerId,
-    stage: "repair",
-    operationType: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_TYPE,
-    semanticFingerprint,
-    contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
-    state,
-    resultReference: null,
-    failure: state === "FAILED"
-      ? {
-          category: "PROVIDER",
-          code: "CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_FAILED",
-          stage: "repair",
-          retryability: "NON_RETRYABLE",
-          operationId,
-          diagnostics: {},
-        }
-      : null,
-    createdAt: repairNow,
-    updatedAt: repairNow,
-    ...overrides,
-  };
-}
+import {
+  ownerId, otherOwnerId, buildId, revision, generationNow, repairNow, clone,
+  MemoryRepository, prepare, loadSetup, dependencies, expectBlocked, repairOperationFixture,
+} from "./test-support/creator-script-repair-replay.mjs";
 
 // 1. Accepted generation is observed but E3B creates no repair authority.
 {
@@ -650,7 +102,7 @@ let successful;
   assert.equal(result.build.state, "REPAIRING");
   assert.equal(result.observedReport.accepted, true);
   assert.equal(result.repair.attemptCount, 1);
-  assert.deepEqual(counts(), { providerCalls: 1, authorityCalls: 2 });
+  assert.deepEqual(counts(), { providerCalls: 1, authorityCalls: 5 });
   assert.deepEqual(repository.transitions, ["SCRIPT_GENERATED->REPAIRING"]);
   assert.equal(repository.requestedOperations.length, 1);
   assert.equal(repository.requestedOperations[0].stage, "repair");
@@ -864,7 +316,7 @@ for (const state of ["PENDING", "OUTCOME_UNCERTAIN", "FAILED"]) {
 {
   const { repository } = await prepare("repairable_short");
   const { deps, counts } = dependencies(repository, {
-    currentRevision: (call) => call < 3 ? revision : "2026-10-03T12:00:00.000Z",
+    currentRevision: (call) => call < 4 ? revision : "2026-10-03T12:00:00.000Z",
     proposalOptions: { additionWords: () => 10 },
   });
   await expectBlocked(
@@ -927,58 +379,16 @@ for (const state of ["PENDING", "OUTCOME_UNCERTAIN", "FAILED"]) {
   assert.equal(repository.requestedOperations.length, 2);
 }
 
-// 38. A valid candidate that introduces a blocker is not granted a second call.
-{
-  const { repository } = await prepare("distinctiveness");
-  const { deps, counts } = dependencies(repository, {
-    proposalOptions: { unsafeNarration: true },
-  });
-  const result = await runCreatorScriptBuildScriptRepairCoordinator({
-    ownerId,
-    buildId,
-    dependencies: deps,
-  });
-  assert.equal(counts().providerCalls, 1);
-  assert.equal(result.repair.attemptCount, 1);
-  assert.equal(result.observedReport.repairRequired, false);
-  assert.ok(result.observedReport.blockingViolations.some((violation) =>
-    violation.code === "NARRATION_SAFETY"
-  ));
-  assert.equal(result.build.state, "REPAIRING");
-  assert.equal(result.build.failure, null);
-}
-
-// 38. A valid additive result may become policy-blocked without failing the paid
-// operation or the build; material improvement only gates a second attempt.
-{
-  const { repository } = await prepare("repairable_short");
-  const { deps, counts, inputs } = dependencies(repository, {
-    proposalOptions: { unsafeNarration: true },
-  });
-  const result = await runCreatorScriptBuildScriptRepairCoordinator({
-    ownerId,
-    buildId,
-    dependencies: deps,
-  });
-  assert.equal(counts().providerCalls, 1);
-  assert.equal(result.repair.attemptCount, 1);
-  assert.equal(result.build.state, "REPAIRING");
-  assert.equal(result.build.failure, null);
-  assert.equal(result.observedReport.accepted, false);
-  assert.equal(result.observedReport.repairRequired, false);
-  assert.ok(result.observedReport.blockingViolations.some((violation) =>
-    violation.code === "NARRATION_SAFETY"
-  ));
-  assert.equal(repository.requestedOperations.length, 1);
-  const operationId = createCreatorScriptBuildScriptRepairOperationId({
-    buildId,
-    repairInput: inputs()[0],
-  });
-  assert.equal(repository.operations.get(operationId)?.state, "COMPLETED");
-  assert.equal(repository.build.checkpoints.repair?.status, "COMPLETED");
-  assert.ok(!repository.transitions.some((value) =>
-    value.includes("ACCEPTED") || value.includes("PERSISTED")
-  ));
+// Unsafe assembled prose remains a settled operation artifact, never a repair revision.
+for (const shape of ["distinctiveness", "repairable_short"]) {
+  const { repository } = await prepare(shape);
+  const { deps, counts } = dependencies(repository, { proposalOptions: { unsafeNarration: true } });
+  await expectBlocked(runCreatorScriptBuildScriptRepairCoordinator({ ownerId, buildId, dependencies: deps }),
+    "CREATOR_SCRIPT_BUILD_REPAIR_ASSEMBLED_SCRIPT_REJECTED");
+  assert.equal(repository.build.state, "FAILED");
+  assert.equal(repository.build.resultAuthority, null);
+  assert.equal(repository.build.checkpoints.persistence, undefined);
+  assert.ok(counts().providerCalls >= 1);
 }
 
 // 37-38. The explicit second-attempt gate rejects unchanged policy reports.
@@ -1052,9 +462,9 @@ for (const forbiddenClaimId of ["claim-unknown", "claim-excluded"]) {
   });
   await expectBlocked(
     runCreatorScriptBuildScriptRepairCoordinator({ ownerId, buildId, dependencies: deps }),
-    "CREATOR_SCRIPT_BUILD_REPAIR_WRONG_DIRECTION",
+    "CREATOR_SCRIPT_BUILD_REPAIR_BUDGET_EXHAUSTED",
   );
-  assert.equal(counts().providerCalls, 1);
+  assert.equal(counts().providerCalls, 2);
   assert.equal(repository.build.state, "FAILED");
 }
 
@@ -1066,9 +476,9 @@ for (const forbiddenClaimId of ["claim-unknown", "claim-excluded"]) {
   });
   await expectBlocked(
     runCreatorScriptBuildScriptRepairCoordinator({ ownerId, buildId, dependencies: deps }),
-    "CREATOR_SCRIPT_BUILD_REPAIR_DISTINCTIVENESS_REGRESSION",
+    "CREATOR_SCRIPT_BUILD_REPAIR_BUDGET_EXHAUSTED",
   );
-  assert.equal(counts().providerCalls, 1);
+  assert.equal(counts().providerCalls, 2);
   assert.equal(repository.build.state, "FAILED");
 }
 
@@ -1124,7 +534,7 @@ for (const state of [
   assert.doesNotMatch(moduleText, /resultAuthority\s*:/u);
   assert.match(moduleText, /evaluateCreatorScriptAcceptance/u);
   assert.match(moduleText, /creatorScriptAcceptanceMateriallyImproved/u);
-  assert.match(moduleText, /attempt <= CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS/u);
+  assert.match(moduleText, /round <= CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS/u);
 }
 
 console.log("stage-0-19e3b-script-repair-coordinator-test: PASS");

@@ -251,7 +251,7 @@ assert.throws(
       }],
     },
   }),
-  /EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:claim-1/,
+  /EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT:claim-1/,
   "a primary-bearing initial classification cannot be silently downgraded",
 );
 assert.throws(
@@ -268,7 +268,7 @@ assert.throws(
       }],
     },
   }),
-  /EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:claim-1/,
+  /EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT:claim-1/,
   "one valid primary-bearing semantic authority cannot be silently substituted for another",
 );
 
@@ -280,7 +280,7 @@ try {
       claimId: "claim-structured-disagreement",
       claimType: "THEORY",
       text: boundedDisagreementText,
-      propositionKind: "original_research_result",
+      propositionKind: "document_assertion",
       origin: attributedOrigin,
     }],
     adjudication: {
@@ -295,13 +295,13 @@ try {
 } catch (error) {
   assert.ok(error instanceof ClaimPropositionAuthorityDisagreementError);
   structuredDisagreement = error.disagreement;
-  assert.match(error.message, /^EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:claim-structured-disagreement:/);
+  assert.match(error.message, /^EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT:claim-structured-disagreement:/);
 }
 assert.deepEqual(structuredDisagreement, {
   claimId: "claim-structured-disagreement",
   claimType: "THEORY",
   claimText: boundedDisagreementText.replace(/\s+/g, " ").trim().slice(0, 600),
-  initialKind: "original_research_result",
+  initialKind: "document_assertion",
   initialOrigin: attributedOrigin,
   adjudicatedKind: "attributed_statement",
   adjudicatedOrigin: attributedOrigin,
@@ -328,7 +328,7 @@ assert.throws(
       }],
     },
   }),
-  /EDITORIAL_CLAIM_ORIGIN_AMBIGUOUS:claim-non-primary-substitution/,
+  /EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT:claim-non-primary-substitution/,
   "one valid non-primary semantic authority cannot be silently substituted for another",
 );
 assert.throws(

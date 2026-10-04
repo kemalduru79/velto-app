@@ -491,31 +491,57 @@ export function applyEditorialPrimaryCoverageRepair(input: {
 
   // Safe degradation:
   // the frozen editorial graph above remains unchanged. We derive a separate
-  // script-authority graph that omits only claims whose mandatory primary
-  // authority could not be verified. Their links are removed as well, so the
-  // Script Planner cannot silently use them.
+  // script-authority graph that first omits claims whose mandatory primary
+  // authority could not be verified. If at least one traceably supported claim
+  // survives, any remaining evidence-required claim without supporting evidence
+  // is also removed from script authority. If none survive, the graph remains
+  // blocked and downstream generation still fails closed.
   const excludedClaimIdSet = new Set(unresolvedClaimIds);
-  const scriptSafeClaims = graph.claims.filter(
-    (claim) => !excludedClaimIdSet.has(claim.claimId),
-  );
 
-  if (scriptSafeClaims.length === 0) {
-    throw new Error("EDITORIAL_PRIMARY_COVERAGE_NO_SAFE_CLAIMS");
-  }
+  const createScriptSafeGraph = () => {
+    const scriptSafeClaims = graph.claims.filter(
+      (claim) => !excludedClaimIdSet.has(claim.claimId),
+    );
 
-  const scriptSafeGraph = createResearchClaimEvidenceGraph({
-    sources: graph.sources,
-    claims: scriptSafeClaims,
-    evidence: graph.evidence,
-    links: graph.links.filter(
-      (link) => !excludedClaimIdSet.has(link.claimId),
-    ),
-  });
+    if (scriptSafeClaims.length === 0) {
+      throw new Error("EDITORIAL_PRIMARY_COVERAGE_NO_SAFE_CLAIMS");
+    }
 
-  const scriptSafeReadiness = createResearchTopicReadiness({
+    return createResearchClaimEvidenceGraph({
+      sources: graph.sources,
+      claims: scriptSafeClaims,
+      evidence: graph.evidence,
+      links: graph.links.filter(
+        (link) => !excludedClaimIdSet.has(link.claimId),
+      ),
+    });
+  };
+
+  let scriptSafeGraph = createScriptSafeGraph();
+  let scriptSafeReadiness = createResearchTopicReadiness({
     graph: scriptSafeGraph,
     sourceAssessments,
   });
+
+  const supportedClaimIds = new Set(
+    scriptSafeGraph.links
+      .filter((link) => link.stance === "supports")
+      .map((link) => link.claimId),
+  );
+
+  if (
+    supportedClaimIds.size > 0 &&
+    scriptSafeReadiness.unsupportedClaimIds.length > 0
+  ) {
+    scriptSafeReadiness.unsupportedClaimIds.forEach((claimId) =>
+      excludedClaimIdSet.add(claimId)
+    );
+    scriptSafeGraph = createScriptSafeGraph();
+    scriptSafeReadiness = createResearchTopicReadiness({
+      graph: scriptSafeGraph,
+      sourceAssessments,
+    });
+  }
 
   if (
     scriptSafeReadiness.reviewReasons.includes(

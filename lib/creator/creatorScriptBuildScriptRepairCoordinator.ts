@@ -1,3 +1,4 @@
+import { CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_POLICY_VERSION } from "./creatorScriptBuildRepairProviderPolicy.ts";
 import { createHash } from "node:crypto";
 import {
   applyCreatorScriptAdditiveExpansion,
@@ -51,17 +52,19 @@ import {
 import type { CreatorScriptBuildRepository } from "../persistence/creatorScriptBuilds/types.ts";
 
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION =
-  "0.19E3B" as const;
+  "0.19E3B-S3" as const;
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION =
-  "creator-script-build-script-repair-checkpoint-v1" as const;
+  "creator-script-build-script-repair-checkpoint-v3" as const;
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION =
-  "creator-script-build-script-repair-operation-v1" as const;
+  "creator-script-build-script-repair-operation-v3" as const;
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_TYPE =
   "creator_script_build_script_repair" as const;
 export const CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS = 2 as const;
+// Shared across rounds: rejected responses consume this budget too.
+export const CREATOR_SCRIPT_BUILD_MAX_CANDIDATES_PER_TARGET = 2 as const;
 
 const SCRIPT_REPAIR_SEMANTIC_FINGERPRINT_VERSION =
-  "creator-script-build-script-repair-semantic-v1" as const;
+  "creator-script-build-script-repair-semantic-v3" as const;
 
 type CreatorScriptBuildRepairDirection =
   | "expand"
@@ -107,8 +110,14 @@ type CreatorScriptBuildSemanticScriptAuthority = Readonly<{
 }>;
 
 export type CreatorScriptBuildScriptRepairInput = Readonly<{
-  version: "0.19E3B-script-repair-request-v1";
+  version: "0.19E3B-script-repair-request-v2";
   attempt: 1 | 2;
+  candidate: Readonly<{
+    buildId: string;
+    sectionId: string;
+    ordinal: 1 | 2;
+    rejectionFeedback: CreatorScriptBuildCandidateValidation | null;
+  }> | null;
   mode: "additive" | "replacement";
   currentScriptAuthority: CreatorScriptBuildSemanticScriptAuthority;
   sectionPlan: readonly CreatorScriptSectionBudget[];
@@ -126,10 +135,13 @@ export type CreatorScriptBuildScriptRepairInput = Readonly<{
 }>;
 
 export type CreatorScriptBuildScriptRepairStageResult = Readonly<{
-  version: "0.19E3B-script-repair-result-v1";
+  version: "0.19E3B-script-repair-result-v2";
   script: CreatorScript;
   sectionPlan: readonly CreatorScriptSectionBudget[];
   attemptCount: number;
+  candidateAttemptCount: number;
+  appliedRevisionCount: number;
+  candidateCallLimit: number;
   operationIds: readonly string[];
   reportSummary: Readonly<{
     initialReportVersion: string;
@@ -176,17 +188,22 @@ class CreatorScriptBuildRepairError extends Error {
   readonly category: CreatorScriptBuildFailureCategory;
   readonly code: string;
   readonly operationId: string | null;
+  readonly retryability: CreatorScriptBuildFailure["retryability"];
+  readonly diagnostics: Record<string, string | number | boolean | null>;
 
   constructor(
     category: CreatorScriptBuildFailureCategory,
     code: string,
     operationId: string | null = null,
+    detail: { retryability?: CreatorScriptBuildFailure["retryability"]; diagnostics?: Record<string, string | number | boolean | null> } = {},
   ) {
     super(code);
     this.name = "CreatorScriptBuildRepairError";
     this.category = category;
     this.code = code;
     this.operationId = operationId;
+    this.retryability = detail.retryability || "NON_RETRYABLE";
+    this.diagnostics = detail.diagnostics || {};
   }
 }
 
@@ -221,9 +238,15 @@ function buildJson(value: unknown): CreatorScriptBuildJson {
 }
 
 function equalCanonical(left: unknown, right: unknown) {
-  const comparable = (value: unknown) => JSON.parse(JSON.stringify(value));
-  return canonicalCreatorScriptBuildJson(comparable(left)) ===
-    canonicalCreatorScriptBuildJson(comparable(right));
+  try {
+    const leftJson = JSON.stringify(left);
+    const rightJson = JSON.stringify(right);
+    return leftJson !== undefined && rightJson !== undefined &&
+      canonicalCreatorScriptBuildJson(JSON.parse(leftJson)) ===
+        canonicalCreatorScriptBuildJson(JSON.parse(rightJson));
+  } catch {
+    return false;
+  }
 }
 
 function semanticScriptAuthority(
@@ -287,23 +310,41 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
   );
   const direction = repairDirection(input.report);
   const replacementTargets = repairMode(input.report) === "replacement"
-    ? createCreatorScriptRepairTargets({
-        sections: repairSectionIds.map((sectionId) => {
-          const diagnostic = sectionDiagnostics.get(sectionId);
-          if (!diagnostic) {
-            throw new Error(
-              `CREATOR_SCRIPT_BUILD_REPAIR_TARGET_MISSING:${sectionId}`,
-            );
-          }
-          return diagnostic;
-        }),
-        direction,
-      }).map((target) => ({
-        ...target,
-        strategy: input.report.repairableViolations.find((violation) =>
-          violation.sectionId === target.sectionId
-        )?.repairStrategy || input.report.repairableViolations[0].repairStrategy,
-      }))
+    ? repairSectionIds.flatMap((sectionId) => {
+        const diagnostic = sectionDiagnostics.get(sectionId);
+        if (!diagnostic) {
+          throw new Error(
+            `CREATOR_SCRIPT_BUILD_REPAIR_TARGET_MISSING:${sectionId}`,
+          );
+        }
+        const sectionViolation = input.report.repairableViolations.find(
+          (violation) => violation.sectionId === sectionId,
+        );
+        const localDirection: CreatorScriptBuildRepairDirection =
+          diagnostic.actualWords < diagnostic.minimumWords
+            ? "expand"
+            : diagnostic.actualWords > diagnostic.maximumWords
+              ? "compress"
+              : sectionViolation?.repairStrategy === "expand"
+                ? "expand"
+                : sectionViolation?.repairStrategy === "compress"
+                  ? "compress"
+                  : sectionViolation?.repairStrategy === "differentiate"
+                    ? "differentiate_sections"
+                    : input.report.duration.status === "too_short"
+                      ? "expand"
+                      : input.report.duration.status === "too_long"
+                        ? "compress"
+                        : direction;
+        return createCreatorScriptRepairTargets({
+          sections: [diagnostic],
+          direction: localDirection,
+        }).map((target) => ({
+          ...target,
+          strategy: sectionViolation?.repairStrategy ||
+            input.report.repairableViolations[0].repairStrategy,
+        }));
+      })
     : [];
   const expansionTargets = repairMode(input.report) === "additive"
     ? getCreatorScriptAcceptanceExpansionTargets({
@@ -319,8 +360,9 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
     throw new Error("CREATOR_SCRIPT_BUILD_REPAIR_TARGETS_REQUIRED");
   }
   return deepFreeze({
-    version: "0.19E3B-script-repair-request-v1" as const,
+    version: "0.19E3B-script-repair-request-v2" as const,
     attempt: input.attempt,
+    candidate: null,
     mode: repairMode(input.report),
     currentScriptAuthority: semanticScriptAuthority(input.script),
     sectionPlan: [...input.sectionPlan],
@@ -355,6 +397,7 @@ export function createCreatorScriptBuildScriptRepairSemanticFingerprint(
   return `${SCRIPT_REPAIR_SEMANTIC_FINGERPRINT_VERSION}:${createHash("sha256")
     .update(canonicalCreatorScriptBuildJson({
       contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
+      providerPolicyVersion: CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_POLICY_VERSION,
       input,
     }), "utf8")
     .digest("hex")}`;
@@ -372,6 +415,42 @@ export function createCreatorScriptBuildScriptRepairOperationId(input: {
       createCreatorScriptBuildScriptRepairSemanticFingerprint(input.repairInput),
     contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
   });
+}
+
+/** Only a completed local compression may authorize a new duration compensation round. */
+export function creatorScriptBuildRepairAllowsCrossConstraintContinuation(input: {
+  completedAttempt: number;
+  previous: CreatorScriptAcceptanceReport;
+  current: CreatorScriptAcceptanceReport;
+  script: CreatorScript;
+  sectionPlan: readonly CreatorScriptSectionBudget[];
+  compressedSectionIds: readonly string[];
+  remainingProviderCalls: number;
+}) {
+  if (input.completedAttempt !== 1 ||
+      input.completedAttempt >= CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS ||
+      input.remainingProviderCalls <= 0 || !input.current.repairRequired ||
+      input.current.blockingViolations.length > 0) return false;
+  const previousHard = input.previous.violations.filter((v) => v.severity === "hard");
+  const currentHard = input.current.violations.filter((v) => v.severity === "hard");
+  // A pure local overflow -> pure repairable shortage transition only.
+  if (previousHard.length === 0 || previousHard.some((v) =>
+    v.code !== "SECTION_OVER_MAX" || !v.repairable || !v.sectionId ||
+    !input.compressedSectionIds.includes(v.sectionId) ||
+    !input.current.sections.some((s) => s.id === v.sectionId && !s.missing &&
+      s.actualWords >= s.minimumWords && s.actualWords <= s.maximumWords)
+  )) return false;
+  if (currentHard.length !== 1 || currentHard[0].code !== "GLOBAL_DURATION_TOO_SHORT" ||
+      currentHard[0].sectionId !== null || !currentHard[0].repairable ||
+      repairMode(input.current) !== "additive") return false;
+  const deficit = input.current.duration.minimumAcceptableWordCount - input.current.duration.actualWordCount;
+  const targets = getCreatorScriptAcceptanceExpansionTargets({
+    script: input.script, report: input.current, sectionPlan: [...input.sectionPlan],
+  });
+  return deficit > 0 && targets.length > 0 && targets.every((target) =>
+    target.requestedGainWords > 0 &&
+    target.requestedGainWords <= target.maxAdditionalWords
+  ) && targets.reduce((sum, target) => sum + target.requestedGainWords, 0) >= deficit;
 }
 
 export function creatorScriptBuildRepairAllowsNextAttempt(input: {
@@ -453,72 +532,105 @@ function sectionFromReplacementProposal(input: {
   };
 }
 
+export type CreatorScriptBuildCandidateValidation = Readonly<{
+  accepted: boolean;
+  reason: string;
+  sectionId: string;
+  beforeWords: number;
+  candidateWords: number | null;
+  minimumWords: number;
+  maximumWords: number;
+}>;
+
+type ReplacementOutcome = Readonly<{
+  validation: CreatorScriptBuildCandidateValidation;
+  section: CreatorScriptSection | null;
+}>;
+
+export function createCreatorScriptBuildReplacementCandidateInput(input: {
+  roundInput: CreatorScriptBuildScriptRepairInput;
+  buildId: string;
+  sectionId: string;
+  ordinal: 1 | 2;
+  rejectionFeedback?: CreatorScriptBuildCandidateValidation | null;
+}): CreatorScriptBuildScriptRepairInput {
+  const target = input.roundInput.replacementTargets.find((item) =>
+    item.sectionId === input.sectionId
+  );
+  if (input.roundInput.mode !== "replacement" || !target || !input.buildId ||
+      (input.ordinal !== 1 && input.ordinal !== 2)) {
+    throw new Error("CREATOR_SCRIPT_BUILD_REPAIR_TARGET_INVALID");
+  }
+  return deepFreeze({
+    ...input.roundInput,
+    repairSectionIds: [target.sectionId],
+    replacementTargets: [target],
+    candidate: {
+      buildId: input.buildId,
+      sectionId: target.sectionId,
+      ordinal: input.ordinal,
+      rejectionFeedback: input.rejectionFeedback || null,
+    },
+  });
+}
+
 function assembleReplacementProposal(input: {
   value: Record<string, unknown>;
   repairInput: CreatorScriptBuildScriptRepairInput;
   currentScript: CreatorScript;
-  updatedAt: string;
-}) {
-  const proposals = Array.isArray(input.value.sections) ? input.value.sections : [];
-  if (proposals.length !== input.repairInput.replacementTargets.length) {
+}): ReplacementOutcome {
+  const target = input.repairInput.replacementTargets[0];
+  const proposal = record(input.value.section);
+  if (!input.repairInput.candidate || input.repairInput.replacementTargets.length !== 1 ||
+      !target || !proposal || typeof proposal.sectionId !== "string" ||
+      typeof proposal.text !== "string" || !Array.isArray(proposal.claimIds) ||
+      !(proposal.heading === null || typeof proposal.heading === "string")) {
     throw new CreatorScriptBuildRepairError(
-      "MODEL_CONTRACT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_PROPOSAL_INVALID",
+      "MODEL_CONTRACT", "CREATOR_SCRIPT_BUILD_REPAIR_PROPOSAL_INVALID",
     );
   }
-  const currentById = new Map(
-    input.currentScript.sections.map((section) => [section.id, section]),
-  );
+  const diagnostic = (reason: string, candidateWords: number | null): ReplacementOutcome => ({
+    validation: {
+      accepted: false, reason, sectionId: target.sectionId,
+      beforeWords: target.beforeWords, candidateWords,
+      minimumWords: target.requiredFinalMinWords,
+      maximumWords: target.requiredFinalMaxWords,
+    },
+    section: null,
+  });
+  // Validate grounding even for a rejected geometric candidate.
   const allowedClaimIds = new Set(input.repairInput.permittedClaimIds);
-  const replacements = input.repairInput.replacementTargets.map((target, index) => {
-    const currentSection = currentById.get(target.sectionId);
-    if (!currentSection) {
-      throw new CreatorScriptBuildRepairError(
-        "SCRIPT_POLICY",
-        "CREATOR_SCRIPT_BUILD_REPAIR_TARGET_INVALID",
-      );
-    }
-    return sectionFromReplacementProposal({
-      currentSection,
-      value: proposals[index],
-      allowedClaimIds,
-    });
-  });
-  const replacementDiagnostics = getCreatorScriptRepairReplacementDiagnostics({
-    script: input.currentScript,
-    plan: [...input.repairInput.sectionPlan],
-    replacements,
-  });
-  if (
-    replacementDiagnostics.length !== replacements.length ||
-    replacementDiagnostics.some((diagnostic) => !diagnostic.accepted)
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "SCRIPT_POLICY",
-      "CREATOR_SCRIPT_BUILD_REPAIR_WRONG_DIRECTION",
-    );
+  assertClaimIdsPermitted(proposal.claimIds, allowedClaimIds);
+  if (proposal.sectionId !== target.sectionId) {
+    return diagnostic("wrong_section_identity", null);
   }
-  const distinctive = filterCreatorScriptDistinctiveRepairReplacements({
-    script: input.currentScript,
-    replacements,
-    plan: [...input.repairInput.sectionPlan],
-  });
-  if (distinctive.replacements.length !== replacements.length) {
-    throw new CreatorScriptBuildRepairError(
-      "SCRIPT_POLICY",
-      "CREATOR_SCRIPT_BUILD_REPAIR_DISTINCTIVENESS_REGRESSION",
-    );
-  }
-  const replacementById = new Map(
-    replacements.map((section) => [section.id, section]),
+  const currentSection = input.currentScript.sections.find((section) =>
+    section.id === target.sectionId
   );
-  return createCanonicalRepairedScript({
-    currentScript: input.currentScript,
-    sections: input.currentScript.sections.map((section) =>
-      replacementById.get(section.id) || section
-    ),
-    updatedAt: input.updatedAt,
+  if (!currentSection) throw new CreatorScriptBuildRepairError(
+    "SCRIPT_POLICY", "CREATOR_SCRIPT_BUILD_REPAIR_TARGET_INVALID",
+  );
+  const geometry = getCreatorScriptRepairReplacementDiagnostics({
+    script: input.currentScript,
+    plan: [...input.repairInput.sectionPlan],
+    replacements: [{ id: target.sectionId, text: proposal.text }],
+    targets: [target],
+  })[0];
+  if (!geometry.accepted) return diagnostic(geometry.reason, geometry.candidateWords);
+  const section = sectionFromReplacementProposal({
+    currentSection, value: proposal, allowedClaimIds,
   });
+  const distinctive = filterCreatorScriptDistinctiveRepairReplacements({
+    script: input.currentScript, replacements: [section],
+    plan: [...input.repairInput.sectionPlan],
+  });
+  if (distinctive.replacements.length !== 1) {
+    return diagnostic("distinctiveness_rejection", geometry.candidateWords);
+  }
+  return {
+    validation: { ...diagnostic("accepted", geometry.candidateWords).validation, accepted: true },
+    section,
+  };
 }
 
 function assembleAdditiveProposal(input: {
@@ -628,7 +740,7 @@ function assembleCanonicalRepairProposal(input: {
 }) {
   const proposal = record(input.value);
   if (
-    proposal?.version !== "0.19E3B-script-repair-proposal-v1" ||
+    proposal?.version !== "0.19E3B-script-repair-proposal-v2" ||
     proposal.mode !== input.repairInput.mode
   ) {
     throw new CreatorScriptBuildRepairError(
@@ -638,85 +750,51 @@ function assembleCanonicalRepairProposal(input: {
   }
   return input.repairInput.mode === "additive"
     ? assembleAdditiveProposal({ ...input, value: proposal })
-    : assembleReplacementProposal({ ...input, value: proposal });
+    : (() => { throw new CreatorScriptBuildRepairError("INTERNAL", "CREATOR_SCRIPT_BUILD_REPAIR_SINGLE_TARGET_REQUIRED"); })();
 }
 
-function normalizeCanonicalRepairScript(input: {
-  value: unknown;
-  currentScript: CreatorScript;
-  repairInput: CreatorScriptBuildScriptRepairInput;
-}) {
-  let script: CreatorScript;
-  try {
-    script = normalizeCreatorScript(input.value);
-  } catch {
-    throw new CreatorScriptBuildRepairError(
-      "MODEL_CONTRACT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID",
-    );
-  }
-  if (
-    script.title !== input.currentScript.title ||
-    script.targetDurationSec !== input.currentScript.targetDurationSec ||
-    script.strategyFingerprint !== input.currentScript.strategyFingerprint ||
-    script.generatedAt !== input.currentScript.generatedAt ||
-    script.revision !== input.currentScript.revision + 1 ||
-    script.approval !== null ||
-    !equalCanonical(script.grounding.context, input.currentScript.grounding.context) ||
-    script.sections.length !== input.repairInput.sectionPlan.length
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "SCRIPT_POLICY",
-      "CREATOR_SCRIPT_BUILD_REPAIR_AUTHORITY_MISMATCH",
-    );
-  }
-  const targetIds = new Set(input.repairInput.repairSectionIds);
-  const allowedClaimIds = new Set(input.repairInput.permittedClaimIds);
-  for (const [index, section] of script.sections.entries()) {
-    const expected = input.repairInput.sectionPlan[index];
-    const previous = input.currentScript.sections[index];
-    if (
-      section.id !== expected?.id ||
-      section.kind !== expected.kind ||
-      section.humanVerification != null ||
-      section.evidenceReviewRequired ||
-      section.claimIds.some((claimId) => !allowedClaimIds.has(claimId))
-    ) {
-      throw new CreatorScriptBuildRepairError(
-        "SCRIPT_POLICY",
-        "CREATOR_SCRIPT_BUILD_REPAIR_AUTHORITY_MISMATCH",
-      );
-    }
-    if (!targetIds.has(section.id) && !equalCanonical(section, previous)) {
-      throw new CreatorScriptBuildRepairError(
-        "SCRIPT_POLICY",
-        "CREATOR_SCRIPT_BUILD_REPAIR_UNTARGETED_MUTATION",
-      );
-    }
-  }
-  return script;
-}
+type RepairOperationOutcome = Readonly<{
+  script: CreatorScript | null;
+  replacement: ReplacementOutcome | null;
+  assembledAt: string;
+}>;
 
 function normalizeOperationResult(input: {
   value: CreatorScriptBuildJson | null;
   currentScript: CreatorScript;
   repairInput: CreatorScriptBuildScriptRepairInput;
-}) {
+}): RepairOperationOutcome {
   const raw = record(input.value);
-  if (
-    raw?.version !== "0.19E3B-script-repair-operation-result-v1" ||
-    Number(raw.attempt) !== input.repairInput.attempt
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "MODEL_CONTRACT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID",
-    );
+  if (raw?.version !== "0.19E3B-script-repair-operation-result-v2" ||
+      !equalCanonical(raw.request, input.repairInput) ||
+      raw.semanticFingerprint !== createCreatorScriptBuildScriptRepairSemanticFingerprint(input.repairInput) ||
+      typeof raw.assembledAt !== "string" || !Number.isFinite(Date.parse(raw.assembledAt))) {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID");
   }
-  return normalizeCanonicalRepairScript({
-    value: raw.script,
-    currentScript: input.currentScript,
-    repairInput: input.repairInput,
+  const recomputed = validateRepairResponse({
+    value: raw.proposal, currentScript: input.currentScript,
+    repairInput: input.repairInput, updatedAt: raw.assembledAt,
   });
+  if (!equalCanonical(raw.outcome, recomputed)) {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID");
+  }
+  return { ...recomputed, assembledAt: raw.assembledAt };
+}
+
+function validateRepairResponse(input: {
+  value: unknown;
+  currentScript: CreatorScript;
+  repairInput: CreatorScriptBuildScriptRepairInput;
+  updatedAt: string;
+}): Omit<RepairOperationOutcome, "assembledAt"> {
+  const proposal = record(input.value);
+  if (proposal?.version !== "0.19E3B-script-repair-proposal-v2" ||
+      proposal.mode !== input.repairInput.mode) {
+    throw new CreatorScriptBuildRepairError("MODEL_CONTRACT", "CREATOR_SCRIPT_BUILD_REPAIR_PROPOSAL_INVALID");
+  }
+  return input.repairInput.mode === "replacement"
+    ? { script: null, replacement: assembleReplacementProposal({ ...input, value: proposal }) }
+    : { script: assembleCanonicalRepairProposal(input), replacement: null };
 }
 
 function reportHardViolationCount(report: CreatorScriptAcceptanceReport) {
@@ -728,15 +806,19 @@ function createStageResult(input: {
   script: CreatorScript;
   sectionPlan: readonly CreatorScriptSectionBudget[];
   attemptCount: number;
+  candidateCallLimit: number;
   operationIds: readonly string[];
   initialReport: CreatorScriptAcceptanceReport;
   finalReport: CreatorScriptAcceptanceReport;
 }): CreatorScriptBuildScriptRepairStageResult {
   return deepFreeze({
-    version: "0.19E3B-script-repair-result-v1" as const,
+    version: "0.19E3B-script-repair-result-v2" as const,
     script: input.script,
     sectionPlan: [...input.sectionPlan],
     attemptCount: input.attemptCount,
+    candidateAttemptCount: input.operationIds.length,
+    appliedRevisionCount: input.attemptCount,
+    candidateCallLimit: input.candidateCallLimit,
     operationIds: [...input.operationIds],
     reportSummary: {
       initialReportVersion: input.initialReport.version,
@@ -898,10 +980,7 @@ async function failBuild(input: {
 }): Promise<never> {
   const previous = input.build.checkpoints.repair || null;
   let build = input.build;
-  if (build.state === "REPAIRING" && previous?.status !== "FAILED") {
-    if (previous?.status === "COMPLETED") {
-      throw new Error("CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_ALREADY_COMPLETED");
-    }
+  if (build.state === "REPAIRING" && previous?.status !== "FAILED" && previous?.status !== "COMPLETED") {
     build = await input.repository.saveCheckpoint({
       ownerId: build.ownerId,
       buildId: build.buildId,
@@ -989,87 +1068,6 @@ function loadGeneration(input: {
   return { generationInput, generation };
 }
 
-function normalizeCompletedRepairCheckpoint(input: {
-  value: CreatorScriptBuildJson | null;
-  generation: CreatorScriptBuildScriptGenerationStageResult;
-  initialReport: CreatorScriptAcceptanceReport;
-  evaluate: (script: CreatorScript) => CreatorScriptAcceptanceReport;
-}) {
-  const raw = record(input.value);
-  const result = record(raw?.result);
-  if (
-    raw?.version !== "0.19E3B-script-repair-checkpoint-output-v1" ||
-    result?.version !== "0.19E3B-script-repair-result-v1" ||
-    !equalCanonical(result.sectionPlan, input.generation.sectionPlan)
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID",
-    );
-  }
-  const attemptCount = Number(result.attemptCount);
-  const operationIds = Array.isArray(result.operationIds)
-    ? result.operationIds.map((value) => clean(value, 300))
-    : [];
-  if (
-    !Number.isInteger(attemptCount) || attemptCount < 1 ||
-    attemptCount > CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS ||
-    operationIds.length !== attemptCount || operationIds.some((value) => !value)
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID",
-    );
-  }
-  let script: CreatorScript;
-  try {
-    script = normalizeCreatorScript(result.script);
-  } catch {
-    throw new CreatorScriptBuildRepairError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID",
-    );
-  }
-  if (
-    script.revision !== input.generation.script.revision + attemptCount ||
-    script.title !== input.generation.script.title ||
-    script.targetDurationSec !== input.generation.script.targetDurationSec ||
-    script.strategyFingerprint !== input.generation.script.strategyFingerprint ||
-    script.generatedAt !== input.generation.script.generatedAt ||
-    script.approval !== null ||
-    !equalCanonical(
-      script.grounding.context,
-      input.generation.script.grounding.context,
-    ) ||
-    script.sections.length !== input.generation.sectionPlan.length ||
-    script.sections.some((section, index) =>
-      section.id !== input.generation.sectionPlan[index]?.id ||
-      section.kind !== input.generation.sectionPlan[index]?.kind ||
-      section.humanVerification != null
-    )
-  ) {
-    throw new CreatorScriptBuildRepairError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID",
-    );
-  }
-  const finalReport = input.evaluate(script);
-  const normalized = createStageResult({
-    script,
-    sectionPlan: input.generation.sectionPlan,
-    attemptCount,
-    operationIds,
-    initialReport: input.initialReport,
-    finalReport,
-  });
-  if (!equalCanonical(result, normalized)) {
-    throw new CreatorScriptBuildRepairError(
-      "INPUT",
-      "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID",
-    );
-  }
-  return { repair: normalized, observedReport: finalReport };
-}
 
 async function executeRepairOperation(input: {
   dependencies: CreatorScriptBuildScriptRepairCoordinatorDependencies;
@@ -1077,28 +1075,45 @@ async function executeRepairOperation(input: {
   currentScript: CreatorScript;
   repairInput: CreatorScriptBuildScriptRepairInput;
   now: () => string;
+  replayOnly?: boolean;
 }) {
-  await assertCurrentProjectAuthority({
+  if (!input.replayOnly) await assertCurrentProjectAuthority({
     dependencies: input.dependencies,
     build: input.build,
   });
   const semanticFingerprint =
     createCreatorScriptBuildScriptRepairSemanticFingerprint(input.repairInput);
-  const requested = await input.dependencies.repository.requestOperation({
-    ownerId: input.build.ownerId,
-    buildId: input.build.buildId,
-    stage: "repair",
+  const identity = {
+    ownerId: input.build.ownerId, buildId: input.build.buildId, stage: "repair" as const,
     operationType: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_TYPE,
-    semanticFingerprint,
-    contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
+    semanticFingerprint, contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_OPERATION_VERSION,
+  };
+  const operationId = createCreatorScriptBuildScriptRepairOperationId({
+    buildId: input.build.buildId, repairInput: input.repairInput,
   });
+  const stored = input.replayOnly
+    ? await input.dependencies.repository.getOperationForOwner(operationId, input.build.buildId, input.build.ownerId)
+    : null;
+  if (input.replayOnly && !stored) throw new CreatorScriptBuildRepairError(
+    "INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_MISSING",
+  );
+  const requested = input.replayOnly
+    ? { operation: stored!, created: false }
+    : await input.dependencies.repository.requestOperation(identity);
   const operation = requested.operation;
+  if (operation.operationId !== operationId || operation.buildId !== identity.buildId ||
+      operation.ownerId !== identity.ownerId || operation.stage !== identity.stage ||
+      operation.operationType !== identity.operationType ||
+      operation.semanticFingerprint !== semanticFingerprint || operation.contractVersion !== identity.contractVersion) {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_IDENTITY_INVALID", operationId);
+  }
   if (operation.state === "FAILED") {
     throw new CreatorScriptBuildRepairError(
       operation.failure?.category || "INTERNAL",
       operation.failure?.code ||
         "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_FAILED_WITHOUT_FAILURE",
       operation.operationId,
+      { retryability: operation.failure?.retryability },
     );
   }
   if (
@@ -1111,16 +1126,21 @@ async function executeRepairOperation(input: {
       operationId: operation.operationId,
     });
   }
+  if ((input.replayOnly || operation.state === "COMPLETED") && !creatorScriptBuildOperationIsReusable(operation)) {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID", operation.operationId);
+  }
   if (creatorScriptBuildOperationIsReusable(operation)) {
-    return {
-      script: normalizeOperationResult({
-        value: operation.resultReference,
-        currentScript: input.currentScript,
-        repairInput: input.repairInput,
-      }),
-      operationId: operation.operationId,
-      build: input.build,
-    };
+    try {
+      return {
+        ...normalizeOperationResult({
+          value: operation.resultReference, currentScript: input.currentScript,
+          repairInput: input.repairInput,
+        }),
+        operationId: operation.operationId, build: input.build,
+      };
+    } catch {
+      throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID", operation.operationId);
+    }
   }
 
   const build = await markRepairRunning({
@@ -1129,6 +1149,7 @@ async function executeRepairOperation(input: {
     operationId: operation.operationId,
     now: input.now,
   });
+  await assertCurrentProjectAuthority({ dependencies: input.dependencies, build });
   let rawProposal: unknown;
   try {
     rawProposal = await input.dependencies.executeScriptRepair(input.repairInput);
@@ -1174,15 +1195,17 @@ async function executeRepairOperation(input: {
       executionError.category,
       executionError.code,
       operation.operationId,
+      { retryability: executionError.retryability, diagnostics: { ...executionError.diagnostics } },
     );
   }
-  let script: CreatorScript;
+  let outcome: Omit<RepairOperationOutcome, "assembledAt">;
+  const assembledAt = input.now();
   try {
-    script = assembleCanonicalRepairProposal({
+    outcome = validateRepairResponse({
       value: rawProposal,
       repairInput: input.repairInput,
       currentScript: input.currentScript,
-      updatedAt: input.now(),
+      updatedAt: assembledAt,
     });
   } catch (error) {
     const repairError = error instanceof CreatorScriptBuildRepairError
@@ -1195,6 +1218,7 @@ async function executeRepairOperation(input: {
       category: repairError.category,
       code: repairError.code,
       operationId: operation.operationId,
+      diagnostics: { rejectionReason: repairError.code === "CREATOR_SCRIPT_BUILD_REPAIR_PROPOSAL_INVALID" ? "malformed_proposal" : "authority_or_policy_failure" },
     });
     await input.dependencies.repository.transitionOperation({
       ownerId: build.ownerId,
@@ -1203,6 +1227,7 @@ async function executeRepairOperation(input: {
       expectedState: "PENDING",
       nextState: "FAILED",
       failure,
+      resultReference: buildJson({ version: "0.19E3B-script-repair-invalid-proposal-v2", request: input.repairInput, proposal: rawProposal, diagnostics: failure.diagnostics }),
     });
     throw new CreatorScriptBuildRepairError(
       repairError.category,
@@ -1217,12 +1242,153 @@ async function executeRepairOperation(input: {
     expectedState: "PENDING",
     nextState: "COMPLETED",
     resultReference: buildJson({
-      version: "0.19E3B-script-repair-operation-result-v1",
-      attempt: input.repairInput.attempt,
-      script,
+      version: "0.19E3B-script-repair-operation-result-v2",
+      request: input.repairInput,
+      semanticFingerprint,
+      proposal: rawProposal,
+      outcome,
+      assembledAt,
     }),
   });
-  return { script, operationId: operation.operationId, build };
+  return { ...outcome, assembledAt, operationId: operation.operationId, build };
+}
+
+async function runRepairRounds(input: {
+  build: CreatorScriptBuildRecord;
+  generation: CreatorScriptBuildScriptGenerationStageResult;
+  dependencies: CreatorScriptBuildScriptRepairCoordinatorDependencies;
+  now: () => string;
+  replayOnly?: boolean;
+}) {
+  let build = input.build;
+  let currentScript = input.generation.script;
+  const evaluateScript = (script: CreatorScript) => evaluate({
+    script, sectionPlan: input.generation.sectionPlan, snapshot: build.snapshot,
+  });
+  const initialReport = evaluateScript(currentScript);
+  let currentReport = initialReport;
+  const candidateCallLimit = Math.max(1, initialReport.repairSectionIds.length) *
+    CREATOR_SCRIPT_BUILD_MAX_CANDIDATES_PER_TARGET;
+  const operationIds: string[] = [];
+  const ordinals = new Map<string, number>();
+  let attemptCount = 0;
+  for (let round = 1; round <= CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS; round += 1) {
+    if (!currentReport.repairRequired || currentReport.blockingViolations.length > 0) break;
+    const roundInput = createCreatorScriptBuildScriptRepairInput({
+      snapshot: build.snapshot, script: currentScript,
+      sectionPlan: input.generation.sectionPlan, report: currentReport, attempt: round as 1 | 2,
+    });
+    let assembledScript: CreatorScript;
+    if (roundInput.mode === "additive") {
+      if (operationIds.length >= candidateCallLimit) throw new CreatorScriptBuildRepairError(
+        "SCRIPT_POLICY", "CREATOR_SCRIPT_BUILD_REPAIR_BUDGET_EXHAUSTED", operationIds.at(-1) || null,
+      );
+      const result = await executeRepairOperation({ ...input, build, currentScript, repairInput: roundInput });
+      build = result.build;
+      operationIds.push(result.operationId);
+      if (!result.script) throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID");
+      assembledScript = result.script;
+    } else {
+      const replacements = new Map<string, CreatorScriptSection>();
+      let assembledAt = currentScript.updatedAt;
+      for (const target of roundInput.replacementTargets) {
+        let feedback: CreatorScriptBuildCandidateValidation | null = null;
+        while (!replacements.has(target.sectionId)) {
+          const ordinal = (ordinals.get(target.sectionId) || 0) + 1;
+          if (ordinal > CREATOR_SCRIPT_BUILD_MAX_CANDIDATES_PER_TARGET || operationIds.length >= candidateCallLimit) {
+            throw new CreatorScriptBuildRepairError("SCRIPT_POLICY", "CREATOR_SCRIPT_BUILD_REPAIR_BUDGET_EXHAUSTED", operationIds.at(-1) || null,
+              { diagnostics: { sectionId: target.sectionId, candidateAttemptCount: operationIds.length, candidateCallLimit, lastRejectionReason: feedback?.reason || "target_budget_exhausted" } });
+          }
+          const repairInput = createCreatorScriptBuildReplacementCandidateInput({
+            roundInput, buildId: build.buildId, sectionId: target.sectionId, ordinal: ordinal as 1 | 2,
+            rejectionFeedback: feedback,
+          });
+          const result = await executeRepairOperation({ ...input, build, currentScript, repairInput });
+          build = result.build;
+          operationIds.push(result.operationId);
+          ordinals.set(target.sectionId, ordinal);
+          if (!result.replacement) throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_OPERATION_RESULT_INVALID");
+          if (Date.parse(result.assembledAt) > Date.parse(assembledAt)) assembledAt = result.assembledAt;
+          feedback = result.replacement.validation;
+          if (result.replacement.section) replacements.set(target.sectionId, result.replacement.section);
+        }
+      }
+      const sections = currentScript.sections.map((section) => replacements.get(section.id) || section);
+      // Validate distinctiveness across the combined replacements, not just individually.
+      const distinctive = filterCreatorScriptDistinctiveRepairReplacements({
+        script: currentScript, plan: [...input.generation.sectionPlan], replacements: [...replacements.values()],
+      });
+      if (distinctive.replacements.length !== replacements.size) throw new CreatorScriptBuildRepairError(
+        "SCRIPT_POLICY", "CREATOR_SCRIPT_BUILD_REPAIR_DISTINCTIVENESS_REGRESSION", operationIds.at(-1) || null,
+      );
+      assembledScript = createCanonicalRepairedScript({ currentScript, sections, updatedAt: assembledAt });
+    }
+    const nextReport = evaluateScript(assembledScript);
+    // Unsafe prose never becomes an installed repair revision.
+    if (nextReport.blockingViolations.length > 0) throw new CreatorScriptBuildRepairError(
+      nextReport.blockingViolations.some((v) => v.code === "GROUNDING_BLOCKED") ? "GROUNDING" : "SCRIPT_POLICY",
+      "CREATOR_SCRIPT_BUILD_REPAIR_ASSEMBLED_SCRIPT_REJECTED", operationIds.at(-1) || null,
+    );
+    if (!input.replayOnly) await assertCurrentProjectAuthority({ dependencies: input.dependencies, build });
+    const previousReport = currentReport;
+    currentScript = assembledScript;
+    currentReport = nextReport;
+    attemptCount = round;
+    if (currentReport.accepted || !currentReport.repairRequired) break;
+    if (!creatorScriptBuildRepairAllowsNextAttempt({ completedAttempt: round, previous: previousReport, current: currentReport }) &&
+        !creatorScriptBuildRepairAllowsCrossConstraintContinuation({
+          completedAttempt: round, previous: previousReport, current: currentReport,
+          script: currentScript, sectionPlan: input.generation.sectionPlan,
+          compressedSectionIds: roundInput.replacementTargets.filter((t) => t.direction === "compress").map((t) => t.sectionId),
+          remainingProviderCalls: candidateCallLimit - operationIds.length,
+        })) break;
+  }
+  return { build, repair: createStageResult({
+    script: currentScript, sectionPlan: input.generation.sectionPlan, attemptCount,
+    candidateCallLimit, operationIds, initialReport, finalReport: currentReport,
+  }) };
+}
+
+/** Read-only reconstruction also protects acceptance against tampered durable artifacts. */
+export async function replayCreatorScriptBuildCompletedRepair(input: {
+  build: CreatorScriptBuildRecord;
+  generation: CreatorScriptBuildScriptGenerationStageResult;
+  repository: CreatorScriptBuildRepository;
+}): Promise<CreatorScriptBuildScriptRepairStageResult> {
+  assertCoordinatorContract(input.build.snapshot);
+  const checkpointValue = input.build.checkpoints.repair;
+  const raw = record(checkpointValue?.outputReference);
+  const result = record(raw?.result);
+  if (checkpointValue?.status !== "COMPLETED" ||
+      checkpointValue.checkpointId !== createCreatorScriptBuildCheckpointId({
+        buildId: input.build.buildId, stage: "repair", contractVersion: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION,
+      }) ||
+      checkpointValue.contractVersion !== CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_CHECKPOINT_VERSION ||
+      raw?.version !== "0.19E3B-script-repair-checkpoint-output-v2" ||
+      result?.version !== "0.19E3B-script-repair-result-v2") {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID");
+  }
+  const replay = await runRepairRounds({
+    build: input.build, generation: input.generation, replayOnly: true,
+    dependencies: { repository: input.repository, getCurrentProjectRevision: async () => null,
+      executeScriptRepair: async () => { throw new Error("REPLAY_DISPATCH_FORBIDDEN"); } },
+    now: () => { throw new Error("REPLAY_CLOCK_FORBIDDEN"); },
+  });
+  const expectedDiagnostics = {
+    attemptCount: replay.repair.attemptCount,
+    candidateAttemptCount: replay.repair.candidateAttemptCount,
+    appliedRevisionCount: replay.repair.appliedRevisionCount,
+    candidateCallLimit: replay.repair.candidateCallLimit,
+    finalHardViolationCount: replay.repair.reportSummary.finalHardViolationCount,
+    finalRepairableViolationCount: replay.repair.reportSummary.finalRepairableViolationCount,
+    finalBlockingViolationCount: replay.repair.reportSummary.finalBlockingViolationCount,
+  };
+  if (!equalCanonical(result, replay.repair) ||
+      !equalCanonical(checkpointValue.diagnostics, expectedDiagnostics) ||
+      checkpointValue.operationId !== replay.repair.operationIds.at(-1)) {
+    throw new CreatorScriptBuildRepairError("INPUT", "CREATOR_SCRIPT_BUILD_REPAIR_CHECKPOINT_OUTPUT_INVALID");
+  }
+  return replay.repair;
 }
 
 function assertCoordinatorContract(snapshot: CreatorScriptBuildSnapshot) {
@@ -1330,17 +1496,14 @@ export async function runCreatorScriptBuildScriptRepairCoordinator(input: {
   const checkpointValue = build.checkpoints.repair || null;
   if (checkpointValue?.status === "COMPLETED") {
     try {
-      const resumed = normalizeCompletedRepairCheckpoint({
-        value: checkpointValue.outputReference,
-        generation,
-        initialReport,
-        evaluate: evaluateScript,
+      const resumed = await replayCreatorScriptBuildCompletedRepair({
+        build, generation, repository: input.dependencies.repository,
       });
       return {
         version: CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION,
         build,
-        repair: resumed.repair,
-        observedReport: resumed.observedReport,
+        repair: resumed,
+        observedReport: evaluateScript(resumed.script),
         disposition: "RESUMED",
       };
     } catch (error) {
@@ -1378,87 +1541,25 @@ export async function runCreatorScriptBuildScriptRepairCoordinator(input: {
     });
   }
 
-  let currentScript = generation.script;
-  let currentReport = initialReport;
-  const operationIds: string[] = [];
-  let attemptCount = 0;
-  for (
-    let attempt = 1;
-    attempt <= CREATOR_SCRIPT_BUILD_MAX_REPAIR_ATTEMPTS;
-    attempt += 1
-  ) {
-    if (!currentReport.repairRequired || currentReport.blockingViolations.length > 0) {
-      break;
-    }
-    let repairInput: CreatorScriptBuildScriptRepairInput;
-    try {
-      repairInput = createCreatorScriptBuildScriptRepairInput({
-        snapshot: build.snapshot,
-        script: currentScript,
-        sectionPlan: generation.sectionPlan,
-        report: currentReport,
-        attempt: attempt as 1 | 2,
-      });
-    } catch {
-      return await failBuild({
-        repository: input.dependencies.repository,
-        build,
-        failure: repairFailure({
-          category: "SCRIPT_POLICY",
-          code: "CREATOR_SCRIPT_BUILD_REPAIR_TARGETS_INVALID",
-        }),
-        now,
-      });
-    }
-    try {
-      const operationResult = await executeRepairOperation({
-        dependencies: input.dependencies,
-        build,
-        currentScript,
-        repairInput,
-        now,
-      });
-      build = operationResult.build;
-      currentScript = operationResult.script;
-      operationIds.push(operationResult.operationId);
-      attemptCount = attempt;
-    } catch (error) {
-      if (error instanceof CreatorScriptBuildCoordinatorBlockedError) throw error;
-      const repairError = error instanceof CreatorScriptBuildRepairError
-        ? error
-        : new CreatorScriptBuildRepairError(
-            "INTERNAL",
-            "CREATOR_SCRIPT_BUILD_REPAIR_INTERNAL",
-          );
-      return await failBuild({
-        repository: input.dependencies.repository,
-        build,
-        failure: repairFailure({
-          category: repairError.category,
-          code: repairError.code,
-          operationId: repairError.operationId || operationIds.at(-1) || null,
-        }),
-        now,
-      });
-    }
-    const previousReport = currentReport;
-    currentReport = evaluateScript(currentScript);
-    if (currentReport.accepted || !currentReport.repairRequired) break;
-    if (!creatorScriptBuildRepairAllowsNextAttempt({
-      completedAttempt: attempt,
-      previous: previousReport,
-      current: currentReport,
-    })) break;
+  let repair: CreatorScriptBuildScriptRepairStageResult;
+  try {
+    const result = await runRepairRounds({ build, generation, dependencies: input.dependencies, now });
+    build = result.build;
+    repair = result.repair;
+  } catch (error) {
+    if (error instanceof CreatorScriptBuildCoordinatorBlockedError) throw error;
+    const repairError = error instanceof CreatorScriptBuildRepairError
+      ? error : new CreatorScriptBuildRepairError("INTERNAL", "CREATOR_SCRIPT_BUILD_REPAIR_INTERNAL");
+    // Reload: candidate operation/checkpoint writes may have advanced since entry.
+    build = await input.dependencies.repository.getForOwner(build.buildId, build.ownerId) || build;
+    return await failBuild({ repository: input.dependencies.repository, build, now,
+      failure: repairFailure({ category: repairError.category, code: repairError.code,
+        operationId: repairError.operationId, retryability: repairError.retryability, diagnostics: repairError.diagnostics }) });
   }
-
-  const repair = createStageResult({
-    script: currentScript,
-    sectionPlan: generation.sectionPlan,
-    attemptCount,
-    operationIds,
-    initialReport,
-    finalReport: currentReport,
-  });
+  const currentReport = evaluateScript(repair.script);
+  await assertCurrentProjectAuthority({ dependencies: input.dependencies, build });
+  const operationIds = repair.operationIds;
+  const attemptCount = repair.attemptCount;
   const previous = build.checkpoints.repair || null;
   build = await input.dependencies.repository.saveCheckpoint({
     ownerId: build.ownerId,
@@ -1469,11 +1570,14 @@ export async function runCreatorScriptBuildScriptRepairCoordinator(input: {
       status: "COMPLETED",
       operationId: operationIds.at(-1) || null,
       outputReference: buildJson({
-        version: "0.19E3B-script-repair-checkpoint-output-v1",
+        version: "0.19E3B-script-repair-checkpoint-output-v2",
         result: repair,
       }),
       diagnostics: {
         attemptCount,
+        candidateAttemptCount: repair.candidateAttemptCount,
+        appliedRevisionCount: repair.appliedRevisionCount,
+        candidateCallLimit: repair.candidateCallLimit,
         finalHardViolationCount: reportHardViolationCount(currentReport),
         finalRepairableViolationCount: currentReport.repairableViolations.length,
         finalBlockingViolationCount: currentReport.blockingViolations.length,

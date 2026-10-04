@@ -7,6 +7,10 @@ import {
   createEditorialPrimaryCoverageRepairContext,
   type EditorialPrimaryCoverageRepairContext,
 } from "@/lib/research/editorialPrimaryCoverageRepair";
+import {
+  editorialPrimaryCoverageSelectionDiagnostic,
+  isRecoverableEditorialPrimaryCoverageSelectionError,
+} from "@/lib/research/editorialPrimaryCoverageSelectionFallback";
 import { createEditorialScriptContext } from "@/lib/research/editorialScriptContext";
 import { canonicalResearchUrl } from "@/lib/research/orchestratedResearch";
 import { classifyResearchSourceDirectness } from "@/lib/research/sourceAssessment";
@@ -132,6 +136,18 @@ function repairDiagnostic(input: {
     finalPrimaryCoveredCount: input.finalPrimaryCoveredCount,
     result: input.result,
   };
+}
+
+function logSelectionFallback(
+  context: EditorialPrimaryCoverageRepairContext,
+  diagnostic: string,
+) {
+  console.warn("CREATOR_EDITORIAL_PRIMARY_COVERAGE_SELECTION_FALLBACK", {
+    reasonCode: diagnostic.split(":", 1)[0].slice(0, 160),
+    targetClaimIds: context.targetClaimIds,
+    candidatePrimarySourceCount: context.candidatePrimarySources.length,
+    candidateSpanCount: context.candidateSpans.length,
+  });
 }
 
 export async function POST(request: Request) {
@@ -346,7 +362,15 @@ export async function POST(request: Request) {
     });
 
     try {
-      const selection = parseModelJson(response.output_text || "");
+      let selection: Record<string, unknown>;
+      try {
+        selection = parseModelJson(response.output_text || "");
+      } catch {
+        const diagnostic =
+          "EDITORIAL_PRIMARY_COVERAGE_SELECTION_PARSE_INVALID";
+        logSelectionFallback(context, diagnostic);
+        selection = { repairs: [] };
+      }
 
       let result;
       try {
@@ -355,22 +379,22 @@ export async function POST(request: Request) {
           selection,
         });
       } catch (selectionError) {
-        const selectionDiagnostic = selectionError instanceof Error
-          ? selectionError.message
-          : "EDITORIAL_PRIMARY_COVERAGE_REPAIR_INVALID";
-
-        // A model-selected span may be relevant textually while still failing
-        // the server's claim-relative primary-authority check. Never accept
-        // that pairing. Instead discard the repair selection and derive the
-        // safe script graph by excluding still-unverified mandatory claims.
         if (
-          !selectionDiagnostic.startsWith(
-            "EDITORIAL_PRIMARY_COVERAGE_SOURCE_NOT_PRIMARY:",
+          !isRecoverableEditorialPrimaryCoverageSelectionError(
+            selectionError,
           )
         ) {
           throw selectionError;
         }
 
+        const selectionDiagnostic =
+          editorialPrimaryCoverageSelectionDiagnostic(selectionError);
+        logSelectionFallback(context, selectionDiagnostic);
+
+        // Provider selection failures must never relax primary-source
+        // authority. Discard the provider selection and derive the existing
+        // server-owned safe script graph, which excludes every still-unverified
+        // mandatory claim.
         result = applyEditorialPrimaryCoverageRepair({
           context,
           selection: { repairs: [] },

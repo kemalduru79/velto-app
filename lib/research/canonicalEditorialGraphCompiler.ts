@@ -190,31 +190,37 @@ export function compileCanonicalEditorialGraph(input: {
           `CANONICAL_EDITORIAL_SOURCE_NOT_FOUND:${selection.sourceId}`,
         );
       }
-      const span = spanBySourceAndId.get(
+      const exactSpan = spanBySourceAndId.get(
         `${selection.sourceId}\0${selection.spanId}`,
       );
-      if (!span && spanById.has(selection.spanId)) {
-        throw new Error(
-          `CANONICAL_EDITORIAL_SPAN_SOURCE_MISMATCH:${selection.sourceId}:${selection.spanId}`,
-        );
-      }
+      const span = exactSpan || spanById.get(selection.spanId);
       if (!span) {
         throw new Error(
           `CANONICAL_EDITORIAL_SPAN_NOT_FOUND:${selection.sourceId}:${selection.spanId}`,
         );
       }
 
-      const selectionRoot = `${selection.sourceId}\0${selection.spanId}`;
+      // spanId is server-owned, deterministic, and globally unique within the
+      // frozen catalog. sourceId is redundant provider output. If both values
+      // are individually valid but disagree, preserve the selected span and
+      // install its catalog-authoritative source ownership.
+      const canonicalSelection: EditorialProposalV2EvidenceSelection =
+        span.sourceId === selection.sourceId
+          ? selection
+          : { ...selection, sourceId: span.sourceId };
+
+      const selectionRoot =
+        `${canonicalSelection.sourceId}\0${canonicalSelection.spanId}`;
       const existingSelection = selectionBySpan.get(selectionRoot);
       if (existingSelection) {
-        if (sameSelection(existingSelection, selection)) continue;
+        if (sameSelection(existingSelection, canonicalSelection)) continue;
         throw new Error(
-          `CANONICAL_EDITORIAL_EVIDENCE_SELECTION_CONFLICT:${claimId}:${selection.sourceId}:${selection.spanId}`,
+          `CANONICAL_EDITORIAL_EVIDENCE_SELECTION_CONFLICT:${claimId}:${canonicalSelection.sourceId}:${canonicalSelection.spanId}`,
         );
       }
-      selectionBySpan.set(selectionRoot, selection);
+      selectionBySpan.set(selectionRoot, canonicalSelection);
 
-      const evidenceIdentity = canonicalEvidenceIdentity(selection);
+      const evidenceIdentity = canonicalEvidenceIdentity(canonicalSelection);
       const evidenceId = deterministicId("evidence", evidenceIdentity);
       registerIdentity({
         id: evidenceId,
@@ -225,9 +231,9 @@ export function compileCanonicalEditorialGraph(input: {
       if (!evidenceById.has(evidenceId)) {
         evidenceById.set(evidenceId, {
           evidenceId,
-          sourceId: selection.sourceId,
+          sourceId: canonicalSelection.sourceId,
           excerpt: span.text,
-          contextNote: selection.contextNote,
+          contextNote: canonicalSelection.contextNote,
           locator: span.locator ? { ...span.locator } : { ...EMPTY_LOCATOR },
         });
       }
@@ -235,9 +241,12 @@ export function compileCanonicalEditorialGraph(input: {
       const link: ResearchClaimEvidenceLink = {
         claimId,
         evidenceId,
-        stance: selection.stance,
+        stance: canonicalSelection.stance,
       };
-      linksByKey.set(`${claimId}\0${evidenceId}\0${selection.stance}`, link);
+      linksByKey.set(
+        `${claimId}\0${evidenceId}\0${canonicalSelection.stance}`,
+        link,
+      );
     }
   }
 

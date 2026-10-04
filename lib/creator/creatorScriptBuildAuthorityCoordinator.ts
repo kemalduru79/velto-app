@@ -269,12 +269,7 @@ function normalizeAcquisitionResult(value: unknown, topic: string) {
   }
 }
 
-function sameSource(left: ResearchSource, right: ResearchSource) {
-  return canonicalCreatorScriptBuildJson(left) ===
-    canonicalCreatorScriptBuildJson(right);
-}
-
-function deduplicateAcquiredSources(input: {
+export function deduplicateAcquiredSources(input: {
   frozenGraph: ResearchClaimEvidenceGraph;
   targets: readonly CreatorScriptBuildPrimaryAcquisitionTarget[];
   acquiredSources: ResearchSource[];
@@ -296,12 +291,22 @@ function deduplicateAcquiredSources(input: {
 
   for (const acquired of input.acquiredSources) {
     const frozenBySameId = frozenById.get(acquired.sourceId);
-    if (frozenBySameId && !sameSource(frozenBySameId, acquired)) {
-      throw new Error(
-        `CREATOR_SCRIPT_BUILD_PRIMARY_SOURCE_ID_CONFLICT:${acquired.sourceId}`,
-      );
-    }
     const canonicalUrl = canonicalResearchUrl(acquired.url);
+    if (frozenBySameId) {
+      const frozenCanonicalUrl = canonicalResearchUrl(frozenBySameId.url);
+      if (
+        !canonicalUrl ||
+        !frozenCanonicalUrl ||
+        canonicalUrl !== frozenCanonicalUrl
+      ) {
+        throw new Error(
+          `CREATOR_SCRIPT_BUILD_PRIMARY_SOURCE_ID_CONFLICT:${acquired.sourceId}`,
+        );
+      }
+    }
+    // The editorial graph is the frozen source authority. Retrieval can return
+    // a different query-dependent summary/snippet for the same source identity;
+    // never replace frozen source content during primary acquisition.
     const source = frozenBySameId ||
       (canonicalUrl ? frozenByUrl.get(canonicalUrl) : null) ||
       acquired;

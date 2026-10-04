@@ -90,10 +90,10 @@ function createSnapshot() {
       claimAuthorityResolver: "0.19C",
       creatorScriptAcceptance: "0.19D",
       creatorScriptBuild: "0.19E1",
-      creatorScriptResearchEditorialCoordinator: "0.19E2A",
+      creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
       creatorScriptBuildAuthorityCoordinator: "0.19E2B",
       creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
-      creatorScriptBuildScriptRepairCoordinator: "0.19E3B",
+      creatorScriptBuildScriptRepairCoordinator: "0.19E3B-S3",
       creatorScriptBuildAcceptanceCoordinator: "0.19E3C",
       creatorScriptBuildPersistenceCoordinator:
         CREATOR_SCRIPT_BUILD_PERSISTENCE_COORDINATOR_VERSION,

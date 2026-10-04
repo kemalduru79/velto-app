@@ -1156,6 +1156,12 @@ export function getCreatorScriptRepairReplacementDiagnostics(input: {
   script: CreatorScript;
   plan: CreatorScriptSectionBudget[];
   replacements: unknown[];
+  targets?: readonly Readonly<{
+    sectionId: string;
+    direction: string;
+    minimumRequiredGain: number;
+    minimumRequiredReduction: number;
+  }>[];
 }) {
   assertCreatorScriptMatchesSectionPlan(input.script, input.plan);
   const diagnostics = new Map(
@@ -1169,9 +1175,15 @@ export function getCreatorScriptRepairReplacementDiagnostics(input: {
     if (!diagnostic) return { sectionId: id || "unknown", beforeWords: null, candidateWords: null, accepted: false, reason: "unknown_section", replacement: value };
     const replacementWords = countCreatorScriptWords(clean(item?.text, 100_000));
     if (replacementWords === 0) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "empty", replacement: value };
+    const target = input.targets?.find((target) => target.sectionId === id);
+    if (!target && replacementWords > diagnostic.maximumWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "above_maximum", replacement: value };
+    const direction = target?.direction || (diagnostic.actualWords < diagnostic.minimumWords ? "expand" : diagnostic.actualWords > diagnostic.maximumWords ? "compress" : "rebalance_sections");
+    if (direction === "expand" && replacementWords <= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_expand", replacement: value };
+    if (direction === "compress" && replacementWords >= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_compress", replacement: value };
+    if (target && direction === "expand" && replacementWords - diagnostic.actualWords < target.minimumRequiredGain) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "insufficient_minimum_gain", replacement: value };
+    if (target && direction === "compress" && diagnostic.actualWords - replacementWords < target.minimumRequiredReduction) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "insufficient_minimum_reduction", replacement: value };
     if (replacementWords > diagnostic.maximumWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "above_maximum", replacement: value };
-    if (diagnostic.actualWords < diagnostic.minimumWords && replacementWords <= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_expand", replacement: value };
-    if (diagnostic.actualWords > diagnostic.maximumWords && replacementWords >= diagnostic.actualWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "wrong_direction_compress", replacement: value };
+    if (target && replacementWords < diagnostic.minimumWords) return { sectionId: id, beforeWords: diagnostic.actualWords, candidateWords: replacementWords, accepted: false, reason: "below_minimum", replacement: value };
     const reason = diagnostic.actualWords < diagnostic.minimumWords && replacementWords < diagnostic.minimumWords
       ? "partial_progress_requires_retry"
       : "accepted_within_section_envelope";

@@ -43,7 +43,7 @@ const snapshot = createCreatorScriptBuildSnapshot({
     claimAuthorityResolver: "0.19C",
     creatorScriptAcceptance: "0.19D",
     creatorScriptBuild: "0.19E1",
-    creatorScriptResearchEditorialCoordinator: "0.19E2A",
+    creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
   },
 });
 
