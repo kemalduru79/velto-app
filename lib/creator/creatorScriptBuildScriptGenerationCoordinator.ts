@@ -78,6 +78,12 @@ export type CreatorScriptBuildScriptGenerationInput = Readonly<{
   longFormEvidenceReadiness: CreatorLongFormEvidenceReadiness;
   editorialContext: ScriptPlannerEditorialContext;
   permittedClaimIds: readonly string[];
+  sectionClaimAuthority: readonly Readonly<{
+    sectionId: string;
+    mode: "global_grounded" | "theme_grounded" | "conceptual_only";
+    themeToken: string | null;
+    permittedClaimIds: readonly string[];
+  }>[];
 }>;
 
 export type CreatorScriptBuildScriptGenerationStageResult = Readonly<{
@@ -280,6 +286,101 @@ function createPermittedGraph(authority: CreatorScriptBuildAuthorityStageResult)
   };
 }
 
+function lexicalTokens(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(/\s+/u)
+    .filter((token) => token.length >= 3 && !new Set([
+      "and", "the", "for", "with", "from", "into", "that", "this",
+      "ve", "ile", "icin", "bir", "bu", "olan",
+    ]).has(token));
+}
+
+function approvedThemeTokenForSection(section: CreatorScriptSectionBudget) {
+  return section.ownershipBoundary.owns
+    .find((item) => item.startsWith("approved_theme:"))
+    ?.slice("approved_theme:".length) || null;
+}
+
+export function createCreatorScriptSectionClaimAuthority(input: {
+  editorialContext: ScriptPlannerEditorialContext;
+  sectionPlan: readonly CreatorScriptSectionBudget[];
+  permittedClaimIds: readonly string[];
+}) {
+  const permitted = new Set(input.permittedClaimIds);
+  const evidenceById = new Map(
+    input.editorialContext.evidence.map((item) => [item.evidenceId, item]),
+  );
+  const sourceById = new Map(
+    input.editorialContext.sources.map((item) => [item.sourceId, item]),
+  );
+
+  const claimSearchText = new Map(
+    input.editorialContext.claims.map((claim) => {
+      const evidenceIds = [
+        ...claim.supportingEvidenceIds,
+        ...claim.counterEvidenceIds,
+        ...claim.contextualEvidenceIds,
+      ];
+      const evidenceParts = evidenceIds.flatMap((evidenceId) => {
+        const evidence = evidenceById.get(evidenceId);
+        if (!evidence) return [];
+        const source = sourceById.get(evidence.sourceId);
+        return [
+          evidence.excerpt || "",
+          evidence.contextNote || "",
+          source?.title || "",
+          source?.publisher || "",
+        ];
+      });
+      return [
+        claim.claimId,
+        [claim.text, ...evidenceParts].join(" "),
+      ] as const;
+    }),
+  );
+
+  return input.sectionPlan.map((section) => {
+    const themeToken = approvedThemeTokenForSection(section);
+    if (!themeToken) {
+      return {
+        sectionId: section.id,
+        mode: section.kind === "conclusion"
+          ? "conceptual_only" as const
+          : "global_grounded" as const,
+        themeToken: null,
+        permittedClaimIds: section.kind === "conclusion"
+          ? []
+          : [...input.permittedClaimIds],
+      };
+    }
+
+    const themeTerms = lexicalTokens(themeToken.replace(/_/gu, " "));
+    const matchingClaimIds = input.editorialContext.claims
+      .filter((claim) => permitted.has(claim.claimId))
+      .filter((claim) => {
+        if (themeTerms.length === 0) return false;
+        const haystack = new Set(lexicalTokens(claimSearchText.get(claim.claimId) || ""));
+        return themeTerms.every((term) => haystack.has(term));
+      })
+      .map((claim) => claim.claimId)
+      .toSorted((left, right) => left.localeCompare(right));
+
+    return {
+      sectionId: section.id,
+      mode: matchingClaimIds.length > 0
+        ? "theme_grounded" as const
+        : "conceptual_only" as const,
+      themeToken,
+      permittedClaimIds: matchingClaimIds,
+    };
+  });
+}
+
 export function createCreatorScriptBuildScriptGenerationInput(input: {
   snapshot: CreatorScriptBuildSnapshot;
   authority: CreatorScriptBuildAuthorityStageResult;
@@ -366,6 +467,11 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
       },
     });
   }
+  const sectionClaimAuthority = createCreatorScriptSectionClaimAuthority({
+    editorialContext,
+    sectionPlan,
+    permittedClaimIds: projection.permittedClaimIds,
+  });
   return deepFreeze({
     version: "0.19E3A-script-generation-request-v1" as const,
     topic: input.snapshot.strategy.topic,
@@ -383,6 +489,7 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     longFormEvidenceReadiness,
     editorialContext,
     permittedClaimIds: projection.permittedClaimIds,
+    sectionClaimAuthority,
   });
 }
 
@@ -436,6 +543,12 @@ function normalizeCanonicalGeneratedScript(input: {
     );
   }
   const allowedClaimIds = new Set(input.authority.permittedClaimIds);
+  const sectionClaimAuthority = new Map(
+    input.authority.sectionClaimAuthority.map((item) => [
+      item.sectionId,
+      new Set(item.permittedClaimIds),
+    ]),
+  );
   for (const [index, budget] of input.authority.sectionPlan.entries()) {
     const section = record(sections[index]);
     if (clean(section?.id, 120) !== budget.id) {
@@ -459,8 +572,12 @@ function normalizeCanonicalGeneratedScript(input: {
     const claimIds = Array.isArray(section.claimIds)
       ? section.claimIds.map((claimId) => clean(claimId, 300))
       : [];
+    const localAllowedClaimIds = sectionClaimAuthority.get(budget.id) ||
+      allowedClaimIds;
     const unknownClaimId = claimIds.find((claimId) =>
-      !claimId || !allowedClaimIds.has(claimId)
+      !claimId ||
+      !allowedClaimIds.has(claimId) ||
+      !localAllowedClaimIds.has(claimId)
     );
     if (unknownClaimId !== undefined) {
       throw new CreatorScriptBuildGeneratedScriptError(
@@ -512,6 +629,12 @@ function createCanonicalScriptFromProposal(input: {
     );
   }
   const allowedClaimIds = new Set(input.authority.permittedClaimIds);
+  const sectionClaimAuthority = new Map(
+    input.authority.sectionClaimAuthority.map((item) => [
+      item.sectionId,
+      new Set(item.permittedClaimIds),
+    ]),
+  );
   const canonicalSections = input.authority.sectionPlan.map((budget, index) => {
     const section = record(sections[index]);
     const text = clean(section?.text, 100_000);
@@ -523,8 +646,14 @@ function createCanonicalScriptFromProposal(input: {
       );
     }
     const claimIds = section.claimIds.map((claimId) => clean(claimId, 300));
+    const localAllowedClaimIds = sectionClaimAuthority.get(budget.id) ||
+      allowedClaimIds;
     if (
-      claimIds.some((claimId) => !claimId || !allowedClaimIds.has(claimId))
+      claimIds.some((claimId) =>
+        !claimId ||
+        !allowedClaimIds.has(claimId) ||
+        !localAllowedClaimIds.has(claimId)
+      )
     ) {
       throw new CreatorScriptBuildGeneratedScriptError(
         "GROUNDING",

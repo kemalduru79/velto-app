@@ -39,6 +39,7 @@ import {
 } from "./creatorScriptBuild.ts";
 import {
   createCreatorScriptBuildScriptGenerationInput,
+  createCreatorScriptSectionClaimAuthority,
   normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint,
   type CreatorScriptBuildScriptGenerationInput,
   type CreatorScriptBuildScriptGenerationStageResult,
@@ -128,6 +129,12 @@ export type CreatorScriptBuildScriptRepairInput = Readonly<{
   replacementTargets: readonly CreatorScriptBuildReplacementTarget[];
   expansionTargets: readonly CreatorScriptExpansionTarget[];
   permittedClaimIds: readonly string[];
+  sectionClaimAuthority: readonly Readonly<{
+    sectionId: string;
+    mode: "global_grounded" | "theme_grounded" | "conceptual_only";
+    themeToken: string | null;
+    permittedClaimIds: readonly string[];
+  }>[];
   creatorAuthority: Readonly<{
     topic: string;
     title: string;
@@ -360,6 +367,14 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
   ) {
     throw new Error("CREATOR_SCRIPT_BUILD_REPAIR_TARGETS_REQUIRED");
   }
+  const permittedClaimIds = input.script.grounding.context.claims
+    .map((claim) => claim.claimId)
+    .toSorted();
+  const sectionClaimAuthority = createCreatorScriptSectionClaimAuthority({
+    editorialContext: input.script.grounding.context,
+    sectionPlan: input.sectionPlan,
+    permittedClaimIds,
+  });
   return deepFreeze({
     version: "0.19E3B-script-repair-request-v2" as const,
     attempt: input.attempt,
@@ -381,9 +396,8 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
     })),
     replacementTargets,
     expansionTargets,
-    permittedClaimIds: input.script.grounding.context.claims
-      .map((claim) => claim.claimId)
-      .toSorted(),
+    permittedClaimIds,
+    sectionClaimAuthority,
     creatorAuthority: {
       topic: input.snapshot.strategy.topic,
       title: input.snapshot.strategy.title,
@@ -486,6 +500,16 @@ function assertClaimIdsPermitted(
     );
   }
   return [...new Set(claimIds)];
+}
+
+function allowedClaimIdsForRepairSection(
+  input: CreatorScriptBuildScriptRepairInput,
+  sectionId: string,
+) {
+  const local = input.sectionClaimAuthority.find((item) =>
+    item.sectionId === sectionId
+  );
+  return new Set(local?.permittedClaimIds || input.permittedClaimIds);
 }
 
 function createCanonicalRepairedScript(input: {
@@ -600,7 +624,10 @@ function assembleReplacementProposal(input: {
     section: null,
   });
   // Validate grounding even for a rejected geometric candidate.
-  const allowedClaimIds = new Set(input.repairInput.permittedClaimIds);
+  const allowedClaimIds = allowedClaimIdsForRepairSection(
+    input.repairInput,
+    target.sectionId,
+  );
   assertClaimIdsPermitted(proposal.claimIds, allowedClaimIds);
   if (proposal.sectionId !== target.sectionId) {
     return diagnostic("wrong_section_identity", null);
@@ -681,9 +708,12 @@ function assembleAdditiveProposal(input: {
   const currentById = new Map(
     input.currentScript.sections.map((section) => [section.id, section]),
   );
-  const allowedClaimIds = new Set(input.repairInput.permittedClaimIds);
   const validatedCandidates = input.repairInput.expansionTargets.map(
     (target, index) => {
+      const allowedClaimIds = allowedClaimIdsForRepairSection(
+        input.repairInput,
+        target.sectionId,
+      );
       const currentSection = currentById.get(target.sectionId);
       const proposal = record(proposals[index]);
       if (!currentSection || !proposal) {

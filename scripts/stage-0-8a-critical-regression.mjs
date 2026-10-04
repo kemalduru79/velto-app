@@ -12,6 +12,7 @@ const tests = [
   "scripts/stage-0-19f-f5-strategy-native-thematic-progression-test.mjs",
   "scripts/stage-0-19f-f6-primary-repair-span-budget-test.mjs",
   "scripts/stage-0-19f-f7-runtime-theme-authority-extraction-test.mjs",
+  "scripts/stage-0-19f-f8-theme-aware-section-claim-authority-test.mjs",
   "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
   "scripts/stage-0-7a-media-ownership-metering-test.mjs",
   "scripts/stage-0-7a-2-final-movie-migration-test.mjs",

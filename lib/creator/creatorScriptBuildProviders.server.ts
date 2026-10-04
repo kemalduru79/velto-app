@@ -467,17 +467,35 @@ function generationSchema(input: CreatorScriptBuildScriptGenerationInput) {
   };
 }
 
-function generationSectionSchema(input: CreatorScriptBuildScriptGenerationInput) {
+function claimIdArraySchema(permittedClaimIds: readonly string[]) {
+  return permittedClaimIds.length > 0
+    ? {
+        type: "array",
+        items: { type: "string", enum: [...permittedClaimIds] },
+      }
+    : {
+        type: "array",
+        maxItems: 0,
+        items: { type: "string" },
+      };
+}
+
+function generationSectionSchema(
+  input: CreatorScriptBuildScriptGenerationInput,
+  sectionId: string,
+) {
+  const sectionAuthority = input.sectionClaimAuthority.find((item) =>
+    item.sectionId === sectionId
+  );
+  const permittedClaimIds = sectionAuthority?.permittedClaimIds ||
+    input.permittedClaimIds;
   return {
     type: "object",
     additionalProperties: false,
     properties: {
       heading: { type: ["string", "null"] },
       text: { type: "string" },
-      claimIds: {
-        type: "array",
-        items: { type: "string", enum: [...input.permittedClaimIds] },
-      },
+      claimIds: claimIdArraySchema(permittedClaimIds),
     },
     required: ["heading", "text", "claimIds"],
   };
@@ -510,6 +528,9 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "The active section text MUST contain at least activeSection.minimumWords words, should aim for activeSection.targetWords words, and MUST NOT exceed activeSection.maximumWords words.",
   "Do not compress the section merely because the full documentary is long. Complete the substantive work owned by this section without repeating completedSections.",
   "Use completedSections only for continuity and to avoid repetition; do not rewrite or return them.",
+  "sectionClaimAuthority is binding evidence authority for the active section. Use only its permittedClaimIds.",
+  "If sectionClaimAuthority.mode is conceptual_only, return an empty claimIds array and reason only from creator-approved framing plus established completed-section premises. Do not imply empirical support with phrases such as 'research shows', 'studies show', 'experts argue', 'evidence suggests', or unsupported historical/psychological generalizations.",
+  "If sectionClaimAuthority.mode is theme_grounded, use only claims that directly support the active approved theme; do not reuse a globally permitted claim merely because it was available to another section.",
   "Do not narrate internal editorial methodology, production intent, prompts, section structure, source control, or brand process.",
   "Do not invent facts, studies, statistics, examples, anecdotes, authorities, or evidence.",
   "Return only the active section's content-only text, optional heading, and exact permitted claimIds as strict JSON.",
@@ -567,6 +588,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
         activeSection,
         activeSectionIndex: index,
         sectionControl: narrationControlPlan[index],
+        sectionClaimAuthority: input.value.sectionClaimAuthority[index],
         futureSectionOwnership: narrationControlPlan
           .slice(index + 1)
           .map((control) => ({
@@ -578,7 +600,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
         completedSections,
       },
       schemaName: "creator_script_build_script_generation_section",
-      schema: generationSectionSchema(input.value),
+      schema: generationSectionSchema(input.value, activeSection.id),
       temperature: 0.3,
     });
     sections.push(section);
@@ -588,6 +610,15 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
     version: "0.19E3A-script-generation-proposal-v1",
     sections,
   };
+}
+
+function repairClaimIdsForSection(
+  input: CreatorScriptBuildScriptRepairInput,
+  sectionId: string,
+) {
+  return input.sectionClaimAuthority.find((item) =>
+    item.sectionId === sectionId
+  )?.permittedClaimIds || input.permittedClaimIds;
 }
 
 function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
@@ -643,7 +674,9 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
           sectionId: { type: "string", enum: [input.candidate.sectionId] },
           heading: { type: ["string", "null"] },
           text: { type: "string" },
-          claimIds: { type: "array", items: { type: "string", enum: [...input.permittedClaimIds] } },
+          claimIds: claimIdArraySchema(
+            repairClaimIdsForSection(input, input.candidate.sectionId),
+          ),
         },
         required: ["sectionId", "heading", "text", "claimIds"],
       },
@@ -694,6 +727,7 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     repairSectionIds: value.repairSectionIds,
     replacementTargets: value.replacementTargets,
     permittedClaimIds: value.permittedClaimIds,
+    sectionClaimAuthority: value.sectionClaimAuthority,
     authorityContext: {
       usage: "context_only_not_active_repair_instructions",
       currentScriptAuthority: value.currentScriptAuthority,
@@ -711,6 +745,7 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
       "ACTIVE REPAIR TARGET: for replacement mode, obey the sole replacementTargets item and candidate.sectionId. All authorityContext material is CONTEXT ONLY for grounding, safety, continuity and section ownership; it does not authorize repairing another section or overriding the active target bounds. Never apply one target's direction to another target.",
       "Preserve all untargeted text and all server-owned script metadata.",
       "Use only permitted grounded claim IDs. Do not invent evidence, facts, studies, examples, anecdotes, or authority.",
+      "sectionClaimAuthority is binding per-section evidence authority. Never attach a globally permitted claim to a section unless that section's own permittedClaimIds includes it. For conceptual_only sections, add no claimIds and do not imply empirical support.",
       "For additive mode, return only the requested additions at supplied placement anchors. For replacement mode, return only the single requested section with the exact server-supplied sectionId.",
       lengthInstructions,
       "Return strict JSON only.",
