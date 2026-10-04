@@ -177,8 +177,8 @@ export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSecti
                   owns.includes("uncertainty") ||
                   owns.includes("grounded_tension") ||
                   owns.includes("evidence_boundary")
-                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final unresolved question."
-                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's highest-order synthesis or final unresolved question.";
+                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final open question."
+                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's deepest synthesis or final open question.";
     const control = {
       sectionId: section.id,
       kind: section.kind,
