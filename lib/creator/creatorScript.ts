@@ -1456,7 +1456,7 @@ export function getCreatorScriptOutputTokenBudget(targetWordCount: number) {
 export const CREATOR_SCRIPT_MIN_OUTPUT_TOKENS = 1_500;
 export const CREATOR_SCRIPT_JSON_TOKEN_RESERVE = 300;
 export const CREATOR_SCRIPT_CONSERVATIVE_TOKENS_PER_WORD = 1.5;
-export const CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO = 0.12;
+export const CREATOR_SCRIPT_MAX_RESIDUAL_REPAIR_RATIO = 0.15;
 
 export function getCreatorScriptSafeSingleCallTargetWords() {
   return Math.floor(
