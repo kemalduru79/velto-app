@@ -35,6 +35,9 @@ import {
   type EditorialPrimaryCoverageRepairContext,
   type EditorialPrimaryCoverageRepairResult,
 } from "../research/editorialPrimaryCoverageRepair.ts";
+import {
+  MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+} from "../research/editorialGroundingRepair.ts";
 import { createEditorialEvidenceSpanCatalog } from "../research/editorialEvidenceSpanCatalog.ts";
 import { normalizeEditorialAnalysisRequest } from "../research/editorialAnalysisRequest.ts";
 import { canonicalResearchUrl } from "../research/orchestratedResearch.ts";
@@ -419,6 +422,84 @@ export function deduplicateAcquiredSources(input: {
     if (!selectedByUrlOrId.has(key)) selectedByUrlOrId.set(key, source);
   }
   return [...selectedByUrlOrId.values()].toSorted((left, right) =>
+    left.sourceId.localeCompare(right.sourceId)
+  );
+}
+
+export function boundCreatorScriptBuildPrimaryRepairCandidateSources(input: {
+  frozenGraph: ResearchClaimEvidenceGraph;
+  targets: readonly CreatorScriptBuildPrimaryAcquisitionTarget[];
+  candidateSources: ResearchSource[];
+}) {
+  const sources = [...input.candidateSources].toSorted((left, right) =>
+    left.sourceId.localeCompare(right.sourceId)
+  );
+  if (
+    createEditorialEvidenceSpanCatalog(sources).spans.length <=
+      MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST
+  ) {
+    return sources;
+  }
+
+  const targetIds = new Set(input.targets.map((target) => target.claimId));
+  const targetClaims = input.frozenGraph.claims.filter((claim) =>
+    targetIds.has(claim.claimId)
+  );
+  const candidates = sources
+    .map((source) => {
+      const assessment = assessResearchSource(
+        source,
+        classifyResearchSourceDirectness(source).directness,
+      );
+      const claimIds = targetClaims
+        .filter((claim) =>
+          researchSourceQualifiesAsPrimaryForClaim({
+            source,
+            claim,
+            sourceAssessment: assessment,
+          })
+        )
+        .map((claim) => claim.claimId);
+      const spanCount = createEditorialEvidenceSpanCatalog([source]).spans.length;
+      return { source, claimIds, spanCount };
+    })
+    .filter((candidate) =>
+      candidate.claimIds.length > 0 &&
+      candidate.spanCount > 0 &&
+      candidate.spanCount <= MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST
+    );
+
+  const selected: ResearchSource[] = [];
+  const coveredClaimIds = new Set<string>();
+  let remaining = MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST;
+
+  while (candidates.length > 0 && remaining > 0) {
+    const fitting = candidates
+      .filter((candidate) => candidate.spanCount <= remaining)
+      .map((candidate) => ({
+        ...candidate,
+        uncoveredClaimCount: candidate.claimIds.filter((claimId) =>
+          !coveredClaimIds.has(claimId)
+        ).length,
+      }))
+      .toSorted((left, right) =>
+        right.uncoveredClaimCount - left.uncoveredClaimCount ||
+        right.claimIds.length - left.claimIds.length ||
+        left.spanCount - right.spanCount ||
+        left.source.sourceId.localeCompare(right.source.sourceId)
+      );
+    const chosen = fitting[0];
+    if (!chosen) break;
+    selected.push(chosen.source);
+    chosen.claimIds.forEach((claimId) => coveredClaimIds.add(claimId));
+    remaining -= chosen.spanCount;
+    const chosenIndex = candidates.findIndex((candidate) =>
+      candidate.source.sourceId === chosen.source.sourceId
+    );
+    candidates.splice(chosenIndex, 1);
+  }
+
+  return selected.toSorted((left, right) =>
     left.sourceId.localeCompare(right.sourceId)
   );
 }
@@ -1118,10 +1199,14 @@ export async function runCreatorScriptBuildAuthorityCoordinator(input: {
     acquisitionOperationId = acquired.operationId;
     let candidateSources: ResearchSource[];
     try {
-      candidateSources = deduplicateAcquiredSources({
+      candidateSources = boundCreatorScriptBuildPrimaryRepairCandidateSources({
         frozenGraph: editorial.graph,
         targets: acquisitionInput.targets,
-        acquiredSources: acquired.value as ResearchSource[],
+        candidateSources: deduplicateAcquiredSources({
+          frozenGraph: editorial.graph,
+          targets: acquisitionInput.targets,
+          acquiredSources: acquired.value as ResearchSource[],
+        }),
       });
     } catch {
       const failure = authorityFailure({
