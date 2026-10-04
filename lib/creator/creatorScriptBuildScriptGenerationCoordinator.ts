@@ -312,36 +312,11 @@ export function createCreatorScriptSectionClaimAuthority(input: {
   permittedClaimIds: readonly string[];
 }) {
   const permitted = new Set(input.permittedClaimIds);
-  const evidenceById = new Map(
-    input.editorialContext.evidence.map((item) => [item.evidenceId, item]),
-  );
-  const sourceById = new Map(
-    input.editorialContext.sources.map((item) => [item.sourceId, item]),
-  );
-
   const claimSearchText = new Map(
-    input.editorialContext.claims.map((claim) => {
-      const evidenceIds = [
-        ...claim.supportingEvidenceIds,
-        ...claim.counterEvidenceIds,
-        ...claim.contextualEvidenceIds,
-      ];
-      const evidenceParts = evidenceIds.flatMap((evidenceId) => {
-        const evidence = evidenceById.get(evidenceId);
-        if (!evidence) return [];
-        const source = sourceById.get(evidence.sourceId);
-        return [
-          evidence.excerpt || "",
-          evidence.contextNote || "",
-          source?.title || "",
-          source?.publisher || "",
-        ];
-      });
-      return [
-        claim.claimId,
-        [claim.text, ...evidenceParts].join(" "),
-      ] as const;
-    }),
+    input.editorialContext.claims.map((claim) => [
+      claim.claimId,
+      claim.text,
+    ] as const),
   );
 
   return input.sectionPlan.map((section) => {

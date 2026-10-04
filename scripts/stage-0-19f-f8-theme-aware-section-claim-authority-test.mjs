@@ -188,7 +188,7 @@ const evidenceMatched = createCreatorScriptSectionClaimAuthority({
     claims: [{
       claimId: "claim-self-concept",
       claimType: "FACT",
-      text: "Professional roles can shape self-concept.",
+      text: "Professional roles can shape personal identity and self-concept.",
       supportingEvidenceIds: ["evidence-identity"],
       counterEvidenceIds: [],
       contextualEvidenceIds: [],
