@@ -213,6 +213,7 @@ for(const unknown of [false,true]) test(`actual responses.create editorial reque
     exports:provider,process:{env:{OPENAI_API_KEY:"inert-test-only"}},require:name=>{
       if(name === "node:crypto")return require(name);
       if(name === "openai")return {default:FakeOpenAI};
+      if(name === "./creatorScript.ts")return creatorScript;
       if(name === "./creatorScriptBuildProviderContract.ts")return contract;
       if(name === "./creatorScriptBuildResearchEditorialCoordinator.ts")return {CreatorScriptBuildStageExecutionError};
       if(name === "../research/claimEvidenceGraph.ts")return graph;
