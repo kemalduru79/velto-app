@@ -970,7 +970,9 @@ export function getCreatorScriptEditorialDistinctivenessDiagnostics(
   const failures: CreatorScriptEditorialDistinctivenessDiagnostic[] = [];
   for (let index = 0; index < bodySections.length; index += 1) {
     const section = bodySections[index];
-    const tokens = new Set(creatorScriptHeadingTokens(section.heading));
+    const heading = clean(section.heading, 300);
+    if (!heading) continue;
+    const tokens = new Set(creatorScriptHeadingTokens(heading));
     if (tokens.size < 2) failures.push({
       sectionId: section.id,
       failureType: "heading_insufficient_distinct_tokens",
