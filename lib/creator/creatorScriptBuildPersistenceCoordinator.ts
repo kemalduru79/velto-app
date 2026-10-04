@@ -680,9 +680,9 @@ export async function runCreatorScriptBuildPersistenceCoordinator(input: {
     });
   }
 
-  let installedProjectRevision: string;
+  let proposedInstalledProjectRevision: string;
   try {
-    installedProjectRevision = nextProjectRevision(
+    proposedInstalledProjectRevision = nextProjectRevision(
       now(),
       currentProjectRevision,
     );
@@ -701,16 +701,16 @@ export async function runCreatorScriptBuildPersistenceCoordinator(input: {
     });
   }
 
-  const persistence = createPersistenceResult({
+  const proposedPersistence = createPersistenceResult({
     build,
     authority,
     previousProjectRevision: currentProjectRevision,
-    installedProjectRevision,
+    installedProjectRevision: proposedInstalledProjectRevision,
     invalidatedProduction: installation.invalidateProduction,
   });
-  const checkpoint = createPersistenceCheckpoint({
+  const proposedCheckpoint = createPersistenceCheckpoint({
     build,
-    result: persistence,
+    result: proposedPersistence,
   });
 
   let persisted;
@@ -719,10 +719,10 @@ export async function runCreatorScriptBuildPersistenceCoordinator(input: {
       ownerId: build.ownerId,
       buildId: build.buildId,
       expectedProjectRevision: currentProjectRevision,
-      installedProjectRevision,
+      installedProjectRevision: proposedInstalledProjectRevision,
       creatorProjectState: buildJson(installation.next),
       invalidateProduction: installation.invalidateProduction,
-      checkpoint,
+      checkpoint: proposedCheckpoint,
     });
   } catch {
     throw new CreatorScriptBuildCoordinatorBlockedError({
@@ -754,11 +754,19 @@ export async function runCreatorScriptBuildPersistenceCoordinator(input: {
   let normalizedPersistence: CreatorScriptBuildPersistenceStageResult;
   try {
     normalizedAuthority = normalizeAcceptedAuthority(build);
+    const committedProjectRevision = projectRevision(persisted.project);
+    const committedPersistence = createPersistenceResult({
+      build,
+      authority: normalizedAuthority,
+      previousProjectRevision: currentProjectRevision,
+      installedProjectRevision: committedProjectRevision,
+      invalidatedProduction: installation.invalidateProduction,
+    });
     normalizedPersistence = normalizeCreatorScriptBuildPersistenceCheckpoint({
       build,
       authority: normalizedAuthority,
     });
-    if (!equalCanonical(normalizedPersistence, persistence)) {
+    if (!equalCanonical(normalizedPersistence, committedPersistence)) {
       throw new CreatorScriptBuildPersistenceError(
         "INPUT",
         "CREATOR_SCRIPT_BUILD_PERSISTENCE_RESULT_MISMATCH",

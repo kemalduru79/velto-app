@@ -49,6 +49,7 @@ const revision = "2026-10-03T10:00:00.000Z";
 const generationNow = "2026-10-03T10:00:01.000Z";
 const acceptanceNow = "2026-10-03T10:00:02.000Z";
 const persistenceNow = "2026-10-03T10:00:03.000Z";
+const committedPersistenceNow = "2026-10-03T10:00:03.250Z";
 
 function clone(value) {
   return structuredClone(value);
@@ -411,6 +412,14 @@ class MemoryRepository {
       serializable(expectedScript),
     );
 
+    const committedRevision =
+      this.options.committedProjectRevision || input.installedProjectRevision;
+    const committedCheckpoint = clone(input.checkpoint);
+    committedCheckpoint.outputReference.result.installedProjectRevision =
+      committedRevision;
+    committedCheckpoint.startedAt = committedRevision;
+    committedCheckpoint.completedAt = committedRevision;
+
     this.project = {
       ...this.project,
       exported_movie_result: {
@@ -425,17 +434,17 @@ class MemoryRepository {
             export_signature: null,
           }
         : {}),
-      updated_at: input.installedProjectRevision,
+      updated_at: committedRevision,
     };
     this.build = {
       ...this.build,
       state: "PERSISTED",
       checkpoints: {
         ...this.build.checkpoints,
-        persistence: clone(input.checkpoint),
+        persistence: committedCheckpoint,
       },
       failure: null,
-      updatedAt: input.installedProjectRevision,
+      updatedAt: committedRevision,
     };
     return {
       status: "PERSISTED",
@@ -607,6 +616,42 @@ let persistedFixture;
   assert.equal(state.strategy.pendingRefinement, null);
   assert.deepEqual(state.strategy.revisionHistory, []);
   assert.equal(result.project.updated_at, persistenceNow);
+}
+
+// Database-trigger revision authority: the RPC proposal may differ from the
+// actual committed project revision. The committed project/checkpoint value wins.
+{
+  const { repository, projectRepository } = await prepareAccepted({
+    committedProjectRevision: committedPersistenceNow,
+  });
+  const result = await runCreatorScriptBuildPersistenceCoordinator({
+    ownerId,
+    buildId,
+    dependencies: persistenceDependencies(repository, projectRepository),
+  });
+  assert.equal(repository.persistCalls.length, 1);
+  assert.equal(
+    repository.persistCalls[0].installedProjectRevision,
+    persistenceNow,
+  );
+  assert.equal(result.project.updated_at, committedPersistenceNow);
+  assert.equal(
+    result.persistence.installedProjectRevision,
+    committedPersistenceNow,
+  );
+  assert.equal(
+    result.build.checkpoints.persistence.outputReference.result
+      .installedProjectRevision,
+    committedPersistenceNow,
+  );
+  assert.equal(
+    result.build.checkpoints.persistence.startedAt,
+    committedPersistenceNow,
+  );
+  assert.equal(
+    result.build.checkpoints.persistence.completedAt,
+    committedPersistenceNow,
+  );
 }
 
 // PERSISTED status is immutable build authority, not a projection of the
@@ -967,6 +1012,13 @@ for (const state of [
     ),
     "utf8",
   );
+  const revisionAuthorityMigrationSource = fs.readFileSync(
+    new URL(
+      "../supabase/migrations/20261004210000_stage_0_19f_d3_script_persistence_revision_authority.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
 
   assert.match(
     typesSource,
@@ -1037,6 +1089,30 @@ for (const state of [
   assert.doesNotMatch(
     migrationSource,
     /grant execute[\s\S]*?to authenticated/u,
+  );
+  assert.match(
+    coordinatorSource,
+    /committedProjectRevision\s*=\s*projectRevision\(persisted\.project\)/u,
+  );
+  assert.match(
+    coordinatorSource,
+    /installedProjectRevision:\s*committedProjectRevision/u,
+  );
+  assert.match(
+    revisionAuthorityMigrationSource,
+    /v_committed_checkpoint\s*:=\s*jsonb_set/u,
+  );
+  assert.match(
+    revisionAuthorityMigrationSource,
+    /\{outputReference,result,installedProjectRevision\}[\s\S]*?to_jsonb\(v_project\.updated_at\)/u,
+  );
+  assert.match(
+    revisionAuthorityMigrationSource,
+    /array\['persistence'\],[\s\S]*?v_committed_checkpoint/u,
+  );
+  assert.doesNotMatch(
+    revisionAuthorityMigrationSource,
+    /drop\s+trigger|disable\s+trigger|create\s+or\s+replace\s+function\s+public\.set_updated_at_velto_projects/iu,
   );
 }
 
