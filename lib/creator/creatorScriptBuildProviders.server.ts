@@ -2,6 +2,8 @@ import {
   CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
+  CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
+  createCreatorScriptNarrationControlPlan,
 } from "./creatorScript.ts";
 import type { CreatorScriptBuildJson } from "./creatorScriptBuild.ts";
 import type { CreatorScriptBuildEditorialRecoveryContext } from "./creatorScriptBuildEditorialAdjudicationRecovery.ts";
@@ -486,6 +488,7 @@ const GENERATION_SYSTEM = [
   "Write one audience-facing documentary narration proposal using only the supplied approved strategy and canonical editorial context.",
   ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  ...CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
   ...CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
   "Return sections in the exact supplied sectionPlan order. Obey every section role, word envelope, claim allowlist, narration-safety rule, and evidence boundary.",
   "Do not narrate internal editorial methodology, production intent, prompts, section structure, source control, or brand process.",
@@ -500,7 +503,10 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Use only the supplied approved strategy, canonical editorial context, permitted claim IDs, and evidence boundaries.",
   ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  ...CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
   ...CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
+  "Treat sectionControl and futureSectionOwnership as non-narratable control metadata. sectionControl is binding for the active section; futureSectionOwnership identifies intellectual work that must be left for later sections.",
+  "Treat completedSections as established audience knowledge. Reuse only the minimum words needed for continuity; do not re-explain their thesis, mechanism, evidence, examples, paradoxes, or closing questions.",
   "The active section text MUST contain at least activeSection.minimumWords words, should aim for activeSection.targetWords words, and MUST NOT exceed activeSection.maximumWords words.",
   "Do not compress the section merely because the full documentary is long. Complete the substantive work owned by this section without repeating completedSections.",
   "Use completedSections only for continuity and to avoid repetition; do not rewrite or return them.",
@@ -538,6 +544,9 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
   }
 
   const sections: Record<string, unknown>[] = [];
+  const narrationControlPlan = createCreatorScriptNarrationControlPlan([
+    ...input.value.sectionPlan,
+  ]);
   for (const [index, activeSection] of input.value.sectionPlan.entries()) {
     const completedSections = sections.map((section, completedIndex) => ({
       id: input.value.sectionPlan[completedIndex]!.id,
@@ -557,6 +566,15 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
         generationAuthority: input.value,
         activeSection,
         activeSectionIndex: index,
+        sectionControl: narrationControlPlan[index],
+        futureSectionOwnership: narrationControlPlan
+          .slice(index + 1)
+          .map((control) => ({
+            sectionId: control.sectionId,
+            kind: control.kind,
+            owns: control.owns,
+            excludes: control.excludes,
+          })),
         completedSections,
       },
       schemaName: "creator_script_build_script_generation_section",

@@ -39,6 +39,15 @@ export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
   "For a conclusion, state directly what the established argument changes about identity, agency, responsibility, or meaning; do not label the ending, refer to evidence 'discussed above', recap sections, or narrate the production process. Preserve uncertainty and make the final sentence one natural open question.",
 ] as const;
 
+export const CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT = [
+  "Give every section one primary intellectual job. A later section may briefly reference an established premise only when needed to make its new reasoning intelligible; never re-explain, re-define, or re-summarize completed work.",
+  "Definition/framing sections establish boundaries and corrections once. Mechanism sections assume those boundaries and explain causality. Evidence sections begin from the strongest grounded observation, comparison, case, or result and use it to test the mechanism instead of restating the thesis.",
+  "Counterview, limits, or tension sections must introduce a genuine challenge, boundary, or competing explanation. Do not use them as a summary of the mechanism or evidence already completed.",
+  "Reserve highest-order synthesis and the final unresolved question for the conclusion. Body sections may create tension, but they must not spend the conclusion by delivering the script's final paradox, final synthesis, or a rhetorical question that merely gets repeated later.",
+  "The conclusion must advance one level beyond the strongest completed body insight. Do not repeat or lightly paraphrase an earlier thesis, analogy, paradox, closing sentence, or rhetorical question; derive one new implication and end on one newly earned unresolved question.",
+  "When grounded source detail is available, name the supported actor, work, observation, comparison, or result naturally rather than hiding it behind generic phrases such as 'experts point out', 'research shows', 'the evidence suggests', or 'the strongest findings show'.",
+] as const;
+
 export const CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT = [
   "Before returning JSON, count the spoken words in each authored section against its supplied minWords, targetWords, and maxWords.",
   "Aim near targetWords and do not stop materially below minWords while grounded, section-owned explanation, evidence, uncertainty, comparison, or human consequence remains undeveloped.",
@@ -153,10 +162,23 @@ export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSecti
     const narrationDirective = section.kind === "opening"
       ? "Begin directly with one grounded human tension or observation. Ask at most one essential question. Do not announce what the inquiry or content will do."
       : section.kind === "conclusion"
-        ? "State directly what the established argument changes about identity, agency, responsibility, or meaning. Preserve uncertainty and make the final sentence the single open question without labeling it."
-        : owns.includes("grounded_demonstration")
-          ? "Use supported material in this order: what happened or was observed, what result changed, and why that result tests the already-established mechanism. Stop without restating the premise."
-          : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them.";
+        ? "State directly what the established argument changes about identity, agency, responsibility, or meaning. Advance one level beyond the strongest completed body insight. Do not recap or repeat any earlier thesis, analogy, paradox, closing sentence, or rhetorical question. Preserve uncertainty and make the final sentence the single newly earned open question without labeling it."
+        : owns.includes("definition") || owns.includes("framing")
+          ? "Establish the phenomenon's boundary and misconception correction once. Do not repeat the opening stakes, explain the mechanism, preview evidence, or drift into downstream implications."
+          : owns.includes("mechanism") || owns.includes("causal_process")
+            ? "Assume the definition is already known. Explain only the causal chain or process that produces the phenomenon; do not re-define it, summarize the opening, or preview the conclusion."
+            : owns.includes("grounded_demonstration") ||
+                owns.includes("grounded_synthesis") ||
+                owns.includes("evidence_interpretation")
+              ? "Use supported material in this order: what happened or was observed, what result changed, and why that result tests the already-established mechanism. Begin from the strongest supplied grounded observation, comparison, case, or result. Do not reopen the definition or mechanism, and do not substitute generic evidence-summary language when concrete grounded detail is available."
+              : owns.includes("counterview") ||
+                  owns.includes("thesis_stress_test") ||
+                  owns.includes("limits") ||
+                  owns.includes("uncertainty") ||
+                  owns.includes("grounded_tension") ||
+                  owns.includes("evidence_boundary")
+                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final unresolved question."
+                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's highest-order synthesis or final unresolved question.";
     const control = {
       sectionId: section.id,
       kind: section.kind,
