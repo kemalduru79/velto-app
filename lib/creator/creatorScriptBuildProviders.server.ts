@@ -1,3 +1,8 @@
+import {
+  CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
+} from "./creatorScript.ts";
 import type { CreatorScriptBuildJson } from "./creatorScriptBuild.ts";
 import type { CreatorScriptBuildEditorialRecoveryContext } from "./creatorScriptBuildEditorialAdjudicationRecovery.ts";
 import { CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_POLICY_VERSION } from "./creatorScriptBuildRepairProviderPolicy.ts";
@@ -461,6 +466,9 @@ function generationSectionSchema(input: CreatorScriptBuildScriptGenerationInput)
 const GENERATION_SYSTEM = [
   "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
   "Write one audience-facing documentary narration proposal using only the supplied approved strategy and canonical editorial context.",
+  ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  ...CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
   "Return sections in the exact supplied sectionPlan order. Obey every section role, word envelope, claim allowlist, narration-safety rule, and evidence boundary.",
   "Do not narrate internal editorial methodology, production intent, prompts, section structure, source control, or brand process.",
   "Do not invent facts, studies, statistics, examples, anecdotes, authorities, or evidence.",
@@ -472,6 +480,9 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
   "Write only the single active documentary narration section supplied in activeSection.",
   "Use only the supplied approved strategy, canonical editorial context, permitted claim IDs, and evidence boundaries.",
+  ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  ...CREATOR_SCRIPT_FIRST_PASS_BUDGET_CONTRACT,
   "The active section text MUST contain at least activeSection.minimumWords words, should aim for activeSection.targetWords words, and MUST NOT exceed activeSection.maximumWords words.",
   "Do not compress the section merely because the full documentary is long. Complete the substantive work owned by this section without repeating completedSections.",
   "Use completedSections only for continuity and to avoid repetition; do not rewrite or return them.",
