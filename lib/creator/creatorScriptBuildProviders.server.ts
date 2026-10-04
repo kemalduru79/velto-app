@@ -44,6 +44,9 @@ import type {
 import type {
   CreatorScriptBuildScriptGenerationInput,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
+import {
+  runCreatorScriptBuildSectionGenerationWithBoundedRetry,
+} from "./creatorScriptBuildSectionGenerationGuard.ts";
 import type {
   CreatorScriptBuildScriptRepairInput,
 } from "./creatorScriptBuildScriptRepairCoordinator.ts";
@@ -533,6 +536,7 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Treat sectionControl and futureSectionOwnership as non-narratable control metadata. sectionControl is binding for the active section; futureSectionOwnership identifies intellectual work that must be left for later sections.",
   "Treat completedSections as established audience knowledge. Reuse only the minimum words needed for continuity; do not re-explain their thesis, mechanism, evidence, examples, paradoxes, or closing questions.",
   "The active section text MUST contain at least activeSection.minimumWords words, should aim for activeSection.targetWords words, and MUST NOT exceed activeSection.maximumWords words.",
+  "When sectionLengthRecovery is present, the previous candidate violated this exact word envelope. Correct that failure directly: obey the supplied minimumWords, targetWords, maximumWords, previousWordCount, and previousReason. Do not return another candidate outside the envelope.",
   "Do not compress the section merely because the full documentary is long. Complete the substantive work owned by this section without repeating completedSections.",
   "Use completedSections only for continuity and to avoid repetition; do not rewrite or return them.",
   "sectionClaimAuthority is binding evidence authority for the active section. Use only its permittedClaimIds.",
@@ -583,34 +587,69 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       text: section.text,
       claimIds: section.claimIds,
     }));
-    const section = await runJson({
-      ownerId: input.ownerId,
-      projectId: input.projectId,
-      operationType: "creator_script_build_script_generation",
-      logicalOperationId:
-        `${baseIdentity}:section:${index + 1}:${activeSection.id}`,
-      system: SECTION_NATIVE_GENERATION_SYSTEM,
-      user: {
-        generationAuthority: input.value,
-        activeSection,
-        activeSectionIndex: index,
-        sectionControl: narrationControlPlan[index],
-        sectionClaimAuthority: input.value.sectionClaimAuthority[index],
-        futureSectionOwnership: narrationControlPlan
-          .slice(index + 1)
-          .map((control) => ({
-            sectionId: control.sectionId,
-            kind: control.kind,
-            owns: control.owns,
-            excludes: control.excludes,
-          })),
-        completedSections,
-      },
-      schemaName: "creator_script_build_script_generation_section",
-      schema: generationSectionSchema(input.value, activeSection.id),
-      temperature: 0.3,
-    });
-    sections.push(section);
+    const sectionResult =
+      await runCreatorScriptBuildSectionGenerationWithBoundedRetry({
+        budget: activeSection,
+        execute: async ({ ordinal, previousValidation }) =>
+          await runJson({
+            ownerId: input.ownerId,
+            projectId: input.projectId,
+            operationType: "creator_script_build_script_generation",
+            logicalOperationId:
+              ordinal === 1
+                ? `${baseIdentity}:section:${index + 1}:${activeSection.id}`
+                : `${baseIdentity}:section:${index + 1}:${activeSection.id}:length-retry:2`,
+            system: SECTION_NATIVE_GENERATION_SYSTEM,
+            user: {
+              generationAuthority: input.value,
+              activeSection,
+              activeSectionIndex: index,
+              sectionControl: narrationControlPlan[index],
+              sectionClaimAuthority: input.value.sectionClaimAuthority[index],
+              futureSectionOwnership: narrationControlPlan
+                .slice(index + 1)
+                .map((control) => ({
+                  sectionId: control.sectionId,
+                  kind: control.kind,
+                  owns: control.owns,
+                  excludes: control.excludes,
+                })),
+              completedSections,
+              ...(previousValidation
+                ? {
+                    sectionLengthRecovery: {
+                      ordinal,
+                      previousWordCount: previousValidation.wordCount,
+                      previousReason: previousValidation.reason,
+                      minimumWords: previousValidation.minimumWords,
+                      targetWords: previousValidation.targetWords,
+                      maximumWords: previousValidation.maximumWords,
+                    },
+                  }
+                : {}),
+            },
+            schemaName: "creator_script_build_script_generation_section",
+            schema: generationSectionSchema(input.value, activeSection.id),
+            temperature: ordinal === 1 ? 0.3 : 0.1,
+          }),
+      });
+    if (!sectionResult.validation.accepted) {
+      throw new CreatorScriptBuildStageExecutionError({
+        category: "MODEL_CONTRACT",
+        code: "CREATOR_SCRIPT_BUILD_GENERATED_SECTION_WORD_BUDGET_INVALID",
+        retryability: "NON_RETRYABLE",
+        diagnostics: {
+          sectionId: activeSection.id,
+          attempts: sectionResult.attempts,
+          wordCount: sectionResult.validation.wordCount,
+          minimumWords: sectionResult.validation.minimumWords,
+          targetWords: sectionResult.validation.targetWords,
+          maximumWords: sectionResult.validation.maximumWords,
+          reason: sectionResult.validation.reason,
+        },
+      });
+    }
+    sections.push(sectionResult.value as Record<string, unknown>);
   }
 
   return {

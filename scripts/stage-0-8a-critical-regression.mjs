@@ -19,6 +19,7 @@ const tests = [
   "scripts/stage-0-19f-f12-residual-duration-repair-envelope-test.mjs",
   "scripts/stage-0-19f-f13-focused-theme-runtime-fallback-test.mjs",
   "scripts/stage-0-19f-f14-corrective-repair-output-ceiling-test.mjs",
+  "scripts/stage-0-19f-f16-section-generation-word-envelope-recovery-test.mjs",
   "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
   "scripts/stage-0-7a-media-ownership-metering-test.mjs",
   "scripts/stage-0-7a-2-final-movie-migration-test.mjs",
