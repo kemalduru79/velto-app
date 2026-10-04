@@ -6,6 +6,7 @@ import {
   createCreatorScriptNarrationAuthority,
   createCreatorScriptRepairTargets,
   filterCreatorScriptDistinctiveRepairReplacements,
+  getCreatorScriptEditorialDistinctivenessDiagnostics,
   getCreatorScriptRepairReplacementDiagnostics,
   normalizeCreatorScript,
   selectCreatorScriptExpansionCandidates,
@@ -625,7 +626,36 @@ function assembleReplacementProposal(input: {
     plan: [...input.repairInput.sectionPlan],
   });
   if (distinctive.replacements.length !== 1) {
-    return diagnostic("distinctiveness_rejection", geometry.candidateWords);
+    const targetMustDifferentiate =
+      target.direction === "differentiate_sections" ||
+      target.strategy === "differentiate";
+    if (targetMustDifferentiate) {
+      return diagnostic("distinctiveness_rejection", geometry.candidateWords);
+    }
+    const failureKey = (failure: {
+      sectionId: string;
+      comparedSectionId?: string;
+      failureType: string;
+    }) => [
+      failure.failureType,
+      failure.sectionId,
+      failure.comparedSectionId || "",
+    ].join("|");
+    const existingFailureKeys = new Set(
+      getCreatorScriptEditorialDistinctivenessDiagnostics(
+        input.currentScript,
+        [...input.repairInput.sectionPlan],
+      ).map(failureKey),
+    );
+    const candidateIntroducedRegression = distinctive.failures.some((failure) =>
+      (
+        failure.sectionId === target.sectionId ||
+        failure.comparedSectionId === target.sectionId
+      ) && !existingFailureKeys.has(failureKey(failure))
+    );
+    if (candidateIntroducedRegression) {
+      return diagnostic("distinctiveness_rejection", geometry.candidateWords);
+    }
   }
   return {
     validation: { ...diagnostic("accepted", geometry.candidateWords).validation, accepted: true },

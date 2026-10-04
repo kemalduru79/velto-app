@@ -482,6 +482,43 @@ for (const forbiddenClaimId of ["claim-unknown", "claim-excluded"]) {
   assert.equal(repository.build.state, "FAILED");
 }
 
+// 44A. A duration repair may preserve pre-existing heading debt while a later
+// dedicated distinctiveness target resolves it. Only new candidate regressions
+// are rejected before the combined-replacement gate.
+{
+  const { repository } = await prepare("distinctiveness_short");
+  const before = loadSetup(repository);
+  assert.ok(before.report.repairableViolations.some((violation) =>
+    violation.code === "GLOBAL_DURATION_TOO_SHORT"
+  ));
+  assert.ok(before.report.repairableViolations.some((violation) =>
+    violation.code === "EDITORIAL_DISTINCTIVENESS"
+  ));
+  const { deps, counts, inputs } = dependencies(repository, {
+    proposalOptions: {
+      heading: (target, input, current) =>
+        target.direction === "differentiate_sections"
+          ? `Recovered${target.sectionId.replace(/\W/g, "")} Unique Heading`
+          : current.heading,
+    },
+  });
+  const result = await runCreatorScriptBuildScriptRepairCoordinator({
+    ownerId,
+    buildId,
+    dependencies: deps,
+  });
+  assert.equal(result.build.state, "REPAIRING");
+  assert.notEqual(result.repair, null);
+  assert.ok(counts().providerCalls >= 2);
+  const repairInputs = inputs();
+  assert.ok(repairInputs.some((input) =>
+    input.replacementTargets[0]?.direction === "expand"
+  ));
+  assert.ok(repairInputs.some((input) =>
+    input.replacementTargets[0]?.direction === "differentiate_sections"
+  ));
+}
+
 // 4-5. REPAIRING is the only resume state and unrelated states fail closed.
 for (const state of [
   "REQUESTED",

@@ -7,6 +7,7 @@ const tests = [
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
   "scripts/stage-0-19f-d4-primary-selection-duplicate-alignment-test.mjs",
   "scripts/stage-0-19f-f2-semantic-progression-binding-test.mjs",
+  "scripts/stage-0-19f-f3-preexisting-distinctiveness-repair-test.mjs",
   "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
   "scripts/stage-0-7a-media-ownership-metering-test.mjs",
   "scripts/stage-0-7a-2-final-movie-migration-test.mjs",

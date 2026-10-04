@@ -364,7 +364,9 @@ function sectionCounts(input, shape) {
   const totalTarget = counts.reduce((sum, value) => sum + value, 0);
   const minimum = Math.ceil(totalTarget * 0.9);
   if (shape === "accepted" || shape === "distinctiveness") return counts;
-  const desiredTotal = shape === "repairable_short" ? minimum - 30
+  const desiredTotal =
+    shape === "repairable_short" || shape === "distinctiveness_short"
+      ? minimum - 30
     : shape === "blocking_short" ? minimum - 40
     : shape === "repairable_long" ? Math.floor(totalTarget * 1.1) + 10
     : totalTarget;
@@ -381,7 +383,9 @@ function generationProposal(input, shape) {
     version: "0.19E3A-script-generation-proposal-v1",
     sections: input.sectionPlan.map((section, index) => {
       if (section.kind === "body") bodyNumber += 1;
-      const heading = shape === "distinctiveness" && section.kind === "body"
+      const heading =
+        (shape === "distinctiveness" || shape === "distinctiveness_short") &&
+          section.kind === "body"
         ? "Shared Memory Pattern"
         : section.kind === "opening"
           ? "Unsettled Beginning"
@@ -400,7 +404,11 @@ function generationProposal(input, shape) {
 async function prepare(shape = "repairable_short", options = {}) {
   const snapshot = createSnapshot({
     requestedDurationSeconds: options.requestedDurationSeconds ||
-      (shape === "distinctiveness" ? 300 : 120),
+      (
+        shape === "distinctiveness" || shape === "distinctiveness_short"
+          ? 300
+          : 120
+      ),
   });
   const repository = new MemoryRepository(buildRecord(snapshot));
   let generationCalls = 0;
@@ -514,9 +522,11 @@ function repairProposal(input, options = {}) {
       return {
         sectionId: target.sectionId,
         kind: "conclusion",
-        heading: options.sameHeading
-          ? "Shared Memory Pattern"
-          : `Recovered${target.sectionId.replace(/\W/g, "")} Distinction${target.sectionId.replace(/\W/g, "")}`,
+        heading: options.heading
+          ? options.heading(target, input, current)
+          : options.sameHeading
+            ? "Shared Memory Pattern"
+            : `Recovered${target.sectionId.replace(/\W/g, "")} Distinction${target.sectionId.replace(/\W/g, "")}`,
         text: wordsForTarget(
           `replacement${input.attempt}${target.sectionId.replace(/\W/g, "")}word`,
           options.replacementWords?.(target, input) ?? defaultWords,
