@@ -9,6 +9,7 @@ const tests = [
   "scripts/stage-0-19f-f2-semantic-progression-binding-test.mjs",
   "scripts/stage-0-19f-f3-preexisting-distinctiveness-repair-test.mjs",
   "scripts/stage-0-19f-f4-webpack-dev-route-safety-test.mjs",
+  "scripts/stage-0-19f-f5-strategy-native-thematic-progression-test.mjs",
   "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
   "scripts/stage-0-7a-media-ownership-metering-test.mjs",
   "scripts/stage-0-7a-2-final-movie-migration-test.mjs",

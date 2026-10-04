@@ -155,11 +155,139 @@ export type CreatorScriptExpansionTarget = {
 
 export const CREATOR_SCRIPT_MIN_ATOMIC_ADDITIVE_GAIN_WORDS = 20;
 
+function cleanApprovedTheme(value: unknown) {
+  if (typeof value !== "string") return "";
+  const cleaned = value
+    .replace(/^[\s"'“”‘’\-–—:]+|[\s"'“”‘’\-–—:.]+$/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 80);
+  if (!cleaned || cleaned.split(/\s+/u).length > 8) return "";
+  return cleaned;
+}
+
+function splitApprovedThemeList(value: string) {
+  const normalized = value
+    .replace(/\s*[,;]\s*(?:and|&)\s+/giu, ",")
+    .replace(/[.!?]+$/gu, "");
+  return [...new Set(
+    normalized
+      .split(/[,;|]/u)
+      .map((item) => cleanApprovedTheme(item))
+      .filter(Boolean),
+  )];
+}
+
+function findStructuredApprovedThemes(value: unknown): string[] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, item] of entries) {
+    if (!/^(?:themes|mainThemes|contentThemes|thematicProgression)$/iu.test(key) ||
+        !Array.isArray(item)) continue;
+    const themes = item.map((theme) => cleanApprovedTheme(theme)).filter(Boolean);
+    if (themes.length >= 2 && themes.length <= 10 && themes.length === item.length) {
+      return [...new Set(themes)];
+    }
+  }
+  for (const [, item] of entries) {
+    const nested = findStructuredApprovedThemes(item);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function findProductionPlanApprovedThemes(value: unknown): string[] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, item] of entries) {
+    if (!/^productionPlan$/iu.test(key) || !Array.isArray(item)) continue;
+    for (const instruction of item) {
+      if (typeof instruction !== "string") continue;
+      const match = instruction.match(/\b(?:main\s+)?themes?\s*:\s*(.+)$/iu);
+      if (!match?.[1]) continue;
+      const themes = splitApprovedThemeList(match[1]);
+      if (themes.length >= 2 && themes.length <= 10) return themes;
+    }
+  }
+  for (const [, item] of entries) {
+    const nested = findProductionPlanApprovedThemes(item);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+export function extractCreatorScriptApprovedThemeSequence(
+  approvedStrategy: unknown,
+) {
+  return findStructuredApprovedThemes(approvedStrategy) ||
+    findProductionPlanApprovedThemes(approvedStrategy) ||
+    [];
+}
+
+function approvedThemeToken(theme: string) {
+  const token = theme
+    .toLocaleLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .slice(0, 60);
+  return token || "theme";
+}
+
+export function adaptCreatorScriptSectionPlanToApprovedThemes(input: {
+  plan: CreatorScriptSectionBudget[];
+  approvedStrategy: unknown;
+}) {
+  const bodySections = input.plan.filter((section) => section.kind === "body");
+  const themes = extractCreatorScriptApprovedThemeSequence(input.approvedStrategy);
+  if (bodySections.length < 2 || themes.length !== bodySections.length) {
+    return input.plan;
+  }
+  const bodyIndexById = new Map(
+    bodySections.map((section, index) => [section.id, index]),
+  );
+  return input.plan.map((section) => {
+    if (section.kind !== "body") return section;
+    const bodyIndex = bodyIndexById.get(section.id);
+    if (bodyIndex === undefined) return section;
+    const theme = themes[bodyIndex]!;
+    const token = approvedThemeToken(theme);
+    const otherThemeTokens = themes
+      .filter((_, index) => index !== bodyIndex)
+      .map((item) => `reserved_approved_theme:${approvedThemeToken(item)}`);
+    const previousTheme = bodyIndex > 0 ? themes[bodyIndex - 1] : null;
+    const laterThemes = themes.slice(bodyIndex + 1);
+    return {
+      ...section,
+      role:
+        `Develop the creator-approved theme "${theme}" as this section's primary intellectual territory while preserving its grounded structural function: ${section.role}`,
+      centralQuestion:
+        `What distinct insight about "${theme}" does the approved strategy require here, without substantively developing the other reserved themes?`,
+      progression: previousTheme
+        ? `Advance from the established theme "${previousTheme}" to "${theme}". Treat earlier themes as known and leave ${laterThemes.length > 0 ? `later themes (${laterThemes.join(", ")})` : "the final synthesis"} for their assigned sections. ${section.progression}`
+        : `Begin the creator-approved thematic sequence with "${theme}". Leave later themes (${laterThemes.join(", ")}) for their assigned sections. ${section.progression}`,
+      ownershipBoundary: {
+        usage: "control_only_never_narrate" as const,
+        owns: [...new Set([
+          ...section.ownershipBoundary.owns,
+          "approved_theme",
+          `approved_theme:${token}`,
+        ])],
+        excludes: [...new Set([
+          ...section.ownershipBoundary.excludes,
+          ...otherThemeTokens,
+        ])],
+      },
+    };
+  });
+}
+
 export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSectionBudget[]) {
   const establishedPremises: string[] = [];
   return plan.map((section) => {
     const owns = [...section.ownershipBoundary.owns];
-    const narrationDirective = section.kind === "opening"
+    const structuralDirective = section.kind === "opening"
       ? "Begin directly with one grounded human tension or observation. Ask at most one essential question. Do not announce what the inquiry or content will do."
       : section.kind === "conclusion"
         ? "State directly what the established argument changes about identity, agency, responsibility, or meaning. Advance one level beyond the strongest completed body insight. Do not recap or repeat any earlier thesis, analogy, paradox, closing sentence, or rhetorical question. Preserve uncertainty and make the final sentence the single newly earned open question without labeling it."
@@ -179,6 +307,12 @@ export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSecti
                   owns.includes("evidence_boundary")
                 ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final open question."
                 : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's deepest synthesis or final open question.";
+    const approvedTheme = owns.find((item) =>
+      item.startsWith("approved_theme:")
+    );
+    const narrationDirective = approvedTheme
+      ? `Develop only the creator-approved thematic territory named by this section's role and centralQuestion. Use the structural grounding function only in service of that theme. Treat earlier approved themes as established; do not substantively develop themes reserved for other sections, and do not repeat another theme's explanation, examples, stakes, or closing question. ${structuralDirective}`
+      : structuralDirective;
     const control = {
       sectionId: section.id,
       kind: section.kind,

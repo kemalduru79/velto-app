@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  adaptCreatorScriptSectionPlanToApprovedThemes,
   assertCreatorScriptMatchesSectionPlan,
   createCreatorScript,
   createCreatorScriptSectionBudgetPlan,
@@ -332,12 +333,18 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
         plan: baseSectionPlan,
       })
     : baseSectionPlan;
-  const sectionPlan = sectionNative
+  const uncertaintyAdaptiveSectionPlan = sectionNative
     ? adaptCreatorLongFormSectionPlanToUncertaintyCapability({
         context: editorialContext,
         plan: demonstrationAdaptiveSectionPlan,
       })
     : baseSectionPlan;
+  const sectionPlan = sectionNative
+    ? adaptCreatorScriptSectionPlanToApprovedThemes({
+        plan: uncertaintyAdaptiveSectionPlan,
+        approvedStrategy: input.snapshot.strategy.approvedStrategy,
+      })
+    : uncertaintyAdaptiveSectionPlan;
   const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
     context: editorialContext,
     plan: sectionPlan,
