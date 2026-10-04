@@ -118,23 +118,49 @@ export function createCreatorScriptBuildAdjudicationRejectionDiagnostic(input: {
   };
 }
 
-function isRecoverableWorldStateAbstention(initialClaims: Array<Record<string, unknown>>, adjudication: Record<string, unknown>) {
+function isRecoverableAdjudicationAbstention(
+  initialClaims: Array<Record<string, unknown>>,
+  adjudication: Record<string, unknown>,
+) {
   if (!Array.isArray(adjudication.claims)) return false;
   let abstained = false;
   for (const initial of initialClaims) {
-    const adjudicated = adjudication.claims.find((value) => safeRecord(value).claimId === initial.claimId);
+    const adjudicated = adjudication.claims.find((value) =>
+      safeRecord(value).claimId === initial.claimId
+    );
     try {
-      reconcileClaimPropositionAuthorities({ initialClaims: [initial], adjudication: { claims: [adjudicated] } });
+      reconcileClaimPropositionAuthorities({
+        initialClaims: [initial],
+        adjudication: { claims: [adjudicated] },
+      });
     } catch (error) {
-      if (!(error instanceof ClaimPropositionAuthorityDisagreementError)) return false;
+      if (!(error instanceof ClaimPropositionAuthorityDisagreementError)) {
+        return false;
+      }
       const d = error.disagreement;
-      if (d.initialKind !== "world_state" || d.adjudicatedKind !== "ambiguous" || d.kindMatches || !d.originMatches ||
-          d.initialOrigin.attributedEntity !== null || d.initialOrigin.referencedWork !== null) return false;
+      if (
+        d.adjudicatedKind !== "ambiguous" ||
+        d.kindMatches ||
+        !d.originMatches ||
+        d.initialKind === "ambiguous"
+      ) {
+        return false;
+      }
       try {
-        validateResearchClaimPropositionAuthority({ claimId: d.claimId,
-          claimType: d.claimType as Parameters<typeof validateResearchClaimPropositionAuthority>[0]["claimType"],
-          propositionKind: d.initialKind, origin: d.initialOrigin }, { required: true, allowAmbiguous: false });
-      } catch { return false; }
+        validateResearchClaimPropositionAuthority({
+          claimId: d.claimId,
+          claimType: d.claimType as Parameters<
+            typeof validateResearchClaimPropositionAuthority
+          >[0]["claimType"],
+          propositionKind: d.initialKind,
+          origin: d.initialOrigin,
+        }, {
+          required: true,
+          allowAmbiguous: false,
+        });
+      } catch {
+        return false;
+      }
       abstained = true;
     }
   }
@@ -168,7 +194,7 @@ export async function recoverCreatorScriptBuildEditorialAdjudication(input: {
         reason = error instanceof CreatorScriptBuildStageExecutionError ? error.code :
           error instanceof Error ? error.message : "EDITORIAL_CLAIM_ORIGIN_ADJUDICATION_INVALID";
         recoverable = error instanceof ClaimPropositionAuthorityDisagreementError && adjudication !== null &&
-          isRecoverableWorldStateAbstention(input.initialClaims, adjudication);
+          isRecoverableAdjudicationAbstention(input.initialClaims, adjudication);
       }
       return { accepted: false, operationId, recoverable, adjudication: safeAdjudication(adjudication),
         rejection: createCreatorScriptBuildAdjudicationRejectionDiagnostic({ ...input, adjudication, ordinal, reason }) };
@@ -184,7 +210,7 @@ export async function recoverCreatorScriptBuildEditorialAdjudication(input: {
         reconcileClaimPropositionAuthorities({ initialClaims: input.initialClaims, adjudication: outcome.adjudication });
       } catch (error) {
         confirmedAbstention = error instanceof ClaimPropositionAuthorityDisagreementError &&
-          isRecoverableWorldStateAbstention(input.initialClaims, safeRecord(outcome.adjudication));
+          isRecoverableAdjudicationAbstention(input.initialClaims, safeRecord(outcome.adjudication));
       }
     }
     if (confirmedAbstention) continue;
