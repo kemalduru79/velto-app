@@ -196,6 +196,37 @@ function findStructuredApprovedThemes(value: unknown): string[] | null {
   return null;
 }
 
+function findFocusedApprovedThemes(value: unknown): string[] | null {
+  if (typeof value === "string") {
+    const lowerValue = value.toLocaleLowerCase();
+    const markers = ["focusing on ", "focus on "];
+    for (const marker of markers) {
+      const markerIndex = lowerValue.indexOf(marker);
+      if (markerIndex < 0) continue;
+      const clause = value
+        .slice(markerIndex + marker.length)
+        .split(/[.!?]/u)[0]
+        ?.trim() || "";
+      const themes = splitApprovedThemeList(clause);
+      if (themes.length >= 2 && themes.length <= 10) return themes;
+    }
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = findFocusedApprovedThemes(item);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    const nested = findFocusedApprovedThemes(item);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 function findProductionPlanApprovedThemes(value: unknown): string[] | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const entries = Object.entries(value as Record<string, unknown>);
@@ -229,6 +260,7 @@ export function extractCreatorScriptApprovedThemeSequence(
 ) {
   return findStructuredApprovedThemes(approvedStrategy) ||
     findProductionPlanApprovedThemes(approvedStrategy) ||
+    findFocusedApprovedThemes(approvedStrategy) ||
     [];
 }
 
