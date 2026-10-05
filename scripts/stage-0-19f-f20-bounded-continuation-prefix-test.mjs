@@ -101,11 +101,11 @@ const repeatedWithinContinuation = selectCreatorScriptBuildSectionContinuationPr
   continuation: {
     segments: [
       {
-        text: "Fresh insight moves status beyond paid employment.",
+        text: "Fresh insight moves status outward.",
         claimIds: [],
       },
       {
-        text: "Fresh insight moves status beyond formal job titles.",
+        text: "Fresh insight moves status outward again.",
         claimIds: [],
       },
     ],
