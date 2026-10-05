@@ -665,7 +665,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
               getCreatorScriptBuildSectionContinuationSegmentMaximumWords(
                 continuationBand.maximumWords,
               ) || continuationBand.maximumWords;
-            const runContinuation = async (input: {
+            const runContinuation = async (request: {
               logicalSuffix: string;
               correction: boolean;
             }) =>
@@ -674,7 +674,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                 projectId: input.projectId,
                 operationType: "creator_script_build_script_generation",
                 logicalOperationId:
-                  `${baseIdentity}:section:${index + 1}:${activeSection.id}:${input.logicalSuffix}`,
+                  `${baseIdentity}:section:${index + 1}:${activeSection.id}:${request.logicalSuffix}`,
                 system: SECTION_NATIVE_CONTINUATION_SYSTEM,
                 user: {
                   generationAuthority: input.value,
@@ -694,7 +694,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                   previousCandidate: initialCandidate,
                   continuationLength: continuationBand,
                   continuationSegmentMaximumWords,
-                  ...(input.correction
+                  ...(request.correction
                     ? {
                         continuationCorrection: {
                           reason: "zero_retained_prefix_above_maximum",
