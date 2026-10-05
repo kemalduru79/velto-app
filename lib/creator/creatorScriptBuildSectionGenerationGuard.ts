@@ -59,6 +59,23 @@ export function createCreatorScriptBuildSectionLengthRecoveryBand(
   });
 }
 
+export function createCreatorScriptBuildSectionContinuationBand(
+  validation: CreatorScriptBuildSectionLengthValidation,
+) {
+  if (validation.reason !== "below_minimum") return null;
+  return Object.freeze({
+    minimumWords: validation.targetWords - validation.wordCount,
+    maximumWords: validation.maximumWords - validation.wordCount,
+  });
+}
+
+export function getCreatorScriptBuildSectionContinuationMaxOutputTokens(
+  maximumWords: number,
+) {
+  if (!Number.isInteger(maximumWords) || maximumWords < 1) return null;
+  return Math.max(256, Math.ceil(maximumWords * 3) + 128);
+}
+
 export async function runCreatorScriptBuildSectionGenerationWithBoundedRetry<T>(input: {
   budget: CreatorScriptSectionBudget;
   execute: (recovery: Readonly<{

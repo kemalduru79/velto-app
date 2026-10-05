@@ -45,7 +45,9 @@ import type {
   CreatorScriptBuildScriptGenerationInput,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
 import {
+  createCreatorScriptBuildSectionContinuationBand,
   createCreatorScriptBuildSectionLengthRecoveryBand,
+  getCreatorScriptBuildSectionContinuationMaxOutputTokens,
   runCreatorScriptBuildSectionGenerationWithBoundedRetry,
 } from "./creatorScriptBuildSectionGenerationGuard.ts";
 import type {
@@ -514,6 +516,26 @@ function generationSectionSchema(
   };
 }
 
+function generationSectionContinuationSchema(
+  input: CreatorScriptBuildScriptGenerationInput,
+  sectionId: string,
+) {
+  const sectionAuthority = input.sectionClaimAuthority.find((item) =>
+    item.sectionId === sectionId
+  );
+  const permittedClaimIds = sectionAuthority?.permittedClaimIds ||
+    input.permittedClaimIds;
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      text: { type: "string" },
+      claimIds: claimIdArraySchema(permittedClaimIds),
+    },
+    required: ["text", "claimIds"],
+  };
+}
+
 const GENERATION_SYSTEM = [
   "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
   "Write one audience-facing documentary narration proposal using only the supplied approved strategy and canonical editorial context.",
@@ -549,6 +571,52 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Do not invent facts, studies, statistics, examples, anecdotes, authorities, or evidence.",
   "Return only the active section's content-only text, optional heading, and exact permitted claimIds as strict JSON.",
 ].join(" ");
+
+const SECTION_NATIVE_CONTINUATION_SYSTEM = [
+  "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
+  "Write only a continuation for the single active documentary narration section supplied in activeSection.",
+  "Use only the supplied approved strategy, canonical editorial context, permitted claim IDs, and evidence boundaries.",
+  ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
+  ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
+  ...CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
+  "Treat sectionControl and futureSectionOwnership as non-narratable control metadata. sectionControl is binding for the active section; futureSectionOwnership identifies intellectual work that must be left for later sections.",
+  "Treat completedSections and previousCandidate as established audience knowledge. Reuse only the minimum words needed for continuity; do not re-explain their thesis, mechanism, evidence, examples, paradoxes, or closing questions.",
+  "sectionClaimAuthority is binding evidence authority for the active section. Use only its permittedClaimIds.",
+  "If sectionClaimAuthority.mode is conceptual_only, return an empty claimIds array and reason only from creator-approved framing plus established premises. Do not imply empirical support with phrases such as 'research shows', 'studies show', 'experts argue', 'evidence suggests', or unsupported historical/psychological generalizations.",
+  "If sectionClaimAuthority.mode is theme_grounded, use only claims that directly support the active approved theme; do not reuse a globally permitted claim merely because it was available to another section.",
+  "LENGTH RECOVERY MODE: preserve previousCandidate exactly and return only a new continuation to append to it; do not rewrite or quote any previousCandidate text.",
+  "Count spoken words as whitespace-separated narration words, not model tokens. The continuation text MUST contain at least continuationLength.minimumWords words and MUST NOT exceed continuationLength.maximumWords words.",
+  "Add only substantive, section-owned reasoning or grounded detail that advances the active section. Do not pad, summarize, restate, duplicate, or introduce a new topic.",
+  "Make the continuation flow directly from the previousCandidate ending and remain compatible with its heading. Return only continuation text and the permitted claim IDs actually used in that new text.",
+  "Do not narrate internal editorial methodology, production intent, prompts, section structure, source control, or brand process.",
+  "Do not invent facts, studies, statistics, examples, anecdotes, authorities, or evidence.",
+  "Return strict JSON only.",
+].join(" ");
+
+function mergeSectionContinuation(
+  previous: unknown,
+  continuation: unknown,
+) {
+  const previousRecord = previous as Record<string, unknown>;
+  const continuationRecord = continuation as Record<string, unknown>;
+  const previousClaimIds = Array.isArray(previousRecord.claimIds)
+    ? previousRecord.claimIds.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  const continuationClaimIds = Array.isArray(continuationRecord.claimIds)
+    ? continuationRecord.claimIds.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  return {
+    heading: previousRecord.heading ?? null,
+    text: `${String(previousRecord.text || "").trim()} ${String(
+      continuationRecord.text || "",
+    ).trim()}`.trim(),
+    claimIds: [...new Set([...previousClaimIds, ...continuationClaimIds])],
+  };
+}
 
 export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
   ownerId: string;
@@ -590,11 +658,57 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       text: section.text,
       claimIds: section.claimIds,
     }));
+    let initialCandidate: unknown = null;
     const sectionResult =
       await runCreatorScriptBuildSectionGenerationWithBoundedRetry({
         budget: activeSection,
-        execute: async ({ ordinal, previousValidation }) =>
-          await runJson({
+        execute: async ({ ordinal, previousValidation }) => {
+          const continuationBand = previousValidation
+            ? createCreatorScriptBuildSectionContinuationBand(
+                previousValidation,
+              )
+            : null;
+          if (ordinal === 2 && continuationBand && initialCandidate) {
+            const continuation = await runJson({
+              ownerId: input.ownerId,
+              projectId: input.projectId,
+              operationType: "creator_script_build_script_generation",
+              logicalOperationId:
+                `${baseIdentity}:section:${index + 1}:${activeSection.id}:length-retry:2`,
+              system: SECTION_NATIVE_CONTINUATION_SYSTEM,
+              user: {
+                generationAuthority: input.value,
+                activeSection,
+                activeSectionIndex: index,
+                sectionControl: narrationControlPlan[index],
+                sectionClaimAuthority: input.value.sectionClaimAuthority[index],
+                futureSectionOwnership: narrationControlPlan
+                  .slice(index + 1)
+                  .map((control) => ({
+                    sectionId: control.sectionId,
+                    kind: control.kind,
+                    owns: control.owns,
+                    excludes: control.excludes,
+                  })),
+                completedSections,
+                previousCandidate: initialCandidate,
+                continuationLength: continuationBand,
+              },
+              schemaName:
+                "creator_script_build_script_generation_section_continuation",
+              schema: generationSectionContinuationSchema(
+                input.value,
+                activeSection.id,
+              ),
+              temperature: 0.1,
+              maxOutputTokens:
+                getCreatorScriptBuildSectionContinuationMaxOutputTokens(
+                  continuationBand.maximumWords,
+                ) || undefined,
+            });
+            return mergeSectionContinuation(initialCandidate, continuation);
+          }
+          const candidate = await runJson({
             ownerId: input.ownerId,
             projectId: input.projectId,
             operationType: "creator_script_build_script_generation",
@@ -642,7 +756,10 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
             schemaName: "creator_script_build_script_generation_section",
             schema: generationSectionSchema(input.value, activeSection.id),
             temperature: ordinal === 1 ? 0.3 : 0.1,
-          }),
+          });
+          if (ordinal === 1) initialCandidate = candidate;
+          return candidate;
+        },
       });
     if (!sectionResult.validation.accepted) {
       throw new CreatorScriptBuildStageExecutionError({
