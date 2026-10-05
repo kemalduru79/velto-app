@@ -47,10 +47,9 @@ import type {
 import {
   createCreatorScriptBuildSectionContinuationBand,
   createCreatorScriptBuildSectionLengthRecoveryBand,
-  creatorScriptBuildSectionContinuationIntroducesLocalRepetition,
   getCreatorScriptBuildSectionContinuationMaxOutputTokens,
-  mergeCreatorScriptBuildSectionContinuation,
   runCreatorScriptBuildSectionGenerationWithBoundedRetry,
+  selectCreatorScriptBuildSectionContinuationPrefix,
 } from "./creatorScriptBuildSectionGenerationGuard.ts";
 import type {
   CreatorScriptBuildScriptRepairInput,
@@ -531,10 +530,22 @@ function generationSectionContinuationSchema(
     type: "object",
     additionalProperties: false,
     properties: {
-      text: { type: "string" },
-      claimIds: claimIdArraySchema(permittedClaimIds),
+      segments: {
+        type: "array",
+        minItems: 1,
+        maxItems: 12,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            text: { type: "string" },
+            claimIds: claimIdArraySchema(permittedClaimIds),
+          },
+          required: ["text", "claimIds"],
+        },
+      },
     },
-    required: ["text", "claimIds"],
+    required: ["segments"],
   };
 }
 
@@ -587,9 +598,10 @@ const SECTION_NATIVE_CONTINUATION_SYSTEM = [
   "If sectionClaimAuthority.mode is conceptual_only, return an empty claimIds array and reason only from creator-approved framing plus established premises. Do not imply empirical support with phrases such as 'research shows', 'studies show', 'experts argue', 'evidence suggests', or unsupported historical/psychological generalizations.",
   "If sectionClaimAuthority.mode is theme_grounded, use only claims that directly support the active approved theme; do not reuse a globally permitted claim merely because it was available to another section.",
   "LENGTH RECOVERY MODE: preserve previousCandidate exactly and return only a new continuation to append to it; do not rewrite or quote any previousCandidate text.",
-  "Count spoken words as whitespace-separated narration words, not model tokens. The continuation text MUST contain at least continuationLength.minimumWords words and MUST NOT exceed continuationLength.maximumWords words.",
+  "Return the continuation as a short ordered list of atomic segments. Every segment MUST be exactly one complete sentence ending in sentence-final punctuation and MUST carry only the permitted claim IDs used by that sentence.",
+  "Count spoken words as whitespace-separated narration words, not model tokens. The combined segment text SHOULD contain at least continuationLength.minimumWords words and SHOULD NOT exceed continuationLength.maximumWords words; the server will select only a safe ordered prefix inside the hard final-section envelope.",
   "Add only substantive, section-owned reasoning or grounded detail that advances the active section. Do not pad, summarize, restate, duplicate, or introduce a new topic.",
-  "Make the continuation flow directly from the previousCandidate ending and remain compatible with its heading. Return only continuation text and the permitted claim IDs actually used in that new text.",
+  "Make the ordered segments flow directly from the previousCandidate ending and remain compatible with its heading. Return only segments and their sentence-local permitted claim IDs.",
   "Do not narrate internal editorial methodology, production intent, prompts, section structure, source control, or brand process.",
   "Do not invent facts, studies, statistics, examples, anecdotes, authorities, or evidence.",
   "Return strict JSON only.",
@@ -683,27 +695,29 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                   continuationBand.maximumWords,
                 ) || undefined,
             });
-            if (
-              creatorScriptBuildSectionContinuationIntroducesLocalRepetition({
+            const prefix =
+              selectCreatorScriptBuildSectionContinuationPrefix({
                 previous: initialCandidate,
                 continuation,
-              })
-            ) {
+                budget: activeSection,
+              });
+            if (!prefix.accepted || !prefix.value) {
+              const localRepetition = prefix.reason === "local_repetition";
               throw new CreatorScriptBuildStageExecutionError({
-                category: "SCRIPT_POLICY",
-                code:
-                  "CREATOR_SCRIPT_BUILD_GENERATED_SECTION_CONTINUATION_LOCAL_REPETITION",
+                category: localRepetition ? "SCRIPT_POLICY" : "MODEL_CONTRACT",
+                code: localRepetition
+                  ? "CREATOR_SCRIPT_BUILD_GENERATED_SECTION_CONTINUATION_LOCAL_REPETITION"
+                  : "CREATOR_SCRIPT_BUILD_GENERATED_SECTION_CONTINUATION_PREFIX_INVALID",
                 retryability: "NON_RETRYABLE",
                 diagnostics: {
                   sectionId: activeSection.id,
                   ordinal,
+                  reason: prefix.reason,
+                  retainedSegmentCount: prefix.retainedSegmentCount,
                 },
               });
             }
-            return mergeCreatorScriptBuildSectionContinuation(
-              initialCandidate,
-              continuation,
-            );
+            return prefix.value;
           }
           const candidate = await runJson({
             ownerId: input.ownerId,

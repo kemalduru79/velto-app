@@ -132,7 +132,7 @@ assert.doesNotMatch(
 assert.match(provider, /preserve previousCandidate exactly/u);
 assert.match(provider, /whitespace-separated narration words, not model tokens/u);
 assert.match(provider, /generationSectionContinuationSchema/u);
-assert.match(provider, /mergeCreatorScriptBuildSectionContinuation/u);
+assert.match(provider, /selectCreatorScriptBuildSectionContinuationPrefix/u);
 assert.match(
   provider,
   /CREATOR_SCRIPT_BUILD_GENERATED_SECTION_CONTINUATION_LOCAL_REPETITION/u,

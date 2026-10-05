@@ -128,6 +128,109 @@ export function mergeCreatorScriptBuildSectionContinuation(
   };
 }
 
+export type CreatorScriptBuildSectionContinuationPrefixSelection = Readonly<{
+  accepted: boolean;
+  value: Readonly<Record<string, unknown>> | null;
+  retainedSegmentCount: number;
+  reason:
+    | "accepted"
+    | "segments_invalid"
+    | "sentence_incomplete"
+    | "local_repetition"
+    | "below_minimum"
+    | "above_maximum";
+}>;
+
+function continuationSegmentEndsAtSentenceBoundary(text: string) {
+  return /[.!?…][\p{Pe}\p{Pf}"']*$/u.test(text.trim());
+}
+
+export function selectCreatorScriptBuildSectionContinuationPrefix(input: {
+  previous: unknown;
+  continuation: unknown;
+  budget: CreatorScriptSectionBudget;
+}): CreatorScriptBuildSectionContinuationPrefixSelection {
+  const continuation = continuationRecord(input.continuation);
+  const segments = continuation?.segments;
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return Object.freeze({
+      accepted: false,
+      value: null,
+      retainedSegmentCount: 0,
+      reason: "segments_invalid",
+    });
+  }
+
+  const retained: Array<{ text: string; claimIds: string[] }> = [];
+  let lastReason: CreatorScriptBuildSectionContinuationPrefixSelection["reason"] =
+    "below_minimum";
+  let selected: CreatorScriptBuildSectionContinuationPrefixSelection | null =
+    null;
+
+  for (const value of segments) {
+    const segment = continuationRecord(value);
+    const text = typeof segment?.text === "string" ? segment.text.trim() : "";
+    const claimIds = Array.isArray(segment?.claimIds) &&
+        segment.claimIds.every((claimId) => typeof claimId === "string")
+      ? [...segment.claimIds] as string[]
+      : null;
+    if (!text || !claimIds) {
+      lastReason = "segments_invalid";
+      break;
+    }
+    if (!continuationSegmentEndsAtSentenceBoundary(text)) {
+      lastReason = "sentence_incomplete";
+      break;
+    }
+
+    const candidateSegments = [...retained, { text, claimIds }];
+    const candidateContinuation = {
+      text: candidateSegments.map((item) => item.text).join(" "),
+      claimIds: [...new Set(candidateSegments.flatMap((item) => item.claimIds))],
+    };
+    if (
+      creatorScriptBuildSectionContinuationIntroducesLocalRepetition({
+        previous: input.previous,
+        continuation: candidateContinuation,
+      })
+    ) {
+      lastReason = "local_repetition";
+      break;
+    }
+
+    const merged = mergeCreatorScriptBuildSectionContinuation(
+      input.previous,
+      candidateContinuation,
+    );
+    const validation = validateCreatorScriptBuildGeneratedSectionLength({
+      value: merged,
+      budget: input.budget,
+    });
+    if (validation.reason === "above_maximum") {
+      lastReason = "above_maximum";
+      break;
+    }
+
+    retained.push({ text, claimIds });
+    lastReason = validation.reason;
+    if (validation.accepted) {
+      selected = Object.freeze({
+        accepted: true,
+        value: Object.freeze(merged),
+        retainedSegmentCount: retained.length,
+        reason: "accepted",
+      });
+    }
+  }
+
+  return selected || Object.freeze({
+    accepted: false,
+    value: null,
+    retainedSegmentCount: retained.length,
+    reason: lastReason,
+  });
+}
+
 export async function runCreatorScriptBuildSectionGenerationWithBoundedRetry<T>(input: {
   budget: CreatorScriptSectionBudget;
   execute: (recovery: Readonly<{
