@@ -6,6 +6,7 @@ import {
   shouldPersistCreatorAutosaveIntent,
 } from "../lib/creator/creatorHydrationPersistence.ts";
 import { creatorSceneOutputIsCurrent } from "../lib/creator/creatorScriptApproval.ts";
+import { resolveCreatorProjectRevisionAdvance } from "../lib/creator/projectSaveCoordinator.ts";
 import { resolveCreatorSceneHydrationAuthority } from "../lib/creator/creatorScenePersistence.ts";
 import { resolveCreatorRestoredNavigation } from "../lib/creator/stageNavigation.ts";
 
@@ -44,5 +45,50 @@ assert.equal(shouldPersistCreatorAutosaveIntent({ baselineKey: requestB, current
 const concurrentC = createCreatorAutosaveSemanticKey({ title: "C", scenes: [{ id: 1 }] });
 assert.equal(shouldPersistCreatorAutosaveIntent({ baselineKey: requestB, currentKey: concurrentC }), true, "a concurrent post-request edit remains dirty");
 assert.match(page, /scriptRevision,/);
+
+assert.equal(
+  resolveCreatorProjectRevisionAdvance({
+    responseProjectId: "project-a",
+    responseUpdatedAt: "2026-10-05T21:22:43.915411+00:00",
+    activeProjectId: "project-a",
+    activeUpdatedAt: "2026-10-05T21:21:49.156534+00:00",
+  }),
+  "2026-10-05T21:22:43.915411+00:00",
+  "a late successful save for the still-active project must advance revision authority",
+);
+assert.equal(
+  resolveCreatorProjectRevisionAdvance({
+    responseProjectId: "project-b",
+    responseUpdatedAt: "2026-10-05T21:22:43.915411+00:00",
+    activeProjectId: "project-a",
+    activeUpdatedAt: "2026-10-05T21:21:49.156534+00:00",
+  }),
+  null,
+  "a response for another project must never advance revision authority",
+);
+assert.equal(
+  resolveCreatorProjectRevisionAdvance({
+    responseProjectId: "project-a",
+    responseUpdatedAt: "2026-10-05T21:20:00.000000+00:00",
+    activeProjectId: "project-a",
+    activeUpdatedAt: "2026-10-05T21:21:49.156534+00:00",
+  }),
+  null,
+  "an older response must never regress revision authority",
+);
+
+const saveResponseStart = page.indexOf("const data = await res.json();");
+const saveResponseEnd = page.indexOf("await fetchProjects();", saveResponseStart);
+const saveResponseBlock = page.slice(saveResponseStart, saveResponseEnd);
+assert.ok(saveResponseStart >= 0 && saveResponseEnd > saveResponseStart, "save response block must exist");
+assert.ok(
+  saveResponseBlock.indexOf("if (!res.ok)") < saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
+  "HTTP failure must be handled before active-binding discard",
+);
+assert.ok(
+  saveResponseBlock.indexOf("resolveCreatorProjectRevisionAdvance") <
+    saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
+  "successful save revision must advance before an inactive binding can discard UI effects",
+);
 
 console.log("Stage 0.18A6G.1 reload hydration/autosave regression passed.");
