@@ -50,6 +50,8 @@ import type {
 import type { CreatorScriptBuildProviderExecutors } from "./creatorScriptBuildRuntime.server.ts";
 
 const MODEL = () => process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const SCRIPT_MODEL = () =>
+  process.env.OPENAI_SCRIPT_MODEL || "gpt-6.1-sol";
 const PRIMARY_SELECTION_PROVIDER_CORRELATION = Symbol.for(
   "velto.creatorScriptBuild.primarySelectionProviderCorrelation",
 );
@@ -146,8 +148,9 @@ async function runOpenAIJson(input: {
   schemaName: string;
   schema: Record<string, unknown>;
   temperature: number;
+  model?: string;
 }) {
-  const model = MODEL();
+  const model = input.model || MODEL();
   const response = await openAI().responses.create({
     model,
     input: [
@@ -540,6 +543,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       schemaName: "creator_script_build_script_generation",
       schema: generationSchema(input.value),
       temperature: 0.3,
+      model: SCRIPT_MODEL(),
     });
   }
 
@@ -580,6 +584,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       schemaName: "creator_script_build_script_generation_section",
       schema: generationSectionSchema(input.value),
       temperature: 0.3,
+      model: SCRIPT_MODEL(),
     });
     sections.push(section);
   }
@@ -719,6 +724,7 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     schemaName: "creator_script_build_script_repair",
     schema: repairSchema(value),
     temperature: 0.1,
+    model: SCRIPT_MODEL(),
   });
 }
 
