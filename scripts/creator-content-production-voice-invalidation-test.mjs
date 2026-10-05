@@ -91,7 +91,7 @@ assert.match(
 
 const updateSceneBlock = pageSource.slice(
   pageSource.indexOf("const updateScene = async"),
-  pageSource.indexOf("const branchScene = async"),
+  pageSource.indexOf("const handleContinueStory ="),
 );
 assert.doesNotMatch(
   updateSceneBlock,
