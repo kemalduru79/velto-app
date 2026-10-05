@@ -47,7 +47,9 @@ import type {
 import {
   createCreatorScriptBuildSectionContinuationBand,
   createCreatorScriptBuildSectionLengthRecoveryBand,
+  creatorScriptBuildSectionContinuationIntroducesLocalRepetition,
   getCreatorScriptBuildSectionContinuationMaxOutputTokens,
+  mergeCreatorScriptBuildSectionContinuation,
   runCreatorScriptBuildSectionGenerationWithBoundedRetry,
 } from "./creatorScriptBuildSectionGenerationGuard.ts";
 import type {
@@ -593,31 +595,6 @@ const SECTION_NATIVE_CONTINUATION_SYSTEM = [
   "Return strict JSON only.",
 ].join(" ");
 
-function mergeSectionContinuation(
-  previous: unknown,
-  continuation: unknown,
-) {
-  const previousRecord = previous as Record<string, unknown>;
-  const continuationRecord = continuation as Record<string, unknown>;
-  const previousClaimIds = Array.isArray(previousRecord.claimIds)
-    ? previousRecord.claimIds.filter((value): value is string =>
-      typeof value === "string"
-    )
-    : [];
-  const continuationClaimIds = Array.isArray(continuationRecord.claimIds)
-    ? continuationRecord.claimIds.filter((value): value is string =>
-      typeof value === "string"
-    )
-    : [];
-  return {
-    heading: previousRecord.heading ?? null,
-    text: `${String(previousRecord.text || "").trim()} ${String(
-      continuationRecord.text || "",
-    ).trim()}`.trim(),
-    claimIds: [...new Set([...previousClaimIds, ...continuationClaimIds])],
-  };
-}
-
 export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
   ownerId: string;
   projectId: string;
@@ -706,7 +683,27 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                   continuationBand.maximumWords,
                 ) || undefined,
             });
-            return mergeSectionContinuation(initialCandidate, continuation);
+            if (
+              creatorScriptBuildSectionContinuationIntroducesLocalRepetition({
+                previous: initialCandidate,
+                continuation,
+              })
+            ) {
+              throw new CreatorScriptBuildStageExecutionError({
+                category: "SCRIPT_POLICY",
+                code:
+                  "CREATOR_SCRIPT_BUILD_GENERATED_SECTION_CONTINUATION_LOCAL_REPETITION",
+                retryability: "NON_RETRYABLE",
+                diagnostics: {
+                  sectionId: activeSection.id,
+                  ordinal,
+                },
+              });
+            }
+            return mergeCreatorScriptBuildSectionContinuation(
+              initialCandidate,
+              continuation,
+            );
           }
           const candidate = await runJson({
             ownerId: input.ownerId,

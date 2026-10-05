@@ -1,5 +1,6 @@
 import {
   countCreatorScriptWords,
+  creatorScriptAdditiveExpansionIntroducesLocalRepetition,
   type CreatorScriptSectionBudget,
 } from "./creatorScript.ts";
 
@@ -74,6 +75,57 @@ export function getCreatorScriptBuildSectionContinuationMaxOutputTokens(
 ) {
   if (!Number.isInteger(maximumWords) || maximumWords < 1) return null;
   return Math.max(256, Math.ceil(maximumWords * 3) + 128);
+}
+
+function continuationRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function creatorScriptBuildSectionContinuationIntroducesLocalRepetition(
+  input: { previous: unknown; continuation: unknown },
+) {
+  const previous = continuationRecord(input.previous);
+  const continuation = continuationRecord(input.continuation);
+  const previousText =
+    typeof previous?.text === "string" ? previous.text : "";
+  const continuationText =
+    typeof continuation?.text === "string" ? continuation.text : "";
+  if (!previousText.trim() || !continuationText.trim()) return false;
+  return creatorScriptAdditiveExpansionIntroducesLocalRepetition({
+    sectionText: previousText,
+    additionalText: continuationText,
+  });
+}
+
+export function mergeCreatorScriptBuildSectionContinuation(
+  previousValue: unknown,
+  continuationValue: unknown,
+) {
+  const previous = continuationRecord(previousValue) || {};
+  const continuation = continuationRecord(continuationValue) || {};
+  const previousText =
+    typeof previous.text === "string" ? previous.text : "";
+  const continuationText =
+    typeof continuation.text === "string" ? continuation.text.trim() : "";
+  const separator =
+    previousText && continuationText && !/\s$/u.test(previousText) ? " " : "";
+  const previousClaimIds = Array.isArray(previous.claimIds)
+    ? previous.claimIds.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  const continuationClaimIds = Array.isArray(continuation.claimIds)
+    ? continuation.claimIds.filter((value): value is string =>
+      typeof value === "string"
+    )
+    : [];
+  return {
+    heading: previous.heading ?? null,
+    text: `${previousText}${separator}${continuationText}`,
+    claimIds: [...new Set([...previousClaimIds, ...continuationClaimIds])],
+  };
 }
 
 export async function runCreatorScriptBuildSectionGenerationWithBoundedRetry<T>(input: {
