@@ -6,6 +6,10 @@ const adultGuardSource = fs.readFileSync(
   new URL("../lib/creator/adultContentGuard.ts", import.meta.url),
   "utf8",
 );
+const pageSource = fs.readFileSync(
+  new URL("../app/create/page.tsx", import.meta.url),
+  "utf8",
+);
 
 const baseScene = {
   id: 1,
@@ -83,5 +87,43 @@ assert.match(
   /dialogueAudioUrl:\s*dialogueAudioMatches\s*\?\s*scene\.dialogueAudioUrl\s*:\s*""/,
   "historic stale dialogue audio must be removed during hydration",
 );
+
+
+const updateSceneBlock = pageSource.slice(
+  pageSource.indexOf("const updateScene = async"),
+  pageSource.indexOf("const branchScene = async"),
+);
+assert.doesNotMatch(
+  updateSceneBlock,
+  /clearSceneAudioData\(sceneId\)|clearSceneDialogueAudioData\(sceneId\)/,
+  "generic AI scene edit must not clear voice before narration/dialogue change is known",
+);
+assert.match(
+  updateSceneBlock,
+  /audioUrl:\s*narrationChanged\s*\?\s*""\s*:\s*scene\.audioUrl/,
+  "narrator audio invalidation must be conditional on narration change",
+);
+assert.match(
+  updateSceneBlock,
+  /dialogueAudioUrl:\s*dialogueChanged\s*\?\s*""\s*:\s*scene\.dialogueAudioUrl/,
+  "dialogue audio invalidation must be conditional on dialogue change",
+);
+
+for (const [startMarker, endMarker, label] of [
+  ["const redrawSceneImage = async", "const editCreatorSceneVisualDirectionWithAI = async", "image regeneration"],
+  ["const editCreatorSceneVisualDirectionWithAI = async", "const updateScene = async", "visual direction edit"],
+  ["const restoreCreatorSceneAsset =", "const reuseCreatorProjectImage =", "image restore"],
+  ["const reuseCreatorProjectImage =", "const useCreatorStockMedia =", "project image reuse"],
+]) {
+  const start = pageSource.indexOf(startMarker);
+  const end = pageSource.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0 && end > start, `${label} block must exist`);
+  const block = pageSource.slice(start, end);
+  assert.doesNotMatch(
+    block,
+    /clearSceneAudioData|clearSceneDialogueAudioData|audioUrl:\s*""|dialogueAudioUrl:\s*""/,
+    `${label} must not invalidate voice assets`,
+  );
+}
 
 console.log("creator-content-production-voice-invalidation-test: PASS");
