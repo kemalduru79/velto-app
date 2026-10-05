@@ -21,6 +21,7 @@ const tests = [
   "scripts/stage-0-19f-f14-corrective-repair-output-ceiling-test.mjs",
   "scripts/stage-0-19f-f16-section-generation-word-envelope-recovery-test.mjs",
   "scripts/stage-0-19f-f17-section-generation-recovery-band-test.mjs",
+  "scripts/stage-0-19f-f18-canonical-origin-equality-test.mjs",
   "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
   "scripts/stage-0-7a-media-ownership-metering-test.mjs",
   "scripts/stage-0-7a-2-final-movie-migration-test.mjs",

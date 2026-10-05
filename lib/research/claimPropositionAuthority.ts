@@ -6,6 +6,7 @@ import {
   type ResearchClaimOrigin,
   type ResearchPropositionKind,
 } from "./claimEvidenceGraph.ts";
+import { canonicalResearchReference } from "./orchestratedResearch.ts";
 
 export const CLAIM_PROPOSITION_AUTHORITY_VERSION = "claim-proposition-authority-v2" as const;
 
@@ -105,9 +106,18 @@ function normalizeAuthority(
   };
 }
 
-function sameOrigin(left: ResearchClaimOrigin, right: ResearchClaimOrigin) {
+function sameReferencedWork(left: string | null, right: string | null) {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return canonicalResearchReference(left) === canonicalResearchReference(right);
+}
+
+export function claimPropositionOriginsEqual(
+  left: ResearchClaimOrigin,
+  right: ResearchClaimOrigin,
+) {
   return left.attributedEntity === right.attributedEntity &&
-    left.referencedWork === right.referencedWork;
+    sameReferencedWork(left.referencedWork, right.referencedWork);
 }
 
 function isOriginDeattribution(
@@ -205,7 +215,7 @@ export function reconcileClaimPropositionAuthorities(input: {
     const kindMatches =
       initial.propositionKind === adjudicated.propositionKind;
     const originMatches =
-      sameOrigin(initial.origin, adjudicated.origin);
+      claimPropositionOriginsEqual(initial.origin, adjudicated.origin);
     const initialRequiresPrimary = researchClaimRequiresPrimarySource({
       claimType,
       propositionKind: initial.propositionKind,
@@ -319,13 +329,14 @@ export function reconcileClaimPropositionAuthorities(input: {
       throw disagreement();
     }
 
-    const accepted =
-      !initialSemanticallyValid ||
-      isMonotonicPrimaryObligationUpgrade ||
-      isSameWorkPrimarySemanticRefinement ||
-      isSameOriginResearchAttributionRefinement ||
-      isSameOriginNonPrimarySemanticRefinement ||
-      isSameKindEditorialDeattributionRefinement
+    const accepted = agrees
+      ? initial
+      : !initialSemanticallyValid ||
+          isMonotonicPrimaryObligationUpgrade ||
+          isSameWorkPrimarySemanticRefinement ||
+          isSameOriginResearchAttributionRefinement ||
+          isSameOriginNonPrimarySemanticRefinement ||
+          isSameKindEditorialDeattributionRefinement
         ? adjudicated
         : initial;
 

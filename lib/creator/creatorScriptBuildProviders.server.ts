@@ -327,6 +327,7 @@ export async function executeCreatorScriptBuildEditorialProposalProvider(input: 
         "Create a grounded editorial proposal from only the supplied canonical sources and candidate spans.",
         "Return content-only claims and evidence selections. Never invent source ids, span ids, facts, studies, statistics, examples, or authority.",
         "claimType is epistemic/editorial metadata. propositionKind and origin describe proposition origin semantics.",
+        "When origin.referencedWork identifies a supplied source, copy that sourceId exactly; never rewrite its URL, slug, query, or spelling.",
         "Prefer atomic distinct claims, material counter-evidence, concrete demonstrations, and real uncertainty when grounded.",
         "Do not create canonical claim ids, evidence ids, or graph links.",
         "Return strict JSON only.",
@@ -400,6 +401,7 @@ export async function executeCreatorScriptBuildEditorialProposalProvider(input: 
       system: [
         "Adjudicate only propositionKind and origin for every supplied claim.",
         "Do not rewrite claim text or claimType and do not add or remove claims.",
+        "When retaining the same referenced work, copy referencedWork byte-for-byte from the supplied claim; do not normalize or rewrite URLs or slugs.",
         "Use attributed_statement only for what a named entity said; document_assertion for what a named work states; original_research_result for a result from its originating work; world_state only without attribution-only origin metadata.",
         "Use ambiguous when origin cannot be resolved safely. Return strict JSON only.",
         ...(ordinal === 2 ? [

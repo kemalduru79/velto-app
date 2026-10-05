@@ -4,6 +4,7 @@ import { CREATOR_SCRIPT_BUILD_EDITORIAL_ADJUDICATION_POLICY_VERSION, type Creato
 import {
   reconcileClaimPropositionAuthorities,
   ClaimPropositionAuthorityDisagreementError,
+  claimPropositionOriginsEqual,
 } from "../research/claimPropositionAuthority.ts";
 import {
   CreatorScriptBuildStageExecutionError,
@@ -106,8 +107,7 @@ export function createCreatorScriptBuildAdjudicationRejectionDiagnostic(input: {
         initialKind: typeof claim.propositionKind === "string" ? claim.propositionKind : null,
         initialOrigin, adjudicatedKind: found?.propositionKind ?? null, adjudicatedOrigin,
         kindMatches: found ? claim.propositionKind === found.propositionKind : false,
-        originMatches: adjudicatedOrigin !== null && initialOrigin.attributedEntity === adjudicatedOrigin.attributedEntity &&
-          initialOrigin.referencedWork === adjudicatedOrigin.referencedWork,
+        originMatches: adjudicatedOrigin !== null && claimPropositionOriginsEqual(initialOrigin, adjudicatedOrigin),
         evidenceSelections: Array.isArray(selections) ? selections.map((value) => {
           const selection = safeRecord(value);
           return { sourceId: typeof selection.sourceId === "string" ? selection.sourceId : null,

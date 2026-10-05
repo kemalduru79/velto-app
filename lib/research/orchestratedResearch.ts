@@ -46,6 +46,11 @@ const TRACKING_QUERY_KEYS = new Set([
   "mc_eid",
 ]);
 
+const MEDIUM_HOST_PATTERN = /^(?:[a-z0-9-]+\.)*medium\.com$/iu;
+const MEDIUM_POST_ID_PATTERN = /-([0-9a-f]{12})\/?$/iu;
+const RESEARCH_SOURCE_REFERENCE_PATTERN =
+  /^([a-z][a-z0-9_-]*):(https?:\/\/.*)$/iu;
+
 export function canonicalResearchUrl(rawUrl: string) {
   const value = rawUrl.trim();
   if (!value) return "";
@@ -62,10 +67,34 @@ export function canonicalResearchUrl(rawUrl: string) {
     if (url.pathname.length > 1) {
       url.pathname = url.pathname.replace(/\/+$/, "");
     }
+    const mediumPostId = MEDIUM_HOST_PATTERN.test(url.hostname)
+      ? url.pathname.match(MEDIUM_POST_ID_PATTERN)?.[1]?.toLowerCase()
+      : null;
+    if (mediumPostId) {
+      url.pathname = `/p/${mediumPostId}`;
+      url.search = "";
+    }
     return url.toString();
   } catch {
     return value.replace(/#.*$/, "").replace(/\/+$/, "");
   }
+}
+
+/**
+ * Canonicalizes URL-bearing source references without weakening equality for
+ * provider adapters or human-readable work names. Medium article slugs are
+ * presentation metadata; the stable post id is the source identity.
+ */
+export function canonicalResearchReference(rawReference: string) {
+  const value = rawReference.trim();
+  if (!value) return "";
+
+  const sourceReference = value.match(RESEARCH_SOURCE_REFERENCE_PATTERN);
+  if (sourceReference) {
+    return `${sourceReference[1].toLowerCase()}:${canonicalResearchUrl(sourceReference[2])}`;
+  }
+  if (/^https?:\/\//iu.test(value)) return canonicalResearchUrl(value);
+  return value;
 }
 
 function roundedUsd(value: number) {
