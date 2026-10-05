@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { applyCreatorSceneTextEdit } from "../lib/creator/editorState.ts";
+import { normalizeCreatorAdultScene } from "../lib/creator/adultContentGuard.ts";
 
 const baseScene = {
   id: 1,
@@ -62,4 +63,20 @@ const baseScene = {
   assert.equal(result.scenes[0].dialogueAudioUrl, baseScene.dialogueAudioUrl);
 }
 
-console.log("stage-0-20-content-production-voice-invalidation-test: PASS");
+{
+  const hydrated = normalizeCreatorAdultScene({
+    ...baseScene,
+    narration: "Edited narration already saved",
+    audioSourceText: "Old narration",
+  }, {
+    language: "en",
+    isOpeningScene: false,
+    allowDialogue: true,
+  });
+  assert.equal(hydrated.audioUrl, "");
+  assert.equal(hydrated.audioPath, "");
+  assert.equal(hydrated.audioSourceText, "");
+  assert.equal(hydrated.dialogueAudioUrl, baseScene.dialogueAudioUrl);
+}
+
+console.log("creator-content-production-voice-invalidation-test: PASS");
