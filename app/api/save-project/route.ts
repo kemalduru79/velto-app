@@ -302,13 +302,25 @@ export async function POST(req: Request) {
         expectedUpdatedAt,
       });
 
-    await services.mediaAssetRepository.replaceProjectReferences(
-      principal.id,
-      result.project.id,
-      extractProjectMediaReferences(result.project),
-    );
+    let mediaReferenceSync: "ok" | "deferred" = "ok";
+    try {
+      await services.mediaAssetRepository.replaceProjectReferences(
+        principal.id,
+        result.project.id,
+        extractProjectMediaReferences(result.project),
+      );
+    } catch (mediaReferenceError) {
+      mediaReferenceSync = "deferred";
+      console.warn("PROJECT_MEDIA_REFERENCE_SYNC_DEFERRED", {
+        projectId: result.project.id,
+        error:
+          mediaReferenceError instanceof Error
+            ? mediaReferenceError.message
+            : "unknown media reference sync error",
+      });
+    }
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, ...result, mediaReferenceSync });
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
