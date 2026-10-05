@@ -223,6 +223,7 @@ import {
   creatorProjectStateRequestFields,
   isCreatorProjectOperationActive,
   isCreatorProjectSaveBindingActive,
+  resolveCreatorProjectRevisionAdvance,
   type CreatorProjectSaveBinding,
 } from "@/lib/creator/projectSaveCoordinator";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
@@ -12429,14 +12430,26 @@ const generateSceneImage = async (
 
     const data = await res.json();
 
+    if (!res.ok) {
+      throw new Error(data.error || "Kaydedilemedi.");
+    }
+
+    if (!lifecycleOverrides.forceNewProject && data?.project?.id) {
+      const advancedRevision = resolveCreatorProjectRevisionAdvance({
+        responseProjectId: String(data.project.id || ""),
+        responseUpdatedAt: String(data.project.updated_at || ""),
+        activeProjectId: currentProjectIdRef.current,
+        activeUpdatedAt: projectUpdatedAtRef.current,
+      });
+      if (advancedRevision) {
+        projectUpdatedAtRef.current = advancedRevision;
+      }
+    }
+
     if (!isCreatorProjectSaveBindingActive(requestBinding, {
       projectId: currentProjectIdRef.current,
       generation: projectGenerationRef.current,
     })) return;
-
-    if (!res.ok) {
-      throw new Error(data.error || "Kaydedilemedi.");
-    }
 
     if (data?.project?.id && !lifecycleOverrides.forceNewProject) {
       setCurrentProjectId(data.project.id);
