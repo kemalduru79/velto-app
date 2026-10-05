@@ -61,6 +61,16 @@ function requireOwner(value: string) {
   return owner;
 }
 
+const PROJECT_MEDIA_URL_BATCH_SIZE = 25;
+
+export function chunkProjectMediaUrls(urls: readonly string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < urls.length; index += PROJECT_MEDIA_URL_BATCH_SIZE) {
+    chunks.push(urls.slice(index, index + PROJECT_MEDIA_URL_BATCH_SIZE));
+  }
+  return chunks;
+}
+
 export class SupabaseMediaAssetRepository implements MediaAssetRepository {
   async recordStoredAsset(input: RecordStoredAssetInput): Promise<StoredMediaAsset> {
     const ownerUserId = requireOwner(input.ownerUserId);
@@ -146,14 +156,16 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
 
   async replaceProjectReferences(ownerUserId: string, projectId: string, references: ProjectMediaReference[]) {
     const owner = requireOwner(ownerUserId);
-    const urls = [...new Set(references.map((reference) => reference.url))];
+    const urls = [...new Set(references.map((reference) => reference.url).filter(Boolean))];
     const assetsByUrl = new Map<string, string>();
-    if (urls.length) {
+
+    for (const urlBatch of chunkProjectMediaUrls(urls)) {
       const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
-        .select("id,public_url").eq("owner_user_id", owner).in("public_url", urls);
+        .select("id,public_url").eq("owner_user_id", owner).in("public_url", urlBatch);
       if (error) throw new Error(`Project media could not be resolved: ${error.message}`);
       for (const row of data || []) if (row.public_url) assetsByUrl.set(row.public_url, row.id);
     }
+
     const resolved = references.flatMap((reference) => {
       const assetId = assetsByUrl.get(reference.url);
       return assetId ? [{ asset_id: assetId, reference_type: reference.referenceType, reference_key: reference.referenceKey }] : [];
