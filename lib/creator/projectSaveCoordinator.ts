@@ -37,6 +37,32 @@ export function advanceCreatorProjectSaveBinding(
   });
 }
 
+
+export function resolveCreatorProjectRevisionAdvance(input: {
+  responseProjectId: string;
+  responseUpdatedAt: string;
+  activeProjectId: string;
+  activeUpdatedAt: string;
+}) {
+  const responseProjectId = String(input.responseProjectId || "").trim();
+  const activeProjectId = String(input.activeProjectId || "").trim();
+  const responseUpdatedAt = String(input.responseUpdatedAt || "").trim();
+  const activeUpdatedAt = String(input.activeUpdatedAt || "").trim();
+
+  if (!responseProjectId || responseProjectId !== activeProjectId || !responseUpdatedAt) {
+    return null;
+  }
+
+  const responseTime = Date.parse(responseUpdatedAt);
+  if (!Number.isFinite(responseTime)) return null;
+
+  if (!activeUpdatedAt) return responseUpdatedAt;
+  const activeTime = Date.parse(activeUpdatedAt);
+  if (!Number.isFinite(activeTime)) return responseUpdatedAt;
+
+  return responseTime >= activeTime ? responseUpdatedAt : null;
+}
+
 export type CreatorProjectOperationOrigin = Readonly<{
   projectId: string;
   generation: number;
