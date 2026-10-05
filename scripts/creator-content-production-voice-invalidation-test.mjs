@@ -114,6 +114,7 @@ for (const [startMarker, endMarker, label] of [
   ["const editCreatorSceneVisualDirectionWithAI = async", "const updateScene = async", "visual direction edit"],
   ["const restoreCreatorSceneAsset =", "const reuseCreatorProjectImage =", "image restore"],
   ["const reuseCreatorProjectImage =", "const useCreatorStockMedia =", "project image reuse"],
+  ["const useCreatorStockMedia =", "const useCreatorUploadedMedia =", "stock image/video replacement"],
 ]) {
   const start = pageSource.indexOf(startMarker);
   const end = pageSource.indexOf(endMarker, start + startMarker.length);
