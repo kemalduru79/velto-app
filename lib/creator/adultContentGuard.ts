@@ -1,3 +1,5 @@
+import { createCreatorSceneSpeechBudget } from "./creatorSceneSpeechBudget";
+
 export type CreatorAdultLanguage = "tr" | "en";
 
 export type CreatorAdultSceneLike = {
@@ -9,6 +11,19 @@ export type CreatorAdultSceneLike = {
   emotion?: string;
   motionHint?: string;
   visualPrompt?: string;
+  targetDurationSec?: number;
+  estimatedSpeechSec?: number;
+  estimatedSpeechSeconds?: number;
+  speechWordCount?: number;
+  scriptHealth?: {
+    status?: "ready" | "too_short" | "too_long";
+    speechWordCount?: number;
+    estimatedSpeechSec?: number;
+    targetDurationSec?: number;
+    minWords?: number;
+    targetWords?: number;
+    maxWords?: number;
+  };
 };
 
 export type CreatorAdultCharacterLike = {
@@ -237,6 +252,12 @@ export function normalizeCreatorAdultScene<TScene extends CreatorAdultSceneLike>
     ? cleanedDialogue
     : narration;
   const finalDialogue = allowDialogue ? cleanedDialogue : "";
+  const speechBudget = createCreatorSceneSpeechBudget({
+    narration: finalNarration,
+    dialogue: finalDialogue,
+    language,
+    minimumPlannedDurationSec: scene.targetDurationSec,
+  });
   const rawCameraDirection = normalizeWhitespace(scene.cameraDirection);
   const rawEmotion = normalizeWhitespace(scene.emotion);
   const rawMotionHint = normalizeWhitespace(scene.motionHint);
@@ -246,6 +267,19 @@ export function normalizeCreatorAdultScene<TScene extends CreatorAdultSceneLike>
     text: sanitizeCreatorAdultSpeech(scene.text, { language, opening }),
     narration: finalNarration,
     dialogue: finalDialogue,
+    speechWordCount: speechBudget.speechWordCount,
+    estimatedSpeechSec: speechBudget.estimatedSpeechSec,
+    estimatedSpeechSeconds: speechBudget.estimatedSpeechSec,
+    targetDurationSec: speechBudget.targetDurationSec,
+    scriptHealth: {
+      status: speechBudget.status,
+      speechWordCount: speechBudget.speechWordCount,
+      estimatedSpeechSec: speechBudget.estimatedSpeechSec,
+      targetDurationSec: speechBudget.targetDurationSec,
+      minWords: speechBudget.minWords,
+      targetWords: speechBudget.targetWords,
+      maxWords: speechBudget.maxWords,
+    },
     cameraDirection:
       !rawCameraDirection || isLegacyCreatorCameraDefault(rawCameraDirection)
         ? language === "tr"
