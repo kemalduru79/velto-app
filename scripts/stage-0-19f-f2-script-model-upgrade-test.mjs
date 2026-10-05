@@ -18,6 +18,14 @@ assert.match(
   provider,
   /const model = input\.model \|\| MODEL\(\)/u,
 );
+assert.match(
+  provider,
+  /input\.temperature === undefined \? \{\} : \{ temperature: input\.temperature \}/u,
+);
+assert.match(
+  provider,
+  /reasoning: \{ effort: input\.reasoningEffort \}/u,
+);
 
 const generation = provider.slice(
   provider.indexOf("export async function executeCreatorScriptBuildScriptGenerationProvider"),
@@ -27,12 +35,27 @@ assert.ok(
   (generation.match(/model: SCRIPT_MODEL\(\)/g) || []).length >= 2,
   "both generation paths must use SCRIPT_MODEL",
 );
+assert.ok(
+  (generation.match(/reasoningEffort: "medium"/g) || []).length >= 2,
+  "both generation paths must use medium reasoning",
+);
+assert.doesNotMatch(
+  generation,
+  /temperature: 0\.3/u,
+  "Sol generation must not send temperature while reasoning is enabled",
+);
 
 const repair = provider.slice(
   provider.indexOf("export async function executeCreatorScriptBuildScriptRepairProvider"),
   provider.indexOf("export function createCreatorScriptBuildProviderExecutors"),
 );
 assert.match(repair, /model: SCRIPT_MODEL\(\)/u);
+assert.match(repair, /reasoningEffort: "medium"/u);
+assert.doesNotMatch(
+  repair,
+  /temperature: 0\.1/u,
+  "Sol repair must not send temperature while reasoning is enabled",
+);
 
 const editorial = provider.slice(
   provider.indexOf("export async function executeCreatorScriptBuildEditorialProposalProvider"),
