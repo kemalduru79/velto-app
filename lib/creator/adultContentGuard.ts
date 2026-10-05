@@ -15,6 +15,14 @@ export type CreatorAdultSceneLike = {
   estimatedSpeechSec?: number;
   estimatedSpeechSeconds?: number;
   speechWordCount?: number;
+  audioUrl?: string;
+  audioPath?: string;
+  audioSourceText?: string;
+  audioSettingsKey?: string;
+  dialogueAudioUrl?: string;
+  dialogueAudioPath?: string;
+  dialogueAudioSourceText?: string;
+  dialogueAudioSettingsKey?: string;
   scriptHealth?: {
     status?: "ready" | "too_short" | "too_long";
     speechWordCount?: number;
@@ -258,6 +266,12 @@ export function normalizeCreatorAdultScene<TScene extends CreatorAdultSceneLike>
     language,
     minimumPlannedDurationSec: scene.targetDurationSec,
   });
+  const narrationAudioMatches =
+    Boolean(normalizeWhitespace(scene.audioUrl)) &&
+    normalizeWhitespace(scene.audioSourceText) === normalizeWhitespace(finalNarration);
+  const dialogueAudioMatches =
+    Boolean(normalizeWhitespace(scene.dialogueAudioUrl)) &&
+    normalizeWhitespace(scene.dialogueAudioSourceText) === normalizeWhitespace(finalDialogue);
   const rawCameraDirection = normalizeWhitespace(scene.cameraDirection);
   const rawEmotion = normalizeWhitespace(scene.emotion);
   const rawMotionHint = normalizeWhitespace(scene.motionHint);
@@ -280,6 +294,18 @@ export function normalizeCreatorAdultScene<TScene extends CreatorAdultSceneLike>
       targetWords: speechBudget.targetWords,
       maxWords: speechBudget.maxWords,
     },
+    audioUrl: narrationAudioMatches ? scene.audioUrl : "",
+    audioPath: narrationAudioMatches ? scene.audioPath : "",
+    audioSourceText: narrationAudioMatches ? scene.audioSourceText : "",
+    audioSettingsKey: narrationAudioMatches ? scene.audioSettingsKey : "",
+    dialogueAudioUrl: dialogueAudioMatches ? scene.dialogueAudioUrl : "",
+    dialogueAudioPath: dialogueAudioMatches ? scene.dialogueAudioPath : "",
+    dialogueAudioSourceText: dialogueAudioMatches
+      ? scene.dialogueAudioSourceText
+      : "",
+    dialogueAudioSettingsKey: dialogueAudioMatches
+      ? scene.dialogueAudioSettingsKey
+      : "",
     cameraDirection:
       !rawCameraDirection || isLegacyCreatorCameraDefault(rawCameraDirection)
         ? language === "tr"
