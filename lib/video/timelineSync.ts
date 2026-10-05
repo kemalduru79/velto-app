@@ -26,6 +26,7 @@ export type TimelineSceneInput = {
   motionHint?: string;
   estimatedSpeechSeconds?: number;
   speechWordCount?: number;
+  targetDurationSec?: number;
 };
 
 export type TimelineVisualAction =
@@ -520,12 +521,18 @@ export function createTimelineSyncPlan({
     const speechWordCount = Number.isFinite(scene.speechWordCount)
       ? Number(scene.speechWordCount)
       : countSpeechWords(speechText);
+    const scenePlannedDurationSeconds = Math.max(
+      product === "creatorlab" ? 3 : 5,
+      Number.isFinite(scene.targetDurationSec)
+        ? Math.round(Number(scene.targetDurationSec) * 10) / 10
+        : plannedSceneDurationSeconds,
+    );
     const durationMatch =
       product === "creatorlab"
         ? matchAudioDurationToScene({
             audioDurationSec: estimatedSpeechSeconds,
-            plannedDurationSec: plannedSceneDurationSeconds,
-            fallbackDurationSec: plannedSceneDurationSeconds,
+            plannedDurationSec: scenePlannedDurationSeconds,
+            fallbackDurationSec: scenePlannedDurationSeconds,
             minDurationSec: 3,
             maxDurationSec: 30,
             preferredMaxSceneDurationSec: 20,
@@ -551,13 +558,15 @@ export function createTimelineSyncPlan({
         10,
     );
     const speechFit: TimelineScenePlan["speechFit"] =
-      durationMatch?.status === "unsafe" || durationMatch?.splitRecommended
+      durationMatch?.status === "unsafe"
         ? "too_long"
-        : estimatedSpeechSeconds <= availableSpeechWindow
-        ? "safe"
-        : estimatedSpeechSeconds <= sceneRecommendedClipSeconds
+        : durationMatch?.splitRecommended
           ? "tight"
-          : "too_long";
+          : estimatedSpeechSeconds <= availableSpeechWindow
+            ? "safe"
+            : estimatedSpeechSeconds <= sceneRecommendedClipSeconds
+              ? "tight"
+              : "too_long";
     const audioMismatch = getTimelineAudioMismatch({
       estimatedSpeechSeconds,
       recommendedClipSeconds: sceneRecommendedClipSeconds,
