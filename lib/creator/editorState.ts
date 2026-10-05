@@ -58,13 +58,32 @@ export function deriveCreatorAudioCurrentness({
 }
 
 export function applyCreatorSceneTextEdit<
-  TScene extends CreatorSceneIdentity & { text: string; narration: string; dialogue: string },
+  TScene extends CreatorSceneIdentity & {
+    text: string;
+    narration: string;
+    dialogue: string;
+    audioUrl?: string;
+    audioPath?: string;
+    audioSourceText?: string;
+    audioSettingsKey?: string;
+    dialogueAudioUrl?: string;
+    dialogueAudioPath?: string;
+    dialogueAudioSourceText?: string;
+    dialogueAudioSettingsKey?: string;
+  },
 >(
   scenes: readonly TScene[],
   creatorSceneId: string,
   edit: { text: string; narration: string; dialogue: string },
-): { scenes: TScene[]; changed: boolean } {
+): {
+  scenes: TScene[];
+  changed: boolean;
+  narrationChanged: boolean;
+  dialogueChanged: boolean;
+} {
   let changed = false;
+  let narrationChanged = false;
+  let dialogueChanged = false;
   const nextScenes = scenes.map((scene) => {
     if (scene.creatorSceneId !== creatorSceneId) return scene;
     if (
@@ -72,10 +91,33 @@ export function applyCreatorSceneTextEdit<
       scene.narration === edit.narration &&
       scene.dialogue === edit.dialogue
     ) return scene;
+
     changed = true;
-    return { ...scene, ...edit };
+    narrationChanged = scene.narration !== edit.narration;
+    dialogueChanged = scene.dialogue !== edit.dialogue;
+
+    return {
+      ...scene,
+      ...edit,
+      ...(narrationChanged
+        ? {
+            audioUrl: "",
+            audioPath: "",
+            audioSourceText: "",
+            audioSettingsKey: "",
+          }
+        : {}),
+      ...(dialogueChanged
+        ? {
+            dialogueAudioUrl: "",
+            dialogueAudioPath: "",
+            dialogueAudioSourceText: "",
+            dialogueAudioSettingsKey: "",
+          }
+        : {}),
+    } as TScene;
   });
-  return { scenes: nextScenes, changed };
+  return { scenes: nextScenes, changed, narrationChanged, dialogueChanged };
 }
 
 export const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
