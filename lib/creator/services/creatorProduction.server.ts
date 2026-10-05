@@ -16,6 +16,7 @@ import {
   createCreatorScriptSceneSegments,
   type CreatorScript,
 } from "../creatorScript";
+import { createCreatorSceneSpeechBudget } from "../creatorSceneSpeechBudget";
 import {
   assertCreatorScriptSceneBuildDuration,
   resolvePersistedCreatorScriptAuthority,
@@ -757,11 +758,31 @@ export async function handleCreatorProductionRequest(req: Request) {
       segments: approvedSceneSegments,
       sceneShells: budgetedScenes,
       createSceneShell: (index) => createFallbackScene(index, sceneCount, topic, language),
-    }).map((scene) => ({
-      ...scene,
-      speechWordCount: countWords(scene.narration),
-      estimatedSpeechSeconds: estimateSpeechSeconds(scene.narration, language),
-    }));
+    }).map((scene) => {
+      const speechBudget = createCreatorSceneSpeechBudget({
+        narration: scene.narration,
+        dialogue: scene.dialogue,
+        language,
+        minimumPlannedDurationSec: targetSceneDurationSec,
+      });
+
+      return {
+        ...scene,
+        speechWordCount: speechBudget.speechWordCount,
+        estimatedSpeechSeconds: speechBudget.estimatedSpeechSec,
+        estimatedSpeechSec: speechBudget.estimatedSpeechSec,
+        targetDurationSec: speechBudget.targetDurationSec,
+        scriptHealth: {
+          status: speechBudget.status,
+          speechWordCount: speechBudget.speechWordCount,
+          estimatedSpeechSec: speechBudget.estimatedSpeechSec,
+          targetDurationSec: speechBudget.targetDurationSec,
+          minWords: speechBudget.minWords,
+          targetWords: speechBudget.targetWords,
+          maxWords: speechBudget.maxWords,
+        },
+      };
+    });
     const productionRepairNotes = [
       !normalizeCharacters(parsed.characters).length
         ? "No explicit character set was returned by the model; CreatorLab inserted a neutral narrator / brand voice anchor for faceless or professional formats."
