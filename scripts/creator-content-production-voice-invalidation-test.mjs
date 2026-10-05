@@ -111,7 +111,7 @@ assert.match(
 
 for (const [startMarker, endMarker, label] of [
   ["const redrawSceneImage = async", "const editCreatorSceneVisualDirectionWithAI = async", "image regeneration"],
-  ["const editCreatorSceneVisualDirectionWithAI = async", "const updateScene = async", "visual direction edit"],
+  ["const editCreatorSceneVisualDirectionWithAI = async", "const openCreatorSceneEditor =", "visual direction edit"],
   ["const restoreCreatorSceneAsset =", "const reuseCreatorProjectImage =", "image restore"],
   ["const reuseCreatorProjectImage =", "const useCreatorStockMedia =", "project image reuse"],
   ["const useCreatorStockMedia =", "const useCreatorUploadedMedia =", "stock image/video replacement"],
