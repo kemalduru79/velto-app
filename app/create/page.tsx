@@ -18738,8 +18738,6 @@ const generateSceneImage = async (
           ? `AI edit scene ${sceneId}`
           : `Sahne ${sceneId} AI düzenlemesi`,
       );
-      clearSceneAudioData(sceneId);
-      clearSceneDialogueAudioData(sceneId);
       clearVideoPollForScene(sceneId);
       invalidateFinalVideoForProductionChange();
 
