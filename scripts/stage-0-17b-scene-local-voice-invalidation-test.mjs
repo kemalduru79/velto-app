@@ -54,19 +54,19 @@ const narrationEdit = helper.applyCreatorSceneTextEdit(original, ids.beta, {
 assert.equal(narrationEdit.changed, true);
 assert.deepEqual(voiceFields(narrationEdit.scenes[0]), voiceFields(original[0]));
 assert.deepEqual(voiceFields(narrationEdit.scenes[2]), voiceFields(original[2]));
-assert.equal(currentness(narrationEdit.scenes[1].narration, narrationEdit.scenes[1].audioUrl, narrationEdit.scenes[1].audioSourceText, narrationEdit.scenes[1].audioSettingsKey, "voice-key"), "stale");
+assert.equal(currentness(narrationEdit.scenes[1].narration, narrationEdit.scenes[1].audioUrl, narrationEdit.scenes[1].audioSourceText, narrationEdit.scenes[1].audioSettingsKey, "voice-key"), "missing");
 assert.equal(currentness(narrationEdit.scenes[1].dialogue, narrationEdit.scenes[1].dialogueAudioUrl, narrationEdit.scenes[1].dialogueAudioSourceText, narrationEdit.scenes[1].dialogueAudioSettingsKey, "dialogue-key"), "current", "narration-only edit preserves target dialogue voice");
 assert.equal(currentness(narrationEdit.scenes[2].dialogue, narrationEdit.scenes[2].dialogueAudioUrl, narrationEdit.scenes[2].dialogueAudioSourceText, narrationEdit.scenes[2].dialogueAudioSettingsKey, "dialogue-key"), "current");
 
 const dialogueBase = [{ ...original[1], dialogue: "Speaker: Original.", dialogueAudioUrl: "beta-dialogue.mp3", dialogueAudioPath: "beta/dialogue", dialogueAudioSourceText: "Speaker: Original.", dialogueAudioSettingsKey: "dialogue-key" }];
 const dialogueEdit = helper.applyCreatorSceneTextEdit(dialogueBase, ids.beta, { text: dialogueBase[0].text, narration: dialogueBase[0].narration, dialogue: "Speaker: Changed." }).scenes[0];
 assert.equal(currentness(dialogueEdit.narration, dialogueEdit.audioUrl, dialogueEdit.audioSourceText, dialogueEdit.audioSettingsKey, "voice-key"), "current");
-assert.equal(currentness(dialogueEdit.dialogue, dialogueEdit.dialogueAudioUrl, dialogueEdit.dialogueAudioSourceText, dialogueEdit.dialogueAudioSettingsKey, "dialogue-key"), "stale");
+assert.equal(currentness(dialogueEdit.dialogue, dialogueEdit.dialogueAudioUrl, dialogueEdit.dialogueAudioSourceText, dialogueEdit.dialogueAudioSettingsKey, "dialogue-key"), "missing");
 
 const visualEdit = helper.applyCreatorSceneTextEdit(original, ids.beta, { text: "New visual only", narration: original[1].narration, dialogue: original[1].dialogue }).scenes[1];
 assert.equal(currentness(visualEdit.narration, visualEdit.audioUrl, visualEdit.audioSourceText, visualEdit.audioSettingsKey, "voice-key"), "current");
 assert.equal(currentness("Alpha narration.", narrationEdit.scenes[0].audioUrl, narrationEdit.scenes[0].audioSourceText, narrationEdit.scenes[0].audioSettingsKey, "voice-key"), "current");
-assert.equal(currentness("Beta narration.", narrationEdit.scenes[1].audioUrl, narrationEdit.scenes[1].audioSourceText, narrationEdit.scenes[1].audioSettingsKey, "voice-key"), "current", "exact restore reuses preserved provenance");
+assert.equal(currentness("Beta narration.", narrationEdit.scenes[1].audioUrl, narrationEdit.scenes[1].audioSourceText, narrationEdit.scenes[1].audioSettingsKey, "voice-key"), "missing", "edited narration must require explicit voice regeneration even if text is later restored");
 
 const persisted = JSON.parse(JSON.stringify(buildCreatorProjectState({
   brief: { topic: "Memory", language: "en", country: "global", ageGroup: "professional_18", contentType: "documentary", format: "youtube_video", durationPreset: "custom", durationSec: 300, customDurationSec: 300, qualityMode: "pro", targetPlatforms: ["youtube"] },
@@ -77,12 +77,14 @@ const persisted = JSON.parse(JSON.stringify(buildCreatorProjectState({
 })));
 assert.deepEqual(voiceFields(persisted.createReview.scenes[0]), voiceFields(original[0]));
 assert.deepEqual(voiceFields(persisted.createReview.scenes[2]), voiceFields(original[2]));
+assert.equal(persisted.createReview.scenes[1].audioUrl, "", "edited narration must persist without the obsolete voice asset");
 assert.deepEqual(voiceFields(persisted.production.refinedScenes[2]), voiceFields(original[2]));
 
 const reordered = [{ ...original[2], id: 1 }, { ...original[0], id: 2 }, { ...original[1], id: 3 }];
 const stableEdit = helper.applyCreatorSceneTextEdit(reordered, ids.beta, { text: reordered[2].text, narration: "Stable target changed.", dialogue: reordered[2].dialogue });
 assert.equal(stableEdit.scenes[2].narration, "Stable target changed.");
 assert.equal(stableEdit.scenes[1].narration, "Alpha narration.", "numeric ordinal cannot redirect invalidation");
+assert.equal(stableEdit.scenes[2].audioUrl, "", "stable-ID narration edit clears only the targeted narrator audio");
 
 const saveBlock = page.slice(page.indexOf("const saveCreatorSceneScript"), page.indexOf("const updateCreatorDirectorActionState"));
 assert.match(saveBlock, /targetCreatorSceneId = existingScene\.creatorSceneId/);
