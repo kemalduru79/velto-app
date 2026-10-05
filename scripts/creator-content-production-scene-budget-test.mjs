@@ -79,4 +79,4 @@ const words = (count) => Array.from({ length: count }, (_, index) => `word${inde
   assert.equal(budget.targetDurationSec, 30);
 }
 
-console.log("stage-0-20-content-production-scene-budget-test: PASS");
+console.log("creator-content-production-scene-budget-test: PASS");
