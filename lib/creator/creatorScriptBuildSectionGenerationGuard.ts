@@ -77,6 +77,13 @@ export function getCreatorScriptBuildSectionContinuationMaxOutputTokens(
   return Math.max(256, Math.ceil(maximumWords * 3) + 128);
 }
 
+export function getCreatorScriptBuildSectionContinuationSegmentMaximumWords(
+  maximumWords: number,
+) {
+  if (!Number.isInteger(maximumWords) || maximumWords < 1) return null;
+  return Math.min(24, maximumWords);
+}
+
 function continuationRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
