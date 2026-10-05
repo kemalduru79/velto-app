@@ -96,6 +96,30 @@ const repeated = selectCreatorScriptBuildSectionContinuationPrefix({
 assert.equal(repeated.accepted, false);
 assert.equal(repeated.reason, "local_repetition");
 
+const repeatedWithinContinuation = selectCreatorScriptBuildSectionContinuationPrefix({
+  previous: initial,
+  continuation: {
+    segments: [
+      {
+        text: "Fresh insight moves status beyond paid employment.",
+        claimIds: [],
+      },
+      {
+        text: "Fresh insight moves status beyond formal job titles.",
+        claimIds: [],
+      },
+    ],
+  },
+  budget,
+});
+assert.equal(repeatedWithinContinuation.accepted, false);
+assert.equal(repeatedWithinContinuation.reason, "local_repetition");
+assert.equal(
+  repeatedWithinContinuation.retainedSegmentCount,
+  1,
+  "a later continuation segment must be checked against earlier retained segments",
+);
+
 const incomplete = selectCreatorScriptBuildSectionContinuationPrefix({
   previous: initial,
   continuation: {

@@ -183,21 +183,31 @@ export function selectCreatorScriptBuildSectionContinuationPrefix(input: {
       break;
     }
 
-    const candidateSegments = [...retained, { text, claimIds }];
-    const candidateContinuation = {
-      text: candidateSegments.map((item) => item.text).join(" "),
-      claimIds: [...new Set(candidateSegments.flatMap((item) => item.claimIds))],
+    const retainedContinuation = {
+      text: retained.map((item) => item.text).join(" "),
+      claimIds: [...new Set(retained.flatMap((item) => item.claimIds))],
     };
+    const repetitionAuthority = retained.length > 0
+      ? mergeCreatorScriptBuildSectionContinuation(
+          input.previous,
+          retainedContinuation,
+        )
+      : input.previous;
     if (
       creatorScriptBuildSectionContinuationIntroducesLocalRepetition({
-        previous: input.previous,
-        continuation: candidateContinuation,
+        previous: repetitionAuthority,
+        continuation: { text, claimIds },
       })
     ) {
       lastReason = "local_repetition";
       break;
     }
 
+    const candidateSegments = [...retained, { text, claimIds }];
+    const candidateContinuation = {
+      text: candidateSegments.map((item) => item.text).join(" "),
+      claimIds: [...new Set(candidateSegments.flatMap((item) => item.claimIds))],
+    };
     const merged = mergeCreatorScriptBuildSectionContinuation(
       input.previous,
       candidateContinuation,
