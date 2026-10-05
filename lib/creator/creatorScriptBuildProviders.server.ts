@@ -147,8 +147,9 @@ async function runOpenAIJson(input: {
   user: unknown;
   schemaName: string;
   schema: Record<string, unknown>;
-  temperature: number;
+  temperature?: number;
   model?: string;
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh" | "max";
 }) {
   const model = input.model || MODEL();
   const response = await openAI().responses.create({
@@ -165,7 +166,10 @@ async function runOpenAIJson(input: {
         schema: input.schema,
       },
     },
-    temperature: input.temperature,
+    ...(input.temperature === undefined ? {} : { temperature: input.temperature }),
+    ...(input.reasoningEffort
+      ? { reasoning: { effort: input.reasoningEffort } }
+      : {}),
   }, input.operationType === "creator_script_build_editorial_proposal" ||
      input.operationType === "creator_script_build_claim_origin_adjudication" ? { maxRetries: 0 } : undefined);
   await recordOpenAITextEconomics({
@@ -542,8 +546,8 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       user: input.value,
       schemaName: "creator_script_build_script_generation",
       schema: generationSchema(input.value),
-      temperature: 0.3,
       model: SCRIPT_MODEL(),
+      reasoningEffort: "medium",
     });
   }
 
@@ -583,8 +587,8 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       },
       schemaName: "creator_script_build_script_generation_section",
       schema: generationSectionSchema(input.value),
-      temperature: 0.3,
       model: SCRIPT_MODEL(),
+      reasoningEffort: "medium",
     });
     sections.push(section);
   }
@@ -723,8 +727,8 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     user,
     schemaName: "creator_script_build_script_repair",
     schema: repairSchema(value),
-    temperature: 0.1,
     model: SCRIPT_MODEL(),
+    reasoningEffort: "medium",
   });
 }
 
