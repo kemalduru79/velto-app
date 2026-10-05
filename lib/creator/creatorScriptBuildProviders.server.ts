@@ -48,6 +48,7 @@ import {
   createCreatorScriptBuildSectionContinuationBand,
   createCreatorScriptBuildSectionLengthRecoveryBand,
   getCreatorScriptBuildSectionContinuationMaxOutputTokens,
+  getCreatorScriptBuildSectionContinuationSegmentMaximumWords,
   runCreatorScriptBuildSectionGenerationWithBoundedRetry,
   selectCreatorScriptBuildSectionContinuationPrefix,
 } from "./creatorScriptBuildSectionGenerationGuard.ts";
@@ -599,6 +600,8 @@ const SECTION_NATIVE_CONTINUATION_SYSTEM = [
   "If sectionClaimAuthority.mode is theme_grounded, use only claims that directly support the active approved theme; do not reuse a globally permitted claim merely because it was available to another section.",
   "LENGTH RECOVERY MODE: preserve previousCandidate exactly and return only a new continuation to append to it; do not rewrite or quote any previousCandidate text.",
   "Return the continuation as a short ordered list of atomic segments. Every segment MUST be exactly one complete sentence ending in sentence-final punctuation and MUST carry only the permitted claim IDs used by that sentence.",
+  "continuationSegmentMaximumWords is a hard per-segment spoken-word ceiling supplied by the server. Every segment MUST contain no more than that many whitespace-separated words; if more continuation is needed, use another short complete sentence.",
+  "When continuationCorrection is present, the previous continuation yielded zero safe prefix because its first segment exceeded the remaining hard section capacity. Return a fresh shorter continuation; do not quote or recreate the rejected long sentence.",
   "Count spoken words as whitespace-separated narration words, not model tokens. The combined segment text SHOULD contain at least continuationLength.minimumWords words and SHOULD NOT exceed continuationLength.maximumWords words; the server will select only a safe ordered prefix inside the hard final-section envelope.",
   "Add only substantive, section-owned reasoning or grounded detail that advances the active section. Do not pad, summarize, restate, duplicate, or introduce a new topic.",
   "Make the ordered segments flow directly from the previousCandidate ending and remain compatible with its heading. Return only segments and their sentence-local permitted claim IDs.",
@@ -658,49 +661,89 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
               )
             : null;
           if (ordinal === 2 && continuationBand && initialCandidate) {
-            const continuation = await runJson({
-              ownerId: input.ownerId,
-              projectId: input.projectId,
-              operationType: "creator_script_build_script_generation",
-              logicalOperationId:
-                `${baseIdentity}:section:${index + 1}:${activeSection.id}:length-retry:2`,
-              system: SECTION_NATIVE_CONTINUATION_SYSTEM,
-              user: {
-                generationAuthority: input.value,
-                activeSection,
-                activeSectionIndex: index,
-                sectionControl: narrationControlPlan[index],
-                sectionClaimAuthority: input.value.sectionClaimAuthority[index],
-                futureSectionOwnership: narrationControlPlan
-                  .slice(index + 1)
-                  .map((control) => ({
-                    sectionId: control.sectionId,
-                    kind: control.kind,
-                    owns: control.owns,
-                    excludes: control.excludes,
-                  })),
-                completedSections,
-                previousCandidate: initialCandidate,
-                continuationLength: continuationBand,
-              },
-              schemaName:
-                "creator_script_build_script_generation_section_continuation",
-              schema: generationSectionContinuationSchema(
-                input.value,
-                activeSection.id,
-              ),
-              temperature: 0.1,
-              maxOutputTokens:
-                getCreatorScriptBuildSectionContinuationMaxOutputTokens(
-                  continuationBand.maximumWords,
-                ) || undefined,
+            const continuationSegmentMaximumWords =
+              getCreatorScriptBuildSectionContinuationSegmentMaximumWords(
+                continuationBand.maximumWords,
+              ) || continuationBand.maximumWords;
+            const runContinuation = async (input: {
+              logicalSuffix: string;
+              correction: boolean;
+            }) =>
+              await runJson({
+                ownerId: input.ownerId,
+                projectId: input.projectId,
+                operationType: "creator_script_build_script_generation",
+                logicalOperationId:
+                  `${baseIdentity}:section:${index + 1}:${activeSection.id}:${input.logicalSuffix}`,
+                system: SECTION_NATIVE_CONTINUATION_SYSTEM,
+                user: {
+                  generationAuthority: input.value,
+                  activeSection,
+                  activeSectionIndex: index,
+                  sectionControl: narrationControlPlan[index],
+                  sectionClaimAuthority: input.value.sectionClaimAuthority[index],
+                  futureSectionOwnership: narrationControlPlan
+                    .slice(index + 1)
+                    .map((control) => ({
+                      sectionId: control.sectionId,
+                      kind: control.kind,
+                      owns: control.owns,
+                      excludes: control.excludes,
+                    })),
+                  completedSections,
+                  previousCandidate: initialCandidate,
+                  continuationLength: continuationBand,
+                  continuationSegmentMaximumWords,
+                  ...(input.correction
+                    ? {
+                        continuationCorrection: {
+                          reason: "zero_retained_prefix_above_maximum",
+                          maximumAdditionalWords: continuationBand.maximumWords,
+                          segmentMaximumWords:
+                            continuationSegmentMaximumWords,
+                        },
+                      }
+                    : {}),
+                },
+                schemaName:
+                  "creator_script_build_script_generation_section_continuation",
+                schema: generationSectionContinuationSchema(
+                  input.value,
+                  activeSection.id,
+                ),
+                temperature: 0.1,
+                maxOutputTokens:
+                  getCreatorScriptBuildSectionContinuationMaxOutputTokens(
+                    continuationBand.maximumWords,
+                  ) || undefined,
+              });
+            let continuation = await runContinuation({
+              logicalSuffix: "length-retry:2",
+              correction: false,
             });
-            const prefix =
+            let prefix =
               selectCreatorScriptBuildSectionContinuationPrefix({
                 previous: initialCandidate,
                 continuation,
                 budget: activeSection,
               });
+            let prefixRecoveryAttempts = 0;
+            if (
+              !prefix.accepted &&
+              prefix.reason === "above_maximum" &&
+              prefix.retainedSegmentCount === 0
+            ) {
+              prefixRecoveryAttempts = 1;
+              continuation = await runContinuation({
+                logicalSuffix: "length-retry:2:prefix-recovery:1",
+                correction: true,
+              });
+              prefix = selectCreatorScriptBuildSectionContinuationPrefix({
+                previous: initialCandidate,
+                continuation,
+                budget: activeSection,
+              });
+            }
             if (!prefix.accepted || !prefix.value) {
               const localRepetition = prefix.reason === "local_repetition";
               throw new CreatorScriptBuildStageExecutionError({
@@ -714,6 +757,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
                   ordinal,
                   reason: prefix.reason,
                   retainedSegmentCount: prefix.retainedSegmentCount,
+                  prefixRecoveryAttempts,
                 },
               });
             }
