@@ -14,7 +14,10 @@ import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } 
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
 import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "@/lib/creator/visualCoverage";
-import { resolveCreatorProgramVisualRhythm } from "@/lib/creator/programEditorialPolish";
+import {
+  auditCreatorProgramEditorialBalance,
+  resolveCreatorProgramVisualRhythm,
+} from "@/lib/creator/programEditorialPolish";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import {
   creatorGovernanceExportBlockResponse,
@@ -174,6 +177,10 @@ export async function POST(request: Request) {
       );
     }
 
+    let programEditorialPolish: ReturnType<
+      typeof auditCreatorProgramEditorialBalance
+    > | null = null;
+
     const exportPayload = { ...body };
     exportPayload.projectId = project.id;
     if (authoritativeCreatorFormat) {
@@ -200,7 +207,7 @@ export async function POST(request: Request) {
         }),
       );
       try {
-        exportPayload.scenes = resolveCanonicalCreatorExportScenes(
+        const canonicalExportScenes = resolveCanonicalCreatorExportScenes(
           Array.isArray(body.scenes) ? body.scenes.filter(
             (scene): scene is Record<string, unknown> => Boolean(scene && typeof scene === "object" && !Array.isArray(scene)),
           ).map((scene) => {
@@ -208,7 +215,10 @@ export async function POST(request: Request) {
             const persistedScene = persistedScenes.get(creatorSceneId);
             return persistedScene ? { ...scene, assetHistory: persistedScene.assetHistory } : scene;
           }) : [],
-        ).map((scene, sceneIndex, canonicalScenes) => {
+        );
+
+        const resolvedExportScenes = canonicalExportScenes.map(
+          (scene, sceneIndex, canonicalScenes) => {
           const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
           const previousScene = sceneIndex > 0 ? canonicalScenes[sceneIndex - 1] : undefined;
           const previousSelectedMediaUrl = previousScene
@@ -259,18 +269,34 @@ export async function POST(request: Request) {
             editorialCadence: authoritativeCreatorFormat === "youtube_video",
             motionPresetOffset: programRhythm.motionPresetOffset,
           });
-          return {
-            ...scene,
-            image: typeof persistedScene.image === "string" ? persistedScene.image : "",
-            videoUrl: typeof persistedScene.videoUrl === "string" ? persistedScene.videoUrl : "",
-            visualCoveragePlan,
-            narration: persistedScene.narration,
-            dialogue: persistedScene.dialogue,
-            audioUrl: persistedScene.audioUrl,
-            dialogueAudioUrl: persistedScene.dialogueAudioUrl,
-            mediaIdentity,
-          };
-        });
+            return {
+              ...scene,
+              image: typeof persistedScene.image === "string" ? persistedScene.image : "",
+              videoUrl: typeof persistedScene.videoUrl === "string" ? persistedScene.videoUrl : "",
+              visualCoveragePlan,
+              narration: persistedScene.narration,
+              dialogue: persistedScene.dialogue,
+              audioUrl: persistedScene.audioUrl,
+              dialogueAudioUrl: persistedScene.dialogueAudioUrl,
+              mediaIdentity,
+            };
+          },
+        );
+
+        exportPayload.scenes = resolvedExportScenes;
+
+        if (authoritativeCreatorFormat === "youtube_video") {
+          programEditorialPolish = auditCreatorProgramEditorialBalance(
+            resolvedExportScenes.map((scene) => ({
+              creatorSceneId: scene.creatorSceneId,
+              selectedMediaUrl:
+                scene.exportSource === "video"
+                  ? scene.videoUrl
+                  : scene.image,
+              selectedSource: scene.exportSource,
+            })),
+          );
+        }
       } catch (error) {
         if (error instanceof CreatorExportSceneError) {
           return NextResponse.json(
@@ -412,6 +438,7 @@ export async function POST(request: Request) {
             reviewIssueCount: evidenceGovernance.reviewIssueCount,
           }
         : null,
+      programEditorialPolish,
       creditAccount: creditResult?.account || null,
       creditUsage: creditReservation
         ? {
