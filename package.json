@@ -56,6 +56,7 @@
     "test:stage-0-13c-h-signature": "node --experimental-strip-types scripts/stage-0-13c-h-final-signature-normalization-test.mjs",
     "test:stage-0-13c-h-stop-after": "node --experimental-strip-types scripts/stage-0-13c-h-stop-after-invalidation-test.mjs",
     "test:stage-0-20a1": "node scripts/stage-0-20a1-scene-audio-gain-staging-test.mjs",
+    "test:stage-0-20a2": "node scripts/stage-0-20a2-program-loudness-mastering-test.mjs",
     "test:stage-0-13d": "node --experimental-strip-types scripts/stage-0-13d-continuous-full-script-editor-test.mjs",
     "test:stage-0-13e": "node --experimental-strip-types scripts/stage-0-13e-ai-script-refinement-test.mjs",
     "test:stage-0-13f": "node --experimental-strip-types scripts/stage-0-13f-revision-preview-history-test.mjs",

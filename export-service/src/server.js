@@ -11,6 +11,12 @@ import { resolveRuntimeRelease } from "./runtimeIdentity.js";
 import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
 import { buildCreatorSceneAudioMixFilter } from "./creatorSceneAudioMix.js";
 import {
+  buildCreatorProgramLoudnessAnalysisFilter,
+  buildCreatorProgramLoudnessMasterFilter,
+  CreatorProgramAudioMasterError,
+  parseCreatorProgramLoudnessMeasurements,
+} from "./creatorProgramAudioMaster.js";
+import {
   reconcileVisualCoveragePlan,
   resolveCoverageBackedSceneTargetDuration,
 } from "./visualCoverage.js";
@@ -178,6 +184,27 @@ async function runFfmpeg(args) {
         return;
       }
 
+      reject(new Error(stderr || `ffmpeg failed with exit code ${code}`));
+    });
+  });
+}
+
+async function runFfmpegCaptureStderr(args) {
+  const ffmpegBinary = resolveFfmpegBinary();
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegBinary, args);
+    let stderr = "";
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stderr);
+        return;
+      }
       reject(new Error(stderr || `ffmpeg failed with exit code ${code}`));
     });
   });
@@ -1563,6 +1590,32 @@ async function mixFinalVideoWithCreatorAudioPlan({ inputVideoPath, outputVideoPa
   return true;
 }
 
+async function masterCreatorProgramAudio({ inputVideoPath, outputVideoPath }) {
+  try {
+    const analysisStderr = await runFfmpegCaptureStderr([
+      "-hide_banner", "-nostats", "-i", inputVideoPath,
+      "-map", "0:a:0", "-vn", "-af", buildCreatorProgramLoudnessAnalysisFilter(),
+      "-f", "null", "-",
+    ]);
+    const measurements = parseCreatorProgramLoudnessMeasurements(analysisStderr);
+    await runFfmpeg([
+      "-y", "-i", inputVideoPath,
+      "-map", "0:v:0", "-map", "0:a:0",
+      "-c:v", "copy",
+      "-af", buildCreatorProgramLoudnessMasterFilter(measurements),
+      "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+      "-movflags", "+faststart",
+      outputVideoPath,
+    ]);
+  } catch (cause) {
+    if (cause instanceof CreatorProgramAudioMasterError) throw cause;
+    throw new CreatorProgramAudioMasterError(
+      "CreatorLab final program loudness mastering failed.",
+      { cause }
+    );
+  }
+}
+
 function normalizeCreatorBackgroundMusic(value) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -2161,6 +2214,15 @@ app.post("/export-movie", async (req, res) => {
       console.log("Canonical CreatorLab mix contains no music placements.");
     }
 
+    if (isCreatorLabExport) {
+      const masteredOutputPath = path.join(tempDir, "output-mastered.mp4");
+      await masterCreatorProgramAudio({
+        inputVideoPath: finalOutputFilePath,
+        outputVideoPath: masteredOutputPath,
+      });
+      finalOutputFilePath = masteredOutputPath;
+    }
+
     const expectedFinalDurationSec = roundDuration(
       sceneDurationsSec.reduce((sum, duration) => sum + duration, 0)
     );
@@ -2281,6 +2343,8 @@ app.post("/export-movie", async (req, res) => {
       ok: false,
       error: error instanceof FinalMovieStorageAdmissionError
         ? error.message
+        : error instanceof CreatorProgramAudioMasterError
+          ? "CreatorLab final audio mastering failed."
         : "Film export işlemi başarısız oldu.",
     });
   } finally {

@@ -10,4 +10,7 @@ export const CREATOR_AUDIO_MIX_POLICY = Object.freeze({
   sceneAmbientGain: 1,
   sceneSfxGain: 1,
   sceneLimiterCeiling: 0.95,
+  programIntegratedLufs: -16,
+  programTruePeakDb: -1.5,
+  programLraLu: 11,
 });
