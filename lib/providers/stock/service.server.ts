@@ -11,6 +11,10 @@ import { createStockAssetMetadata } from "./sourceMetadata";
 import type { StockMediaCandidate, StockMediaType, StockOrientation, StockSearchInput, StockSearchResult } from "./types";
 import { StockProviderError } from "./types";
 import { observePersistenceOperation, recordMediaTransfer } from "@/lib/observability";
+import {
+  isStoredStockRenditionReusable,
+  type CreatorStockFormat,
+} from "./formatPolicy";
 
 export const STOCK_SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const STOCK_SEARCH_CACHE_SCHEMA_VERSION = "pexels-video-preview-v2";
@@ -70,7 +74,7 @@ export async function acquireStockMediaBytes(input: {
   });
 }
 
-export async function importStock(input: { userId: string; projectId: string; mediaType: StockMediaType; providerMediaId: string; renditionId: string }, provider = new PexelsStockProvider()) {
+export async function importStock(input: { userId: string; projectId: string; mediaType: StockMediaType; providerMediaId: string; renditionId: string; automaticFormat?: CreatorStockFormat }, provider = new PexelsStockProvider()) {
   const services = getPersistenceServices();
   const project = await services.projectRepository.getForOwner(input.projectId, input.userId);
   if (!project || project.flow_type !== "creator_lab") throw new StockProviderError("STOCK_PROJECT_NOT_FOUND", 404, "CreatorLab project was not found.");
@@ -86,9 +90,45 @@ export async function importStock(input: { userId: string; projectId: string; me
       await client.from("velto_stock_imports").delete().eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).eq("status", "pending");
     }
     const owned = await services.mediaAssetRepository.getForOwner(String(existing.asset_id), input.userId);
-    if (owned?.lifecycleState === "active" && owned.publicUrl === existing.public_url) {
+    const reusable =
+      owned?.lifecycleState === "active" &&
+      owned.publicUrl === existing.public_url &&
+      isStoredStockRenditionReusable(
+        existing.source_metadata,
+        input.renditionId,
+        input.automaticFormat,
+      );
+
+    if (reusable) {
       await recordImportEconomics(input, reuseIdentity, 0, true);
-      return { assetId: owned.id, publicUrl: owned.publicUrl, reused: true, sourceMetadata: existing.source_metadata as Record<string, unknown> };
+      return {
+        assetId: owned.id,
+        publicUrl: owned.publicUrl,
+        reused: true,
+        sourceMetadata: existing.source_metadata as Record<string, unknown>,
+      };
+    }
+
+    // A legacy ready mapping may point at a different physical rendition than
+    // the rendition ID used to build reuseIdentity. Remove only the reuse
+    // mapping; never delete the underlying asset here because another scene or
+    // historical version may still reference it.
+    if (existing.status !== "pending") {
+      const { error: invalidReuseDeleteError } = await client
+        .from("velto_stock_imports")
+        .delete()
+        .eq("owner_user_id", input.userId)
+        .eq("project_id", input.projectId)
+        .eq("reuse_identity", reuseIdentity)
+        .eq("status", existing.status);
+
+      if (invalidReuseDeleteError) {
+        throw new StockProviderError(
+          "STOCK_IMPORT_REUSE_INVALIDATION_FAILED",
+          500,
+          "Existing stock import could not be safely revalidated.",
+        );
+      }
     }
   }
   const { error: claimError } = await client.from("velto_stock_imports").insert({ owner_user_id: input.userId, project_id: input.projectId, asset_id: null, provider: "pexels", provider_media_id: input.providerMediaId, rendition_id: input.renditionId, reuse_identity: reuseIdentity, public_url: null, source_metadata: {}, status: "pending" });
@@ -96,13 +136,28 @@ export async function importStock(input: { userId: string; projectId: string; me
     const { data: winner } = await client.from("velto_stock_imports").select("asset_id,public_url,source_metadata,status").eq("owner_user_id", input.userId).eq("project_id", input.projectId).eq("reuse_identity", reuseIdentity).maybeSingle();
     if (winner?.status === "ready" && winner.asset_id && winner.public_url) {
       const owned = await services.mediaAssetRepository.getForOwner(String(winner.asset_id), input.userId);
-      if (owned?.lifecycleState === "active" && owned.publicUrl === winner.public_url) return { assetId: owned.id, publicUrl: owned.publicUrl, reused: true, sourceMetadata: winner.source_metadata as Record<string, unknown> };
+      if (
+        owned?.lifecycleState === "active" &&
+        owned.publicUrl === winner.public_url &&
+        isStoredStockRenditionReusable(
+          winner.source_metadata,
+          input.renditionId,
+          input.automaticFormat,
+        )
+      ) {
+        return {
+          assetId: owned.id,
+          publicUrl: owned.publicUrl,
+          reused: true,
+          sourceMetadata: winner.source_metadata as Record<string, unknown>,
+        };
+      }
     }
     throw new StockProviderError("STOCK_IMPORT_IN_PROGRESS", 409, "This stock asset is already being imported. Please retry shortly.");
   }
   try {
   const candidate = await provider.getMedia(input.mediaType, input.providerMediaId);
-  const rendition = provider.resolveImportRendition(candidate, input.renditionId);
+  const rendition = provider.resolveImportRendition(candidate, input.renditionId, input.automaticFormat);
   const downloadStartedAt = performance.now();
   const media = await acquireStockMediaBytes({ url: rendition.url, mediaType: input.mediaType });
   recordMediaTransfer({ operation: "stock_import", direction: "download", bytes: media.buffer.byteLength, durationMs: performance.now() - downloadStartedAt, outcome: "success" });

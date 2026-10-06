@@ -48,6 +48,8 @@ assert.equal(metadata.attributionText, candidate.attributionText);
 assert.equal(metadata.durationSeconds, 18.5);
 assert.equal(metadata.projectId, "project-1");
 assert.equal(metadata.metadataVersion, "2026-08-22");
+assert.equal(metadata.renditionOrientation, "landscape");
+assert.equal(metadata.renditionAspectRatio, 16 / 9);
 
 // Canonical Source Media is added inside the same asset metadata envelope.
 assert.equal(metadata.sourceMedia.sourceMediaKind, "video");

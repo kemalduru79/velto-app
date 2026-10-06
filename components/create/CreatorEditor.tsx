@@ -16,8 +16,10 @@ import type { CreatorVideoCurrentness } from "@/lib/creator/videoGeneration";
 import type { CreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
 import CreatorSceneMusicControls from "@/components/create/CreatorSceneMusicControls";
 import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
+import type { CreatorStockFormat } from "@/lib/providers/stock/formatPolicy";
 
 type CreatorEditorProps = {
+  creatorFormat: CreatorStockFormat;
   scenes: readonly CreatorEditorTimelineScene[];
   selectedCreatorSceneId: string | null;
   onSelectScene: (creatorSceneId: string) => void;
@@ -51,6 +53,7 @@ type CreatorEditorProps = {
 };
 
 export default function CreatorEditor({
+  creatorFormat,
   scenes,
   selectedCreatorSceneId,
   onSelectScene,
@@ -386,7 +389,7 @@ export default function CreatorEditor({
       />
 
       {selectedScene.visualSourceMethod === "stock" && (
-        <CreatorStockPicker projectId={projectId} disabled={sceneOperationsDisabled} language={language} getAccessToken={getAccessToken} onUse={(asset) => onUseStockMedia(selectedScene.creatorSceneId!, asset)} />
+        <CreatorStockPicker creatorFormat={creatorFormat} projectId={projectId} disabled={sceneOperationsDisabled} language={language} getAccessToken={getAccessToken} onUse={(asset) => onUseStockMedia(selectedScene.creatorSceneId!, asset)} />
       )}
 
       {(selectedScene.assetHistory || []).length > 0 && (

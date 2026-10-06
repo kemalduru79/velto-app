@@ -8851,14 +8851,15 @@ const generateSceneImage = async (
     if (!decision.stockIntent || !currentProjectId) return null;
     try {
       const token = await getAccessTokenOrThrow();
-      const params = new URLSearchParams({ query: decision.stockIntent.query, mediaType: decision.stockIntent.mediaType, orientation: decision.stockIntent.orientation, page: "1", perPage: "12" });
+      const automaticFormat = creatorFormat === "youtube_video" ? "youtube_video" : "short_form";
+      const params = new URLSearchParams({ query: decision.stockIntent.query, mediaType: decision.stockIntent.mediaType, orientation: automaticFormat === "youtube_video" ? "landscape" : "portrait", page: "1", perPage: "12" });
       const searchResponse = await fetch(`/api/creator-stock/search?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       const searchData = await searchResponse.json();
       if (!searchResponse.ok) return null;
-      const ranked = rankStockCandidates(decision, Array.isArray(searchData.candidates) ? searchData.candidates : []);
+      const ranked = rankStockCandidates(decision, Array.isArray(searchData.candidates) ? searchData.candidates : [], automaticFormat);
       const selection = ranked[0];
       if (!selection?.rendition) return null;
-      const importResponse = await fetch("/api/creator-stock/import", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId, mediaType: selection.candidate.mediaType, providerMediaId: selection.candidate.providerMediaId, renditionId: selection.rendition.id }) });
+      const importResponse = await fetch("/api/creator-stock/import", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: currentProjectId, mediaType: selection.candidate.mediaType, providerMediaId: selection.candidate.providerMediaId, renditionId: selection.rendition.id, automaticFormat }) });
       const imported = await importResponse.json();
       if (!importResponse.ok || typeof imported.publicUrl !== "string") return null;
       return { publicUrl: imported.publicUrl, mediaType: selection.candidate.mediaType, durationSeconds: selection.candidate.durationSeconds };
@@ -33264,6 +33265,7 @@ const generateSceneImage = async (
 
                 {creatorEditorOpen && (
                   <CreatorEditor
+                    creatorFormat={creatorFormat === "youtube_video" ? "youtube_video" : "short_form"}
                     scenes={scenes}
                     selectedCreatorSceneId={selectedCreatorEditorSceneId}
                     onSelectScene={setSelectedCreatorEditorSceneId}
@@ -34253,6 +34255,7 @@ const generateSceneImage = async (
                                   </div>
                                   {sceneVisualSourceMethod === "stock" && currentProjectId && (
                                     <CreatorStockPicker
+                                      creatorFormat={creatorFormat === "youtube_video" ? "youtube_video" : "short_form"}
                                       projectId={currentProjectId}
                                       disabled={isBatchRendering || creatorMediaPreflightLoading}
                                       language={uiLanguage === "en" ? "en" : "tr"}

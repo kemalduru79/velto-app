@@ -8,8 +8,9 @@ export async function POST(request: Request) {
   try {
     const principal = await authenticateRequest(request); const body = await request.json() as Record<string, unknown>;
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : ""; const providerMediaId = typeof body.providerMediaId === "string" ? body.providerMediaId.trim() : ""; const renditionId = typeof body.renditionId === "string" ? body.renditionId.trim() : "";
-    if (!/^[0-9a-f-]{36}$/i.test(projectId) || !/^\d{1,20}$/.test(providerMediaId) || !renditionId || renditionId.length > 80 || (body.mediaType !== "photo" && body.mediaType !== "video") || "downloadUrl" in body || "url" in body) return NextResponse.json({ ok: false, code: "STOCK_IMPORT_INVALID", error: "Stock import request is invalid." }, { status: 400 });
-    return NextResponse.json({ ok: true, ...(await importStock({ userId: principal.id, projectId, mediaType: body.mediaType, providerMediaId, renditionId })) });
+    const automaticFormat = body.automaticFormat === "youtube_video" || body.automaticFormat === "short_form" ? body.automaticFormat : undefined;
+    if (!/^[0-9a-f-]{36}$/i.test(projectId) || !/^\d{1,20}$/.test(providerMediaId) || !renditionId || renditionId.length > 80 || (body.mediaType !== "photo" && body.mediaType !== "video") || (body.automaticFormat !== undefined && !automaticFormat) || "downloadUrl" in body || "url" in body) return NextResponse.json({ ok: false, code: "STOCK_IMPORT_INVALID", error: "Stock import request is invalid." }, { status: 400 });
+    return NextResponse.json({ ok: true, ...(await importStock({ userId: principal.id, projectId, mediaType: body.mediaType, providerMediaId, renditionId, automaticFormat })) });
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, code: "AUTH_REQUIRED", error: "A valid session is required." }, { status: 401 });
     if (error instanceof StockProviderError) return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });

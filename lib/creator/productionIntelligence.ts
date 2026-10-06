@@ -3,6 +3,7 @@ import type { CreatorDocumentarySourceContext } from "./documentarySourceContext
 import type { CreatorEvidenceVisualContext } from "./evidenceVisualContext";
 import type { TimelineScenePlan } from "../video/timelineSync";
 import type { StockMediaCandidate, StockMediaType, StockOrientation } from "../providers/stock/types";
+import { rankCreatorFormatRenditions, type CreatorStockFormat } from "../providers/stock/formatPolicy.ts";
 
 export type CreatorProductionTreatment =
   | "reuse_existing"
@@ -138,9 +139,9 @@ export function planCreatorSceneProduction(scene: CreatorProductionSceneInput, q
 
 export function planCreatorProjectProduction(scenes: CreatorProductionSceneInput[], qualityTier: CreatorQualityMode) { return scenes.map((scene) => planCreatorSceneProduction(scene, qualityTier)); }
 
-export function rankStockCandidates(decision: CreatorSceneProductionDecision, candidates: StockMediaCandidate[]) {
+export function rankStockCandidates(decision: CreatorSceneProductionDecision, candidates: StockMediaCandidate[], format: CreatorStockFormat = decision.stockIntent?.orientation === "portrait" ? "short_form" : "youtube_video") {
   const intent = decision.stockIntent; if (!intent) return [];
-  return candidates.map((candidate, index) => { const rendition = candidate.renditions.find((item) => item.quality === "production" && item.width >= intent.minimumWidth && item.height >= intent.minimumHeight); const durationFit = candidate.mediaType !== "video" || (candidate.durationSeconds || 0) >= (intent.minimumDurationSeconds || 0); const accepted = candidate.mediaType === intent.mediaType && candidate.orientation === intent.orientation && Boolean(rendition) && durationFit; return { candidate, rendition, accepted, score: accepted ? 1-index/Math.max(100,candidates.length)+(candidate.mediaType === "video" && candidate.durationSeconds && decision.videoIntent ? Math.max(0, 0.08-Math.abs(candidate.durationSeconds-decision.videoIntent.recommendedSeconds)*0.01) : 0) : -1 }; }).filter((item) => item.accepted).sort((a,b) => b.score-a.score);
+  return candidates.map((candidate) => { const rendition = rankCreatorFormatRenditions(candidate.renditions, format)[0]; const durationFit = candidate.mediaType !== "video" || (candidate.durationSeconds || 0) >= (intent.minimumDurationSeconds || 0); const accepted = candidate.mediaType === intent.mediaType && Boolean(rendition) && durationFit; const preferred = format === "youtube_video" ? [1920, 1080] : [1080, 1920]; const score = rendition ? 1 - Math.abs(rendition.width / rendition.height - preferred[0] / preferred[1]) - (Math.abs(rendition.width - preferred[0]) + Math.abs(rendition.height - preferred[1])) / 10_000_000 : -1; return { candidate, rendition, accepted, score }; }).filter((item) => item.accepted).sort((a,b) => b.score-a.score || a.candidate.providerMediaId.localeCompare(b.candidate.providerMediaId));
 }
 
 export const CREATOR_PRODUCTION_TREATMENT_LABELS: Record<CreatorProductionTreatment, { en: string; tr: string }> = {

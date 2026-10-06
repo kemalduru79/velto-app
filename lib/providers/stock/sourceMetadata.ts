@@ -34,6 +34,8 @@ export function createStockAssetMetadata(input: {
     renditionId: input.renditionId,
     renditionWidth: input.renditionWidth,
     renditionHeight: input.renditionHeight,
+    renditionOrientation: input.renditionWidth === input.renditionHeight ? "square" : input.renditionWidth > input.renditionHeight ? "landscape" : "portrait",
+    renditionAspectRatio: input.renditionWidth / input.renditionHeight,
     downloadedBytes: input.bytes,
     projectId: input.projectId,
     reuseIdentity: input.reuseIdentity,

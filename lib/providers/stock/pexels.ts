@@ -2,6 +2,7 @@ import "server-only";
 import type { StockMediaCandidate, StockMediaProvider, StockMediaType, StockOrientation, StockRateLimit, StockRendition, StockSearchInput, StockSearchResult } from "./types";
 import { StockProviderError } from "./types";
 import { selectPexelsVideoPreview } from "./pexelsPreview";
+import { isRenditionCompatibleWithCreatorFormat, type CreatorStockFormat } from "./formatPolicy";
 
 const API_BASE = "https://api.pexels.com/v1";
 const LICENSE = { id: "pexels-license", url: "https://www.pexels.com/license/", snapshotDate: "2026-08-22" } as const;
@@ -76,11 +77,10 @@ export class PexelsStockProvider implements StockMediaProvider {
     if (!candidate.providerMediaId || !candidate.renditions.length) throw new StockProviderError("STOCK_MEDIA_UNAVAILABLE", 404, "Stock media is unavailable.");
     return candidate;
   }
-  resolveImportRendition(candidate: StockMediaCandidate, renditionId: string): StockRendition {
+  resolveImportRendition(candidate: StockMediaCandidate, renditionId: string, automaticFormat?: CreatorStockFormat): StockRendition {
     const selected = candidate.renditions.find((item) => item.id === renditionId);
     if (!selected) throw new StockProviderError("STOCK_RENDITION_UNSUPPORTED", 400, "Selected stock rendition is unsupported.");
-    const production = candidate.renditions.filter((item) => item.quality === "production");
-    if (candidate.mediaType === "photo") return production.filter((item) => item.width <= 2200).sort((a,b) => Math.abs(1920-a.width)-Math.abs(1920-b.width))[0] || selected;
-    return production.filter((item) => Math.max(item.width, item.height) <= 1920 && Math.min(item.width, item.height) >= 720).sort((a,b) => Math.abs(1080-Math.min(a.width,a.height))-Math.abs(1080-Math.min(b.width,b.height)))[0] || selected;
+    if (automaticFormat && !isRenditionCompatibleWithCreatorFormat(selected, automaticFormat)) throw new StockProviderError("STOCK_RENDITION_FORMAT_INCOMPATIBLE", 400, "Selected stock rendition is incompatible with the project format.");
+    return selected;
   }
 }

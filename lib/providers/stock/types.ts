@@ -45,7 +45,7 @@ export type StockSearchResult = { candidates: StockMediaCandidate[]; page: numbe
 export interface StockMediaProvider {
   search(input: StockSearchInput): Promise<StockSearchResult>;
   getMedia(mediaType: StockMediaType, providerMediaId: string): Promise<StockMediaCandidate>;
-  resolveImportRendition(candidate: StockMediaCandidate, renditionId: string): StockRendition;
+  resolveImportRendition(candidate: StockMediaCandidate, renditionId: string, automaticFormat?: import("./formatPolicy").CreatorStockFormat): StockRendition;
 }
 
 export class StockProviderError extends Error {
