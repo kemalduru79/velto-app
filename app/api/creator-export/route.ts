@@ -111,6 +111,32 @@ export async function POST(request: Request) {
         ? "creatorlab"
         : "storyverse";
     const persistedCreatorState = productProfile === "creatorlab" ? readCreatorProjectState(project) : null;
+    const authoritativeCreatorFormat =
+      productProfile === "creatorlab"
+        ? persistedCreatorState?.brief.format === "youtube_video"
+          ? "youtube_video"
+          : persistedCreatorState?.brief.format === "short_form"
+            ? "short_form"
+            : null
+        : null;
+
+    if (productProfile === "creatorlab" && !authoritativeCreatorFormat) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "creator_format_invalid",
+          error: "Creator project format is invalid.",
+          creditReserved: false,
+        },
+        {
+          status: 409,
+          headers: {
+            "Cache-Control": "private, no-store, max-age=0",
+          },
+        },
+      );
+    }
+
     if (productProfile === "creatorlab") {
       const audioTopology = validateCreatorAudioTimelineTopology({
         timeline: persistedCreatorState?.production.audioTimeline,
@@ -149,6 +175,9 @@ export async function POST(request: Request) {
 
     const exportPayload = { ...body };
     exportPayload.projectId = project.id;
+    if (authoritativeCreatorFormat) {
+      exportPayload.creatorFormat = authoritativeCreatorFormat;
+    }
     delete exportPayload.ownerUserId;
     delete exportPayload.userId;
     delete exportPayload.qualityMode;
@@ -210,8 +239,11 @@ export async function POST(request: Request) {
               fallbackTargetDurationSec: persistedScene.targetDurationSec,
             }),
             timing: persistedTiming,
+            selectedSource: scene.exportSource === "video" ? "video" : "image",
             assetHistory: Array.isArray(persistedScene.assetHistory) ? persistedScene.assetHistory : undefined,
             visualBlockPlan: Array.isArray(persistedScene.visualBlockPlan) ? persistedScene.visualBlockPlan : undefined,
+          }, {
+            editorialCadence: authoritativeCreatorFormat === "youtube_video",
           });
           return {
             ...scene,

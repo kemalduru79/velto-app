@@ -36,6 +36,7 @@ export type CreatorVisualCoverageScene = {
   clipOutSec?: number;
   targetDurationSec?: number;
   timing?: { targetSceneDuration?: number };
+  selectedSource?: "video" | "image";
   assetHistory?: VisualAsset[];
   visualBlockPlan?: VisualPlanBlock[];
 };
@@ -146,6 +147,214 @@ export function createCreatorEditorialVisualBeatPlan({
   return slots;
 }
 
+function createCreatorEditorialCadenceCoveragePlan(
+  scene: CreatorVisualCoverageScene,
+  {
+    creatorSceneId,
+    targetDurationSec,
+    imageMotionRendererAvailable,
+  }: {
+    creatorSceneId: string;
+    targetDurationSec: number;
+    imageMotionRendererAvailable: boolean;
+  },
+): CreatorVisualCoverageBeat[] {
+  const imageUrl =
+    typeof scene.image === "string" ? scene.image.trim() : "";
+  const videoUrl =
+    typeof scene.videoUrl === "string" ? scene.videoUrl.trim() : "";
+  const videoReady = Boolean(videoUrl) && scene.videoStatus === "done";
+  const sourceVideoDuration = positive(scene.videoDurationSeconds);
+
+  const selectedSource =
+    scene.selectedSource === "video" || scene.selectedSource === "image"
+      ? scene.selectedSource
+      : videoReady
+        ? "video"
+        : "image";
+
+  const clipInSec = Math.max(0, Number(scene.clipInSec) || 0);
+  const clipOutSec = Math.min(
+    sourceVideoDuration,
+    positive(scene.clipOutSec) || sourceVideoDuration,
+  );
+  const effectiveVideoDuration =
+    videoReady && sourceVideoDuration > 0
+      ? clipOutSec > clipInSec
+        ? clipOutSec - clipInSec
+        : sourceVideoDuration
+      : 0;
+
+  const beats: CreatorVisualCoverageBeat[] = [];
+  let cursor = 0;
+  let imageBeatIndex = 0;
+
+  const append = (
+    beat: Omit<
+      CreatorVisualCoverageBeat,
+      "id" | "creatorSceneId" | "startSec" | "endSec" | "durationSec"
+    >,
+    duration: number,
+  ) => {
+    const boundedDuration = round(
+      Math.min(positive(duration), targetDurationSec - cursor),
+    );
+    if (boundedDuration <= 0) return;
+
+    const startSec = round(cursor);
+    const endSec = round(
+      Math.min(targetDurationSec, startSec + boundedDuration),
+    );
+
+    beats.push({
+      ...beat,
+      id: `${creatorSceneId}.coverage.${beats.length + 1}`,
+      creatorSceneId,
+      startSec,
+      endSec,
+      durationSec: round(endSec - startSec),
+    });
+
+    cursor = endSec;
+  };
+
+  const appendImageCadence = (durationSec: number) => {
+    if (!imageUrl || durationSec <= 0) return false;
+
+    const hints = Array.isArray(scene.visualBlockPlan)
+      ? scene.visualBlockPlan.slice(beats.length)
+      : undefined;
+
+    const slots = createCreatorEditorialVisualBeatPlan({
+      creatorSceneId,
+      targetDurationSec: durationSec,
+      purposeHints: hints,
+    });
+
+    const motionPresets = [
+      "slow_push_in",
+      "soft_pan",
+      "cutaway",
+    ] as const;
+
+    for (const slot of slots) {
+      append({
+        kind: "image",
+        sourceUrl: imageUrl,
+        sourceType: "scene_image",
+        motionPreset: motionPresets[
+          imageBeatIndex % motionPresets.length
+        ],
+        renderer: imageMotionRendererAvailable
+          ? "native_zoompan_v1"
+          : "static_image",
+        ...(slot.purposeHint ? { purpose: slot.purposeHint } : {}),
+      }, slot.durationSec);
+
+      imageBeatIndex += 1;
+    }
+
+    return slots.length > 0;
+  };
+
+  const appendSequentialVideoCadence = (durationSec: number) => {
+    if (!videoReady || effectiveVideoDuration < durationSec) return false;
+
+    const slots = createCreatorEditorialVisualBeatPlan({
+      creatorSceneId,
+      targetDurationSec: durationSec,
+      purposeHints: scene.visualBlockPlan,
+    });
+
+    for (const slot of slots) {
+      const sourceStartSec = round(clipInSec + slot.startSec);
+
+      append({
+        kind: "video",
+        sourceUrl: videoUrl,
+        sourceType: "generated_video",
+        ...(sourceStartSec > 0 ? { sourceStartSec } : {}),
+        renderer: "native_video",
+        ...(slot.purposeHint ? { purpose: slot.purposeHint } : {}),
+      }, slot.durationSec);
+    }
+
+    return slots.length > 0;
+  };
+
+  const {
+    minimumBeatDurationSec,
+    maximumBeatDurationSec,
+  } = CREATOR_EDITORIAL_VISUAL_BEAT_POLICY;
+
+  // Explicit image selection remains image-only. Previous versions are not
+  // automatic B-roll; the user must restore them before they become current.
+  if (selectedSource === "image") {
+    if (!appendImageCadence(targetDurationSec)) return [];
+    return round(cursor) === round(targetDurationSec) ? beats : [];
+  }
+
+  // Explicit/inferred video authority must have a renderable current video.
+  if (!videoReady || effectiveVideoDuration <= 0) return [];
+
+  // A short scene does not need an editorial cut unless the video itself
+  // cannot cover it. In that case fail closed instead of hiding the selected
+  // video behind another source.
+  if (targetDurationSec <= maximumBeatDurationSec) {
+    if (effectiveVideoDuration < targetDurationSec) return [];
+
+    append({
+      kind: "video",
+      sourceUrl: videoUrl,
+      sourceType: "generated_video",
+      ...(clipInSec > 0 ? { sourceStartSec: round(clipInSec) } : {}),
+      renderer: "native_video",
+      purpose: scene.visualBlockPlan?.[0]?.purpose,
+    }, targetDurationSec);
+
+    return round(cursor) === round(targetDurationSec) ? beats : [];
+  }
+
+  // With no current image, the current video may still provide deterministic
+  // multi-beat coverage when its trimmed source fully covers the scene.
+  if (!imageUrl) {
+    if (!appendSequentialVideoCadence(targetDurationSec)) return [];
+    return round(cursor) === round(targetDurationSec) ? beats : [];
+  }
+
+  // With both current sources, keep the selected video as the establishing
+  // beat and let the current image provide the remaining editorial cadence.
+  // Do not pull previous versions from assetHistory automatically.
+  if (effectiveVideoDuration < minimumBeatDurationSec) return [];
+
+  const maximumPrimaryDuration = Math.min(
+    maximumBeatDurationSec,
+    targetDurationSec - minimumBeatDurationSec,
+  );
+  const primaryVideoDuration = Math.min(
+    effectiveVideoDuration,
+    maximumPrimaryDuration,
+  );
+
+  if (primaryVideoDuration < minimumBeatDurationSec) return [];
+
+  append({
+    kind: "video",
+    sourceUrl: videoUrl,
+    sourceType: "generated_video",
+    ...(clipInSec > 0 ? { sourceStartSec: round(clipInSec) } : {}),
+    renderer: "native_video",
+    purpose: scene.visualBlockPlan?.[0]?.purpose,
+  }, primaryVideoDuration);
+
+  const remainingDuration = round(targetDurationSec - cursor);
+  if (remainingDuration > 0 && !appendImageCadence(remainingDuration)) {
+    return [];
+  }
+
+  return round(cursor) === round(targetDurationSec) ? beats : [];
+}
+
 function distinctImageAssets(scene: CreatorVisualCoverageScene) {
   const seen = new Set<string>();
   const assets: Array<{ url: string; id?: string; sourceType: "scene_image" | "asset_history" }> = [];
@@ -169,7 +378,10 @@ function distinctImageAssets(scene: CreatorVisualCoverageScene) {
 
 export function createCreatorVisualCoveragePlan(
   scene: CreatorVisualCoverageScene,
-  options: { imageMotionRendererAvailable?: boolean } = {},
+  options: {
+    imageMotionRendererAvailable?: boolean;
+    editorialCadence?: boolean;
+  } = {},
 ): CreatorVisualCoverageBeat[] {
   const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId.trim() : "";
   const targetDurationSec = positive(scene.targetDurationSec || scene.timing?.targetSceneDuration);
@@ -178,6 +390,15 @@ export function createCreatorVisualCoveragePlan(
   if (!creatorSceneId || targetDurationSec <= 0) return [];
 
   const imageMotionRendererAvailable = options.imageMotionRendererAvailable !== false;
+
+  if (options.editorialCadence === true) {
+    return createCreatorEditorialCadenceCoveragePlan(scene, {
+      creatorSceneId,
+      targetDurationSec,
+      imageMotionRendererAvailable,
+    });
+  }
+
   const beats: CreatorVisualCoverageBeat[] = [];
   let cursor = 0;
   const append = (beat: Omit<CreatorVisualCoverageBeat, "id" | "creatorSceneId" | "startSec" | "endSec" | "durationSec">, duration: number) => {
