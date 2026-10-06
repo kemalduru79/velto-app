@@ -21,6 +21,9 @@ import {
   requireCreatorProductionSnapshotBeforeInvalidation,
 } from "@/lib/creator/creatorProductionHistory";
 import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
+import {
+  reconcileSupersededFinalVideosForProject,
+} from "@/lib/persistence/media/supersededFinalVideo.server";
 
 export const runtime = "nodejs";
 
@@ -79,9 +82,17 @@ export async function POST(req: Request) {
       : body.exportedMovieUrl === null ? null : undefined;
     if (exportedMovieUrl) {
       const finalMovieAsset = await services.mediaAssetRepository.findByPublicUrl(principal.id, exportedMovieUrl);
-      if (!finalMovieAsset || finalMovieAsset.mediaKind !== "final_video" || finalMovieAsset.lifecycleState !== "active") {
+      const creatorProjectMismatch = flowType === "creator_lab" && projectId &&
+        finalMovieAsset?.metadata?.projectId !== projectId;
+      if (!finalMovieAsset || finalMovieAsset.mediaKind !== "final_video" || finalMovieAsset.lifecycleState !== "active" || creatorProjectMismatch) {
         return NextResponse.json({ error: "Final video is not available for this project owner." }, { status: 400 });
       }
+    }
+    const persistedCreatorProject = flowType === "creator_lab" && projectId
+      ? await services.projectRepository.getForOwner(projectId, principal.id)
+      : null;
+    if (flowType === "creator_lab" && projectId && !persistedCreatorProject) {
+      return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
     let shouldInvalidateCreatorProduction = false;
@@ -98,8 +109,7 @@ export async function POST(req: Request) {
       authoritativeCreatorState = { ...authoritativeCreatorState, strategy: { ...authoritativeCreatorState.strategy, pendingRefinement: null, revisionHistory: [] } };
     }
     if (hasCreatorProjectState && projectId) {
-      const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
-      if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+      const persistedProject = persistedCreatorProject!;
       const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
       const persistedState = readCreatorProjectState(persistedProject);
       suppressStaleCreatorFinalProjection = Boolean(persistedScript) && !creatorSceneOutputIsCurrent({
@@ -228,8 +238,7 @@ export async function POST(req: Request) {
       }
     }
     if (flowType === "creator_lab" && projectId && !hasCreatorProjectState) {
-      const persistedProject = await services.projectRepository.getForOwner(projectId, principal.id);
-      if (!persistedProject) return NextResponse.json({ error: "Project not found." }, { status: 404 });
+      const persistedProject = persistedCreatorProject!;
       const persistedState = readCreatorProjectState(persistedProject);
       suppressStaleCreatorFinalProjection = Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
         script: persistedState.strategy.script,
@@ -318,6 +327,57 @@ export async function POST(req: Request) {
             ? mediaReferenceError.message
             : "unknown media reference sync error",
       });
+    }
+
+    const authoritativeExportedMovieUrl =
+      typeof result.project.exported_movie_url === "string"
+        ? result.project.exported_movie_url.trim()
+        : "";
+    if (
+      flowType === "creator_lab" && mediaReferenceSync === "ok" &&
+      authoritativeExportedMovieUrl
+    ) {
+      try {
+        const reconciliation = await reconcileSupersededFinalVideosForProject({
+          ownerUserId: principal.id,
+          projectId: result.project.id,
+          authoritativePublicUrl: authoritativeExportedMovieUrl,
+          dependencies: services,
+        });
+        if (reconciliation.status !== "reconciled") {
+          console.warn("SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED", {
+            projectId: result.project.id,
+            assetId: null,
+            status: reconciliation.status,
+          });
+        } else {
+          for (const cleanup of reconciliation.results) {
+            const diagnostic = cleanup.status === "purged" ||
+                cleanup.status === "already_purged"
+              ? "SUPERSEDED_FINAL_VIDEO_PURGED"
+              : "SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED";
+            const details = {
+              projectId: result.project.id,
+              assetId: cleanup.assetId,
+              status: cleanup.status,
+            };
+            if (diagnostic === "SUPERSEDED_FINAL_VIDEO_PURGED") {
+              console.info(diagnostic, details);
+            } else {
+              console.warn(diagnostic, details);
+            }
+          }
+        }
+      } catch (cleanupError) {
+        console.warn("SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED", {
+          projectId: result.project.id,
+          assetId: null,
+          status: "unexpected_error",
+          error: cleanupError instanceof Error
+            ? cleanupError.message
+            : "unknown cleanup error",
+        });
+      }
     }
 
     return NextResponse.json({ success: true, ...result, mediaReferenceSync });

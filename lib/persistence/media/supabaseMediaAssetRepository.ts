@@ -129,6 +129,20 @@ export class SupabaseMediaAssetRepository implements MediaAssetRepository {
     return (data || []).map((row) => asset(row as unknown as AssetRow));
   }
 
+  async listFinalVideosForProject(ownerUserId: string, projectId: string) {
+    const { data, error } = await createServerSupabaseClient()
+      .from("velto_media_assets")
+      .select(assetFields())
+      .eq("owner_user_id", requireOwner(ownerUserId))
+      .eq("media_kind", "final_video")
+      .neq("lifecycle_state", "purged")
+      .contains("metadata", { projectId });
+    if (error) {
+      throw new Error(`Project final videos could not be listed: ${error.message}`);
+    }
+    return (data || []).map((row) => asset(row as unknown as AssetRow));
+  }
+
   async getUsageForOwner(ownerUserId: string): Promise<MediaUsage> {
     const { data, error } = await createServerSupabaseClient().from("velto_media_assets")
       .select("media_kind,size_bytes,lifecycle_state").eq("owner_user_id", requireOwner(ownerUserId)).neq("lifecycle_state", "purged");

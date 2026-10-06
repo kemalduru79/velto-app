@@ -76,6 +76,7 @@ export interface MediaAssetRepository {
   findByPublicUrl(ownerUserId: string, publicUrl: string): Promise<StoredMediaAsset | null>;
   getForOwner(assetId: string, ownerUserId: string): Promise<StoredMediaAsset | null>;
   listForOwner(ownerUserId: string): Promise<StoredMediaAsset[]>;
+  listFinalVideosForProject(ownerUserId: string, projectId: string): Promise<StoredMediaAsset[]>;
   getUsageForOwner(ownerUserId: string): Promise<MediaUsage>;
   replaceProjectReferences(ownerUserId: string, projectId: string, references: ProjectMediaReference[]): Promise<void>;
   listReferencesForAsset(assetId: string, ownerUserId: string): Promise<ProjectMediaReference[]>;
