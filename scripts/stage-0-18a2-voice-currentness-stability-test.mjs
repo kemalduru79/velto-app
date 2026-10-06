@@ -59,12 +59,12 @@ const currentness = (input = {}, overrides = {}) => deriveCreatorAudioCurrentnes
 });
 
 assert.equal(
-  currentness({ target: 16.95, routeSpeed: 1.08, timing: "tight", index: 4, count: 35 }),
+  currentness({ target: 16.95, routeSpeed: 1.02, timing: "tight", index: 4, count: 35 }),
   "current",
   "timeline and topology replanning must not stale unchanged narration",
 );
 assert.equal(currentness({ target: 12 }), "current");
-assert.equal(currentness({ routeSpeed: 1.2 }), "current");
+assert.equal(currentness({ routeSpeed: 1.2 }), "stale", "effective route speed changes must stale generated voice");
 assert.equal(currentness({ timing: "blocked" }), "current");
 assert.equal(currentness({ index: 12 }), "current");
 assert.equal(currentness({ count: 12 }), "current");
@@ -143,7 +143,7 @@ assert.doesNotMatch(page.slice(page.indexOf("const getSceneAudioStatus"), page.i
 assert.match(page.slice(page.indexOf("const getSceneAudioUrl"), page.indexOf("const generateSceneAudio")), /deriveCreatorAudioCurrentness/);
 assert.match(page.slice(page.indexOf("const getSceneDialogueUrl"), page.indexOf("const generateSceneDialogueAudio")), /deriveCreatorAudioCurrentness/);
 assert.doesNotMatch(page, /(?:audioSettingsKey|dialogueAudioSettingsKey) === currentSettingsKey/);
-assert.match(helper, /timing-volatile[\s\S]*speed-volatile[\s\S]*status-volatile[\s\S]*index-volatile[\s\S]*count-volatile/);
+assert.match(helper, /timing-volatile[\s\S]*routeSpeed[\s\S]*status-volatile[\s\S]*index-volatile[\s\S]*count-volatile/);
 assert.doesNotMatch(helper, /fetch\(|provider|store-audio|reserveMeteredOperation|settleMeteredOperation/i);
 
 console.log("STAGE_0_18A2_VOICE_CURRENTNESS_STABILITY=PASS");

@@ -2,7 +2,10 @@ import {
   getCreatorMediaRoute,
   normalizeCreatorQualityMode,
   type CreatorQualityMode,
-} from "./mediaRouting";
+} from "./mediaRouting.ts";
+import { getCreatorProductionWordsPerSecond } from "./creatorSceneSpeechBudget.ts";
+
+export const CREATOR_LONG_FORM_AUTOMATIC_MAX_SPEED = 0.95;
 
 export type CreatorVoiceFormat = "short_form" | "youtube_video";
 export type CreatorVoiceRole = "narrator" | "dialogue";
@@ -145,7 +148,7 @@ function getWordsPerSecond(language: unknown, role: CreatorVoiceRole) {
     return isTurkish ? 2.05 : 2.22;
   }
 
-  return isTurkish ? 2.15 : 2.35;
+  return getCreatorProductionWordsPerSecond(isTurkish ? "tr" : "en");
 }
 
 function getBaseVoiceSettings({
@@ -248,11 +251,14 @@ export function getCreatorVoiceRoute(
   });
   const safeWindowSeconds = targetSceneDurationSec * 0.88;
   const hardWindowSeconds = targetSceneDurationSec * 1.05;
-  const requiredSpeed = estimatedSpeechSeconds
-    ? estimatedSpeechSeconds / Math.max(1, safeWindowSeconds)
-    : baseSettings.speed;
   const recommendedSpeed = round(
-    clamp(Math.max(baseSettings.speed, requiredSpeed), 0.82, 1.2),
+    clamp(
+      format === "youtube_video"
+        ? Math.min(baseSettings.speed, CREATOR_LONG_FORM_AUTOMATIC_MAX_SPEED)
+        : baseSettings.speed,
+      0.82,
+      1.2,
+    ),
     2,
   );
   const estimatedSpeechSecondsAtRouteSpeed = estimatedSpeechSeconds
@@ -260,11 +266,11 @@ export function getCreatorVoiceRoute(
     : 0;
   const safeWordLimit = Math.max(
     1,
-    Math.floor(safeWindowSeconds * wordsPerSecond * 1.2),
+    Math.floor(safeWindowSeconds * wordsPerSecond * recommendedSpeed),
   );
   const hardWordLimit = Math.max(
     safeWordLimit + 1,
-    Math.floor(hardWindowSeconds * wordsPerSecond * 1.2),
+    Math.floor(hardWindowSeconds * wordsPerSecond * recommendedSpeed),
   );
   const timingStatus: CreatorVoiceTimingStatus =
     estimatedSpeechSecondsAtRouteSpeed <= safeWindowSeconds
@@ -281,7 +287,7 @@ export function getCreatorVoiceRoute(
       : timingStatus === "blocked"
         ? "Spoken text is longer than the planned scene. Voice-over can continue; the timeline should extend or split this scene after the real audio duration is measured."
         : timingStatus === "tight"
-          ? "Spoken text is tight for this scene; smart pacing is applied and the measured audio duration will update the timeline."
+          ? "Spoken text is tight for this scene. Voice-over keeps its natural pace; the timeline should extend after the real audio duration is measured."
           : "";
   const deliveryStyle =
     format === "short_form" ? "hook_led_concise" : "sectioned_narration";
@@ -344,9 +350,11 @@ function readSetting(
 export function getCreatorRoutedVoiceSettings({
   route,
   settings,
+  allowExplicitSpeedOverride = false,
 }: {
   route: CreatorVoiceRoute;
   settings?: Record<string, unknown> | null;
+  allowExplicitSpeedOverride?: boolean;
 }): VoiceSettings {
   const defaults = getBaseVoiceSettings(route);
   const userStability = readSetting(settings?.stability, defaults.stability, 0, 1);
@@ -357,6 +365,12 @@ export function getCreatorRoutedVoiceSettings({
     1,
   );
   const userStyle = readSetting(settings?.style, defaults.style, 0, 1);
+  const selectedSpeed = readSetting(settings?.speed, defaults.speed, 0.7, 1.2);
+  const speed = allowExplicitSpeedOverride
+    ? selectedSpeed
+    : route.format === "youtube_video"
+      ? Math.min(route.recommendedSpeed, selectedSpeed)
+      : Math.max(route.recommendedSpeed, selectedSpeed);
 
   return {
     stability: round((userStability + defaults.stability) / 2),
@@ -364,12 +378,7 @@ export function getCreatorRoutedVoiceSettings({
       Math.max(defaults.similarityBoost, userSimilarity),
     ),
     style: round((userStyle + defaults.style) / 2),
-    speed: round(
-      Math.max(
-        route.recommendedSpeed,
-        readSetting(settings?.speed, defaults.speed, 0.7, 1.2),
-      ),
-    ),
+    speed: round(speed),
   };
 }
 

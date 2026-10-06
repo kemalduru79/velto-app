@@ -247,6 +247,8 @@ async function postHandler(req: NextRequest) {
       ? getCreatorRoutedVoiceSettings({
           route: creatorVoiceRoute,
           settings: voiceSettingsInput,
+          allowExplicitSpeedOverride:
+            body?.advancedVoiceTuning === true && typeof body?.speed === "number",
         })
       : getCharacterVoiceSettings(language, voiceSettingsInput);
 

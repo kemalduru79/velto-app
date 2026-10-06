@@ -10,7 +10,7 @@ const CREATOR_VOICE_ROUTE_KEY_PATTERN = /creator-voice-v1:([^:]+):([^:]+):([^:]+
 export function normalizeCreatorAudioSettingsKeyForCurrentness(settingsKey?: string) {
   return String(settingsKey || "").replace(
     CREATOR_VOICE_ROUTE_KEY_PATTERN,
-    (_match, qualityMode, format, role, voiceProfile, voiceStrategy, _targetDuration, _routeSpeed, _timingStatus, _sceneIndex, _sceneCount, voiceIdentity) => [
+    (_match, qualityMode, format, role, voiceProfile, voiceStrategy, _targetDuration, routeSpeed, _timingStatus, _sceneIndex, _sceneCount, voiceIdentity) => [
       "creator-voice-v1",
       qualityMode,
       format,
@@ -18,7 +18,7 @@ export function normalizeCreatorAudioSettingsKeyForCurrentness(settingsKey?: str
       voiceProfile,
       voiceStrategy,
       "timing-volatile",
-      "speed-volatile",
+      routeSpeed,
       "status-volatile",
       "index-volatile",
       "count-volatile",
