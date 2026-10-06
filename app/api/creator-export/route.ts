@@ -31,10 +31,11 @@ import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAd
 import { persistEconomicOperationBestEffort, unknownCost, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 900;
 
 // 3Q FINAL PRODUCTION GATE
 const EXPORT_HEALTH_TIMEOUT_MS = 4_000;
+const EXPORT_RENDER_TIMEOUT_MS = 15 * 60_000;
 
 class ExportServiceUnavailableError extends Error {
   constructor(message: string) {
@@ -315,7 +316,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: ownedFinalMovieHeaders(principal.id, project.id, internalExportToken, storageAdmissionId),
       body: JSON.stringify(exportPayload),
-      signal: AbortSignal.timeout(55_000),
+      signal: AbortSignal.timeout(EXPORT_RENDER_TIMEOUT_MS),
     });
 
     const data = await response.json().catch(() => null);
