@@ -8,8 +8,8 @@ const route = fs.readFileSync(
 
 assert.match(
   route,
-  /export const maxDuration = 900;/,
-  "CreatorLab final export must permit long-form server execution.",
+  /export const maxDuration = 800;/,
+  "CreatorLab final export must use the generally available Pro/Enterprise Vercel function ceiling.",
 );
 
 assert.match(
@@ -20,8 +20,8 @@ assert.match(
 
 assert.match(
   route,
-  /const EXPORT_RENDER_TIMEOUT_MS\s*=\s*15\s*\*\s*60_000;/,
-  "Long-form final render must have a 15-minute request budget.",
+  /const EXPORT_RENDER_TIMEOUT_MS\s*=\s*12\s*\*\s*60_000;/,
+  "Long-form final render must leave headroom inside the Vercel function ceiling.",
 );
 
 assert.match(

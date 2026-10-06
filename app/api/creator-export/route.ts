@@ -32,11 +32,11 @@ import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAd
 import { persistEconomicOperationBestEffort, unknownCost, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 // 3Q FINAL PRODUCTION GATE
 const EXPORT_HEALTH_TIMEOUT_MS = 4_000;
-const EXPORT_RENDER_TIMEOUT_MS = 15 * 60_000;
+const EXPORT_RENDER_TIMEOUT_MS = 12 * 60_000;
 
 class ExportServiceUnavailableError extends Error {
   constructor(message: string) {
