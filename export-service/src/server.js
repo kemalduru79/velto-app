@@ -21,6 +21,10 @@ import {
   resolveAudioFirstSceneTargetDuration,
   resolveCoverageBackedSceneTargetDuration,
 } from "./visualCoverage.js";
+import {
+  buildCreatorVisualFitFilters,
+  resolveCreatorVisualFitMode,
+} from "./creatorVisualFit.js";
 
 const app = express();
 
@@ -369,10 +373,16 @@ async function verifyRenderedContinuity(
   };
 }
 
-function createNormalizedVideoFilter(durationSec) {
+function createNormalizedVideoFilter(
+  durationSec,
+  visualFitMode = "contain",
+) {
   return [
-    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
-    `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+    ...buildCreatorVisualFitFilters({
+      mode: visualFitMode,
+      outputWidth: OUTPUT_WIDTH,
+      outputHeight: OUTPUT_HEIGHT,
+    }),
     "setsar=1",
     `fps=${OUTPUT_FPS}`,
     `trim=start=0:duration=${durationSec.toFixed(3)}`,
@@ -387,10 +397,14 @@ function createCreatorTrimmedVideoFilter({
   visualDurationSec,
   effectiveDurationSec,
   freezeTail = false,
+  visualFitMode = "contain",
 }) {
   const filters = [
-    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
-    `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+    ...buildCreatorVisualFitFilters({
+      mode: visualFitMode,
+      outputWidth: OUTPUT_WIDTH,
+      outputHeight: OUTPUT_HEIGHT,
+    }),
     "setsar=1",
     `fps=${OUTPUT_FPS}`,
     `trim=start=${clipInSec.toFixed(3)}:duration=${visualDurationSec.toFixed(3)}`,
@@ -420,7 +434,11 @@ function createNormalizedAudioFilter(durationSec) {
   ].join(",");
 }
 
-function createImageMotionFilter(durationSec, motionPreset = "slow_push_in") {
+function createImageMotionFilter(
+  durationSec,
+  motionPreset = "slow_push_in",
+  visualFitMode = "contain",
+) {
   const frameCount = Math.max(1, Math.round(durationSec * OUTPUT_FPS));
   const zoomPan = motionPreset === "soft_pan"
     ? `zoompan=z='1.015':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
@@ -428,8 +446,12 @@ function createImageMotionFilter(durationSec, motionPreset = "slow_push_in") {
       ? `zoompan=z='max(1.01,1.025-on*0.0002)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
       : `zoompan=z='min(zoom+0.00015,1.025)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`;
   return [
-    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease`,
-    `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black`,
+    ...buildCreatorVisualFitFilters({
+      mode: visualFitMode,
+      outputWidth: OUTPUT_WIDTH,
+      outputHeight: OUTPUT_HEIGHT,
+      padColor: "black",
+    }),
     "setsar=1",
     zoomPan,
     `trim=start=0:duration=${durationSec.toFixed(3)}`,
@@ -796,6 +818,7 @@ async function createImageClipWithAudio({
   audioPath,
   outputPath,
   targetDuration,
+  visualFitMode = "contain",
 }) {
   const resolvedTargetDuration =
     typeof targetDuration === "number" &&
@@ -838,7 +861,7 @@ async function createImageClipWithAudio({
     ...inputs,
     "-filter_complex",
     [
-      `[0:v]${createImageMotionFilter(effectiveDuration)}[v]`,
+      `[0:v]${createImageMotionFilter(effectiveDuration, "slow_push_in", visualFitMode)}[v]`,
       `[1:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`,
     ].join(";"),
     "-map",
@@ -882,6 +905,7 @@ async function createSceneClipWithAudio({
   outputPath,
   targetDuration,
   creatorTrim,
+  visualFitMode = "contain",
 }) {
   const requestedTargetDuration =
     typeof targetDuration === "number" &&
@@ -919,8 +943,9 @@ async function createSceneClipWithAudio({
           clipInSec: creatorTrim.clipInSec,
           visualDurationSec: videoDuration,
           effectiveDurationSec: effectiveDuration,
+          visualFitMode,
         })}[v]`
-      : `[0:v]${createNormalizedVideoFilter(effectiveDuration)}[v]`;
+      : `[0:v]${createNormalizedVideoFilter(effectiveDuration, visualFitMode)}[v]`;
   } else if (referenceImagePath && videoDuration > 0) {
     const primaryDuration = alignDurationToFrameGrid(
       Math.min(videoDuration, effectiveDuration)
@@ -948,9 +973,10 @@ async function createSceneClipWithAudio({
             clipInSec: creatorTrim.clipInSec,
             visualDurationSec: primaryDuration,
             effectiveDurationSec: primaryDuration,
+            visualFitMode,
           })
-        : createNormalizedVideoFilter(primaryDuration)}[v0]`,
-      `[1:v]${createImageMotionFilter(tailDuration, "soft_pan")}[v1]`,
+        : createNormalizedVideoFilter(primaryDuration, visualFitMode)}[v0]`,
+      `[1:v]${createImageMotionFilter(tailDuration, "soft_pan", visualFitMode)}[v1]`,
       `[v0][v1]concat=n=2:v=1:a=0[v]`,
     ].join(";");
   } else if (creatorTrim?.isTrimmed) {
@@ -962,13 +988,14 @@ async function createSceneClipWithAudio({
       visualDurationSec: videoDuration,
       effectiveDurationSec: effectiveDuration,
       freezeTail: true,
+      visualFitMode,
     })}[v]`;
   } else {
     inputs = ["-stream_loop", "-1", "-i", videoPath];
     fillerStrategy = "motion_loop";
     fillerDurationSec = Math.max(0, effectiveDuration - videoDuration);
     visualFilter =
-      `[0:v]${createNormalizedVideoFilter(effectiveDuration)}[v]`;
+      `[0:v]${createNormalizedVideoFilter(effectiveDuration, visualFitMode)}[v]`;
   }
 
   if (audioPath) {
@@ -1031,6 +1058,7 @@ async function createVisualCoverageClipWithAudio({
   targetDuration,
   tempDir,
   sceneIndex,
+  visualFitMode = "contain",
 }) {
   const effectiveDuration = alignDurationToFrameGrid(targetDuration);
   const beats = reconcileVisualCoveragePlan(scene, targetDuration);
@@ -1050,14 +1078,19 @@ async function createVisualCoverageClipWithAudio({
 
   const visualFilters = beats.map((beat, index) =>
     `[${index}:v]${beat.kind === "image"
-      ? createImageMotionFilter(beat.durationSec, beat.motionPreset)
+      ? createImageMotionFilter(
+          beat.durationSec,
+          beat.motionPreset,
+          visualFitMode,
+        )
       : Number(beat.sourceStartSec) > 0
         ? createCreatorTrimmedVideoFilter({
             clipInSec: Number(beat.sourceStartSec),
             visualDurationSec: beat.durationSec,
             effectiveDurationSec: beat.durationSec,
+            visualFitMode,
           })
-        : createNormalizedVideoFilter(beat.durationSec)}[v${index}]`);
+        : createNormalizedVideoFilter(beat.durationSec, visualFitMode)}[v${index}]`);
   const labels = beats.map((_, index) => `[v${index}]`).join("");
   await runFfmpeg([
     "-y", ...inputs,
@@ -1835,6 +1868,10 @@ app.post("/export-movie", async (req, res) => {
         ? "editorial_floor"
         : "audio_compact"
       : undefined;
+    const creatorVisualFitMode = resolveCreatorVisualFitMode({
+      productProfile: body.productProfile,
+      creatorFormat: body.creatorFormat,
+    });
 
     if (exportFlowValidation?.version === "3N-5") {
       if (!exportFlowValidation.canExport) {
@@ -2108,6 +2145,7 @@ app.post("/export-movie", async (req, res) => {
               targetDuration,
               tempDir,
               sceneIndex: i + 1,
+              visualFitMode: creatorVisualFitMode,
             })
           : sourceType === "video"
           ? await createSceneClipWithAudio({
@@ -2117,12 +2155,14 @@ app.post("/export-movie", async (req, res) => {
               outputPath: clipOutputPath,
               targetDuration,
               creatorTrim,
+              visualFitMode: creatorVisualFitMode,
             })
           : await createImageClipWithAudio({
               imagePath: sourcePath,
               audioPath: audioForClip,
               outputPath: clipOutputPath,
               targetDuration,
+              visualFitMode: creatorVisualFitMode,
             });
 
       const sceneContinuityCheck = await verifyRenderedContinuity(
