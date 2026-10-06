@@ -40,6 +40,22 @@ export type CreatorVisualCoverageScene = {
   visualBlockPlan?: VisualPlanBlock[];
 };
 
+export type CreatorEditorialVisualBeatSlot = {
+  id: string;
+  creatorSceneId: string;
+  index: number;
+  startSec: number;
+  endSec: number;
+  durationSec: number;
+  cadenceRole: "establish" | "develop" | "resolve";
+  purposeHint?: string;
+};
+
+export const CREATOR_EDITORIAL_VISUAL_BEAT_POLICY = {
+  minimumBeatDurationSec: 4,
+  maximumBeatDurationSec: 8,
+} as const;
+
 const round = (value: number) => Math.round(value * 100) / 100;
 const positive = (value: unknown) => {
   const parsed = Number(value);
@@ -54,6 +70,80 @@ export function resolveCreatorVisualCoverageTargetDuration({
   fallbackTargetDurationSec: unknown;
 }) {
   return positive(timingTargetDurationSec) || positive(fallbackTargetDurationSec);
+}
+
+export function createCreatorEditorialVisualBeatPlan({
+  creatorSceneId,
+  targetDurationSec,
+  purposeHints,
+}: {
+  creatorSceneId: unknown;
+  targetDurationSec: unknown;
+  purposeHints?: Array<{ purpose?: unknown }>;
+}): CreatorEditorialVisualBeatSlot[] {
+  const normalizedSceneId =
+    typeof creatorSceneId === "string" ? creatorSceneId.trim() : "";
+  const target = positive(targetDurationSec);
+
+  if (!normalizedSceneId || target <= 0) return [];
+
+  const {
+    minimumBeatDurationSec,
+    maximumBeatDurationSec,
+  } = CREATOR_EDITORIAL_VISUAL_BEAT_POLICY;
+
+  let beatCount = Math.max(1, Math.ceil(target / maximumBeatDurationSec));
+
+  while (
+    beatCount > 1 &&
+    target / beatCount < minimumBeatDurationSec
+  ) {
+    beatCount -= 1;
+  }
+
+  const slots: CreatorEditorialVisualBeatSlot[] = [];
+  let cursor = 0;
+
+  for (let index = 0; index < beatCount; index += 1) {
+    const remainingDuration = target - cursor;
+    const remainingBeats = beatCount - index;
+    const duration =
+      index === beatCount - 1
+        ? remainingDuration
+        : remainingDuration / remainingBeats;
+
+    const startSec = round(cursor);
+    const endSec =
+      index === beatCount - 1
+        ? round(target)
+        : round(startSec + duration);
+
+    const purposeValue = purposeHints?.[index]?.purpose;
+    const purpose =
+      typeof purposeValue === "string"
+        ? purposeValue.trim()
+        : "";
+
+    slots.push({
+      id: `${normalizedSceneId}.editorial-beat.${index + 1}`,
+      creatorSceneId: normalizedSceneId,
+      index,
+      startSec,
+      endSec,
+      durationSec: round(endSec - startSec),
+      cadenceRole:
+        beatCount === 1 || index === 0
+          ? "establish"
+          : index === beatCount - 1
+            ? "resolve"
+            : "develop",
+      ...(purpose ? { purposeHint: purpose } : {}),
+    });
+
+    cursor = endSec;
+  }
+
+  return slots;
 }
 
 function distinctImageAssets(scene: CreatorVisualCoverageScene) {
