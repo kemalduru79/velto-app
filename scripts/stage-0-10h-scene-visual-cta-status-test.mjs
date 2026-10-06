@@ -84,6 +84,10 @@ assert.match(page, /setActiveVisualGenerationSceneIds\(\(current\) => Object\.fr
 assert.match(page, /current\.filter\(\(sceneId\) => !scopedTargetSceneIds\.includes\(sceneId\)\)/);
 assert.match(page, /: sceneVisualGenerating\s*\? uiLanguage === "en" \? "Generating…"/);
 assert.doesNotMatch(page, /\{isBatchRendering \|\| redrawLoadingId === scene\.id\s*\? uiLanguage === "en" \? "Generating…"/);
-assert.doesNotMatch(page, /scene\.videoStatus === "delayed" \|\|\s*isBatchRendering \|\|\s*creatorMediaPreflightLoading/);
+assert.match(
+  page,
+  /disabled=\{\s*\(sceneVisualActionBlocked && !sceneVisualCountdownActive\) \|\|\s*scene\.videoStatus === "processing" \|\|\s*scene\.videoStatus === "delayed" \|\|\s*creatorMediaPreflightLoading \|\|\s*sceneExplicitAiVideoBlocked\s*\}/,
+  "single-scene visual CTA must remain scene-scoped and must not inherit the global batch-rendering lock",
+);
 
 console.log("Stage 0.10H scene visual CTA/status test passed.");

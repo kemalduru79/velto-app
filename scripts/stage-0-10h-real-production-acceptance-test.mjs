@@ -84,7 +84,16 @@ assert.doesNotMatch(page, /<CreatorCostGuard/);
 assert.match(page, /setSceneScriptFitFeedback/);
 assert.match(page, /Split recommended/);
 assert.match(page, /Apply duration/);
-assert.match(page, /setCreatorSelectedWorkspaceStep\(\(current\) => creatorStageAfterSuccess\(current, "brief_completed"\)\)/);
-assert.match(page, /setCreatorSelectedWorkspaceStep\(\(current\) => creatorStageAfterSuccess\(current, "strategy_approved"\)\)/);
+assert.match(
+  page,
+  /const workspaceStep = creatorStageAfterSuccess\(creatorNavigationRef\.current\.workspaceStep,\s*"brief_completed"\);[\s\S]*?creatorNavigationRef\.current = \{ \.\.\.creatorNavigationRef\.current, workspaceStep \};[\s\S]*?setCreatorSelectedWorkspaceStep\(workspaceStep\);/,
+  "brief completion must advance from navigation authority before updating workspace state",
+);
+
+assert.match(
+  page,
+  /const workspaceStep = creatorStageAfterSuccess\(creatorNavigationRef\.current\.workspaceStep,\s*"strategy_approved"\);[\s\S]*?creatorNavigationRef\.current = \{ workspaceStep, productionSubstep: "setup" \};[\s\S]*?setCreatorSelectedWorkspaceStep\(workspaceStep\);[\s\S]*?setCreatorProductionSubstep\("setup"\);/,
+  "strategy approval must advance navigation authority and reset production substep to setup",
+);
 
 console.log("Stage 0.10H real-production acceptance tests passed.");

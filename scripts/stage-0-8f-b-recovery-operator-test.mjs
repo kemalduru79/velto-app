@@ -59,12 +59,12 @@ assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
 const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
-// Stage 0.10H intentionally adds authenticated CreatorLab research/editorial routes and,
-// after explicit H-5E review, one owner-scoped project-governance route, and the
-// authenticated owner-scoped CreatorLab visual, private audio upload, and publish-readiness routes. Keep this
-// inventory sentinel fail-closed so every later API surface change requires review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "421ea54eb16114056e8a45511744ac68579b372f6c849fd9269837a1ff915e22");
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932");
+// Reviewed through Stage 0.20E1. The CreatorLab API surface and additive
+// migration history have expanded intentionally since the original 0.8F
+// baseline. Keep these inventory sentinels fail-closed so every later API or
+// migration surface change still requires explicit review.
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "1eaa0c3a49f57009b82fd2f3bfff32c1629c0ec89b35f4e8f9af8031501e0e04");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "2c31ca5132bd97cda87915597d17f25656b0ed99a83ba7f06b2d9abffa449932");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
 console.log("Stage 0.8F-B recovery and operator regression passed.");

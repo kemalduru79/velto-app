@@ -94,7 +94,11 @@ assert.doesNotMatch(page, /dispatchMode: "single" \| "batch" = "single"/);
 assert.doesNotMatch(page, /isBatchRendering && creatorSelectedSceneIdSet\.has/);
 assert.doesNotMatch(page, /imageDispatchCountdown\?\.scope === "scene"[\s\S]{0,120}generating/);
 assert.match(page, /creatorVisualDispatchCountdown\.secondsRemaining/);
-assert.match(page, /No generation request has been dispatched/);
+assert.match(
+  page,
+  /No generation request has been sent(?: yet)?\./,
+  "countdown UI must make clear that provider generation has not been dispatched yet",
+);
 assert.doesNotMatch(page, /<CreatorCostGuard/);
 assert.match(page, /creatorCostGuardHeaders/);
 

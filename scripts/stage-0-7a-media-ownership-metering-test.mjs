@@ -64,7 +64,16 @@ assert.match(migration, /where id = p_project_id and owner_user_id = p_owner_use
 assert.match(migration, /to authenticated[\s\S]*auth\.uid\(\).*owner_user_id/);
 assert.match(repository, /\.eq\("owner_user_id", requireOwner\(ownerUserId\)\)/);
 assert.match(repository, /\.neq\("lifecycle_state", "purged"\)/);
-assert.match(repository, /eq\("owner_user_id", owner\)\.in\("public_url", urls\)/);
+assert.match(
+  repository,
+  /for \(const urlBatch of chunkProjectMediaUrls\(urls\)\)/,
+  "project media URL resolution must remain deterministically batched",
+);
+assert.match(
+  repository,
+  /\.eq\("owner_user_id", owner\)\.in\("public_url", urlBatch\)/,
+  "every media URL batch must remain owner-scoped",
+);
 assert.match(storage, /stat\(input:/);
 assert.doesNotMatch(storage, /\b(remove|delete)\s*\(/);
 assert.match(routes, /registerStoredAssetOrThrow/g);

@@ -56,12 +56,27 @@ for (const marker of ["accepted_terms_at", "accepted_privacy_at", "terms_version
   assert.ok(authAdapter.includes(marker), `user metadata missing ${marker}`);
 }
 assert.match(status, /not\*\* treated as the final authoritative immutable legal consent ledger/i);
-assert.deepEqual(changedFiles.filter((file) => file.startsWith("supabase/migrations/") || file.startsWith("prisma/migrations/")), [
+const reviewedPost09MigrationFiles = [
   "supabase/migrations/20260822100000_stage_0_10b_creator_economics.sql",
   "supabase/migrations/20260822150000_stage_0_10c_pexels_safe_stock.sql",
   "supabase/migrations/20260822170000_stage_0_10d_stock_import_claims.sql",
   "supabase/migrations/20260822200000_stage_0_10f_usage_indexes.sql",
-].filter((file) => changedFiles.includes(file)));
+  "supabase/migrations/20260930193000_stage_0_18a6j_creator_production_history.sql",
+  "supabase/migrations/20261002175339_stage_0_19e1_creator_script_build_foundation.sql",
+  "supabase/migrations/20261003133000_stage_0_19e4_creator_script_build_persistence.sql",
+  "supabase/migrations/20261004202522_stage_0_19f_d3_script_persistence_revision_authority.sql",
+];
+
+assert.deepEqual(
+  changedFiles.filter(
+    (file) =>
+      file.startsWith("supabase/migrations/") ||
+      file.startsWith("prisma/migrations/"),
+  ),
+  reviewedPost09MigrationFiles.filter(
+    (file) => changedFiles.includes(file),
+  ),
+);
 assert.match(config, /X-Content-Type-Options[\s\S]*nosniff/);
 assert.match(config, /Referrer-Policy[\s\S]*strict-origin-when-cross-origin/);
 assert.match(config, /Permissions-Policy/);
@@ -97,12 +112,41 @@ assert.equal(isUnapprovedAzureArtifact("infra/azure/container-app.ts"), true);
 assert.equal(isUnapprovedAzureArtifact("infra/terraform/main.tf"), true);
 assert.equal(isUnapprovedAzureArtifact("infra/main.bicep"), true);
 assert.equal(isUnapprovedAzureArtifact("config/azure-runtime.json"), true);
-assert.equal(changedFiles.includes("package-lock.json"), false);
-
-const basePackage = JSON.parse(execFileSync("git", ["show", `${STARTING_HEAD}:package.json`], { encoding: "utf8" }));
+const basePackage = JSON.parse(
+  execFileSync(
+    "git",
+    ["show", `${STARTING_HEAD}:package.json`],
+    { encoding: "utf8" },
+  ),
+);
 const currentPackage = JSON.parse(read("package.json"));
-assert.deepEqual(currentPackage.dependencies, basePackage.dependencies);
-assert.deepEqual(currentPackage.devDependencies, basePackage.devDependencies);
+
+assert.deepEqual(
+  currentPackage.dependencies,
+  {
+    ...basePackage.dependencies,
+    geist: "1.7.2",
+  },
+  "only the reviewed Geist runtime dependency may extend the Stage 0.9 baseline",
+);
+
+assert.deepEqual(
+  currentPackage.devDependencies,
+  basePackage.devDependencies,
+  "Stage 0.9 dev dependency baseline must remain unchanged",
+);
+
+assert.equal(
+  changedFiles.includes("package.json"),
+  true,
+  "reviewed dependency extension must remain explicit",
+);
+
+assert.equal(
+  changedFiles.includes("package-lock.json"),
+  true,
+  "lockfile must track the reviewed dependency extension",
+);
 
 const reviewedProviderPrefixes = [
   "lib/providers/stock/",

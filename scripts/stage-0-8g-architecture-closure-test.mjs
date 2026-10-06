@@ -101,12 +101,12 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "b21d4a8df8f360a0a2470c4dfccd17800744ab75bccffd87a4b2492d58d9c960"));
-check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "62e263f0f422aa5b81d799ef1fcb025d949ea8bd0f5026b502d149d738401932"));
+check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "1eaa0c3a49f57009b82fd2f3bfff32c1629c0ec89b35f4e8f9af8031501e0e04"));
+check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "2c31ca5132bd97cda87915597d17f25656b0ed99a83ba7f06b2d9abffa449932"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
     "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
-    "hls.js", "next", "openai", "react", "react-dom",
+    "geist", "hls.js", "next", "openai", "react", "react-dom",
   ].sort());
   assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
     "@tailwindcss/postcss", "@types/node", "@types/react", "@types/react-dom",
@@ -115,7 +115,7 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226"));
-check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "1f788669922cddaab45ecd3e9380ccc320b56c34f20e62af0c301f59a7c2b865"));
+check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "13186b3319e4e693b528fa3e48f1c4de5314b12a52da75485a537afcf9e37949"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
@@ -195,6 +195,8 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/persistence/media/registerStoredAsset.ts",
     "package.json",
     "scripts/stage-0-7a-2-final-movie-migration-test.mjs",
+    "scripts/stage-0-7a-media-ownership-metering-test.mjs",
+    "scripts/stage-0-19f-f2-final-export-timeout-contract-test.mjs",
     "scripts/stage-0-7d-3a-final-export-admission-schema-test.mjs",
     "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-10c-pexels-safe-stock-test.mjs",

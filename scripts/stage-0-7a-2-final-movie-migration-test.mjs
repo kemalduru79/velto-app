@@ -44,14 +44,46 @@ assert.match(saveRoute, /findByPublicUrl\(principal\.id, exportedMovieUrl\)/);
 assert.match(saveRoute, /finalMovieAsset\.mediaKind !== "final_video"/);
 assert.match(saveRoute, /finalMovieAsset\.lifecycleState !== "active"/);
 
-// Migration versions are unique, normalized, deterministic, and SQL bytes are unchanged.
+// Migration history is append-only: the established baseline must remain
+// present and immutable, while newer migrations are allowed to extend it.
 const migrationFiles = fs.readdirSync("supabase/migrations").filter((file) => file.endsWith(".sql")).sort();
-assert.equal(migrationFiles.length, 17);
+
+const baselineMigrationFiles = [
+  "20260728090000_foundation_p1_auth_credit_ledger.sql",
+  "20260730100000_scale_p1_job_queue.sql",
+  "20260730110000_cancel_p1_job_cancellation.sql",
+  "20260730120000_fin_p1c_credit_reconciliation.sql",
+  "20260731090000_scale_p1_worker_hardening.sql",
+  "20260811100000_audio_p1_creator_music_entitlements.sql",
+  "20260811110000_audio_p2_creator_music_usage_outbox.sql",
+  "20260818100000_stage_0_7a_media_ownership_metering.sql",
+  "20260818160000_stage_0_7b_safe_media_trash.sql",
+  "20260818200000_stage_0_7d_1_safe_media_purge.sql",
+  "20260818203000_stage_0_7d_1_fix_purge_reference_ambiguity.sql",
+  "20260818220000_stage_0_7d_2_storage_entitlements_admissions.sql",
+  "20260818230000_stage_0_7d_3_add_final_movie_export_admission_purpose.sql",
+  "20260822100000_stage_0_10b_creator_economics.sql",
+  "20260822150000_stage_0_10c_pexels_safe_stock.sql",
+  "20260822170000_stage_0_10d_stock_import_claims.sql",
+  "20260822200000_stage_0_10f_usage_indexes.sql",
+];
+
+for (const file of baselineMigrationFiles) {
+  assert.ok(
+    migrationFiles.includes(file),
+    `${file} baseline migration disappeared`,
+  );
+}
+
+assert.ok(
+  migrationFiles.length >= baselineMigrationFiles.length,
+  "migration history must remain additive",
+);
+
 for (const file of migrationFiles) assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/);
 const versions = migrationFiles.map((file) => file.slice(0, 14));
 assert.equal(new Set(versions).size, versions.length);
 assert.deepEqual(migrationFiles, [...migrationFiles].sort());
-assert.equal(migrationFiles.at(-1), "20260822200000_stage_0_10f_usage_indexes.sql");
 
 const expectedHashes = {
   "20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
