@@ -109,7 +109,7 @@ check("CreatorLab payload is normalized server-side and Storyverse is scoped", (
 });
 check("renderer loops, trims, fades, ducks, limits, and keeps duration", () => {
   for (const marker of ["-stream_loop", "atrim=duration=", "afade=t=in", "afade=t=out", "sidechaincompress", "alimiter=limit=0.95", "duration=first", "-shortest"]) assert.match(renderer, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(renderer, /audioForClip = await mixSceneAudioWithAmbient/);
+  assert.match(renderer, /audioForClip = await mixCreatorSceneAudioLayers/);
   assert.match(renderer, /verifyRenderedContinuity\([\s\S]*finalOutputFilePath/);
 });
 check("ducking control is speech-only and timeline aligned", () => {
@@ -123,7 +123,7 @@ check("ducking control is speech-only and timeline aligned", () => {
 });
 check("audible final mix preserves ambience and control failure disables only ducking", () => {
   assert.match(renderer, /\[0:a\]\[bed\]\$\{finalMixOptions\}/);
-  assert.match(renderer, /audioForClip = await mixSceneAudioWithAmbient/);
+  assert.match(renderer, /audioForClip = await mixCreatorSceneAudioLayers/);
   assert.match(renderer, /music will be mixed without ducking/);
   assert.match(renderer, /Boolean\(speechControlPath\)/);
   assert.match(renderer, /speechControlPath,/);

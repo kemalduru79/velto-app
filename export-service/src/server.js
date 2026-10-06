@@ -9,6 +9,7 @@ import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { resolveRuntimeRelease } from "./runtimeIdentity.js";
 import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
+import { buildCreatorSceneAudioMixFilter } from "./creatorSceneAudioMix.js";
 import {
   reconcileVisualCoveragePlan,
   resolveCoverageBackedSceneTargetDuration,
@@ -1355,52 +1356,29 @@ async function createProceduralAmbientAudio({ outputPath, durationSeconds, profi
   return outputPath;
 }
 
-async function mixSceneAudioWithAmbient({
+async function mixCreatorSceneAudioLayers({
   speechAudioPath,
   ambientAudioPath,
+  sfxAudioPath,
   outputPath,
   targetDuration,
 }) {
-  const durationText = Math.max(0.2, targetDuration || TARGET_SCENE_DURATION).toFixed(3);
-
-  if (!ambientAudioPath) {
-    return speechAudioPath;
-  }
-
-  if (!speechAudioPath) {
-    await runFfmpeg([
-      "-y",
-      "-i",
-      ambientAudioPath,
-      "-af",
-      `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS`,
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-ar",
-      "44100",
-      "-ac",
-      "2",
-      outputPath,
-    ]);
-
-    return outputPath;
-  }
+  const inputs = [speechAudioPath, ambientAudioPath, sfxAudioPath].filter(Boolean);
+  if (inputs.length === 0) return undefined;
+  if (inputs.length === 1) return inputs[0];
 
   await runFfmpeg([
     "-y",
-    "-i",
-    speechAudioPath,
-    "-i",
-    ambientAudioPath,
+    ...inputs.flatMap((inputPath) => ["-i", inputPath]),
     "-filter_complex",
-    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[speech];` +
-      `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[amb];` +
-      `[speech][amb]amix=inputs=2:duration=first:dropout_transition=0,` +
-      `alimiter=limit=0.95[a]`,
+    buildCreatorSceneAudioMixFilter({
+      durationSeconds: targetDuration || TARGET_SCENE_DURATION,
+      hasSpeech: Boolean(speechAudioPath),
+      hasAmbient: Boolean(ambientAudioPath),
+      hasSfx: Boolean(sfxAudioPath),
+    }),
     "-map",
-    "[a]",
+    "[creator_scene_audio]",
     "-c:a",
     "aac",
     "-b:a",
@@ -1899,7 +1877,6 @@ app.post("/export-movie", async (req, res) => {
       const dialoguePath = path.join(tempDir, `dialogue-${i + 1}.mp3`);
       const sceneAudioPath = path.join(tempDir, `scene-audio-${i + 1}.m4a`);
       const sceneAmbientPath = path.join(tempDir, `scene-ambient-${i + 1}.m4a`);
-      const sceneAudioWithAmbientPath = path.join(tempDir, `scene-audio-ambient-${i + 1}.m4a`);
       const sceneMicroSfxPath = path.join(tempDir, `scene-micro-sfx-${i + 1}.m4a`);
       const sceneAudioWithSfxPath = path.join(tempDir, `scene-audio-sfx-${i + 1}.m4a`);
       const clipOutputPath = path.join(tempDir, `clip-scene-${i + 1}.mp4`);
@@ -2050,22 +2027,16 @@ app.post("/export-movie", async (req, res) => {
             profile: ambientProfile,
           });
 
-          audioForClip = await mixSceneAudioWithAmbient({
-            speechAudioPath: finalAudioPath,
-            ambientAudioPath: sceneAmbientPath,
-            outputPath: sceneAudioWithAmbientPath,
-            targetDuration,
-          });
-
           await createMicroSfxTrack({
             outputPath: sceneMicroSfxPath,
             durationSeconds: targetDuration,
             profileId: ambientProfile.id,
           });
 
-          audioForClip = await mixSceneAudioWithAmbient({
-            speechAudioPath: audioForClip,
-            ambientAudioPath: sceneMicroSfxPath,
+          audioForClip = await mixCreatorSceneAudioLayers({
+            speechAudioPath: finalAudioPath,
+            ambientAudioPath: sceneAmbientPath,
+            sfxAudioPath: sceneMicroSfxPath,
             outputPath: sceneAudioWithSfxPath,
             targetDuration,
           });
