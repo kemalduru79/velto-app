@@ -18,6 +18,7 @@ import {
 } from "./creatorProgramAudioMaster.js";
 import {
   reconcileVisualCoveragePlan,
+  resolveAudioFirstSceneTargetDuration,
   resolveCoverageBackedSceneTargetDuration,
 } from "./visualCoverage.js";
 
@@ -481,33 +482,20 @@ function getSceneAudioMixProfile(scene) {
   };
 }
 
-function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "image", sourceDuration = 0) {
+function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "image", sourceDuration = 0, durationAuthority) {
   const requestedTarget = Number(scene?.timing?.targetSceneDuration || 0);
-  const safeAudioDuration = Number.isFinite(fallbackAudioDuration) ? fallbackAudioDuration : 0;
-  const safeSourceDuration = Number.isFinite(sourceDuration) ? sourceDuration : 0;
-  const audioDrivenDuration =
-    safeAudioDuration > 0
-      ? safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS
-      : 0;
-
   const coverageBackedTarget = resolveCoverageBackedSceneTargetDuration(scene);
-  if (Number.isFinite(coverageBackedTarget) && coverageBackedTarget > 0) {
-    return coverageBackedTarget;
-  }
-
-  if (sourceType === "video" && safeSourceDuration > 0) {
-    if (audioDrivenDuration > 0) {
-      return Math.max(safeSourceDuration, requestedTarget || 0, audioDrivenDuration);
-    }
-
-    return safeSourceDuration;
-  }
-
-  return Math.max(
-    MIN_SCENE_DURATION,
-    requestedTarget || TARGET_SCENE_DURATION,
-    audioDrivenDuration || TARGET_SCENE_DURATION
-  );
+  return resolveAudioFirstSceneTargetDuration({
+    requestedTarget,
+    coverageBackedTarget,
+    audioDuration: fallbackAudioDuration,
+    sourceType,
+    sourceDuration,
+    durationAuthority,
+    minimumDuration: MIN_SCENE_DURATION,
+    defaultDuration: TARGET_SCENE_DURATION,
+    tailBuffer: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
+  });
 }
 
 function normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport) {
@@ -1842,6 +1830,11 @@ app.post("/export-movie", async (req, res) => {
       });
     }
     const exportFlowValidation = body?.exportFlowValidation;
+    const creatorDurationAuthority = body.productProfile === "creatorlab"
+      ? body.creatorFormat === "youtube_video"
+        ? "editorial_floor"
+        : "audio_compact"
+      : undefined;
 
     if (exportFlowValidation?.version === "3N-5") {
       if (!exportFlowValidation.canExport) {
@@ -2053,7 +2046,8 @@ app.post("/export-movie", async (req, res) => {
         scene,
         fallbackAudioDuration,
         sourceType,
-        effectiveVisualSourceDuration
+        effectiveVisualSourceDuration,
+        creatorDurationAuthority,
       );
 
       console.log(

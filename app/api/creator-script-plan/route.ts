@@ -1937,6 +1937,7 @@ export async function POST(req: Request) {
       durationSec,
       sceneCount,
       scenes: enrichedScenes,
+      durationAuthority: format === "youtube_video" ? "editorial_floor" : "audio_compact",
     });
     const finalHealth = enrichedScenes.map((scene) => scene.scriptHealth);
     const readySceneCount = finalHealth.filter(

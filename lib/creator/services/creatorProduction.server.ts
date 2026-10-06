@@ -813,6 +813,7 @@ export async function handleCreatorProductionRequest(req: Request) {
       durationSec,
       sceneCount,
       scenes,
+      durationAuthority: format === "youtube_video" ? "editorial_floor" : "audio_compact",
     });
 
     const productionPackage = {

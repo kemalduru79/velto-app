@@ -79,6 +79,10 @@ export async function handleStitchVideoRequest(req: NextRequest) {
     );
     const timelineSyncPlan = body?.timelineSyncPlan as
       TimelineSyncPlan | undefined;
+    const durationAuthority =
+      body?.productProfile === "creatorlab" && body?.creatorFormat === "youtube_video"
+        ? "editorial_floor"
+        : "audio_compact";
     const scenes = applyTimelineSyncPlanToScenes(
       filteredScenes,
       timelineSyncPlan,
@@ -135,6 +139,7 @@ export async function handleStitchVideoRequest(req: NextRequest) {
         tempDir,
         i,
         requestedDurationSec,
+        durationAuthority,
       );
       const durationSec = alignDurationToFrameGrid(
         safeDuration(audioResult.durationSec),

@@ -255,6 +255,10 @@ export async function POST(req: Request) {
       durationSec,
       sceneCount: scenes.length || sceneCount,
       scenes,
+      durationAuthority:
+        asString(body?.format, "short_form") === "youtube_video"
+          ? "editorial_floor"
+          : "audio_compact",
     });
 
     return NextResponse.json({

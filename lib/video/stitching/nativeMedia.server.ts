@@ -10,6 +10,7 @@ import { validateCreatorVisualCoveragePlan } from "../../creator/visualCoverage"
 import {
   matchAudioDurationToScene,
   type AudioDurationMatch,
+  type AudioDurationAuthority,
 } from "../audioDurationMatching";
 import {
   createVisualFillerPlan,
@@ -597,6 +598,7 @@ export async function createSceneAudioClip(
   tempDir: string,
   index: number,
   requestedDurationSec: number,
+  durationAuthority: AudioDurationAuthority = "audio_compact",
 ) {
   const audioInputs = [scene.audioUrl, scene.dialogueAudioUrl].filter(
     (url): url is string => Boolean(url),
@@ -613,6 +615,7 @@ export async function createSceneAudioClip(
       maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
       preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
       tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+      durationAuthority,
     });
     await createSilentAudio(outputAudioPath, requestedDurationSec);
     return {
@@ -646,6 +649,7 @@ export async function createSceneAudioClip(
     maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
     preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
     tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+    durationAuthority,
   });
 
   if (!durationMatch.fitsWithinHardLimit) {

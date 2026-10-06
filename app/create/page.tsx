@@ -2454,6 +2454,7 @@ const buildSceneTiming = (
   options?: {
     audioFirst?: boolean;
     plannedDuration?: number;
+    durationAuthority?: "audio_compact" | "editorial_floor";
   },
 ): SceneTiming => {
   const safeNarration = Number.isFinite(narrationDuration) ? narrationDuration : 0;
@@ -2471,6 +2472,7 @@ const buildSceneTiming = (
       preferredMaxSceneDurationSec:
         CREATOR_PREFERRED_MAX_SCENE_DURATION_SECONDS,
       tailBufferSec: CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+      durationAuthority: options.durationAuthority,
     });
     const targetSceneDuration = durationMatch.targetDurationSec;
     const maxSpeechDuration = Number(
@@ -2479,9 +2481,8 @@ const buildSceneTiming = (
         targetSceneDuration - CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
       ).toFixed(2),
     );
-    // VELTO_VOICE_P1C: exact timing is based on measured audio, not the
-    // original scene budget. A shorter voice track shortens the scene instead
-    // of creating a silent/frozen tail. A longer track extends the scene.
+    // Measured audio is authoritative. Compact formats may remove an obsolete
+    // tail; long-form CreatorLab preserves the editorial plan as a floor.
     const durationDelta = Number(durationMatch.durationDeltaSec.toFixed(2));
     const freezeDuration = Math.max(0, durationDelta);
     const exactTimingLocked =
@@ -6022,6 +6023,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
       plannedDuration: isCreatorLabFlow
         ? getCreatorPlannedSceneDuration(scene)
         : undefined,
+      durationAuthority:
+        isCreatorLabFlow && creatorFormat === "youtube_video"
+          ? "editorial_floor"
+          : "audio_compact",
     });
 
   const clearSceneTimingData = (sceneId: number) => {

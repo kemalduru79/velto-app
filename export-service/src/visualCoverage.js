@@ -20,6 +20,50 @@ export function resolveCoverageBackedSceneTargetDuration(scene) {
     : Number.NaN;
 }
 
+export function resolveAudioFirstSceneTargetDuration({
+  requestedTarget,
+  coverageBackedTarget,
+  audioDuration,
+  sourceType,
+  sourceDuration,
+  durationAuthority,
+  minimumDuration = 8,
+  defaultDuration = 10,
+  tailBuffer = 0.75,
+}) {
+  const requested = finiteNumber(requestedTarget);
+  const coverage = finiteNumber(coverageBackedTarget);
+  const audio = finiteNumber(audioDuration);
+  const source = finiteNumber(sourceDuration);
+  const audioSafeDuration = Number.isFinite(audio) && audio > 0
+    ? audio + tailBuffer
+    : 0;
+
+  if (durationAuthority === "editorial_floor" && audioSafeDuration > 0) {
+    return Math.max(
+      minimumDuration,
+      Number.isFinite(requested) && requested > 0 ? requested : defaultDuration,
+      Number.isFinite(coverage) && coverage > 0 ? coverage : 0,
+      sourceType === "video" && Number.isFinite(source) && source > 0 ? source : 0,
+      audioSafeDuration,
+    );
+  }
+  if (durationAuthority === "audio_compact" && audioSafeDuration > 0) {
+    return Math.max(minimumDuration, audioSafeDuration);
+  }
+  if (Number.isFinite(coverage) && coverage > 0) return coverage;
+  if (sourceType === "video" && Number.isFinite(source) && source > 0) {
+    return audioSafeDuration > 0
+      ? Math.max(source, Number.isFinite(requested) ? requested : 0, audioSafeDuration)
+      : source;
+  }
+  return Math.max(
+    minimumDuration,
+    Number.isFinite(requested) && requested > 0 ? requested : defaultDuration,
+    audioSafeDuration || defaultDuration,
+  );
+}
+
 export function validateVisualCoveragePlan(scene, targetDuration) {
   const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
   const safeTargetDuration = finiteNumber(targetDuration);

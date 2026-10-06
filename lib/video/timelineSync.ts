@@ -1,6 +1,7 @@
 import {
   matchAudioDurationToScene,
   type AudioDurationMatch,
+  type AudioDurationAuthority,
 } from "./audioDurationMatching";
 import {
   createVisualFillerPlan,
@@ -485,12 +486,14 @@ export function createTimelineSyncPlan({
   durationSec,
   sceneCount,
   scenes,
+  durationAuthority = "audio_compact",
 }: {
   product: VideoProductProfile;
   qualityTier: VideoQualityTier;
   durationSec: number;
   sceneCount: number;
   scenes: TimelineSceneInput[];
+  durationAuthority?: AudioDurationAuthority;
 }): TimelineSyncPlan {
   const safeSceneCount = Math.max(
     1,
@@ -537,6 +540,7 @@ export function createTimelineSyncPlan({
             maxDurationSec: 30,
             preferredMaxSceneDurationSec: 20,
             tailBufferSec: 0.75,
+            durationAuthority,
           })
         : null;
     const targetVisualSeconds =

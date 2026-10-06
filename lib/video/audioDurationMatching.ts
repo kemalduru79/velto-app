@@ -6,6 +6,8 @@ export type AudioDurationMatchStatus =
   | "split_recommended"
   | "unsafe";
 
+export type AudioDurationAuthority = "audio_compact" | "editorial_floor";
+
 export type AudioDurationMatch = {
   status: AudioDurationMatchStatus;
   audioDurationSec: number;
@@ -30,6 +32,7 @@ export type AudioDurationMatchInput = {
   preferredMaxSceneDurationSec?: unknown;
   tailBufferSec?: unknown;
   toleranceSec?: unknown;
+  durationAuthority?: AudioDurationAuthority;
 };
 
 function round(value: number) {
@@ -86,6 +89,9 @@ export function matchAudioDurationToScene(
   const audioDurationSec = round(
     Math.max(0, finiteNumber(input.audioDurationSec, 0)),
   );
+  const durationAuthority = input.durationAuthority === "editorial_floor"
+    ? "editorial_floor"
+    : "audio_compact";
 
   if (audioDurationSec <= 0) {
     return {
@@ -107,9 +113,9 @@ export function matchAudioDurationToScene(
 
   const audioSafeDurationSec = round(audioDurationSec + tailBufferSec);
   const fitsWithinHardLimit = audioSafeDurationSec <= maxDurationSec;
-  const targetDurationSec = round(
-    clamp(audioSafeDurationSec, minDurationSec, maxDurationSec),
-  );
+  const targetDurationSec = round(durationAuthority === "editorial_floor"
+    ? Math.max(minDurationSec, plannedDurationSec, audioSafeDurationSec)
+    : clamp(audioSafeDurationSec, minDurationSec, maxDurationSec));
   const splitRecommended =
     audioSafeDurationSec > preferredMaxSceneDurationSec;
   const safeSpeechPerSegment = Math.max(
@@ -127,9 +133,9 @@ export function matchAudioDurationToScene(
     ),
   );
   const durationDeltaSec = round(targetDurationSec - plannedDurationSec);
-  const unnecessaryExtensionRemovedSec = round(
-    Math.max(0, plannedDurationSec - targetDurationSec),
-  );
+  const unnecessaryExtensionRemovedSec = durationAuthority === "editorial_floor"
+    ? 0
+    : round(Math.max(0, plannedDurationSec - targetDurationSec));
   let status: AudioDurationMatchStatus;
   let reason: string;
 
