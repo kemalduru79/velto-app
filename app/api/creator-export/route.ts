@@ -14,6 +14,7 @@ import { buildCreatorMusicUsageEventIdentity, registerCreatorMusicExportUsage } 
 import type { CreatorMusicUsageEventIdentity } from "@/lib/persistence/music";
 import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/lib/creator/exportScenes";
 import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "@/lib/creator/visualCoverage";
+import { resolveCreatorProgramVisualRhythm } from "@/lib/creator/programEditorialPolish";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import {
   creatorGovernanceExportBlockResponse,
@@ -207,8 +208,20 @@ export async function POST(request: Request) {
             const persistedScene = persistedScenes.get(creatorSceneId);
             return persistedScene ? { ...scene, assetHistory: persistedScene.assetHistory } : scene;
           }) : [],
-        ).map((scene) => {
+        ).map((scene, sceneIndex, canonicalScenes) => {
           const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+          const previousScene = sceneIndex > 0 ? canonicalScenes[sceneIndex - 1] : undefined;
+          const previousSelectedMediaUrl = previousScene
+            ? previousScene.exportSource === "video"
+              ? previousScene.videoUrl
+              : previousScene.image
+            : "";
+          const programRhythm = resolveCreatorProgramVisualRhythm({
+            sceneIndex,
+            sceneCount: canonicalScenes.length,
+            selectedMediaUrl,
+            previousSelectedMediaUrl,
+          });
           const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
           if (process.env.NODE_ENV !== "production") {
             console.info("Creator export scene", {
@@ -244,6 +257,7 @@ export async function POST(request: Request) {
             visualBlockPlan: Array.isArray(persistedScene.visualBlockPlan) ? persistedScene.visualBlockPlan : undefined,
           }, {
             editorialCadence: authoritativeCreatorFormat === "youtube_video",
+            motionPresetOffset: programRhythm.motionPresetOffset,
           });
           return {
             ...scene,

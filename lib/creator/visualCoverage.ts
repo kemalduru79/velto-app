@@ -153,10 +153,12 @@ function createCreatorEditorialCadenceCoveragePlan(
     creatorSceneId,
     targetDurationSec,
     imageMotionRendererAvailable,
+    motionPresetOffset,
   }: {
     creatorSceneId: string;
     targetDurationSec: number;
     imageMotionRendererAvailable: boolean;
+    motionPresetOffset: number;
   },
 ): CreatorVisualCoverageBeat[] {
   const imageUrl =
@@ -243,7 +245,10 @@ function createCreatorEditorialCadenceCoveragePlan(
         sourceUrl: imageUrl,
         sourceType: "scene_image",
         motionPreset: motionPresets[
-          imageBeatIndex % motionPresets.length
+          (
+            Math.max(0, Math.trunc(motionPresetOffset)) +
+            imageBeatIndex
+          ) % motionPresets.length
         ],
         renderer: imageMotionRendererAvailable
           ? "native_zoompan_v1"
@@ -381,6 +386,7 @@ export function createCreatorVisualCoveragePlan(
   options: {
     imageMotionRendererAvailable?: boolean;
     editorialCadence?: boolean;
+    motionPresetOffset?: number;
   } = {},
 ): CreatorVisualCoverageBeat[] {
   const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId.trim() : "";
@@ -396,6 +402,9 @@ export function createCreatorVisualCoveragePlan(
       creatorSceneId,
       targetDurationSec,
       imageMotionRendererAvailable,
+      motionPresetOffset: Number.isFinite(options.motionPresetOffset)
+        ? Number(options.motionPresetOffset)
+        : 0,
     });
   }
 
