@@ -54,6 +54,116 @@ function resolveGraceHours(value: unknown) {
     : DEFAULT_CREATOR_MEDIA_ORPHAN_GRACE_HOURS;
 }
 
+export type CreatorMediaOrphanTrashReason =
+  | "unsupported_kind"
+  | "state_changed"
+  | "in_use"
+  | "history_only"
+  | "age_unknown"
+  | "grace_not_met";
+
+export type CreatorMediaOrphanTrashEligibility =
+  | {
+      eligible: true;
+      graceHours: number;
+      ageHours: number;
+    }
+  | {
+      eligible: false;
+      reason: CreatorMediaOrphanTrashReason;
+      graceHours: number;
+      ageHours: number | null;
+    };
+
+export function resolveCreatorMediaOrphanTrashEligibility(
+  asset: CreatorMediaCostHygieneAsset,
+  options: {
+    now?: number;
+    graceHours?: number;
+  } = {},
+): CreatorMediaOrphanTrashEligibility {
+  const graceHours = resolveGraceHours(options.graceHours);
+
+  if (!["image", "video", "final_video"].includes(asset.mediaKind)) {
+    return {
+      eligible: false,
+      reason: "unsupported_kind",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  if (asset.lifecycleState !== "active") {
+    return {
+      eligible: false,
+      reason: "state_changed",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  if (asset.cleanupState === "IN_USE") {
+    return {
+      eligible: false,
+      reason: "in_use",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  if (asset.cleanupState === "HISTORY_ONLY") {
+    return {
+      eligible: false,
+      reason: "history_only",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  if (asset.cleanupState !== "UNREFERENCED") {
+    return {
+      eligible: false,
+      reason: "state_changed",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  const createdAtMs = asset.createdAt
+    ? Date.parse(asset.createdAt)
+    : Number.NaN;
+
+  if (!Number.isFinite(createdAtMs)) {
+    return {
+      eligible: false,
+      reason: "age_unknown",
+      graceHours,
+      ageHours: null,
+    };
+  }
+
+  const now = Number.isFinite(options.now)
+    ? Number(options.now)
+    : Date.now();
+
+  const ageHours = Math.max(0, now - createdAtMs) / 3_600_000;
+
+  if (ageHours < graceHours) {
+    return {
+      eligible: false,
+      reason: "grace_not_met",
+      graceHours,
+      ageHours,
+    };
+  }
+
+  return {
+    eligible: true,
+    graceHours,
+    ageHours,
+  };
+}
+
 export function auditCreatorMediaCostHygiene(
   assets: readonly CreatorMediaCostHygieneAsset[],
   options: {

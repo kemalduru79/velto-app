@@ -66,6 +66,7 @@
     "test:stage-0-20e1": "node --experimental-strip-types scripts/stage-0-20e1-program-visual-rhythm-test.mjs",
     "test:stage-0-20e2": "node --experimental-strip-types scripts/stage-0-20e2-program-editorial-balance-audit-test.mjs",
     "test:stage-0-20f1": "node --experimental-strip-types scripts/stage-0-20f1-media-cost-hygiene-audit-test.mjs",
+    "test:stage-0-20f2": "node --experimental-strip-types scripts/stage-0-20f2-safe-orphan-trash-authority-test.mjs",
     "test:stage-0-13d": "node --experimental-strip-types scripts/stage-0-13d-continuous-full-script-editor-test.mjs",
     "test:stage-0-13e": "node --experimental-strip-types scripts/stage-0-13e-ai-script-refinement-test.mjs",
     "test:stage-0-13f": "node --experimental-strip-types scripts/stage-0-13f-revision-preview-history-test.mjs",
