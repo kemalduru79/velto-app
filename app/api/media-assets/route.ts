@@ -3,6 +3,7 @@ import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { classifyMediaReferenceSafety, getPersistenceServices } from "@/lib/persistence";
 import { getMediaPurgeEligibility } from "@/lib/persistence/media/purgePolicy";
 import { getServerMediaPurgeConfiguration } from "@/lib/persistence/media/mediaPurge.server";
+import { auditCreatorMediaCostHygiene } from "@/lib/creator/mediaCostHygiene";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
         sizeBytes: asset.sizeBytes,
         lifecycleState: asset.lifecycleState,
         trashedAt: asset.trashedAt,
+        createdAt: asset.createdAt ?? null,
         purgePending: Boolean(asset.purgeStartedAt),
         retentionDays: purgeConfig.retentionDays,
         permanentDeleteEnabled: purgeConfig.permanentDeleteEnabled,
@@ -38,7 +40,19 @@ export async function GET(request: Request) {
         })),
       };
     }));
-    return NextResponse.json({ assets: inventory });
+
+    const costHygiene = auditCreatorMediaCostHygiene(
+      inventory.map((asset) => ({
+        id: asset.id,
+        mediaKind: asset.mediaKind,
+        sizeBytes: asset.sizeBytes,
+        lifecycleState: asset.lifecycleState,
+        createdAt: asset.createdAt,
+        cleanupState: asset.cleanupState,
+      })),
+    );
+
+    return NextResponse.json({ assets: inventory, costHygiene });
   } catch (error) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: "A valid session is required." }, { status: 401 });

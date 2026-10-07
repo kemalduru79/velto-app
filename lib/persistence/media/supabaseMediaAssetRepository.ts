@@ -22,9 +22,10 @@ type AssetRow = {
   trashed_at: string | null;
   metadata?: unknown;
   purge_started_at?: string | null;
+  created_at?: string | null;
 };
 
-const BASE_ASSET_FIELDS: string = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state,trashed_at,metadata";
+const BASE_ASSET_FIELDS: string = "id,owner_user_id,bucket,storage_path,public_url,media_kind,mime_type,size_bytes,lifecycle_state,trashed_at,metadata,created_at";
 
 function assetFields() {
   return process.env.VELTO_PERMANENT_MEDIA_DELETE_ENABLED === "true"
@@ -51,6 +52,7 @@ function asset(row: AssetRow): StoredMediaAsset {
     lifecycleState: row.lifecycle_state,
     trashedAt: row.trashed_at,
     purgeStartedAt: row.purge_started_at ?? null,
+    createdAt: row.created_at ?? null,
     metadata: assetMetadata(row.metadata),
   };
 }

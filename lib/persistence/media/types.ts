@@ -32,6 +32,7 @@ export type StoredMediaAsset = {
   lifecycleState: MediaLifecycleState;
   trashedAt: string | null;
   purgeStartedAt: string | null;
+  createdAt?: string | null;
   metadata?: Record<string, unknown>;
 };
 
