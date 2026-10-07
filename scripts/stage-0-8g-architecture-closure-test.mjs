@@ -101,7 +101,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, and duration-contract surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "1eaa0c3a49f57009b82fd2f3bfff32c1629c0ec89b35f4e8f9af8031501e0e04"));
+check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, duration-contract, and media-hygiene surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "5ecb2cc30ea36d1f88cb256108bfc34f25ab78cd7fd0fedc1fe2f9479d148e6f"));
 check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "2c31ca5132bd97cda87915597d17f25656b0ed99a83ba7f06b2d9abffa449932"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
