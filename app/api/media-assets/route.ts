@@ -12,11 +12,10 @@ export async function GET(request: Request) {
     const principal = await authenticateRequest(request);
     const repository = getPersistenceServices().mediaAssetRepository;
     const purgeConfig = getServerMediaPurgeConfiguration();
-    const assets = (await repository.listForOwner(principal.id)).filter((asset) =>
-      asset.lifecycleState !== "purged" &&
-      (asset.mediaKind === "image" || asset.mediaKind === "video" || asset.mediaKind === "final_video"),
+    const nonPurgedAssets = (await repository.listForOwner(principal.id)).filter(
+      (asset) => asset.lifecycleState !== "purged",
     );
-    const inventory = await Promise.all(assets.map(async (asset) => {
+    const classifiedAssets = await Promise.all(nonPurgedAssets.map(async (asset) => {
       const references = await repository.getReferenceSummaryForOwner(asset.id, principal.id);
       const classification = classifyMediaReferenceSafety(asset.lifecycleState, references);
       const purgeEligibility = getMediaPurgeEligibility(asset.trashedAt, purgeConfig.retentionDays);
@@ -40,9 +39,12 @@ export async function GET(request: Request) {
         })),
       };
     }));
+    const inventory = classifiedAssets.filter((asset) =>
+      asset.mediaKind === "image" || asset.mediaKind === "video" || asset.mediaKind === "final_video",
+    );
 
     const costHygiene = auditCreatorMediaCostHygiene(
-      inventory.map((asset) => ({
+      classifiedAssets.map((asset) => ({
         id: asset.id,
         mediaKind: asset.mediaKind,
         sizeBytes: asset.sizeBytes,

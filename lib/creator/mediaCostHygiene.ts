@@ -239,14 +239,14 @@ export function auditCreatorMediaCostHygiene(
       ? Date.parse(asset.createdAt)
       : Number.NaN;
 
-    if (!Number.isFinite(createdAtMs)) {
+    if (!Number.isFinite(createdAtMs) || createdAtMs > now) {
       metrics.reviewRequiredCount += 1;
       metrics.reviewRequiredBytes += bytes;
       reviewRequiredAssetIds.push(asset.id);
       continue;
     }
 
-    const ageMs = Math.max(0, now - createdAtMs);
+    const ageMs = now - createdAtMs;
 
     if (ageMs < graceMs) {
       metrics.recentUnreferencedAssetCount += 1;

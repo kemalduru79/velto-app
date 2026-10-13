@@ -59,6 +59,22 @@ const audit = auditCreatorMediaCostHygiene(
       cleanupState: "UNREFERENCED",
     },
     {
+      id: "future-created-at",
+      mediaKind: "dialogue_audio",
+      sizeBytes: 650,
+      lifecycleState: "active",
+      createdAt: "2026-10-08T12:00:00.000Z",
+      cleanupState: "UNREFERENCED",
+    },
+    {
+      id: "narration-audio-stale",
+      mediaKind: "narration_audio",
+      sizeBytes: 150,
+      lifecycleState: "active",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      cleanupState: "UNREFERENCED",
+    },
+    {
       id: "trashed",
       mediaKind: "video",
       sizeBytes: 700,
@@ -86,33 +102,37 @@ assert.equal(audit.graceHours, 72);
 
 assert.deepEqual(
   audit.cleanupCandidateAssetIds,
-  ["stale-unreferenced-a", "stale-unreferenced-b"],
+  ["narration-audio-stale", "stale-unreferenced-a", "stale-unreferenced-b"],
   "stale unreferenced assets must be deterministic cleanup candidates",
 );
 
 assert.deepEqual(
   audit.reviewRequiredAssetIds,
-  ["missing-created-at"],
-  "missing age authority must fail closed to manual review",
+  ["future-created-at", "missing-created-at"],
+  "missing or future age authority must fail closed to manual review",
 );
 
+assert.equal(audit.cleanupCandidateAssetIds.includes("future-created-at"), false);
+assert.equal(audit.metrics.recentUnreferencedAssetCount, 1, "future media must not be classified as recent");
+assert.ok(audit.cleanupCandidateAssetIds.includes("narration-audio-stale"), "non-visual media must contribute to all-media hygiene classification");
+
 assert.deepEqual(audit.metrics, {
-  totalAssetCount: 7,
-  activeAssetCount: 6,
+  totalAssetCount: 9,
+  activeAssetCount: 8,
   trashedAssetCount: 1,
   inUseAssetCount: 1,
   historyOnlyAssetCount: 1,
   recentUnreferencedAssetCount: 1,
-  cleanupCandidateCount: 2,
-  reviewRequiredCount: 1,
-  totalBytes: 2800,
-  activeBytes: 2100,
+  cleanupCandidateCount: 3,
+  reviewRequiredCount: 2,
+  totalBytes: 3600,
+  activeBytes: 2900,
   trashedBytes: 700,
   inUseBytes: 100,
   historyOnlyBytes: 200,
   recentUnreferencedBytes: 300,
-  potentialReclaimableBytes: 900,
-  reviewRequiredBytes: 600,
+  potentialReclaimableBytes: 1050,
+  reviewRequiredBytes: 1250,
 });
 
 const zeroGrace = auditCreatorMediaCostHygiene(
@@ -149,6 +169,11 @@ const route = fs.readFileSync(
 
 assert.match(route, /auditCreatorMediaCostHygiene/);
 assert.match(route, /createdAt:\s*asset\.createdAt \?\? null/);
+assert.match(route, /const nonPurgedAssets = .*listForOwner[\s\S]*lifecycleState !== "purged"/);
+assert.match(route, /const classifiedAssets = await Promise\.all\(nonPurgedAssets\.map/);
+assert.match(route, /const inventory = classifiedAssets\.filter[\s\S]*mediaKind === "image"[\s\S]*mediaKind === "video"[\s\S]*mediaKind === "final_video"/);
+assert.match(route, /auditCreatorMediaCostHygiene\(\s*classifiedAssets\.map/);
+assert.doesNotMatch(route, /auditCreatorMediaCostHygiene\(\s*inventory\.map/);
 assert.match(route, /return NextResponse\.json\(\{ assets: inventory, costHygiene \}\)/);
 
 assert.doesNotMatch(
