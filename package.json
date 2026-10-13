@@ -59,6 +59,7 @@
     "test:stage-0-20a2": "node scripts/stage-0-20a2-program-loudness-mastering-test.mjs",
     "test:stage-0-20b1": "node --experimental-strip-types scripts/stage-0-20b1-natural-voice-pace-authority-test.mjs",
     "test:stage-0-20b2": "node --experimental-strip-types scripts/stage-0-20b2-measured-audio-duration-authority-test.mjs",
+    "test:stage-0-20g": "node --experimental-transform-types scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
     "test:stage-0-20c1": "node --experimental-strip-types scripts/stage-0-20c1-stock-rendition-integrity-test.mjs",
     "test:stage-0-20c2": "node scripts/stage-0-20c2-native-16x9-render-fill-test.mjs",
     "test:stage-0-20d1": "node --experimental-strip-types scripts/stage-0-20d1-editorial-visual-beat-planning-test.mjs",

@@ -184,6 +184,8 @@ const allowed = new Set([
   "scripts/stage-0-15b-6g-counter-provenance-preservation-test.mjs",
   "scripts/stage-0-19c-claim-authority-resolver-test.mjs",
   "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+  "lib/creator/controlledLongFormAcceptance.ts",
+  "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
 
