@@ -44,7 +44,7 @@ assert.deepEqual(validateCreatorProjectPreviewAudio([
   previewAudioScene({ id: 2, narrationState: "stale" }),
   previewAudioScene({ id: 3, hasDialogue: true, dialogueAudioUrl: "", dialogueState: "missing" }),
   previewAudioScene({ id: 4, hasDialogue: true, dialogueAudioUrl: "https://assets.test/dialogue.mp3", dialogueState: "stale" }),
-]), { ready: false, unavailableSceneIds: [1, 2, 3, 4] });
+]), { ready: false, unavailableSceneIds: [1, 2, 3, 4] }, "missing and stale narration/dialogue are reported as advisory scene IDs");
 assert.equal(validateCreatorProjectPreviewAudio([
   previewAudioScene({ hasDialogue: true, dialogueAudioUrl: "https://assets.test/dialogue.mp3", dialogueState: "current" }),
 ]).ready, true, "fully current narration and dialogue allow preview");
@@ -117,11 +117,24 @@ assert.doesNotMatch(creatorWorkspace, /data-creator-preview-project="true"[\s\S]
 assert.equal((page.match(/const playWholeStory = async/g) || []).length, 1, "combined playback retains one implementation");
 const wholeStory = page.slice(page.indexOf("const playWholeStory = async"), page.indexOf("const executePersistProject"));
 assert.match(wholeStory, /validateCreatorProjectPreviewAudio/);
+assert.match(wholeStory, /Preview is using available audio[\s\S]*previewAudio\.unavailableSceneIds\.join\(", "\)/, "unavailable audio produces a non-blocking localized advisory");
+const advisoryStart = wholeStory.indexOf("const previewAudio =");
+const playbackStart = wholeStory.indexOf("setIsPlayingStory(true)");
+assert.doesNotMatch(wholeStory.slice(advisoryStart, playbackStart), /return;/, "unavailable CreatorLab audio cannot block project preview");
+assert.match(wholeStory, /narrationPlayable[\s\S]*narrationState === "current"[\s\S]*narrationAudioUrl\?\.trim/);
+assert.match(wholeStory, /dialoguePlayable[\s\S]*dialogueState === "current"[\s\S]*dialogueAudioUrl\?\.trim/);
+const creatorSceneActivation = wholeStory.indexOf("setPlayingSceneId(scene.id)", wholeStory.indexOf("for (const scene of scenes)"));
+assert.ok(creatorSceneActivation >= 0, "CreatorLab preview explicitly activates every scene");
+assert.ok(creatorSceneActivation < wholeStory.indexOf("creatorAudioPreviewPlayback.sync", creatorSceneActivation), "scene activation precedes music sync");
+assert.ok(creatorSceneActivation < wholeStory.indexOf("const narrationPlayable", creatorSceneActivation), "scene activation is independent of narration availability");
+assert.ok(creatorSceneActivation < wholeStory.indexOf("const dialoguePlayable", creatorSceneActivation), "scene activation is independent of dialogue availability");
+assert.match(wholeStory, /if \(isCreatorLabFlow\) \{\s*if \(playbackToken !== storyPlaybackTokenRef\.current\) \{\s*return;\s*\}\s*setPlayingSceneId\(scene\.id\);\s*const remainingSceneDurationMs/, "tail activation is cancellation-guarded before the CreatorLab visual remains active through the silent scene tail");
 assert.match(wholeStory, /narrationAudioUrl = isCreatorLabFlow[\s\S]*?scene\.audioUrl as string/);
 assert.match(wholeStory, /dialogueAudioUrl = isCreatorLabFlow[\s\S]*?scene\.dialogueAudioUrl as string/);
 assert.match(wholeStory, /scene\.audioUrl as string\s*:\s*await getSceneAudioUrl\(scene\)/, "CreatorLab selects persisted narration before the legacy Storyverse generation path");
 assert.match(wholeStory, /scene\.dialogueAudioUrl as string\s*:\s*await getSceneDialogueUrl\(scene\)/, "CreatorLab selects persisted dialogue before the legacy Storyverse generation path");
-assert.doesNotMatch(wholeStory, /\/api\/store-audio|reserveMeteredOperation|settleMeteredOperation|provider/i, "project preview owns no generation, credit, or provider dispatch");
+assert.doesNotMatch(wholeStory, /\/api\/(?:store-audio|store-dialogue-audio)|reserveMeteredOperation|settleMeteredOperation|provider/i, "project preview owns no generation, credit, or provider dispatch");
+assert.match(wholeStory, /remainingSceneDurationMs[\s\S]*getCreatorPlannedSceneDuration\(scene\)[\s\S]*waitForStoryPlaybackDuration/, "silent tracks retain the planned CreatorLab scene window");
 assert.ok(
   wholeStory.indexOf("validateCreatorProjectPreviewAudio") < wholeStory.indexOf("setIsPlayingStory(true)"),
   "read-only audio preflight completes before project playback begins",

@@ -7796,6 +7796,22 @@ const generateSceneImage = async (
     });
   };
 
+  const waitForStoryPlaybackDuration = async (
+    durationMs: number,
+    playbackToken: number,
+  ) => new Promise<void>((resolve) => {
+    const startedAt = Date.now();
+    const waitForRemainingDuration = () => {
+      const remainingMs = durationMs - (Date.now() - startedAt);
+      if (playbackToken !== storyPlaybackTokenRef.current || remainingMs <= 0) {
+        resolve();
+        return;
+      }
+      window.setTimeout(waitForRemainingDuration, Math.min(remainingMs, 100));
+    };
+    waitForRemainingDuration();
+  });
+
   const playSceneDialogue = async (scene: Scene) => {
     if (!scene.dialogue?.trim()) {
       setError("Bu sahnede oynatılacak diyalog yok.");
@@ -12125,8 +12141,8 @@ const generateSceneImage = async (
       return;
     }
 
-    if (isCreatorLabFlow) {
-      const previewAudio = validateCreatorProjectPreviewAudio(scenes.map((scene) => ({
+    const creatorPreviewAudioScenes = isCreatorLabFlow
+      ? scenes.map((scene) => ({
         id: scene.id,
         hasNarration: Boolean(scene.narration?.trim()),
         narrationAudioUrl: scene.audioUrl,
@@ -12134,19 +12150,20 @@ const generateSceneImage = async (
         hasDialogue: Boolean(scene.dialogue?.trim()),
         dialogueAudioUrl: scene.dialogueAudioUrl,
         dialogueState: getCreatorDialogueAudioCurrentness(scene),
-      })));
-      if (!previewAudio.ready) {
-        setError(
-          uiLanguage === "en"
-            ? "Project preview needs current voice audio for every scene. Generate or refresh the missing voice tracks first."
-            : "Proje önizlemesi için her sahnede güncel ses kaydı gerekir. Önce eksik sesleri üretin veya güncel olmayan sesleri yenileyin.",
-        );
-        return;
-      }
-    }
+      }))
+      : [];
+    const previewAudio = isCreatorLabFlow
+      ? validateCreatorProjectPreviewAudio(creatorPreviewAudioScenes)
+      : null;
 
     stopDialoguePlayback();
-    setError("");
+    setError(
+      previewAudio && !previewAudio.ready
+        ? uiLanguage === "en"
+          ? `Preview is using available audio. Voice is missing or out of date in scenes: ${previewAudio.unavailableSceneIds.join(", ")}.`
+          : `Önizleme mevcut sesleri kullanıyor. Şu sahnelerde ses eksik veya güncel değil: ${previewAudio.unavailableSceneIds.join(", ")}.`
+        : "",
+    );
     setIsPlayingStory(true);
     storyPlaybackTokenRef.current += 1;
     const playbackToken = storyPlaybackTokenRef.current;
@@ -12164,9 +12181,16 @@ const generateSceneImage = async (
 
     try {
       for (const scene of scenes) {
+        const scenePlaybackStartedAt = Date.now();
         if (playbackToken !== storyPlaybackTokenRef.current) {
           return;
         }
+        if (isCreatorLabFlow) {
+          setPlayingSceneId(scene.id);
+        }
+        const creatorPreviewAudioScene = creatorPreviewAudioScenes.find(
+          (item) => item.id === scene.id,
+        );
         const previewScene = previewPlan?.scenes.find((item) => item.creatorSceneId === scene.creatorSceneId);
         try {
           await creatorAudioPreviewPlayback.sync(previewScene?.music);
@@ -12175,7 +12199,13 @@ const generateSceneImage = async (
           setError(uiLanguage === "en" ? "Project music preview is unavailable." : "Proje müzik önizlemesi kullanılamıyor.");
         }
 
-        if (scene.narration?.trim()) {
+        const narrationPlayable = Boolean(scene.narration?.trim()) && (
+          !isCreatorLabFlow || (
+            creatorPreviewAudioScene?.narrationState === "current" &&
+            Boolean(creatorPreviewAudioScene.narrationAudioUrl?.trim())
+          )
+        );
+        if (narrationPlayable) {
           setLoadingAudioSceneId(scene.id);
 
           const narrationAudioUrl = isCreatorLabFlow
@@ -12196,7 +12226,13 @@ const generateSceneImage = async (
           return;
         }
 
-        if (scene.dialogue?.trim()) {
+        const dialoguePlayable = Boolean(scene.dialogue?.trim()) && (
+          !isCreatorLabFlow || (
+            creatorPreviewAudioScene?.dialogueState === "current" &&
+            Boolean(creatorPreviewAudioScene.dialogueAudioUrl?.trim())
+          )
+        );
+        if (dialoguePlayable) {
           setLoadingDialogueSceneId(scene.id);
 
           const dialogueAudioUrl = isCreatorLabFlow
@@ -12211,6 +12247,19 @@ const generateSceneImage = async (
           creatorAudioPreviewPlayback.setSpeechActive(true);
           await waitForAudioToFinish(scene.id, dialogueAudioUrl, playbackToken);
           creatorAudioPreviewPlayback.setSpeechActive(false);
+        }
+
+        if (isCreatorLabFlow) {
+          if (playbackToken !== storyPlaybackTokenRef.current) {
+            return;
+          }
+          setPlayingSceneId(scene.id);
+          const remainingSceneDurationMs = Math.max(
+            0,
+            getCreatorPlannedSceneDuration(scene) * 1000 -
+              (Date.now() - scenePlaybackStartedAt),
+          );
+          await waitForStoryPlaybackDuration(remainingSceneDurationMs, playbackToken);
         }
       }
     } catch (e: any) {

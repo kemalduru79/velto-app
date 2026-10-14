@@ -19,7 +19,7 @@ export type CreatorProjectPreviewAudioInput = {
   dialogueState: "current" | "stale" | "missing" | "not_required";
 };
 
-/** Fail-closed preflight for the read-only whole-project preview. */
+/** Pure availability inspection for the read-only whole-project preview. */
 export function validateCreatorProjectPreviewAudio(
   scenes: CreatorProjectPreviewAudioInput[],
 ) {
