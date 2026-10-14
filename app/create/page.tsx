@@ -58,6 +58,7 @@ import CreatorSceneProductionStatus, {
   deriveCreatorSceneReviewReasons,
   deriveCreatorSceneTriageStatus,
   getCreatorSceneTriageLabel,
+  resolveCreatorMeasuredScriptHealthStatus,
 } from "@/components/create/CreatorSceneProductionStatus";
 import CreatorProductionHistory from "@/components/create/CreatorProductionHistory";
 import { getCreatorContinuityWarning } from "@/lib/creator/continuityWarnings";
@@ -209,7 +210,10 @@ import {
   validateCreatorAudioTimelineTopology,
   type CreatorAudioTimeline,
 } from "@/lib/creator/audioTimeline";
-import { deriveCreatorAudioPreviewPlan } from "@/lib/creator/audioPreviewPlan";
+import {
+  deriveCreatorAudioPreviewPlan,
+  validateCreatorProjectPreviewAudio,
+} from "@/lib/creator/audioPreviewPlan";
 import {
   createDefaultCreatorMusicTimeline,
   getCreatorMusicSetupMode,
@@ -12121,6 +12125,26 @@ const generateSceneImage = async (
       return;
     }
 
+    if (isCreatorLabFlow) {
+      const previewAudio = validateCreatorProjectPreviewAudio(scenes.map((scene) => ({
+        id: scene.id,
+        hasNarration: Boolean(scene.narration?.trim()),
+        narrationAudioUrl: scene.audioUrl,
+        narrationState: getCreatorNarrationAudioCurrentness(scene),
+        hasDialogue: Boolean(scene.dialogue?.trim()),
+        dialogueAudioUrl: scene.dialogueAudioUrl,
+        dialogueState: getCreatorDialogueAudioCurrentness(scene),
+      })));
+      if (!previewAudio.ready) {
+        setError(
+          uiLanguage === "en"
+            ? "Project preview needs current voice audio for every scene. Generate or refresh the missing voice tracks first."
+            : "Proje önizlemesi için her sahnede güncel ses kaydı gerekir. Önce eksik sesleri üretin veya güncel olmayan sesleri yenileyin.",
+        );
+        return;
+      }
+    }
+
     stopDialoguePlayback();
     setError("");
     setIsPlayingStory(true);
@@ -12154,7 +12178,9 @@ const generateSceneImage = async (
         if (scene.narration?.trim()) {
           setLoadingAudioSceneId(scene.id);
 
-          const narrationAudioUrl = await getSceneAudioUrl(scene);
+          const narrationAudioUrl = isCreatorLabFlow
+            ? scene.audioUrl as string
+            : await getSceneAudioUrl(scene);
 
           if (playbackToken !== storyPlaybackTokenRef.current) {
             return;
@@ -12173,7 +12199,9 @@ const generateSceneImage = async (
         if (scene.dialogue?.trim()) {
           setLoadingDialogueSceneId(scene.id);
 
-          const dialogueAudioUrl = await getSceneDialogueUrl(scene);
+          const dialogueAudioUrl = isCreatorLabFlow
+            ? scene.dialogueAudioUrl as string
+            : await getSceneDialogueUrl(scene);
 
           if (playbackToken !== storyPlaybackTokenRef.current) {
             return;
@@ -19818,6 +19846,17 @@ const generateSceneImage = async (
       continuityAudit,
       uiLanguage === "en" ? "en" : "tr",
     );
+    const effectiveScriptHealthStatus = resolveCreatorMeasuredScriptHealthStatus({
+      scriptHealthStatus: scriptHealth.status,
+      speechMatchesMeasuredSource:
+        normalizeCreatorScriptText(sceneDraft.narration) ===
+          normalizeCreatorScriptText(scene.narration || "") &&
+        normalizeCreatorScriptText(sceneDraft.dialogue) ===
+          normalizeCreatorScriptText(scene.dialogue || ""),
+      narrationState,
+      measuredNarrationDurationSec: scene.timing?.narrationDuration,
+      continuityAudit,
+    });
     const sceneVisualGenerating = isCreatorSceneVisualGenerating({
       sceneId: scene.id,
       phase: creatorVisualGenerationPhase,
@@ -19839,8 +19878,8 @@ const generateSceneImage = async (
         dialogueState === "stale" ||
         videoState === "stale",
       hasContinuityWarning: Boolean(continuityWarning),
-      scriptNeedsReview: scriptHealth.status !== "ready",
-      scriptReady: scriptHealth.status === "ready",
+      scriptNeedsReview: effectiveScriptHealthStatus !== "ready",
+      scriptReady: effectiveScriptHealthStatus === "ready",
       visualReady,
       voiceReady,
       motionRequired,
@@ -19852,7 +19891,7 @@ const generateSceneImage = async (
       dialogueState,
       videoState,
       continuityAudit,
-      scriptHealthStatus: scriptHealth.status,
+      scriptHealthStatus: effectiveScriptHealthStatus,
       splitRecommended: scene.timing?.splitRecommended,
       recommendedSplitCount: scene.timing?.recommendedSplitCount,
       language: uiLanguage === "en" ? "en" : "tr",
@@ -19866,7 +19905,7 @@ const generateSceneImage = async (
         scene.narration ||
         (uiLanguage === "en" ? `Scene ${index + 1}` : `Sahne ${index + 1}`),
       status,
-      readySteps: [scriptHealth.status === "ready", visualReady, voiceReady].filter(Boolean).length,
+      readySteps: [effectiveScriptHealthStatus === "ready", visualReady, voiceReady].filter(Boolean).length,
       totalSteps: 3 as const,
       durationSec: Math.max(
         3,
@@ -33470,6 +33509,20 @@ const generateSceneImage = async (
                         language,
                         qualityMode: creatorQualityMode,
                       });
+                      const focusedSceneContinuityAudit = flowContinuityAudit?.scenes.find(
+                        (audit) => String(audit.id) === String(scene.id),
+                      );
+                      const effectiveSceneDraftHealthStatus = resolveCreatorMeasuredScriptHealthStatus({
+                        scriptHealthStatus: sceneDraftHealth.status,
+                        speechMatchesMeasuredSource:
+                          normalizeCreatorScriptText(sceneScriptDraft.narration) ===
+                            normalizeCreatorScriptText(scene.narration || "") &&
+                          normalizeCreatorScriptText(sceneScriptDraft.dialogue) ===
+                            normalizeCreatorScriptText(scene.dialogue || ""),
+                        narrationState: getCreatorNarrationAudioCurrentness(scene),
+                        measuredNarrationDurationSec: scene.timing?.narrationDuration,
+                        continuityAudit: focusedSceneContinuityAudit,
+                      });
                       const measuredAudioDurationSec = Number(
                         scene.timing?.totalAudioDuration || 0,
                       );
@@ -33504,9 +33557,9 @@ const generateSceneImage = async (
                           )
                         : 0;
                       const simpleGuidance =
-                        sceneDraftHealth.status === "too_long"
+                        effectiveSceneDraftHealthStatus === "too_long"
                           ? uiLanguage === "en" ? "Narration may be long" : "Anlatım uzun olabilir"
-                          : sceneDraftHealth.status === "too_short"
+                          : effectiveSceneDraftHealthStatus === "too_short"
                             ? uiLanguage === "en" ? "Needs more substance" : "Daha zengin olmalı"
                             : index === 0 && Number(scene.intelligence?.curiosity_score || 0) >= 6
                               ? uiLanguage === "en" ? "Strong opening" : "Güçlü açılış"
@@ -33593,9 +33646,7 @@ const generateSceneImage = async (
                         (item) => item.id === scene.id,
                       );
                       const sceneContinuityWarning = getCreatorContinuityWarning(
-                        flowContinuityAudit?.scenes.find(
-                          (audit) => String(audit.id) === String(scene.id),
-                        ),
+                        focusedSceneContinuityAudit,
                         uiLanguage === "en" ? "en" : "tr",
                       );
                       const sceneContinuitySelection = getCreatorSceneContinuityMode(scene);
@@ -33608,7 +33659,7 @@ const generateSceneImage = async (
                               ? uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"
                               : uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne";
                       const scenePrimaryTab: CreatorSceneInspectorTab =
-                        sceneDraftHealth.status !== "ready"
+                        effectiveSceneDraftHealthStatus !== "ready"
                           ? "script"
                           : !visualReady || motionFailed || (motionRouted && !motionReady)
                             ? "visual"
@@ -33616,7 +33667,7 @@ const generateSceneImage = async (
                               ? "audio"
                               : "script";
                       const scenePrimaryActionLabel =
-                        sceneDraftHealth.status !== "ready"
+                        effectiveSceneDraftHealthStatus !== "ready"
                           ? uiLanguage === "en" ? "Review Script" : "Metni Kontrol Et"
                           : !visualReady
                             ? uiLanguage === "en" ? "Generate Visual" : "Görsel Üret"
@@ -33628,7 +33679,7 @@ const generateSceneImage = async (
                                   ? uiLanguage === "en" ? "Generate Video" : "Video Üret"
                                   : uiLanguage === "en" ? "Review Scene" : "Sahneyi Kontrol Et";
                       const scenePrimaryActionUsesCredits =
-                        sceneDraftHealth.status === "ready" &&
+                        effectiveSceneDraftHealthStatus === "ready" &&
                         (!visualReady || !voiceReady || (motionRouted && !motionReady));
                       const sceneAttentionSummary =
                         sceneVisualGenerating
@@ -33637,7 +33688,7 @@ const generateSceneImage = async (
                             ? uiLanguage === "en" ? "Video generation is in progress." : "Video üretimi devam ediyor."
                           : motionFailed
                             ? uiLanguage === "en" ? "Video generation failed and can be retried." : "Video üretimi başarısız oldu ve yeniden denenebilir."
-                            : sceneDraftHealth.status !== "ready"
+                            : effectiveSceneDraftHealthStatus !== "ready"
                               ? simpleGuidance
                               : !visualReady
                                 ? uiLanguage === "en" ? "This scene needs a visual." : "Bu sahnenin görsele ihtiyacı var."
@@ -33655,7 +33706,7 @@ const generateSceneImage = async (
                           ...current,
                           [scene.id]: scenePrimaryTab,
                         }));
-                        if (sceneDraftHealth.status !== "ready") return;
+                        if (effectiveSceneDraftHealthStatus !== "ready") return;
                         if (!visualReady) {
                           void runCreatorRecommendedVisualGeneration({
                             mode: "single",
@@ -33720,7 +33771,7 @@ const generateSceneImage = async (
                                 </ul>
                               </div>
                             )}
-                            {(scenePrimaryActionUsesCredits || sceneDraftHealth.status !== "ready" || motionFailed) && <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
+                            {(scenePrimaryActionUsesCredits || effectiveSceneDraftHealthStatus !== "ready" || motionFailed) && <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
                               <div>
                                 <span>
                                   {sceneOperationalSummary
@@ -33732,7 +33783,7 @@ const generateSceneImage = async (
                                   <small>{uiLanguage === "en" ? "Generation starts after a short cancel window" : "Üretim kısa bir iptal süresinden sonra başlar"}</small>
                                 )}
                               </div>
-                              {(scenePrimaryActionUsesCredits || sceneDraftHealth.status !== "ready" || motionFailed) && <button
+                              {(scenePrimaryActionUsesCredits || effectiveSceneDraftHealthStatus !== "ready" || motionFailed) && <button
                                 type="button"
                                 onClick={runCreatorScenePrimaryAction}
                                 disabled={

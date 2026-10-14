@@ -9,6 +9,37 @@ export type CreatorAudioPreviewSceneInput = {
   dialogueDurationMs?: number;
 };
 
+export type CreatorProjectPreviewAudioInput = {
+  id: string | number;
+  hasNarration: boolean;
+  narrationAudioUrl?: string;
+  narrationState: "current" | "stale" | "missing" | "not_required";
+  hasDialogue: boolean;
+  dialogueAudioUrl?: string;
+  dialogueState: "current" | "stale" | "missing" | "not_required";
+};
+
+/** Fail-closed preflight for the read-only whole-project preview. */
+export function validateCreatorProjectPreviewAudio(
+  scenes: CreatorProjectPreviewAudioInput[],
+) {
+  const unavailableSceneIds = scenes.flatMap((scene) => {
+    const narrationUnavailable = scene.hasNarration && (
+      scene.narrationState !== "current" || !scene.narrationAudioUrl?.trim()
+    );
+    const dialogueUnavailable = scene.hasDialogue && (
+      scene.dialogueState !== "current" || !scene.dialogueAudioUrl?.trim()
+    );
+
+    return narrationUnavailable || dialogueUnavailable ? [scene.id] : [];
+  });
+
+  return {
+    ready: unavailableSceneIds.length === 0,
+    unavailableSceneIds,
+  };
+}
+
 export type CreatorAudioPreviewMusic = {
   placementId: string;
   assetId: string;

@@ -20,6 +20,29 @@ const CONTINUITY_REASON_CODES: Record<FlowContinuityRiskCode, CreatorSceneReview
   freeze_frame_risk: "FREEZE_FRAME_RISK", static_hold_unverified: "STATIC_HOLD_UNVERIFIED",
 };
 
+export function resolveCreatorMeasuredScriptHealthStatus(input: {
+  scriptHealthStatus: "ready" | "too_short" | "too_long";
+  speechMatchesMeasuredSource: boolean;
+  narrationState: "current" | "stale" | "missing" | "not_required";
+  measuredNarrationDurationSec?: number;
+  continuityAudit?: FlowContinuitySceneAudit | null;
+}) {
+  if (input.scriptHealthStatus !== "too_long") return input.scriptHealthStatus;
+
+  const measuredNarrationDurationSec = Number(input.measuredNarrationDurationSec);
+  const risks = input.continuityAudit?.risks;
+  const hasAuthoritativeFit =
+    input.speechMatchesMeasuredSource === true &&
+    input.narrationState === "current" &&
+    Number.isFinite(measuredNarrationDurationSec) &&
+    measuredNarrationDurationSec > 0 &&
+    Array.isArray(risks) &&
+    !risks.includes("audio_duration_missing") &&
+    !risks.includes("speech_overflow");
+
+  return hasAuthoritativeFit ? "ready" : input.scriptHealthStatus;
+}
+
 export function deriveCreatorSceneReviewReasons(input: {
   failed: boolean;
   narrationState: "current" | "stale" | "missing" | "not_required";

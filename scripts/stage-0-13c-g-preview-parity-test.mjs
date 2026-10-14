@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { deriveCreatorAudioPreviewPlan } from "../lib/creator/audioPreviewPlan.ts";
+import {
+  deriveCreatorAudioPreviewPlan,
+  validateCreatorProjectPreviewAudio,
+} from "../lib/creator/audioPreviewPlan.ts";
 import { CREATOR_AUDIO_MIX_POLICY } from "../export-service/src/creatorAudioPolicy.js";
 
 const sceneIds = ["scene-1", "scene-2", "scene-3"];
@@ -22,6 +25,29 @@ const timeline = (placements, mode = "browse") => ({
 const plan = (placements, inputScenes = scenes(), mode = "browse") =>
   deriveCreatorAudioPreviewPlan({ timeline: timeline(placements, mode), scenes: inputScenes });
 const activeIds = (value) => value.scenes.map((scene) => scene.music?.trackId || null);
+
+const previewAudioScene = (overrides = {}) => ({
+  id: 1,
+  hasNarration: true,
+  narrationAudioUrl: "https://assets.test/narration.mp3",
+  narrationState: "current",
+  hasDialogue: false,
+  dialogueState: "not_required",
+  ...overrides,
+});
+assert.deepEqual(validateCreatorProjectPreviewAudio([previewAudioScene()]), {
+  ready: true,
+  unavailableSceneIds: [],
+});
+assert.deepEqual(validateCreatorProjectPreviewAudio([
+  previewAudioScene({ id: 1, narrationAudioUrl: "", narrationState: "missing" }),
+  previewAudioScene({ id: 2, narrationState: "stale" }),
+  previewAudioScene({ id: 3, hasDialogue: true, dialogueAudioUrl: "", dialogueState: "missing" }),
+  previewAudioScene({ id: 4, hasDialogue: true, dialogueAudioUrl: "https://assets.test/dialogue.mp3", dialogueState: "stale" }),
+]), { ready: false, unavailableSceneIds: [1, 2, 3, 4] });
+assert.equal(validateCreatorProjectPreviewAudio([
+  previewAudioScene({ hasDialogue: true, dialogueAudioUrl: "https://assets.test/dialogue.mp3", dialogueState: "current" }),
+]).ready, true, "fully current narration and dialogue allow preview");
 
 const defaultA = plan([placement("A", "scene-1", "start", "scene-3", "end")]);
 assert.deepEqual(activeIds(defaultA), ["A", "A", "A"], "default A continues across scenes");
@@ -89,6 +115,17 @@ assert.match(creatorWorkspace, /isPlayingStory[\s\S]*?"Stop Preview"[\s\S]*?"Pre
 assert.match(creatorWorkspace, /onClick=\{\(\) => playNarration\(scene\.id, scene\.narration\)\}/, "Listen Narrator retains its narration-only path");
 assert.doesNotMatch(creatorWorkspace, /data-creator-preview-project="true"[\s\S]{0,500}CreatorMusicLibraryPicker/, "project preview is not owned by the music picker");
 assert.equal((page.match(/const playWholeStory = async/g) || []).length, 1, "combined playback retains one implementation");
+const wholeStory = page.slice(page.indexOf("const playWholeStory = async"), page.indexOf("const executePersistProject"));
+assert.match(wholeStory, /validateCreatorProjectPreviewAudio/);
+assert.match(wholeStory, /narrationAudioUrl = isCreatorLabFlow[\s\S]*?scene\.audioUrl as string/);
+assert.match(wholeStory, /dialogueAudioUrl = isCreatorLabFlow[\s\S]*?scene\.dialogueAudioUrl as string/);
+assert.match(wholeStory, /scene\.audioUrl as string\s*:\s*await getSceneAudioUrl\(scene\)/, "CreatorLab selects persisted narration before the legacy Storyverse generation path");
+assert.match(wholeStory, /scene\.dialogueAudioUrl as string\s*:\s*await getSceneDialogueUrl\(scene\)/, "CreatorLab selects persisted dialogue before the legacy Storyverse generation path");
+assert.doesNotMatch(wholeStory, /\/api\/store-audio|reserveMeteredOperation|settleMeteredOperation|provider/i, "project preview owns no generation, credit, or provider dispatch");
+assert.ok(
+  wholeStory.indexOf("validateCreatorProjectPreviewAudio") < wholeStory.indexOf("setIsPlayingStory(true)"),
+  "read-only audio preflight completes before project playback begins",
+);
 assert.match(page, /const stopStoryPlayback = \(\) => \{[\s\S]*?stopCurrentAudio\(\);[\s\S]*?creatorAudioPreviewPlayback\.stop\(\);[\s\S]*?\};/, "Stop Preview stops narration and music through the existing stop path");
 assert.doesNotMatch(playback, /acquire|entitlement|storagePath/, "preview playback cannot become export authority");
 

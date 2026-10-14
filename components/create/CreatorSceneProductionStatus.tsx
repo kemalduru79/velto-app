@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import type { CreatorSceneReviewReason } from "@/lib/creator/sceneReviewReasons";
-export { deriveCreatorSceneReviewReasons } from "@/lib/creator/sceneReviewReasons";
+export {
+  deriveCreatorSceneReviewReasons,
+  resolveCreatorMeasuredScriptHealthStatus,
+} from "@/lib/creator/sceneReviewReasons";
 
 export type CreatorSceneTriageStatus =
   | "ready"
