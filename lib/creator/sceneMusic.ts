@@ -157,3 +157,36 @@ export function continueCreatorSceneMusicAfter(input: { timeline: CreatorAudioTi
       : item),
   };
 }
+
+/** Removes music only from the selected scene while preserving adjacent assignments. */
+export function removeCreatorSceneMusic(input: { timeline: CreatorAudioTimeline; sceneIds: string[]; sceneId: string }) {
+  const current = normalizeCreatorAudioTimeline(input.timeline);
+  const sceneIndex = input.sceneIds.indexOf(input.sceneId);
+  if (sceneIndex < 0) throw new Error("CREATOR_SCENE_MUSIC_SCENE_INVALID");
+  const nextSceneId = input.sceneIds[sceneIndex + 1];
+  const placements = materializeAutoDefault(current, input.sceneIds);
+  const nextMusic = placements.flatMap((item) => {
+    const startIndex = input.sceneIds.indexOf(item.range.start.sceneId);
+    const endIndex = input.sceneIds.indexOf(item.range.end.sceneId);
+    const coversScene = startIndex >= 0 && startIndex <= sceneIndex && endIndex >= sceneIndex &&
+      !(endIndex === sceneIndex && item.range.end.edge === "start");
+    if (!coversScene) return [item];
+    const retained: CreatorAudioPlacement[] = [];
+    if (startIndex < sceneIndex) retained.push({ ...item, range: { ...item.range, end: anchor(input.sceneId, "start") } });
+    if (nextSceneId && endIndex > sceneIndex) {
+      retained.push({
+        ...item,
+        id: `${item.id}:resume:${nextSceneId}`.slice(0, 256),
+        range: { ...item.range, start: anchor(nextSceneId, "start") },
+      });
+    }
+    return retained;
+  });
+  return {
+    ...current,
+    placements: [
+      ...current.placements.filter((item) => item.kind !== "music"),
+      ...nextMusic,
+    ],
+  };
+}

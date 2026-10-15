@@ -20,7 +20,7 @@ import { assertProjectUpdateMatched } from "../lib/persistence/projects/projectP
 import { buildCreatorFinalProductionSignature } from "../lib/creator/finalProductionSignature.ts";
 import { createCreatorPublishArtifactSignature } from "../lib/creator/projectExportReadiness.ts";
 import { createDefaultCreatorMusicTimeline, creatorAcquiredCatalogTrackAsset, selectAcquiredCatalogCreatorMusic } from "../lib/creator/musicSetup.ts";
-import { startOrChangeCreatorSceneMusic } from "../lib/creator/sceneMusic.ts";
+import { getCreatorSceneMusicState, removeCreatorSceneMusic, startOrChangeCreatorSceneMusic } from "../lib/creator/sceneMusic.ts";
 
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 
@@ -227,6 +227,16 @@ const acquiredSceneTimeline = startOrChangeCreatorSceneMusic({
 const acquiredSceneSnapshot = buildCreatorProjectState(baseInput({ audioTimeline: acquiredSceneTimeline }));
 assert.equal(acquiredSceneSnapshot.production.audioTimeline.placements.find((placement) => placement.id.startsWith("primary-music:"))?.status, "active");
 assert.equal(acquiredSceneSnapshot.production.audioTimeline.placements.find((placement) => placement.id.startsWith("primary-music:"))?.asset?.rights.status, "verified");
+const removedSceneTimeline = removeCreatorSceneMusic({
+  timeline: acquiredSceneTimeline,
+  sceneIds: ["scene-1", "scene-2", "scene-3"],
+  sceneId: "scene-2",
+});
+const removedSceneSnapshot = buildCreatorProjectState(baseInput({ audioTimeline: removedSceneTimeline }));
+const reloadedRemovedScene = readCreatorProjectState(projectWith(JSON.parse(JSON.stringify(removedSceneSnapshot))));
+assert.equal(getCreatorSceneMusicState(reloadedRemovedScene.production.audioTimeline, ["scene-1", "scene-2", "scene-3"], "scene-2").effective, undefined);
+assert.equal(getCreatorSceneMusicState(reloadedRemovedScene.production.audioTimeline, ["scene-1", "scene-2", "scene-3"], "scene-1").effective?.asset?.assetId, acquiredTrack.id ? `catalog:${acquiredTrack.id}` : undefined);
+assert.equal(getCreatorSceneMusicState(reloadedRemovedScene.production.audioTimeline, ["scene-1", "scene-2", "scene-3"], "scene-3").effective?.asset?.assetId, "catalog:scene-track");
 const replacedStarting = selectAcquiredCatalogCreatorMusic({ timeline: acquiredSceneTimeline, track: { ...acquiredTrack, id: "replacement" }, sceneIds: ["scene-1", "scene-2", "scene-3"] });
 assert.equal(replacedStarting.placements.some((placement) => placement.id.includes("scene-track") && placement.range.start.sceneId === "scene-2"), true, "default replacement preserves the later explicit transition");
 

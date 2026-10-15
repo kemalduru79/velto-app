@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { CreatorAudioTimeline } from "@/lib/creator/audioTimeline";
-import { continueCreatorSceneMusicAfter, getCreatorSceneMusicState, startOrChangeCreatorSceneMusic, stopCreatorSceneMusicAfter } from "@/lib/creator/sceneMusic";
+import { continueCreatorSceneMusicAfter, getCreatorSceneMusicState, removeCreatorSceneMusic, startOrChangeCreatorSceneMusic, stopCreatorSceneMusicAfter } from "@/lib/creator/sceneMusic";
 import { creatorAcquiredCatalogTrackAsset } from "@/lib/creator/musicSetup";
 import CreatorMusicLibraryPicker from "@/components/create/CreatorMusicLibraryPicker";
 
@@ -31,6 +31,7 @@ export default function CreatorSceneMusicControls({ timeline, sceneIds, sceneId,
       <p className="text-sm font-semibold text-blue-800" data-scene-music-status="true">{status}</p>
       {!choosing ? <div className="flex flex-wrap gap-2">
         <button type="button" disabled={disabled} onClick={() => setChoosing(true)} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50">{action === "change" ? (english ? "Change music here" : "Müziği burada değiştir") : (english ? "Start music here" : "Müziği burada başlat")}</button>
+        {state.effective && <button type="button" disabled={disabled} onClick={() => onChange(removeCreatorSceneMusic({ timeline, sceneIds, sceneId }))} className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50">{english ? "Remove Music" : "Müziği Kaldır"}</button>}
         {musicActiveHere && <button type="button" aria-pressed={state.stops} disabled={disabled} onClick={() => onChange(state.stops ? continueCreatorSceneMusicAfter({ timeline, sceneIds, sceneId }) : stopCreatorSceneMusicAfter({ timeline, sceneIds, sceneId }))} className={`rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50 ${state.stops ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-slate-300 bg-white text-slate-800"}`}>{state.stops ? (english ? "✓ Music stops after this scene" : "✓ Müzik bu sahneden sonra durur") : (english ? "Stop music after this scene" : "Müziği bu sahneden sonra durdur")}</button>}
       </div> : <div className="rounded-xl bg-slate-50 p-4">
         <p className="text-sm text-slate-600">{english ? "Choose music to play from this scene." : "Bu sahneden itibaren çalacak müziği seç."}</p>

@@ -84,7 +84,7 @@ export class EpidemicMusicAdapter implements MusicProvider {
       });
       if (!response.ok) {
         throw new ProviderError("Music service request failed.", {
-          code: response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "authentication" : response.status === 400 ? "invalid_request" : "upstream",
+          code: response.status === 402 ? "quota" : response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "authentication" : response.status === 400 ? "invalid_request" : "upstream",
           retryable: response.status === 429 || response.status >= 500,
           status: response.status,
         });

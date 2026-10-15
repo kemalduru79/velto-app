@@ -18,6 +18,7 @@ function bounded(value: string | null, maximum: number) {
 
 function publicError(error: unknown) {
   if (error instanceof ProviderError && error.code === "not_configured") return { status: 503, error: "Premium music is currently unavailable." };
+  if (error instanceof ProviderError && error.code === "quota") return { status: 503, error: "Music preview capacity has been reached. Retry later.", code: "preview_quota_exceeded" };
   if (error instanceof ProviderError && error.code === "rate_limit") return { status: 429, error: "Music library is busy. Please try again shortly." };
   return { status: 502, error: "Music library could not be loaded. Try again." };
 }
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
     if (error instanceof AuthenticationError) return NextResponse.json({ ok: false, error: "Authentication required." }, { status: 401 });
     const normalized = publicError(error);
     console.error("creator-music request failed", error instanceof ProviderError ? { code: error.code, status: error.status } : { type: "unknown" });
-    return NextResponse.json({ ok: false, error: normalized.error }, { status: normalized.status });
+    const { status, ...publicFailure } = normalized;
+    return NextResponse.json({ ok: false, ...publicFailure }, { status });
   }
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createDefaultCreatorMusicTimeline, selectUploadedCreatorMusic } from "../lib/creator/musicSetup.ts";
 import { normalizeCreatorAudioTimeline, reconcileCreatorAudioTimeline } from "../lib/creator/audioTimeline.ts";
-import { getCreatorSceneMusicState, startOrChangeCreatorSceneMusic, stopCreatorSceneMusicAfter } from "../lib/creator/sceneMusic.ts";
+import { getCreatorSceneMusicState, removeCreatorSceneMusic, startOrChangeCreatorSceneMusic, stopCreatorSceneMusicAfter } from "../lib/creator/sceneMusic.ts";
 
 const sceneIds = ["scene-a", "scene-b", "scene-c", "scene-d"];
 assert.equal(getCreatorSceneMusicState(createDefaultCreatorMusicTimeline(), sceneIds, "scene-c").activeBefore, true);
@@ -32,6 +32,14 @@ assert.deepEqual(stopped.placements[2].range.end, { sceneId: "scene-c", edge: "e
 const restarted = startOrChangeCreatorSceneMusic({ timeline: stopped, sceneIds, sceneId: "scene-d", choice: { mode: "auto" } });
 assert.equal(restarted.placements.length, 4);
 
+const removedMiddle = removeCreatorSceneMusic({ timeline: changed, sceneIds, sceneId: "scene-c" });
+assert.equal(getCreatorSceneMusicState(removedMiddle, sceneIds, "scene-c").effective, undefined);
+assert.equal(getCreatorSceneMusicState(removedMiddle, sceneIds, "scene-b").effective?.musicSelection?.mode, "auto");
+assert.equal(getCreatorSceneMusicState(removedMiddle, sceneIds, "scene-d").effective?.asset?.assetId, "owned-track");
+assert.equal(removedMiddle.placements.some((item) => item.asset?.assetId === "owned-track" && item.range.start.sceneId === "scene-d"), true);
+const reassigned = startOrChangeCreatorSceneMusic({ timeline: removedMiddle, sceneIds, sceneId: "scene-c", choice: { mode: "asset", asset } });
+assert.equal(getCreatorSceneMusicState(reassigned, sceneIds, "scene-c").effective?.asset?.assetId, "owned-track");
+
 const prior = sceneIds.map((creatorSceneId) => ({ creatorSceneId }));
 const reordered = reconcileCreatorAudioTimeline({ timeline: changed, previousScenes: prior, nextScenes: ["scene-d", "scene-a", "scene-b", "scene-c"].map((creatorSceneId) => ({ creatorSceneId })) });
 assert.equal(reordered.timeline.placements[2].range.start.sceneId, "scene-c");
@@ -45,7 +53,7 @@ const controls = readFileSync(new URL("../components/create/CreatorSceneMusicCon
 const editor = readFileSync(new URL("../components/create/CreatorEditor.tsx", import.meta.url), "utf8");
 const page = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(editor, /<CreatorSceneMusicControls/);
-for (const label of ["Start music here", "Change music here", "Stop music after this scene", "No music is active here"]) assert.match(controls, new RegExp(label));
+for (const label of ["Start music here", "Change music here", "Stop music after this scene", "Remove Music", "No music is active here"]) assert.match(controls, new RegExp(label));
 assert.doesNotMatch(controls, />Continue</);
 assert.equal((controls.match(/data-scene-music-control/g) || []).length, 1);
 assert.doesNotMatch(controls, /volume|gain|fade|ducking|waveform|scrubber|sourceIn|sourceOut|provider/i);

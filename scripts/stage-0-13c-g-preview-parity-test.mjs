@@ -5,6 +5,7 @@ import {
   validateCreatorProjectPreviewAudio,
 } from "../lib/creator/audioPreviewPlan.ts";
 import { CREATOR_AUDIO_MIX_POLICY } from "../export-service/src/creatorAudioPolicy.js";
+import { removeCreatorSceneMusic } from "../lib/creator/sceneMusic.ts";
 
 const sceneIds = ["scene-1", "scene-2", "scene-3"];
 const scenes = (ids = sceneIds) => ids.map((creatorSceneId, index) => ({
@@ -63,6 +64,17 @@ const stopped = plan([
   placement("B", "scene-2", "start", "scene-2", "end"),
 ]);
 assert.deepEqual(activeIds(stopped), ["A", "B", null], "stop after scene 2 leaves scene 3 silent");
+
+const removedTimeline = removeCreatorSceneMusic({
+  timeline: timeline([placement("A", "scene-1", "start", "scene-3", "end")]),
+  sceneIds,
+  sceneId: "scene-2",
+});
+assert.deepEqual(
+  activeIds(deriveCreatorAudioPreviewPlan({ timeline: removedTimeline, scenes: scenes() })),
+  ["A", null, "A"],
+  "scene removal is reflected in the canonical preview/export audio plan without affecting adjacent scenes",
+);
 
 const laterStart = plan([placement("A", "scene-2", "start", "scene-3", "end")], scenes(), "none");
 assert.deepEqual(activeIds(laterStart), [null, "A", "A"], "No Music can be overridden by an explicit later start");

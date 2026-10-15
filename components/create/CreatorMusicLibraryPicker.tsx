@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { CreatorPremiumMusicTrack } from "@/lib/providers/music/types";
 
 type AutoMatchInput = { contentType?: string; outcome?: string; format?: string; topic?: string; visualStyle?: string };
+
+let activeSceneMusicPreview: { owner: symbol; stop: () => void } | null = null;
+const claimSceneMusicPreview = (owner: symbol, stop: () => void) => {
+  activeSceneMusicPreview?.stop();
+  activeSceneMusicPreview = { owner, stop };
+};
+const releaseSceneMusicPreview = (owner: symbol) => {
+  if (activeSceneMusicPreview?.owner === owner) activeSceneMusicPreview = null;
+};
 
 export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, projectId, language, autoMatchInput, autoOnly = false }: {
   onSelect: (track: CreatorPremiumMusicTrack) => void;
@@ -14,8 +23,11 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, pr
   autoMatchInput?: AutoMatchInput;
   autoOnly?: boolean;
 }) {
+  const previewOwnerRef = useRef(Symbol("creator-scene-music-preview"));
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const previewRequestRef = useRef<AbortController | null>(null);
+  const previewGenerationRef = useRef(0);
   const [tracks, setTracks] = useState<CreatorPremiumMusicTrack[]>([]);
   const [term, setTerm] = useState("");
   const [playingId, setPlayingId] = useState("");
@@ -23,13 +35,32 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, pr
   const [acquiringId, setAcquiringId] = useState("");
   const [error, setError] = useState("");
   const english = language === "en";
-  const stopPreview = () => { hlsRef.current?.destroy(); hlsRef.current = null; audioRef.current?.pause(); audioRef.current = null; setPlayingId(""); };
+  const stopPreview = useCallback(() => {
+    previewGenerationRef.current += 1;
+    previewRequestRef.current?.abort();
+    previewRequestRef.current = null;
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause();
+      audioRef.current.removeAttribute("src");
+      audioRef.current.load();
+    }
+    audioRef.current = null;
+    setPlayingId("");
+    releaseSceneMusicPreview(previewOwnerRef.current);
+  }, []);
   useEffect(() => stopPreview, []);
 
-  const request = async (params: URLSearchParams) => {
+  const request = async (params: URLSearchParams, signal?: AbortSignal) => {
     const token = await getAccessToken();
-    const response = await fetch(`/api/creator-music?${params}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const response = await fetch(`/api/creator-music?${params}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal });
     const body = await response.json().catch(() => null);
+    if (body?.code === "preview_quota_exceeded") {
+      throw new Error(english ? "Music preview capacity has been reached. Retry later." : "Müzik önizleme kapasitesine ulaşıldı. Daha sonra yeniden deneyin.");
+    }
     if (!response.ok || !body?.ok) throw new Error(body?.error || (english ? "Music library could not be loaded." : "Müzik kütüphanesi yüklenemedi."));
     return body;
   };
@@ -46,13 +77,38 @@ export default function CreatorMusicLibraryPicker({ onSelect, getAccessToken, pr
   };
   const preview = async (track: CreatorPremiumMusicTrack) => {
     if (playingId === track.id) return stopPreview();
-    stopPreview(); setError("");
+    stopPreview();
+    claimSceneMusicPreview(previewOwnerRef.current, stopPreview);
+    const generation = previewGenerationRef.current;
+    const requestController = new AbortController();
+    previewRequestRef.current = requestController;
+    setPlayingId(track.id); setError("");
     try {
-      const body = await request(new URLSearchParams({ action: "preview", trackId: track.id }));
-      const audio = new Audio(); audioRef.current = audio; setPlayingId(track.id); audio.onended = stopPreview;
-      if (Hls.isSupported()) { const hls = new Hls(); hlsRef.current = hls; hls.attachMedia(audio); hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(body.streamUrl)); hls.on(Hls.Events.MANIFEST_PARSED, () => void audio.play()); }
-      else { audio.src = body.streamUrl; await audio.play(); }
-    } catch { stopPreview(); setError(english ? "Preview is unavailable." : "Önizleme kullanılamıyor."); }
+      const body = await request(new URLSearchParams({ action: "preview", trackId: track.id }), requestController.signal);
+      if (generation !== previewGenerationRef.current || requestController.signal.aborted) return;
+      previewRequestRef.current = null;
+      const audio = new Audio();
+      audioRef.current = audio;
+      const failPlayback = () => {
+        if (generation !== previewGenerationRef.current) return;
+        stopPreview();
+        setError(english ? "The preview stream could not be played. Try another track." : "Önizleme akışı oynatılamadı. Başka bir parça deneyin.");
+      };
+      const play = () => { void audio.play().catch(failPlayback); };
+      audio.onended = () => { if (generation === previewGenerationRef.current) stopPreview(); };
+      audio.onerror = failPlayback;
+      const isHlsStream = (() => { try { return new URL(body.streamUrl).pathname.toLowerCase().endsWith(".m3u8"); } catch { return false; } })();
+      if (isHlsStream && Hls.isSupported()) {
+        const hls = new Hls(); hlsRef.current = hls; hls.attachMedia(audio);
+        hls.on(Hls.Events.MEDIA_ATTACHED, () => { if (generation === previewGenerationRef.current) hls.loadSource(body.streamUrl); });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { if (generation === previewGenerationRef.current) play(); });
+        hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) failPlayback(); });
+      } else { audio.src = body.streamUrl; await audio.play(); }
+    } catch (cause) {
+      if (generation !== previewGenerationRef.current || requestController.signal.aborted) return;
+      const message = cause instanceof Error ? cause.message : "";
+      stopPreview(); setError(message || (english ? "Preview is unavailable." : "Önizleme kullanılamıyor."));
+    }
   };
   const select = async (track: CreatorPremiumMusicTrack) => {
     if (acquiringId) return;

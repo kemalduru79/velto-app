@@ -19,9 +19,14 @@ assert.match(adapter, /AbortSignal\.timeout/); assert.match(adapter, /normalizeP
 assert.doesNotMatch(types, /epidemic|apiKey|providerUrl|rawResponse/i);
 assert.match(route, /authenticateRequest\(request\)/); assert.match(route, /getMusicProvider/);
 assert.match(route, /action === "auto"/); assert.match(route, /isCreatorPremiumMusicTrackId\(trackId\)/);
+assert.match(adapter, /response\.status === 402 \? "quota"/);
+assert.match(route, /preview_quota_exceeded/);
 assert.match(picker, /\/api\/creator-music/); assert.match(picker, /action: "preview"/);
 assert.match(picker, /Music Library/); assert.match(picker, /Search music/); assert.match(picker, /Use track/);
 assert.match(picker, /if \(playingId === track\.id\) return stopPreview\(\)/);
+assert.match(picker, /claimSceneMusicPreview\(previewOwnerRef\.current, stopPreview\)/);
+assert.match(picker, /Hls\.Events\.ERROR/);
+assert.match(picker, /audio\.play\(\)\.catch\(failPlayback\)/);
 assert.doesNotMatch(picker + setup + scene, /EPIDEMIC_SOUND_API_KEY|partner-content-api/);
 assert.doesNotMatch(picker, /volume|gain|fade|ducking|waveform|BPM/i);
 assert.match(setup, /CreatorMusicLibraryPicker/); assert.match(scene, /CreatorMusicLibraryPicker/);
