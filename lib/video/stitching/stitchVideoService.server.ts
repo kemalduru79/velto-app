@@ -81,7 +81,7 @@ export async function handleStitchVideoRequest(req: NextRequest) {
       TimelineSyncPlan | undefined;
     const durationAuthority =
       body?.productProfile === "creatorlab" && body?.creatorFormat === "youtube_video"
-        ? "editorial_floor"
+        ? "measured_adaptive"
         : "audio_compact";
     const scenes = applyTimelineSyncPlanToScenes(
       filteredScenes,

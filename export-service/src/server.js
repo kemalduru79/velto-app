@@ -17,6 +17,7 @@ import {
   parseCreatorProgramLoudnessMeasurements,
 } from "./creatorProgramAudioMaster.js";
 import {
+  getTransitionAwareDuration,
   reconcileVisualCoveragePlan,
   resolveAudioFirstSceneTargetDuration,
   resolveCoverageBackedSceneTargetDuration,
@@ -514,6 +515,7 @@ function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "imag
     sourceType,
     sourceDuration,
     durationAuthority,
+    measuredAudioCurrent: scene?.measuredAudioCurrent === true,
     minimumDuration: MIN_SCENE_DURATION,
     defaultDuration: TARGET_SCENE_DURATION,
     tailBuffer: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
@@ -547,30 +549,6 @@ function normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport) {
     visualDurationSec: clipOutSec - clipInSec,
     isTrimmed: true,
   };
-}
-
-function getTransitionAwareDuration({ targetDuration, audioDuration = 0, sourceDuration = 0 }) {
-  const safeTargetDuration =
-    Number.isFinite(targetDuration) && targetDuration > 0
-      ? targetDuration
-      : TARGET_SCENE_DURATION;
-  const safeAudioDuration =
-    Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : 0;
-  const safeSourceDuration =
-    Number.isFinite(sourceDuration) && sourceDuration > 0 ? sourceDuration : 0;
-
-  const trimmedDuration = Math.max(0.1, safeTargetDuration - SCENE_TRANSITION_TRIM_SECONDS);
-
-  if (safeAudioDuration > 0) {
-    const audioSafeDuration = safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS;
-    return Math.max(trimmedDuration, audioSafeDuration, safeSourceDuration);
-  }
-
-  if (safeSourceDuration > 0) {
-    return Math.min(safeSourceDuration, trimmedDuration);
-  }
-
-  return trimmedDuration;
 }
 
 function getSpeechDurationLimit(scene, targetDuration) {
@@ -819,6 +797,8 @@ async function createImageClipWithAudio({
   outputPath,
   targetDuration,
   visualFitMode = "contain",
+  durationAuthority,
+  measuredAudioCurrent = false,
 }) {
   const resolvedTargetDuration =
     typeof targetDuration === "number" &&
@@ -834,6 +814,11 @@ async function createImageClipWithAudio({
     getTransitionAwareDuration({
       targetDuration: resolvedTargetDuration,
       audioDuration,
+      durationAuthority,
+      measuredAudioCurrent,
+      defaultDuration: TARGET_SCENE_DURATION,
+      transitionTrim: SCENE_TRANSITION_TRIM_SECONDS,
+      speechSafetyTail: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
     })
   );
   const inputs = [
@@ -906,6 +891,8 @@ async function createSceneClipWithAudio({
   targetDuration,
   creatorTrim,
   visualFitMode = "contain",
+  durationAuthority,
+  measuredAudioCurrent = false,
 }) {
   const requestedTargetDuration =
     typeof targetDuration === "number" &&
@@ -926,6 +913,11 @@ async function createSceneClipWithAudio({
       targetDuration: requestedTargetDuration,
       audioDuration,
       sourceDuration: videoDuration,
+      durationAuthority,
+      measuredAudioCurrent,
+      defaultDuration: TARGET_SCENE_DURATION,
+      transitionTrim: SCENE_TRANSITION_TRIM_SECONDS,
+      speechSafetyTail: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
     })
   );
   const needsFiller =
@@ -1865,7 +1857,7 @@ app.post("/export-movie", async (req, res) => {
     const exportFlowValidation = body?.exportFlowValidation;
     const creatorDurationAuthority = body.productProfile === "creatorlab"
       ? body.creatorFormat === "youtube_video"
-        ? "editorial_floor"
+        ? "measured_adaptive"
         : "audio_compact"
       : undefined;
     const creatorVisualFitMode = resolveCreatorVisualFitMode({
@@ -2156,6 +2148,8 @@ app.post("/export-movie", async (req, res) => {
               targetDuration,
               creatorTrim,
               visualFitMode: creatorVisualFitMode,
+              durationAuthority: creatorDurationAuthority,
+              measuredAudioCurrent: scene?.measuredAudioCurrent === true,
             })
           : await createImageClipWithAudio({
               imagePath: sourcePath,
@@ -2163,6 +2157,8 @@ app.post("/export-movie", async (req, res) => {
               outputPath: clipOutputPath,
               targetDuration,
               visualFitMode: creatorVisualFitMode,
+              durationAuthority: creatorDurationAuthority,
+              measuredAudioCurrent: scene?.measuredAudioCurrent === true,
             });
 
       const sceneContinuityCheck = await verifyRenderedContinuity(

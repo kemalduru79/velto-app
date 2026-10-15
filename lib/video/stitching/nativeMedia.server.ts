@@ -32,6 +32,7 @@ export type StitchSceneInput = {
   videoUrl?: string;
   audioUrl?: string;
   dialogueAudioUrl?: string;
+  measuredAudioCurrent?: boolean;
   durationSec?: number;
   creatorSceneId?: string;
   visualCoveragePlan?: CreatorVisualCoverageBeat[];
@@ -68,6 +69,10 @@ const PREFERRED_MAX_SCENE_DURATION_SECONDS = 20;
 export const SPEECH_TAIL_BUFFER_SECONDS = 0.75;
 const OUTPUT_SIZE = "960:960";
 const OUTPUT_FPS = String(STITCH_OUTPUT_FPS);
+
+export function hasAuthoritativeStitchAudioCurrentness(scene: StitchSceneInput) {
+  return scene.measuredAudioCurrent === true;
+}
 const OUTPUT_AUDIO_SAMPLE_RATE = "44100";
 
 if (!ffmpegPath) {
@@ -615,6 +620,7 @@ export async function createSceneAudioClip(
       maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
       preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
       tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+      measuredAudioCurrent: false,
       durationAuthority,
     });
     await createSilentAudio(outputAudioPath, requestedDurationSec);
@@ -649,6 +655,7 @@ export async function createSceneAudioClip(
     maxDurationSec: MAX_AUDIO_SAFE_SCENE_DURATION_SECONDS,
     preferredMaxSceneDurationSec: PREFERRED_MAX_SCENE_DURATION_SECONDS,
     tailBufferSec: SPEECH_TAIL_BUFFER_SECONDS,
+    measuredAudioCurrent: hasAuthoritativeStitchAudioCurrentness(scene),
     durationAuthority,
   });
 

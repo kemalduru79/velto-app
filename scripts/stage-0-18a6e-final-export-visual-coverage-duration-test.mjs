@@ -111,7 +111,12 @@ const invalidGap = {
   visualCoveragePlan: [imageBeat(0, 4), { ...imageBeat(5, 7.5), id: `${creatorSceneId}.coverage.2` }],
 };
 assert.deepEqual(reconcileVisualCoveragePlan(invalidGap, 8), [], "non-contiguous input must remain invalid");
-assert.deepEqual(reconcileVisualCoveragePlan(mixedReference, 18), [], "shorter runtime targets must not truncate canonical composition");
+const shortenedCanonical = reconcileVisualCoveragePlan(mixedReference, 18);
+assert.deepEqual(
+  shortenedCanonical.map(({ startSec, endSec }) => [startSec, endSec]),
+  [[0, 10], [10, 18]],
+  "shorter measured runtime retains complete beats and trims only the intersecting final beat",
+);
 
 const service = fs.readFileSync(new URL("../export-service/src/server.js", import.meta.url), "utf8");
 assert.match(service, /const beats = reconcileVisualCoveragePlan\(scene, targetDuration\)/);

@@ -115,7 +115,7 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
 check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226"));
-check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "13186b3319e4e693b528fa3e48f1c4de5314b12a52da75485a537afcf9e37949"));
+check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "1e1ba7dbead6af744a7a0fff22ca89569534c2f7d3d1c3649a76bfe599a11038"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");

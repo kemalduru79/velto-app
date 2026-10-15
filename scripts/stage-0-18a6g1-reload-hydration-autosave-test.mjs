@@ -9,6 +9,12 @@ import { creatorSceneOutputIsCurrent } from "../lib/creator/creatorScriptApprova
 import { resolveCreatorProjectRevisionAdvance } from "../lib/creator/projectSaveCoordinator.ts";
 import { resolveCreatorSceneHydrationAuthority } from "../lib/creator/creatorScenePersistence.ts";
 import { resolveCreatorRestoredNavigation } from "../lib/creator/stageNavigation.ts";
+import {
+  attachCreatorProjectState,
+  buildCreatorProjectState,
+  readCreatorProjectState,
+} from "../lib/creator/projectState.ts";
+import { matchAudioDurationToScene } from "../lib/video/audioDurationMatching.ts";
 
 const approved = { revision: 2, approval: { approvedRevision: 2 } };
 const packageRecord = { sourceScriptRevision: 2 };
@@ -20,6 +26,53 @@ assert.equal(resolveCreatorSceneHydrationAuthority({ canonicalSceneCount: 3, cur
 assert.deepEqual(resolveCreatorRestoredNavigation({ persisted: null, hasStrategy: true, hasProductionPackage: true, hasScenes: true, canOpenPublish: false }), { workspaceStep: 3, productionSubstep: "create_review" });
 assert.equal(resolveCreatorAddedSceneScriptRevision({ script: approved, productionPackage: packageRecord, scenes: currentScenes }), 2);
 assert.equal(resolveCreatorAddedSceneScriptRevision({ script: approved, productionPackage: packageRecord, scenes: staleScenes }), null);
+
+const adaptiveTiming = matchAudioDurationToScene({
+  audioDurationSec: 8,
+  plannedDurationSec: 13,
+  minDurationSec: 3,
+  maxDurationSec: 30,
+  preferredMaxSceneDurationSec: 20,
+  tailBufferSec: 0.75,
+  durationAuthority: "measured_adaptive",
+  measuredAudioCurrent: true,
+});
+const persistedTiming = {
+  targetSceneDuration: adaptiveTiming.targetDurationSec,
+  narrationDuration: adaptiveTiming.audioDurationSec,
+  dialogueDuration: 0,
+  speechTailBuffer: adaptiveTiming.tailBufferSec,
+  transitionTail: adaptiveTiming.transitionTailSec,
+  durationMatchStatus: adaptiveTiming.status,
+};
+const snapshot = buildCreatorProjectState({
+  brief: { topic: "Adaptive timing", language: "en", country: "global", ageGroup: "professional_18", contentType: "educational_explainer", format: "youtube_video", durationPreset: "custom", durationSec: 60, customDurationSec: 60, qualityMode: "standard", targetPlatforms: ["youtube"] },
+  strategy: { mentorResult: null, selectedDirectionId: "recommended", selectedHook: "", script: null },
+  production: { package: null, refinedScenes: [], backgroundMusic: null, projectContinuityMode: "independent", sceneContinuityModes: {}, voicePreferences: null },
+  createReview: { scenes: [{ id: 1, creatorSceneId: "adaptive-scene", narration: "Current narration", audioUrl: "https://assets.test/current.mp3", timing: persistedTiming }] },
+  publish: { metadata: null, thumbnail: null, thumbnailDesign: null, confirmations: {}, packageDownloaded: false, packageSignature: "", finalVideoUrl: "", finalVideoSignature: "" },
+});
+const storedProject = JSON.parse(JSON.stringify({
+  exported_movie_result: attachCreatorProjectState({}, snapshot),
+}));
+const hydrated = readCreatorProjectState(storedProject);
+const hydratedScene = hydrated.createReview.scenes[0];
+assert.equal(hydratedScene.timing.targetSceneDuration, 8.55, "hydration must not restore the obsolete 13-second editorial floor");
+assert.equal(hydratedScene.timing.speechTailBuffer, 0.75, "persistence retains speech safety authority");
+assert.equal(hydratedScene.timing.transitionTail, 0.55, "persistence retains visible transition authority");
+assert.deepEqual(hydratedScene.timing, persistedTiming, "the canonical project snapshot round-trip retains adaptive timing unchanged");
+const editedStaleTiming = matchAudioDurationToScene({
+  audioDurationSec: 8,
+  plannedDurationSec: 13,
+  minDurationSec: 3,
+  maxDurationSec: 30,
+  preferredMaxSceneDurationSec: 20,
+  tailBufferSec: 0.75,
+  durationAuthority: "measured_adaptive",
+  measuredAudioCurrent: false,
+});
+assert.equal(editedStaleTiming.status, "unmeasured", "edited speech cannot reuse old measured timing authority");
+assert.equal(editedStaleTiming.targetDurationSec, 13, "stale audio preserves planning until refreshed current audio exists");
 
 const baseline = createCreatorAutosaveSemanticKey({ title: "Saved", scenes: staleScenes });
 assert.equal(shouldPersistCreatorAutosaveIntent({ baselineKey: baseline, currentKey: createCreatorAutosaveSemanticKey({ scenes: staleScenes, title: "Saved" }) }), false);

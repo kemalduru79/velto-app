@@ -375,6 +375,7 @@ import {
 } from "@/lib/video/exportFlowValidation";
 import {
   matchAudioDurationToScene,
+  resolveMeasuredAudioCurrentness,
   type AudioDurationMatchStatus,
 } from "@/lib/video/audioDurationMatching";
 import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
@@ -764,6 +765,7 @@ type SceneTiming = {
   plannedSceneDuration?: number;
   durationDelta?: number;
   speechTailBuffer?: number;
+  transitionTail?: number;
   exactTimingLocked?: boolean;
   unnecessaryExtensionRemoved?: number;
   splitRecommended?: boolean;
@@ -2458,7 +2460,8 @@ const buildSceneTiming = (
   options?: {
     audioFirst?: boolean;
     plannedDuration?: number;
-    durationAuthority?: "audio_compact" | "editorial_floor";
+    durationAuthority?: "audio_compact" | "editorial_floor" | "measured_adaptive";
+    measuredAudioCurrent?: boolean;
   },
 ): SceneTiming => {
   const safeNarration = Number.isFinite(narrationDuration) ? narrationDuration : 0;
@@ -2476,13 +2479,14 @@ const buildSceneTiming = (
       preferredMaxSceneDurationSec:
         CREATOR_PREFERRED_MAX_SCENE_DURATION_SECONDS,
       tailBufferSec: CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+      measuredAudioCurrent: options.measuredAudioCurrent,
       durationAuthority: options.durationAuthority,
     });
     const targetSceneDuration = durationMatch.targetDurationSec;
     const maxSpeechDuration = Number(
       Math.max(
         0,
-        targetSceneDuration - CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+        targetSceneDuration - durationMatch.transitionTailSec,
       ).toFixed(2),
     );
     // Measured audio is authoritative. Compact formats may remove an obsolete
@@ -2504,6 +2508,7 @@ const buildSceneTiming = (
       plannedSceneDuration: durationMatch.plannedDurationSec,
       durationDelta,
       speechTailBuffer: durationMatch.tailBufferSec,
+      transitionTail: durationMatch.transitionTailSec,
       exactTimingLocked,
       unnecessaryExtensionRemoved:
         durationMatch.unnecessaryExtensionRemovedSec,
@@ -6021,6 +6026,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     narrationDuration: number,
     dialogueDuration: number,
     scene?: Scene,
+    measuredAudioCurrent = false,
   ) =>
     buildSceneTiming(narrationDuration, dialogueDuration, {
       audioFirst: isCreatorLabFlow,
@@ -6029,8 +6035,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
         : undefined,
       durationAuthority:
         isCreatorLabFlow && creatorFormat === "youtube_video"
-          ? "editorial_floor"
+          ? "measured_adaptive"
           : "audio_compact",
+      measuredAudioCurrent,
     });
 
   const clearSceneTimingData = (sceneId: number) => {
@@ -6066,16 +6073,34 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
     const narrationUrl = overrides?.audioUrl ?? currentScene?.audioUrl;
     const dialogueUrl = overrides?.dialogueAudioUrl ?? currentScene?.dialogueAudioUrl;
+    const narrationCurrent = !currentScene?.narration?.trim() || Boolean(
+      narrationUrl?.trim() && (
+        getCreatorNarrationAudioCurrentness(currentScene) === "current" ||
+        narrationUrl !== currentScene.audioUrl
+      ),
+    );
+    const dialogueCurrent = !currentScene?.dialogue?.trim() || Boolean(
+      dialogueUrl?.trim() && (
+        getCreatorDialogueAudioCurrentness(currentScene) === "current" ||
+        dialogueUrl !== currentScene.dialogueAudioUrl
+      ),
+    );
 
     const [narrationDuration, dialogueDuration] = await Promise.all([
-      getAudioDurationFromUrl(narrationUrl),
-      getAudioDurationFromUrl(dialogueUrl),
+      narrationCurrent ? getAudioDurationFromUrl(narrationUrl) : Promise.resolve(0),
+      dialogueCurrent ? getAudioDurationFromUrl(dialogueUrl) : Promise.resolve(0),
     ]);
 
     const timing = buildSceneTimingForCurrentFlow(
       narrationDuration,
       dialogueDuration,
       currentScene,
+      resolveMeasuredAudioCurrentness({
+        narrationRequired: Boolean(currentScene?.narration?.trim()),
+        narrationCurrent,
+        dialogueRequired: Boolean(currentScene?.dialogue?.trim()),
+        dialogueCurrent,
+      }),
     );
 
     updateSceneTimingData(sceneId, timing);
@@ -11653,6 +11678,14 @@ const generateSceneImage = async (
 
             return {
               ...scene,
+              measuredAudioCurrent: resolveMeasuredAudioCurrentness({
+                narrationRequired: Boolean(scene.narration?.trim()),
+                narrationCurrent:
+                  getCreatorNarrationAudioCurrentness(scene) === "current",
+                dialogueRequired: Boolean(scene.dialogue?.trim()),
+                dialogueCurrent:
+                  getCreatorDialogueAudioCurrentness(scene) === "current",
+              }),
               timing: {
                 ...timing,
                 targetSceneDuration: normalizedTarget,
@@ -11661,7 +11694,8 @@ const generateSceneImage = async (
                       Math.max(
                         0,
                         normalizedTarget -
-                          CREATOR_SPEECH_TAIL_BUFFER_SECONDS,
+                          (timing.transitionTail ||
+                            CREATOR_SPEECH_TAIL_BUFFER_SECONDS),
                       ).toFixed(2),
                     )
                   : Number(
@@ -12172,7 +12206,9 @@ const generateSceneImage = async (
           timeline: creatorAudioTimeline,
           scenes: scenes.flatMap((scene) => scene.creatorSceneId ? [{
             creatorSceneId: scene.creatorSceneId,
-            durationMs: getCreatorPlannedSceneDuration(scene) * 1000,
+            durationMs: Number(
+              scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
+            ) * 1000,
             narrationDurationMs: Number(scene.timing?.narrationDuration || 0) * 1000,
             dialogueDurationMs: Number(scene.timing?.dialogueDuration || 0) * 1000,
           }] : []),
@@ -12256,7 +12292,9 @@ const generateSceneImage = async (
           setPlayingSceneId(scene.id);
           const remainingSceneDurationMs = Math.max(
             0,
-            getCreatorPlannedSceneDuration(scene) * 1000 -
+            Number(
+              scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
+            ) * 1000 -
               (Date.now() - scenePlaybackStartedAt),
           );
           await waitForStoryPlaybackDuration(remainingSceneDurationMs, playbackToken);
@@ -35279,8 +35317,8 @@ const generateSceneImage = async (
                                       <p className="mt-1 text-xs leading-5 text-slate-500">
                                         {exactTimingLocked
                                           ? uiLanguage === "en"
-                                            ? `Final timing is locked to measured audio plus a ${Number(scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)}s safe tail. Preview and export use this same duration.`
-                                            : `Final süre, ölçülen sese ${Number(scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)} sn güvenli bitiş payı eklenerek sabitlendi. Önizleme ve export aynı süreyi kullanır.`
+                                            ? `Final timing is locked to measured audio plus a ${Number(scene.timing?.transitionTail || scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)}s transition tail. Preview and export use this same duration.`
+                                            : `Final süre, ölçülen sese ${Number(scene.timing?.transitionTail || scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)} sn geçiş payı eklenerek sabitlendi. Önizleme ve export aynı süreyi kullanır.`
                                           : uiLanguage === "en"
                                             ? "Generate the missing voice track to measure audio and lock the exact scene duration."
                                             : "Sesi ölçmek ve kesin sahne süresini sabitlemek için eksik ses kaydını üret."}

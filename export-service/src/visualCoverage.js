@@ -28,8 +28,11 @@ export function resolveAudioFirstSceneTargetDuration({
   sourceDuration,
   durationAuthority,
   minimumDuration = 8,
+  adaptiveMinimumDuration = 3,
   defaultDuration = 10,
   tailBuffer = 0.75,
+  naturalTransitionTail = 0.55,
+  measuredAudioCurrent = false,
 }) {
   const requested = finiteNumber(requestedTarget);
   const coverage = finiteNumber(coverageBackedTarget);
@@ -51,6 +54,20 @@ export function resolveAudioFirstSceneTargetDuration({
   if (durationAuthority === "audio_compact" && audioSafeDuration > 0) {
     return Math.max(minimumDuration, audioSafeDuration);
   }
+  if (durationAuthority === "measured_adaptive" && measuredAudioCurrent === true && audioSafeDuration > 0) {
+    return Math.max(adaptiveMinimumDuration, audio + naturalTransitionTail);
+  }
+  if (durationAuthority === "measured_adaptive") {
+    const plannedTarget = Number.isFinite(requested) && requested > 0
+      ? requested
+      : Number.isFinite(coverage) && coverage > 0
+        ? coverage
+        : defaultDuration;
+    return Math.max(
+      adaptiveMinimumDuration,
+      plannedTarget,
+    );
+  }
   if (Number.isFinite(coverage) && coverage > 0) return coverage;
   if (sourceType === "video" && Number.isFinite(source) && source > 0) {
     return audioSafeDuration > 0
@@ -62,6 +79,37 @@ export function resolveAudioFirstSceneTargetDuration({
     Number.isFinite(requested) && requested > 0 ? requested : defaultDuration,
     audioSafeDuration || defaultDuration,
   );
+}
+
+export function getTransitionAwareDuration({
+  targetDuration,
+  audioDuration = 0,
+  sourceDuration = 0,
+  durationAuthority,
+  measuredAudioCurrent = false,
+  defaultDuration = 10,
+  transitionTrim = 0.22,
+  speechSafetyTail = 0.75,
+}) {
+  const target = finiteNumber(targetDuration);
+  const audio = finiteNumber(audioDuration);
+  const source = finiteNumber(sourceDuration);
+  const safeTargetDuration = Number.isFinite(target) && target > 0
+    ? target
+    : defaultDuration;
+  const safeAudioDuration = Number.isFinite(audio) && audio > 0 ? audio : 0;
+  const safeSourceDuration = Number.isFinite(source) && source > 0 ? source : 0;
+
+  if (durationAuthority === "measured_adaptive" && measuredAudioCurrent === true) {
+    return Math.max(safeTargetDuration, safeAudioDuration);
+  }
+
+  const trimmedDuration = Math.max(0.1, safeTargetDuration - transitionTrim);
+  if (safeAudioDuration > 0) {
+    return Math.max(trimmedDuration, safeAudioDuration + speechSafetyTail, safeSourceDuration);
+  }
+  if (safeSourceDuration > 0) return Math.min(safeSourceDuration, trimmedDuration);
+  return trimmedDuration;
 }
 
 export function validateVisualCoveragePlan(scene, targetDuration) {
@@ -97,8 +145,22 @@ export function reconcileVisualCoveragePlan(scene, targetDuration) {
     return validateVisualCoveragePlan(scene, safeTargetDuration);
   }
 
-  // A shorter renderer target would require truncating canonical composition.
-  if (safeTargetDuration < incomingTarget) return [];
+  if (safeTargetDuration < incomingTarget) {
+    const shortened = beats.flatMap((beat) => {
+      const startSec = finiteNumber(beat.startSec);
+      const endSec = Math.min(finiteNumber(beat.endSec), safeTargetDuration);
+      if (!Number.isFinite(startSec) || startSec >= safeTargetDuration || endSec <= startSec) return [];
+      return [{
+        ...beat,
+        endSec: roundDuration(endSec),
+        durationSec: roundDuration(endSec - startSec),
+      }];
+    });
+    return validateVisualCoveragePlan(
+      { ...scene, visualCoveragePlan: shortened },
+      safeTargetDuration,
+    );
+  }
 
   const lastBeat = beats.at(-1);
   if (lastBeat?.kind !== "image" || lastBeat?.renderer !== "native_zoompan_v1") return [];
