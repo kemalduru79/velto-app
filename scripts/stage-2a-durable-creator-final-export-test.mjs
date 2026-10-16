@@ -36,6 +36,11 @@ assert.match(renderer, /clearInterval\(durableRenderHeartbeat\)/, "render heartb
 assert.match(renderer, /status === "rendering"[\s\S]*status\(202\)/, "concurrent render dispatch is rejected as already active");
 assert.match(internal, /velto_install_creator_final_export/, "worker completion uses atomic project/asset/reference installation");
 assert.match(internal, /velto_settle_creator_final_export_economics/, "economic completion uses an atomic idempotent database transition");
+assert.match(internal, /export const maxDuration = 300;/, "internal final-export orchestration stays within the Vercel Hobby duration limit");
+assert.ok(
+  internal.indexOf('if (response.status === 202) return json({ ok: true, status: "rendering" }, 202);') < internal.indexOf('supabase.rpc("velto_install_creator_final_export"'),
+  "an accepted asynchronous render returns 202 before installation and settlement",
+);
 assert.match(worker, /handleCreatorFinalExport[\s\S]*settleJobCredit[\s\S]*completeJob/, "settlement happens once on durable completion");
 assert.match(client, /creator-final-export-job:[\s\S]*localStorage/, "client reconnects to a durable job after refresh");
 assert.match(client, /Final video is rendering/, "client exposes rendering status");
