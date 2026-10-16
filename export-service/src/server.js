@@ -107,6 +107,14 @@ function internalExportIdentity(req) {
   return { ownerUserId, projectId, storageAdmissionId };
 }
 
+function durableFinalExportIdentity(req) {
+  const jobId = req.get("x-velto-final-export-job-id") || "";
+  const manifestSha256 = req.get("x-velto-manifest-sha256") || "";
+  const renderPayloadSha256 = req.get("x-velto-render-payload-sha256") || "";
+  if (!UUID_PATTERN.test(jobId) || !/^[0-9a-f]{64}$/.test(manifestSha256) || !/^[0-9a-f]{64}$/.test(renderPayloadSha256)) return null;
+  return { jobId, manifestSha256, renderPayloadSha256 };
+}
+
 class FinalMovieStorageAdmissionError extends Error {
   constructor(message, status = 409) {
     super(message);
@@ -1841,6 +1849,8 @@ app.post("/export-movie", async (req, res) => {
   let consumptionToken = null;
   let durableStorageStarted = false;
   let moviePath = "";
+  let durableExport = null;
+  let durableRenderHeartbeat = null;
 
   try {
     const body = req.body || {};
@@ -1849,6 +1859,7 @@ app.post("/export-movie", async (req, res) => {
       return res.status(401).json({ ok: false, error: "Final video request is unauthorized." });
     }
     body.projectId = ownership.projectId;
+    durableExport = durableFinalExportIdentity(req);
     if (body.musicEntitlement || (body.productProfile === "creatorlab" && body.backgroundMusic)) {
       return res.status(403).json({
         ok: false, error: "Legacy CreatorLab music authority is not accepted.",
@@ -1924,6 +1935,66 @@ app.post("/export-movie", async (req, res) => {
     }
 
     supabase = getSupabaseAdmin();
+    if (durableExport) {
+      const { data: claimData, error: claimError } = await supabase.rpc("velto_claim_creator_final_export_render", {
+        p_job_id: durableExport.jobId,
+        p_owner_user_id: ownership.ownerUserId,
+        p_manifest_sha256: durableExport.manifestSha256,
+        p_render_payload_sha256: durableExport.renderPayloadSha256,
+        p_storage_admission_id: ownership.storageAdmissionId,
+      });
+      if (claimError) throw new FinalMovieStorageAdmissionError("Durable final export provenance is invalid.", 409);
+      if (claimData?.status === "rendering") return res.status(202).json({ ok: true, status: "rendering" });
+      if (claimData?.status === "uploaded" || claimData?.status === "installed" || claimData?.status === "stale") {
+        const { data: completed } = await supabase.from("velto_creator_final_export_runs").select("output").eq("job_id", durableExport.jobId).single();
+        return res.status(200).send(completed?.output || { ok: false, error: "Durable export output is unavailable." });
+      }
+      durableRenderHeartbeat = setInterval(() => {
+        void supabase.rpc("velto_heartbeat_creator_final_export_render", {
+          p_job_id: durableExport.jobId,
+          p_owner_user_id: ownership.ownerUserId,
+          p_manifest_sha256: durableExport.manifestSha256,
+          p_render_payload_sha256: durableExport.renderPayloadSha256,
+        }).then(({ error }) => {
+          if (error) console.error("CREATOR_FINAL_EXPORT_RENDER_HEARTBEAT_FAILED", { jobId: durableExport.jobId });
+        });
+      }, 60_000);
+      durableRenderHeartbeat.unref?.();
+      moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/jobs/${durableExport.jobId}.mp4`;
+      const { data: existingInfo } = await supabase.storage.from(`movies`).info(moviePath);
+      if (existingInfo?.size > 0) {
+        const { data: existingBlob, error: existingError } = await supabase.storage.from(`movies`).download(moviePath);
+        if (existingError || !existingBlob) throw new FinalMovieStorageAdmissionError("Durable export object could not be reconciled.", 503);
+        const existingBuffer = Buffer.from(await existingBlob.arrayBuffer());
+        if (existingBuffer.length !== existingInfo.size) throw new FinalMovieStorageAdmissionError("Durable export object is truncated.", 409);
+        const existingPath = path.join(tempDir, "existing-final-export.mp4");
+        await fs.promises.writeFile(existingPath, existingBuffer);
+        const durationSeconds = await getMediaDuration(existingPath);
+        const outputSha256 = createHash("sha256").update(existingBuffer).digest("hex");
+        const { data: publicData } = supabase.storage.from(`movies`).getPublicUrl(moviePath);
+        const recoveredOutput = {
+          ok: true, movieUrl: publicData.publicUrl, downloadUrl: publicData.publicUrl,
+          storageBucket: "movies", storagePath: moviePath, fileName: `velto-${safeName(title)}.mp4`,
+          sizeBytes: existingBuffer.length, durationSeconds, sceneCount: usableScenes.length,
+          finalExportJobId: durableExport.jobId, manifestSha256: durableExport.manifestSha256,
+          renderPayloadSha256: durableExport.renderPayloadSha256, outputSha256,
+          lateCompletionReconciled: true,
+        };
+        const { error: admissionRecoveryError } = await supabase.rpc("velto_finalize_creator_final_export_admission", {
+          p_job_id: durableExport.jobId, p_owner_user_id: ownership.ownerUserId,
+          p_manifest_sha256: durableExport.manifestSha256,
+        });
+        if (admissionRecoveryError) throw new FinalMovieStorageAdmissionError("Durable export admission reconciliation failed.", 503);
+        const { error: recoveredError } = await supabase.rpc("velto_record_creator_final_export_upload", {
+          p_job_id: durableExport.jobId, p_manifest_sha256: durableExport.manifestSha256,
+          p_render_payload_sha256: durableExport.renderPayloadSha256, p_storage_bucket: "movies",
+          p_storage_path: moviePath, p_public_url: publicData.publicUrl, p_size_bytes: existingBuffer.length,
+          p_output_sha256: outputSha256, p_output: recoveredOutput,
+        });
+        if (recoveredError) throw new FinalMovieStorageAdmissionError("Durable export object reconciliation failed.", 503);
+        return res.status(200).send(recoveredOutput);
+      }
+    }
     consumptionToken = await beginFinalMovieStorageAdmission(supabase, ownership);
 
     let canonicalCreatorAudioAssets = [];
@@ -2269,7 +2340,9 @@ app.post("/export-movie", async (req, res) => {
     const outputBuffer = await fs.promises.readFile(finalOutputFilePath);
 
     const safeTitle = safeName(title);
-    moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
+    moviePath = durableExport
+      ? `creator/${ownership.ownerUserId}/final/${projectId}/jobs/${durableExport.jobId}.mp4`
+      : `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
     const stats = await fs.promises.stat(finalOutputFilePath);
     const duration = await getMediaDuration(finalOutputFilePath);
     const fileName = `velto-${safeTitle}.mp4`;
@@ -2302,7 +2375,8 @@ app.post("/export-movie", async (req, res) => {
       throw new FinalMovieStorageAdmissionError("Final video storage admission could not be finalized.", 503);
     }
 
-    return res.json({
+    const outputSha256 = createHash("sha256").update(outputBuffer).digest("hex");
+    const responseBody = {
       ok: true,
       movieUrl: publicData.publicUrl,
       downloadUrl: publicData.publicUrl,
@@ -2354,7 +2428,28 @@ app.post("/export-movie", async (req, res) => {
       proceduralAmbientAware: true,
       ambientDefaultVolume: AMBIENT_DEFAULT_VOLUME,
       ambientMaxVolume: AMBIENT_MAX_VOLUME,
-    });
+      ...(durableExport ? {
+        finalExportJobId: durableExport.jobId,
+        manifestSha256: durableExport.manifestSha256,
+        renderPayloadSha256: durableExport.renderPayloadSha256,
+        outputSha256,
+      } : {}),
+    };
+    if (durableExport) {
+      const { error: recordError } = await supabase.rpc("velto_record_creator_final_export_upload", {
+        p_job_id: durableExport.jobId,
+        p_manifest_sha256: durableExport.manifestSha256,
+        p_render_payload_sha256: durableExport.renderPayloadSha256,
+        p_storage_bucket: "movies",
+        p_storage_path: moviePath,
+        p_public_url: publicData.publicUrl,
+        p_size_bytes: stats.size,
+        p_output_sha256: outputSha256,
+        p_output: responseBody,
+      });
+      if (recordError) throw new FinalMovieStorageAdmissionError("Durable final export completion could not be recorded.", 503);
+    }
+    return res.status(200).send(responseBody);
   } catch (error) {
     if (consumptionToken && !durableStorageStarted && supabase && ownership) {
       try {
@@ -2378,6 +2473,7 @@ app.post("/export-movie", async (req, res) => {
         : "Film export işlemi başarısız oldu.",
     });
   } finally {
+    if (durableRenderHeartbeat) clearInterval(durableRenderHeartbeat);
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     } catch {}

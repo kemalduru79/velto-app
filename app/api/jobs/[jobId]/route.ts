@@ -25,6 +25,17 @@ function json(body: unknown, status = 200) {
 }
 
 function publicJob(job: VeltoJobRecord) {
+  if (job.jobType === "creator_final_export") {
+    const movie = job.result?.movie && typeof job.result.movie === "object" ? job.result.movie as Record<string, unknown> : null;
+    return {
+      id: job.id, projectId: job.projectId, jobType: job.jobType, status: job.status,
+      phase: job.status === "queued" ? "queued" : job.status === "running" ? "rendering" : job.status === "succeeded" ? (job.result?.outputReady === true ? "completed" : "completed_stale") : "failed",
+      output: { ready: job.status === "succeeded" && job.result?.outputReady === true, movie },
+      failureCode: job.errorCode, failureMessage: job.errorMessage,
+      attempts: job.attempts, maxAttempts: job.maxAttempts, startedAt: job.startedAt,
+      completedAt: job.completedAt, createdAt: job.createdAt, updatedAt: job.updatedAt,
+    };
+  }
   const outputReady =
     job.status === "succeeded" &&
     job.result?.outputReady === true &&

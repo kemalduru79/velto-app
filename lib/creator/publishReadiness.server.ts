@@ -11,6 +11,9 @@ import { normalizeCreatorQualityMode, type CreatorQualityMode } from "./mediaRou
 import { normalizeCreatorProjectContinuityMode, normalizeCreatorSceneContinuityMode, resolveCreatorVisualContinuityMode } from "./visualContinuity";
 import { buildCreatorVideoGenerationSignature, buildLegacyCreatorVideoGenerationSignature, deriveCreatorVideoCurrentness } from "./videoGeneration";
 import type { TimelineSyncPlan } from "@/lib/video/timelineSync";
+import { createHash } from "node:crypto";
+import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "./visualCoverage";
+import { resolveCreatorProgramVisualRhythm } from "./programEditorialPolish";
 
 export type CreatorPublishAuthorityBlocker =
   | "project_required"
@@ -33,7 +36,7 @@ const record = (value: unknown): Record<string, unknown> =>
     ? value as Record<string, unknown>
     : {};
 
-function currentFinalProductionSignature(project: VeltoProjectApiRecord) {
+export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiRecord) {
   const state = readCreatorProjectState(project);
   const scenes: Array<Record<string, unknown> & { id: string | number }> = state.createReview.scenes.map((value, index) => {
     const scene = record(value);
@@ -96,23 +99,74 @@ function currentFinalProductionSignature(project: VeltoProjectApiRecord) {
     planCreatorProjectProduction(routingScenes, qualityMode),
   );
   const selectionById = new Map(selections.map((selection) => [selection.creatorSceneId, selection]));
+  const selectedSceneEntries = scenes.flatMap((scene) => {
+    const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId : `legacy-${scene.id}`;
+    const selection = selectionById.get(creatorSceneId);
+    return selection?.exportSource && selection.exportSource !== "none" ? [{ scene, creatorSceneId, selection }] : [];
+  });
+  const manifestScenes = selectedSceneEntries.map(({ scene, creatorSceneId, selection }, index) => {
+    const exportSource = selection?.exportSource || "none";
+    const selectedMediaUrl = exportSource === "video" ? String(scene.videoUrl || "") : String(scene.image || "");
+    const previousEntry = index > 0 ? selectedSceneEntries[index - 1] : undefined;
+    const previous = previousEntry?.scene;
+    const previousSelection = previousEntry?.selection;
+    const previousMediaUrl = previousSelection?.exportSource === "video"
+      ? String(previous?.videoUrl || "")
+      : String(previous?.image || "");
+    const timing = record(scene.timing);
+    const rhythm = resolveCreatorProgramVisualRhythm({
+      sceneIndex: index,
+      sceneCount: selectedSceneEntries.length,
+      selectedMediaUrl,
+      previousSelectedMediaUrl: previousMediaUrl,
+    });
+    return {
+      ...scene,
+      creatorSceneId,
+      renderMode: selection?.effectiveRenderMode,
+      exportSource,
+      visualCoveragePlan: createCreatorVisualCoveragePlan({
+        creatorSceneId,
+        image: typeof scene.image === "string" ? scene.image : undefined,
+        videoUrl: typeof scene.videoUrl === "string" ? scene.videoUrl : undefined,
+        videoStatus: typeof scene.videoStatus === "string" ? scene.videoStatus : undefined,
+        videoDurationSeconds: Number(scene.videoDurationSeconds),
+        clipInSec: typeof scene.clipInSec === "number" ? scene.clipInSec : undefined,
+        clipOutSec: typeof scene.clipOutSec === "number" ? scene.clipOutSec : undefined,
+        targetDurationSec: resolveCreatorVisualCoverageTargetDuration({
+          timingTargetDurationSec: timing.targetSceneDuration,
+          fallbackTargetDurationSec: scene.targetDurationSec,
+        }),
+        timing,
+        selectedSource: exportSource === "video" ? "video" : "image",
+        assetHistory: Array.isArray(scene.assetHistory) ? scene.assetHistory : undefined,
+        visualBlockPlan: Array.isArray(scene.visualBlockPlan) ? scene.visualBlockPlan : undefined,
+      }, {
+        editorialCadence: creatorFormat === "youtube_video",
+        motionPresetOffset: rhythm.motionPresetOffset,
+      }),
+    };
+  });
+  const signature = buildCreatorFinalProductionSignature({
+    scenes: manifestScenes,
+    backgroundMusic: DEFAULT_CREATOR_BACKGROUND_MUSIC,
+    audioTimeline: state.production.audioTimeline,
+  });
+  const manifest = JSON.stringify({
+    version: "creator-final-production-manifest-v1",
+    projectUpdatedAt: String(project.updated_at || ""),
+    qualityMode,
+    creatorFormat,
+    scenes: manifestScenes,
+    audioTimeline: state.production.audioTimeline,
+  });
   return {
     state,
-    signature: buildCreatorFinalProductionSignature({
-      scenes: scenes.map((scene) => {
-        const selection = selectionById.get(
-          typeof scene.creatorSceneId === "string" ? scene.creatorSceneId : `legacy-${scene.id}`,
-        );
-        return {
-          ...scene,
-          creatorSceneId: typeof scene.creatorSceneId === "string" ? scene.creatorSceneId : undefined,
-          renderMode: selection?.effectiveRenderMode,
-          exportSource: selection?.exportSource || "none",
-        };
-      }),
-      backgroundMusic: DEFAULT_CREATOR_BACKGROUND_MUSIC,
-      audioTimeline: state.production.audioTimeline,
-    }),
+    manifest,
+    manifestScenes,
+    signature,
+    signatureSha256: createHash("sha256").update(signature).digest("hex"),
+    renderPayloadDigest: createHash("sha256").update(manifest).digest("hex"),
   };
 }
 
@@ -143,7 +197,7 @@ export async function resolveCreatorPublishAuthority(input: {
 
   let canonical;
   try {
-    canonical = currentFinalProductionSignature(project);
+    canonical = currentCreatorFinalProductionAuthority(project);
   } catch {
     return blocked("production_changed");
   }

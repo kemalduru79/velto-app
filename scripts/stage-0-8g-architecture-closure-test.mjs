@@ -101,8 +101,8 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
-check("API route inventory includes reviewed CreatorLab governance, secure audio, publish readiness, duration-contract, and media-hygiene surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "5ecb2cc30ea36d1f88cb256108bfc34f25ab78cd7fd0fedc1fe2f9479d148e6f"));
-check("migration inventory includes usage aggregation index", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "2c31ca5132bd97cda87915597d17f25656b0ed99a83ba7f06b2d9abffa449932"));
+check("API route inventory includes reviewed CreatorLab governance, recovery, and Stage 2A durable export surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c"));
+check("migration inventory includes reviewed Stage 1A recovery and undeployed Stage 2A durable export migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "b59c4148c5beaf93b9fe5b5cb2eca7272b78e5ebf2d86f46061f9f1b5997826a"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
     "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
@@ -114,8 +114,8 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
   ].sort());
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
-check("worker runtime is unchanged", () => assert.equal(sha256("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226"));
-check("export runtime includes economics and canonical CreatorLab audio mixing", () => assert.equal(sha256("export-service/src/server.js"), "1e1ba7dbead6af744a7a0fff22ca89569534c2f7d3d1c3649a76bfe599a11038"));
+check("worker runtime includes the reviewed durable final-export handler", () => assert.equal(sha256("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9"));
+check("export runtime includes canonical audio mixing and durable job-bound output provenance", () => assert.equal(sha256("export-service/src/server.js"), "95575e44be9299e7899fc94ca72126dfba4a3aee9fea0de1f820f34f2b5b8d7c"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
@@ -396,10 +396,30 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-10h-2e-editorial-script-context-test.mjs",
     "lib/creator/controlledLongFormAcceptance.ts",
     "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
+    "app/api/jobs/[jobId]/route.ts",
+    "lib/persistence/jobs/types.ts",
+    "lib/worker/jobHandlers.mjs",
+    "scripts/stage-0-7d-3b-final-export-admission-test.mjs",
+    "lib/creator/finalVideoRecovery.ts",
+    "lib/creator/finalVideoRecoveryProbe.server.ts",
+    "scripts/stage-1-creator-final-video-recovery-test.mjs",
+    "scripts/stage-2a-durable-creator-final-export-test.mjs",
+    "scripts/stage-2b-worker-lifecycle-test.mjs",
+    "scripts/fixtures/stage-2b-concurrent-enqueue.sql",
+    "scripts/fixtures/stage-2b-concurrent-setup.sql",
+    "scripts/fixtures/stage-2b-postgres-baseline.sql",
+    "scripts/fixtures/stage-2b-postgres-integration.sql",
+    "scripts/fixtures/stage-2b-render-heartbeat.sql",
+    "scripts/fixtures/stage-2c-concurrent-request.sql",
+    "scripts/fixtures/stage-2c-concurrent-setup.sql",
+    "scripts/fixtures/stage-2c-economic-integration.sql",
+    "scripts/fixtures/stage-2c-production-economic-baseline.sql",
+    "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
+    "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
-  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/"];
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/", "app/api/creator-final-export-jobs/", "app/api/creator-final-video-recovery/", "app/api/internal/jobs/[jobId]/creator-final-export/"];
   assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
 });
 

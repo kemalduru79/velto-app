@@ -65,6 +65,8 @@ const reviewedPost09MigrationFiles = [
   "supabase/migrations/20261002175339_stage_0_19e1_creator_script_build_foundation.sql",
   "supabase/migrations/20261003133000_stage_0_19e4_creator_script_build_persistence.sql",
   "supabase/migrations/20261004202522_stage_0_19f_d3_script_persistence_revision_authority.sql",
+  "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
+  "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
 ];
 
 assert.deepEqual(

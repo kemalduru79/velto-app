@@ -33,7 +33,7 @@ check(/<video src=\{exportMovieResult\?\.downloadUrl \|\| exportedMovieUrl\}/.te
 const rebuildStart = page.slice(page.indexOf("setIsExportingMovie(true)"), page.indexOf("try {", page.indexOf("setIsExportingMovie(true)")));
 check(!/setExportedMovieUrl\(""\)|setExportMovieResult\(null\)|setExportSignature\(""\)/.test(rebuildStart), "rebuild preserves old output before success");
 check(/catch \(e: any\)[\s\S]*setError/.test(page), "rebuild failure preserves old output");
-check(/setExportedMovieUrl\(nextExportResult\.movieUrl\)[\s\S]*setExportSignature\(currentSignature\)/.test(page), "rebuild success replaces output and provenance");
+check(/setExportedMovieUrl\(nextExportResult\.movieUrl\)[\s\S]*setExportSignature\(authoritativeExportSignature\)/.test(page), "rebuild success replaces output with server-authoritative provenance");
 check(!/onRestoreMedia[\s\S]{0,500}handleExportMovie/.test(editor), "editing never auto rebuilds");
 check(/getOperationCreditCost\("creator_export"/.test(page) && /requestCreatorCostGuardConfirmation/.test(page), "creator_export Cost Guard remains authoritative");
 check(/disabled=\{isExportingMovie \|\| creatorMusicConfirmationRequired\}/.test(page), "double rebuild is blocked while running");

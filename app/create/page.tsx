@@ -87,6 +87,7 @@ import {
   createCreatorVisualCoveragePlan,
   type CreatorVisualCoverageBeat,
 } from "@/lib/creator/visualCoverage";
+import { resolveCreatorProgramVisualRhythm } from "@/lib/creator/programEditorialPolish";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -5616,10 +5617,17 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   };
 
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
-    const exportableScenes = nextScenes
-      .filter((scene) => getSceneExportSource(scene, nextScenes) !== "none")
-      .map((scene) => {
+    const selectedScenes = nextScenes.filter((scene) => getSceneExportSource(scene, nextScenes) !== "none");
+    const exportableScenes = selectedScenes.map((scene, sceneIndex) => {
         const exportSource = getSceneExportSource(scene, nextScenes);
+        const previous = sceneIndex > 0 ? selectedScenes[sceneIndex - 1] : undefined;
+        const previousSource = previous ? getSceneExportSource(previous, nextScenes) : "none";
+        const rhythm = resolveCreatorProgramVisualRhythm({
+          sceneIndex,
+          sceneCount: selectedScenes.length,
+          selectedMediaUrl: exportSource === "video" ? scene.videoUrl : scene.image,
+          previousSelectedMediaUrl: previousSource === "video" ? previous?.videoUrl : previous?.image,
+        });
 
         return {
           id: scene.id,
@@ -5650,6 +5658,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
             ...scene,
             targetDurationSec:
               scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
+          }, {
+            editorialCadence: creatorFormat === "youtube_video",
+            motionPresetOffset: rhythm.motionPresetOffset,
           }),
         };
       });
@@ -11623,7 +11634,7 @@ const generateSceneImage = async (
     try {
       const exportAccessToken = await getAccessTokenOrThrow();
       const exportEndpoint = isCreatorLabFlow
-        ? "/api/creator-export"
+        ? "/api/creator-final-export-jobs"
         : "/api/export-movie";
       const exportRequestKey = isCreatorLabFlow
         ? `${creatorExportOperationId}:export`
@@ -11731,7 +11742,39 @@ const generateSceneImage = async (
         }
       }
 
-      const data = await res.json();
+      let data = await res.json();
+
+      if (isCreatorLabFlow && res.status === 202 && data?.job?.id) {
+        const durableJobId = String(data.job.id);
+        window.localStorage.setItem(`creator-final-export-job:${getProjectKey()}`, durableJobId);
+        setSaveMessage(uiLanguage === "en" ? "Final video queued. You can safely leave this page." : "Final video sıraya alındı. Bu sayfadan güvenle ayrılabilirsin.");
+        for (;;) {
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          const statusToken = await getAccessTokenOrThrow();
+          const statusResponse = await fetch(`/api/jobs/${encodeURIComponent(durableJobId)}`, {
+            headers: { Authorization: `Bearer ${statusToken}` }, cache: "no-store",
+          });
+          const statusBody = await statusResponse.json().catch(() => ({}));
+          const job = statusBody?.job;
+          if (!statusResponse.ok) throw new Error(statusBody?.error || "Final export status could not be read.");
+          if (job?.status === "failed" || job?.status === "cancelled") {
+            window.localStorage.removeItem(`creator-final-export-job:${getProjectKey()}`);
+            throw new Error(job?.failureMessage || "Final export failed safely.");
+          }
+          if (job?.status === "succeeded") {
+            window.localStorage.removeItem(`creator-final-export-job:${getProjectKey()}`);
+            if (job?.output?.ready !== true || !job?.output?.movie?.movieUrl) {
+              setSaveMessage(uiLanguage === "en" ? "Export completed, but the project changed. The result was retained safely." : "Export tamamlandı ancak proje değişti. Sonuç güvenle korundu.");
+              return;
+            }
+            data = { ok: true, ...job.output.movie };
+            break;
+          }
+          setSaveMessage(job?.phase === "rendering"
+            ? (uiLanguage === "en" ? "Final video is rendering…" : "Final video işleniyor…")
+            : (uiLanguage === "en" ? "Final video is queued…" : "Final video sırada…"));
+        }
+      }
 
       if (!res.ok || !data.ok || !data.movieUrl) {
         throw new Error(data?.error || "Film export işlemi başarısız oldu.");
@@ -11751,17 +11794,20 @@ const generateSceneImage = async (
         durationSeconds: data.durationSeconds || 0,
         sceneCount: data.sceneCount || exportScenes.length,
       };
+      const authoritativeExportSignature = isCreatorLabFlow && typeof data.productionSignature === "string"
+        ? data.productionSignature
+        : currentSignature;
 
       const nextArtifactHistory: CreatorArtifactHistory = {
         ...creatorArtifactHistory,
         hadFinalVideo: true,
-        finalVideoSignature: currentSignature,
+        finalVideoSignature: authoritativeExportSignature,
         packageDownloaded: false,
       };
 
       setExportedMovieUrl(nextExportResult.movieUrl);
       setExportMovieResult(nextExportResult);
-      setExportSignature(currentSignature);
+      setExportSignature(authoritativeExportSignature);
       setCreatorPackageDownloaded(false);
       setCreatorArtifactHistory(nextArtifactHistory);
 
@@ -11772,15 +11818,17 @@ const generateSceneImage = async (
         : priorNavigation;
       creatorNavigationRef.current = finalNavigation;
       try {
-        await persistProject(false, {
-          finalVideoUrl: nextExportResult.movieUrl,
-          finalVideoResult: nextExportResult,
-          storedFinalVideoSignature: currentSignature,
-          storedPublishPackageSignature: creatorPackageSignature,
-          packageDownloaded: false,
-          artifactHistory: nextArtifactHistory,
-          publishReady: false,
-        });
+        if (!isCreatorLabFlow) {
+          await persistProject(false, {
+            finalVideoUrl: nextExportResult.movieUrl,
+            finalVideoResult: nextExportResult,
+            storedFinalVideoSignature: currentSignature,
+            storedPublishPackageSignature: creatorPackageSignature,
+            packageDownloaded: false,
+            artifactHistory: nextArtifactHistory,
+            publishReady: false,
+          });
+        }
         finalProductionPersisted = true;
       } catch (saveError) {
         creatorNavigationRef.current = priorNavigation;
@@ -19507,6 +19555,51 @@ const generateSceneImage = async (
   const creatorStrategyComplete = Boolean(creatorProductionPackage);
   const creatorHasFinalVideo = Boolean(exportedMovieUrl);
   const creatorProductionComplete = Boolean(exportedMovieUrl && hasReusableExport());
+
+  useEffect(() => {
+    if (!isCreatorLabFlow || !currentProjectId || typeof window === "undefined") return;
+    const storageKey = `creator-final-export-job:${currentProjectId}`;
+    const jobId = window.localStorage.getItem(storageKey);
+    if (!jobId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const token = await getAccessTokenOrThrow();
+        const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        const body = await response.json().catch(() => ({}));
+        if (cancelled || !response.ok) return;
+        const job = body?.job;
+        if (job?.status === "succeeded") {
+          window.localStorage.removeItem(storageKey);
+          if (job?.output?.ready === true && job?.output?.movie?.movieUrl) {
+            const movie = job.output.movie;
+            setExportedMovieUrl(String(movie.movieUrl));
+            setExportMovieResult({
+              movieUrl: String(movie.movieUrl), downloadUrl: String(movie.downloadUrl || movie.movieUrl),
+              fileName: String(movie.fileName || ""), sizeBytes: Number(movie.sizeBytes || 0),
+              durationSeconds: Number(movie.durationSeconds || 0), sceneCount: Number(movie.sceneCount || 0),
+            });
+            setExportSignature(String(movie.productionSignature || ""));
+          }
+          setIsExportingMovie(false);
+        } else if (job?.status === "failed" || job?.status === "cancelled") {
+          window.localStorage.removeItem(storageKey);
+          setIsExportingMovie(false);
+          setError(job?.failureMessage || "Final export failed safely.");
+        } else {
+          setIsExportingMovie(true);
+          setSaveMessage(job?.phase === "rendering" ? "Final video is rendering…" : "Final video is queued…");
+        }
+      } catch {
+        // A disconnected browser does not alter the durable job. Poll again later.
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [currentProjectId, isCreatorLabFlow]);
   const creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete;
   const creatorPublishComplete =
     creatorProjectLifecycle?.status === "exported";

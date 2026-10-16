@@ -44,7 +44,9 @@ assert.match(handler, /if \(consumptionToken && !durableStorageStarted && supaba
 assert.match(handler, /FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED[\s\S]*admissionId[\s\S]*ownerUserId[\s\S]*projectId[\s\S]*storagePath/);
 const recoveryLog = handler.slice(handler.indexOf('console.error("FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED"'), handler.indexOf("throw new FinalMovieStorageAdmissionError", handler.indexOf('console.error("FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED"')));
 assert.doesNotMatch(recoveryLog, /serviceRole|internalExportToken|consumptionToken/);
-assert.doesNotMatch(handler.slice(durable, handler.indexOf("return res.json")), /abortFinalMovieStorageAdmission|checkStorageGenerationAllowance/);
+const successResponse = handler.indexOf("return res.status(200).send(responseBody)");
+assert.ok(successResponse > durable, "successful durable response follows committed Storage admission");
+assert.doesNotMatch(handler.slice(durable, successResponse), /abortFinalMovieStorageAdmission|checkStorageGenerationAllowance/);
 assert.doesNotMatch(handler, /res\.json\([\s\S]{0,300}consumptionToken|consumption_token/);
 assert.match(service, /app\.get\("\/health"/);
 

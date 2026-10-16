@@ -1,4 +1,4 @@
-export type VeltoJobType = "runtime_probe" | "video_reconcile";
+export type VeltoJobType = "runtime_probe" | "video_reconcile" | "creator_final_export";
 
 export type VeltoJobStatus =
   | "queued"

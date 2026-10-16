@@ -46,7 +46,7 @@ for (const marker of [
 ]) assert.ok(runbook.includes(marker), `runbook missing: ${marker}`);
 
 assert.equal(hash("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe");
-assert.equal(hash("lib/worker/runtime.mjs"), "4ae451080e964c45163c4bff9800209af79c857176e5ab61b271044ca1070226");
+assert.equal(hash("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9");
 assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
   "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
   "geist", "hls.js", "next", "openai", "react", "react-dom",
@@ -59,12 +59,12 @@ assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
 const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
-// Reviewed through Stage 0.20F2. The CreatorLab API surface and additive
+// Reviewed through Stage 2A. The CreatorLab API surface and additive
 // migration history have expanded intentionally since the original 0.8F
 // baseline. Keep these inventory sentinels fail-closed so every later API or
 // migration surface change still requires explicit review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "5ecb2cc30ea36d1f88cb256108bfc34f25ab78cd7fd0fedc1fe2f9479d148e6f");
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "2c31ca5132bd97cda87915597d17f25656b0ed99a83ba7f06b2d9abffa449932");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "b59c4148c5beaf93b9fe5b5cb2eca7272b78e5ebf2d86f46061f9f1b5997826a");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
 console.log("Stage 0.8F-B recovery and operator regression passed.");
