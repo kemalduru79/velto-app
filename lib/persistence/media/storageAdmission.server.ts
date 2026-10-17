@@ -57,6 +57,21 @@ export async function issueStorageAdmissionForOwner(input: {
   return { storageAdmissionId: String(data.id), expiresAt };
 }
 
+export async function releaseUnusedStorageAdmissionForOwner(input: {
+  ownerUserId: string;
+  storageAdmissionId: string;
+}) {
+  const { error } = await createServerSupabaseClient()
+    .from("velto_storage_admissions")
+    .delete()
+    .eq("id", input.storageAdmissionId)
+    .eq("owner_user_id", input.ownerUserId)
+    .is("consumption_started_at", null)
+    .is("consumption_token", null)
+    .is("consumed_at", null);
+  if (error) throw new StorageQuotaOperationalError("STORAGE_QUOTA_INFRASTRUCTURE_ERROR");
+}
+
 export async function beginStorageAdmissionConsumption(input: {
   ownerUserId: string;
   storageAdmissionId: string;

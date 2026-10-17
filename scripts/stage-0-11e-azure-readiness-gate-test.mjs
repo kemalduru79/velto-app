@@ -186,6 +186,22 @@ const allowed = new Set([
   "scripts/stage-0-8f-b-recovery-operator-test.mjs",
   "lib/creator/controlledLongFormAcceptance.ts",
   "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
+  "app/api/creator-final-export-jobs/route.ts",
+  "app/api/internal/jobs/[jobId]/creator-final-export/route.ts",
+  "lib/creator/mediaFingerprint.server.ts",
+  "lib/persistence/media/storageAdmission.server.ts",
+  "lib/worker/jobHandlers.mjs",
+  "Dockerfile.worker",
+  "scripts/fixtures/stage-2-acceptance-pre-render-recovery.sql",
+  "scripts/fixtures/stage-2-historical-generation-integration.sql",
+  "scripts/fixtures/stage-2-incident-0e20-nonbillable-evidence.json",
+  "scripts/fixtures/stage-2-http-supabase-project-baseline.sql",
+  "scripts/fixtures/stage-2-http-failure-injection.sql",
+  "scripts/stage-2-http-concurrent-admission-test.mjs",
+  "scripts/stage-2a-durable-creator-final-export-test.mjs",
+  "scripts/stage-2b-worker-lifecycle-test.mjs",
+  "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
+  "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
 ]);
 assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
 

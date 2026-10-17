@@ -1,0 +1,59 @@
+{
+  "artifactVersion": 1,
+  "incidentJobId": "0e20dfd9-0157-43a1-abe5-1752db2e36f1",
+  "projectId": "e572838e-98ab-42cd-92f4-bf56658cad77",
+  "exportServiceRelease": "e162781db5f633664d6d621f2846a51f632cc201",
+  "railwayDeploymentId": "add2865a-1c5a-4229-b2e5-57ea30552f3a",
+  "request": {
+    "observedAt": "2026-10-17T16:39:39.996Z",
+    "path": "/export-movie",
+    "count": 1,
+    "status": 409,
+    "elapsedMs": 727
+  },
+  "immutableProvenance": {
+    "productionSignatureSha256": "c4fd122cb91a2601168b3e094bdbef6f8b5c1702f1aa410003c63e87ef95af55",
+    "manifestSha256": "7a34bbbd78ef6ee5af161b9987f80a11854db829e1c37533085eb5106d832d76",
+    "renderPayloadSha256": "6d958caf654d5ae037cb90b90f9a405713a46373200df3cd78555f4071f40de1"
+  },
+  "sceneEvidence": {
+    "sceneCount": 36,
+    "selectedMediaPresentCount": 36,
+    "mediaIdentityPresentCount": 0,
+    "deterministicFirstFailure": "scene[0].mediaIdentity"
+  },
+  "durableState": {
+    "queueStatus": "failed",
+    "queueAttempts": 1,
+    "queueLeaseActive": false,
+    "runState": "rendering",
+    "renderLeaseExpired": true,
+    "storageAdmissionConsumptionStarted": true,
+    "storageAdmissionConsumed": false,
+    "deterministicStorageObjectPresent": false,
+    "outputFieldsPresent": false,
+    "previousFinalVideoPreserved": true
+  },
+  "economicEvidence": {
+    "reservationCredits": 2,
+    "reservationStatus": "settled",
+    "economicOperationState": "reserved",
+    "dispatchedAt": null,
+    "providerAcceptedAt": null,
+    "providerRequestId": null,
+    "actualProviderCostUsd": null
+  },
+  "sourceControlFlow": {
+    "renderClaim": "export-service/src/server.js@e162781:1937-1963",
+    "admissionStart": "export-service/src/server.js@e162781:1998",
+    "audioResolution": "export-service/src/server.js@e162781:2000-2007",
+    "identityRejection": "export-service/src/server.js@e162781:2017-2040",
+    "firstMediaDownload": "export-service/src/server.js@e162781:2053-2059",
+    "ffmpegExecution": "after scene media acquisition; unreachable after identity rejection"
+  },
+  "attestation": {
+    "verdict": "PROVEN_NONBILLABLE_FOR_APPLICATION_CREDITS",
+    "basis": "The exact payload deterministically returns 409 at the first scene identity check after the internal durable claim and admission start, but before scene media download or FFmpeg. No external provider acceptance, request identity, actual provider cost, output, upload, or installed asset exists.",
+    "scope": "This attestation covers only incident job 0e20dfd9-0157-43a1-abe5-1752db2e36f1 and the three immutable provenance hashes above."
+  }
+}

@@ -102,7 +102,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
 check("API route inventory includes reviewed CreatorLab governance, recovery, and Stage 2A durable export surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c"));
-check("migration inventory includes reviewed Stage 1A recovery and undeployed Stage 2A durable export migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "b59c4148c5beaf93b9fe5b5cb2eca7272b78e5ebf2d86f46061f9f1b5997826a"));
+check("migration inventory includes reviewed Stage 1A, Stage 2A, pre-render recovery, and generation authority migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "d80aa8d09d88a0760ea624dd8b3e0e808c07f4955418859109be2a39950f480e"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
     "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
@@ -115,9 +115,10 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
 check("worker runtime includes the reviewed durable final-export handler", () => assert.equal(sha256("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9"));
-check("export runtime includes canonical audio mixing and durable job-bound output provenance", () => assert.equal(sha256("export-service/src/server.js"), "95575e44be9299e7899fc94ca72126dfba4a3aee9fea0de1f820f34f2b5b8d7c"));
+check("export runtime includes canonical audio mixing, pre-render identity validation, and durable job-bound output provenance", () => assert.equal(sha256("export-service/src/server.js"), "ba04d1c67e348ed29449eff67b9020b2c85da29d0587ad226016deaef6a80a0c"));
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
+  assert.equal(sha256("Dockerfile.worker"), "97b5c693969f1bec0e5e34c6720aab338f1077fff624af709b8f0c8d7637465b");
   assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
   assert.equal(sha256("compose.yaml"), "3cd87654ca1ff919a46f75302b7f527bdcadcd994d6ca236d83ba42dd3f0046b");
 });
@@ -129,6 +130,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-8f-a-health-observability-test.mjs",
     "scripts/stage-0-8f-b-recovery-operator-test.mjs",
     "scripts/stage-0-8g-architecture-closure-test.mjs",
+    "Dockerfile.worker",
     "app/api/share-project/route.ts",
     "app/api/creator-music/acquire/route.ts",
     "app/create/page.tsx",
@@ -402,6 +404,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-0-7d-3b-final-export-admission-test.mjs",
     "lib/creator/finalVideoRecovery.ts",
     "lib/creator/finalVideoRecoveryProbe.server.ts",
+    "lib/creator/mediaFingerprint.server.ts",
     "scripts/stage-1-creator-final-video-recovery-test.mjs",
     "scripts/stage-2a-durable-creator-final-export-test.mjs",
     "scripts/stage-2b-worker-lifecycle-test.mjs",
@@ -410,12 +413,21 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/fixtures/stage-2b-postgres-baseline.sql",
     "scripts/fixtures/stage-2b-postgres-integration.sql",
     "scripts/fixtures/stage-2b-render-heartbeat.sql",
+    "scripts/fixtures/stage-2-acceptance-pre-render-recovery.sql",
+    "scripts/fixtures/stage-2-historical-generation-integration.sql",
+    "scripts/fixtures/stage-2-incident-0e20-nonbillable-evidence.json",
+    "scripts/fixtures/stage-2-http-supabase-project-baseline.sql",
+    "scripts/fixtures/stage-2-http-failure-injection.sql",
+    "scripts/stage-2-http-concurrent-admission-test.mjs",
+    "lib/persistence/media/storageAdmission.server.ts",
     "scripts/fixtures/stage-2c-concurrent-request.sql",
     "scripts/fixtures/stage-2c-concurrent-setup.sql",
     "scripts/fixtures/stage-2c-economic-integration.sql",
     "scripts/fixtures/stage-2c-production-economic-baseline.sql",
     "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
     "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
+    "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
+    "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

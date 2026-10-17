@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getFinalMovieExportApiBase, getFinalMovieInternalToken, ownedFinalMovieHeaders } from "@/lib/creator/finalMovieOwnership.server";
 import { extractProjectMediaReferences } from "@/lib/persistence/media/projectReferences";
 import { registerCreatorMusicExportUsage } from "@/lib/creator/musicUsage";
+import { validateCreatorRenderSceneMediaIdentities } from "@/lib/creator/mediaFingerprint.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ function tokenMatches(req: NextRequest) {
 export async function POST(req: NextRequest, context: { params: Promise<{ jobId: string }> }) {
   if (!tokenMatches(req)) return json({ ok: false, error: "Internal worker authentication failed." }, 401);
   const { jobId } = await context.params;
+  const workerId = (req.headers.get("x-velto-worker-id") || "").trim();
+  if (!workerId) return json({ ok: false, error: "Internal worker identity is required." }, 401);
   const job = await getPersistenceServices().jobQueue.getInternal(jobId);
   if (!job || job.jobType !== "creator_final_export" || !job.userId || !job.projectId) return json({ ok: false, error: "Final export job was not found." }, 404);
   const payload = record(job.payload);
@@ -34,6 +37,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     return json({ ok: false, error: "Persisted final export provenance is invalid." }, 409);
   }
   const supabase = createServerSupabaseClient();
+  if (!validateCreatorRenderSceneMediaIdentities(renderPayload.scenes)) {
+    const { error } = await supabase.rpc("velto_reject_creator_final_export_pre_render", {
+      p_job_id: jobId,
+      p_owner_user_id: job.userId,
+      p_manifest_sha256: manifestSha256,
+      p_render_payload_sha256: renderPayloadSha256,
+      p_worker_id: workerId,
+      p_reason: "media_identity_invalid",
+    });
+    if (error) return json({ ok: false, error: "Final export pre-render rejection could not be reconciled safely." }, 503);
+    return json({ ok: false, error: "Final export scene media identity is invalid.", failureStage: "pre_render_validation", renderAccepted: false }, 409);
+  }
   const { data: run, error: runError } = await supabase.from("velto_creator_final_export_runs").select("state,public_url,storage_path,size_bytes,output_sha256,output,production_signature,production_signature_sha256,manifest_sha256,render_payload_sha256").eq("job_id", jobId).single();
   if (runError || run.production_signature_sha256 !== signatureSha256 || run.manifest_sha256 !== manifestSha256 || run.render_payload_sha256 !== renderPayloadSha256) {
     return json({ ok: false, error: "Final export run provenance is invalid." }, 409);
@@ -52,6 +67,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     });
     const data = record(await response.json().catch(() => ({})));
     if (response.status === 202) return json({ ok: true, status: "rendering" }, 202);
+    if (response.status === 409 && data.failureStage === "pre_render_validation" && data.renderAccepted === false) {
+      const { error } = await supabase.rpc("velto_reject_creator_final_export_pre_render", {
+        p_job_id: jobId,
+        p_owner_user_id: job.userId,
+        p_manifest_sha256: manifestSha256,
+        p_render_payload_sha256: renderPayloadSha256,
+        p_worker_id: workerId,
+        p_reason: "media_identity_invalid",
+      });
+      if (error) return json({ ok: false, error: "Final export pre-render rejection could not be reconciled safely." }, 503);
+      return json({ ok: false, error: String(data.error || "Final export was rejected before rendering."), failureStage: "pre_render_validation", renderAccepted: false }, 409);
+    }
     if (!response.ok || data.ok !== true || data.finalExportJobId !== jobId || data.manifestSha256 !== manifestSha256 || data.renderPayloadSha256 !== renderPayloadSha256) {
       return json({ ok: false, error: "Final export service did not return bound output provenance." }, response.status >= 500 ? 503 : 409);
     }

@@ -14,6 +14,7 @@ import type { TimelineSyncPlan } from "@/lib/video/timelineSync";
 import { createHash } from "node:crypto";
 import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "./visualCoverage";
 import { resolveCreatorProgramVisualRhythm } from "./programEditorialPolish";
+import { fingerprintCreatorMedia } from "./mediaFingerprint.server";
 
 export type CreatorPublishAuthorityBlocker =
   | "project_required"
@@ -114,6 +115,8 @@ export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiR
       ? String(previous?.videoUrl || "")
       : String(previous?.image || "");
     const timing = record(scene.timing);
+    const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+    if (!mediaIdentity) throw new Error("CREATOR_FINAL_PRODUCTION_MEDIA_IDENTITY_INVALID");
     const rhythm = resolveCreatorProgramVisualRhythm({
       sceneIndex: index,
       sceneCount: selectedSceneEntries.length,
@@ -125,6 +128,7 @@ export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiR
       creatorSceneId,
       renderMode: selection?.effectiveRenderMode,
       exportSource,
+      mediaIdentity,
       visualCoveragePlan: createCreatorVisualCoveragePlan({
         creatorSceneId,
         image: typeof scene.image === "string" ? scene.image : undefined,

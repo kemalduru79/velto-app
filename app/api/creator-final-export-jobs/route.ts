@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { currentCreatorFinalProductionAuthority } from "@/lib/creator/publishReadiness.server";
 import { resolveCreatorAudioRenderability } from "@/lib/creator/audioRenderability.server";
 import { validateCreatorAudioTimelineTopology } from "@/lib/creator/audioTimeline";
-import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
+import { issueStorageAdmissionForOwner, releaseUnusedStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
 import { reserveMeteredOperation, releaseMeteredOperation } from "@/lib/credits/serverMetering";
 import { createHash } from "node:crypto";
 import { createExportFlowValidation } from "@/lib/video/exportFlowValidation";
@@ -13,6 +13,7 @@ import { resolveCreatorProjectUsedMediaGovernance, creatorGovernanceExportBlockR
 import { checkStorageGenerationAllowance, storageQuotaFullResponse } from "@/lib/persistence/media/storageQuota.server";
 import { buildCreatorMusicUsageEventIdentity } from "@/lib/creator/musicUsage";
 import { claimEconomicOperation, releaseEconomicOperationClaim, unknownCost } from "@/lib/economics";
+import { validateCreatorRenderSceneMediaIdentities } from "@/lib/creator/mediaFingerprint.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
   let enqueueOwnerUserId = "";
   let enqueueIdempotencyKey = "";
   let enqueueSignatureSha256 = "";
+  let storageAdmissionId = "";
   try {
     const principal = await authenticateRequest(request);
     enqueueOwnerUserId = principal.id;
@@ -41,6 +43,9 @@ export async function POST(request: Request) {
     if (!project || project.flow_type !== "creator_lab") return json({ ok: false, code: "PROJECT_NOT_FOUND" }, 404);
 
     const authority = currentCreatorFinalProductionAuthority(project);
+    if (!validateCreatorRenderSceneMediaIdentities(authority.manifestScenes)) {
+      return json({ ok: false, code: "CREATOR_FINAL_EXPORT_MEDIA_IDENTITY_INVALID" }, 409);
+    }
     const governance = (await resolveCreatorProjectUsedMediaGovernance({ ownerUserId: principal.id, project })).governance;
     if (governance.status === "blocked") return NextResponse.json(creatorGovernanceExportBlockResponse(governance), { status: 409 });
     const topology = validateCreatorAudioTimelineTopology({
@@ -74,11 +79,18 @@ export async function POST(request: Request) {
     if (!flowValidation.canExport || (flowValidation.requiresManualConfirmation && body.manualConfirmationGranted !== true)) {
       return json({ ok: false, code: "CREATOR_FINAL_EXPORT_FLOW_BLOCKED", flowValidation }, 409);
     }
-    const idempotencyKey = `creator-final-export:${projectId}:${authority.signatureSha256}`;
+    const client = createServerSupabaseClient();
+    const { data: generationData, error: generationError } = await client.rpc("velto_resolve_creator_final_export_generation", {
+      p_owner_user_id: principal.id, p_project_id: projectId, p_production_signature_sha256: authority.signatureSha256,
+    });
+    if (generationError) throw new Error(generationError.message);
+    const generationAuthority = row(generationData) as Record<string, unknown>;
+    const generation = Number(generationAuthority?.generation);
+    if (!Number.isSafeInteger(generation) || generation < 0) throw new Error("Creator final export generation authority is invalid.");
+    const idempotencyKey = `creator-final-export:${projectId}:${authority.signatureSha256}${generation === 0 ? "" : `:generation:${generation}`}`;
     enqueueIdempotencyKey = idempotencyKey;
     enqueueSignatureSha256 = authority.signatureSha256;
     economicAttemptKey = `${idempotencyKey}:velto-export:1`;
-    const client = createServerSupabaseClient();
     const { data: existing } = await client.from("velto_jobs").select("id,status,created_at,updated_at")
       .eq("user_id", principal.id).eq("idempotency_key", idempotencyKey).maybeSingle();
     if (existing) return json({ ok: true, reused: true, job: existing, productionSignatureSha256: authority.signatureSha256 }, 202);
@@ -93,7 +105,7 @@ export async function POST(request: Request) {
       referenceId: projectId,
       requireCostGuardConfirmation: true,
       admissionMode: "balance_backed",
-      metadata: { projectId, productionSignatureSha256: authority.signatureSha256 },
+      metadata: { projectId, productionSignatureSha256: authority.signatureSha256, generation },
     });
     if (!reservation) throw new Error("Creator final export credit reservation was not created.");
     await claimEconomicOperation({
@@ -106,14 +118,14 @@ export async function POST(request: Request) {
       cost: unknownCost("Railway runtime, Supabase storage, and egress rates are not approved."),
     });
     economicClaimed = true;
-    const { storageAdmissionId } = await issueStorageAdmissionForOwner({
+    ({ storageAdmissionId } = await issueStorageAdmissionForOwner({
       ownerUserId: principal.id, mediaKind: "video", purpose: "final_movie_export", projectReference: projectId,
       metadata: {
         productProfile: "creatorlab", operation: "creator_final_export_job",
         productionSignatureSha256: authority.signatureSha256,
         manifestSha256: authority.renderPayloadDigest,
       },
-    });
+    }));
     const renderPayload = {
       productProfile: "creatorlab",
       projectId,
@@ -137,7 +149,7 @@ export async function POST(request: Request) {
       return identity ? [identity] : [];
     });
     const renderPayloadSha256 = createHash("sha256").update(JSON.stringify(renderPayload)).digest("hex");
-    const { data, error } = await client.rpc("velto_enqueue_creator_final_export", {
+    const { data, error } = await client.rpc("velto_enqueue_creator_final_export_generation", {
       p_owner_user_id: principal.id,
       p_project_id: projectId,
       p_expected_updated_at: project.updated_at,
@@ -146,6 +158,7 @@ export async function POST(request: Request) {
       p_manifest: JSON.parse(authority.manifest),
       p_manifest_sha256: authority.renderPayloadDigest,
       p_render_payload_sha256: renderPayloadSha256,
+      p_generation: generation,
       p_payload: {
         renderPayload, renderPayloadSha256, storageAdmissionId, musicUsageIdentities,
         creditReservationId: reservation?.reservationId || null,
@@ -169,6 +182,9 @@ export async function POST(request: Request) {
     }
     if (reservation) await releaseMeteredOperation(reservation, "creator final export enqueue failed").catch(() => undefined);
     if (economicClaimed) await releaseEconomicOperationClaim(economicAttemptKey, "creator final export enqueue failed").catch(() => undefined);
+    if (storageAdmissionId && enqueueOwnerUserId) {
+      await releaseUnusedStorageAdmissionForOwner({ ownerUserId: enqueueOwnerUserId, storageAdmissionId }).catch(() => undefined);
+    }
     console.error("creator final export enqueue failed", error);
     return json({ ok: false, code: "CREATOR_FINAL_EXPORT_ENQUEUE_FAILED", error: "Final export could not be queued safely." }, 500);
   }

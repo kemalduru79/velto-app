@@ -1934,6 +1934,22 @@ app.post("/export-movie", async (req, res) => {
       });
     }
 
+    if (isCreatorLabExport) {
+      const invalidMediaIdentity = usableScenes.some((scene) => {
+        const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+        const actualMediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+        return !actualMediaIdentity || scene.mediaIdentity !== actualMediaIdentity;
+      });
+      if (invalidMediaIdentity) {
+        return res.status(409).json({
+          ok: false,
+          error: "Final video scene media identity is invalid.",
+          failureStage: "pre_render_validation",
+          renderAccepted: false,
+        });
+      }
+    }
+
     supabase = getSupabaseAdmin();
     if (durableExport) {
       const { data: claimData, error: claimError } = await supabase.rpc("velto_claim_creator_final_export_render", {
@@ -2035,9 +2051,6 @@ app.post("/export-movie", async (req, res) => {
       if (isCreatorLabExport) {
         const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
         const actualMediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
-        if (!actualMediaIdentity || scene.mediaIdentity !== actualMediaIdentity) {
-          return res.status(409).json({ ok: false, error: "Final video scene media identity is invalid." });
-        }
         if (process.env.NODE_ENV !== "production") {
           console.info("Export service scene", {
             scene: scene.creatorSceneId.slice(0, 12),
