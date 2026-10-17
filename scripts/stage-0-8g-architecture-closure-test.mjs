@@ -102,7 +102,7 @@ check("no Terraform, Bicep, or ARM template exists", () => {
   assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 });
 check("API route inventory includes reviewed CreatorLab governance, recovery, and Stage 2A durable export surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c"));
-check("migration inventory includes reviewed Stage 1A, Stage 2A, pre-render recovery, and generation authority migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "d80aa8d09d88a0760ea624dd8b3e0e808c07f4955418859109be2a39950f480e"));
+check("migration inventory includes reviewed Stage 1A, Stage 2A, pre-render recovery, and generation authority migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "20cfcfb02bc50dd699076cd7d20d0db14cb1b9df29a870278d3784d3c3ada6dd"));
 check("dependency manifest preserves reviewed runtime dependencies", () => {
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
     "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
