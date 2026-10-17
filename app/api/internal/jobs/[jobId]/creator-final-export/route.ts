@@ -93,7 +93,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     sceneCount: Number(output.sceneCount || 0), finalExportJobId: jobId, outputSha256: String(output.outputSha256 || output.output_sha256 || ""),
     productionSignature: String(run.production_signature || ""),
   };
-  const references = extractProjectMediaReferences({ ...project, exported_movie_url: movieUrl });
+  // The install RPC reads snake_case keys via jsonb_to_recordset; project references are camelCase in TypeScript.
+  const references = extractProjectMediaReferences({ ...project, exported_movie_url: movieUrl }).map((reference) => ({
+    url: reference.url,
+    reference_type: reference.referenceType,
+    reference_key: reference.referenceKey,
+  }));
   const { data: installed, error: installError } = await supabase.rpc("velto_install_creator_final_export", {
     p_job_id: jobId, p_exported_movie_result: exportedMovieResult, p_references: references,
   });
