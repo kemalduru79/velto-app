@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
+import { createJiti } from "jiti";
 import { EMPTY_CREATOR_AUDIO_TIMELINE } from "../lib/creator/audioTimeline.ts";
 import { createCreatorScript } from "../lib/creator/creatorScript.ts";
 import { resolveCreatorScriptMutationAuthority } from "../lib/creator/creatorScriptMutationAuthority.ts";
@@ -52,6 +52,17 @@ assert.equal(saveCalls, 1);
 assert.deepEqual(storedProject.exported_movie_result.creatorProjectState, malformed);
 assert.equal(storedProject.exported_movie_result.metadataOnly, "new");
 
+// Valid canonical compatibility states distinguish an omitted script from an
+// explicit null and a present script without throwing during hydration.
+for (const scriptVariant of ["missing", "null", "valid"]) {
+  const compatible = structuredClone(snapshot);
+  if (scriptVariant === "missing") delete compatible.strategy.script;
+  if (scriptVariant === "null") compatible.strategy.script = null;
+  const compatibleProject = { exported_movie_result: attachCreatorProjectState({}, compatible) };
+  assert.equal(inspectCreatorProjectStatePersistenceAuthority(compatibleProject).status, "valid");
+  assert.equal(readCreatorProjectState(compatibleProject).strategy.script?.title ?? null, scriptVariant === "valid" ? script.title : null);
+}
+
 const invalidScriptSnapshot = structuredClone(malformed);
 invalidScriptSnapshot.strategy.script = { version: 1, title: "broken" };
 const invalidProject = { exported_movie_result: attachCreatorProjectState({}, invalidScriptSnapshot) };
@@ -64,9 +75,89 @@ assert.equal(inspectCreatorProjectStatePersistenceAuthority({ exported_movie_res
 assert.equal(readCreatorProjectState({ exported_movie_result: attachCreatorProjectState({}, legitimateNull) }).strategy.script, null);
 assert.equal(inspectCreatorProjectStatePersistenceAuthority({ exported_movie_result: {} }).status, "legacy_absent");
 
-const route = fs.readFileSync(new URL("../app/api/save-project/route.ts", import.meta.url), "utf8");
-assert.match(route, /CREATOR_PROJECT_STATE_REPAIR_REQUIRED/);
-assert.match(route, /preserveQuarantinedCreatorProjectState/);
-assert.ok(route.indexOf("CREATOR_PROJECT_STATE_REPAIR_REQUIRED") < route.indexOf("resolveCreatorScriptMutationAuthority({"), "quarantine blocks full save before mutation resolution");
+for (const unexpected of [null, [], { ...structuredClone(snapshot), version: 2 }]) {
+  const unexpectedProject = { exported_movie_result: { retainedEnvelope: true, creatorProjectState: unexpected } };
+  assert.equal(inspectCreatorProjectStatePersistenceAuthority(unexpectedProject).status, "malformed_snapshot");
+}
+
+// Exercise the actual HTTP handler with injected authentication and persistence
+// adapters. This covers request parsing, quarantine decisions, repository
+// writes, and response status rather than asserting source order.
+const jiti = createJiti(import.meta.url, {
+  interopDefault: true,
+  alias: { "@": new URL("..", import.meta.url).pathname.replace(/\/$/, ""), "server-only": new URL("../lib/creator/projectState.ts", import.meta.url).pathname },
+});
+const { POST } = await jiti.import("../app/api/save-project/route.ts");
+const handleSaveProjectRequest = POST.handleForTest;
+const owner = { id: "owner-1", email: "owner@test.invalid", providerUser: { id: "owner-1" } };
+const request = (body) => new Request("http://localhost/api/save-project", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const execute = async (persisted, body) => {
+  let saved = structuredClone(persisted); const patches = [];
+  const projectRepository = {
+    getForOwner: async () => structuredClone(saved),
+    saveForOwner: async (patch) => {
+      patches.push(structuredClone(patch));
+      saved = {
+        ...saved,
+        ...(Object.hasOwn(patch, "title") ? { title: patch.title } : {}),
+        ...(Object.hasOwn(patch, "scenes") ? { scenes: patch.scenes } : {}),
+        ...(Object.hasOwn(patch, "exportedMovieUrl") ? { exported_movie_url: patch.exportedMovieUrl } : {}),
+        ...(Object.hasOwn(patch, "exportSignature") ? { export_signature: patch.exportSignature } : {}),
+        ...(Object.hasOwn(patch, "exportedMovieResult") ? { exported_movie_result: patch.exportedMovieResult } : {}),
+      };
+      return { project: structuredClone(saved), created: false };
+    },
+  };
+  const services = { projectRepository, mediaAssetRepository: {
+    findByPublicUrl: async () => null,
+    replaceProjectReferences: async () => undefined,
+    listFinalVideosForProject: async () => saved.exported_movie_url ? [{ id: "current-final", ownerUserId: owner.id, mediaKind: "final_video", lifecycleState: "active", publicUrl: saved.exported_movie_url, metadata: { projectId: saved.id } }] : [],
+  } };
+  const response = await handleSaveProjectRequest(request(body), { authenticate: async () => owner, persistence: () => services });
+  return { response, payload: await response.json(), patches, saved };
+};
+const baseBody = { projectId: project.id, flowType: "creator_lab", expectedUpdatedAt: "revision-1" };
+
+for (const scriptVariant of ["missing", "null", "valid"]) {
+  const compatible = structuredClone(snapshot);
+  if (scriptVariant === "missing") delete compatible.strategy.script;
+  if (scriptVariant === "null") compatible.strategy.script = null;
+  const compatibleProject = { ...project, exported_movie_result: attachCreatorProjectState({ sibling: "preserved" }, compatible) };
+  const full = await execute(compatibleProject, { ...baseBody, creatorProjectState: compatible });
+  assert.equal(full.response.status, 200, `valid ${scriptVariant} script full save succeeds`);
+  assert.equal(full.patches.length, 1);
+  const partial = await execute(compatibleProject, { ...baseBody, title: `Compatible ${scriptVariant}` });
+  assert.equal(partial.response.status, 200, `valid ${scriptVariant} script partial save succeeds`);
+  assert.equal(partial.patches.length, 1);
+}
+
+const wrongVersion = structuredClone(snapshot); wrongVersion.version = 2;
+const quarantinedProject = {
+  ...project, title: "Original", exported_movie_url: "https://assets.test/previous.mp4", export_signature: "previous-signature",
+  exported_movie_result: attachCreatorProjectState({ projectLifecycle: { status: "production_ready" }, projectPerformanceHistory: [{ id: "history" }] }, wrongVersion),
+};
+const beforeQuarantine = structuredClone(quarantinedProject);
+const blocked = await execute(quarantinedProject, { ...baseBody, creatorProjectState: snapshot });
+assert.equal(blocked.response.status, 409);
+assert.equal(blocked.payload.code, "CREATOR_PROJECT_STATE_REPAIR_REQUIRED");
+assert.equal(blocked.patches.length, 0, "wrong-version full save performs no repository mutation");
+
+const partialHttp = await execute(quarantinedProject, { ...baseBody, title: "Safe rename", exportedMovieResult: { metadataOnly: "changed" } });
+assert.equal(partialHttp.response.status, 200);
+assert.equal(partialHttp.patches.length, 1);
+assert.deepEqual(partialHttp.saved.exported_movie_result.creatorProjectState, beforeQuarantine.exported_movie_result.creatorProjectState);
+assert.deepEqual(partialHttp.saved.exported_movie_result.projectLifecycle, beforeQuarantine.exported_movie_result.projectLifecycle);
+assert.deepEqual(partialHttp.saved.exported_movie_result.projectPerformanceHistory, beforeQuarantine.exported_movie_result.projectPerformanceHistory);
+assert.deepEqual(partialHttp.saved.scenes, beforeQuarantine.scenes);
+assert.equal(partialHttp.saved.exported_movie_url, beforeQuarantine.exported_movie_url);
+assert.equal(partialHttp.saved.export_signature, beforeQuarantine.export_signature);
+assert.equal(Object.hasOwn(partialHttp.patches[0], "scenes"), false);
+assert.equal(Object.hasOwn(partialHttp.patches[0], "exportedMovieUrl"), false);
+assert.equal(Object.hasOwn(partialHttp.patches[0], "exportSignature"), false);
+
+const invalidPartial = await execute({ ...project, exported_movie_result: attachCreatorProjectState({}, invalidScriptSnapshot) }, { ...baseBody, title: "Must block" });
+assert.equal(invalidPartial.response.status, 409);
+assert.equal(invalidPartial.payload.code, "CREATOR_PROJECT_STATE_REPAIR_REQUIRED");
+assert.equal(invalidPartial.patches.length, 0);
 
 console.log("STAGE_R2_SAFETY_CREATOR_PROJECT_QUARANTINE=PASS");
