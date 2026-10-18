@@ -428,6 +428,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
     "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
     "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
+    "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
