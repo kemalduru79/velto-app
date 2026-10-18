@@ -8,7 +8,7 @@ export function resolveCreatorScriptRefinementModel(env: {
   OPENAI_SCRIPT_MODEL?: string;
   OPENAI_MODEL?: string;
 }): string {
-  return [env.OPENAI_REFINEMENT_MODEL, env.OPENAI_SCRIPT_MODEL, env.OPENAI_MODEL, "gpt-4.1-mini"]
+  return [env.OPENAI_REFINEMENT_MODEL, env.OPENAI_SCRIPT_MODEL, "gpt-6.1-sol"]
     .find((value) => typeof value === "string" && value.trim())!.trim();
 }
 
