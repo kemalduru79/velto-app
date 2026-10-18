@@ -71,6 +71,13 @@ export type CreatorProjectStateInput = Omit<CreatorProjectStateSnapshot, "versio
 
 type LegacyCreatorProject = Record<string, unknown>;
 
+export type CreatorProjectStatePersistenceAuthority =
+  | { status: "legacy_absent"; snapshot: null; script: null }
+  | { status: "valid"; snapshot: CreatorProjectStateSnapshot; script: CreatorScript | null }
+  | { status: "malformed_valid_script"; snapshot: unknown; script: CreatorScript }
+  | { status: "malformed_null_script"; snapshot: unknown; script: null }
+  | { status: "malformed_invalid_script"; snapshot: unknown; script: null };
+
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -163,6 +170,33 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
   );
 }
 
+export function inspectCreatorProjectStatePersistenceAuthority(
+  project: LegacyCreatorProject,
+): CreatorProjectStatePersistenceAuthority {
+  const exportResult = record(project.exported_movie_result);
+  const snapshot = exportResult.creatorProjectState;
+  const candidate = record(snapshot);
+  if (candidate.version !== CREATOR_PROJECT_STATE_VERSION) return { status: "legacy_absent", snapshot: null, script: null };
+  if (isValidCreatorProjectState(snapshot)) {
+    return { status: "valid", snapshot, script: candidate.strategy && record(candidate.strategy).script !== null ? normalizeCreatorScript(record(candidate.strategy).script) : null };
+  }
+  const strategy = record(candidate.strategy);
+  if (!hasOwn(strategy, "script") || strategy.script === null) return { status: "malformed_null_script", snapshot, script: null };
+  try {
+    return { status: "malformed_valid_script", snapshot, script: normalizeCreatorScript(strategy.script) };
+  } catch {
+    return { status: "malformed_invalid_script", snapshot, script: null };
+  }
+}
+
+export function preserveQuarantinedCreatorProjectState(input: {
+  authority: CreatorProjectStatePersistenceAuthority;
+  exportedMovieResult: unknown;
+}) {
+  if (!input.authority.status.startsWith("malformed_")) return input.exportedMovieResult;
+  return { ...record(input.exportedMovieResult), creatorProjectState: input.authority.snapshot };
+}
+
 const finitePositive = (value: unknown, fallback: number) => {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
@@ -222,6 +256,8 @@ export function readCreatorAudioTimelineHydration(
 export function readCreatorProjectState(
   project: LegacyCreatorProject,
 ): CreatorProjectStateSnapshot {
+  const persistenceAuthority = inspectCreatorProjectStatePersistenceAuthority(project);
+  if (persistenceAuthority.status === "malformed_invalid_script") throw new Error("CREATOR_PROJECT_STATE_SCRIPT_INVALID");
   const exportResult = record(project.exported_movie_result);
   const candidateSnapshot = record(exportResult.creatorProjectState);
   const candidateProduction = record(candidateSnapshot.production);
@@ -303,7 +339,7 @@ export function readCreatorProjectState(
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)
-          : null,
+          : persistenceAuthority.status === "malformed_valid_script" ? persistenceAuthority.script : null,
       pendingRefinement: revisionState.pending,
       revisionHistory: revisionState.history,
     },

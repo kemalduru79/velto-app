@@ -6,7 +6,9 @@ import {
 import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
 import {
   attachCreatorProjectState,
+  inspectCreatorProjectStatePersistenceAuthority,
   isValidCreatorProjectState,
+  preserveQuarantinedCreatorProjectState,
   type CreatorProjectStateSnapshot,
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
@@ -95,6 +97,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    const persistedCreatorStateAuthority = persistedCreatorProject
+      ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
+      : null;
+    if (persistedCreatorStateAuthority?.status.startsWith("malformed_") && hasCreatorProjectState) {
+      return NextResponse.json(
+        { error: "Persisted Creator project authority requires repair before a full save.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" },
+        { status: 409 },
+      );
+    }
     let shouldInvalidateCreatorProduction = false;
     let suppressStaleCreatorFinalProjection = false;
     let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
@@ -276,12 +287,15 @@ export async function POST(req: Request) {
           },
         }
       : creatorStateForAttachment;
-    const exportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
+    const candidateExportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
       ? attachCreatorProjectState(
           body.exportedMovieResult,
           creatorStateForAttachment,
         )
       : body.exportedMovieResult;
+    const exportedMovieResult = persistedCreatorStateAuthority
+      ? preserveQuarantinedCreatorProjectState({ authority: persistedCreatorStateAuthority, exportedMovieResult: candidateExportedMovieResult })
+      : candidateExportedMovieResult;
     const result =
       await services.projectRepository.saveForOwner({
         projectId,

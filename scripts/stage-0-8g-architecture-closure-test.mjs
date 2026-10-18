@@ -416,6 +416,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/fixtures/stage-2c-production-economic-baseline.sql",
     "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
     "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
+    "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
