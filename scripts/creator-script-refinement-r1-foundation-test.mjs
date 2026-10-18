@@ -6,9 +6,10 @@ import {
   resolveCreatorScriptRefinementModel,
 } from "../lib/creator/creatorScriptRefinementRuntime.ts";
 
-assert.equal(resolveCreatorScriptRefinementModel({}), "gpt-4.1-mini");
+assert.equal(resolveCreatorScriptRefinementModel({}), "gpt-6.1-sol");
 assert.equal(resolveCreatorScriptRefinementModel({ OPENAI_SCRIPT_MODEL: "gpt-6.1-sol" }), "gpt-6.1-sol");
 assert.equal(resolveCreatorScriptRefinementModel({ OPENAI_MODEL: "gpt-4.1-mini", OPENAI_SCRIPT_MODEL: "gpt-6.1-sol", OPENAI_REFINEMENT_MODEL: "gpt-5.6" }), "gpt-5.6");
+assert.equal(resolveCreatorScriptRefinementModel({ OPENAI_MODEL: "gpt-4.1-mini" }), "gpt-6.1-sol");
 assert.equal(resolveCreatorScriptRefinementModel({ OPENAI_REFINEMENT_MODEL: "  ", OPENAI_SCRIPT_MODEL: "gpt-6.1-sol" }), "gpt-6.1-sol");
 assert.deepEqual(creatorScriptRefinementModelOptions("gpt-6.1-sol", 0.25), { reasoning: { effort: "medium" } });
 assert.deepEqual(creatorScriptRefinementModelOptions("gpt-5.6", 0.1), { reasoning: { effort: "medium" } });
