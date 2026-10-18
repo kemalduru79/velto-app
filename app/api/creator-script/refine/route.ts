@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { recordOpenAITextEconomics } from "@/lib/economics";
+import { classifyCreatorScriptRefinementFailure, creatorScriptRefinementModelOptions, resolveCreatorScriptRefinementModel } from "@/lib/creator/creatorScriptRefinementRuntime";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { attachCreatorProjectState, readCreatorProjectState } from "@/lib/creator/projectState";
@@ -12,6 +13,7 @@ import { createCreatorProductionInvalidationIdentity, creatorProjectHasMeaningfu
 import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const text = (value: unknown, max = 4000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const exactText = (value: unknown, max = 100000) => typeof value === "string" ? value.slice(0, max) : "";
@@ -76,9 +78,14 @@ export async function POST(req: Request) {
     }
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: "Script refinement is unavailable." }, { status: 500 });
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const model = resolveCreatorScriptRefinementModel({
+      OPENAI_REFINEMENT_MODEL: process.env.OPENAI_REFINEMENT_MODEL,
+      OPENAI_SCRIPT_MODEL: process.env.OPENAI_SCRIPT_MODEL,
+      OPENAI_MODEL: process.env.OPENAI_MODEL,
+    });
     const refine = async (source: string, context: unknown) => {
-      const response = await client.responses.create({ model: process.env.OPENAI_MODEL || "gpt-4.1-mini", input: [{ role: "system", content: "Refine only the supplied creator script text. Return JSON with replacementText only. Preserve factual meaning, evidence uncertainty, continuity, and language. Do not add claims, citations, production scenes, or metadata." }, { role: "user", content: JSON.stringify({ instruction, source, context, requiredJsonShape: { replacementText: "string" } }) }], text: { format: { type: "json_object" } }, max_output_tokens: Math.max(800, Math.ceil(source.split(/\s+/).length * 2.5)), temperature: 0.25 });
-      await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_refinement", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+      const response = await client.responses.create({ model, input: [{ role: "system", content: "Refine only the supplied creator script text. Return JSON with replacementText only. Preserve factual meaning, evidence uncertainty, continuity, and language. Do not add claims, citations, production scenes, or metadata." }, { role: "user", content: JSON.stringify({ instruction, source, context, requiredJsonShape: { replacementText: "string" } }) }], text: { format: { type: "json_object" } }, max_output_tokens: Math.min(8_000, Math.max(2_500, Math.ceil(source.split(/\s+/).length * 4))), ...creatorScriptRefinementModelOptions(model, 0.25) });
+      await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_refinement", model, response });
       const parsed = JSON.parse(response.output_text || "{}"); const replacement = text(parsed.replacementText, 100000);
       if (!replacement) throw new Error("CREATOR_SCRIPT_REFINEMENT_OUTPUT_INVALID"); return replacement;
     };
@@ -122,16 +129,16 @@ export async function POST(req: Request) {
       };
       const callHolisticCandidatePlan = async () => {
         const response = await client.responses.create({
-          model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+          model,
           input: [
             { role: "system", content: "Act as a senior documentary editor. Read the complete manuscript and return a ranked pool of sentence-unit edit candidates; the server alone decides final scope. This is candidate selection only: do not write replacement prose. Each candidate must include one or two adjacent same-section unitIds, an allowlisted intent, replace or delete operation, priority, and a concise reason traceable to an explicit creator request or hard compliance need. Rank hard compliance first, substantive requested changes next, and polish last. For section-role requests, identify only sentences that violate the requested role; do not nominate every sentence merely to make the section comprehensive. Preserve already-useful canonical prose. Mark delete only when the complete selected unit should disappear; otherwise use replace. Do not propose broad stylistic normalization." },
             { role: "user", content: JSON.stringify({ creatorInstruction: instruction, immutableCreatorConstraints: constraintCatalog, forbiddenLiteralTerms, candidateGuidance: { maximumUnitsPerCandidate: 2, modelIsAdvisory: true }, canonicalDocumentWordCount: canonicalWordCount, globalDuration: { targetWords: canonicalDuration.targetWordCount, minimumWords: canonicalDuration.minimumAcceptableWordCount, maximumWords: canonicalDuration.maximumAcceptableWordCount, maximumSafeNetDeletionWords: selectionLimits.maximumSafeDeletionWords }, canonicalArchitecture: architecture, canonicalEvidenceAuthority: evidenceAuthority, canonicalSections: script.sections.map((section) => ({ sectionId: section.id, heading: section.heading || section.kind, kind: section.kind, text: section.text })), editableUnitMap: canonicalEditableUnits.map(({ unitId, sectionId, text }) => ({ unitId, sectionId, text })) }) },
           ],
           text: { format: { type: "json_schema", name: "creator_script_holistic_candidate_plan", strict: true, schema: createCreatorScriptHolisticCandidateSchema(canonicalEditableUnits.map((unit) => unit.unitId)) } },
           max_output_tokens: 3_000,
-          temperature: 0.1,
+          ...creatorScriptRefinementModelOptions(model, 0.1),
         });
-        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_holistic_candidate_plan", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_holistic_candidate_plan", model, response });
         return parseCreatorScriptHolisticCandidates({ output: JSON.parse(response.output_text || "{}"), allowedUnitIds: canonicalEditableUnits.map((unit) => unit.unitId) });
       };
       const callFocusedEditExecution = async (selections: CreatorScriptHolisticSelection[], mandatorySelectionKeys: Set<string>, selectionPriorityByKey: Map<string, "hard_compliance" | "substantive" | "polish">, priorEdits: CreatorScriptHolisticUnitEdit[] | null, correction: {
@@ -158,7 +165,7 @@ export async function POST(req: Request) {
           previousReplacementText: priorEdits?.find((edit) => edit.unitIds.join("\0") === selection.unitIds.join("\0"))?.replacementText,
         }));
         const response = await client.responses.create({
-          model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+          model,
           input: [
             { role: "system", content: correction ? "Perform the one bounded correction within the frozen server-approved edit scope. Return only changed replacements keyed by the supplied selectionId; never return or reconstruct unitIds. Preserve every successful initial edit unless its approved selection needs correction. Do not add selections, respond to advisory findings, restore forbidden meta-language, or introduce facts, studies, examples, claims, citations, or evidence. For a duration deficit, deepen grounded material only within the selected section's canonical role and aim modestly above the minimum, not necessarily at the target." : "Act as a senior documentary line editor. The server has already frozen the complete editable scope. Return material replacements keyed only by selectionId; never return or reconstruct unitIds. Server-approved delete operations are applied deterministically and require no result. Every mandatory, hard-compliance, and substantive replace selection must be returned; mandatory replacements must materially change the prose and remove their forbidden literal. Only a non-mandatory polish replacement may be omitted when no safe material improvement is warranted. Do not add, combine, split, reorder, or broaden selections. Preserve every omitted or otherwise unselected unit exactly. Never add studies, statistics, examples, scenarios, anecdotes, claims, citations, evidence, or source authority." },
             { role: "user", content: JSON.stringify({ creatorInstruction: instruction, immutableCreatorConstraints: constraintCatalog, forbiddenLiteralTerms, approvedSelections, canonicalDocumentWordCount: canonicalWordCount, globalDuration: { targetWords: canonicalDuration.targetWordCount, minimumWords: canonicalDuration.minimumAcceptableWordCount, maximumWords: canonicalDuration.maximumAcceptableWordCount }, canonicalArchitecture: architecture, canonicalEvidenceAuthority: evidenceAuthority, canonicalSections: script.sections.map((section) => ({ sectionId: section.id, heading: section.heading || section.kind, kind: section.kind, claimIds: section.claimIds, text: section.text })), correction }) },
@@ -167,7 +174,7 @@ export async function POST(req: Request) {
           max_output_tokens: Math.ceil(canonicalDuration.maximumAcceptableWordCount * 2 + 500),
           temperature: correction ? 0.1 : 0.25,
         });
-        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: correction ? "creator_script_holistic_edit_correction" : "creator_script_holistic_edit_execution", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: correction ? "creator_script_holistic_edit_correction" : "creator_script_holistic_edit_execution", model, response });
         const output = JSON.parse(response.output_text || "{}");
         if (correction) {
           const diagnostics = getCreatorScriptHolisticCorrectionDiagnostics({ output, approved: approvedSelections.map((selection) => ({ selectionId: selection.selectionId, selection, mandatory: selection.mandatory, oldText: selection.sourceText, sectionId: selection.sectionId, priority: selection.priority })), priorEdits: priorEdits || [] });
@@ -182,7 +189,7 @@ export async function POST(req: Request) {
       };
       const assessHolistically = async (candidate: CreatorScript, pass: "initial" | "final") => {
         const response = await client.responses.create({
-          model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+          model,
           input: [
             { role: "system", content: "Assess the complete proposed script once as a documentary. Do not rewrite it. Hard compliance findings are limited to violated immutable creator constraints or unsupported/new factual material. Compare no-new constraints against canonical text: unchanged pre-existing material is not new. Explicit removal constraints remain violated if forbidden canonical material remains. Immutable creator constraints override canonical wording and canonical progression: never criticize, penalize, or mark as a progression loss the removal of material that a creator constraint explicitly requires removing. violatedImmutableConstraintIds are diagnostic overlap metadata, not a discriminator: use only allowlisted IDs that materially apply, and an unsupported_factual_material finding may also reference a relevant immutable constraint. Editorial imperfections such as modest overlap, tone, transitions, role separation, or conclusion strength are advisory only. Evaluate progression, major repetition, section roles, Social versus Consequence, Conclusion synthesis, and tone holistically. Return only allowlisted IDs and codes." },
             { role: "user", content: JSON.stringify({ canonicalArchitecture: architecture, immutableCreatorConstraints: constraintCatalog, canonicalSectionsBeforeRefinement: script.sections.map((section) => ({ sectionId: section.id, text: section.text })), proposedSections: candidate.sections.map((section) => ({ sectionId: section.id, text: section.text })), canonicalEvidenceAuthority: evidenceAuthority }) },
@@ -191,7 +198,7 @@ export async function POST(req: Request) {
           max_output_tokens: 2_000,
           temperature: 0,
         });
-        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: pass === "initial" ? "creator_script_holistic_qa" : "creator_script_holistic_final_compliance", model: process.env.OPENAI_MODEL || "gpt-4.1-mini", response });
+        await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: pass === "initial" ? "creator_script_holistic_qa" : "creator_script_holistic_final_compliance", model, response });
         const qa = parseCreatorScriptHolisticQa({ output: JSON.parse(response.output_text || "{}"), allowedSectionIds: sectionIds, allowedConstraintIds: constraintCatalog.map((constraint) => constraint.id) });
         console.info("CREATOR_SCRIPT_HOLISTIC_QA_DIAGNOSTICS", { pass, hardComplianceFindings: qa.hardComplianceFindings, advisoryFindings: qa.advisoryFindings });
         return qa;
@@ -291,9 +298,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, pendingRefinement, creatorScript: script, revisionHistory: state.strategy.revisionHistory || [], project: result.project });
   } catch (error) {
     if (error instanceof AuthenticationError) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
-    const code = error instanceof Error ? error.message : "";
-    if (code === "PROJECT_SAVE_CONFLICT" || code.includes("SELECTION_STALE") || code.includes("REFINEMENT_STALE")) return NextResponse.json({ error: "Script changed. Review the current revision.", code: "CREATOR_SCRIPT_REFINEMENT_STALE" }, { status: 409 });
-    console.error("CREATOR_SCRIPT_REFINEMENT_FAILED", { code: code || "UNKNOWN", scope: "full_script_or_scoped_generation" });
-    return NextResponse.json({ error: "Script refinement could not be completed safely." }, { status: 422 });
+    const failure = classifyCreatorScriptRefinementFailure(error);
+    console.error("CREATOR_SCRIPT_REFINEMENT_FAILED", {
+      code: failure.code,
+      originalCode: error instanceof Error ? error.message : "UNKNOWN",
+      scope: "full_script_or_scoped_generation",
+    });
+    return NextResponse.json({ error: failure.error, code: failure.code }, { status: failure.status });
   }
 }
