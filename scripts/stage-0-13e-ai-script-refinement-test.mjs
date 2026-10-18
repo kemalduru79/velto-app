@@ -52,8 +52,8 @@ assert.match(route, /creator_script_holistic_candidate_plan/); assert.match(rout
 assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
 assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
 assert.ok(route.indexOf("pendingRefinement = createCreatorScriptProposal") < route.lastIndexOf("saveState(nextState)"));
-assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /scope: "opening"/); assert.doesNotMatch(component, /option value="whole_script"/, "Full Script refinement is not offered on the production creator surface");
-assert.match(component, /pendingRefinement\.scope !== "whole_script"/, "a preserved experimental preview cannot expose Apply in the production UI");
+assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /scope: "opening"/); assert.match(component, /option value="editorial_rewrite"/); assert.match(component, /option value="research_backed_rewrite"/);
+assert.doesNotMatch(component, /pendingRefinement\.scope !== "whole_script"/, "validated whole-script proposals use the same explicit Apply\/Discard lifecycle");
 assert.match(component, /aria-hidden="true"/); assert.match(component, /visibleHighlights/); assert.match(component, /setEditorScroll/);
 assert.match(component, /data-script-highlight=\{range\.kind\}/); assert.match(component, /creatorlab-script-highlight-selection/); assert.match(component, /creatorlab-script-highlight-refinement/);
 assert.match(component, /const start = textarea\.selectionStart;[\s\S]*const end = textarea\.selectionEnd;[\s\S]*textarea\.value\.slice\(start, end\)/);

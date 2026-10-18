@@ -430,6 +430,12 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
     "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
     "scripts/stage-r2-safety-autosave-cas-test.mjs",
+    "app/api/creator-script/refine/route.ts",
+    "lib/creator/creatorScriptRefinementRuntime.ts",
+    "lib/creator/creatorScriptEditorialRewrite.ts",
+    "scripts/creator-script-refinement-r1-foundation-test.mjs",
+    "scripts/creator-script-refinement-r2-research-backed-test.mjs",
+    "scripts/stage-0-13e-ai-script-refinement-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));

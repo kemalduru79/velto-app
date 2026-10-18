@@ -41,8 +41,9 @@ assert.doesNotMatch(route, /model: process\.env\.OPENAI_MODEL \|\| "gpt-4\.1-min
 assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
 assert.match(policy, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED = false/);
 assert.match(component, /data-creator-refinement-scope-notice="true"/);
-assert.match(component, /without a selection, only the opening is edited/);
+assert.match(component, /Only the opening is edited/);
 assert.match(component, /scope: "opening"/);
-assert.doesNotMatch(component, /option value="whole_script"/);
+assert.match(component, /option value="editorial_rewrite"/);
+assert.match(component, /option value="research_backed_rewrite"/);
 
 console.log("CREATOR_SCRIPT_REFINEMENT_R1_FOUNDATION=PASS");
