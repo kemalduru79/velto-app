@@ -64,6 +64,31 @@ const KNOWN_FAILURES: Record<string, RefinementFailure> = {
     error: "The proposed changes exceed the allowed limited-edit scope.",
     status: 422,
   },
+  CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED: {
+    code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED",
+    error: "Whole-script refinement is still gated while staged acceptance is incomplete.",
+    status: 409,
+  },
+  CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES: {
+    code: "CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES",
+    error: "Verified sources required by this rewrite could not be found. The original script was preserved.",
+    status: 422,
+  },
+  CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM: {
+    code: "CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM",
+    error: "The rewrite introduced a claim without canonical evidence authority. The original script was preserved.",
+    status: 422,
+  },
+  CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH: {
+    code: "CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH",
+    error: "The rewrite did not satisfy every requested editorial goal. The original script was preserved.",
+    status: 422,
+  },
+  CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID: {
+    code: "CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID",
+    error: "The AI provider returned an invalid rewrite candidate. The original script was preserved.",
+    status: 422,
+  },
 };
 
 export function classifyCreatorScriptRefinementFailure(error: unknown): RefinementFailure {

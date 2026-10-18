@@ -202,6 +202,14 @@ const allowed = new Set([
   "scripts/stage-2b-worker-lifecycle-test.mjs",
   "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
   "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
+  "app/api/creator-script/refine/route.ts",
+  "lib/creator/creatorScriptRefinementRuntime.ts",
+  "lib/creator/creatorScriptEditorialRewrite.ts",
+  "lib/creator/creatorScriptEditorialRewriteProviders.server.ts",
+  "lib/creator/creatorScriptRevisions.ts",
+  "scripts/creator-script-refinement-r1-foundation-test.mjs",
+  "scripts/creator-script-refinement-r2-research-backed-test.mjs",
+  "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
 
