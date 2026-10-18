@@ -78,7 +78,11 @@ export async function POST(req: Request) {
     }
     if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: "Script refinement is unavailable." }, { status: 500 });
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = resolveCreatorScriptRefinementModel(process.env);
+    const model = resolveCreatorScriptRefinementModel({
+      OPENAI_REFINEMENT_MODEL: process.env.OPENAI_REFINEMENT_MODEL,
+      OPENAI_SCRIPT_MODEL: process.env.OPENAI_SCRIPT_MODEL,
+      OPENAI_MODEL: process.env.OPENAI_MODEL,
+    });
     const refine = async (source: string, context: unknown) => {
       const response = await client.responses.create({ model, input: [{ role: "system", content: "Refine only the supplied creator script text. Return JSON with replacementText only. Preserve factual meaning, evidence uncertainty, continuity, and language. Do not add claims, citations, production scenes, or metadata." }, { role: "user", content: JSON.stringify({ instruction, source, context, requiredJsonShape: { replacementText: "string" } }) }], text: { format: { type: "json_object" } }, max_output_tokens: Math.min(8_000, Math.max(2_500, Math.ceil(source.split(/\s+/).length * 4))), ...creatorScriptRefinementModelOptions(model, 0.25) });
       await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_refinement", model, response });
