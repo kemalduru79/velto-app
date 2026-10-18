@@ -281,6 +281,7 @@ const presentationOnly = new Set([
   "scripts/stage-2b-worker-lifecycle-test.mjs",
   "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
   "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
+  "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

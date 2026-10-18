@@ -71,6 +71,14 @@ export type CreatorProjectStateInput = Omit<CreatorProjectStateSnapshot, "versio
 
 type LegacyCreatorProject = Record<string, unknown>;
 
+export type CreatorProjectStatePersistenceAuthority =
+  | { status: "legacy_absent"; snapshot: null; script: null; envelope: Record<string, unknown> }
+  | { status: "valid"; snapshot: CreatorProjectStateSnapshot; script: CreatorScript | null; envelope: Record<string, unknown> }
+  | { status: "malformed_snapshot"; snapshot: unknown; script: null; envelope: Record<string, unknown> }
+  | { status: "malformed_valid_script"; snapshot: unknown; script: CreatorScript; envelope: Record<string, unknown> }
+  | { status: "malformed_null_script"; snapshot: unknown; script: null; envelope: Record<string, unknown> }
+  | { status: "malformed_invalid_script"; snapshot: unknown; script: null; envelope: Record<string, unknown> };
+
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -163,6 +171,42 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
   );
 }
 
+export function inspectCreatorProjectStatePersistenceAuthority(
+  project: LegacyCreatorProject,
+): CreatorProjectStatePersistenceAuthority {
+  const exportResult = record(project.exported_movie_result);
+  if (!hasOwn(exportResult, "creatorProjectState")) {
+    return { status: "legacy_absent", snapshot: null, script: null, envelope: exportResult };
+  }
+  const snapshot = exportResult.creatorProjectState;
+  const candidate = record(snapshot);
+  if (candidate.version !== CREATOR_PROJECT_STATE_VERSION) {
+    return { status: "malformed_snapshot", snapshot, script: null, envelope: exportResult };
+  }
+  if (isValidCreatorProjectState(snapshot)) {
+    const strategy = record(candidate.strategy);
+    const script = hasOwn(strategy, "script") && strategy.script != null
+      ? normalizeCreatorScript(strategy.script)
+      : null;
+    return { status: "valid", snapshot, script, envelope: exportResult };
+  }
+  const strategy = record(candidate.strategy);
+  if (!hasOwn(strategy, "script") || strategy.script === null) return { status: "malformed_null_script", snapshot, script: null, envelope: exportResult };
+  try {
+    return { status: "malformed_valid_script", snapshot, script: normalizeCreatorScript(strategy.script), envelope: exportResult };
+  } catch {
+    return { status: "malformed_invalid_script", snapshot, script: null, envelope: exportResult };
+  }
+}
+
+export function preserveQuarantinedCreatorProjectState(input: {
+  authority: CreatorProjectStatePersistenceAuthority;
+  exportedMovieResult: unknown;
+}) {
+  if (!input.authority.status.startsWith("malformed_")) return input.exportedMovieResult;
+  return { ...input.authority.envelope, ...record(input.exportedMovieResult), creatorProjectState: input.authority.snapshot };
+}
+
 const finitePositive = (value: unknown, fallback: number) => {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
@@ -222,6 +266,8 @@ export function readCreatorAudioTimelineHydration(
 export function readCreatorProjectState(
   project: LegacyCreatorProject,
 ): CreatorProjectStateSnapshot {
+  const persistenceAuthority = inspectCreatorProjectStatePersistenceAuthority(project);
+  if (persistenceAuthority.status === "malformed_invalid_script") throw new Error("CREATOR_PROJECT_STATE_SCRIPT_INVALID");
   const exportResult = record(project.exported_movie_result);
   const candidateSnapshot = record(exportResult.creatorProjectState);
   const candidateProduction = record(candidateSnapshot.production);
@@ -303,7 +349,7 @@ export function readCreatorProjectState(
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)
-          : null,
+          : persistenceAuthority.status === "malformed_valid_script" ? persistenceAuthority.script : null,
       pendingRefinement: revisionState.pending,
       revisionHistory: revisionState.history,
     },

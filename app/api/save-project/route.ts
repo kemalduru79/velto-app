@@ -6,7 +6,9 @@ import {
 import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
 import {
   attachCreatorProjectState,
+  inspectCreatorProjectStatePersistenceAuthority,
   isValidCreatorProjectState,
+  preserveQuarantinedCreatorProjectState,
   type CreatorProjectStateSnapshot,
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
@@ -27,9 +29,17 @@ import {
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+type SaveProjectRouteDependencies = {
+  authenticate: typeof authenticateRequest;
+  persistence: typeof getPersistenceServices;
+};
+
+async function handleSaveProjectRequest(
+  req: Request,
+  dependencies: SaveProjectRouteDependencies = { authenticate: authenticateRequest, persistence: getPersistenceServices },
+) {
   try {
-    const principal = await authenticateRequest(req);
+    const principal = await dependencies.authenticate(req);
     const body = (await req.json()) as Record<string, unknown>;
 
     const projectId = typeof body.projectId === "string" && body.projectId.trim()
@@ -72,7 +82,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
 
-    const services = getPersistenceServices();
+    const services = dependencies.persistence();
     const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
     const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
       ? body.expectedUpdatedAt.trim()
@@ -95,6 +105,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    const persistedCreatorStateAuthority = persistedCreatorProject
+      ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
+      : null;
+    const quarantinedCreatorState = persistedCreatorStateAuthority?.status.startsWith("malformed_") === true;
+    if (persistedCreatorStateAuthority?.status === "malformed_invalid_script") {
+      return NextResponse.json(
+        { error: "Persisted Creator script authority is invalid and requires repair.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    const mutatesQuarantinedCreatorAuthority = hasCreatorProjectState || hasScenes || hasRefinedCreatorScenes ||
+      has("exportedMovieUrl") || has("exportSignature") || has("creatorProductionPackage") ||
+      has("creatorMentorResult") || has("youtubeMetadataResult") || has("youtubeThumbnailResult") ||
+      has("sceneOptimizationResult") || has("sceneOptimizationSummary");
+    if (quarantinedCreatorState && mutatesQuarantinedCreatorAuthority) {
+      return NextResponse.json(
+        { error: "Persisted Creator project authority requires repair before a full save.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" },
+        { status: 409 },
+      );
+    }
     let shouldInvalidateCreatorProduction = false;
     let suppressStaleCreatorFinalProjection = false;
     let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
@@ -122,7 +152,7 @@ export async function POST(req: Request) {
       try {
         authoritativeScript = resolveCreatorScriptMutationAuthority({
           persistedScript,
-          candidateScript: candidateState.strategy.script,
+          candidateScript: candidateState.strategy.script ?? null,
           commandValue: body.creatorScriptMutation,
         });
       } catch (error) {
@@ -237,7 +267,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    if (flowType === "creator_lab" && projectId && !hasCreatorProjectState) {
+    if (flowType === "creator_lab" && projectId && !hasCreatorProjectState && !quarantinedCreatorState) {
       const persistedProject = persistedCreatorProject!;
       const persistedState = readCreatorProjectState(persistedProject);
       suppressStaleCreatorFinalProjection = Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
@@ -276,12 +306,15 @@ export async function POST(req: Request) {
           },
         }
       : creatorStateForAttachment;
-    const exportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
+    const candidateExportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
       ? attachCreatorProjectState(
           body.exportedMovieResult,
           creatorStateForAttachment,
         )
       : body.exportedMovieResult;
+    const exportedMovieResult = persistedCreatorStateAuthority
+      ? preserveQuarantinedCreatorProjectState({ authority: persistedCreatorStateAuthority, exportedMovieResult: candidateExportedMovieResult })
+      : candidateExportedMovieResult;
     const result =
       await services.projectRepository.saveForOwner({
         projectId,
@@ -414,3 +447,8 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export const POST = Object.assign(
+  (req: Request) => handleSaveProjectRequest(req),
+  { handleForTest: handleSaveProjectRequest },
+);
