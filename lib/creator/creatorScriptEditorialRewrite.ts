@@ -1,4 +1,8 @@
-import { getCreatorScriptDocumentText, getCreatorScriptDurationContractForScript, type CreatorScript } from "./creatorScript.ts";
+import { getCreatorScriptDocumentText, getCreatorScriptDurationContractForScript, normalizeCreatorScript, type CreatorScript, type CreatorScriptSection } from "./creatorScript.ts";
+import { createScriptPlannerEvidenceGraph, normalizeScriptPlannerEditorialContext, type ScriptPlannerEditorialContext } from "../research/scriptPlannerEditorialContext.ts";
+import type { ResearchSource } from "../research/sourceContract.ts";
+import { createResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
+import { resolveClaimAuthority } from "../research/claimAuthorityResolver.ts";
 
 export const CREATOR_SCRIPT_REFINEMENT_MODES = ["focused_edit", "editorial_rewrite", "research_backed_rewrite"] as const;
 export type CreatorScriptRefinementMode = typeof CREATOR_SCRIPT_REFINEMENT_MODES[number];
@@ -40,6 +44,30 @@ export type CreatorScriptRewriteValidation = {
   duration: ReturnType<typeof getCreatorScriptDurationContractForScript>;
   hardCeilingSec: number;
   changedSectionIds: string[];
+  evidenceDelta: CreatorScriptEvidenceDelta;
+};
+
+export type CreatorScriptRewriteResearchResult = {
+  sources: ResearchSource[];
+};
+
+export type CreatorScriptRewriteProviderCandidate = {
+  sections: CreatorScriptSection[];
+  addedClaims: ScriptPlannerEditorialContext["claims"];
+  addedEvidence: ScriptPlannerEditorialContext["evidence"];
+  goalResults: CreatorScriptRewriteGoalResult[];
+};
+
+export type CreatorScriptEditorialRewriteDependencies = {
+  research: (input: { subject: string; language: "tr" | "en"; goals: CreatorScriptRewriteGoal[] }) => Promise<CreatorScriptRewriteResearchResult>;
+  rewrite: (input: { script: CreatorScript; instruction: string; language: "tr" | "en"; goals: CreatorScriptRewriteGoal[]; sources: ResearchSource[] }) => Promise<CreatorScriptRewriteProviderCandidate>;
+  assess: (input: { before: CreatorScript; after: CreatorScript; goals: CreatorScriptRewriteGoal[] }) => Promise<CreatorScriptRewriteGoalResult[]>;
+  now?: () => string;
+};
+
+export type CreatorScriptEditorialRewriteResult = {
+  script: CreatorScript;
+  goalResults: CreatorScriptRewriteGoalResult[];
   evidenceDelta: CreatorScriptEvidenceDelta;
 };
 
@@ -141,4 +169,76 @@ export function validateCreatorScriptRewriteCandidate(input: {
 
 export function isCreatorScriptFullRefinementRuntimeEnabled(env: { NODE_ENV?: string; CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED?: string }) {
   return env.NODE_ENV !== "production" && env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED === "true";
+}
+
+const sourceExcerpt = (source: ResearchSource) => [source.summary, ...Object.values(source.sourceMetadata)].filter((value): value is string => typeof value === "string").join(" ").replace(/\s+/gu, " ").toLocaleLowerCase();
+
+function canonicalAddedContext(input: { current: ScriptPlannerEditorialContext; research: CreatorScriptRewriteResearchResult; candidate: CreatorScriptRewriteProviderCandidate }) {
+  const sourceById = new Map(input.research.sources.map((source) => [source.sourceId, source]));
+  if (!sourceById.size) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES");
+  const evidenceIds = new Set<string>();
+  for (const evidence of input.candidate.addedEvidence) {
+    const source = sourceById.get(evidence.sourceId);
+    if (!source || !evidence.excerpt || evidence.excerpt.trim().length < 24 || !sourceExcerpt(source).includes(evidence.excerpt.replace(/\s+/gu, " ").trim().toLocaleLowerCase())) throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_AUTHORITY_INVALID");
+    if (evidenceIds.has(evidence.evidenceId)) throw new Error("CREATOR_SCRIPT_REFINEMENT_EVIDENCE_DELTA_INVALID");
+    evidenceIds.add(evidence.evidenceId);
+  }
+  for (const claim of input.candidate.addedClaims) {
+    const references = [...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds];
+    if (!references.length || references.some((id) => !evidenceIds.has(id))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
+    const supporting = input.candidate.addedEvidence.filter((evidence) => claim.supportingEvidenceIds.includes(evidence.evidenceId));
+    const supportedText = supporting.map((evidence) => evidence.excerpt || "").join(" ").toLocaleLowerCase();
+    const claimNumbers = claim.text.match(/\b\d+(?:[.,]\d+)?\b/gu) || [];
+    const referencedSources = supporting.map((evidence) => sourceById.get(evidence.sourceId)).filter((source): source is ResearchSource => Boolean(source));
+    if (!supporting.length || claimNumbers.some((number) => !supportedText.includes(number.toLocaleLowerCase())) || (claim.origin?.referencedWork && !referencedSources.some((source) => source.url === claim.origin?.referencedWork))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
+  }
+  const sources = input.research.sources.map((source) => ({
+    sourceId: source.sourceId, title: source.title, url: source.url, publisher: source.publisher, author: source.author, publishedAt: source.publishedAt,
+    directness: source.adapterId === "primary" ? "primary" as const : source.adapterId === "academic" ? "secondary" as const : "tertiary" as const,
+    reviewStatus: "usable" as const, searchLane: source.adapterId === "academic" ? "supporting_evidence" : "primary_source", sourceKind: source.mediaKind,
+  }));
+  const allClaims = [...input.current.claims, ...input.candidate.addedClaims];
+  const allEvidence = [...input.current.evidence, ...input.candidate.addedEvidence];
+  const allSources = [...input.current.sources, ...sources].filter((source, index, values) => values.findIndex((item) => item.sourceId === source.sourceId) === index);
+  const provisional = { ...input.current, claims: allClaims, evidence: allEvidence, sources: allSources } as ScriptPlannerEditorialContext;
+  const graphParts = createScriptPlannerEvidenceGraph(provisional);
+  const graph = createResearchClaimEvidenceGraph({ ...graphParts, sources: allSources.map((source) => ({ sourceId: source.sourceId, adapterId: "web", mediaKind: ["video", "article", "paper", "document", "webpage", "other"].includes(source.sourceKind) ? source.sourceKind as ResearchSource["mediaKind"] : "other", externalId: null, title: source.title, url: source.url, publisher: source.publisher, author: source.author, publishedAt: source.publishedAt, language: null, summary: null, thumbnailUrl: null, durationSec: null, metrics: {}, sourceMetadata: {} })) });
+  const authority = resolveClaimAuthority({ graph, sourceAssessments: allSources.map((source) => ({ sourceId: source.sourceId, directness: source.directness, provenanceStatus: "unknown", reviewStatus: source.reviewStatus, reviewReasons: [] })) });
+  const primarySourceRequiredClaimIds = authority.claims.filter((claim) => claim.requiresPrimary).map((claim) => claim.claimId);
+  const primarySourceCoveredClaimIds = authority.claims.filter((claim) => claim.status === "SUPPORTED_PRIMARY").map((claim) => claim.claimId);
+  return normalizeScriptPlannerEditorialContext({ ...provisional, readiness: { ...input.current.readiness, primarySourceRequiredClaimIds, primarySourceCoveredClaimIds } })!;
+}
+
+export async function executeCreatorScriptEditorialRewrite(input: {
+  script: CreatorScript;
+  subject: string;
+  instruction: string;
+  language: "tr" | "en";
+  mode: Exclude<CreatorScriptRefinementMode, "focused_edit">;
+  hardCeilingSec?: number;
+  dependencies: CreatorScriptEditorialRewriteDependencies;
+}): Promise<CreatorScriptEditorialRewriteResult> {
+  const goals = createCreatorScriptRewriteGoalPlan(input.instruction);
+  if (input.mode === "editorial_rewrite" && goals.some((goal) => goal.kind === "evidence")) throw new Error("CREATOR_SCRIPT_REFINEMENT_RESEARCH_REQUIRED");
+  const research = input.mode === "research_backed_rewrite" ? await input.dependencies.research({ subject: input.subject, language: input.language, goals }) : { sources: [] };
+  if (input.mode === "research_backed_rewrite" && !research.sources.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES");
+  const candidate = await input.dependencies.rewrite({ script: input.script, instruction: input.instruction, language: input.language, goals, sources: research.sources });
+  const context = input.mode === "research_backed_rewrite"
+    ? canonicalAddedContext({ current: input.script.grounding.context, research, candidate })
+    : input.script.grounding.context;
+  const now = (input.dependencies.now || (() => new Date().toISOString()))();
+  const nextScript = normalizeCreatorScript({ ...input.script, sections: candidate.sections, grounding: { context }, revision: input.script.revision + 1, updatedAt: now, approval: null });
+  const assessment = await input.dependencies.assess({ before: input.script, after: nextScript, goals });
+  const resultByGoal = new Map(assessment.map((result) => [result.goalId, result]));
+  if (assessment.length !== resultByGoal.size || goals.some((goal) => resultByGoal.get(goal.goalId)?.status !== "satisfied")) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
+  const oldSectionIds = input.script.sections.map((section) => section.id);
+  const newSectionIds = nextScript.sections.map((section) => section.id);
+  if (goals.some((goal) => goal.kind === "structure") && JSON.stringify(oldSectionIds) === JSON.stringify(newSectionIds)) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
+  const addedClaimIds = context.claims.filter((claim) => !input.script.grounding.context.claims.some((prior) => prior.claimId === claim.claimId)).map((claim) => claim.claimId);
+  const addedSourceIds = context.sources.filter((source) => !input.script.grounding.context.sources.some((prior) => prior.sourceId === source.sourceId)).map((source) => source.sourceId);
+  if (input.mode === "research_backed_rewrite" && (!addedClaimIds.length || !addedSourceIds.length || !nextScript.sections.some((section) => section.claimIds.some((claimId) => addedClaimIds.includes(claimId))))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
+  if (getCreatorScriptDocumentText(nextScript) === getCreatorScriptDocumentText(input.script)) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
+  const duration = getCreatorScriptDurationContractForScript(nextScript, input.language);
+  if (duration.status !== "compliant" || (input.hardCeilingSec !== undefined && duration.estimatedDurationSec > input.hardCeilingSec)) throw new Error("CREATOR_SCRIPT_REFINEMENT_DURATION_UNSATISFIED");
+  return { script: nextScript, goalResults: assessment, evidenceDelta: { addedSourceIds, removedSourceIds: [], retainedSourceIds: input.script.grounding.context.sources.map((source) => source.sourceId), addedClaimIds, removedClaimIds: [] } };
 }

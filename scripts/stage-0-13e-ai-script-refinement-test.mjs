@@ -47,7 +47,7 @@ const page = await readFile(new URL("../app/create/page.tsx", import.meta.url), 
 const component = await readFile(new URL("../components/create/CreatorScriptReview.tsx", import.meta.url), "utf8");
 const globals = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 assert.match(route, /getForOwner\(projectId, principal\.id\)/); assert.match(route, /script\.revision !== revision/); assert.match(route, /expectedUpdatedAt/);
-assert.match(route, /scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED/); assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
+assert.match(route, /scope === "whole_script" && !fullRewriteEnabled/); assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
 assert.match(route, /creator_script_holistic_candidate_plan/); assert.match(route, /creator_script_holistic_edit_execution/); assert.match(route, /creator_script_holistic_qa/);
 assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
 assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
