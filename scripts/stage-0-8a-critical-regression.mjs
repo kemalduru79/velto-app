@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const tests = [
   "scripts/creator-script-refinement-r1-foundation-test.mjs",
+  "scripts/creator-script-refinement-r2-research-backed-test.mjs",
   "scripts/stage-0-19f-f2-2-final-asset-supersession-test.mjs",
   "scripts/stage-0-18a6g1-reload-hydration-autosave-test.mjs",
   "scripts/stage-0-18a6g2-post-hydration-scene-state-test.mjs",

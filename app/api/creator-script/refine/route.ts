@@ -11,6 +11,7 @@ import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorSc
 import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { createCreatorProductionInvalidationIdentity, creatorProjectHasMeaningfulProduction, requireCreatorProductionSnapshotBeforeInvalidation } from "@/lib/creator/creatorProductionHistory";
 import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
+import { normalizeCreatorScriptRefinementMode } from "@/lib/creator/creatorScriptEditorialRewrite";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -27,7 +28,14 @@ export async function POST(req: Request) {
     const action = body.action === "apply" || body.action === "discard" ? body.action : "generate";
     const instruction = text(body.instruction, 2000); const revision = Number(body.revision); const scope = body.scope as CreatorScriptRefinementScope;
     if (!projectId || !Number.isInteger(revision) || (action === "generate" && (!instruction || !["selection", "opening", "whole_script"].includes(scope)))) return NextResponse.json({ error: "Invalid refinement request." }, { status: 400 });
-    if (action === "generate" && scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED) return NextResponse.json({ error: "Full script refinement is currently unavailable.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
+    let refinementMode;
+    try {
+      refinementMode = action === "generate" ? normalizeCreatorScriptRefinementMode(body.mode, scope) : undefined;
+    } catch {
+      return NextResponse.json({ error: "Choose a focused edit, editorial rewrite, or research-backed rewrite.", code: "CREATOR_SCRIPT_REFINEMENT_MODE_REQUIRED" }, { status: 400 });
+    }
+    if (action === "generate" && ((scope === "whole_script") !== (refinementMode !== "focused_edit"))) return NextResponse.json({ error: "The refinement target does not match its mode.", code: "CREATOR_SCRIPT_REFINEMENT_MODE_SCOPE_MISMATCH" }, { status: 400 });
+    if (action === "generate" && scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED) return NextResponse.json({ error: "Whole-script refinement is still gated while staged acceptance is incomplete.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
     const services = getPersistenceServices();
     const project = await services.projectRepository.getForOwner(projectId, principal.id);
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
@@ -83,6 +91,7 @@ export async function POST(req: Request) {
       OPENAI_SCRIPT_MODEL: process.env.OPENAI_SCRIPT_MODEL,
       OPENAI_MODEL: process.env.OPENAI_MODEL,
     });
+    console.info("CREATOR_SCRIPT_REFINEMENT_STAGE", { stage: "request_validated", mode: refinementMode, scope, revision: script.revision });
     const refine = async (source: string, context: unknown) => {
       const response = await client.responses.create({ model, input: [{ role: "system", content: "Refine only the supplied creator script text. Return JSON with replacementText only. Preserve factual meaning, evidence uncertainty, continuity, and language. Do not add claims, citations, production scenes, or metadata." }, { role: "user", content: JSON.stringify({ instruction, source, context, requiredJsonShape: { replacementText: "string" } }) }], text: { format: { type: "json_object" } }, max_output_tokens: Math.min(8_000, Math.max(2_500, Math.ceil(source.split(/\s+/).length * 4))), ...creatorScriptRefinementModelOptions(model, 0.25) });
       await recordOpenAITextEconomics({ route: "/api/creator-script/refine", operationType: "creator_script_refinement", model, response });
