@@ -486,57 +486,53 @@
   }
 }
 
-/* CreatorLab Publish: give the thumbnail studio a proper editing workspace.
-   Keep the two-column package overview until the editor is expanded. */
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid > :is(
-  .creatorlab-publish-video-card,
-  .creatorlab-publish-thumbnail-card
-) {
+/* Publish thumbnail must be fully usable at desktop widths, whether its details editor
+   is open or closed. A narrow right rail cannot contain the 16:9 preview and form controls.
+   Keep this scoped to Publish; no editor, video, or thumbnail logic is changed. */
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  width: 100%;
   min-width: 0;
 }
 
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid:has(.creatorlab-thumbnail-studio-details[open]) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid:has(.creatorlab-thumbnail-studio-details[open]) > .creatorlab-publish-video-card {
-  width: 100%;
-  max-width: 960px;
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid > .creatorlab-publish-video-card {
+  box-sizing: border-box;
+  width: min(100%, 960px);
+  min-width: 0;
+  max-width: 100%;
   justify-self: start;
 }
 
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid:has(.creatorlab-thumbnail-studio-details[open]) > .creatorlab-publish-thumbnail-card,
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-details[open] {
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid > .creatorlab-publish-thumbnail-card {
   box-sizing: border-box;
+  grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-details[open] > :not(summary) {
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-thumbnail-card .creatorlab-thumbnail-studio-summary {
+  min-width: 0;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-preview {
+  box-sizing: border-box;
+  max-width: min(100%, 900px);
+  margin-inline: auto;
+}
+
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-details > :not(summary) {
   min-width: 0;
   max-width: 100%;
 }
 
-.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-details[open] :is(img, canvas, video, svg, input, select, textarea) {
+.creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-thumbnail-studio-details :is(input, select, textarea, img, canvas, video) {
   box-sizing: border-box;
   max-width: 100%;
 }
 
-/* The collapsed thumbnail card must also fit the narrow preview column. */
-@media (min-width: 1024px) {
-  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-thumbnail-card:not(:has(.creatorlab-thumbnail-studio-details[open])) .creatorlab-thumbnail-studio-summary {
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 10px 12px;
-  }
-
-  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-thumbnail-card:not(:has(.creatorlab-thumbnail-studio-details[open])) .creatorlab-p2d-thumbnail-summary-preview {
-    width: 92px;
-    max-width: 100%;
-  }
-
-  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-thumbnail-card:not(:has(.creatorlab-thumbnail-studio-details[open])) .creatorlab-p2d-thumbnail-edit-action {
-    grid-column: 2;
-    justify-self: end;
+@media (max-width: 640px) {
+  .creatorlab-premium-surface #creatorlab-publish-canvas .creatorlab-publish-media-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
