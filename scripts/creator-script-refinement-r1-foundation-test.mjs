@@ -32,7 +32,7 @@ const route = await readFile(new URL("../app/api/creator-script/refine/route.ts"
 const component = await readFile(new URL("../components/create/CreatorScriptReview.tsx", import.meta.url), "utf8");
 const policy = await readFile(new URL("../lib/creator/creatorScriptRefinement.ts", import.meta.url), "utf8");
 
-assert.match(route, /resolveCreatorScriptRefinementModel\(process\.env\)/);
+assert.match(route, /resolveCreatorScriptRefinementModel\(\{/);
 assert.match(route, /creatorScriptRefinementModelOptions\(model, 0\.25\)/);
 assert.match(route, /creatorScriptRefinementModelOptions\(model, 0\.1\)/);
 assert.match(route, /classifyCreatorScriptRefinementFailure\(error\)/);
