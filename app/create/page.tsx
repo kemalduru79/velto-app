@@ -224,11 +224,13 @@ import {
 } from "@/lib/creator/musicSetup";
 import {
   advanceCreatorProjectSaveBinding,
+  createCreatorProjectAutosaveTicket,
   advanceCreatorProjectOperationOrigin,
   createCreatorProjectSaveBinding,
   creatorProjectStateRequestFields,
   isCreatorProjectOperationActive,
   isCreatorProjectSaveBindingActive,
+  shouldDispatchCreatorProjectAutosave,
   resolveCreatorProjectRevisionAdvance,
   type CreatorProjectSaveBinding,
 } from "@/lib/creator/projectSaveCoordinator";
@@ -4429,10 +4431,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const projectSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const projectGenerationRef = useRef(0);
   const projectSaveAttemptRef = useRef(0);
+  const projectSaveConflictGenerationRef = useRef<number | null>(null);
   const creatorPersistenceCurrentRef = useRef(false);
 
   const invalidateProjectPersistence = () => {
     projectGenerationRef.current += 1;
+    projectSaveConflictGenerationRef.current = null;
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
@@ -12402,6 +12406,9 @@ const generateSceneImage = async (
     binding: CreatorProjectSaveBinding,
   ) => {
     if (binding.generation !== projectGenerationRef.current) return;
+    if (projectSaveConflictGenerationRef.current === binding.generation) {
+      throw new Error("PROJECT_SAVE_CONFLICT");
+    }
     const requestBinding = advanceCreatorProjectSaveBinding(binding, {
       projectId: currentProjectIdRef.current,
       expectedUpdatedAt: projectUpdatedAtRef.current,
@@ -12796,6 +12803,9 @@ const generateSceneImage = async (
       }
       return result;
     } catch (saveError) {
+      if (classifyCreatorProjectSaveError(saveError) === "cas_conflict") {
+        projectSaveConflictGenerationRef.current = binding.generation;
+      }
       if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
       throw saveError;
     }
@@ -19368,9 +19378,24 @@ const generateSceneImage = async (
       clearTimeout(autosaveTimerRef.current);
     }
 
+    const autosaveTicket = createCreatorProjectAutosaveTicket({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      expectedUpdatedAt: projectUpdatedAtRef.current,
+      generation: projectGenerationRef.current,
+      semanticKey: creatorAutosaveSemanticIntent,
+    });
+
     autosaveTimerRef.current = setTimeout(async () => {
       const autosaveGeneration = projectGenerationRef.current;
       const persistedSemanticIntent = creatorAutosaveSemanticIntent;
+      if (!shouldDispatchCreatorProjectAutosave(autosaveTicket, {
+        projectId: currentProjectIdRef.current || currentProjectId,
+        expectedUpdatedAt: projectUpdatedAtRef.current,
+        generation: projectGenerationRef.current,
+        semanticKey: creatorAutosaveSemanticIntentRef.current,
+        baselineKey: creatorAutosaveSemanticBaselineRef.current,
+        conflictGeneration: projectSaveConflictGenerationRef.current,
+      })) return;
       try {
         await persistProject(false, {
           persistScenes: shouldPersistCreatorSceneProjection({
