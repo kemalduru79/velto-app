@@ -286,6 +286,7 @@ const allowed = new Set([
   "scripts/creator-script-refinement-r1-foundation-test.mjs",
   "scripts/creator-script-refinement-r2-research-backed-test.mjs",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
+  "scripts/stage-r2-safety-creator-script-loss-test.mjs",
 ]);
 assert.deepEqual(changed.filter((file) => !allowed.has(file)), []);
 
