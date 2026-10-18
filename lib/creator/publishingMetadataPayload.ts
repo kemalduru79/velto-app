@@ -24,8 +24,16 @@ export type PublishingPackageSource = {
   scenes?: PublishingSceneSource[];
 };
 
-const bounded = (value: unknown, maxLength: number): string =>
-  typeof value === "string" ? value.slice(0, maxLength) : "";
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+
+const bounded = (value: unknown, maxBytes: number): string => {
+  if (typeof value !== "string") return "";
+  const bytes = utf8Encoder.encode(value);
+  return bytes.byteLength <= maxBytes
+    ? value
+    : utf8Decoder.decode(bytes.subarray(0, maxBytes));
+};
 
 export function toCreatorPublishingMetadataPackage(source: PublishingPackageSource) {
   return {
