@@ -29,6 +29,7 @@
 // X.7.22 Section Blend & Depth Pass: section surfaces blended into the owned pastel background.
 // X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toCreatorPublishingMetadataPackage } from "@/lib/creator/publishingMetadataPayload";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -15035,7 +15036,7 @@ const generateSceneImage = async (
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          package: nextPackage,
+          package: toCreatorPublishingMetadataPackage(nextPackage),
           language,
           targetMarket: creatorCountry,
           ageGroup: creatorAgeGroup,
@@ -16305,7 +16306,7 @@ const generateSceneImage = async (
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        package: creatorProductionPackage,
+        package: toCreatorPublishingMetadataPackage(creatorProductionPackage),
         language,
         targetMarket: creatorCountry,
         ageGroup: creatorAgeGroup,
