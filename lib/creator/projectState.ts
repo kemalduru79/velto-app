@@ -224,6 +224,7 @@ export function readCreatorProjectState(
 ): CreatorProjectStateSnapshot {
   const exportResult = record(project.exported_movie_result);
   const candidateSnapshot = record(exportResult.creatorProjectState);
+  const candidateStrategy = record(candidateSnapshot.strategy);
   const candidateProduction = record(candidateSnapshot.production);
   if (
     candidateSnapshot.version === CREATOR_PROJECT_STATE_VERSION &&
@@ -243,6 +244,14 @@ export function readCreatorProjectState(
   const savedNavigation = record(saved.navigation);
   const revisionState = normalizeCreatorScriptRevisionState({ pending: savedStrategy.pendingRefinement, history: savedStrategy.revisionHistory });
   const hasCanonicalSnapshot = saved.version === CREATOR_PROJECT_STATE_VERSION;
+  const persistedScriptAuthority = (() => {
+    if (candidateSnapshot.version !== CREATOR_PROJECT_STATE_VERSION || !hasOwn(candidateStrategy, "script") || candidateStrategy.script === null) return null;
+    try {
+      return normalizeCreatorScript(candidateStrategy.script);
+    } catch {
+      return null;
+    }
+  })();
   const legacyPackage = record(project.creator_production_package);
   const legacyMentor = project.creator_mentor_result || null;
   const legacyMentorRecord = record(legacyMentor);
@@ -303,7 +312,7 @@ export function readCreatorProjectState(
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
           ? normalizeCreatorScript(savedStrategy.script)
-          : null,
+          : persistedScriptAuthority,
       pendingRefinement: revisionState.pending,
       revisionHistory: revisionState.history,
     },
