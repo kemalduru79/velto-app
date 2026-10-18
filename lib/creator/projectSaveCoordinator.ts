@@ -91,3 +91,29 @@ export function creatorProjectStateRequestFields(
 ) {
   return flowType === "creator_lab" ? { creatorProjectState: snapshot } : {};
 }
+
+export type CreatorProjectAutosaveTicket = Readonly<{
+  projectId: string;
+  expectedUpdatedAt: string;
+  generation: number;
+  semanticKey: string;
+}>;
+
+export function createCreatorProjectAutosaveTicket(
+  ticket: CreatorProjectAutosaveTicket,
+): CreatorProjectAutosaveTicket {
+  return Object.freeze({ ...ticket });
+}
+
+export function shouldDispatchCreatorProjectAutosave(
+  ticket: CreatorProjectAutosaveTicket,
+  active: CreatorProjectAutosaveTicket & { baselineKey: string | null; conflictGeneration: number | null },
+) {
+  return ticket.projectId === active.projectId &&
+    ticket.expectedUpdatedAt === active.expectedUpdatedAt &&
+    ticket.generation === active.generation &&
+    ticket.semanticKey === active.semanticKey &&
+    active.baselineKey !== null &&
+    active.baselineKey !== ticket.semanticKey &&
+    active.conflictGeneration !== ticket.generation;
+}

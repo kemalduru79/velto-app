@@ -295,6 +295,7 @@ const presentationOnly = new Set([
   "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
   "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
   "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
+  "scripts/stage-r2-safety-autosave-cas-test.mjs",
 ]);
 assert.deepEqual(changed.filter((path) => !presentationOnly.has(path)), []);
 assert.equal(

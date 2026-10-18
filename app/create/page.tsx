@@ -224,12 +224,15 @@ import {
 } from "@/lib/creator/musicSetup";
 import {
   advanceCreatorProjectSaveBinding,
+  createCreatorProjectAutosaveTicket,
   advanceCreatorProjectOperationOrigin,
   createCreatorProjectSaveBinding,
   creatorProjectStateRequestFields,
   isCreatorProjectOperationActive,
   isCreatorProjectSaveBindingActive,
+  shouldDispatchCreatorProjectAutosave,
   resolveCreatorProjectRevisionAdvance,
+  type CreatorProjectAutosaveTicket,
   type CreatorProjectSaveBinding,
 } from "@/lib/creator/projectSaveCoordinator";
 import { resolveCreatorMediaOutputState } from "@/lib/creator/mediaOutputState.mjs";
@@ -4429,10 +4432,12 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const projectSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const projectGenerationRef = useRef(0);
   const projectSaveAttemptRef = useRef(0);
+  const projectSaveConflictGenerationRef = useRef<number | null>(null);
   const creatorPersistenceCurrentRef = useRef(false);
 
   const invalidateProjectPersistence = () => {
     projectGenerationRef.current += 1;
+    projectSaveConflictGenerationRef.current = null;
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
@@ -12400,13 +12405,16 @@ const generateSceneImage = async (
       persistScenes?: boolean;
     },
     binding: CreatorProjectSaveBinding,
+    autosaveTicket?: CreatorProjectAutosaveTicket,
   ) => {
     if (binding.generation !== projectGenerationRef.current) return;
-    const requestBinding = advanceCreatorProjectSaveBinding(binding, {
-      projectId: currentProjectIdRef.current,
-      expectedUpdatedAt: projectUpdatedAtRef.current,
-      generation: projectGenerationRef.current,
-    });
+    const requestBinding = autosaveTicket
+      ? binding
+      : advanceCreatorProjectSaveBinding(binding, {
+          projectId: currentProjectIdRef.current,
+          expectedUpdatedAt: projectUpdatedAtRef.current,
+          generation: projectGenerationRef.current,
+        });
     if (!requestBinding) return;
     const effectiveProjectId = requestBinding.projectId;
     const sourceScenes = lifecycleOverrides.sourceScenes ?? scenes;
@@ -12540,6 +12548,15 @@ const generateSceneImage = async (
       : null;
     const creatorProjectState = binding.creatorProjectState;
 
+    if (autosaveTicket && !shouldDispatchCreatorProjectAutosave(autosaveTicket, {
+      projectId: currentProjectIdRef.current,
+      expectedUpdatedAt: projectUpdatedAtRef.current,
+      generation: projectGenerationRef.current,
+      semanticKey: creatorAutosaveSemanticIntentRef.current,
+      baselineKey: creatorAutosaveSemanticBaselineRef.current,
+      conflictGeneration: projectSaveConflictGenerationRef.current,
+    })) return;
+
     const res = await fetch("/api/save-project", {
       method: "POST",
       headers: {
@@ -12648,6 +12665,7 @@ const generateSceneImage = async (
   const persistProject = async (
     showManualMessage = false,
     lifecycleOverrides: Parameters<typeof executePersistProject>[1] = {},
+    autosaveTicket?: CreatorProjectAutosaveTicket,
   ) => {
     if (
       isCreatorLabFlow
@@ -12782,7 +12800,7 @@ const generateSceneImage = async (
     setSaveMessage("");
     const queuedSave = projectSaveQueueRef.current
       .catch(() => undefined)
-      .then(() => executePersistProject(showManualMessage, lifecycleOverrides, binding))
+      .then(() => executePersistProject(showManualMessage, lifecycleOverrides, binding, autosaveTicket))
       .catch((saveError) => {
         if (binding.generation !== projectGenerationRef.current) return;
         throw saveError;
@@ -12790,12 +12808,15 @@ const generateSceneImage = async (
     projectSaveQueueRef.current = queuedSave;
     try {
       const result = await queuedSave;
-      if (saveAttempt === projectSaveAttemptRef.current && binding.generation === projectGenerationRef.current) {
+      if (result && saveAttempt === projectSaveAttemptRef.current && binding.generation === projectGenerationRef.current) {
         creatorPersistenceCurrentRef.current = true;
         creatorAutosaveSemanticBaselineRef.current = persistedSemanticIntent;
       }
       return result;
     } catch (saveError) {
+      if (classifyCreatorProjectSaveError(saveError) === "cas_conflict") {
+        projectSaveConflictGenerationRef.current = binding.generation;
+      }
       if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
       throw saveError;
     }
@@ -19368,16 +19389,32 @@ const generateSceneImage = async (
       clearTimeout(autosaveTimerRef.current);
     }
 
+    const autosaveTicket = createCreatorProjectAutosaveTicket({
+      projectId: currentProjectIdRef.current || currentProjectId,
+      expectedUpdatedAt: projectUpdatedAtRef.current,
+      generation: projectGenerationRef.current,
+      semanticKey: creatorAutosaveSemanticIntent,
+    });
+
     autosaveTimerRef.current = setTimeout(async () => {
       const autosaveGeneration = projectGenerationRef.current;
       const persistedSemanticIntent = creatorAutosaveSemanticIntent;
+      if (!shouldDispatchCreatorProjectAutosave(autosaveTicket, {
+        projectId: currentProjectIdRef.current || currentProjectId,
+        expectedUpdatedAt: projectUpdatedAtRef.current,
+        generation: projectGenerationRef.current,
+        semanticKey: creatorAutosaveSemanticIntentRef.current,
+        baselineKey: creatorAutosaveSemanticBaselineRef.current,
+        conflictGeneration: projectSaveConflictGenerationRef.current,
+      })) return;
       try {
-        await persistProject(false, {
+        const saveResult = await persistProject(false, {
           persistScenes: shouldPersistCreatorSceneProjection({
             authority: creatorSceneHydrationAuthorityRef.current,
             sceneCount: scenes.length,
           }),
-        });
+        }, autosaveTicket);
+        if (!saveResult) return;
         if (autosaveGeneration !== projectGenerationRef.current) return;
         creatorAutosaveSemanticBaselineRef.current = persistedSemanticIntent;
         setSaveMessage(ui.autoSaved);
