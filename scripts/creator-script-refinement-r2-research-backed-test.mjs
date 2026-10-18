@@ -4,10 +4,12 @@ import { createCreatorScript, getCreatorScriptDurationContractForScript } from "
 import {
   createCreatorScriptRewriteGoalPlan,
   creatorScriptInstructionRequiresResearch,
+  executeCreatorScriptEditorialRewrite,
   isCreatorScriptFullRefinementRuntimeEnabled,
   normalizeCreatorScriptRefinementMode,
   validateCreatorScriptRewriteCandidate,
 } from "../lib/creator/creatorScriptEditorialRewrite.ts";
+import { applyCreatorScriptProposal, createCreatorScriptProposal, discardCreatorScriptProposal } from "../lib/creator/creatorScriptRevisions.ts";
 import { classifyCreatorScriptRefinementFailure } from "../lib/creator/creatorScriptRefinementRuntime.ts";
 
 const words = (prefix, count) => Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(" ");
@@ -78,6 +80,53 @@ assert.throws(() => validateCreatorScriptRewriteCandidate({ script, language: "e
 assert.throws(() => validateCreatorScriptRewriteCandidate({ script, language: "en", mode: "research_backed_rewrite", instruction, candidate: { ...candidate, goalResults: candidate.goalResults.slice(1) }, ...authority }), /GOAL_MISMATCH/);
 assert.throws(() => validateCreatorScriptRewriteCandidate({ script, language: "en", mode: "editorial_rewrite", instruction, candidate, ...authority }), /RESEARCH_REQUIRED/);
 
+const verifiedSources = [
+  { sourceId: "academic:stanford-agents", adapterId: "academic", mediaKind: "paper", externalId: "stanford-agents", title: "Generative Agents", url: "https://example.test/stanford-agents", publisher: "Stanford", author: "Research team", publishedAt: "2024-01-01", language: "en", summary: "A controlled simulation used 1,052 agents to study behavior prediction and social interaction.", thumbnailUrl: null, durationSec: null, metrics: {}, sourceMetadata: {} },
+  { sourceId: "primary:novel-replies", adapterId: "primary", mediaKind: "document", externalId: "novel-replies", title: "Novel replies archive", url: "https://example.test/novel-replies", publisher: "StoryFile", author: null, publishedAt: null, language: "en", summary: "Archived prompts produced novel AI-generated replies that were not stored as prerecorded answers.", thumbnailUrl: null, durationSec: null, metrics: {}, sourceMetadata: {} },
+];
+const addedEvidence = [
+  { evidenceId: "e-stanford", sourceId: "academic:stanford-agents", excerpt: "A controlled simulation used 1,052 agents to study behavior prediction and social interaction.", contextNote: "Simulation evidence, not proof of personal identity.", locator: { section: null, page: 1, timecodeStartSec: null, timecodeEndSec: null } },
+  { evidenceId: "e-replies", sourceId: "primary:novel-replies", excerpt: "Archived prompts produced novel AI-generated replies that were not stored as prerecorded answers.", contextNote: "Demonstrates generative response behavior.", locator: { section: "results", page: null, timecodeStartSec: null, timecodeEndSec: null } },
+];
+const addedClaims = [
+  { claimId: "claim-stanford", claimType: "RESEARCH_FINDING", text: "A Stanford simulation used 1,052 agents to examine predicted social behavior.", propositionKind: "original_research_result", origin: { attributedEntity: "Stanford", referencedWork: "https://example.test/stanford-agents" }, supportingEvidenceIds: ["e-stanford"], counterEvidenceIds: [], contextualEvidenceIds: [] },
+  { claimId: "claim-novel", claimType: "PRIMARY_SOURCE_CLAIM", text: "The archive reports novel generated replies rather than only prerecorded answers.", propositionKind: "document_assertion", origin: { attributedEntity: "StoryFile", referencedWork: "https://example.test/novel-replies" }, supportingEvidenceIds: ["e-replies"], counterEvidenceIds: [], contextualEvidenceIds: [] },
+];
+let researchCalls = 0; let rewriteCalls = 0; let assessmentCalls = 0;
+const executed = await executeCreatorScriptEditorialRewrite({
+  script, subject: "digital afterlife", instruction, language: "en", mode: "research_backed_rewrite", hardCeilingSec: 600,
+  dependencies: {
+    research: async () => { researchCalls += 1; return { sources: verifiedSources }; },
+    rewrite: async ({ goals: requestedGoals }) => { rewriteCalls += 1; return {
+      sections: [
+        { id: "opening", kind: "opening", heading: "A reply that was never recorded", text: words("reply", 120), claimIds: ["claim-novel"], evidenceReviewRequired: true },
+        { id: "behavior", kind: "body", heading: "Prediction is not survival", text: words("behavior", 480), claimIds: ["claim-stanford"], evidenceReviewRequired: true },
+        { id: "identity", kind: "body", heading: "The two-copy problem", text: words("identity", 480), claimIds: [], evidenceReviewRequired: false },
+        { id: "conclusion", kind: "conclusion", heading: "What responsibility survives", text: words("moral", 120), claimIds: ["claim-novel", "claim-stanford"], evidenceReviewRequired: true },
+      ], addedClaims, addedEvidence, goalResults: requestedGoals.map((goal) => ({ goalId: goal.goalId, status: "satisfied", sectionIds: ["behavior"], summary: "provider claim ignored" })),
+    }; },
+    assess: async ({ goals: requestedGoals }) => { assessmentCalls += 1; return requestedGoals.map((goal) => ({ goalId: goal.goalId, status: "satisfied", sectionIds: goal.kind === "ending" ? ["conclusion"] : ["opening", "behavior", "identity"], summary: `Independent assessment found a material ${goal.kind} change.` })); },
+    now: () => "2026-10-18T01:00:00.000Z",
+  },
+});
+assert.deepEqual([researchCalls, rewriteCalls, assessmentCalls], [1, 1, 1]);
+assert.equal(executed.script.sections.some((section) => section.id === "identity"), true);
+assert.equal(executed.script.grounding.context.sources.some((source) => source.sourceId === "academic:stanford-agents"), true);
+assert.equal(executed.script.sections.find((section) => section.id === "behavior").claimIds.includes("claim-stanford"), true);
+assert.ok(getCreatorScriptDurationContractForScript(executed.script, "en").estimatedDurationSec <= 600);
+const proposal = createCreatorScriptProposal({ script, scope: "whole_script", instruction, nextScript: executed.script, mode: "research_backed_rewrite", goalResults: executed.goalResults, evidenceDelta: executed.evidenceDelta });
+assert.equal(proposal.proposedScript.grounding.context.claims.some((claim) => claim.claimId === "claim-stanford"), true);
+const applied = applyCreatorScriptProposal(script, proposal, "en");
+assert.equal(applied.revision, script.revision + 1);
+assert.equal(applied.grounding.context.evidence.some((item) => item.evidenceId === "e-stanford"), true);
+const discarded = discardCreatorScriptProposal({ script, pendingRefinement: proposal }, proposal.proposalId);
+assert.equal(discarded.script.grounding.context.claims.some((claim) => claim.claimId === "claim-stanford"), false);
+assert.equal(discarded.pendingRefinement, null);
+assert.throws(() => applyCreatorScriptProposal({ ...script, revision: script.revision + 1 }, proposal, "en"), /STALE/);
+
+await assert.rejects(() => executeCreatorScriptEditorialRewrite({ script, subject: "digital afterlife", instruction, language: "en", mode: "research_backed_rewrite", dependencies: { research: async () => ({ sources: [] }), rewrite: async () => { throw new Error("should not run"); }, assess: async () => [] } }), /MISSING_SOURCES/);
+await assert.rejects(() => executeCreatorScriptEditorialRewrite({ script, subject: "digital afterlife", instruction, language: "en", mode: "research_backed_rewrite", dependencies: { research: async () => ({ sources: verifiedSources }), rewrite: async () => ({ sections: executed.script.sections, addedClaims: [{ ...addedClaims[0], text: "Stanford proved 99 percent accuracy." }], addedEvidence: [addedEvidence[0]], goalResults: [] }), assess: async () => [] } }), /UNSUPPORTED_NEW_CLAIM|GOAL_MISMATCH/);
+
 for (const code of ["CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED", "CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES", "CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM", "CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH", "CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID"]) {
   assert.equal(classifyCreatorScriptRefinementFailure(new Error(code)).code, code);
 }
@@ -86,6 +135,7 @@ const route = await readFile(new URL("../app/api/creator-script/refine/route.ts"
 const component = await readFile(new URL("../components/create/CreatorScriptReview.tsx", import.meta.url), "utf8");
 const page = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(route, /normalizeCreatorScriptRefinementMode/);
+assert.match(route, /executeCreatorScriptEditorialRewrite/);
 assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED/);
 assert.match(route, /CREATOR_SCRIPT_REFINEMENT_STAGE/);
 assert.match(component, /option value="editorial_rewrite"/);

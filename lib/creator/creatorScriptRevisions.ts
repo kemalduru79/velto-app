@@ -1,4 +1,5 @@
-import { getCreatorScriptDocumentText, type CreatorScript } from "./creatorScript.ts";
+import { getCreatorScriptDocumentText, normalizeCreatorScript, type CreatorScript } from "./creatorScript.ts";
+import type { CreatorScriptRefinementMode, CreatorScriptRewriteGoalResult } from "./creatorScriptEditorialRewrite.ts";
 import { applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, type CreatorScriptRefinementScope } from "./creatorScriptRefinement.ts";
 
 export const CREATOR_SCRIPT_HISTORY_LIMIT = 12;
@@ -21,6 +22,10 @@ export type CreatorScriptPendingRefinement = {
   createdAt: string;
   changes: CreatorScriptChange[];
   editorialAdvisories?: Array<{ code: string; sectionIds: string[]; summary: string }>;
+  mode?: CreatorScriptRefinementMode;
+  proposedScript?: CreatorScript;
+  goalResults?: CreatorScriptRewriteGoalResult[];
+  evidenceDelta?: { addedSourceIds: string[]; removedSourceIds: string[]; addedClaimIds: string[]; removedClaimIds: string[] };
 };
 
 export type CreatorScriptRevisionHistoryEntry = {
@@ -57,6 +62,10 @@ export function isValidCreatorScriptPendingRefinement(value: unknown): value is 
       const advisory = value && typeof value === "object" ? value as Record<string, unknown> : {};
       return typeof advisory.code === "string" && advisory.code.length <= 80 && Array.isArray(advisory.sectionIds) && advisory.sectionIds.length <= 20 && advisory.sectionIds.every((sectionId) => typeof sectionId === "string" && sectionId.length <= 200) && typeof advisory.summary === "string" && advisory.summary.length > 0 && advisory.summary.length <= 1000;
     }))) &&
+    (!Object.prototype.hasOwnProperty.call(item, "mode") || ["focused_edit", "editorial_rewrite", "research_backed_rewrite"].includes(String(item.mode))) &&
+    (!Object.prototype.hasOwnProperty.call(item, "proposedScript") || (() => { try { normalizeCreatorScript(item.proposedScript); return true; } catch { return false; } })()) &&
+    (!Object.prototype.hasOwnProperty.call(item, "goalResults") || (Array.isArray(item.goalResults) && item.goalResults.length <= 30)) &&
+    (!Object.prototype.hasOwnProperty.call(item, "evidenceDelta") || (item.evidenceDelta !== null && typeof item.evidenceDelta === "object")) &&
     Array.isArray(item.changes) && item.changes.length > 0 && item.changes.every(isValidCreatorScriptChange);
 }
 
@@ -71,15 +80,18 @@ export function isValidCreatorScriptHistory(value: unknown): value is CreatorScr
 }
 
 export function createCreatorScriptChanges(before: CreatorScript, after: CreatorScript): CreatorScriptChange[] {
-  return after.sections.flatMap((section, index) => {
-    const prior = before.sections[index];
-    return prior?.id === section.id && prior.text !== section.text
-      ? [{ sectionId: section.id, sectionHeading: section.heading || section.kind, beforeText: prior.text, afterText: section.text }]
+  const priorById = new Map(before.sections.map((section) => [section.id, section]));
+  const changes = after.sections.flatMap((section) => {
+    const prior = priorById.get(section.id);
+    return !prior || prior.text !== section.text || prior.heading !== section.heading
+      ? [{ sectionId: section.id, sectionHeading: section.heading || section.kind, beforeText: prior?.text || "", afterText: section.text }]
       : [];
   });
+  for (const prior of before.sections) if (!after.sections.some((section) => section.id === prior.id)) changes.push({ sectionId: prior.id, sectionHeading: prior.heading || prior.kind, beforeText: prior.text, afterText: "" });
+  return changes;
 }
 
-export function createCreatorScriptProposal(input: { script: CreatorScript; scope: CreatorScriptRefinementScope; instruction: string; nextScript: CreatorScript; selectionStart?: number; selectionEnd?: number; selectedText?: string; replacementText?: string; editorialAdvisories?: Array<{ code: string; sectionIds: string[]; summary: string }> }) {
+export function createCreatorScriptProposal(input: { script: CreatorScript; scope: CreatorScriptRefinementScope; instruction: string; nextScript: CreatorScript; selectionStart?: number; selectionEnd?: number; selectedText?: string; replacementText?: string; editorialAdvisories?: Array<{ code: string; sectionIds: string[]; summary: string }>; mode?: CreatorScriptRefinementMode; goalResults?: CreatorScriptRewriteGoalResult[]; evidenceDelta?: CreatorScriptPendingRefinement["evidenceDelta"] }) {
   let changes = createCreatorScriptChanges(input.script, input.nextScript);
   if (input.scope === "selection" && input.selectionStart !== undefined && input.selectionEnd !== undefined && input.selectedText !== undefined && input.replacementText !== undefined) {
     if (input.selectedText === input.replacementText) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
@@ -87,7 +99,7 @@ export function createCreatorScriptProposal(input: { script: CreatorScript; scop
     changes = [{ sectionId: section?.id || "selection", sectionHeading: section?.heading || "Selected text", beforeText: input.selectedText, afterText: input.replacementText, selectionStart: input.selectionStart, selectionEnd: input.selectionEnd }];
   }
   if (!changes.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
-  return { proposalId: crypto.randomUUID(), baseRevision: input.script.revision, scope: input.scope, instruction: input.instruction, createdAt: new Date().toISOString(), changes, ...(input.editorialAdvisories?.length ? { editorialAdvisories: input.editorialAdvisories } : {}) } satisfies CreatorScriptPendingRefinement;
+  return { proposalId: crypto.randomUUID(), baseRevision: input.script.revision, scope: input.scope, instruction: input.instruction, createdAt: new Date().toISOString(), changes, ...(input.editorialAdvisories?.length ? { editorialAdvisories: input.editorialAdvisories } : {}), ...(input.mode ? { mode: input.mode } : {}), ...(input.scope === "whole_script" ? { proposedScript: normalizeCreatorScript(input.nextScript) } : {}), ...(input.goalResults ? { goalResults: input.goalResults } : {}), ...(input.evidenceDelta ? { evidenceDelta: input.evidenceDelta } : {}) } satisfies CreatorScriptPendingRefinement;
 }
 
 export function applyCreatorScriptProposal(script: CreatorScript, proposal: CreatorScriptPendingRefinement, language: "tr" | "en") {
@@ -97,6 +109,11 @@ export function applyCreatorScriptProposal(script: CreatorScript, proposal: Crea
     const change = proposal.changes[0];
     if (change.selectionStart === undefined || change.selectionEnd === undefined) throw new Error("CREATOR_SCRIPT_REFINEMENT_PROPOSAL_INVALID");
     return applyCreatorScriptSelectionRefinement(script, { start: change.selectionStart, end: change.selectionEnd, selectedText: change.beforeText, replacementText: change.afterText });
+  }
+  if (proposal.proposedScript) {
+    const candidate = normalizeCreatorScript(proposal.proposedScript);
+    if (candidate.revision !== script.revision + 1 || candidate.strategyFingerprint !== script.strategyFingerprint) throw new Error("CREATOR_SCRIPT_REFINEMENT_PROPOSAL_INVALID");
+    return candidate;
   }
   if (proposal.scope === "opening") {
     if (proposal.changes.length !== 1) throw new Error("CREATOR_SCRIPT_REFINEMENT_PROPOSAL_INVALID");

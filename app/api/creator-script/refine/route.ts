@@ -11,7 +11,8 @@ import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorSc
 import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { createCreatorProductionInvalidationIdentity, creatorProjectHasMeaningfulProduction, requireCreatorProductionSnapshotBeforeInvalidation } from "@/lib/creator/creatorProductionHistory";
 import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
-import { normalizeCreatorScriptRefinementMode } from "@/lib/creator/creatorScriptEditorialRewrite";
+import { executeCreatorScriptEditorialRewrite, isCreatorScriptFullRefinementRuntimeEnabled, normalizeCreatorScriptRefinementMode, type CreatorScriptRewriteGoalResult, type CreatorScriptEvidenceDelta } from "@/lib/creator/creatorScriptEditorialRewrite";
+import { createCreatorScriptEditorialRewriteProviders } from "@/lib/creator/creatorScriptEditorialRewriteProviders.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,7 +36,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Choose a focused edit, editorial rewrite, or research-backed rewrite.", code: "CREATOR_SCRIPT_REFINEMENT_MODE_REQUIRED" }, { status: 400 });
     }
     if (action === "generate" && ((scope === "whole_script") !== (refinementMode !== "focused_edit"))) return NextResponse.json({ error: "The refinement target does not match its mode.", code: "CREATOR_SCRIPT_REFINEMENT_MODE_SCOPE_MISMATCH" }, { status: 400 });
-    if (action === "generate" && scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED) return NextResponse.json({ error: "Whole-script refinement is still gated while staged acceptance is incomplete.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
+    const fullRewriteEnabled = CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED || isCreatorScriptFullRefinementRuntimeEnabled(process.env);
+    if (action === "generate" && scope === "whole_script" && !fullRewriteEnabled) return NextResponse.json({ error: "Whole-script refinement is still gated while staged acceptance is incomplete.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
     const services = getPersistenceServices();
     const project = await services.projectRepository.getForOwner(projectId, principal.id);
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
@@ -53,7 +55,7 @@ export async function POST(req: Request) {
     if (action === "apply") {
       const proposalId = text(body.proposalId, 120); const proposal = state.strategy.pendingRefinement;
       if (!proposal || proposal.proposalId !== proposalId || proposal.baseRevision !== script.revision) return NextResponse.json({ error: "Refinement preview is no longer current.", code: "CREATOR_SCRIPT_REFINEMENT_STALE" }, { status: 409 });
-      if (proposal.scope === "whole_script" && !CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED) return NextResponse.json({ error: "Full script refinement is currently unavailable. Discard this preview to continue.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
+      if (proposal.scope === "whole_script" && !fullRewriteEnabled) return NextResponse.json({ error: "Full script refinement is currently unavailable. Discard this preview to continue.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
       const nextScript = applyCreatorScriptProposal(script, proposal, state.brief.language);
       const origin = proposal.scope === "selection" ? "ai_selection" : proposal.scope === "opening" ? "ai_opening" : "ai_whole_script";
       const revisionHistory = appendCreatorScriptHistory(state.strategy.revisionHistory || [], { fromRevision: script.revision, toRevision: nextScript.revision, origin, instruction: proposal.instruction, changes: proposal.changes });
@@ -98,7 +100,7 @@ export async function POST(req: Request) {
       const parsed = JSON.parse(response.output_text || "{}"); const replacement = text(parsed.replacementText, 100000);
       if (!replacement) throw new Error("CREATOR_SCRIPT_REFINEMENT_OUTPUT_INVALID"); return replacement;
     };
-    let nextScript: CreatorScript; let replacementText: string | undefined; let editorialAdvisories: CreatorScriptHolisticQa["advisoryFindings"] = [];
+    let nextScript: CreatorScript; let replacementText: string | undefined; let editorialAdvisories: CreatorScriptHolisticQa["advisoryFindings"] = []; let goalResults: CreatorScriptRewriteGoalResult[] | undefined; let evidenceDelta: CreatorScriptEvidenceDelta | undefined;
     if (scope === "selection") {
       const selection = validateCreatorScriptSelection(script, Number(body.selectionStart), Number(body.selectionEnd), exactText(body.selectedText));
       const evidenceReviews = selection.affectedSectionIds.map((sectionId) => {
@@ -113,6 +115,19 @@ export async function POST(req: Request) {
       const section = script.sections[0]; const review = section.claimIds.length ? getCreatorScriptSectionSourceReview({ ...script, sections: script.sections.map((item) => item.id === section.id ? { ...item, evidenceReviewRequired: true } : item) }, section.id) : null;
       if (section.claimIds.length && !review) return NextResponse.json({ error: "This section cannot be refined safely with its current sources." }, { status: 422 });
       nextScript = applyCreatorScriptOpeningRefinement(script, await refine(section.text, review));
+    } else if (refinementMode === "editorial_rewrite" || refinementMode === "research_backed_rewrite") {
+      const rewrite = await executeCreatorScriptEditorialRewrite({
+        script,
+        subject: script.title,
+        instruction,
+        language: state.brief.language,
+        mode: refinementMode,
+        hardCeilingSec: Number.isFinite(Number(body.hardCeilingSec)) ? Number(body.hardCeilingSec) : undefined,
+        dependencies: createCreatorScriptEditorialRewriteProviders({ ownerId: principal.id, projectId }),
+      });
+      nextScript = rewrite.script;
+      goalResults = rewrite.goalResults;
+      evidenceDelta = rewrite.evidenceDelta;
     } else {
       const architecture = createCreatorScriptWholeRefinementPlan(script, state.brief.language);
       const sectionIds = script.sections.map((section) => section.id);
@@ -301,7 +316,7 @@ export async function POST(req: Request) {
       assertCreatorScriptForbiddenTermsRemoved(candidate, forbiddenLiteralTerms);
       nextScript = applyCreatorScriptWholeRefinement(script, candidate.sections.map((section) => ({ id: section.id, text: section.text })), state.brief.language);
     }
-    const pendingRefinement = createCreatorScriptProposal({ script, scope, instruction, nextScript, selectionStart: Number(body.selectionStart), selectionEnd: Number(body.selectionEnd), selectedText: exactText(body.selectedText), replacementText, editorialAdvisories: scope === "whole_script" ? editorialAdvisories.map(({ code, sectionIds, summary }) => ({ code, sectionIds, summary })) : undefined });
+    const pendingRefinement = createCreatorScriptProposal({ script, scope, instruction, nextScript, selectionStart: Number(body.selectionStart), selectionEnd: Number(body.selectionEnd), selectedText: exactText(body.selectedText), replacementText, editorialAdvisories: scope === "whole_script" ? editorialAdvisories.map(({ code, sectionIds, summary }) => ({ code, sectionIds, summary })) : undefined, mode: refinementMode, goalResults, evidenceDelta });
     const nextState = { ...state, strategy: { ...state.strategy, pendingRefinement } };
     const result = await saveState(nextState);
     return NextResponse.json({ success: true, pendingRefinement, creatorScript: script, revisionHistory: state.strategy.revisionHistory || [], project: result.project });
