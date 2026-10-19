@@ -19,6 +19,15 @@ export type CreatorScriptLiveAcceptanceProviders = {
   assessGoals: (input: ProviderContext & { before: CreatorScript; after: CreatorScript }) => Promise<AcceptanceProviderResult<CreatorScriptEditorialRewriteResult["goalResults"]>>;
 };
 
+// Mock callbacks require explicit registration in a test process. Merely selecting
+// executionKind="mock" must never authorize arbitrary provider callbacks.
+const registeredMockProviders = new WeakSet<object>();
+export function registerCreatorScriptAcceptanceMockProviders(providers: CreatorScriptLiveAcceptanceProviders): CreatorScriptLiveAcceptanceProviders {
+  if (process.env.NODE_ENV !== "test") throw new Error("CREATOR_REFINEMENT_MOCK_TEST_PROCESS_REQUIRED");
+  registeredMockProviders.add(providers);
+  return providers;
+}
+
 export type CreatorScriptAcceptanceStageTrace = {
   stage: "research_acquisition" | "source_passage_verification" | "script_rewriting" | "claim_evidence_assessment" | "editorial_goal_assessment" | "proposal_validation" | "persistence";
   timingKind: "actual_runtime";
@@ -53,10 +62,16 @@ export async function runCreatorScriptControlledLiveAcceptance(input: {
   const traces: CreatorScriptAcceptanceStageTrace[] = [];
   const now = input.now ?? (() => performance.now());
   const timeoutMs = input.stageTimeoutMs ?? 120_000;
+  const overallDeadline = now() + 285_000; // Reserve 15 seconds before the 300-second route budget.
   const authorization = input.authorization ?? DEFAULT_CREATOR_SCRIPT_LIVE_ACCEPTANCE_AUTHORIZATION;
   let budget: ReturnType<typeof createCreatorScriptLiveAcceptanceBudget>;
   try {
     budget = createCreatorScriptLiveAcceptanceBudget(authorization);
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 285_000) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT_LIMIT_INVALID");
+    if (authorization.executionKind === "mock" && (process.env.NODE_ENV !== "test" || !registeredMockProviders.has(input.providers) || !input.acquireDocument)) throw new Error("CREATOR_REFINEMENT_MOCK_PROVIDER_UNTRUSTED");
+    // No trusted, user-authorized live provider factory is wired in Stage 4B1.
+    // Do not allow caller-injected callbacks to masquerade as approved live integrations.
+    if (authorization.executionKind === "live") throw new Error("CREATOR_REFINEMENT_LIVE_ADAPTER_NOT_APPROVED");
   } catch (error) {
     return { traceId, status: "BLOCKED" as const, preview: null, claimAuthority: [], missingSourceCoverage: [], verifiedPassageIds: [], sourceIds: [], traces, budget: { executionKind: authorization.executionKind, liveProvidersAuthorized: false, approvedMaxCostUsd: authorization.approvedMaxCostUsd, estimatedCostUsd: 0, reportedCostUsd: 0, costLimitExceeded: false, requestCounts: { exa: 0, openai: 0 }, approvedRequestLimits: { exa: authorization.approvedMaxExaRequests, openai: authorization.approvedMaxOpenAiRequests }, approvedMaxOutputTokensPerRequest: authorization.approvedMaxOutputTokensPerRequest, usage: [] }, zeroWriteProof: { beforeSha256: canonicalBefore, afterSha256: canonicalBefore, unchanged: true }, warnings: ["PREVIEW_REJECTED", "NO_APPLY_PATH", "LIVE_AUTHORIZATION_REJECTED"], diagnostic: error instanceof Error ? error.message : "UNKNOWN" };
   }
@@ -69,23 +84,37 @@ export async function runCreatorScriptControlledLiveAcceptance(input: {
   let claimAuthority: OriginalSourceClaimAuthorityResult[] = [];
 
   const runStage = async <T>(stage: CreatorScriptAcceptanceStageTrace["stage"], operation: (signal: AbortSignal) => Promise<T>) => {
-    const started = now(); const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT")), timeoutMs);
+    const started = now();
+    const controller = new AbortController();
+    const remainingMs = overallDeadline - started;
+    if (remainingMs <= 0) throw new Error("CREATOR_REFINEMENT_ROUTE_BUDGET_EXCEEDED");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort(new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT"));
+        reject(new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT"));
+      }, Math.min(timeoutMs, remainingMs));
+    });
     try {
-      const value = await operation(controller.signal);
+      // Race handles callbacks that ignore AbortSignal. No timed-out result may
+      // subsequently become an accepted preview; transport is also signalled.
+      const value = await Promise.race([operation(controller.signal), timeout]);
+      if (controller.signal.aborted) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT");
       traces.push({ stage, timingKind: "actual_runtime", outcome: "completed", elapsedMs: Math.max(0, now() - started), diagnostic: null });
       return value;
     } catch (error) {
       const normalized = controller.signal.aborted ? new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT") : error;
       traces.push({ stage, timingKind: "actual_runtime", elapsedMs: Math.max(0, now() - started), ...failureOutcome(normalized) });
       throw normalized;
-    } finally { clearTimeout(timer); }
+    } finally { if (timer) clearTimeout(timer); }
   };
 
   const providerCall = async <T>(provider: "exa" | "openai", signal: AbortSignal, operation: (context: ProviderContext) => Promise<AcceptanceProviderResult<T>>) => {
+    if (signal.aborted) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT");
     const estimatedCostUsd = input.estimatedCostsUsd?.[provider] ?? 0;
     budget.reserve(provider, estimatedCostUsd, authorization.approvedMaxOutputTokensPerRequest);
     const result = await operation({ signal, maxOutputTokens: authorization.approvedMaxOutputTokensPerRequest });
+    if (signal.aborted) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT");
     budget.record({ provider, ...result.usage });
     if (budget.report().costLimitExceeded) throw new Error("CREATOR_REFINEMENT_LIVE_BUDGET_EXHAUSTED");
     return result.value;
@@ -97,7 +126,9 @@ export async function runCreatorScriptControlledLiveAcceptance(input: {
       for (const source of result.sources) {
         const authority = input.authorities[source.sourceId];
         if (!authority) throw new Error("CREATOR_REFINEMENT_SOURCE_AUTHORITY_MISSING");
-        acquired.set(source.sourceId, await acquireDocument({ source, authority }));
+        if (signal.aborted) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT");
+        acquired.set(source.sourceId, await acquireDocument({ source, authority, signal }));
+        if (signal.aborted) throw new Error("CREATOR_REFINEMENT_STAGE_TIMEOUT");
       }
       return result;
     });
