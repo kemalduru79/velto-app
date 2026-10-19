@@ -44,8 +44,7 @@ export function createCreatorScriptRefinementAcceptanceObserver(input: { now?: (
       : !checks.liveProviderVerified
         ? "REVIEW_REQUIRED"
         : "READY_FOR_CONTROLLED_LIVE_ACCEPTANCE";
-    return { status, evidenceFidelity: checks.evidenceFidelity, claimAuthority: checks.claimAuthority, refinementLifecycle: checks.lifecycle, casPersistence: checks.casPersistence, scriptSceneIntegrity: checks.scriptSceneIntegrity, operationalReliability: !failed && totalElapsedMs < routeBudgetMs, liveProviderVerified: checks.liveProviderVerified, routeBudgetMs, totalElapsedMs, stages: [...results], remainingBlockers: [...(!checks.liveProviderVerified ? ["LIVE_PROVIDER_RUNTIME_NOT_VERIFIED"] : []), ...(totalElapsedMs >= routeBudgetMs ? ["SYNCHRONOUS_ROUTE_BUDGET_EXCEEDED"] : []), ...(failed ? ["STAGE_FAILURE_REQUIRES_REVIEW"] : [])] };
+    return { status, evidenceFidelity: checks.evidenceFidelity, claimAuthority: checks.claimAuthority, refinementLifecycle: checks.lifecycle, casPersistence: checks.casPersistence, scriptSceneIntegrity: checks.scriptSceneIntegrity, operationalReliability: !failed && totalElapsedMs < routeBudgetMs, liveProviderVerified: checks.liveProviderVerified, routeBudgetMs, totalElapsedMs, operationalTiming: { kind: "synthetic_simulation" as const, runtimeCancellationEnforced: false, comparisonOnly: true }, stages: [...results], remainingBlockers: [...(!checks.liveProviderVerified ? ["LIVE_PROVIDER_RUNTIME_NOT_VERIFIED"] : []), ...(totalElapsedMs >= routeBudgetMs ? ["SYNTHETIC_ROUTE_BUDGET_EXCEEDED"] : []), ...(failed ? ["STAGE_FAILURE_REQUIRES_REVIEW"] : [])] };
   };
   return { run, report, results };
 }
-
