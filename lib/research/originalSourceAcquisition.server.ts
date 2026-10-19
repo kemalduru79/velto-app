@@ -47,9 +47,10 @@ async function defaultResolve(hostname: string): Promise<ResolvedAddress[]> {
   return records.map((record) => ({ address: record.address, family: record.family as 4 | 6 }));
 }
 
-async function defaultRequest(url: URL, selected: ResolvedAddress, timeoutMs: number, maxBytes: number): Promise<ResponseBody> {
+async function defaultRequest(url: URL, selected: ResolvedAddress, timeoutMs: number, maxBytes: number, signal?: AbortSignal): Promise<ResponseBody> {
+  if (signal?.aborted) throw new OriginalSourceAcquisitionError("SOURCE_FETCH_ABORTED", "Original-source acquisition was cancelled.");
   return new Promise((resolve, reject) => {
-    const request = httpsRequest(url, { method: "GET", agent: false, servername: url.hostname, lookup: createPinnedDnsLookup(selected), headers: { Accept: "text/plain,text/html,application/xhtml+xml", "User-Agent": "Velto-Original-Source-Acquisition/1.0" } }, (response) => {
+    const request = httpsRequest(url, { method: "GET", agent: false, servername: url.hostname, signal, lookup: createPinnedDnsLookup(selected), headers: { Accept: "text/plain,text/html,application/xhtml+xml", "User-Agent": "Velto-Original-Source-Acquisition/1.0" } }, (response) => {
       const declared = Number(response.headers["content-length"] || 0);
       if (Number.isFinite(declared) && declared > maxBytes) { response.destroy(); reject(new OriginalSourceAcquisitionError("SOURCE_DOCUMENT_TOO_LARGE", "Original-source document exceeds the configured size limit.")); return; }
       const chunks: Buffer[] = []; let total = 0;
@@ -62,7 +63,9 @@ async function defaultRequest(url: URL, selected: ResolvedAddress, timeoutMs: nu
       response.on("error", () => reject(new OriginalSourceAcquisitionError("SOURCE_FETCH_FAILED", "Original-source response was interrupted.")));
     });
     request.setTimeout(timeoutMs, () => request.destroy(new OriginalSourceAcquisitionError("SOURCE_FETCH_TIMEOUT", "Original-source acquisition timed out.")));
-    request.on("error", (error) => reject(error instanceof OriginalSourceAcquisitionError ? error : new OriginalSourceAcquisitionError("SOURCE_FETCH_FAILED", "Original-source acquisition failed.")));
+    request.on("error", (error) => reject(signal?.aborted
+      ? new OriginalSourceAcquisitionError("SOURCE_FETCH_ABORTED", "Original-source acquisition was cancelled.")
+      : error instanceof OriginalSourceAcquisitionError ? error : new OriginalSourceAcquisitionError("SOURCE_FETCH_FAILED", "Original-source acquisition failed.")));
     request.end();
   });
 }
@@ -80,25 +83,33 @@ export async function acquireOriginalSourceDocument(input: {
   maxBytes?: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  signal?: AbortSignal;
   now?: () => string;
   resolve?: (hostname: string) => Promise<ResolvedAddress[]>;
-  request?: (url: URL, selected: ResolvedAddress, timeoutMs: number, maxBytes: number) => Promise<ResponseBody>;
+  request?: (url: URL, selected: ResolvedAddress, timeoutMs: number, maxBytes: number, signal?: AbortSignal) => Promise<ResponseBody>;
 }) {
   const maxBytes = input.maxBytes ?? 2 * 1024 * 1024;
   const timeoutMs = input.timeoutMs ?? 15_000;
   const maxRedirects = input.maxRedirects ?? 3;
   const resolve = input.resolve ?? defaultResolve;
   const request = input.request ?? defaultRequest;
+  const assertNotAborted = () => {
+    if (input.signal?.aborted) throw new OriginalSourceAcquisitionError("SOURCE_FETCH_ABORTED", "Original-source acquisition was cancelled.");
+  };
+  assertNotAborted();
   let current = parseUrl(input.source.url);
   const requestedUrl = canonicalResearchUrl(current.toString());
   const redirectChain: string[] = [];
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+    assertNotAborted();
     const hostname = normalizeHost(current.hostname);
     const addresses = await resolve(hostname).catch(() => []);
+    assertNotAborted(); // DNS may not support native abort; never connect after cancellation.
     if (!addresses.length) throw new OriginalSourceAcquisitionError("SOURCE_DNS_FAILED", "Original-source host could not be resolved.");
     if (addresses.some(({ address }) => isUnsafeNetworkAddress(address))) throw new OriginalSourceAcquisitionError("SOURCE_SSRF_REJECTED", "Original-source host resolved to a non-public address.");
     const selected = addresses.find(({ family }) => family === 4) ?? addresses[0];
-    const response = await request(current, selected, timeoutMs, maxBytes);
+    const response = await request(current, selected, timeoutMs, maxBytes, input.signal);
+    assertNotAborted(); // Also covers injected transports that resolve after abort.
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.location;
       if (!location || redirectCount === maxRedirects) throw new OriginalSourceAcquisitionError("SOURCE_REDIRECT_REJECTED", "Original-source redirect is invalid or exceeded the limit.");
