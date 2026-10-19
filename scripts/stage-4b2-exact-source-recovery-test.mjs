@@ -40,7 +40,31 @@ assert.equal(verified.ok, true);
 assert.equal(verified.sourceUrl, STAGE4B2_APPROVED_SOURCE_URL);
 assert.equal(verified.passage, passage);
 assert.match(verified.passageSha256, /^[a-f0-9]{64}$/u);
+assert.equal(verified.matchMode, "compact_exact");
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: STAGE4B2_APPROVED_SOURCE_URL }), independentlyRetrievedText: document }).ok, true);
+const normalizedPassage = "The agents’ memories&nbsp;shape an “emergent” social world—without semantic approximation.";
+const normalizedDocument = "The agents' memories shape an \"emergent\" social world-without semantic approximation.";
+const normalizedResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [normalizedPassage] }), independentlyRetrievedText: normalizedDocument });
+assert.equal(normalizedResult.ok, true);
+assert.equal(normalizedResult.matchMode, "normalized_verbatim");
+assert.equal(normalizedResult.mismatchCategory, "text_normalization_mismatch_recovered");
+assert.equal(normalizedResult.safeDiagnostics.matchingOutcomes[0].compactExactMatch, false);
+assert.equal(normalizedResult.safeDiagnostics.matchingOutcomes[0].normalizedVerbatimMatch, true);
+const scopeOnlyPassage = "This longer body passage exists in an official paper rendition but not on the approved abstract page.";
+const scopeResult = classifyStage4b2ContentsResponse({
+  response: response({ highlights: [scopeOnlyPassage] }),
+  independentlyRetrievedText: "Approved abstract page does not contain the body passage.",
+  diagnosticOfficialRepresentations: [`Official full paper body. ${scopeOnlyPassage}`],
+});
+assert.equal(scopeResult.ok, false);
+assert.equal(scopeResult.reason, "DOCUMENT_SCOPE_MISMATCH");
+assert.equal(scopeResult.mismatchCategory, "document_scope_mismatch");
+assert.equal(scopeResult.safeDiagnostics.matchingOutcomes[0].diagnosticOfficialRepresentationMatch, true);
+const unresolvedResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [scopeOnlyPassage] }), independentlyRetrievedText: "Approved abstract only." });
+assert.equal(unresolvedResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
+assert.equal(unresolvedResult.mismatchCategory, "unresolved_passage_mismatch");
+assert.deepEqual(Object.keys(unresolvedResult.safeDiagnostics).sort(), ["highlightCount", "highlightLengths", "highlightSha256", "matchingOutcomes", "normalizedOriginalTextLength", "normalizedOriginalTextSha256", "originalTextLength", "originalTextSha256"].sort());
+assert.equal(JSON.stringify(unresolvedResult.safeDiagnostics).includes(scopeOnlyPassage), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved"] }, evidenceId: "e-approved" }), true);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-substituted"] }, evidenceId: "e-approved" }), false);
@@ -49,6 +73,7 @@ assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "unsupporte
 const directory = await mkdtemp(path.join(os.tmpdir(), "stage4b2-receipts-"));
 try {
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-search-1", approvedExecutionId: "stage4b2-20261019-search-1", consent: "confirmed:stage4b2-20261019-search-1", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
+  await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-contents-2", approvedExecutionId: "stage4b2-20261019-contents-2", consent: "confirmed:stage4b2-20261019-contents-2", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-other-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory }), /EXECUTION_AUTHORIZATION_REQUIRED/u);
   const input = { executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-future-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory, now: () => "2026-10-19T00:00:00.000Z" };
   const claims = await Promise.allSettled([claimStage4b2Execution(input), claimStage4b2Execution(input)]);

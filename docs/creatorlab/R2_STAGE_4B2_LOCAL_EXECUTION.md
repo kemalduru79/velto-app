@@ -39,6 +39,8 @@ The first authorization, recorded as `stage4b2-20261019-search-1`, is consumed. 
 
 The committed historical receipt prevents that execution ID from being reused. Runtime receipts are written atomically to the ignored `.stage4b2-receipts/` directory before any provider request. A started, blocked or completed receipt is terminal; an interrupted or ambiguous attempt is never replayed automatically.
 
+The separately authorized Contents execution `stage4b2-20261019-contents-2` is also consumed. It made one Exa request, made zero OpenAI requests, reported USD 0.001 and stopped after 1,805 ms with `SOURCE_PASSAGE_NOT_VERIFIED`. The submitted report did not include the highlight text, so this outcome does not establish whether the mismatch was entity/Unicode formatting, punctuation, cached document scope or another cause.
+
 ## Future one-time execution (not currently authorized)
 
 Do **not** run the following template until a new execution identifier and budget have been explicitly approved by the user outside the environment variables. Matching environment variables are only local scope/replay inputs; they do not independently establish human approval. The three execution values must match exactly; the old consent marker is invalid.
@@ -53,6 +55,8 @@ STAGE4B2_EXECUTION_CONSENT=confirmed:stage4b2-<new-approved-id> \
 The probe makes one `POST https://api.exa.ai/contents` request with only `https://arxiv.org/abs/2304.03442` in `urls`. There is no ranked discovery query, fallback source, mirror acceptance or automatic retry. It separately downloads the approved HTTPS document and requires the returned passage to occur in that document before OpenAI can be called.
 
 Capture the JSON result **without including secrets or raw provider content**. `BLOCKED` is an acceptable fail-closed result. Diagnostics distinguish malformed responses, `SOURCE_NOT_DISCOVERED`, `SOURCE_IDENTITY_MISMATCH`, `SOURCE_CONTENT_UNAVAILABLE` and `SOURCE_PASSAGE_NOT_VERIFIED`. Reports include request counts, per-stage elapsed time, OpenAI input/output token usage, estimated reservations and provider-reported Exa cost where available. Reservations are preflight controls, never represented as actual billed charges; OpenAI USD cost remains unknown unless the provider explicitly reports it.
+
+Passage diagnostics contain only counts, lengths, SHA-256 fingerprints and deterministic match outcomes. Verification permits compact exact matching or a narrowly bounded normalized-verbatim mode covering HTML entities, Unicode NFKC, invisible formatting characters and typographic punctuation equivalents. It never removes arbitrary punctuation, reorders words or uses semantic/fuzzy similarity. If a fixture passage exists only in another official paper representation, the result is diagnostic `DOCUMENT_SCOPE_MISMATCH` and remains blocked. The runner does not fetch or authorize arXiv `/html`, `/pdf`, ar5iv or mirrors; adding another official representation requires a separately reviewed and explicitly approved source-scope change.
 
 The resulting Preview is a synthetic example only; it is not applied to the saved Thynel project.
 

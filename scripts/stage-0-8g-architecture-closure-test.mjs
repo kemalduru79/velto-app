@@ -452,6 +452,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-4b2-exact-source-recovery-test.mjs",
     "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
     "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
+    "docs/creatorlab/receipts/STAGE4B2_20261019_CONTENTS_2.json",
     ".gitignore",
     "scripts/stage-0-13e-ai-script-refinement-test.mjs",
   ]);
