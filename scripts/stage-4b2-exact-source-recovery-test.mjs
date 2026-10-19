@@ -65,6 +65,21 @@ assert.equal(unresolvedResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
 assert.equal(unresolvedResult.mismatchCategory, "unresolved_passage_mismatch");
 assert.deepEqual(Object.keys(unresolvedResult.safeDiagnostics).sort(), ["highlightCount", "highlightLengths", "highlightSha256", "matchingOutcomes", "normalizedOriginalTextLength", "normalizedOriginalTextSha256", "originalTextLength", "originalTextSha256"].sort());
 assert.equal(JSON.stringify(unresolvedResult.safeDiagnostics).includes(scopeOnlyPassage), false);
+for (const [providerPassage, sourcePassage] of [
+  ["The study used 10⁶ cells in each independently measured sample.", "The study used 106 cells in each independently measured sample."],
+  ["The experiment used 2⁵ agents in the controlled simulation.", "The experiment used 25 agents in the controlled simulation."],
+  ["The reported threshold was 3² units for the measured response.", "The reported threshold was 32 units for the measured response."],
+  ["One half of the cohort received a ½ dose during treatment.", "One half of the cohort received a 1/2 dose during treatment."],
+  ["The concentration was measured as 10−3 molar in the sample.", "The concentration was measured as 10-3 molar in the sample."],
+  ["The specimen measured 5 μm across under calibrated microscopy.", "The specimen measured 5 um across under calibrated microscopy."],
+  ["The matrix contained 10 × 10 independently observed entries.", "The matrix contained 10 x 10 independently observed entries."],
+  ["The reported population included 1,000 independently enrolled people.", "The reported population included 1000 independently enrolled people."],
+]) {
+  const quantitativeResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [providerPassage] }), independentlyRetrievedText: sourcePassage });
+  assert.equal(quantitativeResult.ok, false, `${providerPassage} must not equal ${sourcePassage}`);
+  assert.equal(quantitativeResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
+  assert.equal(quantitativeResult.safeDiagnostics.matchingOutcomes[0].normalizedVerbatimMatch, false);
+}
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved"] }, evidenceId: "e-approved" }), true);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-substituted"] }, evidenceId: "e-approved" }), false);

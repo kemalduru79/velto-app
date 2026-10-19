@@ -15,11 +15,11 @@ const decodeEntities = (value: string) => value
   .replace(/&#x([\da-f]+);/giu, (match, digits) => Number.parseInt(digits, 16) <= 0x10ffff ? String.fromCodePoint(Number.parseInt(digits, 16)) : match)
   .replace(/&(?:nbsp|amp|lt|gt|quot|apos);/gu, (match) => ({ "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'" }[match] || match));
 const normalizeVerbatimPassage = (value: string) => compact(decodeEntities(value)
-  .normalize("NFKC")
-  .replace(/[\u00ad\u200b\u200c\u200d\ufeff]/gu, "")
+  .normalize("NFC")
+  .replace(/[\u00ad\ufeff]/gu, "")
   .replace(/[‘’‚‛]/gu, "'")
   .replace(/[“”„‟]/gu, "\"")
-  .replace(/[‐‑‒–—―−]/gu, "-")
+  .replace(/[‐‑‒–—―]/gu, "-")
   .replace(/…/gu, "..."));
 const isUrlIdentity = (value: unknown) => {
   if (typeof value !== "string") return false;
