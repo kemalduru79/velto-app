@@ -59,11 +59,11 @@ assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
 const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .trim().split(/\r?\n/).filter(Boolean);
 const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
-// Reviewed through Stage 4B2's intentionally gated Preview-only acceptance route. The CreatorLab API surface and additive
+// Reviewed through the Stage 2 final-export acceptance correction. The CreatorLab API surface and additive
 // migration history have expanded intentionally since the original 0.8F
 // baseline. Keep these inventory sentinels fail-closed so every later API or
 // migration surface change still requires explicit review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "b4127f3cf190e824e411548343ce6cc8d6caad0d47b8b67f0deb931bab11b973");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c");
 assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "20cfcfb02bc50dd699076cd7d20d0db14cb1b9df29a870278d3784d3c3ada6dd");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 
