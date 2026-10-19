@@ -9,7 +9,7 @@ This opt-in CLI uses the **existing developer workstation's** `.env.local` file 
 ## Authorized envelope
 
 - Max estimated spend: USD 5.00, **not** an absolute provider-billing ceiling.
-- Exa search: at most 1; conservative pre-reservation USD 0.75. Stop if reported Exa cost exceeds the reservation.
+- Exa Contents API: at most 1 request for the exact approved URL in `ids`; conservative pre-reservation USD 0.75. Stop if reported Exa cost exceeds the reservation.
 - OpenAI: at most 3 calls; reserved USD 1.25 each, 1,050 max output tokens per call.
 - Model: `gpt-4.1-mini` for provider smoke checks; **not** editorial-quality acceptance for production.
 - Exact source: `https://arxiv.org/abs/2304.03442` only.
@@ -33,16 +33,26 @@ node scripts/stage-4b2-local-live-probe.mjs
 
 The default command prints `DRY_RUN_ONLY`, `exaCalls: 0`, `openAiCalls: 0`, and unchanged synthetic-script checksums. It never invokes providers.
 
-## One-time execution (already approved in chat)
+## Consumed first execution
 
-Do not run this command more than once without checking the results and obtaining a fresh execution budget.
+The first authorization, recorded as `stage4b2-20261019-search-1`, is consumed. It made one Exa ranked-search request, made zero OpenAI requests, reported USD 0.007 and stopped after 2,544 ms with `APPROVED_SOURCE_NOT_RETURNED`. That proves only that the ranked top-three response omitted the approved URL. It does not prove that the publication or its content is unavailable, and it does not establish evidence or claim acceptance.
+
+The committed historical receipt prevents that execution ID from being reused. Runtime receipts are written atomically to the ignored `.stage4b2-receipts/` directory before any provider request. A started, blocked or completed receipt is terminal; an interrupted or ambiguous attempt is never replayed automatically.
+
+## Future one-time execution (not currently authorized)
+
+Do **not** run the following template until a new execution identifier and budget have been explicitly approved. The three execution values must match exactly; the old consent marker is invalid.
 
 ```bash
-STAGE4B2_EXECUTION_CONSENT=confirmed-5usd-arxiv2304 \
+STAGE4B2_EXECUTION_ID=stage4b2-<new-approved-id> \
+STAGE4B2_APPROVED_EXECUTION_ID=stage4b2-<new-approved-id> \
+STAGE4B2_EXECUTION_CONSENT=confirmed:stage4b2-<new-approved-id> \
   node --env-file=.env.local scripts/stage-4b2-local-live-probe.mjs --execute
 ```
 
-Capture the JSON result **without including secrets**. `BLOCKED` is an acceptable fail-closed result if Exa does not return the exact approved source, extracted highlights are not independently present in the source text, costs cannot be determined or a provider fails. No automatic retry is permitted.
+The probe makes one `POST https://api.exa.ai/contents` request with only `https://arxiv.org/abs/2304.03442` in `ids`. There is no ranked discovery query, fallback source, mirror acceptance or automatic retry. It separately downloads the approved HTTPS document and requires the returned passage to occur in that document before OpenAI can be called.
+
+Capture the JSON result **without including secrets or raw provider content**. `BLOCKED` is an acceptable fail-closed result. Diagnostics distinguish malformed responses, `SOURCE_NOT_DISCOVERED`, `SOURCE_IDENTITY_MISMATCH`, `SOURCE_CONTENT_UNAVAILABLE` and `SOURCE_PASSAGE_NOT_VERIFIED`. Reports include request counts, per-stage elapsed time, estimated reservations and provider-reported Exa cost where available.
 
 The resulting Preview is a synthetic example only; it is not applied to the saved Thynel project.
 

@@ -439,6 +439,7 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/research/originalSourceAcquisition.server.ts",
     "lib/creator/creatorScriptLiveAcceptanceBudget.ts",
     "lib/creator/creatorScriptStage4B2Preflight.ts",
+    "lib/creator/stage4b2ProviderAcceptance.ts",
     "lib/creator/creatorScriptLiveAcceptanceRunner.ts",
     "lib/creator/creatorScriptRevisions.ts",
     "scripts/creator-script-refinement-r1-foundation-test.mjs",
@@ -448,11 +449,15 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "scripts/stage-4b2-provider-acceptance-preflight-test.mjs",
     "scripts/stage-4b2-local-live-probe.mjs",
     "scripts/stage-4b2-local-live-probe-offline-test.mjs",
+    "scripts/stage-4b2-exact-source-recovery-test.mjs",
+    "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
+    "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
+    ".gitignore",
     "scripts/stage-0-13e-ai-script-refinement-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
   const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
-  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/", "app/api/creator-final-export-jobs/", "app/api/creator-final-video-recovery/", "app/api/internal/jobs/[jobId]/creator-final-export/"];
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/", "app/api/creator-final-export-jobs/", "app/api/creator-final-video-recovery/", "app/api/internal/jobs/[jobId]/creator-final-export/", "docs/creatorlab/receipts/"];
   assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
 });
 

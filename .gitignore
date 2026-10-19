@@ -36,6 +36,7 @@ yarn-error.log*
 
 # vercel
 .vercel
+.stage4b2-receipts/
 
 # typescript
 *.tsbuildinfo

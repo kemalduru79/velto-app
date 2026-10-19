@@ -11,6 +11,11 @@ for (const scenario of [
   { args: ["--execute"], env: {} },
   { args: [], env: { STAGE4B2_EXECUTION_CONSENT: "confirmed-5usd-arxiv2304" } },
   { args: ["--execute"], env: { STAGE4B2_EXECUTION_CONSENT: "incorrect-approval" } },
+  { args: ["--execute"], env: {
+    STAGE4B2_EXECUTION_ID: "stage4b2-future-trial-1",
+    STAGE4B2_APPROVED_EXECUTION_ID: "stage4b2-future-trial-1",
+    STAGE4B2_EXECUTION_CONSENT: "confirmed-5usd-arxiv2304",
+  } },
 ]) {
   const result = run(scenario.args, scenario.env);
   assert.equal(result.status, 0, result.stderr);

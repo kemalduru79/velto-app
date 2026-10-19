@@ -213,6 +213,7 @@ const allowed = new Set([
   "lib/research/originalSourceAcquisition.server.ts",
   "lib/creator/creatorScriptLiveAcceptanceBudget.ts",
   "lib/creator/creatorScriptStage4B2Preflight.ts",
+  "lib/creator/stage4b2ProviderAcceptance.ts",
   "lib/creator/creatorScriptLiveAcceptanceRunner.ts",
   "lib/creator/creatorScriptRevisions.ts",
   "scripts/creator-script-refinement-r1-foundation-test.mjs",
@@ -222,8 +223,12 @@ const allowed = new Set([
   "scripts/stage-4b2-provider-acceptance-preflight-test.mjs",
     "scripts/stage-4b2-local-live-probe.mjs",
     "scripts/stage-4b2-local-live-probe-offline-test.mjs",
+    "scripts/stage-4b2-exact-source-recovery-test.mjs",
+    "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
+    "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
+    ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
-assert.deepEqual(changed.filter((path) => !allowed.has(path)), []);
+assert.deepEqual(changed.filter((path) => !allowed.has(path) && path !== "docs/creatorlab/receipts/"), []);
 
 console.log("STAGE_0_11E_AZURE_READINESS_GATE=PASS");
