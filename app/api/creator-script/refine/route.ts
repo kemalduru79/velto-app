@@ -11,7 +11,7 @@ import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorSc
 import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { createCreatorProductionInvalidationIdentity, creatorProjectHasMeaningfulProduction, requireCreatorProductionSnapshotBeforeInvalidation } from "@/lib/creator/creatorProductionHistory";
 import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
-import { executeCreatorScriptEditorialRewrite, isCreatorScriptFullRefinementRuntimeEnabled, normalizeCreatorScriptRefinementMode, type CreatorScriptRewriteGoalResult, type CreatorScriptEvidenceDelta } from "@/lib/creator/creatorScriptEditorialRewrite";
+import { executeCreatorScriptEditorialRewrite, isCreatorScriptFullRefinementRuntimeEnabled, normalizeCreatorScriptRefinementMode, type CreatorScriptEditorialRewriteDependencies, type CreatorScriptRewriteGoalResult, type CreatorScriptEvidenceDelta } from "@/lib/creator/creatorScriptEditorialRewrite";
 import { createCreatorScriptEditorialRewriteProviders } from "@/lib/creator/creatorScriptEditorialRewriteProviders.server";
 
 export const runtime = "nodejs";
@@ -20,9 +20,15 @@ export const maxDuration = 300;
 const text = (value: unknown, max = 4000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const exactText = (value: unknown, max = 100000) => typeof value === "string" ? value.slice(0, max) : "";
 
-export async function POST(req: Request) {
+type CreatorScriptRefinementRouteDependencies = {
+  authenticate: typeof authenticateRequest;
+  persistence: typeof getPersistenceServices;
+  editorialProviders: (input: { ownerId: string; projectId: string }) => CreatorScriptEditorialRewriteDependencies;
+};
+
+async function handleCreatorScriptRefinementRequest(req: Request, dependencies: CreatorScriptRefinementRouteDependencies = { authenticate: authenticateRequest, persistence: getPersistenceServices, editorialProviders: createCreatorScriptEditorialRewriteProviders }) {
   try {
-    const principal = await authenticateRequest(req);
+    const principal = await dependencies.authenticate(req);
     const body = await req.json() as Record<string, unknown>;
     const projectId = text(body.projectId, 120);
     if (body.action !== undefined && body.action !== "generate" && body.action !== "apply" && body.action !== "discard") return NextResponse.json({ error: "Invalid refinement action." }, { status: 400 });
@@ -38,7 +44,7 @@ export async function POST(req: Request) {
     if (action === "generate" && ((scope === "whole_script") !== (refinementMode !== "focused_edit"))) return NextResponse.json({ error: "The refinement target does not match its mode.", code: "CREATOR_SCRIPT_REFINEMENT_MODE_SCOPE_MISMATCH" }, { status: 400 });
     const fullRewriteEnabled = CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED || isCreatorScriptFullRefinementRuntimeEnabled(process.env);
     if (action === "generate" && scope === "whole_script" && !fullRewriteEnabled) return NextResponse.json({ error: "Whole-script refinement is still gated while staged acceptance is incomplete.", code: "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED" }, { status: 409 });
-    const services = getPersistenceServices();
+    const services = dependencies.persistence();
     const project = await services.projectRepository.getForOwner(projectId, principal.id);
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     const state = readCreatorProjectState(project); const script = state.strategy.script;
@@ -122,8 +128,7 @@ export async function POST(req: Request) {
         instruction,
         language: state.brief.language,
         mode: refinementMode,
-        hardCeilingSec: Number.isFinite(Number(body.hardCeilingSec)) ? Number(body.hardCeilingSec) : undefined,
-        dependencies: createCreatorScriptEditorialRewriteProviders({ ownerId: principal.id, projectId }),
+        dependencies: dependencies.editorialProviders({ ownerId: principal.id, projectId }),
       });
       nextScript = rewrite.script;
       goalResults = rewrite.goalResults;
@@ -331,3 +336,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: failure.error, code: failure.code }, { status: failure.status });
   }
 }
+
+export const POST = Object.assign(
+  (req: Request) => handleCreatorScriptRefinementRequest(req),
+  { handleForTest: handleCreatorScriptRefinementRequest },
+);

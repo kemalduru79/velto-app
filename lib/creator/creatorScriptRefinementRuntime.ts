@@ -74,6 +74,21 @@ const KNOWN_FAILURES: Record<string, RefinementFailure> = {
     error: "Verified sources required by this rewrite could not be found. The original script was preserved.",
     status: 422,
   },
+  CREATOR_SCRIPT_REFINEMENT_MISSING_VERIFIED_EVIDENCE: {
+    code: "CREATOR_SCRIPT_REFINEMENT_MISSING_VERIFIED_EVIDENCE",
+    error: "The discovered sources do not contain verified passages with traceable provenance. The original script was preserved.",
+    status: 422,
+  },
+  CREATOR_SCRIPT_REFINEMENT_SOURCE_PROVENANCE_INVALID: {
+    code: "CREATOR_SCRIPT_REFINEMENT_SOURCE_PROVENANCE_INVALID",
+    error: "A research passage could not be verified against its canonical source provenance.",
+    status: 422,
+  },
+  CREATOR_SCRIPT_REFINEMENT_CLAIM_EVIDENCE_MISMATCH: {
+    code: "CREATOR_SCRIPT_REFINEMENT_CLAIM_EVIDENCE_MISMATCH",
+    error: "A proposed claim is unsupported or contradicted by its cited evidence. The original script was preserved.",
+    status: 422,
+  },
   CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM: {
     code: "CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM",
     error: "The rewrite introduced a claim without canonical evidence authority. The original script was preserved.",

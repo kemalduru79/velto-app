@@ -61,6 +61,10 @@ assert.equal(academic.sources[0].mediaKind, "paper");
 assert.equal(academic.sources[0].publisher, "arxiv.org");
 assert.equal(academic.sources[0].sourceMetadata.provider, "exa");
 assert.equal(academic.sources[0].sourceMetadata.highlightCount, 2);
+assert.equal(academic.sources[0].sourceMetadata.verifiedPassageAuthority, "exa-source-highlight-v1");
+assert.equal(academic.sources[0].sourceMetadata.verifiedPassage1, "The study found a measurable effect.");
+assert.equal(academic.sources[0].sourceMetadata.verifiedPassage1Locator, "exa-highlight:1");
+assert.match(String(academic.sources[0].sourceMetadata.verifiedPassage1Digest), /^[a-f0-9]{64}$/u);
 assert.match(academic.sources[0].summary || "", /measurable effect/);
 
 const news = adaptExaSearchResponse({

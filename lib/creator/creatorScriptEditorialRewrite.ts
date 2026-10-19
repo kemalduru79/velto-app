@@ -1,4 +1,5 @@
 import { getCreatorScriptDocumentText, getCreatorScriptDurationContractForScript, normalizeCreatorScript, type CreatorScript, type CreatorScriptSection } from "./creatorScript.ts";
+import { createHash } from "node:crypto";
 import { createScriptPlannerEvidenceGraph, normalizeScriptPlannerEditorialContext, type ScriptPlannerEditorialContext } from "../research/scriptPlannerEditorialContext.ts";
 import type { ResearchSource } from "../research/sourceContract.ts";
 import { createResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
@@ -32,35 +33,40 @@ export type CreatorScriptEvidenceDelta = {
   removedClaimIds: string[];
 };
 
-export type CreatorScriptRewriteCandidate = {
-  sections: Array<{ id: string; text: string; claimIds: string[]; reason: string }>;
-  goalResults: CreatorScriptRewriteGoalResult[];
-  evidenceDelta: CreatorScriptEvidenceDelta;
-};
-
-export type CreatorScriptRewriteValidation = {
-  mode: Exclude<CreatorScriptRefinementMode, "focused_edit">;
-  goals: CreatorScriptRewriteGoal[];
-  duration: ReturnType<typeof getCreatorScriptDurationContractForScript>;
-  hardCeilingSec: number;
-  changedSectionIds: string[];
-  evidenceDelta: CreatorScriptEvidenceDelta;
-};
-
 export type CreatorScriptRewriteResearchResult = {
   sources: ResearchSource[];
+  verifiedEvidence: CreatorScriptVerifiedResearchEvidence[];
 };
 
+export type CreatorScriptVerifiedResearchEvidence = {
+  sourceId: string;
+  excerpt: string;
+  locator: { section: string | null; page: number | null; timecodeStartSec: number | null; timecodeEndSec: number | null };
+  passageDigest: string;
+  authority: "exa-source-highlight-v1";
+};
+
+export type CreatorScriptSectionLineage = { sourceSectionIds: string[] };
+export type CreatorScriptRewriteSection = CreatorScriptSection & { lineage: CreatorScriptSectionLineage };
+
 export type CreatorScriptRewriteProviderCandidate = {
-  sections: CreatorScriptSection[];
+  sections: CreatorScriptRewriteSection[];
   addedClaims: ScriptPlannerEditorialContext["claims"];
   addedEvidence: ScriptPlannerEditorialContext["evidence"];
   goalResults: CreatorScriptRewriteGoalResult[];
 };
 
+export type CreatorScriptClaimEvidenceAssessment = {
+  claimId: string;
+  status: "supported" | "unsupported" | "contradicted";
+  evidenceIds: string[];
+  summary: string;
+};
+
 export type CreatorScriptEditorialRewriteDependencies = {
   research: (input: { subject: string; language: "tr" | "en"; goals: CreatorScriptRewriteGoal[] }) => Promise<CreatorScriptRewriteResearchResult>;
-  rewrite: (input: { script: CreatorScript; instruction: string; language: "tr" | "en"; goals: CreatorScriptRewriteGoal[]; sources: ResearchSource[] }) => Promise<CreatorScriptRewriteProviderCandidate>;
+  rewrite: (input: { script: CreatorScript; instruction: string; language: "tr" | "en"; goals: CreatorScriptRewriteGoal[]; sources: ResearchSource[]; verifiedEvidence: CreatorScriptVerifiedResearchEvidence[] }) => Promise<CreatorScriptRewriteProviderCandidate>;
+  verifyClaims: (input: { claims: ScriptPlannerEditorialContext["claims"]; evidence: ScriptPlannerEditorialContext["evidence"]; sources: ResearchSource[] }) => Promise<CreatorScriptClaimEvidenceAssessment[]>;
   assess: (input: { before: CreatorScript; after: CreatorScript; goals: CreatorScriptRewriteGoal[] }) => Promise<CreatorScriptRewriteGoalResult[]>;
   now?: () => string;
 };
@@ -119,67 +125,57 @@ const uniqueStrings = (values: string[], code: string) => {
   if (values.some((value) => !value || value.length > 200) || new Set(values).size !== values.length) throw new Error(code);
 };
 
-export function validateCreatorScriptRewriteCandidate(input: {
-  script: CreatorScript;
-  language: "tr" | "en";
-  mode: Exclude<CreatorScriptRefinementMode, "focused_edit">;
-  instruction: string;
-  candidate: CreatorScriptRewriteCandidate;
-  allowedClaimIds: string[];
-  allowedSourceIds: string[];
-  hardCeilingSec?: number;
-}): CreatorScriptRewriteValidation {
-  const goals = createCreatorScriptRewriteGoalPlan(input.instruction);
-  if (input.mode === "editorial_rewrite" && creatorScriptInstructionRequiresResearch(input.instruction)) throw new Error("CREATOR_SCRIPT_REFINEMENT_RESEARCH_REQUIRED");
-  const sectionIds = input.script.sections.map((section) => section.id);
-  if (input.candidate.sections.length !== sectionIds.length || input.candidate.sections.some((section, index) => section.id !== sectionIds[index] || !normalizeText(section.text) || !normalizeText(section.reason))) {
-    throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
-  }
-  const allowedClaims = new Set(input.allowedClaimIds);
-  const allowedSources = new Set(input.allowedSourceIds);
-  for (const section of input.candidate.sections) {
-    uniqueStrings(section.claimIds, "CREATOR_SCRIPT_REFINEMENT_CLAIM_AUTHORITY_INVALID");
-    if (section.claimIds.some((claimId) => !allowedClaims.has(claimId))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
-  }
-  const delta = input.candidate.evidenceDelta;
-  for (const values of Object.values(delta)) uniqueStrings(values, "CREATOR_SCRIPT_REFINEMENT_EVIDENCE_DELTA_INVALID");
-  if ([...delta.addedSourceIds, ...delta.retainedSourceIds].some((sourceId) => !allowedSources.has(sourceId)) || delta.addedClaimIds.some((claimId) => !allowedClaims.has(claimId))) {
-    throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_AUTHORITY_INVALID");
-  }
-  if (input.mode === "research_backed_rewrite" && !delta.addedSourceIds.length && !delta.addedClaimIds.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES");
-  const results = new Map(input.candidate.goalResults.map((result) => [result.goalId, result]));
-  if (results.size !== input.candidate.goalResults.length || goals.some((goal) => results.get(goal.goalId)?.status !== "satisfied")) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
-  for (const result of input.candidate.goalResults) {
-    if (!goals.some((goal) => goal.goalId === result.goalId) || !normalizeText(result.summary) || result.sectionIds.some((sectionId) => !sectionIds.includes(sectionId))) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_RESULT_INVALID");
-  }
-  const nextScript = { ...input.script, sections: input.script.sections.map((section, index) => ({ ...section, text: input.candidate.sections[index].text, claimIds: input.candidate.sections[index].claimIds })) };
-  if (getCreatorScriptDocumentText(nextScript) === getCreatorScriptDocumentText(input.script)) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
-  const duration = getCreatorScriptDurationContractForScript(nextScript, input.language);
-  const hardCeilingSec = input.hardCeilingSec ?? Math.min(600, Math.max(input.script.targetDurationSec, input.script.targetDurationSec + 75));
-  if (duration.status !== "compliant" || duration.estimatedDurationSec > hardCeilingSec) throw new Error("CREATOR_SCRIPT_REFINEMENT_DURATION_UNSATISFIED");
-  return {
-    mode: input.mode,
-    goals,
-    duration,
-    hardCeilingSec,
-    changedSectionIds: input.script.sections.filter((section, index) => section.text !== input.candidate.sections[index].text).map((section) => section.id),
-    evidenceDelta: delta,
-  };
-}
-
 export function isCreatorScriptFullRefinementRuntimeEnabled(env: { NODE_ENV?: string; CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED?: string }) {
   return env.NODE_ENV !== "production" && env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED === "true";
 }
 
-const sourceExcerpt = (source: ResearchSource) => [source.summary, ...Object.values(source.sourceMetadata)].filter((value): value is string => typeof value === "string").join(" ").replace(/\s+/gu, " ").toLocaleLowerCase();
+export function createCreatorScriptVerifiedResearchEvidence(sources: ResearchSource[]): CreatorScriptVerifiedResearchEvidence[] {
+  return sources.flatMap((source) => {
+    if (source.sourceMetadata.verifiedPassageAuthority !== "exa-source-highlight-v1") return [];
+    const count = Math.min(4, Number(source.sourceMetadata.highlightCount) || 0);
+    return Array.from({ length: count }, (_, index) => {
+      const number = index + 1;
+      const excerpt = typeof source.sourceMetadata[`verifiedPassage${number}`] === "string" ? String(source.sourceMetadata[`verifiedPassage${number}`]).replace(/\s+/gu, " ").trim() : "";
+      const passageDigest = typeof source.sourceMetadata[`verifiedPassage${number}Digest`] === "string" ? String(source.sourceMetadata[`verifiedPassage${number}Digest`]) : "";
+      const locator = source.sourceMetadata[`verifiedPassage${number}Locator`] === `exa-highlight:${number}` ? `exa-highlight:${number}` : "";
+      if (excerpt.length < 24 || createHash("sha256").update(excerpt).digest("hex") !== passageDigest || !locator) throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_PROVENANCE_INVALID");
+      return { sourceId: source.sourceId, excerpt, passageDigest, authority: "exa-source-highlight-v1" as const, locator: { section: locator, page: null, timecodeStartSec: null, timecodeEndSec: null } };
+    });
+  });
+}
 
-function canonicalAddedContext(input: { current: ScriptPlannerEditorialContext; research: CreatorScriptRewriteResearchResult; candidate: CreatorScriptRewriteProviderCandidate }) {
+function sameLocator(left: CreatorScriptVerifiedResearchEvidence["locator"], right: CreatorScriptVerifiedResearchEvidence["locator"]) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function validateSectionLineage(script: CreatorScript, sections: CreatorScriptRewriteSection[]) {
+  const oldIds = new Set(script.sections.map((section) => section.id));
+  const newIds = new Set<string>();
+  const represented = new Set<string>();
+  if (sections.length < 2 || sections[0]?.kind !== "opening" || sections.at(-1)?.kind !== "conclusion" || sections.slice(1, -1).some((section) => section.kind !== "body")) throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_STRUCTURE_INVALID");
+  for (const section of sections) {
+    if (!section.id || newIds.has(section.id) || !normalizeText(section.text) || !section.lineage || !Array.isArray(section.lineage.sourceSectionIds)) throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
+    uniqueStrings(section.lineage.sourceSectionIds, "CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
+    if (!section.lineage.sourceSectionIds.length || section.lineage.sourceSectionIds.some((id) => !oldIds.has(id))) throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
+    if (oldIds.has(section.id) && !section.lineage.sourceSectionIds.includes(section.id)) throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
+    section.lineage.sourceSectionIds.forEach((id) => represented.add(id));
+    newIds.add(section.id);
+  }
+  if (represented.size !== oldIds.size) throw new Error("CREATOR_SCRIPT_REFINEMENT_SECTION_MAPPING_INVALID");
+}
+
+async function canonicalAddedContext(input: { current: ScriptPlannerEditorialContext; research: CreatorScriptRewriteResearchResult; candidate: CreatorScriptRewriteProviderCandidate; verifyClaims: CreatorScriptEditorialRewriteDependencies["verifyClaims"] }) {
   const sourceById = new Map(input.research.sources.map((source) => [source.sourceId, source]));
-  if (!sourceById.size) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES");
+  const verifiedEvidence = createCreatorScriptVerifiedResearchEvidence(input.research.sources);
+  if (!input.research.verifiedEvidence.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_VERIFIED_EVIDENCE");
+  if (verifiedEvidence.length !== input.research.verifiedEvidence.length || verifiedEvidence.some((canonical) => !input.research.verifiedEvidence.some((provided) => canonical.sourceId === provided.sourceId && canonical.excerpt === provided.excerpt && canonical.passageDigest === provided.passageDigest && canonical.authority === provided.authority && sameLocator(canonical.locator, provided.locator)))) throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_PROVENANCE_INVALID");
+  if (!sourceById.size || !verifiedEvidence.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_VERIFIED_EVIDENCE");
   const evidenceIds = new Set<string>();
+  uniqueStrings(input.candidate.addedClaims.map((claim) => claim.claimId), "CREATOR_SCRIPT_REFINEMENT_CLAIM_AUTHORITY_INVALID");
   for (const evidence of input.candidate.addedEvidence) {
     const source = sourceById.get(evidence.sourceId);
-    if (!source || !evidence.excerpt || evidence.excerpt.trim().length < 24 || !sourceExcerpt(source).includes(evidence.excerpt.replace(/\s+/gu, " ").trim().toLocaleLowerCase())) throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_AUTHORITY_INVALID");
+    const passage = verifiedEvidence.find((item) => item.sourceId === evidence.sourceId && item.excerpt === evidence.excerpt && sameLocator(item.locator, evidence.locator));
+    if (!source || !passage || createHash("sha256").update(evidence.excerpt || "").digest("hex") !== passage.passageDigest) throw new Error("CREATOR_SCRIPT_REFINEMENT_SOURCE_AUTHORITY_INVALID");
     if (evidenceIds.has(evidence.evidenceId)) throw new Error("CREATOR_SCRIPT_REFINEMENT_EVIDENCE_DELTA_INVALID");
     evidenceIds.add(evidence.evidenceId);
   }
@@ -187,15 +183,20 @@ function canonicalAddedContext(input: { current: ScriptPlannerEditorialContext; 
     const references = [...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds];
     if (!references.length || references.some((id) => !evidenceIds.has(id))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
     const supporting = input.candidate.addedEvidence.filter((evidence) => claim.supportingEvidenceIds.includes(evidence.evidenceId));
-    const supportedText = supporting.map((evidence) => evidence.excerpt || "").join(" ").toLocaleLowerCase();
-    const claimNumbers = claim.text.match(/\b\d+(?:[.,]\d+)?\b/gu) || [];
     const referencedSources = supporting.map((evidence) => sourceById.get(evidence.sourceId)).filter((source): source is ResearchSource => Boolean(source));
-    if (!supporting.length || claimNumbers.some((number) => !supportedText.includes(number.toLocaleLowerCase())) || (claim.origin?.referencedWork && !referencedSources.some((source) => source.url === claim.origin?.referencedWork))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
+    if (!supporting.length || (claim.origin?.referencedWork && !referencedSources.some((source) => source.url === claim.origin?.referencedWork || source.sourceId === claim.origin?.referencedWork))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
   }
+  const assessments = await input.verifyClaims({ claims: input.candidate.addedClaims, evidence: input.candidate.addedEvidence, sources: input.research.sources });
+  const assessmentByClaim = new Map(assessments.map((assessment) => [assessment.claimId, assessment]));
+  const addedClaimIds = new Set(input.candidate.addedClaims.map((claim) => claim.claimId));
+  if (assessmentByClaim.size !== assessments.length || assessments.length !== addedClaimIds.size || assessments.some((assessment) => !addedClaimIds.has(assessment.claimId) || !normalizeText(assessment.summary) || new Set(assessment.evidenceIds).size !== assessment.evidenceIds.length) || input.candidate.addedClaims.some((claim) => {
+    const assessment = assessmentByClaim.get(claim.claimId);
+    return assessment?.status !== "supported" || !assessment.evidenceIds.length || assessment.evidenceIds.some((id) => !claim.supportingEvidenceIds.includes(id));
+  })) throw new Error("CREATOR_SCRIPT_REFINEMENT_CLAIM_EVIDENCE_MISMATCH");
   const sources = input.research.sources.map((source) => ({
     sourceId: source.sourceId, title: source.title, url: source.url, publisher: source.publisher, author: source.author, publishedAt: source.publishedAt,
-    directness: source.adapterId === "primary" ? "primary" as const : source.adapterId === "academic" ? "secondary" as const : "tertiary" as const,
-    reviewStatus: "usable" as const, searchLane: source.adapterId === "academic" ? "supporting_evidence" : "primary_source", sourceKind: source.mediaKind,
+    directness: source.adapterId === "academic" ? "primary" as const : "secondary" as const,
+    reviewStatus: source.sourceMetadata.provenanceVerified === true ? "usable" as const : "review" as const, searchLane: source.adapterId === "academic" ? "supporting_evidence" : "primary_source", sourceKind: source.mediaKind,
   }));
   const allClaims = [...input.current.claims, ...input.candidate.addedClaims];
   const allEvidence = [...input.current.evidence, ...input.candidate.addedEvidence];
@@ -215,30 +216,35 @@ export async function executeCreatorScriptEditorialRewrite(input: {
   instruction: string;
   language: "tr" | "en";
   mode: Exclude<CreatorScriptRefinementMode, "focused_edit">;
-  hardCeilingSec?: number;
   dependencies: CreatorScriptEditorialRewriteDependencies;
 }): Promise<CreatorScriptEditorialRewriteResult> {
   const goals = createCreatorScriptRewriteGoalPlan(input.instruction);
   if (input.mode === "editorial_rewrite" && goals.some((goal) => goal.kind === "evidence")) throw new Error("CREATOR_SCRIPT_REFINEMENT_RESEARCH_REQUIRED");
-  const research = input.mode === "research_backed_rewrite" ? await input.dependencies.research({ subject: input.subject, language: input.language, goals }) : { sources: [] };
+  const research = input.mode === "research_backed_rewrite" ? await input.dependencies.research({ subject: input.subject, language: input.language, goals }) : { sources: [], verifiedEvidence: [] };
   if (input.mode === "research_backed_rewrite" && !research.sources.length) throw new Error("CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES");
-  const candidate = await input.dependencies.rewrite({ script: input.script, instruction: input.instruction, language: input.language, goals, sources: research.sources });
+  const candidate = await input.dependencies.rewrite({ script: input.script, instruction: input.instruction, language: input.language, goals, sources: research.sources, verifiedEvidence: research.verifiedEvidence });
+  validateSectionLineage(input.script, candidate.sections);
   const context = input.mode === "research_backed_rewrite"
-    ? canonicalAddedContext({ current: input.script.grounding.context, research, candidate })
+    ? await canonicalAddedContext({ current: input.script.grounding.context, research, candidate, verifyClaims: input.dependencies.verifyClaims })
     : input.script.grounding.context;
+  if (input.mode === "editorial_rewrite" && (candidate.addedClaims.length || candidate.addedEvidence.length)) throw new Error("CREATOR_SCRIPT_REFINEMENT_RESEARCH_REQUIRED");
+  const allowedClaimIds = new Set(context.claims.map((claim) => claim.claimId));
+  for (const section of candidate.sections) {
+    uniqueStrings(section.claimIds, "CREATOR_SCRIPT_REFINEMENT_CLAIM_AUTHORITY_INVALID");
+    if (section.claimIds.some((claimId) => !allowedClaimIds.has(claimId))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
+  }
   const now = (input.dependencies.now || (() => new Date().toISOString()))();
-  const nextScript = normalizeCreatorScript({ ...input.script, sections: candidate.sections, grounding: { context }, revision: input.script.revision + 1, updatedAt: now, approval: null });
+  const nextScript = normalizeCreatorScript({ ...input.script, sections: candidate.sections.map(({ lineage: _lineage, ...section }) => section), grounding: { context }, revision: input.script.revision + 1, updatedAt: now, approval: null });
   const assessment = await input.dependencies.assess({ before: input.script, after: nextScript, goals });
   const resultByGoal = new Map(assessment.map((result) => [result.goalId, result]));
-  if (assessment.length !== resultByGoal.size || goals.some((goal) => resultByGoal.get(goal.goalId)?.status !== "satisfied")) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
-  const oldSectionIds = input.script.sections.map((section) => section.id);
-  const newSectionIds = nextScript.sections.map((section) => section.id);
-  if (goals.some((goal) => goal.kind === "structure") && JSON.stringify(oldSectionIds) === JSON.stringify(newSectionIds)) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
+  const goalIds = new Set(goals.map((goal) => goal.goalId));
+  const proposedSectionIds = new Set(nextScript.sections.map((section) => section.id));
+  if (assessment.length !== resultByGoal.size || assessment.length !== goalIds.size || assessment.some((result) => !goalIds.has(result.goalId) || !normalizeText(result.summary) || !result.sectionIds.length || result.sectionIds.some((sectionId) => !proposedSectionIds.has(sectionId))) || goals.some((goal) => resultByGoal.get(goal.goalId)?.status !== "satisfied")) throw new Error("CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH");
   const addedClaimIds = context.claims.filter((claim) => !input.script.grounding.context.claims.some((prior) => prior.claimId === claim.claimId)).map((claim) => claim.claimId);
   const addedSourceIds = context.sources.filter((source) => !input.script.grounding.context.sources.some((prior) => prior.sourceId === source.sourceId)).map((source) => source.sourceId);
   if (input.mode === "research_backed_rewrite" && (!addedClaimIds.length || !addedSourceIds.length || !nextScript.sections.some((section) => section.claimIds.some((claimId) => addedClaimIds.includes(claimId))))) throw new Error("CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM");
   if (getCreatorScriptDocumentText(nextScript) === getCreatorScriptDocumentText(input.script)) throw new Error("CREATOR_SCRIPT_REFINEMENT_NO_CHANGE");
   const duration = getCreatorScriptDurationContractForScript(nextScript, input.language);
-  if (duration.status !== "compliant" || (input.hardCeilingSec !== undefined && duration.estimatedDurationSec > input.hardCeilingSec)) throw new Error("CREATOR_SCRIPT_REFINEMENT_DURATION_UNSATISFIED");
+  if (duration.status !== "compliant") throw new Error("CREATOR_SCRIPT_REFINEMENT_DURATION_UNSATISFIED");
   return { script: nextScript, goalResults: assessment, evidenceDelta: { addedSourceIds, removedSourceIds: [], retainedSourceIds: input.script.grounding.context.sources.map((source) => source.sourceId), addedClaimIds, removedClaimIds: [] } };
 }
