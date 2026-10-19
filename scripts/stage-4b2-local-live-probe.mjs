@@ -9,6 +9,7 @@ import {
   createStage4b2ContentsRequest,
   validateStage4b2ClaimAssessment,
 } from "../lib/creator/stage4b2ProviderAcceptance.ts";
+import { acquireStage4b2ApprovedPdf } from "../lib/creator/stage4b2PdfEvidence.server.ts";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const MODEL = "gpt-4.1-mini";
@@ -114,9 +115,13 @@ if (!executionInputsMatch) {
     });
     const raw = await step("independent_original_source", () => network(SOURCE_URL, { method: "GET", headers: { Accept: "text/html" } }));
     const extracted = textOfHtml(raw);
-    const sourceResult = classifyStage4b2ContentsResponse({ response: exa, independentlyRetrievedText: extracted });
+    let sourceResult = classifyStage4b2ContentsResponse({ response: exa, independentlyRetrievedText: extracted });
+    if (!sourceResult.ok && sourceResult.reason === "SOURCE_PASSAGE_NOT_VERIFIED") {
+      const approvedPdfArtifact = await step("independent_original_pdf_v2", () => acquireStage4b2ApprovedPdf());
+      sourceResult = classifyStage4b2ContentsResponse({ response: exa, independentlyRetrievedText: extracted, approvedPdfArtifact });
+    }
     if (!sourceResult.ok) { const error = new Error(sourceResult.reason); error.safeCandidateUrls = sourceResult.safeCandidateUrls; error.safeDiagnostics = sourceResult.safeDiagnostics; error.mismatchCategory = sourceResult.mismatchCategory; throw error; }
-    const evidence = { id: "e-approved", passage: sourceResult.passage, sourceUrl: sourceResult.sourceUrl, passageSha256: sourceResult.passageSha256 };
+    const evidence = { id: "e-approved", passage: sourceResult.passage, providerSourceUrl: sourceResult.sourceUrl, sourceIdentity: sourceResult.sourceIdentity, evidenceRepresentation: sourceResult.evidenceRepresentation, representationUrl: sourceResult.representationUrl, evidenceLocator: sourceResult.evidenceLocator ?? null, sourceDocumentFingerprint: sourceResult.sourceDocumentFingerprint, evidencePageFingerprint: sourceResult.evidencePageFingerprint ?? null, evidenceBlockFingerprint: sourceResult.evidenceBlockFingerprint ?? null, passageSha256: sourceResult.passageSha256 };
     const revised = await callOpenAI("rewrite", "Return JSON {bodyText:string,claimText:string}. Revise only the synthetic body paragraph using this exact attributed passage. No invented results or causation.", { original: script[1].text, evidence });
     if (typeof revised.bodyText !== "string" || revised.bodyText.length < 55 || revised.bodyText.length > 1200 || typeof revised.claimText !== "string" || revised.claimText.length < 20 || revised.claimText.length > 500) throw new Error("REWRITE_INVALID");
     const assessed = await callOpenAI("independent_claim_assessment", "Return JSON {status:'supported'|'unsupported'|'contradicted',evidenceIds:string[],reason:string}. Require substantive support from the exact evidence ID.", { claim: revised.claimText, evidence });
@@ -124,7 +129,7 @@ if (!executionInputsMatch) {
     const goal = await callOpenAI("editorial_goal_assessment", "Return JSON {status:'satisfied'|'blocked',reason:string}. Do not presume success.", { before: script[1].text, after: revised.bodyText, passage: sourceResult.passage });
     if (goal.status !== "satisfied") throw new Error("EDITORIAL_GOAL_UNSATISFIED");
     await receiptAuthority.complete({ state: "completed", providerUsage: { exaCalls: usage.exaCalls, openAiCalls: usage.openAiCalls, reportedCostUsd: usage.exaReportedUsd, openAiInputTokens: usage.openAiInputTokens, openAiOutputTokens: usage.openAiOutputTokens }, result: "REVIEW_REQUIRED" });
-    console.log(JSON.stringify(report("REVIEW_REQUIRED", { executionId, providerSmokeTest: "PASS", actualElapsedMs: Math.round(performance.now() - started), sourceDocumentSha256: sha256(raw), verifiedPassageSha256: sourceResult.passageSha256, passageMatchMode: sourceResult.matchMode, mismatchCategory: sourceResult.mismatchCategory, passageDiagnostics: sourceResult.safeDiagnostics, passageStartOffset: sourceResult.matchMode === "compact_exact" ? extracted.indexOf(sourceResult.passage) : null, preview: script.map((section) => section.id === "body-1" ? { ...section, text: revised.bodyText } : section), limitation: "Real provider smoke, not canonical whole-script refinement acceptance." }), null, 2));
+    console.log(JSON.stringify(report("REVIEW_REQUIRED", { executionId, providerSmokeTest: "PASS", actualElapsedMs: Math.round(performance.now() - started), abstractDocumentSha256: sha256(raw), sourceIdentity: sourceResult.sourceIdentity, evidenceRepresentation: sourceResult.evidenceRepresentation, representationUrl: sourceResult.representationUrl, sourceDocumentSha256: sourceResult.sourceDocumentFingerprint, evidenceLocator: sourceResult.evidenceLocator ?? null, evidencePageFingerprint: sourceResult.evidencePageFingerprint ?? null, evidenceBlockFingerprint: sourceResult.evidenceBlockFingerprint ?? null, verifiedPassageSha256: sourceResult.passageSha256, passageMatchMode: sourceResult.matchMode, mismatchCategory: sourceResult.mismatchCategory, passageDiagnostics: sourceResult.safeDiagnostics, passageStartOffset: sourceResult.evidenceRepresentation === "abstract" && sourceResult.matchMode === "compact_exact" ? extracted.indexOf(sourceResult.passage) : null, preview: script.map((section) => section.id === "body-1" ? { ...section, text: revised.bodyText } : section), limitation: "Real provider smoke, not canonical whole-script refinement acceptance." }), null, 2));
   } catch (error) {
     let reason = error instanceof Error ? error.message : "UNKNOWN";
     if (receiptAuthority) {

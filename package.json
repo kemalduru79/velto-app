@@ -80,6 +80,7 @@
     "test:creator-refinement-stage4b2": "node --experimental-strip-types scripts/stage-4b2-provider-acceptance-preflight-test.mjs",
     "test:creator-refinement-stage4b2-local": "node scripts/stage-4b2-local-live-probe-offline-test.mjs",
     "test:creator-refinement-stage4b2-recovery": "node --experimental-strip-types scripts/stage-4b2-exact-source-recovery-test.mjs",
+    "test:creator-refinement-stage4b2-pdf": "node --experimental-strip-types scripts/stage-4b2-pdf-evidence-test.mjs",
     "test:stage-0-13f": "node --experimental-strip-types scripts/stage-0-13f-revision-preview-history-test.mjs",
     "test:stage-0-13g": "node --experimental-strip-types scripts/stage-0-13g-script-approval-scene-build-test.mjs",
     "test:stage-0-13h": "node --experimental-strip-types scripts/stage-0-13h-editorial-qa-corrections-test.mjs",

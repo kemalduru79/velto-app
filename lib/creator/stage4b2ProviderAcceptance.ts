@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { STAGE4B2_APPROVED_ABSTRACT_URL, STAGE4B2_SOURCE_IDENTITY, verifyStage4b2PdfPassage, type Stage4b2PdfArtifact } from "./stage4b2PdfEvidence.server.ts";
+import { normalizeStage4b2VerbatimPassage } from "./stage4b2Verbatim.ts";
 
-export const STAGE4B2_APPROVED_SOURCE_URL = "https://arxiv.org/abs/2304.03442";
+export const STAGE4B2_APPROVED_SOURCE_URL = STAGE4B2_APPROVED_ABSTRACT_URL;
 export const STAGE4B2_CONTENTS_ENDPOINT = "https://api.exa.ai/contents";
 export const STAGE4B2_CONSUMED_EXECUTION_IDS = new Set(["stage4b2-20261019-search-1", "stage4b2-20261019-contents-2"]);
 
@@ -10,21 +12,6 @@ type JsonRecord = Record<string, unknown>;
 const record = (value: unknown): JsonRecord => value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
 const compact = (value: string) => value.replace(/\s+/gu, " ").trim();
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
-const decodeEntities = (value: string) => value
-  .replace(/&#(\d+);/gu, (match, digits) => Number(digits) <= 0x10ffff ? String.fromCodePoint(Number(digits)) : match)
-  .replace(/&#x([\da-f]+);/giu, (match, digits) => Number.parseInt(digits, 16) <= 0x10ffff ? String.fromCodePoint(Number.parseInt(digits, 16)) : match)
-  .replace(/&(?:nbsp|amp|lt|gt|quot|apos);/gu, (match) => ({ "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'" }[match] || match));
-const normalizeProseDashes = (value: string) => value.replace(/[‐‑‒–—―]/gu, (dash, offset: number, source: string) => {
-  const previousCharacter = Array.from(source.slice(0, offset)).at(-1) ?? "";
-  const nextCharacter = Array.from(source.slice(offset + dash.length)).at(0) ?? "";
-  return /\p{N}/u.test(previousCharacter) || /\p{N}/u.test(nextCharacter) ? dash : "-";
-});
-const normalizeVerbatimPassage = (value: string) => compact(normalizeProseDashes(decodeEntities(value)
-  .normalize("NFC")
-  .replace(/[\u00ad\ufeff]/gu, "")
-  .replace(/[‘’‚‛]/gu, "'")
-  .replace(/[“”„‟]/gu, "\"")
-  .replace(/…/gu, "...")));
 const isUrlIdentity = (value: unknown) => {
   if (typeof value !== "string") return false;
   try { new URL(value); return true; }
@@ -52,7 +39,7 @@ export function normalizeStage4b2SourceIdentity(value: unknown) {
   } catch { return null; }
 }
 
-export function classifyStage4b2ContentsResponse(input: { response: unknown; independentlyRetrievedText: string; diagnosticOfficialRepresentations?: string[] }) {
+export function classifyStage4b2ContentsResponse(input: { response: unknown; independentlyRetrievedText: string; approvedPdfArtifact?: Stage4b2PdfArtifact; diagnosticOfficialRepresentations?: string[] }) {
   if (input.response === null || typeof input.response !== "object" || Array.isArray(input.response) || !Array.isArray((input.response as JsonRecord).results)) {
     return { ok: false as const, reason: "PROVIDER_RESPONSE_MALFORMED" as Stage4b2SourceDiagnostic, safeCandidateUrls: [] };
   }
@@ -69,27 +56,32 @@ export function classifyStage4b2ContentsResponse(input: { response: unknown; ind
   if (!exact) return { ok: false as const, reason: "SOURCE_IDENTITY_MISMATCH" as Stage4b2SourceDiagnostic, safeCandidateUrls };
   const highlights = (Array.isArray(exact.highlights) ? exact.highlights : []).filter((value): value is string => typeof value === "string").map(compact).filter((value) => value.length >= 24);
   const document = compact(input.independentlyRetrievedText);
-  const normalizedDocument = normalizeVerbatimPassage(document);
+  const normalizedDocument = normalizeStage4b2VerbatimPassage(document);
   const passageDiagnostics = highlights.map((highlight) => {
-    const normalized = normalizeVerbatimPassage(highlight);
+    const normalized = normalizeStage4b2VerbatimPassage(highlight);
+    const pdfEvidence = input.approvedPdfArtifact ? verifyStage4b2PdfPassage({ artifact: input.approvedPdfArtifact, passage: highlight }) : null;
     return {
       passageSha256: sha256(highlight), passageLength: highlight.length, normalizedLength: normalized.length,
       normalizedPassageSha256: sha256(normalized),
       compactExactMatch: document.includes(highlight), normalizedVerbatimMatch: normalizedDocument.includes(normalized),
-      diagnosticOfficialRepresentationMatch: (input.diagnosticOfficialRepresentations ?? []).some((representation) => normalizeVerbatimPassage(representation).includes(normalized)),
+      pdfV2Match: pdfEvidence?.ok === true,
+      diagnosticOfficialRepresentationMatch: (input.diagnosticOfficialRepresentations ?? []).some((representation) => normalizeStage4b2VerbatimPassage(representation).includes(normalized)),
+      pdfEvidence,
     };
   });
   const safeDiagnostics = {
     highlightCount: highlights.length, highlightLengths: passageDiagnostics.map((item) => item.passageLength),
     highlightSha256: passageDiagnostics.map((item) => item.passageSha256), originalTextLength: document.length,
     originalTextSha256: sha256(document), normalizedOriginalTextLength: normalizedDocument.length, normalizedOriginalTextSha256: sha256(normalizedDocument),
-    matchingOutcomes: passageDiagnostics.map(({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, diagnosticOfficialRepresentationMatch }) => ({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, diagnosticOfficialRepresentationMatch })),
+    matchingOutcomes: passageDiagnostics.map(({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, pdfV2Match, diagnosticOfficialRepresentationMatch }) => ({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, pdfV2Match, diagnosticOfficialRepresentationMatch })),
   };
   if (!highlights.length) return { ok: false as const, reason: "SOURCE_CONTENT_UNAVAILABLE" as Stage4b2SourceDiagnostic, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
   const exactPassage = highlights.find((highlight) => document.includes(highlight));
-  if (exactPassage) return { ok: true as const, sourceUrl: approvedIdentity, passage: exactPassage, passageSha256: sha256(exactPassage), matchMode: "compact_exact" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
-  const normalizedPassage = highlights.find((highlight) => normalizedDocument.includes(normalizeVerbatimPassage(highlight)));
-  if (normalizedPassage) return { ok: true as const, sourceUrl: approvedIdentity, passage: normalizedPassage, passageSha256: sha256(normalizedPassage), matchMode: "normalized_verbatim" as const, mismatchCategory: "text_normalization_mismatch_recovered" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+  if (exactPassage) return { ok: true as const, sourceUrl: approvedIdentity, sourceIdentity: STAGE4B2_SOURCE_IDENTITY, evidenceRepresentation: "abstract" as const, representationUrl: STAGE4B2_APPROVED_ABSTRACT_URL, passage: exactPassage, passageSha256: sha256(exactPassage), matchMode: "compact_exact" as const, sourceDocumentFingerprint: sha256(document), safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+  const normalizedPassage = highlights.find((highlight) => normalizedDocument.includes(normalizeStage4b2VerbatimPassage(highlight)));
+  if (normalizedPassage) return { ok: true as const, sourceUrl: approvedIdentity, sourceIdentity: STAGE4B2_SOURCE_IDENTITY, evidenceRepresentation: "abstract" as const, representationUrl: STAGE4B2_APPROVED_ABSTRACT_URL, passage: normalizedPassage, passageSha256: sha256(normalizedPassage), matchMode: "normalized_verbatim" as const, mismatchCategory: "text_normalization_mismatch_recovered" as const, sourceDocumentFingerprint: sha256(document), safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+  const pdfMatch = passageDiagnostics.find((item) => item.pdfEvidence?.ok === true)?.pdfEvidence;
+  if (pdfMatch?.ok) return { ok: true as const, sourceUrl: approvedIdentity, passage: pdfMatch.passage, passageSha256: pdfMatch.passageSha256, matchMode: pdfMatch.matchMode, sourceIdentity: pdfMatch.sourceIdentity, evidenceRepresentation: pdfMatch.representation, representationUrl: pdfMatch.representationUrl, evidenceLocator: pdfMatch.locator, sourceDocumentFingerprint: pdfMatch.documentSha256, evidencePageFingerprint: pdfMatch.pageSha256, evidenceBlockFingerprint: pdfMatch.blockSha256, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
   const scopeMismatch = passageDiagnostics.some((item) => item.diagnosticOfficialRepresentationMatch);
   return { ok: false as const, reason: (scopeMismatch ? "DOCUMENT_SCOPE_MISMATCH" : "SOURCE_PASSAGE_NOT_VERIFIED") as Stage4b2SourceDiagnostic, mismatchCategory: scopeMismatch ? "document_scope_mismatch" as const : "unresolved_passage_mismatch" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
 }
