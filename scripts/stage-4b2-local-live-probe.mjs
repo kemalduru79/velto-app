@@ -6,6 +6,7 @@ import {
   STAGE4B2_CONTENTS_ENDPOINT as EXA_URL,
   claimStage4b2Execution,
   classifyStage4b2ContentsResponse,
+  createStage4b2ContentsRequest,
   validateStage4b2ClaimAssessment,
 } from "../lib/creator/stage4b2ProviderAcceptance.ts";
 
@@ -27,12 +28,13 @@ const script = [
   { id: "conclusion", text: "What can a convincing simulation actually tell us about human life?" },
 ];
 const before = sha256(JSON.stringify({ script, scenes }));
-const usage = { exaCalls: 0, openAiCalls: 0, estimatedReservedUsd: 0, exaReportedUsd: null, openAiReportedUsd: null };
+const usage = { exaCalls: 0, openAiCalls: 0, openAiInputTokens: 0, openAiOutputTokens: 0, estimatedReservedUsd: 0, exaReportedUsd: null, openAiReportedUsd: null };
 const steps = [];
 const report = (status, fields = {}) => ({
   stage: "4B2", status, previewOnly: true, applyPerformed: false, synthetic: true,
   model: MODEL, approvedSource: SOURCE_URL, approvedMaxCostUsd: TOTAL_BUDGET_USD,
-  ...usage, zeroWriteProof: { before, after: sha256(JSON.stringify({ script, scenes })), unchanged: before === sha256(JSON.stringify({ script, scenes })) }, steps, ...fields,
+  ...usage, costReporting: { reservationIsActualBilledCost: false, openAiUsdCostAvailable: false },
+  zeroWriteProof: { before, after: sha256(JSON.stringify({ script, scenes })), unchanged: before === sha256(JSON.stringify({ script, scenes })) }, steps, ...fields,
 });
 const reserve = (kind, amount) => {
   if (usage.estimatedReservedUsd + amount > TOTAL_BUDGET_USD) throw new Error("BUDGET_EXHAUSTED");
@@ -50,9 +52,10 @@ const textOfHtml = (html) => compact(html
 const executionId = process.env.STAGE4B2_EXECUTION_ID || "";
 const approvedExecutionId = process.env.STAGE4B2_APPROVED_EXECUTION_ID || "";
 const consent = process.env.STAGE4B2_EXECUTION_CONSENT || "";
-const authorized = process.argv.includes("--execute") && executionId && approvedExecutionId && consent === `confirmed:${executionId}`;
+// These caller-supplied values constrain a separately granted approval; they do not create one.
+const executionInputsMatch = process.argv.includes("--execute") && executionId && approvedExecutionId && consent === `confirmed:${executionId}`;
 
-if (!authorized) {
+if (!executionInputsMatch) {
   console.log(JSON.stringify(report("REVIEW_REQUIRED", {
     reason: "DRY_RUN_ONLY",
     instructions: "A future run requires --execute and a newly approved matching execution ID, approved execution ID and confirmed:<execution-id> consent.",
@@ -89,6 +92,8 @@ if (!authorized) {
     })));
     const tokens = toRecord(data.usage);
     if (!Number.isSafeInteger(tokens.input_tokens) || !Number.isSafeInteger(tokens.output_tokens) || tokens.output_tokens > OUTPUT_LIMIT) throw new Error("OPENAI_USAGE_INVALID");
+    usage.openAiInputTokens += tokens.input_tokens;
+    usage.openAiOutputTokens += tokens.output_tokens;
     const items = Array.isArray(data.output) ? data.output : [];
     const contents = items.flatMap((item) => Array.isArray(toRecord(item).content) ? toRecord(item).content : []);
     const output = typeof data.output_text === "string" ? data.output_text : contents.map((item) => toRecord(item).text).filter((value) => typeof value === "string").join("");
@@ -100,9 +105,7 @@ if (!authorized) {
     receiptAuthority = await claimStage4b2Execution({ executionId, approvedExecutionId, consent, receiptDirectory: process.env.STAGE4B2_RECEIPT_DIR || path.resolve(".stage4b2-receipts") });
     const exa = await step("exa_exact_source_contents", async () => {
       reserve("exa", EXA_RESERVATION);
-      const data = toRecord(parseJson(await network(EXA_URL, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": process.env.EXA_API_KEY }, body: JSON.stringify({
-        ids: [SOURCE_URL], highlights: { query: "agent behavior simulation evidence limitations", maxCharacters: 4000 },
-      }) })));
+      const data = toRecord(parseJson(await network(EXA_URL, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": process.env.EXA_API_KEY }, body: JSON.stringify(createStage4b2ContentsRequest()) })));
       const cost = toRecord(data.costDollars).total;
       if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) throw new Error("EXA_COST_UNKNOWN");
       usage.exaReportedUsd = cost;
@@ -120,12 +123,12 @@ if (!authorized) {
     if (!validateStage4b2ClaimAssessment({ assessment: assessed, evidenceId: evidence.id })) throw new Error("CLAIM_UNSUPPORTED");
     const goal = await callOpenAI("editorial_goal_assessment", "Return JSON {status:'satisfied'|'blocked',reason:string}. Do not presume success.", { before: script[1].text, after: revised.bodyText, passage: sourceResult.passage });
     if (goal.status !== "satisfied") throw new Error("EDITORIAL_GOAL_UNSATISFIED");
-    await receiptAuthority.complete({ state: "completed", providerUsage: { exaCalls: usage.exaCalls, openAiCalls: usage.openAiCalls, reportedCostUsd: usage.exaReportedUsd }, result: "REVIEW_REQUIRED" });
+    await receiptAuthority.complete({ state: "completed", providerUsage: { exaCalls: usage.exaCalls, openAiCalls: usage.openAiCalls, reportedCostUsd: usage.exaReportedUsd, openAiInputTokens: usage.openAiInputTokens, openAiOutputTokens: usage.openAiOutputTokens }, result: "REVIEW_REQUIRED" });
     console.log(JSON.stringify(report("REVIEW_REQUIRED", { executionId, providerSmokeTest: "PASS", actualElapsedMs: Math.round(performance.now() - started), sourceDocumentSha256: sha256(raw), verifiedPassageSha256: sourceResult.passageSha256, passageStartOffset: extracted.indexOf(sourceResult.passage), preview: script.map((section) => section.id === "body-1" ? { ...section, text: revised.bodyText } : section), limitation: "Real provider smoke, not canonical whole-script refinement acceptance." }), null, 2));
   } catch (error) {
     let reason = error instanceof Error ? error.message : "UNKNOWN";
     if (receiptAuthority) {
-      try { await receiptAuthority.complete({ state: "blocked", providerUsage: { exaCalls: usage.exaCalls, openAiCalls: usage.openAiCalls, reportedCostUsd: usage.exaReportedUsd }, result: reason }); }
+      try { await receiptAuthority.complete({ state: "blocked", providerUsage: { exaCalls: usage.exaCalls, openAiCalls: usage.openAiCalls, reportedCostUsd: usage.exaReportedUsd, openAiInputTokens: usage.openAiInputTokens, openAiOutputTokens: usage.openAiOutputTokens }, result: reason }); }
       catch (receiptError) { reason = `EXECUTION_RECEIPT_FINALIZATION_FAILED:${receiptError instanceof Error ? receiptError.message : "UNKNOWN"}`; }
     }
     console.log(JSON.stringify(report("BLOCKED", { executionId, actualElapsedMs: Math.round(performance.now() - started), reason, safeCandidateUrls: Array.isArray(error?.safeCandidateUrls) ? error.safeCandidateUrls : undefined }), null, 2));

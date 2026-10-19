@@ -7,6 +7,7 @@ import {
   STAGE4B2_CONTENTS_ENDPOINT,
   claimStage4b2Execution,
   classifyStage4b2ContentsResponse,
+  createStage4b2ContentsRequest,
   normalizeStage4b2SourceIdentity,
   validateStage4b2ClaimAssessment,
 } from "../lib/creator/stage4b2ProviderAcceptance.ts";
@@ -14,17 +15,24 @@ import {
 const passage = "Generative agents wake up, cook breakfast, and head to work; artists paint, while authors write.";
 const document = `Independent original document text. ${passage} More original document text.`;
 const response = (overrides = {}) => ({
-  results: [{ id: STAGE4B2_APPROVED_SOURCE_URL, url: STAGE4B2_APPROVED_SOURCE_URL, highlights: [passage], ...overrides }],
+  results: [{ id: "exa-document-2304-03442", url: STAGE4B2_APPROVED_SOURCE_URL, highlights: [passage], ...overrides }],
 });
 
 assert.equal(STAGE4B2_CONTENTS_ENDPOINT, "https://api.exa.ai/contents");
+assert.deepEqual(createStage4b2ContentsRequest(), {
+  urls: [STAGE4B2_APPROVED_SOURCE_URL],
+  highlights: { query: "agent behavior simulation evidence limitations", maxCharacters: 4000 },
+});
+assert.equal("ids" in createStage4b2ContentsRequest(), false);
 assert.equal(normalizeStage4b2SourceIdentity(`${STAGE4B2_APPROVED_SOURCE_URL}/#paper`), STAGE4B2_APPROVED_SOURCE_URL);
 assert.equal(normalizeStage4b2SourceIdentity("http://arxiv.org/abs/2304.03442"), null);
 assert.equal(classifyStage4b2ContentsResponse({ response: null, independentlyRetrievedText: document }).reason, "PROVIDER_RESPONSE_MALFORMED");
 assert.equal(classifyStage4b2ContentsResponse({ response: { results: [] }, independentlyRetrievedText: document }).reason, "SOURCE_NOT_DISCOVERED");
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: "https://example.com/paper", url: "https://example.com/paper" }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: "https://arxiv.org/pdf/2304.03442", url: "https://arxiv.org/pdf/2304.03442" }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
-assert.equal(classifyStage4b2ContentsResponse({ response: response({ url: "https://example.com/substituted" }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
+assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: STAGE4B2_APPROVED_SOURCE_URL, url: undefined }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
+assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: STAGE4B2_APPROVED_SOURCE_URL, url: "https://example.com/substituted" }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
+assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: "https://example.com/substituted" }), independentlyRetrievedText: document }).reason, "SOURCE_IDENTITY_MISMATCH");
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ highlights: [] }), independentlyRetrievedText: document }).reason, "SOURCE_CONTENT_UNAVAILABLE");
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ highlights: ["A fabricated passage that the original source does not contain."] }), independentlyRetrievedText: document }).reason, "SOURCE_PASSAGE_NOT_VERIFIED");
 const verified = classifyStage4b2ContentsResponse({ response: response(), independentlyRetrievedText: document });
@@ -32,6 +40,7 @@ assert.equal(verified.ok, true);
 assert.equal(verified.sourceUrl, STAGE4B2_APPROVED_SOURCE_URL);
 assert.equal(verified.passage, passage);
 assert.match(verified.passageSha256, /^[a-f0-9]{64}$/u);
+assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: STAGE4B2_APPROVED_SOURCE_URL }), independentlyRetrievedText: document }).ok, true);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved"] }, evidenceId: "e-approved" }), true);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-substituted"] }, evidenceId: "e-approved" }), false);
@@ -56,8 +65,10 @@ try {
 }
 
 const probe = await readFile("scripts/stage-4b2-local-live-probe.mjs", "utf8");
-assert.match(probe, /ids: \[SOURCE_URL\]/u);
+assert.match(probe, /createStage4b2ContentsRequest/u);
 assert.doesNotMatch(probe, /api\.exa\.ai\/search|numResults|includeDomains/u);
+assert.match(probe, /openAiInputTokens/u);
+assert.match(probe, /reservationIsActualBilledCost: false/u);
 assert.match(probe, /claimStage4b2Execution/u);
 assert.match(probe, /exa_exact_source_contents/u);
 assert.match(probe, /independent_original_source/u);

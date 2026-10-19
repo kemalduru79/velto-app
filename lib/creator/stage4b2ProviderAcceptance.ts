@@ -10,8 +10,20 @@ type JsonRecord = Record<string, unknown>;
 const record = (value: unknown): JsonRecord => value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
 const compact = (value: string) => value.replace(/\s+/gu, " ").trim();
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+const isUrlIdentity = (value: unknown) => {
+  if (typeof value !== "string") return false;
+  try { new URL(value); return true; }
+  catch { return false; }
+};
 
 export type Stage4b2SourceDiagnostic = "PROVIDER_RESPONSE_MALFORMED" | "SOURCE_NOT_DISCOVERED" | "SOURCE_IDENTITY_MISMATCH" | "SOURCE_CONTENT_UNAVAILABLE" | "SOURCE_PASSAGE_NOT_VERIFIED";
+
+export function createStage4b2ContentsRequest() {
+  return {
+    urls: [STAGE4B2_APPROVED_SOURCE_URL],
+    highlights: { query: "agent behavior simulation evidence limitations", maxCharacters: 4000 },
+  };
+}
 
 export function normalizeStage4b2SourceIdentity(value: unknown) {
   if (typeof value !== "string") return null;
@@ -35,8 +47,9 @@ export function classifyStage4b2ContentsResponse(input: { response: unknown; ind
   if (!results.length) return { ok: false as const, reason: "SOURCE_NOT_DISCOVERED" as Stage4b2SourceDiagnostic, safeCandidateUrls };
   const approvedIdentity = normalizeStage4b2SourceIdentity(STAGE4B2_APPROVED_SOURCE_URL)!;
   const exact = results.find((item) => {
-    const identities = [item.url, item.id].filter((value): value is string => typeof value === "string").map(normalizeStage4b2SourceIdentity);
-    return identities.length > 0 && identities.every((identity) => identity === approvedIdentity);
+    const resultUrl = normalizeStage4b2SourceIdentity(item.url);
+    if (resultUrl !== approvedIdentity) return false;
+    return !isUrlIdentity(item.id) || normalizeStage4b2SourceIdentity(item.id) === approvedIdentity;
   });
   if (!exact) return { ok: false as const, reason: "SOURCE_IDENTITY_MISMATCH" as Stage4b2SourceDiagnostic, safeCandidateUrls };
   const highlights = (Array.isArray(exact.highlights) ? exact.highlights : []).filter((value): value is string => typeof value === "string").map(compact).filter((value) => value.length >= 24);
@@ -62,7 +75,7 @@ export type Stage4b2ExecutionReceipt = {
   state: "started" | "completed" | "blocked";
   startedAt: string | null;
   completedAt: string | null;
-  providerUsage: { exaCalls: number; openAiCalls: number; reportedCostUsd: number | null };
+  providerUsage: { exaCalls: number; openAiCalls: number; reportedCostUsd: number | null; openAiInputTokens?: number; openAiOutputTokens?: number };
   result: string | null;
   elapsedMs?: number;
 };

@@ -9,7 +9,7 @@ This opt-in CLI uses the **existing developer workstation's** `.env.local` file 
 ## Authorized envelope
 
 - Max estimated spend: USD 5.00, **not** an absolute provider-billing ceiling.
-- Exa Contents API: at most 1 request for the exact approved URL in `ids`; conservative pre-reservation USD 0.75. Stop if reported Exa cost exceeds the reservation.
+- Exa Contents API: at most 1 request for the exact approved URL in `urls`; conservative pre-reservation USD 0.75. Stop if reported Exa cost exceeds the reservation.
 - OpenAI: at most 3 calls; reserved USD 1.25 each, 1,050 max output tokens per call.
 - Model: `gpt-4.1-mini` for provider smoke checks; **not** editorial-quality acceptance for production.
 - Exact source: `https://arxiv.org/abs/2304.03442` only.
@@ -41,7 +41,7 @@ The committed historical receipt prevents that execution ID from being reused. R
 
 ## Future one-time execution (not currently authorized)
 
-Do **not** run the following template until a new execution identifier and budget have been explicitly approved. The three execution values must match exactly; the old consent marker is invalid.
+Do **not** run the following template until a new execution identifier and budget have been explicitly approved by the user outside the environment variables. Matching environment variables are only local scope/replay inputs; they do not independently establish human approval. The three execution values must match exactly; the old consent marker is invalid.
 
 ```bash
 STAGE4B2_EXECUTION_ID=stage4b2-<new-approved-id> \
@@ -50,9 +50,9 @@ STAGE4B2_EXECUTION_CONSENT=confirmed:stage4b2-<new-approved-id> \
   node --env-file=.env.local scripts/stage-4b2-local-live-probe.mjs --execute
 ```
 
-The probe makes one `POST https://api.exa.ai/contents` request with only `https://arxiv.org/abs/2304.03442` in `ids`. There is no ranked discovery query, fallback source, mirror acceptance or automatic retry. It separately downloads the approved HTTPS document and requires the returned passage to occur in that document before OpenAI can be called.
+The probe makes one `POST https://api.exa.ai/contents` request with only `https://arxiv.org/abs/2304.03442` in `urls`. There is no ranked discovery query, fallback source, mirror acceptance or automatic retry. It separately downloads the approved HTTPS document and requires the returned passage to occur in that document before OpenAI can be called.
 
-Capture the JSON result **without including secrets or raw provider content**. `BLOCKED` is an acceptable fail-closed result. Diagnostics distinguish malformed responses, `SOURCE_NOT_DISCOVERED`, `SOURCE_IDENTITY_MISMATCH`, `SOURCE_CONTENT_UNAVAILABLE` and `SOURCE_PASSAGE_NOT_VERIFIED`. Reports include request counts, per-stage elapsed time, estimated reservations and provider-reported Exa cost where available.
+Capture the JSON result **without including secrets or raw provider content**. `BLOCKED` is an acceptable fail-closed result. Diagnostics distinguish malformed responses, `SOURCE_NOT_DISCOVERED`, `SOURCE_IDENTITY_MISMATCH`, `SOURCE_CONTENT_UNAVAILABLE` and `SOURCE_PASSAGE_NOT_VERIFIED`. Reports include request counts, per-stage elapsed time, OpenAI input/output token usage, estimated reservations and provider-reported Exa cost where available. Reservations are preflight controls, never represented as actual billed charges; OpenAI USD cost remains unknown unless the provider explicitly reports it.
 
 The resulting Preview is a synthetic example only; it is not applied to the saved Thynel project.
 
