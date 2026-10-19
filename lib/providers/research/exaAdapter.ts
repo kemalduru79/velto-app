@@ -7,6 +7,7 @@ import type {
   ResearchSearchCategory,
   ResearchSearchResult,
 } from "./types.ts";
+import { createHash } from "node:crypto";
 
 export type ExaSearchResultItem = {
   id?: unknown;
@@ -136,6 +137,11 @@ function adaptItem(
     ? item.highlights.map((value) => clean(value, 1_200)).filter(Boolean)
     : [];
   const verifiedProvenance = verifiedProvenanceFromItem(item, url);
+  const passageMetadata = Object.fromEntries(highlights.slice(0, 4).flatMap((passage, index) => [
+    [`verifiedPassage${index + 1}`, passage],
+    [`verifiedPassage${index + 1}Digest`, createHash("sha256").update(passage).digest("hex")],
+    [`verifiedPassage${index + 1}Locator`, `exa-highlight:${index + 1}`],
+  ]));
 
   return {
     sourceId: createResearchSourceId(adapterId, externalId),
@@ -156,6 +162,8 @@ function adaptItem(
       provider: "exa",
       resultId: rawExternalId || null,
       highlightCount: highlights.length,
+      verifiedPassageAuthority: "exa-source-highlight-v1",
+      ...passageMetadata,
       ...verifiedProvenance,
     },
   };

@@ -74,6 +74,7 @@
     "test:stage-0-13e": "node --experimental-strip-types scripts/stage-0-13e-ai-script-refinement-test.mjs",
     "test:r2-safety-script-loss": "node --experimental-strip-types scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
     "test:r2-safety-autosave-cas": "node --experimental-strip-types scripts/stage-r2-safety-autosave-cas-test.mjs",
+    "test:creator-refinement-r2": "node --experimental-strip-types scripts/creator-script-refinement-r2-research-backed-test.mjs",
     "test:stage-0-13f": "node --experimental-strip-types scripts/stage-0-13f-revision-preview-history-test.mjs",
     "test:stage-0-13g": "node --experimental-strip-types scripts/stage-0-13g-script-approval-scene-build-test.mjs",
     "test:stage-0-13h": "node --experimental-strip-types scripts/stage-0-13h-editorial-qa-corrections-test.mjs",

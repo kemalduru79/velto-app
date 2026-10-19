@@ -15914,7 +15914,7 @@ const generateSceneImage = async (
     return Array.isArray(data.review?.items) ? data.review.items : [];
   };
 
-  const handleRefineCreatorScript = async (refinement: { scope: "selection" | "opening" | "whole_script"; instruction: string; selectionStart?: number; selectionEnd?: number; selectedText?: string }) => {
+  const handleRefineCreatorScript = async (refinement: { scope: "selection" | "opening" | "whole_script"; mode: "focused_edit" | "editorial_rewrite" | "research_backed_rewrite"; instruction: string; selectionStart?: number; selectionEnd?: number; selectedText?: string }) => {
     const sourceScript = creatorScriptRef.current;
     if (!sourceScript) return false;
     const sourceDocument = getCreatorScriptDocumentText(sourceScript);
