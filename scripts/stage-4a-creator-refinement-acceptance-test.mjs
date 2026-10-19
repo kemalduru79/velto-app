@@ -1,0 +1,111 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createJiti } from "jiti";
+import { createCreatorScript, getCreatorScriptDurationContractForScript } from "../lib/creator/creatorScript.ts";
+import { attachCreatorProjectState, buildCreatorProjectState, readCreatorProjectState } from "../lib/creator/projectState.ts";
+import { createCreatorScriptRefinementAcceptanceObserver } from "../lib/creator/creatorScriptRefinementAcceptance.ts";
+import { assessOriginalSourceClaimAuthority, verifyOriginalSourceEvidence } from "../lib/research/originalSourceEvidence.ts";
+
+const words = (prefix, count) => Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(" ");
+const source = { sourceId: "academic:paper-1", adapterId: "academic", mediaKind: "paper", externalId: "paper-1", title: "Original paper", url: "https://research.test/paper-1", publisher: "Research Press", author: "A. Author", publishedAt: "2026-01-01", language: "en", summary: "Discovery summary only.", thumbnailUrl: null, durationSec: null, metrics: {}, sourceMetadata: {} };
+const passage = "The controlled trial observed a modest association, but it did not establish causation.";
+const documentContent = `Abstract\n${passage}\nLimitations\nThe sample was narrow.`;
+const document = { sourceId: source.sourceId, url: source.url, content: documentContent, acquisition: "trusted_fixture", expectedSha256: createHash("sha256").update(documentContent).digest("hex") };
+const verified = verifyOriginalSourceEvidence({ source, passage, document });
+assert.equal(verified.state, "source_verified");
+assert.equal(documentContent.slice(verified.locator.start, verified.locator.end), passage);
+assert.equal(verifyOriginalSourceEvidence({ source, passage: "A fabricated passage that does not occur in the original source document.", document }).state, "rejected");
+assert.equal(verifyOriginalSourceEvidence({ source, passage, document: { ...document, sourceId: "wrong-source" } }).state, "rejected");
+assert.equal(verifyOriginalSourceEvidence({ source, passage }).state, "provider_extracted");
+assert.equal(verifyOriginalSourceEvidence({ source, passage, document: { ...document, acquisition: "human_review_required" } }).state, "requires_review");
+assert.equal(verifyOriginalSourceEvidence({ source, passage, document: { ...document, content: documentContent.replace("modest association", "strong association") } }).state, "rejected");
+const evidence = [{ evidenceId: "evidence-original", sourceId: source.sourceId, excerpt: passage, contextNote: null, locator: { section: "results", page: 4, timecodeStartSec: null, timecodeEndSec: null } }];
+const factualClaim = { claimId: "claim-supported", claimType: "RESEARCH_FINDING", text: "The controlled trial observed a modest association without establishing causation.", propositionKind: "original_research_result", origin: { attributedEntity: "A. Author", referencedWork: source.url }, supportingEvidenceIds: ["evidence-original"] };
+const originalSource = { ...source, sourceMetadata: { provenanceVerified: true, provenanceKind: "original_academic_paper" } };
+const supportedAssessment = { status: "supported", evidenceIds: ["evidence-original"] };
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence, sources: [originalSource], fidelity: [verified], semanticAssessment: supportedAssessment }).status, "accepted");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence, sources: [originalSource], fidelity: [verified], semanticAssessment: { status: "contradicted", evidenceIds: ["evidence-original"] } }).reason, "CLAIM_CONTRADICTED");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: { ...factualClaim, text: "The trial proved a large causal effect." }, evidence, sources: [originalSource], fidelity: [verified], semanticAssessment: { status: "unsupported", evidenceIds: ["evidence-original"] } }).reason, "CLAIM_NOT_SUBSTANTIVELY_SUPPORTED");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: { ...factualClaim, text: "The trial included 100 participants." }, evidence, sources: [originalSource], fidelity: [verified], semanticAssessment: { status: "unsupported", evidenceIds: ["evidence-original"] } }).status, "rejected", "numeric overlap cannot replace semantic support");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence, sources: [source], fidelity: [verified], semanticAssessment: supportedAssessment }).reason, "ORIGINAL_RESEARCH_PROVENANCE_REQUIRED", "academic category alone is not primary authority");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence: [...evidence, evidence[0]], sources: [originalSource], fidelity: [verified], semanticAssessment: supportedAssessment }).reason, "EVIDENCE_ID_DUPLICATE");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence, sources: [], fidelity: [verified], semanticAssessment: supportedAssessment }).reason, "SOURCE_PROVENANCE_MISSING");
+assert.equal(assessOriginalSourceClaimAuthority({ claim: factualClaim, evidence, sources: [originalSource], fidelity: [{ ...verified, state: "requires_review" }], semanticAssessment: supportedAssessment }).status, "requires_review");
+
+let time = 0;
+const observer = createCreatorScriptRefinementAcceptanceObserver({ now: () => time, routeBudgetMs: 300_000 });
+for (const [stage, elapsed] of [["research_acquisition", 25_000], ["source_passage_verification", 15_000], ["script_rewriting", 80_000], ["claim_evidence_assessment", 35_000], ["editorial_goal_assessment", 25_000], ["proposal_validation", 5_000], ["persistence", 2_000]]) {
+  await observer.run(stage, async () => { time += elapsed; });
+}
+const offlineReport = observer.report({ evidenceFidelity: true, claimAuthority: true, lifecycle: true, casPersistence: true, scriptSceneIntegrity: true, liveProviderVerified: false });
+assert.equal(offlineReport.status, "REVIEW_REQUIRED");
+assert.equal(offlineReport.operationalReliability, true);
+assert.deepEqual(offlineReport.remainingBlockers, ["LIVE_PROVIDER_RUNTIME_NOT_VERIFIED"]);
+let slowTime = 0;
+const slowObserver = createCreatorScriptRefinementAcceptanceObserver({ now: () => slowTime, routeBudgetMs: 300_000 });
+await slowObserver.run("research_acquisition", async () => { slowTime += 301_000; });
+assert.equal(slowObserver.report({ evidenceFidelity: true, claimAuthority: true, lifecycle: true, casPersistence: true, scriptSceneIntegrity: true, liveProviderVerified: false }).status, "BLOCKED");
+await assert.rejects(() => observer.run("script_rewriting", async () => { time += 1_000; throw new Error("PROVIDER_TIMEOUT"); }), /PROVIDER_TIMEOUT/);
+await assert.rejects(() => observer.run("claim_evidence_assessment", async () => { time += 500; throw new Error("REQUEST_ABORT_INTERRUPTED"); }), /REQUEST_ABORT_INTERRUPTED/);
+await assert.rejects(() => observer.run("editorial_goal_assessment", async () => { time += 500; throw new Error("PROVIDER_OUTPUT_MALFORMED"); }), /PROVIDER_OUTPUT_MALFORMED/);
+
+const context = { version: "0.10H-2H", sourceVersion: "0.10H-2E", editorialConstitution: "Preserve authority.", readiness: { status: "ready", editorialReadinessScore: 100, reviewReasons: [], primarySourceRequiredClaimIds: [], primarySourceCoveredClaimIds: [] }, claims: [{ claimId: "claim-1", claimType: "FACT", text: "A canonical fact.", supportingEvidenceIds: ["evidence-1"], counterEvidenceIds: [], contextualEvidenceIds: [] }], evidence: [{ evidenceId: "evidence-1", sourceId: "source-1", excerpt: "A canonical fact is documented here.", contextNote: null, locator: { section: "record", page: null, timecodeStartSec: null, timecodeEndSec: null } }], sources: [{ sourceId: "source-1", title: "Canonical source", url: "https://source.test/1", publisher: "Publisher", author: null, publishedAt: null, directness: "secondary", reviewStatus: "usable", searchLane: "supporting_evidence", sourceKind: "article" }] };
+const script = createCreatorScript({ title: "Synthetic five-section project", sections: [{ id: "opening", kind: "opening", heading: "Opening", text: words("open", 120), claimIds: ["claim-1"], evidenceReviewRequired: false }, ...[1, 2, 3].map((number) => ({ id: `body-${number}`, kind: "body", heading: `Body ${number}`, text: words(`body${number}-`, 320), claimIds: ["claim-1"], evidenceReviewRequired: false })), { id: "conclusion", kind: "conclusion", heading: "Conclusion", text: words("end", 120), claimIds: [], evidenceReviewRequired: false }], targetDurationSec: 525, strategyFingerprint: "stage-4a-fingerprint", grounding: { context }, generatedAt: "2026-10-19T00:00:00.000Z", updatedAt: "2026-10-19T00:00:00.000Z" });
+for (const [targetDurationSec, bodyWords] of [[180, 310], [525, 960], [900, 1_800]]) {
+  const configured = createCreatorScript({ ...script, targetDurationSec, sections: [{ ...script.sections[0], text: words(`duration-${targetDurationSec}-open-`, targetDurationSec === 180 ? 50 : 120) }, { ...script.sections[1], text: words(`duration-${targetDurationSec}-body-`, bodyWords) }, { ...script.sections.at(-1), text: words(`duration-${targetDurationSec}-end-`, targetDurationSec === 180 ? 50 : 120) }] });
+  assert.equal(getCreatorScriptDurationContractForScript(configured, "en").status, "compliant", `${targetDurationSec}s persisted configuration remains valid`);
+}
+const scenes = Array.from({ length: 36 }, (_, index) => ({ id: `scene-${index + 1}`, scriptRevision: script.revision, narration: `Scene ${index + 1}` }));
+const state = buildCreatorProjectState({ brief: { topic: "Synthetic", language: "en", country: "US", ageGroup: "adult", contentType: "documentary", format: "youtube_video", durationPreset: "custom", durationSec: 525, customDurationSec: 525, qualityMode: "quality", targetPlatforms: ["youtube"] }, strategy: { mentorResult: null, selectedDirectionId: "direction", selectedHook: "hook", strategyFingerprint: script.strategyFingerprint, script, pendingRefinement: null, revisionHistory: [] }, production: { package: { version: "fixture" }, refinedScenes: scenes, backgroundMusic: null, projectContinuityMode: "continuous", sceneContinuityModes: {}, voicePreferences: null }, createReview: { scenes }, publish: { metadata: null, thumbnail: null, thumbnailDesign: null, confirmations: {}, packageDownloaded: false, packageSignature: "", finalVideoUrl: "https://assets.test/previous.mp4", finalVideoSignature: "previous-signature" } });
+let project = { id: "stage-4a-project", owner_user_id: "owner-4a", flow_type: "creator_lab", title: "Synthetic", scenes: structuredClone(scenes), refined_creator_scenes: structuredClone(scenes), updated_at: "revision-1", exported_movie_url: "https://assets.test/previous.mp4", export_signature: "previous-signature", exported_movie_result: attachCreatorProjectState({}, state) };
+let revision = 1; let snapshotCount = 0; let conflictNext = false;
+const repository = { getForOwner: async () => structuredClone(project), saveForOwner: async (patch) => {
+  if (conflictNext) { conflictNext = false; throw new Error("PROJECT_SAVE_CONFLICT"); }
+  assert.equal(patch.expectedUpdatedAt, project.updated_at);
+  revision += 1;
+  project = { ...project, ...(Object.hasOwn(patch, "scenes") ? { scenes: patch.scenes } : {}), ...(Object.hasOwn(patch, "refinedCreatorScenes") ? { refined_creator_scenes: patch.refinedCreatorScenes } : {}), ...(Object.hasOwn(patch, "exportedMovieUrl") ? { exported_movie_url: patch.exportedMovieUrl } : {}), ...(Object.hasOwn(patch, "exportSignature") ? { export_signature: patch.exportSignature } : {}), exported_movie_result: patch.exportedMovieResult, updated_at: `revision-${revision}` };
+  return { project: structuredClone(project), created: false };
+} };
+const candidateSections = script.sections.map((section) => ({ ...section, text: `${section.text} refined`, lineage: { sourceSectionIds: [section.id] } }));
+const providers = { research: async () => ({ sources: [], verifiedEvidence: [] }), rewrite: async () => ({ sections: candidateSections, addedClaims: [], addedEvidence: [], goalResults: [] }), verifyClaims: async () => [], assess: async ({ goals }) => goals.map((goal) => ({ goalId: goal.goalId, status: "satisfied", sectionIds: ["body-1"], summary: "The requested progression changed materially." })) };
+const jiti = createJiti(import.meta.url, { interopDefault: true, alias: { "@": new URL("..", import.meta.url).pathname.replace(/\/$/, ""), "server-only": new URL("../lib/creator/projectState.ts", import.meta.url).pathname } });
+const { POST } = await jiti.import("../app/api/creator-script/refine/route.ts");
+const handle = POST.handleForTest;
+const dependencies = { authenticate: async () => ({ id: "owner-4a", email: "owner@test.invalid", providerUser: { id: "owner-4a" } }), persistence: () => ({ projectRepository: repository }), editorialProviders: () => providers, captureProductionSnapshot: async () => { snapshotCount += 1; } };
+const priorGate = process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED; const priorEnv = process.env.NODE_ENV; const priorKey = process.env.OPENAI_API_KEY;
+process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED = "true"; process.env.NODE_ENV = "test"; process.env.OPENAI_API_KEY = "offline-not-used";
+const request = (body) => new Request("http://localhost/api/creator-script/refine", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const generate = async () => { const response = await handle(request({ projectId: project.id, action: "generate", scope: "whole_script", mode: "editorial_rewrite", revision: readCreatorProjectState(project).strategy.script.revision, instruction: "Improve progression without changing factual authority." }), dependencies); return { response, payload: await response.json() }; };
+let generated = await generate();
+assert.equal(generated.response.status, 200);
+assert.equal(readCreatorProjectState(project).strategy.script.revision, 1);
+assert.equal(project.scenes.length, 36);
+const firstProposalId = generated.payload.pendingRefinement.proposalId;
+let discardedResponse = await handle(request({ projectId: project.id, action: "discard", revision: 1, proposalId: firstProposalId }), dependencies);
+assert.equal(discardedResponse.status, 200);
+assert.equal(readCreatorProjectState(project).strategy.script.revision, 1);
+assert.equal(project.scenes.length, 36);
+generated = await generate();
+const proposalId = generated.payload.pendingRefinement.proposalId;
+const staleResponse = await handle(request({ projectId: project.id, action: "apply", revision: 1, proposalId: "stale-proposal" }), dependencies);
+assert.equal(staleResponse.status, 409);
+assert.equal(project.scenes.length, 36);
+conflictNext = true;
+const conflictResponse = await handle(request({ projectId: project.id, action: "apply", revision: 1, proposalId }), dependencies);
+assert.equal(conflictResponse.status, 409);
+assert.equal(readCreatorProjectState(project).strategy.script.revision, 1);
+assert.equal(project.scenes.length, 36);
+const applyResponse = await handle(request({ projectId: project.id, action: "apply", revision: 1, proposalId }), dependencies);
+assert.equal(applyResponse.status, 200);
+assert.equal(readCreatorProjectState(project).strategy.script.revision, 2);
+assert.equal(project.scenes.length, 0);
+assert.equal(snapshotCount, 2, "snapshot attempted before conflicting and successful intentional apply only");
+assert.equal(readCreatorProjectState(project).strategy.revisionHistory.length, 1);
+if (priorGate === undefined) delete process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED; else process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED = priorGate;
+if (priorEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = priorEnv;
+if (priorKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = priorKey;
+
+const acceptanceReport = { ...offlineReport, evidenceFidelity: verified.state === "source_verified", refinementLifecycle: true, casPersistence: true, scriptSceneIntegrity: true, recommendedStage4B: ["one authorized research-backed rewrite with independently retrieved original-source documents", "measure real provider stage latency without automatic retry", "exercise explicit Apply and Discard on a synthetic acceptance project only"] };
+assert.equal(acceptanceReport.status, "REVIEW_REQUIRED");
+console.log(JSON.stringify({ stage: "STAGE_4A_CREATOR_REFINEMENT_ACCEPTANCE", report: acceptanceReport }, null, 2));
+console.log("STAGE_4A_CREATOR_REFINEMENT_ACCEPTANCE=PASS");

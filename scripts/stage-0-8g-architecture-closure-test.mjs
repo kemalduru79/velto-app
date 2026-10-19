@@ -434,9 +434,12 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     "lib/creator/creatorScriptRefinementRuntime.ts",
     "lib/creator/creatorScriptEditorialRewrite.ts",
     "lib/creator/creatorScriptEditorialRewriteProviders.server.ts",
+    "lib/creator/creatorScriptRefinementAcceptance.ts",
+    "lib/research/originalSourceEvidence.ts",
     "lib/creator/creatorScriptRevisions.ts",
     "scripts/creator-script-refinement-r1-foundation-test.mjs",
     "scripts/creator-script-refinement-r2-research-backed-test.mjs",
+    "scripts/stage-4a-creator-refinement-acceptance-test.mjs",
     "scripts/stage-0-13e-ai-script-refinement-test.mjs",
   ]);
   const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);

@@ -24,9 +24,10 @@ type CreatorScriptRefinementRouteDependencies = {
   authenticate: typeof authenticateRequest;
   persistence: typeof getPersistenceServices;
   editorialProviders: (input: { ownerId: string; projectId: string }) => CreatorScriptEditorialRewriteDependencies;
+  captureProductionSnapshot?: typeof captureCreatorProductionSnapshotBeforeInvalidation;
 };
 
-async function handleCreatorScriptRefinementRequest(req: Request, dependencies: CreatorScriptRefinementRouteDependencies = { authenticate: authenticateRequest, persistence: getPersistenceServices, editorialProviders: createCreatorScriptEditorialRewriteProviders }) {
+async function handleCreatorScriptRefinementRequest(req: Request, dependencies: CreatorScriptRefinementRouteDependencies = { authenticate: authenticateRequest, persistence: getPersistenceServices, editorialProviders: createCreatorScriptEditorialRewriteProviders, captureProductionSnapshot: captureCreatorProductionSnapshotBeforeInvalidation }) {
   try {
     const principal = await dependencies.authenticate(req);
     const body = await req.json() as Record<string, unknown>;
@@ -70,7 +71,7 @@ async function handleCreatorScriptRefinementRequest(req: Request, dependencies: 
       const nextState = await requireCreatorProductionSnapshotBeforeInvalidation({
         capture: async () => {
           if (!creatorProjectHasMeaningfulProduction(project)) return;
-          await captureCreatorProductionSnapshotBeforeInvalidation({
+          await (dependencies.captureProductionSnapshot || captureCreatorProductionSnapshotBeforeInvalidation)({
             projectId,
             ownerUserId: principal.id,
             expectedUpdatedAt,
