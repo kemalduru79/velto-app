@@ -93,8 +93,10 @@ export async function POST(request: Request) {
     const timeout = setTimeout(abort, 40000);
     totalAbort.signal.addEventListener("abort", abort, { once: true });
     try {
-      const headers = authorization === "exa" ? { "x-api-key": apiKey } : { Authorization: `Bearer ${apiKey}` };
-      const result = await fetch(url, { method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+      const headers = new Headers({ "Content-Type": "application/json" });
+      if (authorization === "exa") headers.set("x-api-key", apiKey);
+      else headers.set("Authorization", `Bearer ${apiKey}`);
+      const result = await fetch(url, { method: "POST", headers,
         body: JSON.stringify(payload), signal: controller.signal, cache: "no-store", redirect: "error" });
       if (!result.ok) fail(authorization.toUpperCase() + "_HTTP_" + result.status);
       const text = await result.text();
@@ -133,7 +135,8 @@ export async function POST(request: Request) {
         "exa", { query: RESEARCH_QUERY, type: "auto", numResults: 3,
           includeDomains: ["arxiv.org"], contents: { highlights: true } });
       const cost = asObject(result.costDollars).total;
-      if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) fail("EXA_COST_UNKNOWN");
+      if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) throw new Error("EXA_COST_UNKNOWN");
+      if (cost > 0.75) throw new Error("EXA_COST_EXCEEDS_RESERVED_ESTIMATE");
       budget.record({ provider: "exa", requestId: typeof result.requestId === "string" ? result.requestId : null,
         inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0.75, reportedCostUsd: cost });
       if (budget.report().costLimitExceeded) fail("BUDGET_EXCEEDED");
@@ -141,7 +144,7 @@ export async function POST(request: Request) {
     });
     const approved = (Array.isArray(exa.results) ? exa.results : []).map(asObject)
       .find((result) => typeof result.url === "string" && sameUrl(result.url));
-    if (!approved) fail("APPROVED_SOURCE_NOT_RETURNED");
+    if (!approved) throw new Error("APPROVED_SOURCE_NOT_RETURNED");
     const highlights = Array.isArray(approved.highlights) ? approved.highlights : [];
     const source: ResearchSource = {
       sourceId: "academic:arxiv-2304.03442", adapterId: "academic", mediaKind: "paper",
@@ -157,7 +160,7 @@ export async function POST(request: Request) {
     const matchingPassage = highlights
       .filter((v: unknown): v is string => typeof v === "string")
       .map(compact).find((v: string) => v.length >= 24 && extracted.includes(v));
-    if (!matchingPassage) fail("NO_EXACT_ORIGINAL_PASSAGE");
+    if (!matchingPassage) throw new Error("NO_EXACT_ORIGINAL_PASSAGE");
     const evidence: ResearchEvidence = { evidenceId: PASSAGE_ID, sourceId: source.sourceId,
       excerpt: matchingPassage, contextNote: null,
       locator: { section: "exa-highlight:1", page: null, timecodeStartSec: null, timecodeEndSec: null } };
