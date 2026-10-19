@@ -74,12 +74,20 @@ for (const [providerPassage, sourcePassage] of [
   ["The specimen measured 5 μm across under calibrated microscopy.", "The specimen measured 5 um across under calibrated microscopy."],
   ["The matrix contained 10 × 10 independently observed entries.", "The matrix contained 10 x 10 independently observed entries."],
   ["The reported population included 1,000 independently enrolled people.", "The reported population included 1000 independently enrolled people."],
+  ["The measured ratio was 10–3 in the calibrated assay.", "The measured ratio was 10-3 in the calibrated assay."],
+  ["The observed interval was 20—30 units across repeated trials.", "The observed interval was 20-30 units across repeated trials."],
 ]) {
   const quantitativeResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [providerPassage] }), independentlyRetrievedText: sourcePassage });
   assert.equal(quantitativeResult.ok, false, `${providerPassage} must not equal ${sourcePassage}`);
   assert.equal(quantitativeResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
   assert.equal(quantitativeResult.safeDiagnostics.matchingOutcomes[0].normalizedVerbatimMatch, false);
 }
+const proseDashResult = classifyStage4b2ContentsResponse({
+  response: response({ highlights: ["The agents coordinate—without replacing human judgment in the workflow."] }),
+  independentlyRetrievedText: "The agents coordinate-without replacing human judgment in the workflow.",
+});
+assert.equal(proseDashResult.ok, true);
+assert.equal(proseDashResult.matchMode, "normalized_verbatim");
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved"] }, evidenceId: "e-approved" }), true);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-substituted"] }, evidenceId: "e-approved" }), false);
