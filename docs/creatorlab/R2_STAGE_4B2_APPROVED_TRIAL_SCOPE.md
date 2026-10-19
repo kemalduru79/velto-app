@@ -2,13 +2,13 @@
 
 **User authorization received:** 2026-10-19, in chat. Authorized cost envelope: **USD 5 total estimated budget**, at most **1 Exa request** and **3 OpenAI requests**. Subject: an isolated synthetic AI-agent research and script refinement scenario. No media generation or Build Final Video.
 
-**IMPORTANT:** Chat approval does **not** turn on a production route or bypass the existing Stage 4B1 live lock. No paid or live provider call has yet been executed. Exact original-source allowlist and a secure one-time trusted adapter are required before execution.
+**SOURCE APPROVAL:** The user expressly approved \`https://arxiv.org/abs/2304.03442\` as the single source in a follow-up on 2026-10-19. Chat approval does **not** turn on a production route or bypass the existing Stage 4B1 live lock. No paid or live provider call has yet been executed. A secure one-time trusted adapter is required before execution.
 
-## Proposed single-source scenario (not yet included in user's explicitly enumerated URLs)
+## User-approved single-source scenario
 
 - Subject: Can agents convincingly simulate social behavior?
 - Example study: Park et al. (2023), **Generative Agents: Interactive Simulacra of Human Behavior**, arXiv:2304.03442.
-- Proposed original-source allowlist: `https://arxiv.org/abs/2304.03442` only. Do not treat other Exa results as approved simply because they are from arxiv.org.
+- User-approved original-source allowlist: `https://arxiv.org/abs/2304.03442` only. Do not treat other Exa results as approved simply because they are from arxiv.org.
 - Synthetic project ID: `synthetic-acceptance-stage4b2-agents`.
 - Candidate research query: `Generative Agents Interactive Simulacra of Human Behavior arxiv 2304.03442 Joon Sung Park`.
 - Editorial instruction: `Rewrite the synthetic documentary's body evidence passage with attributable results from this original study; preserve uncertainty and avoid causal overstatement.`
@@ -42,4 +42,4 @@ Max estimated USD budget = **5.00** for this one run. Each provider call require
 
 - Stage 4B1 offline runner: CI green, live mode intentionally blocked.
 - Stage 4B2 preflight: CI green, permits no actual live calls.
-- Source URL above is a proposal selected for this controlled scenario, not a claim of provider success or additional user permission.
+- Source URL above has been explicitly approved. This does not claim provider success or bypass the trusted live adapter gate.
