@@ -11,6 +11,7 @@ const tests = [
   "scripts/stage-4b2-local-live-probe-offline-test.mjs",
   "scripts/stage-4b2-exact-source-recovery-test.mjs",
   "scripts/stage-4b2-pdf-evidence-test.mjs",
+  "scripts/stage-4b2-canonical-whole-script-acceptance-test.mjs",
   "scripts/stage-0-19f-f2-2-final-asset-supersession-test.mjs",
   "scripts/stage-0-18a6g1-reload-hydration-autosave-test.mjs",
   "scripts/stage-0-18a6g2-post-hydration-scene-state-test.mjs",

@@ -134,6 +134,7 @@ assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported"
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved-1", "e-approved-1"] }, evidenceIds: ["e-approved-1"] }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceIds: ["e-approved-1"] }), false);
 assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261020-pdfv2-3"), true);
+assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261020-atomic-4"), true);
 
 const historicalTrial3Receipt = JSON.parse(await readFile("docs/creatorlab/receipts/STAGE4B2_20261020_PDFV2_3.json", "utf8"));
 assert.equal(historicalTrial3Receipt.executionId, "stage4b2-20261020-pdfv2-3");
@@ -149,6 +150,7 @@ try {
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-search-1", approvedExecutionId: "stage4b2-20261019-search-1", consent: "confirmed:stage4b2-20261019-search-1", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-contents-2", approvedExecutionId: "stage4b2-20261019-contents-2", consent: "confirmed:stage4b2-20261019-contents-2", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261020-pdfv2-3", approvedExecutionId: "stage4b2-20261020-pdfv2-3", consent: "confirmed:stage4b2-20261020-pdfv2-3", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
+  await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261020-atomic-4", approvedExecutionId: "stage4b2-20261020-atomic-4", consent: "confirmed:stage4b2-20261020-atomic-4", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-other-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory }), /EXECUTION_AUTHORIZATION_REQUIRED/u);
   const input = { executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-future-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory, now: () => "2026-10-19T00:00:00.000Z" };
   const claims = await Promise.allSettled([claimStage4b2Execution(input), claimStage4b2Execution(input)]);

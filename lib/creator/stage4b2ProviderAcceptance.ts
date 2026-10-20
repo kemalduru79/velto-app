@@ -6,7 +6,7 @@ import { normalizeStage4b2VerbatimPassage } from "./stage4b2Verbatim.ts";
 
 export const STAGE4B2_APPROVED_SOURCE_URL = STAGE4B2_APPROVED_ABSTRACT_URL;
 export const STAGE4B2_CONTENTS_ENDPOINT = "https://api.exa.ai/contents";
-export const STAGE4B2_CONSUMED_EXECUTION_IDS = new Set(["stage4b2-20261019-search-1", "stage4b2-20261019-contents-2", "stage4b2-20261020-pdfv2-3"]);
+export const STAGE4B2_CONSUMED_EXECUTION_IDS = new Set(["stage4b2-20261019-search-1", "stage4b2-20261019-contents-2", "stage4b2-20261020-pdfv2-3", "stage4b2-20261020-atomic-4"]);
 
 type JsonRecord = Record<string, unknown>;
 const record = (value: unknown): JsonRecord => value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};

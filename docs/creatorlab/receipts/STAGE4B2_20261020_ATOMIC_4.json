@@ -1,0 +1,16 @@
+{
+  "version": "stage4b2-redacted-historical-receipt-v1",
+  "executionId": "stage4b2-20261020-atomic-4",
+  "state": "review_required",
+  "approvedSourceIdentity": "arxiv:2304.03442v2",
+  "providerUsage": {
+    "exaCalls": 1,
+    "openAiCalls": 3,
+    "reportedExaCostUsd": 0.001,
+    "openAiInputTokens": 7837,
+    "openAiOutputTokens": 389
+  },
+  "elapsedMs": 10197,
+  "zeroWrite": true,
+  "result": "CANONICAL_WHOLE_SCRIPT_ACCEPTANCE_NOT_COMPLETED"
+}
