@@ -307,11 +307,13 @@ const allowed = new Set([
     "scripts/stage-4b2-canonical-whole-script-acceptance-test.mjs",
     "scripts/stage-4b2-canonical-whole-script-acceptance.mjs",
     "lib/creator/creatorScriptCanonicalAcceptance.ts",
+    "lib/creator/stage4b2CanonicalAuthority.ts",
     "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
     "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
     "docs/creatorlab/receipts/STAGE4B2_20261019_CONTENTS_2.json",
     "docs/creatorlab/receipts/STAGE4B2_20261020_PDFV2_3.json",
     "docs/creatorlab/receipts/STAGE4B2_20261020_ATOMIC_4.json",
+    "docs/creatorlab/R2_STAGE_4B2D_CANONICAL_READ_ONLY_ACCEPTANCE.md",
     ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);

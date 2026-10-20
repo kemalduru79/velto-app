@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { createCreatorScript } from "../lib/creator/creatorScript.ts";
 import { assessStage4B2CanonicalWholeScript, canonicalAcceptanceSha256, missingStage4B2CanonicalSnapshotReport, STAGE4B2_CANONICAL_MANIFEST_VERSION, STAGE4B2_CANONICAL_SNAPSHOT_VERSION } from "../lib/creator/creatorScriptCanonicalAcceptance.ts";
+import { createStage4B2SignedAuthorityVerifier, stage4b2AuthoritySigningPayload, STAGE4B2_AUTHORITY_ENVELOPE_VERSION } from "../lib/creator/stage4b2CanonicalAuthority.ts";
 
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const words = (prefix, count) => Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(" ");
@@ -31,6 +32,17 @@ const inventedReviewReport = assessStage4B2CanonicalWholeScript(snapshot, invent
 assert.equal(inventedReviewReport.status, "REVIEW_REQUIRED", "trusted_fixture documents cannot cross canonical source authority");
 assert.equal(inventedReviewReport.actualCanonicalSnapshot, false, "a claimed canonical label and self-pinned receipts do not prove provenance");
 assert.ok(inventedReviewReport.missingRequirements.includes("INDEPENDENT_PERSISTED_BASELINE_AUTHORITY_REQUIRED"));
+const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+const publicKeySha256 = sha(publicKey.export({ type: "spki", format: "der" }));
+const manifest = inventedReviews.manifest;
+const unsignedEnvelope = { version: STAGE4B2_AUTHORITY_ENVELOPE_VERSION, baseline: { projectIdentitySha256: snapshot.projectIdentitySha256, projectRevision: snapshot.projectRevision, snapshotSha256: manifest.snapshotSha256, manifestSha256: inventedReviews.expectedManifestSha256 }, sourceReceipts: manifest.sourceEvidenceAttestations.map((item) => ({ sourceId: item.sourceId, sourceUrl: sources.find((source) => source.sourceId === item.sourceId).url, documentSha256: item.documentSha256, receiptSha256: item.acquisitionReceiptSha256 })), reviewReceipts: [{ kind: "semantic", receiptSha256: manifest.semanticReviewReceiptSha256, subjectSha256: canonicalAcceptanceSha256(manifest.semanticAssessments) }, { kind: "factual_inventory", receiptSha256: manifest.factualInventoryReview.reviewReceiptSha256, subjectSha256: manifest.factualInventoryReview.inventorySha256 }, { kind: "editorial", receiptSha256: manifest.editorialReview.reviewReceiptSha256, subjectSha256: manifest.scriptSha256 }], persistedComparison: { projectIdentitySha256: snapshot.projectIdentitySha256, projectRevision: snapshot.projectRevision, scriptSha256: manifest.scriptSha256, sceneIdentitySha256: manifest.sceneIdentitySha256 } };
+const signedEnvelope = { ...unsignedEnvelope, signatureBase64: sign(null, stage4b2AuthoritySigningPayload(unsignedEnvelope), privateKey).toString("base64") };
+const syntheticVerifier = createStage4B2SignedAuthorityVerifier({ envelope: signedEnvelope, publicKeyPem, approvedPublicKeySha256: publicKeySha256, authorityClass: "synthetic_test" });
+assert.ok(syntheticVerifier, "independently controlled synthetic signature proves verifier mechanics only");
+assert.equal(assessStage4B2CanonicalWholeScript(snapshot, inventedReviews, syntheticVerifier).actualCanonicalSnapshot, false, "synthetic verifier never establishes real canonical admission");
+assert.equal(createStage4B2SignedAuthorityVerifier({ envelope: { ...signedEnvelope, baseline: { ...signedEnvelope.baseline, projectRevision: "counterfeit" } }, publicKeyPem, approvedPublicKeySha256: publicKeySha256, authorityClass: "synthetic_test" }), null, "altered signed payload is rejected");
+assert.equal(createStage4B2SignedAuthorityVerifier({ envelope: signedEnvelope, publicKeyPem, approvedPublicKeySha256: "0".repeat(64), authorityClass: "synthetic_test" }), null, "unapproved signing key is rejected");
 const incomplete = structuredClone(snapshot); incomplete.factualAssertions = [incomplete.factualAssertions[0]];
 const incompleteAdmission = admit(incomplete, "synthetic_fixture"); incompleteAdmission.manifest.factualInventoryReview.complete = false; incompleteAdmission.expectedManifestSha256 = canonicalAcceptanceSha256(incompleteAdmission.manifest);
 assert.equal(assessStage4B2CanonicalWholeScript(incomplete, incompleteAdmission).status, "REVIEW_REQUIRED");
