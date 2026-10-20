@@ -56,6 +56,15 @@ assert.equal(pdfBacked.evidenceRepresentation, "pdf_v2");
 assert.equal(pdfBacked.representationUrl, STAGE4B2_APPROVED_PDF_URL);
 assert.deepEqual(pdfBacked.evidenceLocator, { page: 13, block: 1 });
 
+const secondPassage = "The information-spread simulation retained a separately verified atomic observation.";
+const multiPassageArtifact = await acquire({}, { 15: { blocks: [secondPassage] } });
+const compositeProviderResponse = { results: [{ id: "opaque-exa-id", url: STAGE4B2_APPROVED_SOURCE_URL, highlights: [`${passage} ${"Composite provider material that is not present in the original document. ".repeat(45)}${secondPassage}`] }] };
+const atomicPdfBacked = classifyStage4b2ContentsResponse({ response: compositeProviderResponse, independentlyRetrievedText: "Approved abstract contains neither full-text observation.", approvedPdfArtifact: multiPassageArtifact });
+assert.equal(atomicPdfBacked.ok, true);
+assert.deepEqual(atomicPdfBacked.evidencePassages.map((item) => item.evidenceLocator), [{ page: 13, block: 1 }, { page: 15, block: 1 }]);
+assert.deepEqual(atomicPdfBacked.evidencePassages.map((item) => item.passage), [passage, secondPassage]);
+assert.equal(atomicPdfBacked.evidencePassages.every((item) => item.evidenceRepresentation === "pdf_v2" && /^[a-f0-9]{64}$/u.test(item.evidenceBlockFingerprint)), true);
+
 await rejectsCode(() => acquire({ url: "https://example.com/substituted.pdf" }), "PDF_IDENTITY_MISMATCH");
 await rejectsCode(() => acquire({ contentType: "text/html" }), "PDF_CONTENT_TYPE_INVALID");
 await rejectsCode(() => acquire({ body: Buffer.from("not a pdf"), contentLength: 9 }), "PDF_STRUCTURE_INVALID");
@@ -87,5 +96,6 @@ const duplicateArtifact = await acquire({}, { 14: { blocks: [passage] } });
 assert.equal(verifyStage4b2PdfPassage({ artifact: duplicateArtifact, passage }).reason, "PDF_PASSAGE_AMBIGUOUS");
 assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261019-search-1"), true);
 assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261019-contents-2"), true);
+assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261020-pdfv2-3"), true);
 
 console.log("STAGE_4B2_PDF_EVIDENCE=PASS");

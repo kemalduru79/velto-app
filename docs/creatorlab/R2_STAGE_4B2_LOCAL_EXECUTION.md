@@ -41,6 +41,8 @@ The committed historical receipt prevents that execution ID from being reused. R
 
 The separately authorized Contents execution `stage4b2-20261019-contents-2` is also consumed. It made one Exa request, made zero OpenAI requests, reported USD 0.001 and stopped after 1,805 ms with `SOURCE_PASSAGE_NOT_VERIFIED`. The submitted report did not include the highlight text, so this outcome does not establish whether the mismatch was entity/Unicode formatting, punctuation, cached document scope or another cause.
 
+The third execution `stage4b2-20261020-pdfv2-3` is permanently consumed as well. The owner-reported redacted result records one 3,988-character highlight, one Exa request, zero OpenAI requests, USD 0.001 reported cost, unchanged synthetic state and `SOURCE_PASSAGE_NOT_VERIFIED`. That long composite was incorrectly required to fit a single original-document block as a whole. The corrected offline contract segments provider highlights deterministically at sentence boundaries, bounds every candidate, and promotes only individually and uniquely verified atomic passages. The composite highlight itself never becomes evidence; fabricated, altered, duplicated or ambiguous candidates remain excluded. No fourth execution is authorized.
+
 ## Future one-time execution (not currently authorized)
 
 Do **not** run the following template until a new execution identifier and budget have been explicitly approved by the user outside the environment variables. Matching environment variables are only local scope/replay inputs; they do not independently establish human approval. The three execution values must match exactly; the old consent marker is invalid.
@@ -77,7 +79,7 @@ By default it reads `~/Downloads/arxiv-2304.03442.pdf`; `STAGE4B2_REAL_PDF_PATH`
 
 ## Next one-time controlled procedure (proposal only)
 
-Before any future execution, independently review the PDF implementation and confirm the local Poppler binary. Then obtain a new explicit execution ID and a new explicit USD/request envelope; neither is currently approved. Run the unchanged single manual command only after that approval. The run must retain one Exa request on the abstract URL, independently acquire the PDF only after an abstract passage miss, make no automatic retry, and remain `REVIEW_REQUIRED` even if Preview succeeds. Do not reuse either consumed 2026-10-19 execution ID.
+Before any future execution, independently review the PDF implementation and confirm the local Poppler binary. Then obtain a new explicit execution ID and a new explicit USD/request envelope; neither is currently approved. Run the unchanged single manual command only after that approval. The run must retain one Exa request on the abstract URL, independently acquire the PDF only after an abstract passage miss, make no automatic retry, and remain `REVIEW_REQUIRED` even if Preview succeeds. Do not reuse any of the three consumed execution IDs.
 
 The resulting Preview is a synthetic example only; it is not applied to the saved Thynel project.
 

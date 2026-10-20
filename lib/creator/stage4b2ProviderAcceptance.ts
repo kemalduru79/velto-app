@@ -6,7 +6,7 @@ import { normalizeStage4b2VerbatimPassage } from "./stage4b2Verbatim.ts";
 
 export const STAGE4B2_APPROVED_SOURCE_URL = STAGE4B2_APPROVED_ABSTRACT_URL;
 export const STAGE4B2_CONTENTS_ENDPOINT = "https://api.exa.ai/contents";
-export const STAGE4B2_CONSUMED_EXECUTION_IDS = new Set(["stage4b2-20261019-search-1", "stage4b2-20261019-contents-2"]);
+export const STAGE4B2_CONSUMED_EXECUTION_IDS = new Set(["stage4b2-20261019-search-1", "stage4b2-20261019-contents-2", "stage4b2-20261020-pdfv2-3"]);
 
 type JsonRecord = Record<string, unknown>;
 const record = (value: unknown): JsonRecord => value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
@@ -18,7 +18,39 @@ const isUrlIdentity = (value: unknown) => {
   catch { return false; }
 };
 
-export type Stage4b2SourceDiagnostic = "PROVIDER_RESPONSE_MALFORMED" | "SOURCE_NOT_DISCOVERED" | "SOURCE_IDENTITY_MISMATCH" | "SOURCE_CONTENT_UNAVAILABLE" | "SOURCE_PASSAGE_NOT_VERIFIED" | "DOCUMENT_SCOPE_MISMATCH";
+export type Stage4b2SourceDiagnostic = "PROVIDER_RESPONSE_MALFORMED" | "SOURCE_NOT_DISCOVERED" | "SOURCE_IDENTITY_MISMATCH" | "SOURCE_CONTENT_UNAVAILABLE" | "SOURCE_PASSAGE_NOT_VERIFIED" | "DOCUMENT_SCOPE_MISMATCH" | "PROVIDER_HIGHLIGHT_NOT_ATOMIC";
+type Stage4b2AtomicEvidence = {
+  sourceUrl: string;
+  sourceIdentity: typeof STAGE4B2_SOURCE_IDENTITY;
+  evidenceRepresentation: "abstract" | "pdf_v2";
+  representationUrl: string;
+  passage: string;
+  passageSha256: string;
+  matchMode: "compact_exact" | "normalized_verbatim";
+  sourceDocumentFingerprint: string;
+  evidenceLocator: { page: number; block: number } | null;
+  evidencePageFingerprint: string | null;
+  evidenceBlockFingerprint: string | null;
+};
+
+const STAGE4B2_ATOMIC_PASSAGE_MIN_CHARS = 24;
+const STAGE4B2_ATOMIC_PASSAGE_MAX_CHARS = 700;
+const STAGE4B2_ATOMIC_CANDIDATE_LIMIT = 32;
+
+const countOccurrences = (document: string, passage: string) => {
+  if (!passage) return 0;
+  let count = 0; let offset = 0;
+  while ((offset = document.indexOf(passage, offset)) !== -1) { count += 1; offset += Math.max(1, passage.length); }
+  return count;
+};
+
+export function selectStage4b2AtomicPassageCandidates(highlight: string) {
+  const compacted = compact(highlight);
+  const segments = [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(compacted)]
+    .map(({ segment }) => compact(segment))
+    .filter((segment) => segment.length >= STAGE4B2_ATOMIC_PASSAGE_MIN_CHARS && segment.length <= STAGE4B2_ATOMIC_PASSAGE_MAX_CHARS);
+  return [...new Set(segments)].slice(0, STAGE4B2_ATOMIC_CANDIDATE_LIMIT);
+}
 
 export function createStage4b2ContentsRequest() {
   return {
@@ -54,44 +86,61 @@ export function classifyStage4b2ContentsResponse(input: { response: unknown; ind
     return !isUrlIdentity(item.id) || normalizeStage4b2SourceIdentity(item.id) === approvedIdentity;
   });
   if (!exact) return { ok: false as const, reason: "SOURCE_IDENTITY_MISMATCH" as Stage4b2SourceDiagnostic, safeCandidateUrls };
-  const highlights = (Array.isArray(exact.highlights) ? exact.highlights : []).filter((value): value is string => typeof value === "string").map(compact).filter((value) => value.length >= 24);
+  const highlights = (Array.isArray(exact.highlights) ? exact.highlights : []).filter((value): value is string => typeof value === "string").map(compact).filter((value) => value.length >= STAGE4B2_ATOMIC_PASSAGE_MIN_CHARS);
   const document = compact(input.independentlyRetrievedText);
   const normalizedDocument = normalizeStage4b2VerbatimPassage(document);
-  const passageDiagnostics = highlights.map((highlight) => {
+  const passageDiagnostics = highlights.map((highlight, highlightIndex) => {
     const normalized = normalizeStage4b2VerbatimPassage(highlight);
-    const pdfEvidence = input.approvedPdfArtifact ? verifyStage4b2PdfPassage({ artifact: input.approvedPdfArtifact, passage: highlight }) : null;
+    const candidates = selectStage4b2AtomicPassageCandidates(highlight);
+    const candidateResults = candidates.map((candidate, candidateIndex) => {
+      const normalizedCandidate = normalizeStage4b2VerbatimPassage(candidate);
+      const exactOccurrences = countOccurrences(document, candidate);
+      const normalizedOccurrences = countOccurrences(normalizedDocument, normalizedCandidate);
+      const pdfEvidence = input.approvedPdfArtifact ? verifyStage4b2PdfPassage({ artifact: input.approvedPdfArtifact, passage: candidate }) : null;
+      const abstractMatch = exactOccurrences === 1 ? "compact_exact" as const : exactOccurrences === 0 && normalizedOccurrences === 1 ? "normalized_verbatim" as const : null;
+      return { highlightIndex, candidateIndex, candidate, candidateSha256: sha256(candidate), candidateLength: candidate.length, abstractMatch, exactOccurrences, normalizedOccurrences, pdfEvidence };
+    });
     return {
       passageSha256: sha256(highlight), passageLength: highlight.length, normalizedLength: normalized.length,
       normalizedPassageSha256: sha256(normalized),
-      compactExactMatch: document.includes(highlight), normalizedVerbatimMatch: normalizedDocument.includes(normalized),
-      pdfV2Match: pdfEvidence?.ok === true,
+      compactExactMatch: countOccurrences(document, highlight) === 1, normalizedVerbatimMatch: countOccurrences(normalizedDocument, normalized) === 1,
+      pdfV2Match: candidateResults.some((candidate) => candidate.pdfEvidence?.ok === true),
       diagnosticOfficialRepresentationMatch: (input.diagnosticOfficialRepresentations ?? []).some((representation) => normalizeStage4b2VerbatimPassage(representation).includes(normalized)),
-      pdfEvidence,
+      candidates: candidateResults,
     };
   });
   const safeDiagnostics = {
     highlightCount: highlights.length, highlightLengths: passageDiagnostics.map((item) => item.passageLength),
     highlightSha256: passageDiagnostics.map((item) => item.passageSha256), originalTextLength: document.length,
     originalTextSha256: sha256(document), normalizedOriginalTextLength: normalizedDocument.length, normalizedOriginalTextSha256: sha256(normalizedDocument),
+    atomicCandidateCounts: passageDiagnostics.map((item) => item.candidates.length),
+    verifiedAtomicCandidateCounts: passageDiagnostics.map((item) => item.candidates.filter((candidate) => candidate.abstractMatch || candidate.pdfEvidence?.ok).length),
     matchingOutcomes: passageDiagnostics.map(({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, pdfV2Match, diagnosticOfficialRepresentationMatch }) => ({ passageSha256, normalizedPassageSha256, compactExactMatch, normalizedVerbatimMatch, pdfV2Match, diagnosticOfficialRepresentationMatch })),
   };
   if (!highlights.length) return { ok: false as const, reason: "SOURCE_CONTENT_UNAVAILABLE" as Stage4b2SourceDiagnostic, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
-  const exactPassage = highlights.find((highlight) => document.includes(highlight));
-  if (exactPassage) return { ok: true as const, sourceUrl: approvedIdentity, sourceIdentity: STAGE4B2_SOURCE_IDENTITY, evidenceRepresentation: "abstract" as const, representationUrl: STAGE4B2_APPROVED_ABSTRACT_URL, passage: exactPassage, passageSha256: sha256(exactPassage), matchMode: "compact_exact" as const, sourceDocumentFingerprint: sha256(document), safeCandidateUrls: [approvedIdentity], safeDiagnostics };
-  const normalizedPassage = highlights.find((highlight) => normalizedDocument.includes(normalizeStage4b2VerbatimPassage(highlight)));
-  if (normalizedPassage) return { ok: true as const, sourceUrl: approvedIdentity, sourceIdentity: STAGE4B2_SOURCE_IDENTITY, evidenceRepresentation: "abstract" as const, representationUrl: STAGE4B2_APPROVED_ABSTRACT_URL, passage: normalizedPassage, passageSha256: sha256(normalizedPassage), matchMode: "normalized_verbatim" as const, mismatchCategory: "text_normalization_mismatch_recovered" as const, sourceDocumentFingerprint: sha256(document), safeCandidateUrls: [approvedIdentity], safeDiagnostics };
-  const pdfMatch = passageDiagnostics.find((item) => item.pdfEvidence?.ok === true)?.pdfEvidence;
-  if (pdfMatch?.ok) return { ok: true as const, sourceUrl: approvedIdentity, passage: pdfMatch.passage, passageSha256: pdfMatch.passageSha256, matchMode: pdfMatch.matchMode, sourceIdentity: pdfMatch.sourceIdentity, evidenceRepresentation: pdfMatch.representation, representationUrl: pdfMatch.representationUrl, evidenceLocator: pdfMatch.locator, sourceDocumentFingerprint: pdfMatch.documentSha256, evidencePageFingerprint: pdfMatch.pageSha256, evidenceBlockFingerprint: pdfMatch.blockSha256, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+  const verifiedAtomicPassages: Stage4b2AtomicEvidence[] = passageDiagnostics.flatMap((diagnostic) => diagnostic.candidates.flatMap((candidate): Stage4b2AtomicEvidence[] => {
+    if (candidate.abstractMatch) return [{ sourceUrl: approvedIdentity, sourceIdentity: STAGE4B2_SOURCE_IDENTITY, evidenceRepresentation: "abstract" as const, representationUrl: STAGE4B2_APPROVED_ABSTRACT_URL, passage: candidate.candidate, passageSha256: candidate.candidateSha256, matchMode: candidate.abstractMatch, sourceDocumentFingerprint: sha256(document), evidenceLocator: null, evidencePageFingerprint: null, evidenceBlockFingerprint: null }];
+    const pdf = candidate.pdfEvidence;
+    return pdf?.ok ? [{ sourceUrl: approvedIdentity, sourceIdentity: pdf.sourceIdentity, evidenceRepresentation: pdf.representation, representationUrl: pdf.representationUrl, passage: pdf.passage, passageSha256: pdf.passageSha256, matchMode: pdf.matchMode, sourceDocumentFingerprint: pdf.documentSha256, evidenceLocator: pdf.locator, evidencePageFingerprint: pdf.pageSha256, evidenceBlockFingerprint: pdf.blockSha256 }] : [];
+  }));
+  const uniqueVerified = [...new Map(verifiedAtomicPassages.map((item) => [`${item.representationUrl}:${item.passageSha256}:${JSON.stringify(item.evidenceLocator)}`, item])).values()];
+  if (uniqueVerified.length) {
+    const primary = uniqueVerified[0];
+    return { ok: true as const, ...primary, evidencePassages: uniqueVerified, safeCandidateUrls: [approvedIdentity], safeDiagnostics, mismatchCategory: primary.matchMode === "normalized_verbatim" ? "text_normalization_mismatch_recovered" as const : undefined };
+  }
   const scopeMismatch = passageDiagnostics.some((item) => item.diagnosticOfficialRepresentationMatch);
-  return { ok: false as const, reason: (scopeMismatch ? "DOCUMENT_SCOPE_MISMATCH" : "SOURCE_PASSAGE_NOT_VERIFIED") as Stage4b2SourceDiagnostic, mismatchCategory: scopeMismatch ? "document_scope_mismatch" as const : "unresolved_passage_mismatch" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+  const nonAtomic = passageDiagnostics.some((item) => item.passageLength > STAGE4B2_ATOMIC_PASSAGE_MAX_CHARS);
+  return { ok: false as const, reason: (scopeMismatch ? "DOCUMENT_SCOPE_MISMATCH" : nonAtomic ? "PROVIDER_HIGHLIGHT_NOT_ATOMIC" : "SOURCE_PASSAGE_NOT_VERIFIED") as Stage4b2SourceDiagnostic, mismatchCategory: scopeMismatch ? "document_scope_mismatch" as const : nonAtomic ? "excerpt_granularity_mismatch" as const : "unresolved_passage_mismatch" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
 }
 
-export function validateStage4b2ClaimAssessment(input: { assessment: unknown; evidenceId: string }) {
+export function validateStage4b2ClaimAssessment(input: { assessment: unknown; evidenceId?: string; evidenceIds?: string[] }) {
   const assessment = record(input.assessment);
+  const allowed = new Set(input.evidenceIds ?? (input.evidenceId ? [input.evidenceId] : []));
+  const cited = Array.isArray(assessment.evidenceIds) ? assessment.evidenceIds : [];
   return assessment.status === "supported" &&
-    Array.isArray(assessment.evidenceIds) &&
-    assessment.evidenceIds.length === 1 &&
-    assessment.evidenceIds[0] === input.evidenceId;
+    cited.length > 0 &&
+    new Set(cited).size === cited.length &&
+    cited.every((evidenceId) => typeof evidenceId === "string" && allowed.has(evidenceId));
 }
 
 export type Stage4b2ExecutionReceipt = {

@@ -4,11 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import {
   STAGE4B2_APPROVED_SOURCE_URL,
+  STAGE4B2_CONSUMED_EXECUTION_IDS,
   STAGE4B2_CONTENTS_ENDPOINT,
   claimStage4b2Execution,
   classifyStage4b2ContentsResponse,
   createStage4b2ContentsRequest,
   normalizeStage4b2SourceIdentity,
+  selectStage4b2AtomicPassageCandidates,
   validateStage4b2ClaimAssessment,
 } from "../lib/creator/stage4b2ProviderAcceptance.ts";
 
@@ -41,6 +43,8 @@ assert.equal(verified.sourceUrl, STAGE4B2_APPROVED_SOURCE_URL);
 assert.equal(verified.passage, passage);
 assert.match(verified.passageSha256, /^[a-f0-9]{64}$/u);
 assert.equal(verified.matchMode, "compact_exact");
+assert.equal(verified.evidencePassages.length, 1);
+assert.equal(verified.evidencePassages[0].passage, passage);
 assert.equal(classifyStage4b2ContentsResponse({ response: response({ id: STAGE4B2_APPROVED_SOURCE_URL }), independentlyRetrievedText: document }).ok, true);
 const normalizedPassage = "The agents’ memories&nbsp;shape an “emergent” social world—without semantic approximation.";
 const normalizedDocument = "The agents' memories shape an \"emergent\" social world-without semantic approximation.";
@@ -63,8 +67,41 @@ assert.equal(scopeResult.safeDiagnostics.matchingOutcomes[0].diagnosticOfficialR
 const unresolvedResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [scopeOnlyPassage] }), independentlyRetrievedText: "Approved abstract only." });
 assert.equal(unresolvedResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
 assert.equal(unresolvedResult.mismatchCategory, "unresolved_passage_mismatch");
-assert.deepEqual(Object.keys(unresolvedResult.safeDiagnostics).sort(), ["highlightCount", "highlightLengths", "highlightSha256", "matchingOutcomes", "normalizedOriginalTextLength", "normalizedOriginalTextSha256", "originalTextLength", "originalTextSha256"].sort());
+assert.deepEqual(Object.keys(unresolvedResult.safeDiagnostics).sort(), ["atomicCandidateCounts", "highlightCount", "highlightLengths", "highlightSha256", "matchingOutcomes", "normalizedOriginalTextLength", "normalizedOriginalTextSha256", "originalTextLength", "originalTextSha256", "verifiedAtomicCandidateCounts"].sort());
 assert.equal(JSON.stringify(unresolvedResult.safeDiagnostics).includes(scopeOnlyPassage), false);
+
+const atomicVerified = "The controlled simulation increased informed agents from one (4%) to eight (32%).";
+const fabricatedAtomic = "A fabricated follow-up claimed that every simulated agent changed its behavior immediately.";
+const fillerSentence = (index, length) => `Synthetic composite segment ${index} ${"x".repeat(length - String(index).length - 30)}.`;
+const compositeParts = [atomicVerified, fabricatedAtomic, ...Array.from({ length: 6 }, (_unused, index) => fillerSentence(index + 1, 560))];
+const prefix = compositeParts.join(" ");
+const finalLength = 3988 - prefix.length - 1;
+assert.ok(finalLength >= 24 && finalLength <= 700);
+const compositeHighlight = `${prefix} ${fillerSentence(7, finalLength)}`;
+assert.equal(compositeHighlight.length, 3988);
+assert.ok(selectStage4b2AtomicPassageCandidates(compositeHighlight).length > 1);
+const compositeResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [compositeHighlight] }), independentlyRetrievedText: `Original source block. ${atomicVerified}` });
+assert.equal(compositeResult.ok, true);
+assert.equal(compositeResult.passage, atomicVerified);
+assert.deepEqual(compositeResult.evidencePassages.map((item) => item.passage), [atomicVerified], "unverified composite material must never become evidence");
+assert.equal(compositeResult.safeDiagnostics.highlightLengths[0], 3988);
+assert.equal(compositeResult.safeDiagnostics.verifiedAtomicCandidateCounts[0], 1);
+assert.equal(JSON.stringify(compositeResult.safeDiagnostics).includes(fabricatedAtomic), false);
+
+const unverifiedComposite = `${fabricatedAtomic} ${fillerSentence(1, 720)}`;
+const unverifiedCompositeResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [unverifiedComposite] }), independentlyRetrievedText: "The approved source contains no supplied composite claims." });
+assert.equal(unverifiedCompositeResult.ok, false);
+assert.equal(unverifiedCompositeResult.reason, "PROVIDER_HIGHLIGHT_NOT_ATOMIC");
+assert.equal(unverifiedCompositeResult.mismatchCategory, "excerpt_granularity_mismatch");
+
+const alteredFigure = "The controlled simulation increased informed agents from one (4%) to eight (33%).";
+const alteredFigureResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [alteredFigure] }), independentlyRetrievedText: atomicVerified });
+assert.equal(alteredFigureResult.ok, false);
+assert.equal(alteredFigureResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
+
+const ambiguousAtomicResult = classifyStage4b2ContentsResponse({ response: response({ highlights: [atomicVerified] }), independentlyRetrievedText: `${atomicVerified} Repeated record. ${atomicVerified}` });
+assert.equal(ambiguousAtomicResult.ok, false);
+assert.equal(ambiguousAtomicResult.reason, "SOURCE_PASSAGE_NOT_VERIFIED");
 for (const [providerPassage, sourcePassage] of [
   ["The study used 10⁶ cells in each independently measured sample.", "The study used 106 cells in each independently measured sample."],
   ["The experiment used 2⁵ agents in the controlled simulation.", "The experiment used 25 agents in the controlled simulation."],
@@ -92,11 +129,26 @@ assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported"
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-substituted"] }, evidenceId: "e-approved" }), false);
 assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "unsupported", evidenceIds: ["e-approved"] }, evidenceId: "e-approved" }), false);
+assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved-1", "e-approved-2"] }, evidenceIds: ["e-approved-1", "e-approved-2"] }), true);
+assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved-1", "e-fabricated"] }, evidenceIds: ["e-approved-1", "e-approved-2"] }), false);
+assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: ["e-approved-1", "e-approved-1"] }, evidenceIds: ["e-approved-1"] }), false);
+assert.equal(validateStage4b2ClaimAssessment({ assessment: { status: "supported", evidenceIds: [] }, evidenceIds: ["e-approved-1"] }), false);
+assert.equal(STAGE4B2_CONSUMED_EXECUTION_IDS.has("stage4b2-20261020-pdfv2-3"), true);
+
+const historicalTrial3Receipt = JSON.parse(await readFile("docs/creatorlab/receipts/STAGE4B2_20261020_PDFV2_3.json", "utf8"));
+assert.equal(historicalTrial3Receipt.executionId, "stage4b2-20261020-pdfv2-3");
+assert.equal(historicalTrial3Receipt.state, "blocked");
+assert.equal(historicalTrial3Receipt.providerUsage.exaCalls, 1);
+assert.equal(historicalTrial3Receipt.providerUsage.openAiCalls, 0);
+assert.equal(historicalTrial3Receipt.redactedEvidence.highlightLength, 3988);
+assert.match(historicalTrial3Receipt.redactedEvidence.highlightSha256, /^[a-f0-9]{64}$/u);
+assert.equal(JSON.stringify(historicalTrial3Receipt).includes("passage"), false);
 
 const directory = await mkdtemp(path.join(os.tmpdir(), "stage4b2-receipts-"));
 try {
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-search-1", approvedExecutionId: "stage4b2-20261019-search-1", consent: "confirmed:stage4b2-20261019-search-1", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261019-contents-2", approvedExecutionId: "stage4b2-20261019-contents-2", consent: "confirmed:stage4b2-20261019-contents-2", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
+  await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-20261020-pdfv2-3", approvedExecutionId: "stage4b2-20261020-pdfv2-3", consent: "confirmed:stage4b2-20261020-pdfv2-3", receiptDirectory: directory }), /EXECUTION_ALREADY_CONSUMED/u);
   await assert.rejects(() => claimStage4b2Execution({ executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-other-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory }), /EXECUTION_AUTHORIZATION_REQUIRED/u);
   const input = { executionId: "stage4b2-future-trial-1", approvedExecutionId: "stage4b2-future-trial-1", consent: "confirmed:stage4b2-future-trial-1", receiptDirectory: directory, now: () => "2026-10-19T00:00:00.000Z" };
   const claims = await Promise.allSettled([claimStage4b2Execution(input), claimStage4b2Execution(input)]);

@@ -1,0 +1,23 @@
+{
+  "version": "stage4b2-execution-receipt-v1",
+  "executionId": "stage4b2-20261020-pdfv2-3",
+  "approvedSourceUrl": "https://arxiv.org/abs/2304.03442",
+  "state": "blocked",
+  "startedAt": null,
+  "completedAt": null,
+  "providerUsage": {
+    "exaCalls": 1,
+    "openAiCalls": 0,
+    "reportedCostUsd": 0.001,
+    "openAiInputTokens": 0,
+    "openAiOutputTokens": 0
+  },
+  "result": "SOURCE_PASSAGE_NOT_VERIFIED",
+  "elapsedMs": 5009,
+  "redactedEvidence": {
+    "highlightCount": 1,
+    "highlightLength": 3988,
+    "highlightSha256": "47dbc83a1cdbcaa618d75d13b25523eccce3d18abe0cec0abca47b8567c8c952",
+    "zeroWriteProofSha256": "8d5f96836376ae3f67b96e3a97969476cdc935a3593fd96cf266b762b4ebc657"
+  }
+}

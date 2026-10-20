@@ -323,6 +323,7 @@ const presentationOnly = new Set([
     "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
     "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
     "docs/creatorlab/receipts/STAGE4B2_20261019_CONTENTS_2.json",
+    "docs/creatorlab/receipts/STAGE4B2_20261020_PDFV2_3.json",
     ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
