@@ -64,6 +64,17 @@ Passage diagnostics contain only counts, lengths, SHA-256 fingerprints and deter
 
 The owner-approved PDF-v2 representation is the only full-paper evidence extension. Offline fixtures may still use `diagnosticOfficialRepresentations` for non-accepting diagnosis, but `/html`, unversioned PDF, ar5iv, mirrors and unrelated publications remain outside scope. PDF evidence records include the exact representation URL, page/block locator, document/page/block SHA-256 fingerprints and match mode; they are never silently relabeled as abstract evidence.
 
+## Opt-in real-PDF offline acceptance
+
+The locally downloaded approved PDF can be tested without network or provider access. This command is intentionally absent from CI and remains blocked unless the exact local-only consent marker is supplied:
+
+```bash
+STAGE4B2_REAL_PDF_ACCEPTANCE=confirmed-local-pdf-only \
+  npm run test:creator-refinement-stage4b2-pdf-real
+```
+
+By default it reads `~/Downloads/arxiv-2304.03442.pdf`; `STAGE4B2_REAL_PDF_PATH` may name another explicitly reviewed local copy. The test injects those bytes into the real approved-PDF acquisition function, runs the real Poppler layout extractor, and exercises the real one-block verifier. It pins the document and extraction fingerprints, 22-page structure, version identity, page 14/16 evidence block fingerprints, and numeric-corruption rejection. Its report contains locators and SHA-256 fingerprints only—never document text. The injected request adapter performs zero network requests, and the result does not change Stage 4B2 from `REVIEW_REQUIRED`.
+
 ## Next one-time controlled procedure (proposal only)
 
 Before any future execution, independently review the PDF implementation and confirm the local Poppler binary. Then obtain a new explicit execution ID and a new explicit USD/request envelope; neither is currently approved. Run the unchanged single manual command only after that approval. The run must retain one Exa request on the abstract URL, independently acquire the PDF only after an abstract passage miss, make no automatic retry, and remain `REVIEW_REQUIRED` even if Preview succeeds. Do not reuse either consumed 2026-10-19 execution ID.
