@@ -5,8 +5,8 @@ import {
   STAGE4B2_APPROVED_SOURCE_URL as SOURCE_URL,
   STAGE4B2_CONTENTS_ENDPOINT as EXA_URL,
   claimStage4b2Execution,
-  classifyStage4b2ContentsResponse,
   createStage4b2ContentsRequest,
+  resolveStage4b2SourceEvidence,
   validateStage4b2ClaimAssessment,
 } from "../lib/creator/stage4b2ProviderAcceptance.ts";
 import { acquireStage4b2ApprovedPdf } from "../lib/creator/stage4b2PdfEvidence.server.ts";
@@ -115,11 +115,7 @@ if (!executionInputsMatch) {
     });
     const raw = await step("independent_original_source", () => network(SOURCE_URL, { method: "GET", headers: { Accept: "text/html" } }));
     const extracted = textOfHtml(raw);
-    let sourceResult = classifyStage4b2ContentsResponse({ response: exa, independentlyRetrievedText: extracted });
-    if (!sourceResult.ok && sourceResult.reason === "SOURCE_PASSAGE_NOT_VERIFIED") {
-      const approvedPdfArtifact = await step("independent_original_pdf_v2", () => acquireStage4b2ApprovedPdf());
-      sourceResult = classifyStage4b2ContentsResponse({ response: exa, independentlyRetrievedText: extracted, approvedPdfArtifact });
-    }
+    const sourceResult = await resolveStage4b2SourceEvidence({ response: exa, independentlyRetrievedText: extracted, acquireApprovedPdf: () => step("independent_original_pdf_v2", () => acquireStage4b2ApprovedPdf()) });
     if (!sourceResult.ok) { const error = new Error(sourceResult.reason); error.safeCandidateUrls = sourceResult.safeCandidateUrls; error.safeDiagnostics = sourceResult.safeDiagnostics; error.mismatchCategory = sourceResult.mismatchCategory; throw error; }
     const evidence = sourceResult.evidencePassages.map((passage, index) => ({ id: `e-approved-${index + 1}`, passage: passage.passage, providerSourceUrl: passage.sourceUrl, sourceIdentity: passage.sourceIdentity, evidenceRepresentation: passage.evidenceRepresentation, representationUrl: passage.representationUrl, evidenceLocator: passage.evidenceLocator, sourceDocumentFingerprint: passage.sourceDocumentFingerprint, evidencePageFingerprint: passage.evidencePageFingerprint, evidenceBlockFingerprint: passage.evidenceBlockFingerprint, passageSha256: passage.passageSha256 }));
     const revised = await callOpenAI("rewrite", "Return JSON {bodyText:string,claimText:string}. Revise only the synthetic body paragraph using this exact attributed passage. No invented results or causation.", { original: script[1].text, evidence });

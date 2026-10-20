@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { STAGE4B2_APPROVED_ABSTRACT_URL, STAGE4B2_SOURCE_IDENTITY, verifyStage4b2PdfPassage, type Stage4b2PdfArtifact } from "./stage4b2PdfEvidence.server.ts";
+import { STAGE4B2_APPROVED_ABSTRACT_URL, STAGE4B2_SOURCE_IDENTITY, acquireStage4b2ApprovedPdf, verifyStage4b2PdfPassage, type Stage4b2PdfArtifact } from "./stage4b2PdfEvidence.server.ts";
 import { normalizeStage4b2VerbatimPassage } from "./stage4b2Verbatim.ts";
 
 export const STAGE4B2_APPROVED_SOURCE_URL = STAGE4B2_APPROVED_ABSTRACT_URL;
@@ -35,7 +35,8 @@ type Stage4b2AtomicEvidence = {
 
 const STAGE4B2_ATOMIC_PASSAGE_MIN_CHARS = 24;
 const STAGE4B2_ATOMIC_PASSAGE_MAX_CHARS = 700;
-const STAGE4B2_ATOMIC_CANDIDATE_LIMIT = 32;
+const STAGE4B2_PROVIDER_HIGHLIGHT_MAX_CHARS = 4000;
+const STAGE4B2_ATOMIC_CANDIDATE_LIMIT = Math.ceil(STAGE4B2_PROVIDER_HIGHLIGHT_MAX_CHARS / STAGE4B2_ATOMIC_PASSAGE_MIN_CHARS);
 
 const countOccurrences = (document: string, passage: string) => {
   if (!passage) return 0;
@@ -55,7 +56,7 @@ export function selectStage4b2AtomicPassageCandidates(highlight: string) {
 export function createStage4b2ContentsRequest() {
   return {
     urls: [STAGE4B2_APPROVED_SOURCE_URL],
-    highlights: { query: "agent behavior simulation evidence limitations", maxCharacters: 4000 },
+    highlights: { query: "agent behavior simulation evidence limitations", maxCharacters: STAGE4B2_PROVIDER_HIGHLIGHT_MAX_CHARS },
   };
 }
 
@@ -131,6 +132,19 @@ export function classifyStage4b2ContentsResponse(input: { response: unknown; ind
   const scopeMismatch = passageDiagnostics.some((item) => item.diagnosticOfficialRepresentationMatch);
   const nonAtomic = passageDiagnostics.some((item) => item.passageLength > STAGE4B2_ATOMIC_PASSAGE_MAX_CHARS);
   return { ok: false as const, reason: (scopeMismatch ? "DOCUMENT_SCOPE_MISMATCH" : nonAtomic ? "PROVIDER_HIGHLIGHT_NOT_ATOMIC" : "SOURCE_PASSAGE_NOT_VERIFIED") as Stage4b2SourceDiagnostic, mismatchCategory: scopeMismatch ? "document_scope_mismatch" as const : nonAtomic ? "excerpt_granularity_mismatch" as const : "unresolved_passage_mismatch" as const, safeCandidateUrls: [approvedIdentity], safeDiagnostics };
+}
+
+const STAGE4B2_PDF_FALLBACK_REASONS = new Set<Stage4b2SourceDiagnostic>(["SOURCE_PASSAGE_NOT_VERIFIED", "PROVIDER_HIGHLIGHT_NOT_ATOMIC"]);
+
+export async function resolveStage4b2SourceEvidence(input: {
+  response: unknown;
+  independentlyRetrievedText: string;
+  acquireApprovedPdf?: () => Promise<Stage4b2PdfArtifact>;
+}) {
+  const abstractResult = classifyStage4b2ContentsResponse({ response: input.response, independentlyRetrievedText: input.independentlyRetrievedText });
+  if (abstractResult.ok || !STAGE4B2_PDF_FALLBACK_REASONS.has(abstractResult.reason)) return abstractResult;
+  const approvedPdfArtifact = await (input.acquireApprovedPdf ?? acquireStage4b2ApprovedPdf)();
+  return classifyStage4b2ContentsResponse({ response: input.response, independentlyRetrievedText: input.independentlyRetrievedText, approvedPdfArtifact });
 }
 
 export function validateStage4b2ClaimAssessment(input: { assessment: unknown; evidenceId?: string; evidenceIds?: string[] }) {
