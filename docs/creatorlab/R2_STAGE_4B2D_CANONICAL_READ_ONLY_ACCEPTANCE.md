@@ -39,3 +39,43 @@ The signing private key and all raw scripts/source documents stay outside Git. A
 - Signed authority envelope, separately approved public-key fingerprint, structured acceptance report.
 
 If any item is missing, substituted, stale, self-attested or unverifiable, the result remains `REVIEW_REQUIRED` or `BLOCKED`. `closeStage4B2` remains false pending separate owner closure approval. Local input immutability is mechanical evidence only and does not prove production data was unchanged.
+
+## Stage 4B2E owner-controlled baseline capture
+
+The repository now contains a narrow capture helper because no prior utility could preserve the owner-authenticated `/api/load-project/:projectId` response and produce the Stage 4B2 redacted structural fingerprints. The helper:
+
+- performs exactly one authenticated `GET` per invocation through the existing owner-scoped route;
+- is pinned to project `e572838e-98ab-42cd-92f4-bf56658cad77`;
+- accepts only HTTPS origins (or loopback HTTP), refuses redirects, never uses a service-role key, and never sends a write request;
+- receives the bearer token through a hidden interactive TTY prompt and never logs or stores it;
+- requires a pre-existing private `0700` directory outside the Git repository and creates `0600` files without overwriting;
+- requires explicit owner-reviewed read-only-operation and private encrypted-storage confirmations;
+- preserves the exact raw response bytes privately, plus an exact parsed baseline intake and a redacted count/fingerprint report;
+- labels JavaScript stable-canonical SHA-256 separately from raw-response SHA-256. It does not claim compatibility with PostgreSQL `jsonb::text` SHA-256 or historical MD5 values.
+
+After the owner reviews `scripts/stage-4b2e-owner-canonical-capture.mjs`, the exact first action is:
+
+```sh
+install -d -m 700 "$HOME/Library/Application Support/Velto/Stage4B2E-Thynel"
+node --experimental-strip-types scripts/stage-4b2e-owner-canonical-capture.mjs capture \
+  --base-url https://velto-app-one.vercel.app \
+  --project-id e572838e-98ab-42cd-92f4-bf56658cad77 \
+  --output-dir "$HOME/Library/Application Support/Velto/Stage4B2E-Thynel" \
+  --confirm-read-only-capture owner-reviewed \
+  --confirm-private-encrypted-storage yes
+```
+
+Paste the access token from the owner's already-authenticated supported application session only into the hidden prompt. Never paste it into a command argument, environment variable, chat, issue, PR, log, or committed file. This command is not authorization to acquire any of the seven source documents.
+
+After all separately authorized source and human reviews, repeat the owner read without overwriting the first capture:
+
+```sh
+node --experimental-strip-types scripts/stage-4b2e-owner-canonical-capture.mjs verify-after \
+  --base-url https://velto-app-one.vercel.app \
+  --project-id e572838e-98ab-42cd-92f4-bf56658cad77 \
+  --output-dir "$HOME/Library/Application Support/Velto/Stage4B2E-Thynel" \
+  --confirm-read-only-capture owner-reviewed \
+  --confirm-private-encrypted-storage yes
+```
+
+`UNCHANGED` proves only that the two authenticated read projections share the same revision and stable script/grounding/scene fingerprints. The capture helper deliberately does not generate the independent detached manifest, source receipts, factual assertion inventory, semantic/editorial attestations, authority signature, or key pin. Running the existing canonical acceptance runner before those independent artifacts exist must remain `REVIEW_REQUIRED`; `actualCanonicalSnapshot` and `closeStage4B2` remain false.
