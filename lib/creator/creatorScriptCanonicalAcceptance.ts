@@ -5,122 +5,80 @@ import { assessOriginalSourceClaimAuthority, verifyOriginalSourceEvidence, type 
 import type { ResearchClaim, ResearchEvidence } from "../research/claimEvidenceGraph.ts";
 import type { ResearchSource } from "../research/sourceContract.ts";
 
-export const STAGE4B2_CANONICAL_SNAPSHOT_VERSION = "stage4b2-canonical-snapshot-v1" as const;
+export const STAGE4B2_CANONICAL_SNAPSHOT_VERSION = "stage4b2-canonical-snapshot-v2" as const;
+export const STAGE4B2_CANONICAL_MANIFEST_VERSION = "stage4b2-detached-baseline-v1" as const;
 export type CanonicalAcceptanceStatus = "PASS" | "REVIEW_REQUIRED" | "BLOCKED";
 type Check = { id: string; status: CanonicalAcceptanceStatus; detail: string };
+type SemanticAssessment = { claimId: string; status: "supported" | "unsupported" | "contradicted"; evidenceIds: string[] };
 
-export type Stage4B2CanonicalSnapshot = {
-  version: typeof STAGE4B2_CANONICAL_SNAPSHOT_VERSION;
-  authorization: { kind: "owner_supplied_read_only"; approvedAt: string };
-  expectedSnapshotSha256: string;
-  language: "en";
-  script: unknown;
-  sceneIds: string[];
-  canonicalSceneIds: string[];
-  sources: ResearchSource[];
-  claims: Array<ResearchClaim & { supportingEvidenceIds: string[] }>;
-  evidence: ResearchEvidence[];
-  originalDocuments: OriginalSourceDocument[];
-  semanticAssessments: Array<{ claimId: string; status: "supported" | "unsupported" | "contradicted"; evidenceIds: string[]; authority: "independent_human_review" }>;
-  factualAssertions: Array<{ assertionId: string; sectionId: string; claimIds: string[]; textSha256: string }>;
-  editorialReview?: { authority: "independent_human_review"; englishClarity: boolean; narrativeProgression: boolean; factualPrecision: boolean; repetitionAcceptable: boolean; wordBoundariesValid: boolean };
-};
+export type Stage4B2CanonicalSnapshot = { version: typeof STAGE4B2_CANONICAL_SNAPSHOT_VERSION; language: "en"; projectIdentitySha256: string; projectRevision: string; script: unknown; sceneIds: string[]; canonicalSceneIds: string[]; sources: ResearchSource[]; claims: Array<ResearchClaim & { supportingEvidenceIds: string[] }>; evidence: ResearchEvidence[]; originalDocuments: OriginalSourceDocument[]; factualAssertions: Array<{ assertionId: string; sectionId: string; start: number; end: number; claimIds: string[]; textSha256: string }> };
+export type Stage4B2DetachedBaselineManifest = { version: typeof STAGE4B2_CANONICAL_MANIFEST_VERSION; trustClass: "synthetic_fixture" | "authenticated_canonical"; projectIdentitySha256: string; projectRevision: string; snapshotSha256: string; scriptSha256: string; groundingSha256: string; sceneIdentitySha256: string; scriptRevision: number; targetDurationSec: number; sectionIds: string[]; sceneIds: string[]; canonicalSceneIds: string[]; sourceEvidenceAttestations: Array<{ sourceId: string; documentSha256: string; acquisitionReceiptSha256: string }>; semanticAssessments: SemanticAssessment[]; editorialReview: { englishClarity: boolean; narrativeProgression: boolean; factualPrecision: boolean; repetitionAcceptable: boolean; wordBoundariesValid: boolean; reviewReceiptSha256: string }; factualInventoryReview: { complete: boolean; inventorySha256: string; reviewReceiptSha256: string } };
+export type Stage4B2DetachedAdmission = { manifest: Stage4B2DetachedBaselineManifest; expectedManifestSha256: string; boundary: "detached_read_only_hash_pin" };
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
-const stable = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stable(item)}`).join(",")}}`;
-  return JSON.stringify(value);
-};
-export const canonicalSnapshotPayloadSha256 = (snapshot: Omit<Stage4B2CanonicalSnapshot, "expectedSnapshotSha256"> | Stage4B2CanonicalSnapshot) => {
-  const { expectedSnapshotSha256: _ignored, ...payload } = snapshot as Stage4B2CanonicalSnapshot;
-  return sha256(stable(payload));
-};
+const isDigest = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+const stable = (value: unknown): string => Array.isArray(value) ? `[${value.map(stable).join(",")}]` : value && typeof value === "object" ? `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stable(item)}`).join(",")}}` : JSON.stringify(value);
+export const canonicalAcceptanceSha256 = (value: unknown) => sha256(stable(value));
 const add = (checks: Check[], id: string, status: CanonicalAcceptanceStatus, detail: string) => checks.push({ id, status, detail });
-const graphIdsUnique = (items: Array<{ [key: string]: unknown }>, key: string) => new Set(items.map((item) => String(item[key] || ""))).size === items.length && items.every((item) => typeof item[key] === "string" && Boolean(String(item[key])));
+const uniqueStrings = (value: unknown, length?: number): value is string[] => Array.isArray(value) && (length === undefined || value.length === length) && value.every((item) => typeof item === "string" && item.length > 0) && new Set(value).size === value.length;
+const uniqueRecords = (value: unknown, key: string, length: number) => Array.isArray(value) && value.length === length && value.every((item) => item && typeof item === "object" && typeof (item as Record<string, unknown>)[key] === "string") && new Set(value.map((item) => (item as Record<string, unknown>)[key])).size === value.length;
+const same = (left: unknown, right: unknown) => stable(left) === stable(right);
 
-export function missingStage4B2CanonicalSnapshotReport() {
-  return {
-    status: "REVIEW_REQUIRED" as const,
-    actualCanonicalSnapshot: false,
-    closeStage4B2: false,
-    checks: [{ id: "CANONICAL_SNAPSHOT_ADMISSION", status: "REVIEW_REQUIRED" as const, detail: "CANONICAL_SNAPSHOT_UNAVAILABLE" }],
-    missingRequirements: ["AUTHORIZED_READ_ONLY_CANONICAL_SNAPSHOT", "INDEPENDENT_ORIGINAL_SOURCE_AND_EDITORIAL_REVIEW"],
-    zeroWrite: true,
-  };
-}
+export function missingStage4B2CanonicalSnapshotReport() { return { status: "REVIEW_REQUIRED" as const, actualCanonicalSnapshot: false, syntheticFixture: false, closeStage4B2: false, checks: [{ id: "CANONICAL_SNAPSHOT_ADMISSION", status: "REVIEW_REQUIRED" as const, detail: "CANONICAL_SNAPSHOT_OR_DETACHED_MANIFEST_UNAVAILABLE" }], missingRequirements: ["AUTHORIZED_READ_ONLY_CANONICAL_SNAPSHOT", "DETACHED_PERSISTED_BASELINE_MANIFEST", "INDEPENDENT_ORIGINAL_SOURCE_AND_EDITORIAL_REVIEW"], zeroWrite: true }; }
 
-export function assessStage4B2CanonicalWholeScript(snapshotValue: unknown) {
-  const before = sha256(stable(snapshotValue));
-  const snapshot = structuredClone(snapshotValue) as Stage4B2CanonicalSnapshot;
-  const checks: Check[] = [];
-  if (!snapshot || snapshot.version !== STAGE4B2_CANONICAL_SNAPSHOT_VERSION || snapshot.authorization?.kind !== "owner_supplied_read_only") {
-    add(checks, "CANONICAL_SNAPSHOT_ADMISSION", "BLOCKED", "CANONICAL_SNAPSHOT_AUTHORITY_INVALID");
-    return finalize("BLOCKED", false, checks, ["AUTHORIZED_READ_ONLY_CANONICAL_SNAPSHOT"], before, snapshotValue, {});
-  }
-  const digest = canonicalSnapshotPayloadSha256(snapshot);
-  const admitted = /^[a-f0-9]{64}$/.test(snapshot.expectedSnapshotSha256) && digest === snapshot.expectedSnapshotSha256;
-  add(checks, "CANONICAL_SNAPSHOT_ADMISSION", admitted ? "PASS" : "BLOCKED", admitted ? "IMMUTABLE_SNAPSHOT_HASH_MATCH" : "CANONICAL_SNAPSHOT_HASH_MISMATCH");
-
-  let script: CreatorScript | null = null;
-  try { script = normalizeCreatorScript(snapshot.script); } catch { add(checks, "SCRIPT_SCHEMA", "BLOCKED", "CANONICAL_SCRIPT_INVALID"); }
-  if (script) {
-    const roles = script.sections.map((section) => section.kind).join(",");
-    const structureOk = script.revision === 1 && script.targetDurationSec === 480 && script.sections.length === 5 && roles === "opening,body,body,body,conclusion";
-    add(checks, "SCRIPT_IDENTITY_ORDER_REVISION", structureOk ? "PASS" : "BLOCKED", structureOk ? "FIVE_SECTION_REVISION_ONE_480_SECOND_BASELINE" : "CANONICAL_SCRIPT_BASELINE_MISMATCH");
-  }
-  const sceneOk = snapshot.sceneIds?.length === 36 && snapshot.canonicalSceneIds?.length === 36 && graphIdsUnique(snapshot.sceneIds.map((id) => ({ id })), "id") && graphIdsUnique(snapshot.canonicalSceneIds.map((id) => ({ id })), "id") && snapshot.sceneIds.every((id, index) => id === snapshot.canonicalSceneIds[index]);
-  add(checks, "SCENE_INTEGRITY", sceneOk ? "PASS" : "BLOCKED", sceneOk ? "36_ORDERED_SCENES_MATCH_CANONICAL_REFERENCES" : "SCENE_OR_CANONICAL_REFERENCE_LOSS");
-
-  const graphShapeOk = snapshot.claims?.length === 7 && snapshot.evidence?.length === 13 && snapshot.sources?.length === 7 && graphIdsUnique(snapshot.claims, "claimId") && graphIdsUnique(snapshot.evidence, "evidenceId") && graphIdsUnique(snapshot.sources, "sourceId");
-  const sourceIds = new Set(snapshot.sources?.map((item) => item.sourceId));
-  const evidenceIds = new Set(snapshot.evidence?.map((item) => item.evidenceId));
-  const graphRefsOk = graphShapeOk && snapshot.evidence.every((item) => sourceIds.has(item.sourceId)) && snapshot.claims.every((claim) => claim.supportingEvidenceIds.length > 0 && claim.supportingEvidenceIds.every((id) => evidenceIds.has(id))) && (!script || script.sections.every((section) => section.claimIds.every((id) => snapshot.claims.some((claim) => claim.claimId === id))));
-  add(checks, "CLAIM_EVIDENCE_SOURCE_GRAPH", graphRefsOk ? "PASS" : "BLOCKED", graphRefsOk ? "7_CLAIMS_13_EVIDENCE_7_SOURCES_REFERENTIALLY_VALID" : "GROUNDING_GRAPH_INVALID");
-
-  let acceptedClaims = 0; let reviewedClaims = 0; let rejectedClaims = 0;
-  if (graphRefsOk) for (const claim of snapshot.claims) {
-    const supporting = snapshot.evidence.filter((item) => claim.supportingEvidenceIds.includes(item.evidenceId));
-    const fidelity = supporting.map((item) => verifyOriginalSourceEvidence({ source: snapshot.sources.find((source) => source.sourceId === item.sourceId)!, evidence: item, document: snapshot.originalDocuments?.find((document) => document.sourceId === item.sourceId) }));
-    const semantic = snapshot.semanticAssessments?.find((item) => item.claimId === claim.claimId);
-    if (!semantic || semantic.authority !== "independent_human_review") { reviewedClaims += 1; continue; }
-    const result = assessOriginalSourceClaimAuthority({ claim, evidence: supporting, sources: snapshot.sources, fidelity, semanticAssessment: semantic });
-    if (result.status === "accepted") acceptedClaims += 1; else if (result.status === "requires_review") reviewedClaims += 1; else rejectedClaims += 1;
-  }
-  const evidenceStatus: CanonicalAcceptanceStatus = rejectedClaims ? "BLOCKED" : acceptedClaims === 7 ? "PASS" : "REVIEW_REQUIRED";
-  add(checks, "ORIGINAL_SOURCE_SEMANTIC_AUTHORITY", evidenceStatus, rejectedClaims ? "UNSUPPORTED_CONTRADICTED_OR_SUBSTITUTED_CLAIM" : acceptedClaims === 7 ? "ALL_CLAIMS_INDEPENDENTLY_SUPPORTED" : "INDEPENDENT_EVIDENCE_REVIEW_INCOMPLETE");
-
-  const assertionCoverage = script && Array.isArray(snapshot.factualAssertions) && snapshot.factualAssertions.length > 0 && snapshot.factualAssertions.every((item) => script!.sections.some((section) => section.id === item.sectionId) && item.claimIds.length > 0 && item.claimIds.every((id) => snapshot.claims.some((claim) => claim.claimId === id)) && /^[a-f0-9]{64}$/.test(item.textSha256));
-  add(checks, "FACTUAL_ASSERTION_BINDING", assertionCoverage ? "PASS" : "REVIEW_REQUIRED", assertionCoverage ? "ASSERTION_INVENTORY_BOUND_TO_CANONICAL_CLAIMS" : "UNBOUND_ASSERTION_AUDIT_REQUIRED");
-
-  let duration = null;
-  if (script) {
-    duration = getCreatorScriptDurationContractForScript(script, "en");
-    const durationOk = duration.status === "compliant";
-    add(checks, "THYNEL_DURATION_AND_WORD_BOUNDARIES", durationOk ? "PASS" : "BLOCKED", durationOk ? "480_SECOND_WORD_ENVELOPE_COMPLIANT" : `WORD_ENVELOPE_${duration.status.toUpperCase()}`);
-  }
-  const editorial = snapshot.editorialReview;
-  const editorialOk = editorial?.authority === "independent_human_review" && editorial.englishClarity && editorial.narrativeProgression && editorial.factualPrecision && editorial.repetitionAcceptable && editorial.wordBoundariesValid;
-  add(checks, "EDITORIAL_QUALITY", editorialOk ? "PASS" : "REVIEW_REQUIRED", editorialOk ? "INDEPENDENT_EDITORIAL_REVIEW_ACCEPTED" : "INDEPENDENT_EDITORIAL_REVIEW_REQUIRED");
-
-  if (script) {
-    const previewCandidate = structuredClone(script);
-    previewCandidate.sections = previewCandidate.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} Preview.` } : section);
-    previewCandidate.revision += 1; previewCandidate.updatedAt = "offline-preview"; previewCandidate.approval = null;
-    const proposal = createCreatorScriptProposal({ script, scope: "whole_script", instruction: "Offline lifecycle acceptance only.", nextScript: previewCandidate, mode: "editorial_rewrite" });
-    const state = { script, pendingRefinement: proposal, revisionHistory: [] };
-    const discarded = discardCreatorScriptProposal(state, proposal.proposalId);
-    let staleRejected = false;
+export function assessStage4B2CanonicalWholeScript(snapshotValue: unknown, admissionValue?: unknown) {
+  const before = canonicalAcceptanceSha256(snapshotValue); const checks: Check[] = [];
+  try {
+    const snapshot = structuredClone(snapshotValue) as Stage4B2CanonicalSnapshot;
+    const admission = structuredClone(admissionValue) as Stage4B2DetachedAdmission;
+    const manifest = admission?.manifest;
+    const snapshotShape = snapshot?.version === STAGE4B2_CANONICAL_SNAPSHOT_VERSION && snapshot.language === "en" && isDigest(snapshot.projectIdentitySha256) && typeof snapshot.projectRevision === "string" && snapshot.projectRevision.length > 0 && uniqueStrings(snapshot.sceneIds) && uniqueStrings(snapshot.canonicalSceneIds) && uniqueRecords(snapshot.sources, "sourceId", 7) && uniqueRecords(snapshot.claims, "claimId", 7) && uniqueRecords(snapshot.evidence, "evidenceId", 13) && Array.isArray(snapshot.originalDocuments) && Array.isArray(snapshot.factualAssertions);
+    const manifestShape = admission?.boundary === "detached_read_only_hash_pin" && manifest?.version === STAGE4B2_CANONICAL_MANIFEST_VERSION && ["synthetic_fixture", "authenticated_canonical"].includes(manifest.trustClass) && isDigest(admission.expectedManifestSha256) && canonicalAcceptanceSha256(manifest) === admission.expectedManifestSha256 && Array.isArray(manifest.sourceEvidenceAttestations) && Array.isArray(manifest.semanticAssessments);
+    if (!snapshotShape || !manifestShape) return malformed(checks, before, snapshotValue);
+    const synthetic = manifest.trustClass === "synthetic_fixture";
+    const snapshotBound = manifest.snapshotSha256 === canonicalAcceptanceSha256(snapshot) && manifest.projectIdentitySha256 === snapshot.projectIdentitySha256 && manifest.projectRevision === snapshot.projectRevision;
+    add(checks, "DETACHED_CANONICAL_ADMISSION", snapshotBound ? "PASS" : "BLOCKED", snapshotBound ? "DETACHED_MANIFEST_AND_SNAPSHOT_BOUND" : "DETACHED_BASELINE_BINDING_MISMATCH");
+    let script: CreatorScript;
+    try { script = normalizeCreatorScript(snapshot.script); } catch { add(checks, "SCRIPT_SCHEMA", "BLOCKED", "CANONICAL_SCRIPT_INVALID"); return finish(checks, synthetic, before, snapshotValue, {}); }
+    const sectionIds = script.sections.map((section) => section.id);
+    const structureOk = script.revision === 1 && script.targetDurationSec === 480 && script.sections.length === 5 && script.sections.map((section) => section.kind).join(",") === "opening,body,body,body,conclusion" && manifest.scriptRevision === script.revision && manifest.targetDurationSec === script.targetDurationSec && same(manifest.sectionIds, sectionIds) && manifest.scriptSha256 === canonicalAcceptanceSha256(script);
+    add(checks, "SCRIPT_IDENTITY_ORDER_REVISION", structureOk ? "PASS" : "BLOCKED", structureOk ? "DETACHED_FIVE_SECTION_REVISION_ONE_BASELINE_MATCH" : "CANONICAL_SCRIPT_BASELINE_MISMATCH");
+    const sceneOk = snapshot.sceneIds.length === 36 && snapshot.canonicalSceneIds.length === 36 && same(snapshot.sceneIds, snapshot.canonicalSceneIds) && same(manifest.sceneIds, snapshot.sceneIds) && same(manifest.canonicalSceneIds, snapshot.canonicalSceneIds) && manifest.sceneIdentitySha256 === canonicalAcceptanceSha256([snapshot.sceneIds, snapshot.canonicalSceneIds]);
+    add(checks, "SCENE_INTEGRITY", sceneOk ? "PASS" : "BLOCKED", sceneOk ? "DETACHED_36_SCENE_IDENTITIES_MATCH" : "SCENE_IDENTITY_OR_REFERENCE_MISMATCH");
+    const context = script.grounding.context;
+    const graphMatches = manifest.groundingSha256 === canonicalAcceptanceSha256(context) && same(snapshot.evidence, context.evidence) && same(snapshot.claims, context.claims) && snapshot.sources.every((source, index) => { const grounded = context.sources[index]; return grounded && source.sourceId === grounded.sourceId && source.title === grounded.title && source.url === grounded.url && source.publisher === grounded.publisher && source.author === grounded.author && source.publishedAt === grounded.publishedAt; });
+    add(checks, "CANONICAL_GROUNDING_GRAPH", graphMatches ? "PASS" : "BLOCKED", graphMatches ? "GRAPH_DERIVED_FROM_SCRIPT_GROUNDING" : "SUBSTITUTED_OR_INCONSISTENT_GROUNDING_GRAPH");
+    let acceptedClaims = 0; let reviewedClaims = 0; let rejectedClaims = 0;
+    const assessmentIds = manifest.semanticAssessments.map((item) => item.claimId);
+    if (graphMatches && uniqueStrings(assessmentIds, 7)) for (const claim of snapshot.claims) {
+      const supporting = snapshot.evidence.filter((item) => claim.supportingEvidenceIds.includes(item.evidenceId));
+      const sourceAttested = supporting.every((item) => { const document = snapshot.originalDocuments.find((candidate) => candidate.sourceId === item.sourceId); const attestation = manifest.sourceEvidenceAttestations.find((candidate) => candidate.sourceId === item.sourceId); return Boolean(document && attestation && isDigest(attestation.acquisitionReceiptSha256) && sha256(document.content) === attestation.documentSha256 && (synthetic || document.acquisition === "trusted_fetch")); });
+      if (!sourceAttested) { reviewedClaims += 1; continue; }
+      const fidelity = supporting.map((item) => verifyOriginalSourceEvidence({ source: snapshot.sources.find((source) => source.sourceId === item.sourceId)!, evidence: item, document: snapshot.originalDocuments.find((document) => document.sourceId === item.sourceId) }));
+      const semantic = manifest.semanticAssessments.find((item) => item.claimId === claim.claimId)!;
+      const result = assessOriginalSourceClaimAuthority({ claim, evidence: supporting, sources: snapshot.sources, fidelity, semanticAssessment: semantic });
+      if (result.status === "accepted") acceptedClaims += 1; else if (result.status === "requires_review") reviewedClaims += 1; else rejectedClaims += 1;
+    }
+    const evidenceStatus: CanonicalAcceptanceStatus = rejectedClaims ? "BLOCKED" : acceptedClaims === 7 ? "PASS" : "REVIEW_REQUIRED";
+    add(checks, "INDEPENDENT_SOURCE_AND_SEMANTIC_AUTHORITY", evidenceStatus, rejectedClaims ? "UNSUPPORTED_CONTRADICTED_OR_SUBSTITUTED_CLAIM" : acceptedClaims === 7 ? "DETACHED_SOURCE_AND_SEMANTIC_AUTHORITY_COMPLETE" : "INDEPENDENT_SOURCE_OR_SEMANTIC_REVIEW_REQUIRED");
+    const assertionIds = snapshot.factualAssertions.map((item) => item?.assertionId);
+    const assertionsBound = uniqueStrings(assertionIds) && snapshot.factualAssertions.length > 0 && snapshot.factualAssertions.every((item) => { const section = script.sections.find((candidate) => candidate.id === item.sectionId); const span = section && Number.isInteger(item.start) && Number.isInteger(item.end) && item.start >= 0 && item.end > item.start && item.end <= section.text.length ? section.text.slice(item.start, item.end) : null; return span !== null && isDigest(item.textSha256) && sha256(span) === item.textSha256 && uniqueStrings(item.claimIds) && item.claimIds.every((id) => snapshot.claims.some((claim) => claim.claimId === id)); });
+    const inventory = manifest.factualInventoryReview;
+    const inventoryComplete = assertionsBound && inventory?.complete === true && isDigest(inventory.reviewReceiptSha256) && inventory.inventorySha256 === canonicalAcceptanceSha256(snapshot.factualAssertions);
+    add(checks, "FACTUAL_ASSERTION_INVENTORY", inventoryComplete ? "PASS" : "REVIEW_REQUIRED", inventoryComplete ? "DETACHED_COMPLETE_SPAN_BOUND_INVENTORY" : "COMPLETE_REVIEWED_FACTUAL_INVENTORY_REQUIRED");
+    const duration = getCreatorScriptDurationContractForScript(script, "en");
+    add(checks, "THYNEL_DURATION", duration.status === "compliant" ? "PASS" : "BLOCKED", duration.status === "compliant" ? "480_SECOND_WORD_ENVELOPE_COMPLIANT" : `WORD_ENVELOPE_${duration.status.toUpperCase()}`);
+    const editorial = manifest.editorialReview;
+    const editorialOk = isDigest(editorial?.reviewReceiptSha256) && editorial.englishClarity && editorial.narrativeProgression && editorial.factualPrecision && editorial.repetitionAcceptable && editorial.wordBoundariesValid;
+    add(checks, "INDEPENDENT_EDITORIAL_QUALITY", editorialOk ? "PASS" : "REVIEW_REQUIRED", editorialOk ? "DETACHED_EDITORIAL_REVIEW_ACCEPTED" : "INDEPENDENT_EDITORIAL_REVIEW_REQUIRED");
+    const preview = structuredClone(script); preview.sections = preview.sections.map((section, index) => index === 0 ? { ...section, text: `${section.text} Preview.` } : section); preview.revision += 1; preview.updatedAt = "offline-preview"; preview.approval = null;
+    const proposal = createCreatorScriptProposal({ script, scope: "whole_script", instruction: "Offline mechanical lifecycle check only.", nextScript: preview, mode: "editorial_rewrite" });
+    const discarded = discardCreatorScriptProposal({ script, pendingRefinement: proposal, revisionHistory: [] }, proposal.proposalId); let staleRejected = false;
     try { applyCreatorScriptProposal({ ...script, revision: script.revision + 1 }, proposal, "en"); } catch (error) { staleRejected = String(error).includes("CREATOR_SCRIPT_REFINEMENT_STALE"); }
-    const lifecycleOk = state.script === script && discarded.script === script && discarded.pendingRefinement === null && staleRejected;
-    add(checks, "PREVIEW_DISCARD_STALE_CAS", lifecycleOk ? "PASS" : "BLOCKED", lifecycleOk ? "OFFLINE_CLONES_ONLY_NO_APPLY_STALE_REJECTED" : "REFINEMENT_LIFECYCLE_AUTHORITY_FAILED");
-  }
-  const status: CanonicalAcceptanceStatus = checks.some((item) => item.status === "BLOCKED") ? "BLOCKED" : checks.some((item) => item.status === "REVIEW_REQUIRED") ? "REVIEW_REQUIRED" : "PASS";
-  const missing = checks.filter((item) => item.status !== "PASS").map((item) => item.detail);
-  return finalize(status, true, checks, missing, before, snapshotValue, { acceptedClaims, reviewedClaims, rejectedClaims, duration });
+    add(checks, "MECHANICAL_PREVIEW_DISCARD_CAS", discarded.script === script && discarded.pendingRefinement === null && staleRejected ? "PASS" : "BLOCKED", "MECHANICAL_ONLY_NOT_SEMANTIC_REWRITE_ACCEPTANCE");
+    return finish(checks, synthetic, before, snapshotValue, { acceptedClaims, reviewedClaims, rejectedClaims, duration });
+  } catch { return malformed(checks, before, snapshotValue); }
 }
 
-function finalize(status: CanonicalAcceptanceStatus, actualCanonicalSnapshot: boolean, checks: Check[], missingRequirements: string[], before: string, original: unknown, metrics: Record<string, unknown>) {
-  const zeroWrite = before === sha256(stable(original));
-  return { status: zeroWrite ? status : "BLOCKED" as const, actualCanonicalSnapshot, closeStage4B2: false, checks, missingRequirements, zeroWrite, metrics };
-}
+function malformed(checks: Check[], before: string, original: unknown) { add(checks, "SNAPSHOT_SCHEMA", "BLOCKED", "CANONICAL_SNAPSHOT_OR_MANIFEST_MALFORMED"); return finish(checks, false, before, original, {}); }
+function finish(checks: Check[], synthetic: boolean, before: string, original: unknown, metrics: Record<string, unknown>) { const zeroWrite = before === canonicalAcceptanceSha256(original); const componentStatus: CanonicalAcceptanceStatus = checks.some((item) => item.status === "BLOCKED") ? "BLOCKED" : checks.some((item) => item.status === "REVIEW_REQUIRED") ? "REVIEW_REQUIRED" : "PASS"; const status: CanonicalAcceptanceStatus = !zeroWrite ? "BLOCKED" : synthetic && componentStatus === "PASS" ? "REVIEW_REQUIRED" : componentStatus; const missingRequirements = checks.filter((item) => item.status !== "PASS").map((item) => item.detail); if (synthetic && componentStatus === "PASS") missingRequirements.push("AUTHENTICATED_CANONICAL_SNAPSHOT_REQUIRED"); return { status, componentStatus, actualCanonicalSnapshot: !synthetic, syntheticFixture: synthetic, closeStage4B2: false, checks, missingRequirements, zeroWrite, metrics }; }
