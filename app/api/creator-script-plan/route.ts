@@ -40,7 +40,7 @@ import {
 } from "../../../lib/research/creatorLongFormEvidenceReadiness";
 import {
   buildCreatorEvidencePromptPack,
-  selectCreatorEvidencePromptPackForClaims,
+  buildCreatorSectionEvidencePromptPack,
 } from "../../../lib/research/creatorEvidencePack";
 import {
   acceptCreatorScriptWithAcceptanceRepair,
@@ -804,15 +804,36 @@ async function executeCreatorScriptOperation(input: {
     });
     const narrationEditorialContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
     const narrationAllowedClaimIds = narrationEditorialContext.claims.map((claim) => claim.claimId);
-    const evidenceMomentPack = buildCreatorEvidencePromptPack({
-      context: narrationEditorialContext,
-      maxUnits: 5,
-    });
+    const evidenceMomentPack = sectionNative
+      ? null
+      : buildCreatorEvidencePromptPack({
+          context: narrationEditorialContext,
+          maxUnits: 5,
+        });
     const createInitialResponse = (
       requestedSections: typeof sectionBudgetPlan,
       unitIndex: number,
       continuityContext: { previousSectionTitle: string; establishedPremises: string[]; previousSectionEnding: string } | null,
-    ) => client.responses.create({
+    ) => {
+      const sectionEvidenceSelection = sectionNative
+        ? buildCreatorSectionEvidencePromptPack({
+            context: narrationEditorialContext,
+            section: requestedSections[0],
+            eligibleClaimIds: createSectionNativeEditorialContext({
+              context: narrationEditorialContext,
+              plan: sectionBudgetPlan,
+              sectionIndex: unitIndex,
+            }).claims.map((claim) => claim.claimId),
+            maxUnits: 5,
+          })
+        : null;
+      if (sectionEvidenceSelection) {
+        console.info("CREATOR_SECTION_EVIDENCE_PROMPT_DIAGNOSTICS", {
+          sectionId: requestedSections[0].id,
+          ...sectionEvidenceSelection.metrics,
+        });
+      }
+      return client.responses.create({
         model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
         input: [
           { role: "system", content: systemPrompt },
@@ -859,16 +880,9 @@ async function executeCreatorScriptOperation(input: {
           },
           evidenceMomentContext: {
             usage: "Control-only source-bound evidence. IDs are backstage metadata and must never be spoken.",
-            units: selectCreatorEvidencePromptPackForClaims({
-              pack: evidenceMomentPack,
-              claimIds: sectionNative
-                ? createSectionNativeEditorialContext({
-                    context: narrationEditorialContext,
-                    plan: sectionBudgetPlan,
-                    sectionIndex: unitIndex,
-                  }).claims.map((claim) => claim.claimId)
-                : narrationAllowedClaimIds,
-            }),
+            units: sectionNative
+              ? sectionEvidenceSelection!.units
+              : evidenceMomentPack,
           },
           concreteEvidenceMomentGuidance: sectionNative &&
             requestedSections[0].id === "section-3" &&
@@ -967,6 +981,7 @@ async function executeCreatorScriptOperation(input: {
         ),
         temperature: 0.3,
       });
+    };
     const now = new Date().toISOString();
     const createFromSections = (sections: unknown[]) => {
       return createCreatorScript({
