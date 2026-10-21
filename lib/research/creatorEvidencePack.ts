@@ -1,6 +1,8 @@
 import type {
   ScriptPlannerEditorialContext,
 } from "./scriptPlannerEditorialContext.ts";
+import type { CreatorScriptSectionBudget } from "../creator/creatorScript.ts";
+import { classifyEditorialGroundingSpanSpecificity } from "./editorialGroundingRepair.ts";
 
 export type CreatorEvidenceBinding = {
   evidenceId: string;
@@ -38,6 +40,25 @@ const MAX_PACK_UNITS = 40;
 const MAX_PROMPT_PACK_UNITS = 5;
 const MAX_PROMPT_BINDINGS_PER_STANCE = 1;
 export const CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS = 12_000;
+
+export type CreatorSectionEvidencePromptOmissionReason =
+  | "duplicate_eligible_claim_id"
+  | "claim_not_in_canonical_context"
+  | "no_source_bound_evidence"
+  | "unit_budget"
+  | "character_budget";
+
+export type CreatorSectionEvidencePromptSelection = {
+  units: ReturnType<typeof buildCreatorEvidencePromptPack>;
+  metrics: {
+    requestedEligibleClaimCount: number;
+    uniqueEligibleClaimCount: number;
+    sourceBoundEligibleClaimCount: number;
+    includedUnitCount: number;
+    omittedUnitCount: number;
+    omissionReasonCounts: Record<CreatorSectionEvidencePromptOmissionReason, number>;
+  };
+};
 
 function compactText(value: string | null, maxLength: number) {
   return typeof value === "string"
@@ -141,7 +162,14 @@ export function buildCreatorEvidencePromptPack(input: {
   const requestedLimit = input.maxUnits ?? MAX_PROMPT_PACK_UNITS;
   const maxUnits = Math.min(requestedLimit, MAX_PROMPT_PACK_UNITS);
   const units = buildCreatorEvidencePack({ context: input.context, maxUnits });
-  const projected = units.map((unit) => {
+  return projectCreatorEvidencePromptUnits(units, maxUnits);
+}
+
+function projectCreatorEvidencePromptUnits(
+  units: CreatorEvidenceUnit[],
+  maxUnits: number,
+) {
+  const projected = units.slice(0, maxUnits).map((unit) => {
     const compactBindings = (bindings: CreatorEvidenceBinding[]) => bindings
       .slice(0, MAX_PROMPT_BINDINGS_PER_STANCE)
       .map((binding) => ({
@@ -185,6 +213,101 @@ export function buildCreatorEvidencePromptPack(input: {
     bounded.push(unit);
   }
   return bounded;
+}
+
+function sectionRolePriority(
+  unit: CreatorEvidenceUnit,
+  section: Pick<CreatorScriptSectionBudget, "ownershipBoundary">,
+) {
+  const roles = new Set(section.ownershipBoundary.owns);
+  if (
+    (roles.has("grounded_demonstration") || roles.has("concrete_case")) &&
+    unit.supportingEvidence.some((binding) =>
+      classifyEditorialGroundingSpanSpecificity(binding.excerpt || "") === "concrete_observation"
+    )
+  ) return 0;
+  if (
+    (roles.has("counterview") || roles.has("thesis_stress_test")) &&
+    unit.counterEvidence.length > 0
+  ) return 0;
+  if (
+    (roles.has("limits") || roles.has("uncertainty") || roles.has("scope_conditions")) &&
+    (unit.contextualEvidence.length > 0 || unit.counterEvidence.length > 0)
+  ) return 0;
+  return unit.counterEvidence.length > 0 || unit.contextualEvidence.length > 0 ? 1 : 2;
+}
+
+/**
+ * Filters canonical evidence for one section before applying the unchanged
+ * five-unit and 12K prompt budgets. It only reorders already allowlisted,
+ * source-bound units; it never creates claims, evidence, sources, or stances.
+ */
+export function buildCreatorSectionEvidencePromptPack(input: {
+  context: ScriptPlannerEditorialContext;
+  section: Pick<CreatorScriptSectionBudget, "id" | "kind" | "ownershipBoundary">;
+  eligibleClaimIds: string[];
+  maxUnits?: number;
+}): CreatorSectionEvidencePromptSelection {
+  const requestedLimit = input.maxUnits ?? MAX_PROMPT_PACK_UNITS;
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 0) {
+    throw new Error("CREATOR_EVIDENCE_PACK_LIMIT_INVALID");
+  }
+  const maxUnits = Math.min(requestedLimit, MAX_PROMPT_PACK_UNITS);
+  const canonicalClaimIds = new Set(input.context.claims.map((claim) => claim.claimId));
+  const canonicalUnits = createCreatorEvidenceUnits(input.context);
+  const unitByClaimId = new Map(canonicalUnits.map((unit) => [unit.claimId, unit]));
+  const uniqueEligibleClaimIds: string[] = [];
+  const seen = new Set<string>();
+  const omissionReasonCounts: Record<CreatorSectionEvidencePromptOmissionReason, number> = {
+    duplicate_eligible_claim_id: 0,
+    claim_not_in_canonical_context: 0,
+    no_source_bound_evidence: 0,
+    unit_budget: 0,
+    character_budget: 0,
+  };
+  for (const claimId of input.eligibleClaimIds) {
+    if (seen.has(claimId)) {
+      omissionReasonCounts.duplicate_eligible_claim_id += 1;
+      continue;
+    }
+    seen.add(claimId);
+    uniqueEligibleClaimIds.push(claimId);
+  }
+
+  const rankedUnits = uniqueEligibleClaimIds.flatMap((claimId, eligibleIndex) => {
+    if (!canonicalClaimIds.has(claimId)) {
+      omissionReasonCounts.claim_not_in_canonical_context += 1;
+      return [];
+    }
+    const unit = unitByClaimId.get(claimId);
+    if (!unit) {
+      omissionReasonCounts.no_source_bound_evidence += 1;
+      return [];
+    }
+    return [{ unit, eligibleIndex, priority: sectionRolePriority(unit, input.section) }];
+  }).toSorted((left, right) =>
+    left.priority - right.priority || left.eligibleIndex - right.eligibleIndex
+  );
+  const budgetCandidates = rankedUnits.slice(0, maxUnits);
+  omissionReasonCounts.unit_budget = Math.max(0, rankedUnits.length - budgetCandidates.length);
+  const units = projectCreatorEvidencePromptUnits(
+    budgetCandidates.map((candidate) => candidate.unit),
+    maxUnits,
+  );
+  omissionReasonCounts.character_budget = Math.max(0, budgetCandidates.length - units.length);
+  const omittedUnitCount = Object.values(omissionReasonCounts)
+    .reduce((total, count) => total + count, 0);
+  return {
+    units,
+    metrics: {
+      requestedEligibleClaimCount: input.eligibleClaimIds.length,
+      uniqueEligibleClaimCount: uniqueEligibleClaimIds.length,
+      sourceBoundEligibleClaimCount: rankedUnits.length,
+      includedUnitCount: units.length,
+      omittedUnitCount,
+      omissionReasonCounts,
+    },
+  };
 }
 
 export function selectCreatorEvidencePromptPackForClaims<T extends { claimId: string }>(input: {
