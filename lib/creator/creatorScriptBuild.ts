@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  normalizeCreatorResearchIntent,
+  type CreatorResearchIntent,
+} from "../research/creatorResearchIntent.ts";
 
 export const CREATOR_SCRIPT_BUILD_CONTRACT_VERSION = "0.19E1" as const;
 export const CREATOR_SCRIPT_BUILD_SNAPSHOT_VERSION =
@@ -78,6 +82,7 @@ export type CreatorScriptBuildSnapshot = Readonly<{
   strategy: Readonly<{
     topic: string;
     researchSubject: string | null;
+    researchIntent?: CreatorResearchIntent;
     title: string;
     contentType: string;
     format: string;
@@ -255,6 +260,7 @@ export function createCreatorScriptBuildSnapshot(input: {
   strategy: {
     topic: string;
     researchSubject?: string | null;
+    researchIntent?: CreatorResearchIntent;
     title: string;
     contentType: string;
     format: string;
@@ -289,6 +295,9 @@ export function createCreatorScriptBuildSnapshot(input: {
       CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS,
     ),
       researchSubject: normalizeOptionalText(input.strategy.researchSubject, "researchSubject", 2_000),
+      ...(input.strategy.researchIntent
+        ? { researchIntent: normalizeCreatorResearchIntent(input.strategy.researchIntent) }
+        : {}),
       title: requireText(input.strategy.title, "title", 1_000),
       contentType: requireText(input.strategy.contentType, "contentType", 160),
       format: requireText(input.strategy.format, "format", 160),

@@ -39,6 +39,11 @@ import type {
   ResearchSourceMetadataValue,
 } from "../research/sourceContract.ts";
 import type { ResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
+import {
+  normalizeCreatorResearchIntent,
+  type CreatorResearchIntent,
+  type CreatorResearchIntentCoverage,
+} from "../research/creatorResearchIntent.ts";
 
 export const CREATOR_SCRIPT_BUILD_RESEARCH_EDITORIAL_COORDINATOR_VERSION =
   "0.19E2A-A2" as const;
@@ -108,6 +113,7 @@ export type CreatorScriptBuildResearchStageResult = Readonly<{
   version: "0.19E2A-research-result-v1";
   sources: readonly ResearchSource[];
   lanes: readonly CreatorScriptBuildResearchLaneResult[];
+  intentCoverage?: CreatorResearchIntentCoverage;
 }>;
 
 export type CreatorScriptBuildResearchExecutionInput = Readonly<{
@@ -116,6 +122,7 @@ export type CreatorScriptBuildResearchExecutionInput = Readonly<{
   language: "tr" | "en";
   includeRecentContext: false;
   maxResultsPerLane: 5;
+  researchIntent?: CreatorResearchIntent;
 }>;
 
 export type CreatorScriptBuildEditorialExecutionInput = Readonly<{
@@ -130,6 +137,8 @@ export type CreatorScriptBuildEditorialExecutionInput = Readonly<{
     text: string;
     evidenceSpecificity: "concrete_observation" | "abstract_or_conceptual";
   }>>;
+  researchIntent?: CreatorResearchIntent;
+  researchIntentCoverage?: CreatorResearchIntentCoverage;
 }>;
 
 export type CreatorScriptBuildEditorialStageResult = Readonly<{
@@ -304,6 +313,46 @@ function normalizeResearchSource(value: unknown, index: number): ResearchSource 
   };
 }
 
+function normalizeResearchIntentCoverage(value: unknown): CreatorResearchIntentCoverage {
+  const raw = record(value);
+  if (!raw || raw.version !== "stage-5d2a-coverage-v1") {
+    throw new Error("CREATOR_SCRIPT_BUILD_RESEARCH_INTENT_COVERAGE_INVALID");
+  }
+  const integer = (field: string) => {
+    const parsed = raw[field];
+    if (!Number.isInteger(parsed) || Number(parsed) < 0 || Number(parsed) > 12) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_RESEARCH_INTENT_COVERAGE_INVALID:${field}`);
+    }
+    return Number(parsed);
+  };
+  const preferredSourceCount = integer("preferredSourceCount");
+  const locatedPreferredCandidateCount = integer("locatedPreferredCandidateCount");
+  const unlocatedPreferredCount = integer("unlocatedPreferredCount");
+  const requiredSourceCount = integer("requiredSourceCount");
+  const locatedRequiredCandidateCount = integer("locatedRequiredCandidateCount");
+  const missingRequiredSourceCount = integer("missingRequiredSourceCount");
+  const expectedStatus = missingRequiredSourceCount > 0
+    ? "required_coverage_blocked"
+    : unlocatedPreferredCount > 0
+      ? "preferred_coverage_warning"
+      : "complete";
+  if (
+    locatedPreferredCandidateCount + unlocatedPreferredCount !== preferredSourceCount ||
+    locatedRequiredCandidateCount + missingRequiredSourceCount !== requiredSourceCount ||
+    raw.status !== expectedStatus
+  ) throw new Error("CREATOR_SCRIPT_BUILD_RESEARCH_INTENT_COVERAGE_INCONSISTENT");
+  return Object.freeze({
+    version: "stage-5d2a-coverage-v1" as const,
+    preferredSourceCount,
+    locatedPreferredCandidateCount,
+    unlocatedPreferredCount,
+    requiredSourceCount,
+    locatedRequiredCandidateCount,
+    missingRequiredSourceCount,
+    status: raw.status as CreatorResearchIntentCoverage["status"],
+  });
+}
+
 function normalizeResearchResult(value: unknown): CreatorScriptBuildResearchStageResult {
   const raw = record(value);
   if (!raw || !Array.isArray(raw.sources) || !Array.isArray(raw.lanes)) {
@@ -369,6 +418,9 @@ function normalizeResearchResult(value: unknown): CreatorScriptBuildResearchStag
     version: "0.19E2A-research-result-v1" as const,
     sources,
     lanes,
+    ...(raw.intentCoverage
+      ? { intentCoverage: normalizeResearchIntentCoverage(raw.intentCoverage) }
+      : {}),
   });
 }
 
@@ -391,6 +443,9 @@ export function createCreatorScriptBuildResearchExecutionInput(
     language: snapshot.language,
     includeRecentContext: false as const,
     maxResultsPerLane: DEFAULT_MAX_RESULTS_PER_LANE,
+    ...(snapshot.strategy.researchIntent
+      ? { researchIntent: normalizeCreatorResearchIntent(snapshot.strategy.researchIntent) }
+      : {}),
   });
 }
 
@@ -429,6 +484,12 @@ function createEditorialExecutionMaterial(input: {
       text: span.text,
       evidenceSpecificity: span.evidenceSpecificity,
     })),
+    ...(input.snapshot.strategy.researchIntent
+      ? { researchIntent: normalizeCreatorResearchIntent(input.snapshot.strategy.researchIntent) }
+      : {}),
+    ...(input.research.intentCoverage
+      ? { researchIntentCoverage: input.research.intentCoverage }
+      : {}),
   });
   return { executionInput, spanCatalog };
 }
@@ -1027,6 +1088,13 @@ async function runResearchStage(input: {
         diagnostics: {
           sourceCount: research.sources.length,
           laneCount: research.lanes.length,
+          preferredSourceCount: research.intentCoverage?.preferredSourceCount || 0,
+          locatedPreferredCandidateCount:
+            research.intentCoverage?.locatedPreferredCandidateCount || 0,
+          unlocatedPreferredCount: research.intentCoverage?.unlocatedPreferredCount || 0,
+          requiredSourceCount: research.intentCoverage?.requiredSourceCount || 0,
+          missingRequiredSourceCount:
+            research.intentCoverage?.missingRequiredSourceCount || 0,
         },
         previous,
         now: input.now,
