@@ -24,6 +24,7 @@ import {
   type OrchestratedResearchResult,
 } from "../research/orchestratedResearch.ts";
 import { createResearchOrchestrationPlan } from "../research/researchOrchestration.ts";
+import { createCreatorResearchIntentCoverage } from "../research/creatorResearchIntent.ts";
 import {
   RESEARCH_CLAIM_TYPES,
   RESEARCH_PROPOSITION_KINDS,
@@ -742,6 +743,7 @@ export function createCreatorScriptBuildProviderExecutors(input: {
         subject: value.subject,
         maxResultsPerLane: value.maxResultsPerLane,
         includeRecentContext: value.includeRecentContext,
+        ...(value.researchIntent ? { researchIntent: value.researchIntent } : {}),
       });
       const result = await executeResearchOrchestration({
         plan,
@@ -755,6 +757,27 @@ export function createCreatorScriptBuildProviderExecutors(input: {
         economics: result.economics,
         sourceCount: sources.length,
       });
+      const intentCoverage = value.researchIntent
+        ? createCreatorResearchIntentCoverage({
+            intent: value.researchIntent,
+            sources,
+          })
+        : null;
+      if (intentCoverage?.missingRequiredSourceCount) {
+        throw new CreatorScriptBuildStageExecutionError({
+          category: "RESEARCH",
+          code: "CREATOR_SCRIPT_BUILD_REQUIRED_SOURCE_COVERAGE_GAP",
+          retryability: "NON_RETRYABLE",
+          diagnostics: {
+            preferredSourceCount: intentCoverage.preferredSourceCount,
+            locatedPreferredCandidateCount:
+              intentCoverage.locatedPreferredCandidateCount,
+            unlocatedPreferredCount: intentCoverage.unlocatedPreferredCount,
+            requiredSourceCount: intentCoverage.requiredSourceCount,
+            missingRequiredSourceCount: intentCoverage.missingRequiredSourceCount,
+          },
+        });
+      }
       return {
         sources,
         lanes: result.lanes.map((lane) => ({
@@ -764,6 +787,7 @@ export function createCreatorScriptBuildProviderExecutors(input: {
           status: lane.status,
           sourceIds: lane.sourceIds,
         })),
+        ...(intentCoverage ? { intentCoverage } : {}),
       };
     },
     executeEditorialProposal: (value: CreatorScriptBuildEditorialExecutionInput, recovery?: CreatorScriptBuildEditorialRecoveryContext) => {

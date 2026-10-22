@@ -5,6 +5,7 @@ import {
 } from "./creatorScriptBuild.ts";
 import { parseCreatorProfile } from "./creatorProfile.ts";
 import { resolveCreatorMarketEvidenceSubject } from "./marketEvidenceSubject.ts";
+import { createCreatorResearchIntentFromBrief } from "../research/creatorResearchIntent.ts";
 import {
   isValidCreatorProjectState,
   readCreatorProjectState,
@@ -270,6 +271,7 @@ export async function createCreatorScriptBuildSnapshotFromProject(input: {
         CREATOR_SCRIPT_BUILD_TOPIC_MAX_CHARS,
       ),
       researchSubject: researchSubject || null,
+      researchIntent: createCreatorResearchIntentFromBrief(state.brief.topic),
       title: direction.selected.title,
       contentType: requiredText(
         state.brief.contentType,
