@@ -475,17 +475,21 @@ function generationSchema(input: CreatorScriptBuildScriptGenerationInput) {
   };
 }
 
-function generationSectionSchema(input: CreatorScriptBuildScriptGenerationInput) {
+function generationSectionSchema(
+  input: CreatorScriptBuildScriptGenerationInput,
+  sectionClaimIds?: readonly string[],
+) {
+  const permittedClaimIds = [...(sectionClaimIds || input.permittedClaimIds)];
+  const claimIds = permittedClaimIds.length > 0
+    ? { type: "array", items: { type: "string", enum: permittedClaimIds } }
+    : { type: "array", maxItems: 0, items: { type: "string" } };
   return {
     type: "object",
     additionalProperties: false,
     properties: {
       heading: { type: ["string", "null"] },
       text: { type: "string" },
-      claimIds: {
-        type: "array",
-        items: { type: "string", enum: [...input.permittedClaimIds] },
-      },
+      claimIds,
     },
     required: ["heading", "text", "claimIds"],
   };
@@ -508,8 +512,8 @@ const GENERATION_SYSTEM = [
 const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
   "Write only the single active documentary narration section supplied in activeSection.",
-  "Use only the supplied approved strategy, canonical editorial context, permitted claim IDs, and evidence boundaries.",
-  "When activeSectionClaimAuthority is supplied, use only its claimIds and evidenceIds. Do not move a claim into a neighboring documentary role, infer a contradiction from two different findings, or invent evidence to fill an empty route.",
+  "Use only the supplied approved strategy, active section evidence selection, permitted claim IDs, and evidence boundaries.",
+  "When activeSectionClaimAuthority is supplied, use only its claimIds and evidenceIds and the exact activeSectionEvidenceSelection bindings. Omitted claims and evidence are unavailable. Do not move a claim into a neighboring documentary role, infer a contradiction from two different findings, or invent evidence to fill an empty route.",
   ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   ...CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
@@ -558,9 +562,37 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
     ...input.value.sectionPlan,
   ]);
   for (const [index, activeSection] of input.value.sectionPlan.entries()) {
-    const activeSectionClaimAuthority = input.value.sectionClaimRouting?.find(
+    const scienceDocumentary = input.value.narrativePolicy === "science_documentary_v1";
+    const routedAuthority = input.value.sectionClaimRouting?.find(
       (route) => route.sectionId === activeSection.id,
     ) || null;
+    const activeSectionEvidenceAuthority = input.value.sectionEvidenceAuthorities?.find(
+      (authority) => authority.sectionId === activeSection.id,
+    ) || null;
+    if (scienceDocumentary && (!routedAuthority || !activeSectionEvidenceAuthority)) {
+      throw new Error(`CREATOR_SCRIPT_BUILD_SECTION_EVIDENCE_AUTHORITY_MISSING:${activeSection.id}`);
+    }
+    const activeSectionClaimAuthority = routedAuthority && activeSectionEvidenceAuthority
+      ? {
+          ...routedAuthority,
+          claimIds: [...activeSectionEvidenceAuthority.claimIds],
+          evidenceIds: [...activeSectionEvidenceAuthority.evidenceIds],
+        }
+      : routedAuthority;
+    const generationAuthority = scienceDocumentary
+      ? (() => {
+          const {
+            editorialContext: _editorialContext,
+            sectionClaimRouting: _sectionClaimRouting,
+            sectionEvidenceAuthorities: _sectionEvidenceAuthorities,
+            ...boundedAuthority
+          } = input.value;
+          return {
+            ...boundedAuthority,
+            permittedClaimIds: activeSectionEvidenceAuthority?.claimIds || [],
+          };
+        })()
+      : input.value;
     const completedSections = sections.map((section, completedIndex) => ({
       id: input.value.sectionPlan[completedIndex]!.id,
       kind: input.value.sectionPlan[completedIndex]!.kind,
@@ -576,9 +608,10 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
         `${baseIdentity}:section:${index + 1}:${activeSection.id}`,
       system: SECTION_NATIVE_GENERATION_SYSTEM,
       user: {
-        generationAuthority: input.value,
+        generationAuthority,
         activeSection,
         activeSectionClaimAuthority,
+        activeSectionEvidenceSelection: activeSectionEvidenceAuthority?.selection || null,
         activeSectionIndex: index,
         sectionControl: narrationControlPlan[index],
         futureSectionOwnership: narrationControlPlan
@@ -592,7 +625,10 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
         completedSections,
       },
       schemaName: "creator_script_build_script_generation_section",
-      schema: generationSectionSchema(input.value),
+      schema: generationSectionSchema(
+        input.value,
+        activeSectionEvidenceAuthority?.claimIds,
+      ),
       model: SCRIPT_MODEL(),
       reasoningEffort: "medium",
     });
@@ -606,6 +642,12 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
 }
 
 function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
+  const activeSectionIds = new Set(input.repairSectionIds);
+  const permittedClaimIds = input.sectionEvidenceAuthorities
+    ? [...new Set(input.sectionEvidenceAuthorities
+        .filter((authority) => activeSectionIds.has(authority.sectionId))
+        .flatMap((authority) => authority.claimIds))].toSorted()
+    : [...input.permittedClaimIds];
   const common = {
     version: {
       type: "string",
@@ -613,6 +655,9 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
     },
     mode: { type: "string", enum: [input.mode] },
   };
+  const claimIds = permittedClaimIds.length > 0
+    ? { type: "array", items: { type: "string", enum: permittedClaimIds } }
+    : { type: "array", maxItems: 0, items: { type: "string" } };
   if (input.mode === "additive") {
     const anchors = input.expansionTargets.flatMap((target) =>
       target.availablePlacementAnchors.map((anchor) => anchor.id)
@@ -632,10 +677,7 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
             properties: {
               placementAnchorId: { type: "string", enum: anchors },
               additionalText: { type: "string" },
-              claimIds: {
-                type: "array",
-                items: { type: "string", enum: [...input.permittedClaimIds] },
-              },
+              claimIds,
             },
             required: ["placementAnchorId", "additionalText", "claimIds"],
           },
@@ -658,7 +700,7 @@ function repairSchema(input: CreatorScriptBuildScriptRepairInput) {
           sectionId: { type: "string", enum: [input.candidate.sectionId] },
           heading: { type: ["string", "null"] },
           text: { type: "string" },
-          claimIds: { type: "array", items: { type: "string", enum: [...input.permittedClaimIds] } },
+          claimIds,
         },
         required: ["sectionId", "heading", "text", "claimIds"],
       },
@@ -698,9 +740,52 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
 }) {
   const value = input.value;
   const lengthInstructions = replacementLengthInstructions(value);
+  const scienceDocumentary = value.sectionClaimRouting?.some(
+    (route) => Array.isArray(route.evidenceIds),
+  ) || false;
+  if (scienceDocumentary && (!value.sectionEvidenceAuthorities || value.repairSectionIds.some(
+    (sectionId) => !value.sectionEvidenceAuthorities?.some(
+      (authority) => authority.sectionId === sectionId,
+    ),
+  ))) {
+    throw new Error("CREATOR_SCRIPT_BUILD_SECTION_EVIDENCE_AUTHORITY_MISSING");
+  }
+  const boundedScienceAuthority = value.sectionEvidenceAuthorities
+    ? (() => {
+        const activeSectionIds = new Set(value.repairSectionIds);
+        const sectionEvidenceAuthorities = value.sectionEvidenceAuthorities.filter(
+          (authority) => activeSectionIds.has(authority.sectionId),
+        );
+        const evidenceAuthorityBySectionId = new Map(
+          sectionEvidenceAuthorities.map((authority) => [authority.sectionId, authority]),
+        );
+        const sectionClaimRouting = (value.sectionClaimRouting || [])
+          .filter((route) => activeSectionIds.has(route.sectionId))
+          .map((route) => {
+            const evidenceAuthority = evidenceAuthorityBySectionId.get(route.sectionId);
+            return {
+              ...route,
+              claimIds: [...(evidenceAuthority?.claimIds || [])],
+              evidenceIds: [...(evidenceAuthority?.evidenceIds || [])],
+            };
+          });
+        const {
+          grounding: _grounding,
+          ...currentScriptAuthority
+        } = value.currentScriptAuthority;
+        return {
+          currentScriptAuthority,
+          sectionClaimRouting,
+          sectionEvidenceAuthorities,
+          permittedClaimIds: [...new Set(
+            sectionEvidenceAuthorities.flatMap((authority) => authority.claimIds),
+          )].toSorted(),
+        };
+      })()
+    : null;
   // Round-level repairStrategies/repairableViolations stay in the durable request
   // and fingerprint, but are not competing directives in a single-target call.
-  const user = value.mode === "replacement" ? {
+  const replacementUser = {
     version: value.version,
     providerPolicyVersion: CREATOR_SCRIPT_BUILD_REPAIR_PROVIDER_POLICY_VERSION,
     attempt: value.attempt,
@@ -708,15 +793,26 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
     candidate: value.candidate,
     repairSectionIds: value.repairSectionIds,
     replacementTargets: value.replacementTargets,
-    permittedClaimIds: value.permittedClaimIds,
+    permittedClaimIds: boundedScienceAuthority?.permittedClaimIds || value.permittedClaimIds,
     authorityContext: {
       usage: "context_only_not_active_repair_instructions",
-      currentScriptAuthority: value.currentScriptAuthority,
+      currentScriptAuthority: boundedScienceAuthority?.currentScriptAuthority || value.currentScriptAuthority,
       sectionPlan: value.sectionPlan,
-      sectionClaimRouting: value.sectionClaimRouting,
+      sectionClaimRouting: boundedScienceAuthority?.sectionClaimRouting || value.sectionClaimRouting,
+      sectionEvidenceAuthorities: boundedScienceAuthority?.sectionEvidenceAuthorities,
       creatorAuthority: value.creatorAuthority,
     },
-  } : value;
+  };
+  const user = value.mode === "replacement"
+    ? replacementUser
+    : boundedScienceAuthority
+      ? {
+          ...replacementUser,
+          repairStrategies: value.repairStrategies,
+          repairableViolations: value.repairableViolations,
+          expansionTargets: value.expansionTargets,
+        }
+      : value;
   return await (input.runJson || runOpenAIJson)({
     ownerId: input.ownerId,
     projectId: input.projectId,

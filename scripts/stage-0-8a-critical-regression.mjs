@@ -100,13 +100,15 @@ const tests = [
   "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
   "scripts/stage-0-11f-closure-go-no-go-test.mjs",
   "scripts/stage-5d2b-science-documentary-routing-test.mjs",
+  "scripts/stage-5d2c-v2-section-evidence-test.mjs",
   "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
 ];
 
 for (const test of tests) {
   console.log(`\n[offline regression] ${test}`);
   const result = spawnSync(process.execPath, [
-    ...(test === "scripts/stage-5d2b-science-documentary-routing-test.mjs"
+    ...(test === "scripts/stage-5d2b-science-documentary-routing-test.mjs" ||
+        test === "scripts/stage-5d2c-v2-section-evidence-test.mjs"
       ? ["--experimental-strip-types"]
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs"
         ? ["--experimental-transform-types"]
