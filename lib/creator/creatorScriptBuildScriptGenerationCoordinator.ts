@@ -34,6 +34,11 @@ import {
 } from "./creatorScriptBuildResearchEditorialCoordinator.ts";
 import { parseCreatorProfile, type CreatorProfile } from "./creatorProfile.ts";
 import type { CreatorScriptBuildRepository } from "../persistence/creatorScriptBuilds/types.ts";
+import {
+  createCreatorScriptBuildSectionEvidenceAuthorities,
+  creatorScriptBuildSectionClaimsFitEvidenceAuthority,
+  type CreatorScriptBuildSectionEvidenceAuthority,
+} from "./creatorScriptBuildSectionEvidence.ts";
 import { createResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
 import { createEditorialScriptContext } from "../research/editorialScriptContext.ts";
 import {
@@ -79,6 +84,7 @@ export type CreatorScriptBuildScriptGenerationInput = Readonly<{
   sectionNative: boolean;
   longFormEvidenceReadiness: CreatorLongFormEvidenceReadiness;
   sectionClaimRouting?: readonly CreatorScriptSectionClaimRouting[];
+  sectionEvidenceAuthorities?: readonly CreatorScriptBuildSectionEvidenceAuthority[];
   editorialContext: ScriptPlannerEditorialContext;
   permittedClaimIds: readonly string[];
 }>;
@@ -368,6 +374,13 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
   const sectionClaimRouting = scienceDocumentary
     ? createCreatorScriptSectionClaimRouting({ context: editorialContext, plan: sectionPlan })
     : undefined;
+  const sectionEvidenceAuthorities = sectionClaimRouting
+    ? createCreatorScriptBuildSectionEvidenceAuthorities({
+        context: editorialContext,
+        sectionPlan,
+        sectionClaimRouting,
+      })
+    : undefined;
   return deepFreeze({
     version: "0.19E3A-script-generation-request-v1" as const,
     topic: input.snapshot.strategy.topic,
@@ -387,6 +400,7 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     sectionNative,
     longFormEvidenceReadiness,
     ...(sectionClaimRouting ? { sectionClaimRouting } : {}),
+    ...(sectionEvidenceAuthorities ? { sectionEvidenceAuthorities } : {}),
     editorialContext,
     permittedClaimIds: projection.permittedClaimIds,
   });
@@ -487,6 +501,16 @@ function normalizeCanonicalGeneratedScript(input: {
         "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
       );
     }
+    if (!creatorScriptBuildSectionClaimsFitEvidenceAuthority({
+      authorities: input.authority.sectionEvidenceAuthorities,
+      sectionId: budget.id,
+      claimIds,
+    })) {
+      throw new CreatorScriptBuildGeneratedScriptError(
+        "GROUNDING",
+        "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_OUTSIDE_EVIDENCE_PACK",
+      );
+    }
   }
 
   let script: CreatorScript;
@@ -561,6 +585,16 @@ function createCanonicalScriptFromProposal(input: {
       throw new CreatorScriptBuildGeneratedScriptError(
         "GROUNDING",
         "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
+      );
+    }
+    if (!creatorScriptBuildSectionClaimsFitEvidenceAuthority({
+      authorities: input.authority.sectionEvidenceAuthorities,
+      sectionId: budget.id,
+      claimIds,
+    })) {
+      throw new CreatorScriptBuildGeneratedScriptError(
+        "GROUNDING",
+        "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_OUTSIDE_EVIDENCE_PACK",
       );
     }
     return {

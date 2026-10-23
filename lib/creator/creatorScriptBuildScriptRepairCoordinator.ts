@@ -55,6 +55,11 @@ import {
   createCreatorScriptSectionClaimRouting,
   type CreatorScriptSectionClaimRouting,
 } from "../research/creatorLongFormEvidenceReadiness.ts";
+import {
+  createCreatorScriptBuildSectionEvidenceAuthorities,
+  creatorScriptBuildSectionClaimsFitEvidenceAuthority,
+  type CreatorScriptBuildSectionEvidenceAuthority,
+} from "./creatorScriptBuildSectionEvidence.ts";
 
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION =
   "0.19E3B-S3" as const;
@@ -133,6 +138,7 @@ export type CreatorScriptBuildScriptRepairInput = Readonly<{
   expansionTargets: readonly CreatorScriptExpansionTarget[];
   permittedClaimIds: readonly string[];
   sectionClaimRouting?: readonly CreatorScriptSectionClaimRouting[];
+  sectionEvidenceAuthorities?: readonly CreatorScriptBuildSectionEvidenceAuthority[];
   creatorAuthority: Readonly<{
     topic: string;
     title: string;
@@ -365,6 +371,19 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
   ) {
     throw new Error("CREATOR_SCRIPT_BUILD_REPAIR_TARGETS_REQUIRED");
   }
+  const sectionClaimRouting = input.snapshot.strategy.narrativePolicy === "science_documentary_v1"
+    ? createCreatorScriptSectionClaimRouting({
+        context: input.script.grounding.context,
+        plan: [...input.sectionPlan],
+      })
+    : undefined;
+  const sectionEvidenceAuthorities = sectionClaimRouting
+    ? createCreatorScriptBuildSectionEvidenceAuthorities({
+        context: input.script.grounding.context,
+        sectionPlan: input.sectionPlan,
+        sectionClaimRouting,
+      })
+    : undefined;
   return deepFreeze({
     version: "0.19E3B-script-repair-request-v2" as const,
     attempt: input.attempt,
@@ -389,14 +408,8 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
     permittedClaimIds: input.script.grounding.context.claims
       .map((claim) => claim.claimId)
       .toSorted(),
-    ...(input.snapshot.strategy.narrativePolicy === "science_documentary_v1"
-      ? {
-          sectionClaimRouting: createCreatorScriptSectionClaimRouting({
-            context: input.script.grounding.context,
-            plan: [...input.sectionPlan],
-          }),
-        }
-      : {}),
+    ...(sectionClaimRouting ? { sectionClaimRouting } : {}),
+    ...(sectionEvidenceAuthorities ? { sectionEvidenceAuthorities } : {}),
     creatorAuthority: {
       topic: input.snapshot.strategy.topic,
       title: input.snapshot.strategy.title,
@@ -628,6 +641,15 @@ function assembleReplacementProposal(input: {
       "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
     );
   }
+  if (!creatorScriptBuildSectionClaimsFitEvidenceAuthority({
+    authorities: input.repairInput.sectionEvidenceAuthorities,
+    sectionId: target.sectionId,
+    claimIds: proposal.claimIds.filter((claimId): claimId is string => typeof claimId === "string"),
+  })) {
+    throw new CreatorScriptBuildRepairError(
+      "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_OUTSIDE_EVIDENCE_PACK",
+    );
+  }
   const currentSection = input.currentScript.sections.find((section) =>
     section.id === target.sectionId
   );
@@ -749,6 +771,15 @@ function assembleAdditiveProposal(input: {
       )) {
         throw new CreatorScriptBuildRepairError(
           "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
+        );
+      }
+      if (!creatorScriptBuildSectionClaimsFitEvidenceAuthority({
+        authorities: input.repairInput.sectionEvidenceAuthorities,
+        sectionId: target.sectionId,
+        claimIds,
+      })) {
+        throw new CreatorScriptBuildRepairError(
+          "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_OUTSIDE_EVIDENCE_PACK",
         );
       }
       const replacement: CreatorScriptSection = {
