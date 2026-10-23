@@ -278,6 +278,9 @@ export async function createCreatorScriptBuildSnapshotFromProject(input: {
         "CREATOR_SCRIPT_BUILD_CONTENT_TYPE_REQUIRED",
         160,
       ),
+      ...(state.brief.narrativePolicy
+        ? { narrativePolicy: state.brief.narrativePolicy }
+        : {}),
       format: requiredText(
         state.brief.format,
         "CREATOR_SCRIPT_BUILD_FORMAT_REQUIRED",

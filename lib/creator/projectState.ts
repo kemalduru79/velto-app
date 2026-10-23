@@ -12,6 +12,12 @@ import {
 } from "./audioTimeline.ts";
 import { normalizeCreatorTopicAuthority } from "./creatorWorkflowAuthority.ts";
 import type { CreatorProjectNavigation } from "./stageNavigation.ts";
+import {
+  assertCreatorNarrativePolicyConfiguration,
+  isCreatorNarrativePolicy,
+  normalizeCreatorNarrativePolicy,
+  type CreatorNarrativePolicy,
+} from "./creatorNarrativePolicy.ts";
 import { isValidCreatorScriptHistory, isValidCreatorScriptPendingRefinement, normalizeCreatorScriptRevisionState, type CreatorScriptPendingRefinement, type CreatorScriptRevisionHistoryEntry } from "./creatorScriptRevisions.ts";
 
 export const CREATOR_PROJECT_STATE_VERSION = 1 as const;
@@ -25,6 +31,7 @@ export type CreatorProjectStateSnapshot = {
     country: string;
     ageGroup: string;
     contentType: string;
+    narrativePolicy?: CreatorNarrativePolicy;
     outcome?: string;
     format: string;
     durationPreset: string;
@@ -133,6 +140,11 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     typeof brief.country === "string" &&
     typeof brief.ageGroup === "string" &&
     typeof brief.contentType === "string" &&
+    (!hasOwn(brief, "narrativePolicy") || (
+      isCreatorNarrativePolicy(brief.narrativePolicy) &&
+      Number(brief.durationSec) === 480 &&
+      brief.format === "youtube_video"
+    )) &&
     (!hasOwn(brief, "outcome") || typeof brief.outcome === "string") &&
     typeof brief.format === "string" &&
     typeof brief.durationPreset === "string" &&
@@ -218,6 +230,12 @@ const stringArray = (value: unknown): string[] =>
 export function buildCreatorProjectState(
   input: CreatorProjectStateInput,
 ): CreatorProjectStateSnapshot {
+  const narrativePolicy = normalizeCreatorNarrativePolicy(input.brief.narrativePolicy);
+  assertCreatorNarrativePolicyConfiguration({
+    narrativePolicy,
+    targetDurationSec: Number(input.brief.durationSec),
+    format: input.brief.format,
+  });
   const production = {
     ...input.production,
     ...creatorAudioTimelineSnapshotFields(input.production.audioTimeline),
@@ -228,6 +246,9 @@ export function buildCreatorProjectState(
     brief: {
       ...input.brief,
       topic: normalizeCreatorTopicAuthority(input.brief.topic),
+      ...(narrativePolicy
+        ? { narrativePolicy }
+        : {}),
     },
     production,
   };
@@ -270,6 +291,14 @@ export function readCreatorProjectState(
   if (persistenceAuthority.status === "malformed_invalid_script") throw new Error("CREATOR_PROJECT_STATE_SCRIPT_INVALID");
   const exportResult = record(project.exported_movie_result);
   const candidateSnapshot = record(exportResult.creatorProjectState);
+  const candidateBrief = record(candidateSnapshot.brief);
+  if (
+    candidateSnapshot.version === CREATOR_PROJECT_STATE_VERSION &&
+    hasOwn(candidateBrief, "narrativePolicy") &&
+    !isCreatorNarrativePolicy(candidateBrief.narrativePolicy)
+  ) {
+    throw new Error("CREATOR_NARRATIVE_POLICY_INVALID");
+  }
   const candidateProduction = record(candidateSnapshot.production);
   if (
     candidateSnapshot.version === CREATOR_PROJECT_STATE_VERSION &&
@@ -311,6 +340,9 @@ export function readCreatorProjectState(
       country: String(savedBrief.country ?? "global"),
       ageGroup: String(savedBrief.ageGroup ?? "professional_18"),
       contentType: String(savedBrief.contentType ?? legacyPackage.contentType ?? "educational_explainer"),
+      ...(isCreatorNarrativePolicy(savedBrief.narrativePolicy)
+        ? { narrativePolicy: savedBrief.narrativePolicy }
+        : {}),
       ...(typeof (savedBrief.outcome ?? legacyPackage.outcome) === "string"
         ? { outcome: String(savedBrief.outcome ?? legacyPackage.outcome) }
         : {}),
