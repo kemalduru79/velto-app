@@ -3,6 +3,10 @@ import {
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
 import { researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
+import {
+  assertCreatorNarrativePolicyConfiguration,
+  type CreatorNarrativePolicy,
+} from "./creatorNarrativePolicy.ts";
 
 export const CREATOR_SCRIPT_VERSION = 1 as const;
 
@@ -755,7 +759,12 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   targetDurationSec: number;
   language: "tr" | "en";
   hasMaterialCounterview?: boolean;
+  narrativePolicy?: CreatorNarrativePolicy;
 }) {
+  assertCreatorNarrativePolicyConfiguration({
+    narrativePolicy: input.narrativePolicy,
+    targetDurationSec: input.targetDurationSec,
+  });
   const duration = getCreatorScriptDurationContract({
     targetDurationSec: input.targetDurationSec,
     language: input.language,
@@ -859,8 +868,37 @@ export function createCreatorScriptSectionBudgetPlan(input: {
       ownershipBoundary: { usage: "control_only_never_narrate", owns: ["unresolved_tension"], excludes: ["conclusion_synthesis", "argument_recap"] },
     },
   ];
-  const selectedBodyFunctions = bodyFunctions.slice(0, bodyCount);
+  const scienceDocumentaryBodyFunctions: typeof bodyFunctions = [
+    {
+      role: "Explain the essential framing and causal mechanism concisely",
+      centralQuestion: "What is the phenomenon, and what essential causal process explains it without turning the section into a glossary?",
+      progression: "Turns the opening question into one concise explanatory model that the evidence can test.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_explanation", "definition", "framing", "mechanism", "causal_process"], excludes: ["opening_thesis_restatement", "evidence_catalog", "counterview", "conclusion_synthesis"] },
+    },
+    {
+      role: "Present the strongest concrete empirical findings and meaningful grounded comparison",
+      centralQuestion: "What was concretely observed, how did the findings differ across grounded contexts, and what do they establish?",
+      progression: "Tests the explanation against concrete documented findings without treating different contexts as contradictions.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_empirical_evidence", "grounded_demonstration", "concrete_case", "evidence_interpretation"], excludes: ["mechanism_reteaching", "invented_comparison", "unsupported_contradiction", "conclusion_synthesis"] },
+    },
+    {
+      role: "Develop the strongest supported scientific tension",
+      centralQuestion: "What genuine counterevidence, alternative model, or methodological limitation changes how the findings should be interpreted?",
+      progression: "Introduces a precisely classified scientific challenge while preserving what the evidence still supports.",
+      ownershipBoundary: { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_tension", "counterview", "alternative_model", "methodological_limitation", "limits", "uncertainty", "scope_conditions", "thesis_stress_test"], excludes: ["invented_opposition", "independent_experiment_inference", "mechanism_summary", "evidence_summary", "conclusion_synthesis"] },
+    },
+  ];
+  const scienceDocumentary = input.narrativePolicy === "science_documentary_v1";
+  const selectedBodyFunctions = scienceDocumentary
+    ? scienceDocumentaryBodyFunctions.slice(0, bodyCount)
+    : bodyFunctions.slice(0, bodyCount);
+  assertCreatorNarrativePolicyConfiguration({
+    narrativePolicy: input.narrativePolicy,
+    targetDurationSec: input.targetDurationSec,
+    sectionCount: targets.length,
+  });
   if (
+    !scienceDocumentary &&
     input.hasMaterialCounterview
     && selectedBodyFunctions.length > 0
     && !selectedBodyFunctions.some((item) => item.role.includes("counterview"))
@@ -878,24 +916,36 @@ export function createCreatorScriptSectionBudgetPlan(input: {
       id: kind === "body" ? `section-${index}` : kind,
       kind,
       role: kind === "opening"
-        ? "Establish the master question, stakes, and selected hook"
+        ? scienceDocumentary
+          ? "Open with a surprising grounded observation, human stakes, and the central question"
+          : "Establish the master question, stakes, and selected hook"
         : kind === "conclusion"
-          ? "Derive the highest-order implication for the master question, preserve uncertainty, and end on one unresolved question"
+          ? scienceDocumentary
+            ? "Derive the deeper supported implication and end on one intellectually earned unresolved question"
+            : "Derive the highest-order implication for the master question, preserve uncertainty, and end on one unresolved question"
           : longForm ? bodyFunction.role : `Develop grounded documentary argument ${index}`,
       centralQuestion: kind === "opening"
-        ? "What question and stakes should make the audience need the answer?"
+        ? scienceDocumentary
+          ? "Which grounded observation makes the human stakes concrete, and what central question does it create?"
+          : "What question and stakes should make the audience need the answer?"
         : kind === "conclusion"
           ? "What highest-order implication does the established argument create for the master question, and what single unresolved question follows from that implication?"
           : longForm ? bodyFunction.centralQuestion : `What distinct part of the argument belongs in section ${index}?`,
       progression: kind === "opening"
-        ? "Creates unresolved audience stakes before definition, mechanism, and evidence are introduced."
+        ? scienceDocumentary
+          ? "Creates a grounded unresolved tension before the explanation and empirical findings."
+          : "Creates unresolved audience stakes before definition, mechanism, and evidence are introduced."
         : kind === "conclusion"
           ? "Moves forward from established consequences to their deepest implication for the master question rather than tracing backward through the section sequence."
           : longForm ? bodyFunction.progression : "Advances the narrative beyond the previous section.",
       ownershipBoundary: kind === "opening"
-        ? { usage: "control_only_never_narrate", owns: ["human_stakes", "master_tension", "master_question"], excludes: ["full_definition", "mechanism", "evidence", "limits", "social_formation", "material_consequence"] }
+        ? scienceDocumentary
+          ? { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_opening", "grounded_observation", "human_stakes", "master_question"], excludes: ["full_definition", "mechanism", "evidence_catalog", "scientific_tension", "conclusion_synthesis"] }
+          : { usage: "control_only_never_narrate", owns: ["human_stakes", "master_tension", "master_question"], excludes: ["full_definition", "mechanism", "evidence", "limits", "social_formation", "material_consequence"] }
         : kind === "conclusion"
-          ? { usage: "control_only_never_narrate", owns: ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_demonstration", "limits_inventory", "social_formation", "consequence_inventory", "section_by_section_recap"] }
+          ? scienceDocumentary
+            ? { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_conclusion", "highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_recap", "tension_recap", "section_by_section_recap"] }
+            : { usage: "control_only_never_narrate", owns: ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_demonstration", "limits_inventory", "social_formation", "consequence_inventory", "section_by_section_recap"] }
           : longForm ? bodyFunction.ownershipBoundary : { usage: "control_only_never_narrate", owns: ["distinct_argument_step"], excludes: ["neighboring_section_repetition"] },
       minimumWords: Math.floor(targetWords * CREATOR_SCRIPT_MIN_DURATION_RATIO),
       targetWords,

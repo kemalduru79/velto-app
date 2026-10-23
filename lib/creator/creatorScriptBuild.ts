@@ -3,6 +3,11 @@ import {
   normalizeCreatorResearchIntent,
   type CreatorResearchIntent,
 } from "../research/creatorResearchIntent.ts";
+import {
+  assertCreatorNarrativePolicyConfiguration,
+  normalizeCreatorNarrativePolicy,
+  type CreatorNarrativePolicy,
+} from "./creatorNarrativePolicy.ts";
 
 export const CREATOR_SCRIPT_BUILD_CONTRACT_VERSION = "0.19E1" as const;
 export const CREATOR_SCRIPT_BUILD_SNAPSHOT_VERSION =
@@ -85,6 +90,7 @@ export type CreatorScriptBuildSnapshot = Readonly<{
     researchIntent?: CreatorResearchIntent;
     title: string;
     contentType: string;
+    narrativePolicy?: CreatorNarrativePolicy;
     format: string;
     selectedDirectionId: string;
     selectedHook: string;
@@ -263,6 +269,7 @@ export function createCreatorScriptBuildSnapshot(input: {
     researchIntent?: CreatorResearchIntent;
     title: string;
     contentType: string;
+    narrativePolicy?: CreatorNarrativePolicy;
     format: string;
     selectedDirectionId: string;
     selectedHook: string;
@@ -281,6 +288,14 @@ export function createCreatorScriptBuildSnapshot(input: {
   ) {
     throw new Error("CREATOR_SCRIPT_BUILD_DURATION_INVALID");
   }
+  const narrativePolicy = normalizeCreatorNarrativePolicy(
+    input.strategy.narrativePolicy,
+  );
+  assertCreatorNarrativePolicyConfiguration({
+    narrativePolicy,
+    targetDurationSec: input.requestedDurationSeconds,
+    format: input.strategy.format,
+  });
   return deepFreeze({
     snapshotVersion: CREATOR_SCRIPT_BUILD_SNAPSHOT_VERSION,
     projectId: requireText(input.projectId, "projectId", 120),
@@ -300,6 +315,7 @@ export function createCreatorScriptBuildSnapshot(input: {
         : {}),
       title: requireText(input.strategy.title, "title", 1_000),
       contentType: requireText(input.strategy.contentType, "contentType", 160),
+      ...(narrativePolicy ? { narrativePolicy } : {}),
       format: requireText(input.strategy.format, "format", 160),
       selectedDirectionId: requireText(input.strategy.selectedDirectionId, "selectedDirectionId", 240),
       selectedHook: requireText(input.strategy.selectedHook, "selectedHook", 2_000),

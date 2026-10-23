@@ -509,6 +509,7 @@ const SECTION_NATIVE_GENERATION_SYSTEM = [
   "Never refer to the production itself in audience-facing narration: do not say 'this video', 'this documentary', 'this episode', 'this script', 'this section', 'this content', or similar self-references.",
   "Write only the single active documentary narration section supplied in activeSection.",
   "Use only the supplied approved strategy, canonical editorial context, permitted claim IDs, and evidence boundaries.",
+  "When activeSectionClaimAuthority is supplied, use only its claimIds and evidenceIds. Do not move a claim into a neighboring documentary role, infer a contradiction from two different findings, or invent evidence to fill an empty route.",
   ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
   ...CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT,
   ...CREATOR_SCRIPT_SEMANTIC_PROGRESSION_CONTRACT,
@@ -557,6 +558,9 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
     ...input.value.sectionPlan,
   ]);
   for (const [index, activeSection] of input.value.sectionPlan.entries()) {
+    const activeSectionClaimAuthority = input.value.sectionClaimRouting?.find(
+      (route) => route.sectionId === activeSection.id,
+    ) || null;
     const completedSections = sections.map((section, completedIndex) => ({
       id: input.value.sectionPlan[completedIndex]!.id,
       kind: input.value.sectionPlan[completedIndex]!.kind,
@@ -574,6 +578,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       user: {
         generationAuthority: input.value,
         activeSection,
+        activeSectionClaimAuthority,
         activeSectionIndex: index,
         sectionControl: narrationControlPlan[index],
         futureSectionOwnership: narrationControlPlan
@@ -708,6 +713,7 @@ export async function executeCreatorScriptBuildScriptRepairProvider(input: {
       usage: "context_only_not_active_repair_instructions",
       currentScriptAuthority: value.currentScriptAuthority,
       sectionPlan: value.sectionPlan,
+      sectionClaimRouting: value.sectionClaimRouting,
       creatorAuthority: value.creatorAuthority,
     },
   } : value;

@@ -51,6 +51,10 @@ import {
   CreatorScriptBuildStageExecutionError,
 } from "./creatorScriptBuildResearchEditorialCoordinator.ts";
 import type { CreatorScriptBuildRepository } from "../persistence/creatorScriptBuilds/types.ts";
+import {
+  createCreatorScriptSectionClaimRouting,
+  type CreatorScriptSectionClaimRouting,
+} from "../research/creatorLongFormEvidenceReadiness.ts";
 
 export const CREATOR_SCRIPT_BUILD_SCRIPT_REPAIR_COORDINATOR_VERSION =
   "0.19E3B-S3" as const;
@@ -128,6 +132,7 @@ export type CreatorScriptBuildScriptRepairInput = Readonly<{
   replacementTargets: readonly CreatorScriptBuildReplacementTarget[];
   expansionTargets: readonly CreatorScriptExpansionTarget[];
   permittedClaimIds: readonly string[];
+  sectionClaimRouting?: readonly CreatorScriptSectionClaimRouting[];
   creatorAuthority: Readonly<{
     topic: string;
     title: string;
@@ -384,6 +389,14 @@ export function createCreatorScriptBuildScriptRepairInput(input: {
     permittedClaimIds: input.script.grounding.context.claims
       .map((claim) => claim.claimId)
       .toSorted(),
+    ...(input.snapshot.strategy.narrativePolicy === "science_documentary_v1"
+      ? {
+          sectionClaimRouting: createCreatorScriptSectionClaimRouting({
+            context: input.script.grounding.context,
+            plan: [...input.sectionPlan],
+          }),
+        }
+      : {}),
     creatorAuthority: {
       topic: input.snapshot.strategy.topic,
       title: input.snapshot.strategy.title,
@@ -605,6 +618,16 @@ function assembleReplacementProposal(input: {
   if (proposal.sectionId !== target.sectionId) {
     return diagnostic("wrong_section_identity", null);
   }
+  const sectionClaimRoute = input.repairInput.sectionClaimRouting?.find(
+    (route) => route.sectionId === target.sectionId,
+  );
+  if (sectionClaimRoute && proposal.claimIds.some((claimId) =>
+    typeof claimId !== "string" || !sectionClaimRoute.claimIds.includes(claimId)
+  )) {
+    throw new CreatorScriptBuildRepairError(
+      "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
+    );
+  }
   const currentSection = input.currentScript.sections.find((section) =>
     section.id === target.sectionId
   );
@@ -718,6 +741,16 @@ function assembleAdditiveProposal(input: {
         proposal.claimIds,
         allowedClaimIds,
       );
+      const sectionClaimRoute = input.repairInput.sectionClaimRouting?.find(
+        (route) => route.sectionId === target.sectionId,
+      );
+      if (sectionClaimRoute && claimIds.some((claimId) =>
+        !sectionClaimRoute.claimIds.includes(claimId)
+      )) {
+        throw new CreatorScriptBuildRepairError(
+          "GROUNDING", "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
+        );
+      }
       const replacement: CreatorScriptSection = {
         id: currentSection.id,
         kind: currentSection.kind,

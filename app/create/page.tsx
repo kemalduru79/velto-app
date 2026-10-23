@@ -206,6 +206,7 @@ import {
   readCreatorProjectState,
   type CreatorProjectStateSnapshot,
 } from "@/lib/creator/projectState";
+import type { CreatorNarrativePolicy } from "@/lib/creator/creatorNarrativePolicy";
 import {
   reconcileCreatorAudioTimeline,
   reconcileSupersededCreatorPrimaryMusicPlacements,
@@ -1067,6 +1068,7 @@ type CreatorBriefDraftSnapshot = {
   country: string;
   ageGroup: CreatorAgeGroup;
   contentType: CreatorContentType;
+  narrativePolicy?: CreatorNarrativePolicy;
   format: CreatorFormat;
   durationPreset: CreatorDurationPreset;
   videoDurationSec: CreatorVideoDurationSec;
@@ -3601,6 +3603,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [creatorAgeGroup, setCreatorAgeGroup] = useState<CreatorAgeGroup>("professional_18");
   const [creatorContentType, setCreatorContentType] =
     useState<CreatorContentType>("educational_explainer");
+  const [creatorNarrativePolicy, setCreatorNarrativePolicy] =
+    useState<CreatorNarrativePolicy | undefined>();
   const [creatorOutcome, setCreatorOutcome] = useState<CreatorOutcome | undefined>();
   const [creatorFormat, setCreatorFormat] = useState<CreatorFormat>("short_form");
   const [creatorTargetPlatforms, setCreatorTargetPlatforms] = useState<CreatorPublishPlatform[]>(
@@ -12735,6 +12739,7 @@ const generateSceneImage = async (
             country: creatorCountry,
             ageGroup: creatorAgeGroup,
             contentType: creatorContentType, ...(creatorOutcome ? { outcome: creatorOutcome } : {}),
+            ...(creatorNarrativePolicy ? { narrativePolicy: creatorNarrativePolicy } : {}),
             format: creatorFormat, durationPreset: creatorDurationPreset,
             durationSec: creatorVideoDurationSec, customDurationSec: creatorCustomDurationSec,
             qualityMode: creatorQualityMode, targetPlatforms: creatorTargetPlatforms,
@@ -13327,6 +13332,7 @@ const generateSceneImage = async (
       ) {
         setCreatorContentType(savedContentType as CreatorContentType);
       }
+      setCreatorNarrativePolicy(canonicalCreatorState?.brief.narrativePolicy);
 
       const savedDurationPreset =
         canonicalCreatorState?.brief.durationPreset || normalizedSavedCreatorPackage?.durationPreset;
@@ -13564,6 +13570,13 @@ const generateSceneImage = async (
           );
           const nextFormat: CreatorFormat = draft.format === "youtube_video" ? "youtube_video" : "short_form";
           setCreatorFormat(nextFormat);
+          setCreatorNarrativePolicy(
+            draft.narrativePolicy === "science_documentary_v1" &&
+              nextFormat === "youtube_video" &&
+              draft.videoDurationSec === 480
+              ? draft.narrativePolicy
+              : undefined,
+          );
           setCreatorTargetPlatforms(
             normalizeCreatorTargetPlatforms(draft.targetPlatforms, nextFormat),
           );
@@ -13630,6 +13643,7 @@ const generateSceneImage = async (
           country: creatorCountry,
           ageGroup: creatorAgeGroup,
           contentType: creatorContentType,
+          ...(creatorNarrativePolicy ? { narrativePolicy: creatorNarrativePolicy } : {}),
           format: creatorFormat,
           durationPreset: creatorDurationPreset,
           videoDurationSec: creatorVideoDurationSec,
@@ -13660,6 +13674,7 @@ const generateSceneImage = async (
     creatorCountry,
     creatorAgeGroup,
     creatorContentType,
+    creatorNarrativePolicy,
     creatorOutcome,
     creatorFormat,
     creatorDurationPreset,
@@ -19305,6 +19320,7 @@ const generateSceneImage = async (
       brief: {
         topic: normalizeCreatorTopicAuthority(input), language, country: creatorCountry,
         ageGroup: creatorAgeGroup, contentType: creatorContentType,
+        ...(creatorNarrativePolicy ? { narrativePolicy: creatorNarrativePolicy } : {}),
         ...(creatorOutcome ? { outcome: creatorOutcome } : {}),
         format: creatorFormat, durationPreset: creatorDurationPreset,
         durationSec: creatorVideoDurationSec, customDurationSec: creatorCustomDurationSec,
@@ -19457,6 +19473,7 @@ const generateSceneImage = async (
     creatorCountry,
     creatorAgeGroup,
     creatorContentType,
+    creatorNarrativePolicy,
     creatorOutcome,
     creatorFormat,
     creatorDurationPreset,
@@ -31537,6 +31554,43 @@ const generateSceneImage = async (
                   </select>
                   <small>{uiLanguage === "en" ? "The primary storytelling structure" : "Ana anlatım ve içerik yapısı"}</small>
                 </label>
+
+                <label className="creatorlab-brief-field">
+                  <span>{uiLanguage === "en" ? "Narrative policy" : "Anlatı politikası"}</span>
+                  <select
+                    value={creatorNarrativePolicy || "standard"}
+                    disabled={Boolean(creatorScript)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setCreatorNarrativePolicy(
+                        value === "science_documentary_v1"
+                          ? "science_documentary_v1"
+                          : undefined,
+                      );
+                    }}
+                  >
+                    <option value="standard">
+                      {uiLanguage === "en" ? "Standard" : "Standart"}
+                    </option>
+                    <option
+                      value="science_documentary_v1"
+                      disabled={creatorVideoDurationSec !== 480}
+                    >
+                      {uiLanguage === "en"
+                        ? "Evidence-driven Science Documentary"
+                        : "Kanıta dayalı Bilim Belgeseli"}
+                    </option>
+                  </select>
+                  <small>
+                    {creatorScript
+                      ? uiLanguage === "en"
+                        ? "The policy is locked after script approval to protect the accepted script."
+                        : "Kabul edilen metni korumak için politika metin onayından sonra kilitlenir."
+                      : uiLanguage === "en"
+                        ? "Science Documentary is an explicit five-section option for the 8-minute format."
+                        : "Bilim Belgeseli, 8 dakikalık format için açıkça seçilen beş bölümlü bir seçenektir."}
+                  </small>
+                </label>
               </div>
 
               <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-format-title">
@@ -31559,6 +31613,7 @@ const generateSceneImage = async (
                         type="button"
                         className={`creatorlab-format-choice ${isSelected ? "is-selected" : ""}`}
                         onClick={() => handleCreatorFormatChange(option.value)}
+                        disabled={Boolean(creatorNarrativePolicy)}
                         aria-pressed={isSelected}
                       >
                         <span className="creatorlab-format-choice-mark" aria-hidden="true">
@@ -31640,6 +31695,7 @@ const generateSceneImage = async (
                         type="button"
                         className={`creatorlab-duration-choice ${isSelected ? "is-selected" : ""}`}
                         onClick={() => handleCreatorDurationPresetChange(option.preset)}
+                        disabled={Boolean(creatorNarrativePolicy) && option.seconds !== 480}
                         aria-pressed={isSelected}
                       >
                         <strong>{option.label}</strong>
@@ -31651,6 +31707,7 @@ const generateSceneImage = async (
                     type="button"
                     className={`creatorlab-duration-choice ${creatorDurationPreset === "custom" ? "is-selected" : ""}`}
                     onClick={() => setCreatorDurationPreset("custom")}
+                    disabled={Boolean(creatorNarrativePolicy)}
                     aria-pressed={creatorDurationPreset === "custom"}
                   >
                     <strong>{ui.customDuration}</strong>
@@ -31666,6 +31723,7 @@ const generateSceneImage = async (
                       max={creatorFormat === "youtube_video" ? 60 : 180}
                       step={creatorFormat === "youtube_video" ? 0.5 : 1}
                       value={getCreatorCustomDurationInputValue()}
+                      disabled={Boolean(creatorNarrativePolicy)}
                       onChange={(event) => handleCreatorCustomDurationChange(event.target.value)}
                     />
                   </label>

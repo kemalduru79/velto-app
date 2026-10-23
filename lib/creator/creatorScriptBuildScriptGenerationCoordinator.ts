@@ -40,7 +40,9 @@ import {
   adaptCreatorLongFormSectionPlanToEvidenceCapability,
   adaptCreatorLongFormSectionPlanToUncertaintyCapability,
   createCreatorLongFormEvidenceReadiness,
+  createCreatorScriptSectionClaimRouting,
   type CreatorLongFormEvidenceReadiness,
+  type CreatorScriptSectionClaimRouting,
 } from "../research/creatorLongFormEvidenceReadiness.ts";
 import {
   createScriptPlannerGroundingDiagnostics,
@@ -66,6 +68,7 @@ export type CreatorScriptBuildScriptGenerationInput = Readonly<{
   researchSubject: string | null;
   title: string;
   contentType: string;
+  narrativePolicy?: CreatorScriptBuildSnapshot["strategy"]["narrativePolicy"];
   format: string;
   language: "tr" | "en";
   requestedDurationSeconds: number;
@@ -75,6 +78,7 @@ export type CreatorScriptBuildScriptGenerationInput = Readonly<{
   sectionPlan: readonly CreatorScriptSectionBudget[];
   sectionNative: boolean;
   longFormEvidenceReadiness: CreatorLongFormEvidenceReadiness;
+  sectionClaimRouting?: readonly CreatorScriptSectionClaimRouting[];
   editorialContext: ScriptPlannerEditorialContext;
   permittedClaimIds: readonly string[];
 }>;
@@ -317,6 +321,7 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     targetDurationSec: duration,
     language: input.snapshot.language,
     hasMaterialCounterview,
+    narrativePolicy: input.snapshot.strategy.narrativePolicy,
   });
   const durationContract = getCreatorScriptDurationContract({
     targetDurationSec: duration,
@@ -326,13 +331,14 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
   const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
     durationContract.targetWordCount,
   );
-  const demonstrationAdaptiveSectionPlan = sectionNative
+  const scienceDocumentary = input.snapshot.strategy.narrativePolicy === "science_documentary_v1";
+  const demonstrationAdaptiveSectionPlan = sectionNative && !scienceDocumentary
     ? adaptCreatorLongFormSectionPlanToEvidenceCapability({
         context: editorialContext,
         plan: baseSectionPlan,
       })
     : baseSectionPlan;
-  const sectionPlan = sectionNative
+  const sectionPlan = sectionNative && !scienceDocumentary
     ? adaptCreatorLongFormSectionPlanToUncertaintyCapability({
         context: editorialContext,
         plan: demonstrationAdaptiveSectionPlan,
@@ -359,12 +365,18 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
       },
     });
   }
+  const sectionClaimRouting = scienceDocumentary
+    ? createCreatorScriptSectionClaimRouting({ context: editorialContext, plan: sectionPlan })
+    : undefined;
   return deepFreeze({
     version: "0.19E3A-script-generation-request-v1" as const,
     topic: input.snapshot.strategy.topic,
     researchSubject: input.snapshot.strategy.researchSubject,
     title: input.snapshot.strategy.title,
     contentType: input.snapshot.strategy.contentType,
+    ...(input.snapshot.strategy.narrativePolicy
+      ? { narrativePolicy: input.snapshot.strategy.narrativePolicy }
+      : {}),
     format: input.snapshot.strategy.format,
     language: input.snapshot.language,
     requestedDurationSeconds: duration,
@@ -374,6 +386,7 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     sectionPlan,
     sectionNative,
     longFormEvidenceReadiness,
+    ...(sectionClaimRouting ? { sectionClaimRouting } : {}),
     editorialContext,
     permittedClaimIds: projection.permittedClaimIds,
   });
@@ -429,6 +442,12 @@ function normalizeCanonicalGeneratedScript(input: {
     );
   }
   const allowedClaimIds = new Set(input.authority.permittedClaimIds);
+  const routedClaimsBySection = new Map(
+    (input.authority.sectionClaimRouting || []).map((route) => [
+      route.sectionId,
+      new Set(route.claimIds),
+    ]),
+  );
   for (const [index, budget] of input.authority.sectionPlan.entries()) {
     const section = record(sections[index]);
     if (clean(section?.id, 120) !== budget.id) {
@@ -459,6 +478,13 @@ function normalizeCanonicalGeneratedScript(input: {
       throw new CreatorScriptBuildGeneratedScriptError(
         "GROUNDING",
         "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_PERMITTED",
+      );
+    }
+    const sectionAllowedClaimIds = routedClaimsBySection.get(budget.id);
+    if (sectionAllowedClaimIds && claimIds.some((claimId) => !sectionAllowedClaimIds.has(claimId))) {
+      throw new CreatorScriptBuildGeneratedScriptError(
+        "GROUNDING",
+        "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
       );
     }
   }
@@ -505,6 +531,12 @@ function createCanonicalScriptFromProposal(input: {
     );
   }
   const allowedClaimIds = new Set(input.authority.permittedClaimIds);
+  const routedClaimsBySection = new Map(
+    (input.authority.sectionClaimRouting || []).map((route) => [
+      route.sectionId,
+      new Set(route.claimIds),
+    ]),
+  );
   const canonicalSections = input.authority.sectionPlan.map((budget, index) => {
     const section = record(sections[index]);
     const text = clean(section?.text, 100_000);
@@ -522,6 +554,13 @@ function createCanonicalScriptFromProposal(input: {
       throw new CreatorScriptBuildGeneratedScriptError(
         "GROUNDING",
         "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_PERMITTED",
+      );
+    }
+    const sectionAllowedClaimIds = routedClaimsBySection.get(budget.id);
+    if (sectionAllowedClaimIds && claimIds.some((claimId) => !sectionAllowedClaimIds.has(claimId))) {
+      throw new CreatorScriptBuildGeneratedScriptError(
+        "GROUNDING",
+        "CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED",
       );
     }
     return {
