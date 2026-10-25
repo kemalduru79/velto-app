@@ -95,6 +95,7 @@
     "test:stage-5d2b": "node --experimental-strip-types scripts/stage-5d2b-science-documentary-routing-test.mjs",
     "test:stage-5d2c": "node --experimental-strip-types scripts/stage-5d2c-v2-section-evidence-test.mjs",
     "test:stage-5e0": "node --experimental-strip-types scripts/stage-5e0-capped-generation-pilot-test.mjs",
+    "test:stage-5e1a": "node --experimental-strip-types scripts/stage-5e1a-offline-transport-enforcement-test.mjs",
     "test:script-duration-contract": "node --experimental-strip-types scripts/post-0-13c-c-script-duration-contract-test.mjs",
     "test:strategy-script-authority": "node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs",
     "test:long-form-grounded-acceptance": "node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs",
