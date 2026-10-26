@@ -103,6 +103,7 @@ const tests = [
   "scripts/stage-5d2c-v2-section-evidence-test.mjs",
   "scripts/stage-5e0-capped-generation-pilot-test.mjs",
   "scripts/stage-5e1a-offline-transport-enforcement-test.mjs",
+  "scripts/stage-5e1b-pilot-readiness-test.mjs",
   "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
 ];
 
@@ -112,7 +113,8 @@ for (const test of tests) {
     ...(test === "scripts/stage-5d2b-science-documentary-routing-test.mjs" ||
         test === "scripts/stage-5d2c-v2-section-evidence-test.mjs" ||
         test === "scripts/stage-5e0-capped-generation-pilot-test.mjs" ||
-        test === "scripts/stage-5e1a-offline-transport-enforcement-test.mjs"
+        test === "scripts/stage-5e1a-offline-transport-enforcement-test.mjs" ||
+        test === "scripts/stage-5e1b-pilot-readiness-test.mjs"
       ? ["--experimental-strip-types"]
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs"
         ? ["--experimental-transform-types"]
