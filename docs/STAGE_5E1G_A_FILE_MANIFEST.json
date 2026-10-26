@@ -1,0 +1,44 @@
+{
+  "version": "stage-5e1g-a-file-manifest-v1",
+  "baselineCommit": "acf4689f964a62587cf0f9244c346aa2b2036e3e",
+  "liveDisposition": "NO_GO",
+  "executionMode": "OFFLINE_METADATA_ONLY",
+  "entries": [
+    {
+      "path": "docs/STAGE_5E1G_ACCEPTANCE_GATES.md",
+      "sha256": "65bac736bd98c62e6f4154e61bd884e43b2ccc76169e6ac1a7b31efa6a39caab"
+    },
+    {
+      "path": "docs/STAGE_5E1G_COST_AND_SECURITY_MODEL.md",
+      "sha256": "e6008f904bebd0123f3d20f8d5035c2c50b2a7fa492bcd545c671398699b5e52"
+    },
+    {
+      "path": "docs/STAGE_5E1G_IMPLEMENTATION_PLAN.md",
+      "sha256": "1033cda1cab517bcce96bebb673e4865b8bcdf12b328bf9b338701778aaa2b30"
+    },
+    {
+      "path": "docs/STAGE_5E1G_SCIENTIFIC_ARCHITECTURE.md",
+      "sha256": "059072afdbfb51864e3bc441718ceac0f72d1c7979a426ce0bb66a04b9590850"
+    },
+    {
+      "path": "lib/creator/scientificReview/authorityContracts.ts",
+      "sha256": "964795f5dd82a8707c184255ed9ccc2ed5872d406f42dc52102f922a1f7c79af"
+    },
+    {
+      "path": "lib/creator/scientificReview/index.ts",
+      "sha256": "080ebe9a9f810b2791dfe56faf9712155101a863b9249c724c6bfdbd9c06d431"
+    },
+    {
+      "path": "lib/creator/scientificReview/metadataImporter.ts",
+      "sha256": "fd4967e721fd506ef726adea03845833f389b0adf2c7abcf17d30fbabfcee8af"
+    },
+    {
+      "path": "scripts/stage-0-8a-critical-regression.mjs",
+      "sha256": "099949444635b50b440ca7805d968784183b7295b4da64adcc00322e3d58c2da"
+    },
+    {
+      "path": "scripts/stage-5e1g-a-metadata-importer-test.mjs",
+      "sha256": "be016f8a66667352d6c07e9109f3e395b63e998bdf37863f1201683ae889307a"
+    }
+  ]
+}
