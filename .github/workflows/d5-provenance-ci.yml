@@ -1,0 +1,93 @@
+name: D5 Pilot Runtime - Signed Provenance
+
+on:
+  push:
+    branches:
+      - d5-provenance-ci-only
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build-and-attest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      IMAGE_NAME: ghcr.io/kemalduru79/velto-scientific-review-pilot
+    steps:
+      - name: Check out CI-only source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify exact source input hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c SOURCE_HASHES.sha256
+          test "$(git ls-files | wc -l | tr -d ' ')" -eq 8
+          if git ls-files | grep -E '(^|/)(\.env|\.env\.|.*\.pem$|.*\.key$|.*private.*|.*secret.*)$'; then
+            echo 'Forbidden source file in CI-only repository' >&2
+            exit 1
+          fi
+          echo 'D5_CI_SOURCE_SCOPE=PASS'
+
+      - name: Enable ARM64 builds
+        uses: docker/setup-qemu-action@v3
+
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to GHCR with ephemeral GitHub token
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish immutable-tag ARM64 image
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: ./Dockerfile.scientific-review-pilot
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:d5-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Independently signed build provenance
+        id: attest
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Report exact image identity and verification command
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '### D5 signed provenance generated'
+            echo ''
+            echo "**Image:** \`${IMAGE_NAME}@${DIGEST}\`"
+            echo "**Source commit:** \`${GITHUB_SHA}\`"
+            echo "**Attestation:** ${ATTESTATION_URL}"
+            echo ''
+            echo 'Independent verification (GitHub CLI):'
+            echo '```bash'
+            echo "gh attestation verify 'oci://${IMAGE_NAME}@${DIGEST}' --repo '${GITHUB_REPOSITORY}'"
+            echo '```'
+            echo ''
+            echo '**D5 remains PENDING until the exact image is rescanned and D1 acceptance reruns against that same digest.**'
+            echo 'LIVE_NO_GO=true | REAL_PROVIDER_REQUESTS=0'
+          } >> "$GITHUB_STEP_SUMMARY"

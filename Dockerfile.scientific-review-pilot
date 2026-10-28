@@ -1,0 +1,18 @@
+FROM gcr.io/distroless/nodejs24-debian13@sha256:c30241ea9efbff4406c0376f527e7c0789951f0d39bfe497bee4cc560e53f006
+
+ARG VELTO_SOURCE_REVISION
+ARG VELTO_RUNTIME_BUNDLE_SHA256
+
+LABEL org.opencontainers.image.source="https://github.com/kemalduru79/velto-app" \
+      org.opencontainers.image.revision="${VELTO_SOURCE_REVISION}" \
+      io.velto.scientific-review.runtime-bundle-sha256="${VELTO_RUNTIME_BUNDLE_SHA256}"
+
+WORKDIR /app
+
+COPY --chown=65532:65532 scripts/scientific-review/controlled_pilot_d1_runtime_worker_v1.mjs /app/worker.mjs
+COPY --chown=65532:65532 scripts/scientific-review/controlled_pilot_b3_credential_lifecycle_v1.mjs /app/lifecycle.mjs
+COPY --chown=65532:65532 scripts/scientific-review/controlled_pilot_b3_offline_broker_v1.mjs /app/controlled_pilot_b3_offline_broker_v1.mjs
+COPY --chown=65532:65532 scripts/scientific-review/controlled_pilot_b3_loopback_tls_v1.mjs /app/controlled_pilot_b3_loopback_tls_v1.mjs
+
+USER 65532:65532
+ENTRYPOINT ["/nodejs/bin/node"]
