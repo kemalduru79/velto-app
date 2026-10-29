@@ -398,9 +398,12 @@ export async function executeCreatorScriptBuildEditorialProposalProvider(input: 
         "Adjudicate only propositionKind and origin for every supplied claim.",
         "Do not rewrite claim text or claimType and do not add or remove claims.",
         "Use attributed_statement only for what a named entity said; document_assertion for what a named work states; original_research_result for a result from its originating work; world_state only without attribution-only origin metadata.",
+        "For an original_research_result that retains the same kind and referencedWork, preserve the supplied attributedEntity exactly, including when it names the institution responsible for the work. Do not remove it as redundant metadata. A changed or removed entity is rejected, even when the work matches.",
+        "If the supplied attribution is unsupported, use ambiguous rather than silently removing or substituting it.",
         "Use ambiguous when origin cannot be resolved safely. Return strict JSON only.",
         ...(ordinal === 2 ? [
-          "The previous answer was ambiguous. Ambiguity cannot be accepted.",
+          "The previous answer was ambiguous or removed a required research attribution. Ambiguity cannot be accepted.",
+          "For a rejected same-kind research result with an omitted entity, return the original entity and work exactly only if supported by the unchanged evidence. Otherwise return ambiguous; never invent attribution.",
           "Classify only if supported by the unchanged claim and evidence. Do not invent attribution.",
           "Do not force world_state merely because the initial kind was world_state.",
           "If evidence genuinely cannot resolve origin or kind safely, ambiguity may remain and the build must fail closed.",

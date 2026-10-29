@@ -141,6 +141,46 @@ function isRecoverableWorldStateAbstention(initialClaims: Array<Record<string, u
   return abstained;
 }
 
+/** Retry only the observed omission; never accept it as claim authority. */
+function isRecoverableResearchEntityOmission(initialClaims: Array<Record<string, unknown>>, adjudication: Record<string, unknown>) {
+  if (!Array.isArray(adjudication.claims) || adjudication.claims.length !== initialClaims.length) return false;
+  const ids = adjudication.claims.map(value => safeRecord(value).claimId);
+  if (new Set(ids).size !== ids.length) return false;
+  let omitted = false;
+  for (const initial of initialClaims) {
+    const candidate = adjudication.claims.find(value => safeRecord(value).claimId === initial.claimId);
+    try {
+      reconcileClaimPropositionAuthorities({ initialClaims: [initial], adjudication: { claims: [candidate] } });
+    } catch (error) {
+      if (!(error instanceof ClaimPropositionAuthorityDisagreementError)) return false;
+      const d = error.disagreement;
+      const raw = safeRecord(candidate);
+      const origin = safeRecord(raw.origin);
+      if (d.initialKind !== "original_research_result" || !d.kindMatches ||
+          !d.initialRequiresPrimary || !d.adjudicatedRequiresPrimary ||
+          !d.initialOrigin.attributedEntity || !d.initialOrigin.referencedWork ||
+          d.adjudicatedOrigin.attributedEntity !== null ||
+          d.initialOrigin.referencedWork !== d.adjudicatedOrigin.referencedWork ||
+          Object.keys(raw).sort().join(",") !== "claimId,origin,propositionKind" ||
+          Object.keys(origin).sort().join(",") !== "attributedEntity,referencedWork" ||
+          origin.attributedEntity !== null || origin.referencedWork !== safeRecord(initial.origin).referencedWork) return false;
+      // Require a valid original authority, including its named entity.
+      try {
+        validateResearchClaimPropositionAuthority({ claimId: d.claimId,
+          claimType: d.claimType as Parameters<typeof validateResearchClaimPropositionAuthority>[0]["claimType"],
+          propositionKind: d.initialKind, origin: d.initialOrigin }, { required: true, allowAmbiguous: false });
+      } catch { return false; }
+      omitted = true;
+    }
+  }
+  return omitted;
+}
+
+function isRecoverableAdjudication(initialClaims: Array<Record<string, unknown>>, adjudication: Record<string, unknown>) {
+  return isRecoverableWorldStateAbstention(initialClaims, adjudication) ||
+    isRecoverableResearchEntityOmission(initialClaims, adjudication);
+}
+
 /** Rejected adjudications are durable outcomes, never accepted claim authority. */
 export async function recoverCreatorScriptBuildEditorialAdjudication(input: {
   proposal: Record<string, unknown>;
@@ -168,7 +208,7 @@ export async function recoverCreatorScriptBuildEditorialAdjudication(input: {
         reason = error instanceof CreatorScriptBuildStageExecutionError ? error.code :
           error instanceof Error ? error.message : "EDITORIAL_CLAIM_ORIGIN_ADJUDICATION_INVALID";
         recoverable = error instanceof ClaimPropositionAuthorityDisagreementError && adjudication !== null &&
-          isRecoverableWorldStateAbstention(input.initialClaims, adjudication);
+          isRecoverableAdjudication(input.initialClaims, adjudication);
       }
       return { accepted: false, operationId, recoverable, adjudication: safeAdjudication(adjudication),
         rejection: createCreatorScriptBuildAdjudicationRejectionDiagnostic({ ...input, adjudication, ordinal, reason }) };
@@ -178,16 +218,16 @@ export async function recoverCreatorScriptBuildEditorialAdjudication(input: {
     }
     priorRejection = outcome.rejection as CreatorScriptBuildJson;
     // Reconstruct eligibility from settled authority rather than trusting a replayed flag.
-    let confirmedAbstention = false;
+    let confirmedRecovery = false;
     if (ordinal === 1 && outcome.recoverable === true) {
       try {
         reconcileClaimPropositionAuthorities({ initialClaims: input.initialClaims, adjudication: outcome.adjudication });
       } catch (error) {
-        confirmedAbstention = error instanceof ClaimPropositionAuthorityDisagreementError &&
-          isRecoverableWorldStateAbstention(input.initialClaims, safeRecord(outcome.adjudication));
+        confirmedRecovery = error instanceof ClaimPropositionAuthorityDisagreementError &&
+          isRecoverableAdjudication(input.initialClaims, safeRecord(outcome.adjudication));
       }
     }
-    if (confirmedAbstention) continue;
+    if (confirmedRecovery) continue;
     throw new CreatorScriptBuildStageExecutionError({ category: "MODEL_CONTRACT",
       code: "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID", retryability: "NON_RETRYABLE",
       diagnostics: { adjudicationOrdinal: ordinal, adjudicationOperationId: String(outcome.operationId),

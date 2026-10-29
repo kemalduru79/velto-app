@@ -15415,7 +15415,9 @@ const generateSceneImage = async (
           throw new CreatorScriptBuildClientError({
             code: v2Result.state === "STALE"
               ? "PROJECT_STALE"
-              : "BUILD_FAILED",
+              : v2Result.failure?.code === "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID"
+                ? v2Result.failure.code
+                : "BUILD_FAILED",
             status: v2Result.state === "STALE" ? 409 : 422,
           });
         }

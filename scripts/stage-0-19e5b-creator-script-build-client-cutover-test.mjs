@@ -290,6 +290,15 @@ assert.doesNotMatch(
   /fallback|legacy flow instead/iu,
 );
 
+// Attribution failures expose a safe explanation, without internal diagnostics.
+for (const language of ["en", "tr"]) {
+  const message = creatorScriptBuildV2RecoveryMessage({
+    code: "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID", language,
+  });
+  assert.match(message, language === "en" ? /Research attribution/ : /Araştırma atıfları/);
+  assert.doesNotMatch(message, /proposal-item|operationId|MODEL_CONTRACT/);
+}
+
 // 40-50. Static cutover architecture guards.
 {
   const clientSource = fs.readFileSync(

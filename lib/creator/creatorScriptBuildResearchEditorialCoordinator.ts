@@ -46,7 +46,7 @@ import {
 } from "../research/creatorResearchIntent.ts";
 
 export const CREATOR_SCRIPT_BUILD_RESEARCH_EDITORIAL_COORDINATOR_VERSION =
-  "0.19E2A-A2" as const;
+  "0.19E2A-A3" as const;
 export const CREATOR_SCRIPT_BUILD_RESEARCH_OPERATION_CONTRACT_VERSION =
   "creator-script-build-research-v1" as const;
 export const CREATOR_SCRIPT_BUILD_EDITORIAL_OPERATION_CONTRACT_VERSION =

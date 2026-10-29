@@ -72,7 +72,7 @@ function createSnapshot(overrides = {}) {
       claimAuthorityResolver: "0.19C",
       creatorScriptAcceptance: "0.19D",
       creatorScriptBuild: "0.19E1",
-      creatorScriptResearchEditorialCoordinator: "0.19E2A-A2",
+      creatorScriptResearchEditorialCoordinator: "0.19E2A-A3",
       creatorScriptBuildAuthorityCoordinator: "0.19E2B",
       creatorScriptBuildScriptGenerationCoordinator: "0.19E3A",
     },

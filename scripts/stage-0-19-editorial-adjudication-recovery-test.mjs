@@ -5,6 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { createRequire } from "node:module";
 import * as contract from "../lib/creator/creatorScriptBuildProviderContract.ts";
+import * as creatorScript from "../lib/creator/creatorScript.ts";
 import * as graph from "../lib/research/claimEvidenceGraph.ts";
 import { reconcileClaimPropositionAuthorities } from "../lib/research/claimPropositionAuthority.ts";
 import { createCreatorScriptBuildEditorialRecoveryContext } from "../lib/creator/creatorScriptBuildEditorialAdjudicationRecovery.ts";
@@ -17,6 +18,7 @@ const exports = {};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/creator/creatorScriptBuildProviders.server.ts", "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, { exports, process: {env:{}}, require: name => {
+  if (name === "./creatorScript.ts") return creatorScript;
   if (name === "node:crypto") return require(name);
   if (name === "./creatorScriptBuildProviderContract.ts") return contract;
   if (name === "./creatorScriptBuildResearchEditorialCoordinator.ts") return {CreatorScriptBuildStageExecutionError};
@@ -209,6 +211,7 @@ for(const unknown of [false,true]) test(`actual responses.create editorial reque
   const provider={};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/creator/creatorScriptBuildProviders.server.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
     exports:provider,process:{env:{OPENAI_API_KEY:"inert-test-only"}},require:name=>{
+      if(name === "./creatorScript.ts")return creatorScript;
       if(name === "node:crypto")return require(name);
       if(name === "openai")return {default:FakeOpenAI};
       if(name === "./creatorScriptBuildProviderContract.ts")return contract;
@@ -234,4 +237,67 @@ test("full claim comparison survives bounded failure diagnostics without truncat
   for(const attempt of children(h.repository))assert.equal(diagnostic(attempt).comparisons[0].claimText,text);
   const referenced=h.repository.operations.get(h.repository.build.failure.diagnostics.adjudicationOperationId);
   assert.equal(diagnostic(referenced).comparisons[0].claimText,text);
+});
+
+// Synthetic reproduction of the observed same-kind, same-work entity omission.
+const researchOrigin = {attributedEntity:"Example Research Institute",referencedWork:"Example originating study"};
+const researchClaim = {...claim,propositionKind:"original_research_result",origin:researchOrigin};
+test("research entity omission gets one durable correction without accepting the omission",async()=>{
+  const h=setup({claim:researchClaim,provider:async(request,ordinal)=>{
+    assert.ok(request.system.includes("preserve the supplied attributedEntity exactly"));
+    if(ordinal===2){
+      assert.ok(request.system.includes("omitted entity"));
+      assert.equal(request.user.previousRejection.comparisons[0].adjudicatedOrigin.attributedEntity,null);
+      assert.deepEqual(request.user.claims[0].origin,researchOrigin);
+    }
+    return adjudication("original_research_result",ordinal===1?{...researchOrigin,attributedEntity:null}:researchOrigin);
+  }});
+  const result=await h.result();
+  assert.equal(result.build.state,"EDITORIAL_COMPILED");
+  const attempts=children(h.repository);
+  assert.equal(attempts.length,2);
+  assert.equal(attempts[0].resultReference.outcome.accepted,false);
+  assert.equal(attempts[0].resultReference.outcome.recoverable,true);
+  assert.equal(attempts[1].resultReference.outcome.accepted,true);
+  const before=h.requests.length;
+  await h.result();
+  assert.equal(h.requests.length,before,"settled work must not call provider again");
+});
+for(const [name,origin,expectedCalls] of [
+  ["repeated omission",{...researchOrigin,attributedEntity:null},2],
+  ["substituted entity",{...researchOrigin,attributedEntity:"Other Institute"},1],
+  ["changed work",{...researchOrigin,attributedEntity:null,referencedWork:"Other work"},1],
+  ["removed work",{attributedEntity:null,referencedWork:null},1],
+]) test(`research attribution ${name} remains fail closed`,async()=>{
+  const h=setup({claim:researchClaim,provider:async()=>adjudication("original_research_result",origin)});
+  await assert.rejects(h.result(),e=>e.code === "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID");
+  assert.equal(h.repository.build.state,"FAILED");
+  assert.equal(h.repository.build.failure.code,"CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID");
+  assert.equal(children(h.repository).length,expectedCalls);
+  assert.equal(h.repository.build.resultAuthority,null);
+  assert.equal(h.repository.build.checkpoints.persistence,undefined);
+});
+test("entity omission cannot be directly reconciled or accepted",()=>{
+  assert.throws(()=>reconcileClaimPropositionAuthorities({initialClaims:[{...researchClaim,claimId:"proposal-item-1"}],
+    adjudication:adjudication("original_research_result",{...researchOrigin,attributedEntity:null})}),/EDITORIAL_CLAIM_ORIGIN_DISAGREEMENT/u);
+});
+
+test("resume research entity correction reuses settled proposal and rejected first answer",async()=>{
+  const h=setup({claim:researchClaim,provider:async()=>adjudication("original_research_result",{...researchOrigin,attributedEntity:null})});
+  const transition=h.repository.transitionOperation.bind(h.repository);
+  h.repository.transitionOperation=async input=>{
+    const result=await transition(input);
+    if(input.resultReference?.outcome?.rejection?.adjudicationOrdinal===1)
+      throw new CreatorScriptBuildCoordinatorBlockedError({code:"SIMULATED_CRASH",buildId});
+    return result;
+  };
+  await assert.rejects(h.result(),e=>e.code === "SIMULATED_CRASH");
+  const restored=setup({repository:new MemoryRepository(clone(h.repository.build),clone([...h.repository.operations.values()])),
+    provider:async request=>{
+      assert.equal(request.user.adjudicationOrdinal,2);
+      return adjudication("original_research_result",researchOrigin);
+    }});
+  assert.equal((await restored.result()).build.state,"EDITORIAL_COMPILED");
+  assert.equal(restored.requests.length,1);
+  assert.equal(children(restored.repository).length,2);
 });

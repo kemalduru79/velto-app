@@ -131,10 +131,10 @@ test("concrete rejection persists exact comparison and never uses abstention rec
 
 test("prior settled reconciliation contracts cannot be reinterpreted",async()=>{
   assert.equal(CLAIM_PROPOSITION_AUTHORITY_VERSION,"claim-proposition-authority-v2");
-  assert.equal(CREATOR_SCRIPT_BUILD_EDITORIAL_ADJUDICATION_POLICY_VERSION,"creator-script-build-editorial-adjudication-recovery-v2");
-  for(const state of ["FAILED","RESEARCH_READY"]){
+  assert.equal(CREATOR_SCRIPT_BUILD_EDITORIAL_ADJUDICATION_POLICY_VERSION,"creator-script-build-editorial-adjudication-recovery-v3");
+  for(const state of ["FAILED","RESEARCH_READY"]) for(const previousVersion of ["0.19E2A-A1","0.19E2A-A2"]){
     const repository=new MemoryRepository(buildRecord(createSnapshot(),{state}));
-    repository.build.snapshot.contractVersions.creatorScriptResearchEditorialCoordinator="0.19E2A-A1";
+    repository.build.snapshot.contractVersions.creatorScriptResearchEditorialCoordinator=previousVersion;
     const before=JSON.stringify(repository.build);let calls=0;
     await assert.rejects(runCreatorScriptBuildResearchEditorialCoordinator({ownerId,buildId,dependencies:{repository,
       getCurrentProjectRevision:async()=>null,executeResearch:async()=>{calls++;},executeEditorialProposal:async()=>{calls++;}}}),/CONTRACT_MISMATCH/u);
@@ -153,4 +153,22 @@ test("actual world-state abstention still uses the existing two-attempt recovery
   assert.equal((await h.execute()).proposal.items[0].claim.propositionKind,"world_state");assert.equal(h.calls(),2);
   const outcomes=[...h.repository.operations.values()].map(o=>o.resultReference.outcome);
   assert.equal(outcomes[0].accepted,false);assert.equal(outcomes[0].recoverable,true);assert.equal(outcomes[1].accepted,true);
+});
+
+test("two same-work research entity omissions recover together with unchanged prose and evidence",async()=>{
+  const claims=Array.from({length:3},(_,index)=>({...fixture.initialClaims[0],claimId:`proposal-item-${index+1}`}));
+  const h=harness(claims,(ordinal)=>({claims:claims.map((claim,index)=>({claimId:claim.claimId,
+    propositionKind:claim.propositionKind,origin:ordinal===1 && index>0?{...claim.origin,attributedEntity:null}:claim.origin}))}));
+  const before=JSON.stringify({items:h.items,authority:h.authority});
+  const result=await h.execute();
+  assert.equal(h.calls(),2);
+  assert.deepEqual(result.proposal.items,h.items);
+  assert.equal(JSON.stringify({items:h.items,authority:h.authority}),before);
+});
+test("an unrelated disagreement in the same batch prevents omission recovery",async()=>{
+  const claims=Array.from({length:2},(_,index)=>({...fixture.initialClaims[0],claimId:`proposal-item-${index+1}`}));
+  const h=harness(claims,{claims:claims.map((claim,index)=>({claimId:claim.claimId,propositionKind:claim.propositionKind,
+    origin:index===0?{...claim.origin,attributedEntity:null}:{...claim.origin,referencedWork:"Different work"}}))});
+  await assert.rejects(h.execute(),e=>e.code === "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID");
+  assert.equal(h.calls(),1);
 });

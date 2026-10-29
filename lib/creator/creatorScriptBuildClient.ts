@@ -330,6 +330,10 @@ export function creatorScriptBuildV2RecoveryMessage(input: {
       return en
         ? "The script build is reconciling its saved state. Retry from the current project without switching to the legacy flow."
         : "Metin oluşturma işlemi kayıtlı durumunu uzlaştırıyor. Eski akışa geçmeden mevcut projeden tekrar dene.";
+    case "CREATOR_SCRIPT_BUILD_CLAIM_ORIGIN_ADJUDICATION_INVALID":
+      return en
+        ? "Research attribution could not be verified consistently, so script generation stopped. Your saved script is protected. Review the research and retry."
+        : "Araştırma atıfları tutarlı biçimde doğrulanamadığı için metin oluşturma durduruldu. Kayıtlı metnin korunuyor. Araştırmayı inceleyip tekrar dene.";
     case "BUILD_FAILED":
       return en
         ? "The full script could not be completed safely. Your project remains protected; review the current project and retry."

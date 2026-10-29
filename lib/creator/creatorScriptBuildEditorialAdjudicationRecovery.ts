@@ -14,7 +14,7 @@ import {
 import type { CreatorScriptBuildRepository } from "../persistence/creatorScriptBuilds/types.ts";
 
 export const CREATOR_SCRIPT_BUILD_EDITORIAL_ADJUDICATION_POLICY_VERSION =
-  "creator-script-build-editorial-adjudication-recovery-v2" as const;
+  "creator-script-build-editorial-adjudication-recovery-v3" as const;
 
 type Step = {
   kind: "proposal" | "adjudication";
