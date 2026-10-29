@@ -197,7 +197,7 @@ assert.equal(assessCreatorScriptGenerationAuthority({
 const page = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(page, /startCreatorNewProjectLifecycle\(\{/);
 assert.match(page, /clearBriefDraft: \(\) => window\.localStorage\.removeItem\(CREATOR_BRIEF_DRAFT_STORAGE_KEY\)/);
-assert.match(page, /persist: \(\) => persistProject\(false, \{ creatorMentorResult: persistedStrategyResult \}\)/);
+assert.match(page, /persist: async \(\) => \{ await persistProject\(false, \{ creatorMentorResult: persistedStrategyResult \}\); \}/);
 assert.match(page, /CREATOR_SCRIPT_REQUEST_AUTHORITY/);
 assert.match(page, /expectedProjectUpdatedAt: projectUpdatedAtRef\.current/);
 assert.match(page, /topic: normalizeCreatorTopicAuthority\(input\)/);

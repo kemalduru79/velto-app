@@ -130,12 +130,12 @@ assert.equal(
   "an older response must never regress revision authority",
 );
 
-const saveResponseStart = page.indexOf("const data = await res.json();");
+const saveResponseStart = page.indexOf("const data = await readCreatorProjectSaveResponse(res);");
 const saveResponseEnd = page.indexOf("await fetchProjects();", saveResponseStart);
 const saveResponseBlock = page.slice(saveResponseStart, saveResponseEnd);
 assert.ok(saveResponseStart >= 0 && saveResponseEnd > saveResponseStart, "save response block must exist");
 assert.ok(
-  saveResponseBlock.indexOf("if (!res.ok)") < saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
+  saveResponseBlock.indexOf("readCreatorProjectSaveResponse(res)") < saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
   "HTTP failure must be handled before active-binding discard",
 );
 assert.ok(

@@ -1,3 +1,4 @@
+import { createCreatorFinalExportProjectEnvelope, createCreatorFinalExportRevisionBinding } from "@/lib/creator/creatorFinalExportPersistence";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getPersistenceServices } from "@/lib/persistence";
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     if (error) return json({ ok: false, error: "Final export pre-render rejection could not be reconciled safely." }, 503);
     return json({ ok: false, error: "Final export scene media identity is invalid.", failureStage: "pre_render_validation", renderAccepted: false }, 409);
   }
-  const { data: run, error: runError } = await supabase.from("velto_creator_final_export_runs").select("state,public_url,storage_path,size_bytes,output_sha256,output,production_signature,production_signature_sha256,manifest_sha256,render_payload_sha256").eq("job_id", jobId).single();
+  const { data: run, error: runError } = await supabase.from("velto_creator_final_export_runs").select("project_updated_at,state,public_url,storage_path,size_bytes,output_sha256,output,production_signature,production_signature_sha256,manifest_sha256,render_payload_sha256").eq("job_id", jobId).single();
   if (runError || run.production_signature_sha256 !== signatureSha256 || run.manifest_sha256 !== manifestSha256 || run.render_payload_sha256 !== renderPayloadSha256) {
     return json({ ok: false, error: "Final export run provenance is invalid." }, 409);
   }
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     sceneCount: Number(output.sceneCount || 0), finalExportJobId: jobId, outputSha256: String(output.outputSha256 || output.output_sha256 || ""),
     productionSignature: String(run.production_signature || ""),
   };
+  let projectExportEnvelope;
+  try {
+    projectExportEnvelope = createCreatorFinalExportProjectEnvelope(project, exportedMovieResult);
+  } catch {
+    return json({ ok: false, error: "Saved Creator project state requires repair. Output was retained.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" }, 409);
+  }
   // The install RPC reads snake_case keys via jsonb_to_recordset; project references are camelCase in TypeScript.
   const references = extractProjectMediaReferences({ ...project, exported_movie_url: movieUrl }).map((reference) => ({
     url: reference.url,
@@ -100,10 +107,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ jobId:
     reference_key: reference.referenceKey,
   }));
   const { data: installed, error: installError } = await supabase.rpc("velto_install_creator_final_export", {
-    p_job_id: jobId, p_exported_movie_result: exportedMovieResult, p_references: references,
+    p_job_id: jobId, p_exported_movie_result: projectExportEnvelope, p_references: references,
   });
   if (installError) return json({ ok: false, error: "Final export installation failed safely." }, 409);
   const installation = record(installed);
+  if (installation.status === "installed" || installation.status === "already_installed") {
+    const canonical = await getPersistenceServices().projectRepository.getForOwner(job.projectId, job.userId);
+    installation.revisionBinding = canonical ? createCreatorFinalExportRevisionBinding({
+      projectId: job.projectId, jobId, previousProjectUpdatedAt: String(run.project_updated_at || ""),
+      project: canonical, exportedMovieResult: projectExportEnvelope,
+    }) : null;
+  }
   const newlyInstalled = installation.status === "installed";
   if (newlyInstalled && Array.isArray(payload.musicUsageIdentities)) {
     for (const identity of payload.musicUsageIdentities) {

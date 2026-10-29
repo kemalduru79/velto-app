@@ -1,3 +1,4 @@
+import { classifyCreatorProjectSaveFailure } from "./projectSaveErrors.ts";
 import type { CreatorScript } from "./creatorScript.ts";
 
 export function normalizeCreatorTopicAuthority(value: unknown) {
@@ -70,12 +71,7 @@ export function startCreatorNewProjectLifecycle(input: {
 }
 
 export function classifyCreatorProjectSaveError(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  if (/changed|PROJECT_SAVE_CONFLICT/i.test(message)) return "cas_conflict" as const;
-  if (/session|auth|Unauthorized/i.test(message)) return "authentication" as const;
-  if (/not found|owned/i.test(message)) return "project_identity" as const;
-  if (/required|zorunlu|invalid/i.test(message)) return "validation" as const;
-  return "persistence_failure" as const;
+  return classifyCreatorProjectSaveFailure(error);
 }
 
 export function assessCreatorScriptGenerationAuthority(input: {

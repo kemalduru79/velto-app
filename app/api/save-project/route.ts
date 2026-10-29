@@ -108,6 +108,13 @@ async function handleSaveProjectRequest(
     const persistedCreatorStateAuthority = persistedCreatorProject
       ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
       : null;
+    // Durable final export always starts with canonical Creator state. Its absence
+    // after installation must never be treated as permission to recreate it from an editor.
+    if (persistedCreatorStateAuthority?.status === "legacy_absent" &&
+        persistedCreatorStateAuthority.envelope.finalExportJobId) {
+      return NextResponse.json({ error: "Saved Creator project state requires repair. Keep the current editor open.",
+        code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" }, { status: 409 });
+    }
     const quarantinedCreatorState = persistedCreatorStateAuthority?.status.startsWith("malformed_") === true;
     if (persistedCreatorStateAuthority?.status === "malformed_invalid_script") {
       return NextResponse.json(

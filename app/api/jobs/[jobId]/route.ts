@@ -1,3 +1,4 @@
+import { normalizeCreatorFinalExportRevisionBinding } from "@/lib/creator/creatorFinalExportPersistence";
 import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -30,7 +31,11 @@ function publicJob(job: VeltoJobRecord) {
     return {
       id: job.id, projectId: job.projectId, jobType: job.jobType, status: job.status,
       phase: job.status === "queued" ? "queued" : job.status === "running" ? "rendering" : job.status === "succeeded" ? (job.result?.outputReady === true ? "completed" : "completed_stale") : "failed",
-      output: { ready: job.status === "succeeded" && job.result?.outputReady === true, movie },
+      output: { ready: job.status === "succeeded" && job.result?.outputReady === true, movie,
+        revisionBinding: normalizeCreatorFinalExportRevisionBinding(
+          (job.result?.installation as Record<string, unknown> | null)?.revisionBinding,
+        ),
+      },
       failureCode: job.errorCode, failureMessage: job.errorMessage,
       attempts: job.attempts, maxAttempts: job.maxAttempts, startedAt: job.startedAt,
       completedAt: job.completedAt, createdAt: job.createdAt, updatedAt: job.updatedAt,

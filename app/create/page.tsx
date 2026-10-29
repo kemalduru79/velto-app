@@ -28,6 +28,8 @@
 // X.7.21 Global Background Ownership Fix: create page owns visible pastel background layer inside main.
 // X.7.22 Section Blend & Depth Pass: section surfaces blended into the owned pastel background.
 // X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
+import { CreatorProjectSaveError, readCreatorProjectSaveResponse, creatorProjectSaveFailureDiagnostic, creatorProjectSaveRecoveryMessage } from "@/lib/creator/projectSaveErrors";
+import { resolveCreatorFinalExportRevisionAdvance } from "@/lib/creator/creatorFinalExportPersistence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toCreatorPublishingMetadataPackage } from "@/lib/creator/publishingMetadataPayload";
 import { useRouter } from "next/navigation";
@@ -4433,7 +4435,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const suspendAutosaveRef = useRef(false);
   const projectUpdatedAtRef = useRef("");
   const currentProjectIdRef = useRef("");
-  const projectSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const projectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const projectGenerationRef = useRef(0);
   const projectSaveAttemptRef = useRef(0);
   const projectSaveConflictGenerationRef = useRef<number | null>(null);
@@ -5072,6 +5074,22 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
     return session.access_token;
   }, []);
+  const adoptCreatorFinalExportRevision = (binding: unknown, jobId: string, origin: { projectId: string; generation: number }) => {
+    const revision = resolveCreatorFinalExportRevisionAdvance({ binding, jobId, origin,
+      active: { projectId: currentProjectIdRef.current, generation: projectGenerationRef.current, expectedUpdatedAt: projectUpdatedAtRef.current },
+    });
+    if (revision) {
+      projectUpdatedAtRef.current = revision;
+      return true;
+    }
+    // No blind refresh or rebase: local content stays in this editor.
+    if (origin.projectId === currentProjectIdRef.current && origin.generation === projectGenerationRef.current) {
+      projectSaveConflictGenerationRef.current = origin.generation;
+      creatorPersistenceCurrentRef.current = false;
+      setError(creatorProjectSaveRecoveryMessage(new CreatorProjectSaveError({ code: "PROJECT_SAVE_CONFLICT", status: 409 }), uiLanguage === "en" ? "en" : "tr"));
+    }
+    return false;
+  };
   const creatorAudioPreviewPlayback = useCreatorAudioPreviewPlayback(getAccessTokenOrThrow);
 
   const notifyCreditAccountChanged = (credits?: { account?: unknown } | null) => {
@@ -11445,6 +11463,7 @@ const generateSceneImage = async (
   };
 
   const handleExportMovie = async (forceRebuild = false) => {
+    const exportOrigin = { projectId: currentProjectIdRef.current, generation: projectGenerationRef.current };
     let exportAuthorityScenes = scenes;
     if (isCreatorLabFlow) {
       const observedSources = { ...creatorSceneVideoSourceDurations };
@@ -11777,6 +11796,8 @@ const generateSceneImage = async (
               setSaveMessage(uiLanguage === "en" ? "Export completed, but the project changed. The result was retained safely." : "Export tamamlandı ancak proje değişti. Sonuç güvenle korundu.");
               return;
             }
+            if (exportOrigin.projectId !== currentProjectIdRef.current || exportOrigin.generation !== projectGenerationRef.current || job.projectId !== exportOrigin.projectId) return;
+            adoptCreatorFinalExportRevision(job.output.revisionBinding, durableJobId, exportOrigin);
             data = { ok: true, ...job.output.movie };
             break;
           }
@@ -12619,12 +12640,10 @@ const generateSceneImage = async (
       }),
     });
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Kaydedilemedi.");
+    const data = await readCreatorProjectSaveResponse(res);
+    if (effectiveProjectId && data.project.id !== effectiveProjectId) {
+      throw new CreatorProjectSaveError({ code: "PROJECT_SAVE_RESPONSE_IDENTITY_INVALID", status: res.status });
     }
-
     if (!lifecycleOverrides.forceNewProject && data?.project?.id) {
       const advancedRevision = resolveCreatorProjectRevisionAdvance({
         responseProjectId: String(data.project.id || ""),
@@ -12647,7 +12666,7 @@ const generateSceneImage = async (
       currentProjectIdRef.current = data.project.id;
       setLoadProjectId(data.project.id);
       replaceProjectUrlIdentity(data.project.id);
-      projectUpdatedAtRef.current = String(data.project.updated_at || "");
+      if (!effectiveProjectId) projectUpdatedAtRef.current = data.project.updated_at;
     }
     if (isCreatorLabFlow) setCreatorPublishReadinessRevision((current) => current + 1);
 
@@ -12819,7 +12838,7 @@ const generateSceneImage = async (
       }
       return result;
     } catch (saveError) {
-      if (classifyCreatorProjectSaveError(saveError) === "cas_conflict") {
+      if (["cas_conflict", "repair_required"].includes(classifyCreatorProjectSaveError(saveError))) {
         projectSaveConflictGenerationRef.current = binding.generation;
       }
       if (saveAttempt === projectSaveAttemptRef.current) creatorPersistenceCurrentRef.current = false;
@@ -12882,15 +12901,9 @@ const generateSceneImage = async (
           sceneCount: durationReconciliation.scenes.length,
         }),
       });
-    } catch (e: any) {
+    } catch (saveError) {
       setSaveMessage("");
-      setError(
-        typeof e?.message === "string" && e.message.includes("changed")
-          ? (uiLanguage === "en"
-              ? "This project changed elsewhere. Reload before retrying; your local work is still here."
-              : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.")
-          : e?.message || "Kaydetme sırasında hata oluştu.",
-      );
+      setError(creatorProjectSaveRecoveryMessage(saveError, uiLanguage === "en" ? "en" : "tr"));
     } finally {
       setIsSavingProject(false);
     }
@@ -15374,7 +15387,7 @@ const generateSceneImage = async (
         },
       };
       const strategyAuthorityPersisted = await persistCreatorStrategyAuthority({
-        persist: () => persistProject(false, { creatorMentorResult: persistedStrategyResult }),
+        persist: async () => { await persistProject(false, { creatorMentorResult: persistedStrategyResult }); },
         advanceAuthority: () => {
           const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
             projectId: currentProjectIdRef.current || currentProjectId,
@@ -19438,19 +19451,14 @@ const generateSceneImage = async (
         setSaveMessage(ui.autoSaved);
       } catch (saveError) {
         if (autosaveGeneration !== projectGenerationRef.current) return;
-        const saveErrorCategory = classifyCreatorProjectSaveError(saveError);
         console.error("CREATOR_PROJECT_AUTOSAVE_FAILED", {
           projectId: currentProjectIdRef.current || currentProjectId,
           generation: autosaveGeneration,
           expectedUpdatedAtPresent: Boolean(projectUpdatedAtRef.current),
-          category: saveErrorCategory,
+          ...creatorProjectSaveFailureDiagnostic(saveError),
         });
         setSaveMessage("");
-        setError(
-          saveErrorCategory === "cas_conflict"
-            ? (uiLanguage === "en" ? "This project changed elsewhere. Reload before retrying; your local work is still here." : "Bu proje başka bir yerde değişti. Tekrar denemeden önce yeniden yükle; yerel çalışman korunuyor.")
-            : "Otomatik kaydetme sırasında hata oluştu.",
-        );
+        setError(creatorProjectSaveRecoveryMessage(saveError, uiLanguage === "en" ? "en" : "tr"));
       }
     }, 2000);
 
@@ -19619,18 +19627,29 @@ const generateSceneImage = async (
     const jobId = window.localStorage.getItem(storageKey);
     if (!jobId) return;
     let cancelled = false;
+    let timer: number | undefined;
+    const exportOrigin = { projectId: currentProjectIdRef.current, generation: projectGenerationRef.current };
     const poll = async () => {
       try {
+        if (window.localStorage.getItem(storageKey) !== jobId) {
+          cancelled = true;
+          window.clearInterval(timer);
+          return;
+        }
         const token = await getAccessTokenOrThrow();
         const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
           headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
         });
         const body = await response.json().catch(() => ({}));
-        if (cancelled || !response.ok) return;
+        if (cancelled || window.localStorage.getItem(storageKey) !== jobId || !response.ok) return;
         const job = body?.job;
         if (job?.status === "succeeded") {
+          cancelled = true;
+          window.clearInterval(timer);
           window.localStorage.removeItem(storageKey);
           if (job?.output?.ready === true && job?.output?.movie?.movieUrl) {
+            if (exportOrigin.projectId !== currentProjectIdRef.current || exportOrigin.generation !== projectGenerationRef.current || job.projectId !== exportOrigin.projectId) return;
+            adoptCreatorFinalExportRevision(job.output.revisionBinding, jobId, exportOrigin);
             const movie = job.output.movie;
             setExportedMovieUrl(String(movie.movieUrl));
             setExportMovieResult({
@@ -19642,6 +19661,8 @@ const generateSceneImage = async (
           }
           setIsExportingMovie(false);
         } else if (job?.status === "failed" || job?.status === "cancelled") {
+          cancelled = true;
+          window.clearInterval(timer);
           window.localStorage.removeItem(storageKey);
           setIsExportingMovie(false);
           setError(job?.failureMessage || "Final export failed safely.");
@@ -19654,7 +19675,7 @@ const generateSceneImage = async (
       }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
+    if (!cancelled) timer = window.setInterval(() => void poll(), 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [currentProjectId, isCreatorLabFlow]);
   const creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete;
