@@ -1,0 +1,57 @@
+{
+  "version": "stage-5e1g-b-container-runtime-v1",
+  "status": "BLOCKED_UNPROVISIONED",
+  "blockerCodes": [
+    "TRIXIE_ZLIB_HIGH_VULNERABILITY_UNRESOLVED",
+    "TRIXIE_PACKAGING_TOOLCHAIN_REMOVAL_NOT_VERIFIED",
+    "PINNED_BASE_IMAGE_NOT_LOCALLY_AVAILABLE",
+    "PINNED_WHEELS_NOT_LOCALLY_AVAILABLE",
+    "PROVISIONED_WORKER_IMAGE_NOT_BUILT",
+    "PYTHON_NUMPY_SCIPY_IDENTITY_NOT_VERIFIED",
+    "CONTAINER_ISOLATION_NOT_EXECUTED"
+  ],
+  "engine": {
+    "executable": "/Applications/Docker.app/Contents/Resources/bin/docker",
+    "executableSha256": "31201b50f14101c2a2bd8a1fdc49055f985d5007d5ba86c177ad2dedfa309b9b",
+    "version": "29.6.2"
+  },
+  "hostArchitecture": "arm64",
+  "targetPlatform": "linux/arm64",
+  "image": {
+    "reference": null,
+    "imageId": null,
+    "repoDigest": null
+  },
+  "dependencies": {
+    "python": null,
+    "pythonExecutable": null,
+    "pythonExecutableSha256": null,
+    "numpy": null,
+    "numpyDistributionSha256": null,
+    "scipy": null,
+    "scipyDistributionSha256": null
+  },
+  "worker": {
+    "containerPath": "/opt/velto/scientific_compute_v1.py",
+    "sha256": "0ba42e3aa5b02a8639551518a3152a88d57a354fc26ba6d1c12e0f5bc00054ce"
+  },
+  "limits": {
+    "cpus": 1,
+    "memoryBytes": 536870912,
+    "pids": 64,
+    "tmpfsBytes": 67108864,
+    "timeoutMs": 5000,
+    "maximumInputBytes": 1000000,
+    "maximumOutputBytes": 1000000
+  },
+  "isolation": {
+    "network": "none",
+    "readOnlyRoot": true,
+    "user": "65532:65532",
+    "noNewPrivileges": true,
+    "dropCapabilities": "ALL",
+    "pullPolicy": "never",
+    "mounts": "NONE",
+    "tmpfsOptions": "rw,noexec,nosuid,nodev"
+  }
+}

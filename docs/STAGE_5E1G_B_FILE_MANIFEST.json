@@ -1,0 +1,61 @@
+{
+  "version": "stage-5e1g-b-file-manifest-v1",
+  "baselineCommit": "2ffcf729841d71ce54ed9009c60d197fab01cd40",
+  "liveDisposition": "NO_GO",
+  "executionMode": "OFFLINE_LOCAL_STDLIB_WITH_CONTAINER_SCIPY_BLOCKED",
+  "containerRuntimeStatus": "BLOCKED_UNPROVISIONED",
+  "entries": [
+    {
+      "path": "docs/STAGE_5E1G_B_R1_CONTAINER_PROVISIONING.md",
+      "sha256": "b85273d072ddefaccdb7c7f42b34dd8e73ad36a128e9801bfb2ceef67cf6a304"
+    },
+    {
+      "path": "docs/STAGE_5E1G_B_R2_RUNTIME_PROVISIONING_PLAN.md",
+      "sha256": "8acacaf0761234a51a63a96b56c8e3fa2dc7a3a0ec966d4d7f9cc98e3d6fb0d2"
+    },
+    {
+      "path": "docs/STAGE_5E1G_B_R3_SECURITY_REVIEW.md",
+      "sha256": "cf1eab30778c541b1b8e6658328fbfb67b8998bab697856fb9821c0ff1dba628"
+    },
+    {
+      "path": "docs/STAGE_5E1G_B_R4_RUNTIME_SELECTION.md",
+      "sha256": "c6d110ebc2f63a89e4752a0cdae3c605798a81e0cb644a2afe38abe6610fb012"
+    },
+    {
+      "path": "lib/creator/scientificReview/calculationContracts.ts",
+      "sha256": "8e1ebc93771185fc84e7195d5de6c1f9b17141824a29e2d1c943e04489aa4793"
+    },
+    {
+      "path": "lib/creator/scientificReview/calculationRunner.ts",
+      "sha256": "36a80dc51fb7e579a70d325197d3d3c681cbce2a256112a085c47209fa70395f"
+    },
+    {
+      "path": "lib/creator/scientificReview/containerRuntime.ts",
+      "sha256": "28c3504fb6aa50c6fcc717dce4618b340f26dfc4062afa2a840146d03d2b1c67"
+    },
+    {
+      "path": "lib/creator/scientificReview/index.ts",
+      "sha256": "7edb6bd940d612bd2a5565c8e4c374f004a84cdf0464f50a4396a4c6bbc8cbb9"
+    },
+    {
+      "path": "lib/creator/scientificReview/scientificComputeContainerRuntime.v1.json",
+      "sha256": "740697224fa40e2fb5ae307cc7873b462a479c9879ae38f5a2c6e6544ed98283"
+    },
+    {
+      "path": "lib/creator/scientificReview/scientificComputeRuntime.v1.json",
+      "sha256": "2af160c81ce74fb0f861db8acc88497e3dbaecbd4f771db672db54cec70ceac3"
+    },
+    {
+      "path": "scripts/scientific-review/scientific_compute_v1.py",
+      "sha256": "0ba42e3aa5b02a8639551518a3152a88d57a354fc26ba6d1c12e0f5bc00054ce"
+    },
+    {
+      "path": "scripts/stage-0-8a-critical-regression.mjs",
+      "sha256": "62cc8e8cf8c80af8469d5649ecd1f2d929cf66ebcdfe761e469b73647a658cd2"
+    },
+    {
+      "path": "scripts/stage-5e1g-b-scientific-computing-test.mjs",
+      "sha256": "9e3b84dfcb81b944a7612919590bcfaecfdaf506861478347f8c0a3b733c669a"
+    }
+  ]
+}
