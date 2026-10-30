@@ -6,7 +6,7 @@ import { EMPTY_CREATOR_AUDIO_TIMELINE } from "../lib/creator/audioTimeline.ts";
 import { buildCreatorProjectState } from "../lib/creator/projectState.ts";
 
 const ids = ["scene-a", "scene-b", "scene-c"];
-const coverage = (id, source, kind) => [{ id: `${id}.coverage.1`, creatorSceneId: id, startSec: 0, endSec: 10, durationSec: 10, kind, sourceUrl: source, sourceType: kind === "video" ? "generated_video" : "scene_image", renderer: kind === "video" ? "native_video" : "native_zoompan_v1", ...(kind === "image" ? { motionPreset: "slow_push_in" } : {}) }];
+const coverage = (id, source, kind) => [{ id: `${id}.coverage.1`, creatorSceneId: id, startSec: 0, endSec: 10, durationSec: 10, kind, sourceUrl: source, sourceType: kind === "video" ? "generated_video" : "scene_image", renderer: kind === "video" ? "native_video" : "static_image" }];
 const scene = (id, index) => {
   const exportSource = index === 1 ? "video" : "image";
   const image = `https://assets.test/${id}.jpg`;
@@ -63,8 +63,8 @@ blocked("SCENE_AUTHORITATIVE_VISUAL", (value) => { value.project.scenes[0].image
 blocked("SCENE_VISUAL_COVERAGE_VALID", (value) => { value.project.scenes[0].visualCoveragePlan[0].endSec = 9; value.project.scenes[0].visualCoveragePlan[0].durationSec = 9; });
 blocked("SCENE_VISUAL_COVERAGE_VALID", (value) => { value.project.scenes[0].visualCoveragePlan.push({ ...value.project.scenes[0].visualCoveragePlan[0], id: "gap", startSec: 11, endSec: 12, durationSec: 1 }); });
 blocked("SCENE_VISUAL_COVERAGE_VALID", (value) => { value.project.scenes[0].visualCoveragePlan[0].sourceUrl = "https://unrelated.test/not-authorized.jpg"; });
-blocked("SCENE_VISUAL_COVERAGE_VALID", (value) => { value.project.scenes[0].visualCoveragePlan[0].renderer = "static_image"; });
-assert.equal(evaluate((value) => { value.project.scenes[0].visualCoveragePlan[0].renderer = "native_zoompan_v1"; }).status, "ready", "native zoom/pan image coverage passes");
+blocked("SCENE_VISUAL_COVERAGE_VALID", (value) => { value.project.scenes[0].visualCoveragePlan[0].renderer = "native_zoompan_v1"; });
+assert.equal(evaluate((value) => { value.project.scenes[0].visualCoveragePlan[0].renderer = "static_image"; }).status, "ready", "static image coverage passes");
 blocked("SCENE_REQUIRED_AUDIO_PRESENT", (value) => { value.project.scenes[0].audioUrl = ""; });
 blocked("SCENE_MEASURED_AUDIO_TIMING_VALID", (value) => { value.project.scenes[0].timing.narrationDuration = 0; });
 blocked("SCENE_MEASURED_AUDIO_TIMING_VALID", (value) => { value.project.scenes[0].timing.narrationDuration = Number.NaN; });

@@ -36,7 +36,7 @@ assert.equal(coverage.length, 2);
 assert.deepEqual(coverage.map((beat) => beat.kind), ["video", "image"]);
 assert.deepEqual(coverage.map((beat) => beat.durationSec), [10, 10.53]);
 assert.deepEqual(coverage.map((beat) => [beat.startSec, beat.endSec]), [[0, 10], [10, 20.53]]);
-assert.equal(coverage[1].renderer, "native_zoompan_v1");
+assert.equal(coverage[1].renderer, "static_image");
 assert.equal(JSON.stringify(assetHistory), historyBefore, "active composition must not mutate asset history");
 assert.equal(scene.narration, "Narration must remain exactly unchanged.");
 
@@ -47,7 +47,7 @@ const validation = validateCreatorVisualCoveragePlan({
 });
 assert.equal(validation.valid, true);
 assert.equal(validation.fullyCovered, true);
-assert.equal(validation.motionCovered, true);
+assert.equal(validation.renderable, true);
 assert.equal(validation.coveredDurationSec, 20.53);
 
 const audit = auditFlowContinuityScene({
@@ -73,7 +73,7 @@ const incompleteAudit = auditFlowContinuityScene({
 });
 assert.equal(incompleteAudit.risks.includes("visual_gap"), true);
 
-const staticCoverage = createCreatorVisualCoveragePlan(scene, { imageMotionRendererAvailable: false });
+const staticCoverage = createCreatorVisualCoveragePlan(scene);
 const staticAudit = auditFlowContinuityScene({
   id: 2,
   source: "video",
@@ -82,7 +82,7 @@ const staticAudit = auditFlowContinuityScene({
   visualCoveragePlan: staticCoverage,
   visualBlocks: [{ type: "video_clip", durationSec: 20.53 }],
 });
-assert.equal(staticAudit.risks.includes("freeze_frame_risk"), true);
+assert.equal(staticAudit.risks.includes("freeze_frame_risk"), false);
 
 const persisted = JSON.parse(JSON.stringify({ ...scene, visualCoveragePlan: coverage }));
 assert.deepEqual(persisted.visualCoveragePlan, coverage);
@@ -103,7 +103,7 @@ const nativeRenderer = fs.readFileSync(new URL("../lib/video/stitching/nativeMed
 const exportResolver = fs.readFileSync(new URL("../lib/creator/exportScenes.ts", import.meta.url), "utf8");
 const exportRoute = fs.readFileSync(new URL("../app/api/creator-export/route.ts", import.meta.url), "utf8");
 assert.match(nativeRenderer, /createVisualCoverageVideoBase/);
-assert.match(nativeRenderer, /createImageMotionVideoBase/);
+assert.match(nativeRenderer, /createStaticImageVideoBase/);
 assert.match(nativeRenderer, /concatVideoSegments\(segmentPaths, beats\.map/);
 assert.match(nativeRenderer, /createSceneAudioClip/);
 assert.match(exportResolver, /visualCoveragePlan: validCoverage \? coverage : \[\]/);
@@ -112,6 +112,6 @@ const productionExportService = fs.readFileSync(new URL("../export-service/src/s
 assert.match(productionExportService, /createVisualCoverageClipWithAudio/);
 assert.match(productionExportService, /reconcileVisualCoveragePlan/);
 assert.match(productionExportService, /concat=n=\$\{beats\.length\}:v=1:a=0/);
-assert.match(productionExportService, /zoompan=z=/);
+assert.doesNotMatch(productionExportService, /zoompan=z=/);
 
 console.log("STAGE_0_18A4A_MULTI_BEAT_VISUAL_COVERAGE=PASS");

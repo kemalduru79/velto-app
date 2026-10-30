@@ -16,7 +16,6 @@ import { CreatorExportSceneError, resolveCanonicalCreatorExportScenes } from "@/
 import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "@/lib/creator/visualCoverage";
 import {
   auditCreatorProgramEditorialBalance,
-  resolveCreatorProgramVisualRhythm,
 } from "@/lib/creator/programEditorialPolish";
 import { fingerprintCreatorMedia } from "@/lib/creator/mediaFingerprint.server";
 import {
@@ -218,20 +217,8 @@ export async function POST(request: Request) {
         );
 
         const resolvedExportScenes = canonicalExportScenes.map(
-          (scene, sceneIndex, canonicalScenes) => {
+          (scene) => {
           const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
-          const previousScene = sceneIndex > 0 ? canonicalScenes[sceneIndex - 1] : undefined;
-          const previousSelectedMediaUrl = previousScene
-            ? previousScene.exportSource === "video"
-              ? previousScene.videoUrl
-              : previousScene.image
-            : "";
-          const programRhythm = resolveCreatorProgramVisualRhythm({
-            sceneIndex,
-            sceneCount: canonicalScenes.length,
-            selectedMediaUrl,
-            previousSelectedMediaUrl,
-          });
           const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
           if (process.env.NODE_ENV !== "production") {
             console.info("Creator export scene", {
@@ -267,7 +254,6 @@ export async function POST(request: Request) {
             visualBlockPlan: Array.isArray(persistedScene.visualBlockPlan) ? persistedScene.visualBlockPlan : undefined,
           }, {
             editorialCadence: authoritativeCreatorFormat === "youtube_video",
-            motionPresetOffset: programRhythm.motionPresetOffset,
           });
             return {
               ...scene,

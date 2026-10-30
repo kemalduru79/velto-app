@@ -9,7 +9,6 @@ export type CreatorProgramVisualRhythm = {
   sceneCount: number;
   role: CreatorProgramEditorialRole;
   repeatedSelectedMedia: boolean;
-  motionPresetOffset: 0 | 1 | 2;
 };
 
 const normalizedMedia = (value: unknown) =>
@@ -57,30 +56,11 @@ export function resolveCreatorProgramVisualRhythm({
     Boolean(previous) &&
     selected === previous;
 
-  let motionPresetOffset = index % 3;
-
-  // Give the program midpoint and closing a deliberately different opening
-  // motion language without changing media authority.
-  if (role === "midpoint") {
-    motionPresetOffset = (motionPresetOffset + 1) % 3;
-  } else if (role === "closing") {
-    motionPresetOffset = (motionPresetOffset + 2) % 3;
-  }
-
-  // When the same selected visual is intentionally reused across adjacent
-  // scenes, use a run-safe phase derived from the absolute scene index.
-  // This remains different across every adjacent repeated scene, including
-  // midpoint and closing boundaries.
-  if (repeatedSelectedMedia) {
-    motionPresetOffset = (index + 1) % 3;
-  }
-
   return {
     sceneIndex: index,
     sceneCount: count,
     role,
     repeatedSelectedMedia,
-    motionPresetOffset: motionPresetOffset as 0 | 1 | 2,
   };
 }
 

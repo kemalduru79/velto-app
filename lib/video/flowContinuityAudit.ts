@@ -219,13 +219,16 @@ export function auditFlowContinuityScene(
     : [];
   const hasCoveragePlan = coveragePlan.length > 0;
   const coverageMotionExpected = hasCoveragePlan &&
-    coveragePlan.every((beat) =>
-      beat.kind === "video" || beat.renderer === "native_zoompan_v1");
+    coveragePlan.every((beat) => beat.kind === "video" && beat.renderer === "native_video");
+  const intentionalStaticCoverage = hasCoveragePlan && coveragePlan.every((beat) =>
+    (beat.kind === "video" && beat.renderer === "native_video") ||
+    (beat.kind === "image" && beat.renderer === "static_image")) &&
+    visual.durationSec >= targetDurationSec - 0.02;
   const motionCoverageExpected = hasCoveragePlan
     ? coverageMotionExpected
     : hasMotionCoverage(scene.visualBlocks);
   const staticCoverageSec = coveragePlan.reduce((sum, beat) =>
-    sum + (beat.kind === "image" && beat.renderer !== "native_zoompan_v1" ? safeDuration(beat.durationSec) : 0), 0);
+    sum + (beat.kind === "image" && beat.renderer === "static_image" ? safeDuration(beat.durationSec) : 0), 0);
   const staticHoldSec =
     staticCoverageSec > 0 ? staticCoverageSec : scene.source === "image" && !motionCoverageExpected
       ? targetDurationSec
@@ -260,6 +263,7 @@ export function auditFlowContinuityScene(
 
   if (
     (scene.source === "image" || staticCoverageSec > 0) &&
+    !intentionalStaticCoverage &&
     !motionCoverageExpected &&
     staticHoldSec > STATIC_HOLD_WARNING_SECONDS
   ) {

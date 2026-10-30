@@ -90,7 +90,6 @@ import {
   createCreatorVisualCoveragePlan,
   type CreatorVisualCoverageBeat,
 } from "@/lib/creator/visualCoverage";
-import { resolveCreatorProgramVisualRhythm } from "@/lib/creator/programEditorialPolish";
 import { flowCardMessages } from "@/lib/i18n/flowCard";
 import { DEFAULT_CHARACTER } from "@/lib/characterConfig";
 import { CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
@@ -5646,16 +5645,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
   const buildExportSignature = (nextTitle: string, nextScenes: Scene[]) => {
     const selectedScenes = nextScenes.filter((scene) => getSceneExportSource(scene, nextScenes) !== "none");
-    const exportableScenes = selectedScenes.map((scene, sceneIndex) => {
+    const exportableScenes = selectedScenes.map((scene) => {
         const exportSource = getSceneExportSource(scene, nextScenes);
-        const previous = sceneIndex > 0 ? selectedScenes[sceneIndex - 1] : undefined;
-        const previousSource = previous ? getSceneExportSource(previous, nextScenes) : "none";
-        const rhythm = resolveCreatorProgramVisualRhythm({
-          sceneIndex,
-          sceneCount: selectedScenes.length,
-          selectedMediaUrl: exportSource === "video" ? scene.videoUrl : scene.image,
-          previousSelectedMediaUrl: previousSource === "video" ? previous?.videoUrl : previous?.image,
-        });
 
         return {
           id: scene.id,
@@ -5688,7 +5679,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
               scene.timing?.targetSceneDuration || getCreatorPlannedSceneDuration(scene),
           }, {
             editorialCadence: creatorFormat === "youtube_video",
-            motionPresetOffset: rhythm.motionPresetOffset,
           }),
         };
       });

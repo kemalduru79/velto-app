@@ -75,7 +75,7 @@ assert.equal(
 
 assert.match(
   serverSource,
-  /createImageMotionFilter\(\s*tailDuration,\s*"soft_pan",\s*visualFitMode\s*\)/s,
+  /createStaticImageFilter\(\s*tailDuration,\s*visualFitMode\s*\)/s,
   "reference-image filler tail must inherit visual fit authority",
 );
 
@@ -87,7 +87,7 @@ assert.match(
 
 assert.match(
   serverSource,
-  /createImageMotionFilter\(\s*beat\.durationSec,\s*beat\.motionPreset,\s*visualFitMode,?\s*\)/s,
+  /createStaticImageFilter\(\s*beat\.durationSec,\s*visualFitMode,?\s*\)/s,
   "coverage image beats must inherit visual fit authority",
 );
 

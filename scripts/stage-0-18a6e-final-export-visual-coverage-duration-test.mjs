@@ -19,8 +19,7 @@ const imageBeat = (startSec, endSec) => ({
   kind: "image",
   sourceUrl: "https://assets.test/current.jpg",
   sourceType: "scene_image",
-  motionPreset: "slow_push_in",
-  renderer: "native_zoompan_v1",
+  renderer: "static_image",
 });
 
 const realSceneTarget = resolveCreatorVisualCoverageTargetDuration({
@@ -61,7 +60,7 @@ assert.deepEqual(minimumReconciled.map(({ startSec, endSec, durationSec, rendere
   startSec: 0,
   endSec: 8,
   durationSec: 8,
-  renderer: "native_zoompan_v1",
+  renderer: "static_image",
 }]);
 
 const audioExtended = reconcileVisualCoveragePlan({

@@ -1,3 +1,5 @@
+import { buildStaticImageFilter } from "../../../export-service/src/staticImage.js";
+import { assertStaticImageCoveragePolicy } from "../../../export-service/src/visualCoverage.js";
 import { execFile } from "child_process";
 import fs from "fs/promises";
 import fsSync from "fs";
@@ -14,7 +16,6 @@ import {
 } from "../audioDurationMatching";
 import {
   createVisualFillerPlan,
-  type VisualFillerMotionPreset,
   type VisualFillerPlan,
 } from "../visualFiller";
 import {
@@ -257,53 +258,41 @@ function createNormalizedAudioInputFilter() {
   ].join(",");
 }
 
-async function createImageMotionVideoBase({
+async function createStaticImageVideoBase({
   imageUrl,
   tempDir,
   index,
   durationSec,
   outputVideoPath,
-  motionPreset = "slow_push_in",
 }: {
   imageUrl: string;
   tempDir: string;
   index: number;
   durationSec: number;
   outputVideoPath: string;
-  motionPreset?: VisualFillerMotionPreset;
 }) {
   const sourceImagePath = path.join(
     tempDir,
-    `scene_${index}_source_image_motion.png`,
+    `scene_${index}_source_image_static.png`,
   );
   await downloadToFile(imageUrl, sourceImagePath);
 
-  const frameCount = Math.max(1, Math.round(durationSec * Number(OUTPUT_FPS)));
-  const zoomPanExpression =
-    motionPreset === "soft_pan"
-      ? `zoompan=z='1.04':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`
-      : motionPreset === "cutaway"
-        ? `zoompan=z='max(1.02,1.08-on*0.0007)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`
-        : `zoompan=z='min(zoom+0.0009,1.045)':d=${frameCount}:s=960x960:fps=${OUTPUT_FPS}`;
-  const imageMotionFilter = [
-    "scale=1100:1100:force_original_aspect_ratio=increase",
-    "crop=960:960",
-    zoomPanExpression,
-    `trim=start=0:duration=${durationSec.toFixed(3)}`,
-    "settb=AVTB",
-    `setpts=N/(${OUTPUT_FPS}*TB)`,
-    "format=yuv420p",
-  ].join(",");
+  const staticImageFilter = buildStaticImageFilter({
+    durationSec, outputWidth: 960, outputHeight: 960,
+    fps: Number(OUTPUT_FPS), visualFitMode: "cover",
+  });
 
   await runFfmpeg([
     "-loop",
     "1",
+    "-framerate",
+    OUTPUT_FPS,
     "-i",
     sourceImagePath,
     "-t",
     String(durationSec),
     "-vf",
-    imageMotionFilter,
+    staticImageFilter,
     "-c:v",
     "libx264",
     "-preset",
@@ -496,13 +485,12 @@ async function createFallbackVisualFillerVideoBase({
         throw new Error("Visual filler image segment is missing reference image.");
       }
 
-      await createImageMotionVideoBase({
+      await createStaticImageVideoBase({
         imageUrl: scene.imageUrl,
         tempDir,
         index: index * 100 + segmentIndex + 1,
         durationSec: segment.durationSec,
         outputVideoPath: segmentPath,
-        motionPreset: segment.motionPreset,
       });
     }
 
@@ -539,12 +527,13 @@ async function createVisualCoverageVideoBase({
   outputVideoPath: string;
 }) {
   const beats = scene.visualCoveragePlan || [];
+  assertStaticImageCoveragePolicy(beats);
   const validation = validateCreatorVisualCoveragePlan({
     creatorSceneId: scene.creatorSceneId || "",
     targetDurationSec: durationSec,
     beats,
   });
-  if (!validation.fullyCovered || !validation.motionCovered) {
+  if (!validation.fullyCovered || !validation.renderable) {
     throw new Error(`Scene ${scene.id ?? index + 1} visual coverage plan is invalid or incomplete.`);
   }
 
@@ -561,14 +550,13 @@ async function createVisualCoverageVideoBase({
         durationSec: beat.durationSec,
         sourceStartSec: beat.sourceStartSec,
       });
-    } else if (beat.renderer === "native_zoompan_v1") {
-      await createImageMotionVideoBase({
+    } else if (beat.renderer === "static_image") {
+      await createStaticImageVideoBase({
         imageUrl: beat.sourceUrl,
         tempDir,
         index: index * 100 + beatIndex + 1,
         durationSec: beat.durationSec,
         outputVideoPath: segmentPath,
-        motionPreset: beat.motionPreset,
       });
     } else {
       throw new Error(`Scene ${scene.id ?? index + 1} coverage contains an unrenderable beat.`);

@@ -16,7 +16,7 @@ const generationMigration = fs.readFileSync("supabase/migrations/20261017190000_
 const incidentEvidence = fs.readFileSync("scripts/fixtures/stage-2-incident-0e20-nonbillable-evidence.json", "utf8");
 
 assert.match(authority, /manifestScenes[\s\S]*createCreatorVisualCoveragePlan[\s\S]*buildCreatorFinalProductionSignature\([\s\S]*scenes: manifestScenes/, "coverage and signature share one server manifest");
-assert.match(authority, /resolveCreatorProgramVisualRhythm/, "canonical manifest preserves program rhythm");
+assert.doesNotMatch(authority, /motionPresetOffset|resolveCreatorProgramVisualRhythm/, "canonical manifest never rotates still-image motion");
 assert.match(authority, /fingerprintCreatorMedia\(selectedMediaUrl\)[\s\S]*mediaIdentity/, "canonical manifest binds every selected scene to the shared media fingerprint");
 assert.match(mediaFingerprint, /url\.search = "";[\s\S]*url\.hash = "";/, "media identity strips signed query and hash components using the renderer contract");
 assert.match(enqueue, /currentCreatorFinalProductionAuthority\(project\)/, "enqueue recomputes server authority");

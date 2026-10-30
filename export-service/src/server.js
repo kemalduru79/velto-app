@@ -1,3 +1,4 @@
+import { buildStaticImageFilter } from "./staticImage.js";
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -17,6 +18,8 @@ import {
   parseCreatorProgramLoudnessMeasurements,
 } from "./creatorProgramAudioMaster.js";
 import {
+  assertStaticImageCoveragePolicy,
+  CreatorStaticImagePlanError,
   getTransitionAwareDuration,
   reconcileVisualCoveragePlan,
   resolveAudioFirstSceneTargetDuration,
@@ -443,31 +446,11 @@ function createNormalizedAudioFilter(durationSec) {
   ].join(",");
 }
 
-function createImageMotionFilter(
-  durationSec,
-  motionPreset = "slow_push_in",
-  visualFitMode = "contain",
-) {
-  const frameCount = Math.max(1, Math.round(durationSec * OUTPUT_FPS));
-  const zoomPan = motionPreset === "soft_pan"
-    ? `zoompan=z='1.015':x='min((iw-iw/zoom)*on/${frameCount},iw-iw/zoom)':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
-    : motionPreset === "cutaway"
-      ? `zoompan=z='max(1.01,1.025-on*0.0002)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`
-      : `zoompan=z='min(zoom+0.00015,1.025)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=${frameCount}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=${OUTPUT_FPS}`;
-  return [
-    ...buildCreatorVisualFitFilters({
-      mode: visualFitMode,
-      outputWidth: OUTPUT_WIDTH,
-      outputHeight: OUTPUT_HEIGHT,
-      padColor: "black",
-    }),
-    "setsar=1",
-    zoomPan,
-    `trim=start=0:duration=${durationSec.toFixed(3)}`,
-    "settb=AVTB",
-    `setpts=N/(${OUTPUT_FPS}*TB)`,
-    "format=yuv420p",
-  ].join(",");
+function createStaticImageFilter(durationSec, visualFitMode = "contain") {
+  return buildStaticImageFilter({
+    durationSec, visualFitMode, outputWidth: OUTPUT_WIDTH,
+    outputHeight: OUTPUT_HEIGHT, fps: OUTPUT_FPS,
+  });
 }
 
 function getSceneAudioMixProfile(scene) {
@@ -854,7 +837,7 @@ async function createImageClipWithAudio({
     ...inputs,
     "-filter_complex",
     [
-      `[0:v]${createImageMotionFilter(effectiveDuration, "slow_push_in", visualFitMode)}[v]`,
+      `[0:v]${createStaticImageFilter(effectiveDuration, visualFitMode)}[v]`,
       `[1:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`,
     ].join(";"),
     "-map",
@@ -886,7 +869,7 @@ async function createImageClipWithAudio({
 
   return {
     durationSec: effectiveDuration,
-    fillerStrategy: "animated_still",
+    fillerStrategy: "static_image",
     fillerDurationSec: effectiveDuration,
   };
 }
@@ -965,7 +948,7 @@ async function createSceneClipWithAudio({
       referenceImagePath,
     ];
     audioInputIndex = 2;
-    fillerStrategy = "image_motion_tail";
+    fillerStrategy = "static_image_tail";
     fillerDurationSec = tailDuration;
     visualFilter = [
       `[0:v]${creatorTrim?.isTrimmed
@@ -976,7 +959,7 @@ async function createSceneClipWithAudio({
             visualFitMode,
           })
         : createNormalizedVideoFilter(primaryDuration, visualFitMode)}[v0]`,
-      `[1:v]${createImageMotionFilter(tailDuration, "soft_pan", visualFitMode)}[v1]`,
+      `[1:v]${createStaticImageFilter(tailDuration, visualFitMode)}[v1]`,
       `[v0][v1]concat=n=2:v=1:a=0[v]`,
     ].join(";");
   } else if (creatorTrim?.isTrimmed) {
@@ -1078,11 +1061,7 @@ async function createVisualCoverageClipWithAudio({
 
   const visualFilters = beats.map((beat, index) =>
     `[${index}:v]${beat.kind === "image"
-      ? createImageMotionFilter(
-          beat.durationSec,
-          beat.motionPreset,
-          visualFitMode,
-        )
+      ? createStaticImageFilter(beat.durationSec, visualFitMode)
       : Number(beat.sourceStartSec) > 0
         ? createCreatorTrimmedVideoFilter({
             clipInSec: Number(beat.sourceStartSec),
@@ -1803,6 +1782,7 @@ function resolveCreatorExportSequence(scenes) {
     const validCoverage = coverage.length > 0 && coverage.every((beat) =>
       typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
       (beat.kind === "video" || beat.kind === "image"));
+    assertStaticImageCoveragePolicy(coverage);
     const selectedMedia = exportSource === "video" ? scene.videoUrl : scene.image;
     if (typeof selectedMedia !== "string" || !selectedMedia.trim()) {
       throw new Error("creator_export_scene_media_missing");
@@ -2477,9 +2457,12 @@ app.post("/export-movie", async (req, res) => {
     }
     console.error("export-movie error:", error);
 
-    return res.status(error instanceof FinalMovieStorageAdmissionError ? error.status : 500).json({
+    return res.status(error instanceof CreatorStaticImagePlanError ? 409 : error instanceof FinalMovieStorageAdmissionError ? error.status : 500).json({
       ok: false,
-      error: error instanceof FinalMovieStorageAdmissionError
+      ...(error instanceof CreatorStaticImagePlanError ? { code: error.code } : {}),
+      error: error instanceof CreatorStaticImagePlanError
+        ? error.message
+        : error instanceof FinalMovieStorageAdmissionError
         ? error.message
         : error instanceof CreatorProgramAudioMasterError
           ? "CreatorLab final audio mastering failed."

@@ -1,3 +1,18 @@
+export class CreatorStaticImagePlanError extends Error {
+  constructor() {
+    super("Rebuild final export with a fresh static-image plan and production signature.");
+    this.name = "CreatorStaticImagePlanError";
+    this.code = "CREATOR_STATIC_IMAGE_PLAN_REQUIRED";
+  }
+}
+
+export function assertStaticImageCoveragePolicy(beats) {
+  if (beats.some((beat) => beat?.kind === "image" &&
+      (beat.renderer !== "static_image" || beat.motionPreset))) {
+    throw new CreatorStaticImagePlanError();
+  }
+}
+
 const COVERAGE_TOLERANCE_SECONDS = 0.05;
 
 const finiteNumber = (value) => {
@@ -114,14 +129,15 @@ export function getTransitionAwareDuration({
 
 export function validateVisualCoveragePlan(scene, targetDuration) {
   const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+  assertStaticImageCoveragePolicy(beats);
   const safeTargetDuration = finiteNumber(targetDuration);
   let cursor = 0;
   const valid = Number.isFinite(safeTargetDuration) && safeTargetDuration > 0 && beats.length > 0 && beats.every((beat) => {
     const start = finiteNumber(beat?.startSec);
     const end = finiteNumber(beat?.endSec);
     const duration = finiteNumber(beat?.durationSec);
-    const renderable = beat?.kind === "video" ||
-      (beat?.kind === "image" && beat?.renderer === "native_zoompan_v1");
+    const renderable = (beat?.kind === "video" && beat?.renderer === "native_video") ||
+      (beat?.kind === "image" && beat?.renderer === "static_image");
     const beatValid = typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
       Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(duration) &&
       start >= 0 && end > start && Math.abs(start - cursor) <= 0.02 &&
@@ -134,6 +150,7 @@ export function validateVisualCoveragePlan(scene, targetDuration) {
 
 export function reconcileVisualCoveragePlan(scene, targetDuration) {
   const beats = Array.isArray(scene?.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+  assertStaticImageCoveragePolicy(beats);
   const safeTargetDuration = finiteNumber(targetDuration);
   if (!Number.isFinite(safeTargetDuration) || safeTargetDuration <= 0 || beats.length === 0) return [];
 
@@ -163,7 +180,7 @@ export function reconcileVisualCoveragePlan(scene, targetDuration) {
   }
 
   const lastBeat = beats.at(-1);
-  if (lastBeat?.kind !== "image" || lastBeat?.renderer !== "native_zoompan_v1") return [];
+  if (lastBeat?.kind !== "image" || lastBeat?.renderer !== "static_image") return [];
 
   const reconciled = beats.map((beat, index) => index === beats.length - 1
     ? {

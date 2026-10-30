@@ -15,7 +15,7 @@ const validateFull = (targetDurationSec, beats) => {
   });
   assert.equal(result.valid, true);
   assert.equal(result.fullyCovered, true);
-  assert.equal(result.motionCovered, true);
+  assert.equal(result.renderable, true);
 };
 
 // Explicit image selection must remain image-only even when a completed video
@@ -34,11 +34,11 @@ const imageSelected = createCreatorVisualCoveragePlan({
 
 assert.deepEqual(
   imageSelected.map((beat) => beat.kind),
-  ["image", "image", "image"],
+  ["image"],
 );
 assert.deepEqual(
   imageSelected.map((beat) => beat.durationSec),
-  [6, 6, 6],
+  [18],
 );
 assert.ok(
   imageSelected.every(
@@ -63,11 +63,11 @@ const videoAndImage = createCreatorVisualCoveragePlan({
 
 assert.deepEqual(
   videoAndImage.map((beat) => beat.kind),
-  ["video", "image", "image"],
+  ["video", "image"],
 );
 assert.deepEqual(
   videoAndImage.map((beat) => beat.durationSec),
-  [8, 8, 8],
+  [8, 16],
 );
 validateFull(24, videoAndImage);
 
@@ -87,15 +87,15 @@ const shortVideoAndImage = createCreatorVisualCoveragePlan({
 
 assert.deepEqual(
   shortVideoAndImage.map((beat) => beat.kind),
-  ["video", "image", "image", "image"],
+  ["video", "image"],
 );
 assert.deepEqual(
   shortVideoAndImage.map((beat) => beat.durationSec),
-  [6, 6, 6, 6],
+  [6, 18],
 );
 validateFull(24, shortVideoAndImage);
 
-// Image-only scenes receive deterministic motion variation without inventing
+// Image-only scenes receive one fixed-framing hold without inventing
 // a historical/currentness transition.
 const imageOnly = createCreatorVisualCoveragePlan({
   creatorSceneId: sceneId,
@@ -112,8 +112,8 @@ const imageOnly = createCreatorVisualCoveragePlan({
 });
 
 assert.deepEqual(
-  imageOnly.map((beat) => beat.motionPreset),
-  ["slow_push_in", "soft_pan", "cutaway"],
+  imageOnly.map((beat) => beat.renderer),
+  ["static_image"],
 );
 assert.equal(
   imageOnly.some(
@@ -198,7 +198,7 @@ assert.equal(legacy.length, 2);
 assert.equal(
   legacy[1].sourceUrl,
   "https://assets.test/previous-version.jpg",
-  "legacy callers remain byte-compatible until separately migrated",
+  "distinct legacy assets retain their order and timing",
 );
 
 const exportRoute = fs.readFileSync(

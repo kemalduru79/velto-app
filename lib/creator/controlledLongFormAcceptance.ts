@@ -94,7 +94,7 @@ export function createCreatorControlledLongFormAcceptance(input: CreatorControll
       add("visuals", "SCENE_VISUAL_COVERAGE_VALID", "blocked", [sceneId]);
     } else {
       const validation = validateCreatorVisualCoveragePlan({ creatorSceneId: sceneId, targetDurationSec: Number(target), beats: scene.visualCoveragePlan });
-      const coverageReady = validation.valid && validation.fullyCovered && validation.motionCovered;
+      const coverageReady = validation.valid && validation.fullyCovered && validation.renderable;
       add("visuals", "SCENE_VISUAL_COVERAGE_VALID", coverageReady ? "ready" : "blocked", coverageReady ? [] : [sceneId]);
     }
     const narrationRequired = Boolean(text(scene.narration));

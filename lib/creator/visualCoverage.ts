@@ -9,6 +9,7 @@ export type CreatorVisualCoverageBeat = {
   sourceAssetId?: string;
   sourceStartSec?: number;
   sourceType: "generated_video" | "scene_image" | "asset_history";
+  // Legacy motion metadata is retained in the type for persisted-plan rejection.
   motionPreset?: "slow_push_in" | "soft_pan" | "cutaway";
   renderer: "native_video" | "native_zoompan_v1" | "static_image";
   purpose?: string;
@@ -152,13 +153,9 @@ function createCreatorEditorialCadenceCoveragePlan(
   {
     creatorSceneId,
     targetDurationSec,
-    imageMotionRendererAvailable,
-    motionPresetOffset,
   }: {
     creatorSceneId: string;
     targetDurationSec: number;
-    imageMotionRendererAvailable: boolean;
-    motionPresetOffset: number;
   },
 ): CreatorVisualCoverageBeat[] {
   const imageUrl =
@@ -189,7 +186,6 @@ function createCreatorEditorialCadenceCoveragePlan(
 
   const beats: CreatorVisualCoverageBeat[] = [];
   let cursor = 0;
-  let imageBeatIndex = 0;
 
   const append = (
     beat: Omit<
@@ -223,43 +219,14 @@ function createCreatorEditorialCadenceCoveragePlan(
   const appendImageCadence = (durationSec: number) => {
     if (!imageUrl || durationSec <= 0) return false;
 
-    const hints = Array.isArray(scene.visualBlockPlan)
-      ? scene.visualBlockPlan.slice(beats.length)
-      : undefined;
-
-    const slots = createCreatorEditorialVisualBeatPlan({
-      creatorSceneId,
-      targetDurationSec: durationSec,
-      purposeHints: hints,
-    });
-
-    const motionPresets = [
-      "slow_push_in",
-      "soft_pan",
-      "cutaway",
-    ] as const;
-
-    for (const slot of slots) {
-      append({
-        kind: "image",
-        sourceUrl: imageUrl,
-        sourceType: "scene_image",
-        motionPreset: motionPresets[
-          (
-            Math.max(0, Math.trunc(motionPresetOffset)) +
-            imageBeatIndex
-          ) % motionPresets.length
-        ],
-        renderer: imageMotionRendererAvailable
-          ? "native_zoompan_v1"
-          : "static_image",
-        ...(slot.purposeHint ? { purpose: slot.purposeHint } : {}),
-      }, slot.durationSec);
-
-      imageBeatIndex += 1;
-    }
-
-    return slots.length > 0;
+    append({
+      kind: "image",
+      sourceUrl: imageUrl,
+      sourceType: "scene_image",
+      renderer: "static_image",
+      purpose: scene.visualBlockPlan?.[beats.length]?.purpose,
+    }, durationSec);
+    return true;
   };
 
   const appendSequentialVideoCadence = (durationSec: number) => {
@@ -384,9 +351,7 @@ function distinctImageAssets(scene: CreatorVisualCoverageScene) {
 export function createCreatorVisualCoveragePlan(
   scene: CreatorVisualCoverageScene,
   options: {
-    imageMotionRendererAvailable?: boolean;
     editorialCadence?: boolean;
-    motionPresetOffset?: number;
   } = {},
 ): CreatorVisualCoverageBeat[] {
   const creatorSceneId = typeof scene.creatorSceneId === "string" ? scene.creatorSceneId.trim() : "";
@@ -395,16 +360,10 @@ export function createCreatorVisualCoveragePlan(
   const sourceVideoDuration = positive(scene.videoDurationSeconds);
   if (!creatorSceneId || targetDurationSec <= 0) return [];
 
-  const imageMotionRendererAvailable = options.imageMotionRendererAvailable !== false;
-
   if (options.editorialCadence === true) {
     return createCreatorEditorialCadenceCoveragePlan(scene, {
       creatorSceneId,
       targetDurationSec,
-      imageMotionRendererAvailable,
-      motionPresetOffset: Number.isFinite(options.motionPresetOffset)
-        ? Number(options.motionPresetOffset)
-        : 0,
     });
   }
 
@@ -456,8 +415,7 @@ export function createCreatorVisualCoveragePlan(
         sourceUrl: asset.url,
         ...(asset.id ? { sourceAssetId: asset.id } : {}),
         sourceType: asset.sourceType,
-        motionPreset: index % 2 === 0 ? "slow_push_in" : "soft_pan",
-        renderer: imageMotionRendererAvailable ? "native_zoompan_v1" : "static_image",
+        renderer: "static_image",
         purpose: scene.visualBlockPlan?.[beats.length]?.purpose,
       }, duration);
     });
@@ -479,6 +437,9 @@ export function validateCreatorVisualCoveragePlan({
   let valid = Boolean(creatorSceneId) && positive(targetDurationSec) > 0;
   for (const beat of beats) {
     valid = valid && beat.creatorSceneId === creatorSceneId && Boolean(beat.sourceUrl) &&
+      ((beat.kind === "video" && beat.renderer === "native_video") ||
+        (beat.kind === "image" && beat.renderer === "static_image" && !beat.motionPreset)) &&
+      Number.isFinite(beat.startSec) && Number.isFinite(beat.endSec) && Number.isFinite(beat.durationSec) &&
       beat.startSec >= 0 && beat.endSec > beat.startSec &&
       Math.abs(beat.startSec - cursor) < 0.02 &&
       beat.endSec <= targetDurationSec + 0.02 &&
@@ -490,7 +451,6 @@ export function validateCreatorVisualCoveragePlan({
     coveredDurationSec: round(cursor),
     uncoveredDurationSec: round(Math.max(0, targetDurationSec - cursor)),
     fullyCovered: valid && Math.max(0, targetDurationSec - cursor) <= 0.02,
-    motionCovered: valid && beats.length > 0 && beats.every((beat) =>
-      beat.kind === "video" || beat.renderer === "native_zoompan_v1"),
+    renderable: valid && beats.length > 0,
   };
 }

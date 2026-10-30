@@ -48,11 +48,8 @@ const repeated2 = resolveCreatorProgramVisualRhythm({
 
 assert.equal(repeated1.repeatedSelectedMedia, true);
 assert.equal(repeated2.repeatedSelectedMedia, true);
-assert.notEqual(
-  repeated1.motionPresetOffset,
-  repeated2.motionPresetOffset,
-  "adjacent repeated visuals must not begin with the same motion phase",
-);
+assert.equal("motionPresetOffset" in repeated1, false);
+assert.equal("motionPresetOffset" in repeated2, false);
 
 const repeatedRun = Array.from({ length: 7 }, (_, index) =>
   resolveCreatorProgramVisualRhythm({
@@ -64,13 +61,6 @@ const repeatedRun = Array.from({ length: 7 }, (_, index) =>
   }),
 );
 
-for (let index = 1; index < repeatedRun.length; index += 1) {
-  assert.notEqual(
-    repeatedRun[index].motionPresetOffset,
-    repeatedRun[index - 1].motionPresetOffset,
-    `adjacent repeated media must differ at scene boundary ${index}`,
-  );
-}
 
 assert.equal(
   repeatedRun[3].role,
@@ -94,56 +84,11 @@ const defaultCoverage = createCreatorVisualCoveragePlan(scene, {
   editorialCadence: true,
 });
 
-const phasedCoverage = createCreatorVisualCoveragePlan(scene, {
-  editorialCadence: true,
-  motionPresetOffset: 1,
-});
-
-assert.deepEqual(
-  defaultCoverage.map((beat) => beat.motionPreset),
-  ["slow_push_in", "soft_pan", "cutaway"],
-  "existing D2 default motion order must remain stable",
-);
-
-assert.deepEqual(
-  phasedCoverage.map((beat) => beat.motionPreset),
-  ["soft_pan", "cutaway", "slow_push_in"],
-  "program rhythm authority must rotate image motion without changing media",
-);
-
-assert.deepEqual(
-  phasedCoverage.map((beat) => beat.durationSec),
-  defaultCoverage.map((beat) => beat.durationSec),
-  "program polish must not alter D1 timing authority",
-);
-
-assert.ok(
-  phasedCoverage.every(
-    (beat) => beat.sourceUrl === "https://assets.test/current.jpg",
-  ),
-  "program polish must not replace selected media",
-);
-
-const exportRoute = fs.readFileSync(
-  new URL("../app/api/creator-export/route.ts", import.meta.url),
-  "utf8",
-);
-
-assert.match(
-  exportRoute,
-  /resolveCreatorProgramVisualRhythm/,
-);
-assert.match(
-  exportRoute,
-  /sceneCount:\s*canonicalScenes\.length/,
-);
-assert.match(
-  exportRoute,
-  /previousSelectedMediaUrl/,
-);
-assert.match(
-  exportRoute,
-  /motionPresetOffset:\s*programRhythm\.motionPresetOffset/,
-);
-
+assert.equal(defaultCoverage.length, 1);
+assert.equal(defaultCoverage[0].renderer, "static_image");
+assert.equal(defaultCoverage[0].durationSec, 18);
+assert.equal(defaultCoverage[0].motionPreset, undefined);
+assert.equal(defaultCoverage[0].sourceUrl, scene.image);
+const exportRoute = fs.readFileSync(new URL("../app/api/creator-export/route.ts", import.meta.url), "utf8");
+assert.doesNotMatch(exportRoute, /motionPresetOffset|resolveCreatorProgramVisualRhythm/);
 console.log("STAGE_0_20E1_PROGRAM_VISUAL_RHYTHM=PASS");

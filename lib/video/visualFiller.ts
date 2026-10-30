@@ -7,6 +7,7 @@ export type VisualFillerStrategy =
   | "missing_visual";
 
 export type VisualFillerMotionPreset =
+  | "static"
   | "source_motion"
   | "slow_push_in"
   | "soft_pan"
@@ -100,30 +101,16 @@ function withOffsets(
   });
 }
 
-function createImageSegments({
-  durationSec,
-  type,
-  maxBlockSec,
-}: {
+function createImageSegments({ durationSec, type }: {
   durationSec: number;
   type: "animated_still" | "image_motion" | "cutaway";
-  maxBlockSec: number;
 }) {
-  return splitDuration(durationSec, maxBlockSec).map((blockDuration, index) => ({
-    type,
-    source: type === "cutaway" ? ("b_roll" as const) : ("reference_image" as const),
-    motionPreset:
-      type === "cutaway"
-        ? ("cutaway" as const)
-        : index % 2 === 0
-          ? ("slow_push_in" as const)
-          : ("soft_pan" as const),
-    durationSec: blockDuration,
-    reason:
-      type === "cutaway"
-        ? "Use a separate cutaway beat to cover the remaining audio without holding the final frame."
-        : "Keep the still image moving with alternating pan and zoom motion instead of a static hold.",
-  }));
+  // Legacy segment names remain readable; every reference-image hold is static.
+  return [{
+    type, source: "reference_image" as const, motionPreset: "static" as const,
+    durationSec,
+    reason: "Hold the reference image with fixed framing for the complete assigned duration.",
+  }];
 }
 
 export function createVisualFillerPlan(
@@ -199,7 +186,6 @@ export function createVisualFillerPlan(
       createImageSegments({
         durationSec: targetDurationSec,
         type: "animated_still",
-        maxBlockSec: maxFillerBlockSec,
       }),
     );
 
@@ -213,7 +199,7 @@ export function createVisualFillerPlan(
       requiresFiller: true,
       preventsFreeze: true,
       segments,
-      reason: "Animate the available still across the complete audio duration with alternating pan and zoom beats.",
+      reason: "Hold the available still with fixed framing across the complete audio duration.",
     };
   }
 
@@ -254,7 +240,6 @@ export function createVisualFillerPlan(
       ...createImageSegments({
         durationSec: uncoveredDurationSec,
         type: tailType,
-        maxBlockSec: maxFillerBlockSec,
       }),
     ]);
 
@@ -269,8 +254,8 @@ export function createVisualFillerPlan(
       preventsFreeze: true,
       segments,
       reason: input.preferCutaway
-        ? "Continue with one or more moving cutaway beats instead of cloning the final frame."
-        : "Continue with motion over the reference image instead of cloning the final frame.",
+        ? "Continue with the fixed reference image for the remaining audio."
+        : "Continue with a static reference image for the remaining audio.",
     };
   }
 

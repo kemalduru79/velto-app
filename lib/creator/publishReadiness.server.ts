@@ -13,7 +13,6 @@ import { buildCreatorVideoGenerationSignature, buildLegacyCreatorVideoGeneration
 import type { TimelineSyncPlan } from "@/lib/video/timelineSync";
 import { createHash } from "node:crypto";
 import { createCreatorVisualCoveragePlan, resolveCreatorVisualCoverageTargetDuration } from "./visualCoverage";
-import { resolveCreatorProgramVisualRhythm } from "./programEditorialPolish";
 import { fingerprintCreatorMedia } from "./mediaFingerprint.server";
 
 export type CreatorPublishAuthorityBlocker =
@@ -105,24 +104,12 @@ export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiR
     const selection = selectionById.get(creatorSceneId);
     return selection?.exportSource && selection.exportSource !== "none" ? [{ scene, creatorSceneId, selection }] : [];
   });
-  const manifestScenes = selectedSceneEntries.map(({ scene, creatorSceneId, selection }, index) => {
+  const manifestScenes = selectedSceneEntries.map(({ scene, creatorSceneId, selection }) => {
     const exportSource = selection?.exportSource || "none";
     const selectedMediaUrl = exportSource === "video" ? String(scene.videoUrl || "") : String(scene.image || "");
-    const previousEntry = index > 0 ? selectedSceneEntries[index - 1] : undefined;
-    const previous = previousEntry?.scene;
-    const previousSelection = previousEntry?.selection;
-    const previousMediaUrl = previousSelection?.exportSource === "video"
-      ? String(previous?.videoUrl || "")
-      : String(previous?.image || "");
     const timing = record(scene.timing);
     const mediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
     if (!mediaIdentity) throw new Error("CREATOR_FINAL_PRODUCTION_MEDIA_IDENTITY_INVALID");
-    const rhythm = resolveCreatorProgramVisualRhythm({
-      sceneIndex: index,
-      sceneCount: selectedSceneEntries.length,
-      selectedMediaUrl,
-      previousSelectedMediaUrl: previousMediaUrl,
-    });
     return {
       ...scene,
       creatorSceneId,
@@ -147,7 +134,6 @@ export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiR
         visualBlockPlan: Array.isArray(scene.visualBlockPlan) ? scene.visualBlockPlan : undefined,
       }, {
         editorialCadence: creatorFormat === "youtube_video",
-        motionPresetOffset: rhythm.motionPresetOffset,
       }),
     };
   });

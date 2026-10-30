@@ -59,6 +59,7 @@ export type TimelineScenePlan = {
     durationSec: number;
     source: "ai_video" | "reference_image" | "b_roll" | "planning";
     motionPreset:
+      | "static"
       | "source_motion"
       | "slow_push_in"
       | "soft_pan"
@@ -409,10 +410,10 @@ function createVisualBlocks({
         type: shouldUsePremiumBlocks ? "b_roll" : "image_motion",
         durationSec: tailSeconds,
         source: shouldUsePremiumBlocks ? "b_roll" : "reference_image",
-        motionPreset: shouldUsePremiumBlocks ? "cutaway" : "slow_push_in",
+        motionPreset: "static",
         reason: shouldUsePremiumBlocks
           ? "Fill the audio tail with a separate B-roll/cutaway visual beat instead of freezing the source clip."
-          : "Extend speech safely with motion over a still/reference image instead of freezing the final video frame.",
+          : "Hold the still/reference image with fixed framing for the remaining speech.",
       },
     ]);
   }
@@ -471,7 +472,7 @@ function createVisualBlocks({
           ? Math.max(recommendedClipSeconds, safeSpeechSeconds)
           : recommendedClipSeconds,
       source: "ai_video",
-      motionPreset: visualAction === "slow_clip" ? "soft_pan" : "source_motion",
+      motionPreset: "source_motion",
       reason:
         visualAction === "slow_clip"
           ? "Stretch clip timing slightly to follow audio without hard freeze."

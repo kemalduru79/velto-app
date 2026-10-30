@@ -95,7 +95,7 @@ const imageCoverage = [{
   id: `${creatorSceneId}.coverage.1`, creatorSceneId,
   startSec: 0, endSec: 10, durationSec: 10,
   kind: "image", sourceUrl: "https://assets.test/image.jpg",
-  sourceType: "scene_image", motionPreset: "slow_push_in", renderer: "native_zoompan_v1",
+  sourceType: "scene_image", renderer: "static_image",
 }];
 const longFormShortAudioTarget = resolveAudioFirstSceneTargetDuration({
   requestedTarget: 10, coverageBackedTarget: Number.NaN, audioDuration: 6,
