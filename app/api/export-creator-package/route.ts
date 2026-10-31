@@ -9,6 +9,10 @@ import {
   isCreatorProjectPerformanceReport,
 } from "@/lib/creator/projectPerformanceReport";
 import { resolveCreatorProjectUsedMediaGovernance } from "@/lib/creator/usedMediaGovernance.server";
+import {
+  prepareCreatorPackageSyntheticDisclosure,
+  resolveCreatorPackageDisclosureGovernance,
+} from "@/lib/creator/packageSyntheticDisclosure";
 import { getPersistenceServices } from "@/lib/persistence";
 import { startResourceMeasurement } from "@/lib/observability";
 import { resolveCreatorPublishAuthority } from "@/lib/creator/publishReadiness.server";
@@ -448,12 +452,23 @@ export async function POST(req: Request) {
         { status: 404 },
       );
     }
-    const evidenceGovernance = project.flow_type === "creator_lab"
-      ? (await resolveCreatorProjectUsedMediaGovernance({
+    const usedMediaGovernance = project.flow_type === "creator_lab"
+      ? await resolveCreatorProjectUsedMediaGovernance({
           ownerUserId: principal.id,
           project,
-        })).governance
-      : undefined;
+        })
+      : null;
+    // The approved package itself must carry the visible synthetic-media
+    // disclosure. This is not a canonical project mutation or a rights waiver.
+    const preparedDisclosure = prepareCreatorPackageSyntheticDisclosure({
+      productionPackage: body?.productionPackage,
+      metadata: body?.metadata,
+      syntheticMediaCount: usedMediaGovernance?.summary.syntheticMediaCount || 0,
+    });
+    const evidenceGovernance = resolveCreatorPackageDisclosureGovernance(
+      usedMediaGovernance?.governance,
+      preparedDisclosure,
+    );
     const publishAuthority = project.flow_type === "creator_lab"
       ? await resolveCreatorPublishAuthority({
           ownerUserId: principal.id,
@@ -473,10 +488,10 @@ export async function POST(req: Request) {
       );
     }
     const publishReadyReport = createCreatorPublishReadyPackageReport({
-      productionPackage: body?.productionPackage,
+      productionPackage: preparedDisclosure.productionPackage,
       videoUrl: publishAuthority?.ready ? publishAuthority.finalVideoUrl : body?.videoUrl,
       thumbnail: body?.thumbnail,
-      metadata: body?.metadata,
+      metadata: preparedDisclosure.metadata,
       scenes: body?.scenes,
       targetPlatforms: body?.targetPlatforms,
       releaseChecklist: body?.releaseChecklist,
@@ -494,8 +509,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const productionPackage = safeObject(body?.productionPackage);
-    const metadata = safeObject(body?.metadata);
+    const productionPackage = preparedDisclosure.productionPackage;
+    const metadata = preparedDisclosure.metadata;
     const thumbnail = safeObject(body?.thumbnail);
     const creatorIntelligence = safeObject(body?.creatorIntelligence);
     const performanceReport = isCreatorProjectPerformanceReport(
