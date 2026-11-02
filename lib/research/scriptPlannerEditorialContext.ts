@@ -1,9 +1,13 @@
+import { createEditorialScriptContext } from "./editorialScriptContext.ts";
+import { parseCreatorProfile } from "../creator/creatorProfile.ts";
+import { classifyResearchSourceDirectness } from "./sourceAssessment.ts";
 import { createResearchTopicReadiness } from "./topicEvidenceReadiness.ts";
 import {
   createResearchClaimEvidenceGraph,
   isResearchClaimType,
   isResearchPropositionKind,
   validateResearchClaimPropositionAuthority,
+  type ResearchClaimEvidenceGraph,
   type ResearchClaim,
   type ResearchClaimEvidenceLink,
   type ResearchEvidence,
@@ -38,6 +42,7 @@ export type ScriptPlannerEditorialContext = {
     contextualEvidenceIds: string[];
   }>;
   evidence: ResearchEvidence[];
+  counterEvidenceReview?: CounterEvidenceScopeReview;
   sources: Array<{
     sourceId: string;
     title: string;
@@ -68,6 +73,8 @@ export type ScriptPlannerGroundingDiagnostics = {
   duplicateSpanIdentities: string[];
   blockingReasons: string[];
   primaryEvidenceCount: number;
+  claimRelativePrimaryEvidenceIds: string[];
+  primaryCoverageByClaim: Array<{ claimId: string; evidenceIds: string[]; basis: string[] }>;
   nonPrimaryEvidenceCount: number;
   primaryCoverageRatio: number;
   primaryRequiredClaimIds: string[];
@@ -118,6 +125,7 @@ function nullableText(value: unknown, maxLength: number) {
 }
 
 function finiteOrNull(value: unknown, min = 0) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= min ? parsed : null;
 }
@@ -381,6 +389,7 @@ function assertScriptPlannerPrimaryAuthority(
  */
 export function normalizeScriptPlannerEditorialContext(
   value: unknown,
+  allowScopeReview = true,
 ): ScriptPlannerEditorialContext | null {
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
@@ -407,6 +416,17 @@ export function normalizeScriptPlannerEditorialContext(
   };
   assertReferences(context);
   assertScriptPlannerPrimaryAuthority(context);
+  if (raw.counterEvidenceReview !== undefined) {
+    if (!allowScopeReview) throw new Error("COUNTER_REVIEW_NESTED_SNAPSHOT");
+    const record = asRecord(raw.counterEvidenceReview);
+    const original = normalizeScriptPlannerEditorialContext(record?.originalContext, false);
+    if (!original) throw new Error("COUNTER_REVIEW_ORIGINAL_MISSING");
+    const decision = record?.decision as CounterEvidenceScopeDecision;
+    const derived = applyCounterEvidenceScopeReview(original, decision, record?.originalResearchSnapshot as ResearchClaimEvidenceGraph);
+    const { counterEvidenceReview: provenance, ...expected } = derived;
+    if (JSON.stringify(expected) !== JSON.stringify(context)) throw new Error("COUNTER_REVIEW_PROJECTION_MISMATCH");
+    return { ...context, counterEvidenceReview: provenance };
+  }
   return context;
 }
 
@@ -477,6 +497,13 @@ export function createScriptPlannerGroundingDiagnostics(
     duplicateSpanIdentities: [],
     blockingReasons: [...context.readiness.reviewReasons],
     primaryEvidenceCount,
+    claimRelativePrimaryEvidenceIds: [...new Set(authority.claims
+      .flatMap((claim) => claim.qualifyingPrimaryEvidenceIds)
+      .filter((id) => sourceById.get(context.evidence.find((item) => item.evidenceId === id)?.sourceId || "")?.directness !== "primary"))],
+    primaryCoverageByClaim: authority.claims.filter((claim) => claim.requiresPrimary).map((claim) => ({
+      claimId: claim.claimId, evidenceIds: claim.qualifyingPrimaryEvidenceIds,
+      basis: claim.reasons.filter((reason) => reason === "GLOBAL_PRIMARY_SUPPORT" || reason === "CLAIM_RELATIVE_PRIMARY_SUPPORT"),
+    })),
     nonPrimaryEvidenceCount: context.evidence.length - primaryEvidenceCount,
     primaryCoverageRatio: primaryRequiredClaimIds.length === 0
       ? 1
@@ -567,11 +594,127 @@ export function createScriptPlannerGenerationGroundingGate(context: ScriptPlanne
     ...(reasons.has("PRIMARY_SOURCE_COVERAGE_REQUIRED") ? ["retrieve_qualifying_primary_sources"] : []),
     ...(reasons.has("SOURCE_PROVENANCE_REVIEW") ? ["review_source_provenance"] : []),
   ];
+  const counterReview = createCounterEvidenceReview(context);
   const message = [
     missingExcerptEvidenceIds.length ? "Evidence excerpts are missing. Re-run editorial analysis from the existing sources to restore source-owned passages." : "",
-    reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? "Material counter-evidence requires editorial review; inspect genuine opposing evidence before continuing." : "",
+    reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? `Material counter-evidence requires editorial review. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}. Inspect real opposing passages, explicitly omit unresolved assertions, or stop and obtain qualifying sources.` : "",
     reasons.has("PRIMARY_SOURCE_COVERAGE_REQUIRED") ? "Retrieve qualifying primary-source evidence for the claims that require it." : "",
     reasons.has("SOURCE_PROVENANCE_REVIEW") ? "Review source provenance before generating a script." : "",
   ].filter(Boolean).join(" ") || "Editorial evidence requires review before script generation.";
-  return { eligible: reasons.size === 0, reasonCodes: [...reasons], missingExcerptEvidenceIds, nextActions, message };
+  return { unresolvedCounterClaimIds: counterReview.unresolvedClaimIds, eligible: reasons.size === 0, reasonCodes: [...reasons], missingExcerptEvidenceIds, nextActions, message };
+}
+
+
+export type CounterEvidenceScopeDecision = {
+  snapshotFingerprint: string;
+  excludedClaimIds: string[];
+  rationale: string;
+  confirmed: true;
+};
+export type CounterEvidenceScopeReview = {
+  originalResearchSnapshot: ResearchClaimEvidenceGraph;
+  originalContext: ScriptPlannerEditorialContext;
+  decision: CounterEvidenceScopeDecision;
+};
+
+// A stale-view fingerprint, NOT an authorization token. Project/session/CAS
+// authorization remains server-owned. Derivation below compares full records.
+function counterReviewFingerprint(context: ScriptPlannerEditorialContext) {
+  let first = 2166136261, second = 5381;
+  for (const char of JSON.stringify(context)) {
+    first = Math.imul(first ^ char.charCodeAt(0), 16777619);
+    second = Math.imul(second, 33) ^ char.charCodeAt(0);
+  }
+  return `${(first >>> 0).toString(16)}-${(second >>> 0).toString(16)}`;
+}
+
+/** Reassess each material claim against the unchanged corpus, once per review.
+ * A limitation is informative context, never a synthetic contradicts relation.
+ * This does not attest scientific truth or upgrade a source's primary status. */
+export function createCounterEvidenceReview(context: ScriptPlannerEditorialContext) {
+  const required = new Set(["THEORY", "FORECAST", "HYPOTHESIS", "METAPHYSICAL_CLAIM", "EDITORIAL_INFERENCE"]);
+  const authority = resolveScriptPlannerClaimAuthority(context);
+  const passages = (ids: string[]) => ids.flatMap((id) => {
+    const evidence = context.evidence.find((item) => item.evidenceId === id);
+    const source = context.sources.find((item) => item.sourceId === evidence?.sourceId);
+    return evidence?.excerpt?.trim() && source ? [{ ...evidence, source }] : [];
+  });
+  const claims = context.claims.filter((claim) => required.has(claim.claimType)).map((claim) => {
+    const counter = passages(claim.counterEvidenceIds);
+    const contextual = passages(claim.contextualEvidenceIds);
+    return {
+      claimId: claim.claimId, claimType: claim.claimType, text: claim.text,
+      support: passages(claim.supportingEvidenceIds), counter, contextual,
+      outcome: counter.length ? "counterevidence_present" as const
+        : contextual.length ? "context_only_not_counterevidence" as const : "no_counterevidence_in_snapshot" as const,
+      canExclude: !authority.claims.find((item) => item.claimId === claim.claimId)?.requiresPrimary,
+    };
+  });
+  return {
+    snapshotFingerprint: counterReviewFingerprint(context), claims,
+    unresolvedClaimIds: claims.filter((claim) => claim.counter.length === 0).map((claim) => claim.claimId),
+    nextActions: ["inspect_claim_passages", "explicitly_omit_unresolved_assertions_or_stop", "obtain_qualifying_sources_before_retrying_retained_claims"],
+  };
+}
+
+/** An explicit change in script scope, never approval of unsupported science.
+ * Preserve the entire original snapshot. Do not rewrite a claim, its type,
+ * origin, source classification, excerpt or link stance. Recompute all gates. */
+export function applyCounterEvidenceScopeReview(
+  original: ScriptPlannerEditorialContext,
+  decision: CounterEvidenceScopeDecision,
+  originalResearchSnapshot: ResearchClaimEvidenceGraph,
+): ScriptPlannerEditorialContext {
+  if (original.counterEvidenceReview) throw new Error("COUNTER_REVIEW_ALREADY_APPLIED");
+  if (!originalResearchSnapshot || originalResearchSnapshot.version !== "0.10H-1B") throw new Error("COUNTER_REVIEW_RESEARCH_SNAPSHOT_REQUIRED");
+  const research = createResearchClaimEvidenceGraph(originalResearchSnapshot);
+  const assessments = research.sources.map((source) => {
+    const originalSource = original.sources.find((item) => item.sourceId === source.sourceId);
+    if (!originalSource || classifyResearchSourceDirectness(source).directness !== originalSource.directness) throw new Error("COUNTER_REVIEW_SOURCE_PROVENANCE_MISMATCH");
+    return { ...originalSource, provenanceStatus: "unknown" as const, reviewReasons: [] };
+  });
+  const restored = normalizeScriptPlannerEditorialContext(createEditorialScriptContext({
+    profile: parseCreatorProfile(null), graph: research, sourceAssessments: assessments,
+  }), false)!;
+  restored.editorialConstitution = original.editorialConstitution;
+  if (JSON.stringify(restored) !== JSON.stringify(original)) throw new Error("COUNTER_REVIEW_RESEARCH_SNAPSHOT_MISMATCH");
+  for (const evidence of research.evidence) {
+    const passage = evidence.excerpt?.replace(/\s+/g, " ").trim();
+    const material = research.sources.find((source) => source.sourceId === evidence.sourceId)?.summary?.replace(/\s+/g, " ").trim();
+    if (passage && !material?.includes(passage)) throw new Error("COUNTER_REVIEW_EXCERPT_OWNERSHIP_UNVERIFIED");
+  }
+  const review = createCounterEvidenceReview(original);
+  if (!decision || decision.confirmed !== true ||
+      decision.snapshotFingerprint !== review.snapshotFingerprint) throw new Error("COUNTER_REVIEW_STALE_OR_UNCONFIRMED");
+  if (!Array.isArray(decision.excludedClaimIds) || decision.excludedClaimIds.length === 0 || decision.excludedClaimIds.length > review.unresolvedClaimIds.length ||
+      new Set(decision.excludedClaimIds).size !== decision.excludedClaimIds.length ||
+      typeof decision.rationale !== "string" || decision.rationale.trim().length < 12 || decision.rationale.length > 1000) {
+    throw new Error("COUNTER_REVIEW_DECISION_INVALID");
+  }
+  for (const id of decision.excludedClaimIds) {
+    const claim = review.claims.find((item) => item.claimId === id);
+    if (!claim || !review.unresolvedClaimIds.includes(id)) throw new Error("COUNTER_REVIEW_EXCLUSION_NOT_UNRESOLVED");
+    if (!claim.canExclude) throw new Error(`COUNTER_REVIEW_PRIMARY_OBLIGATION_RETAINED:${id}`);
+  }
+  const excluded = new Set(decision.excludedClaimIds);
+  const remaining = review.unresolvedClaimIds.filter((id) => !excluded.has(id));
+  if (remaining.length) throw new Error(`COUNTER_REVIEW_UNRESOLVED:${remaining.join(",")}`);
+  const claims = original.claims.filter((claim) => !excluded.has(claim.claimId));
+  if (claims.length === 0 || !claims.some((claim) => claim.claimType !== "THOUGHT_EXPERIMENT")) throw new Error("COUNTER_REVIEW_NO_FACTUAL_SCRIPT_BASIS");
+  const projected = { ...original, claims };
+  const readiness = createResearchTopicReadiness({
+    graph: createScriptPlannerAuthorityGraph(projected),
+    sourceAssessments: original.sources.map((source) => ({ ...source, provenanceStatus: "unknown" as const, reviewReasons: [] })),
+  });
+  const reviewReasons = [...new Set([
+    ...original.readiness.reviewReasons.filter((reason) => reason !== "MATERIAL_COUNTER_EVIDENCE_REVIEW"),
+    ...readiness.reviewReasons,
+  ])];
+  const reviewed: ScriptPlannerEditorialContext = {
+    ...projected,
+    readiness: normalizeReadiness({ ...readiness, status: readiness.status === "blocked" ? "blocked" : reviewReasons.length ? "review" : "ready", reviewReasons }),
+    counterEvidenceReview: { originalResearchSnapshot: structuredClone(originalResearchSnapshot), originalContext: structuredClone(original), decision: structuredClone(decision) },
+  };
+  if (new TextEncoder().encode(JSON.stringify(reviewed)).byteLength > 2_000_000) throw new Error("COUNTER_REVIEW_SNAPSHOT_TOO_LARGE");
+  return reviewed;
 }

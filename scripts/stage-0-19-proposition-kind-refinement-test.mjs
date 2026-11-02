@@ -103,7 +103,7 @@ test("secondary discussion cannot inherit primary qualification after refinement
   const source={...authorityFixture().graph.sources[0],sourceId:"web:https://c4e.example/susskind",url:"https://c4e.example/susskind",
     title:"c4ejournal source",author:"Secondary Reviewer",publisher:"C4E Journal",summary:liveText};
   assert.equal(classifyResearchSourceDirectness(source).directness,"secondary");
-  assert.equal(researchSourceIsPrimaryForClaim(source,fixture.initialClaims[0]),true,"initial work-title match illustrates the old authority route");
+  assert.equal(researchSourceIsPrimaryForClaim(source,fixture.initialClaims[0]),false,"a secondary work-title match must never establish original-study provenance");
   assert.equal(researchSourceIsPrimaryForClaim(source,canonical),false,"canonical attribution must qualify against the named entity");
   const graph=createResearchClaimEvidenceGraph({sources:[source],claims:[canonical],evidence:[{
     evidenceId:"evidence-1",sourceId:source.sourceId,excerpt:liveText,contextNote:null,

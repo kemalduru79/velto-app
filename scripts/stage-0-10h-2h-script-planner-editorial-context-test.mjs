@@ -102,6 +102,8 @@ assert.deepEqual(createScriptPlannerGroundingDiagnostics(normalized), {
   duplicateSpanIdentities: [],
   blockingReasons: ["MATERIAL_COUNTER_EVIDENCE_REVIEW"],
   primaryEvidenceCount: 1,
+  claimRelativePrimaryEvidenceIds: [],
+  primaryCoverageByClaim: [],
   nonPrimaryEvidenceCount: 1,
   primaryCoverageRatio: 1,
   primaryRequiredClaimIds: [],

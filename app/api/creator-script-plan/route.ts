@@ -718,7 +718,7 @@ async function executeCreatorScriptOperation(input: {
       scriptProviderDispatched: false,
     });
     return NextResponse.json(
-      { error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, missingExcerptEvidenceIds: groundingGate.missingExcerptEvidenceIds, nextActions: groundingGate.nextActions },
+      { error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, missingExcerptEvidenceIds: groundingGate.missingExcerptEvidenceIds, nextActions: groundingGate.nextActions, unresolvedClaimIds: groundingGate.unresolvedCounterClaimIds },
       { status: 422 },
     );
   }

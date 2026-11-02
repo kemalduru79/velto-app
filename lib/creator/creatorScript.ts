@@ -600,7 +600,11 @@ export function createCreatorScriptNarrationEditorialContext(
       }
     })
     .map((source) => source.sourceId));
-  const evidence = context.evidence.filter((item) => !controlOnlySourceIds.has(item.sourceId));
+  const retainedEvidenceIds = new Set(context.claims.flatMap((claim) => [
+    ...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds,
+  ]));
+  const evidence = context.evidence.filter((item) => !controlOnlySourceIds.has(item.sourceId)
+    && (!context.counterEvidenceReview || retainedEvidenceIds.has(item.evidenceId)));
   const narrationEvidenceIds = new Set(evidence.map((item) => item.evidenceId));
   const claims = context.claims
     .map((claim) => ({
@@ -615,8 +619,10 @@ export function createCreatorScriptNarrationEditorialContext(
       ...claim.contextualEvidenceIds,
     ].length > 0);
   const narrationSourceIds = new Set(evidence.map((item) => item.sourceId));
+  const { counterEvidenceReview: provenance, ...narrationContext } = context;
+  void provenance; // Full immutable research remains backstage, outside provider prompts.
   return {
-    ...context,
+    ...narrationContext,
     editorialConstitution: "Backstage editorial controls are enforced separately and are not narration material.",
     claims,
     evidence,

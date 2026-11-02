@@ -899,7 +899,7 @@ assert.ok(scriptPlanAdapter, "CreatorLab script-plan adapter must remain present
 assert.match(scriptPlanAdapter, /const scriptPlanRequest = \{/);
 assert.match(
   scriptPlanAdapter,
-  /runCreatorEditorialScriptPipeline\(\{\s*accessToken,\s*topic,\s*creatorProfile: creatorStrategyProfileSnapshot \|\| creatorProfile,\s*scriptPlanRequest,\s*\}\)/,
+  /runCreatorEditorialScriptPipeline\(\{\s*accessToken,\s*topic,\s*creatorProfile: creatorStrategyProfileSnapshot \|\| creatorProfile,\s*onCounterEvidenceReview: requestCounterEvidenceReview,\s*operationIsCurrent: reviewIsCurrent,\s*scriptPlanRequest,\s*\}\)/,
 );
 assert.match(
   scriptPlanAdapter,

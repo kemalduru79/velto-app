@@ -133,7 +133,9 @@ function canonicalWorkReferenceMatches(
  * claim origin and the source itself:
  *
  * - attributed_statement -> named author/publisher
- * - document_assertion/original_research_result -> originating work title
+ * - document_assertion -> that exact document's own assertions
+ * Original research results require verified original-source provenance above;
+ * matching a secondary report's URL/title cannot establish study authority.
  *
  * Retrieval lane alone never establishes primary authority.
  */
@@ -157,8 +159,7 @@ export function researchSourceIsPrimaryForClaim(
   }
 
   if (
-    claim.propositionKind === "document_assertion" ||
-    claim.propositionKind === "original_research_result"
+    claim.propositionKind === "document_assertion"
   ) {
     return canonicalWorkReferenceMatches(
       claim.origin.referencedWork,
