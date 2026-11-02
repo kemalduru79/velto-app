@@ -18,6 +18,7 @@ const tests = [
   "scripts/stage-0-18a6h-audio-topology-guard-test.mjs",
   "scripts/stage-0-19-editorial-adjudication-recovery-test.mjs",
   "scripts/creator-editorial-cross-source-span-repair-test.mjs",
+  "scripts/creator-editorial-same-source-origin-test.mjs",
   "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
   "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
@@ -118,6 +119,7 @@ for (const test of tests) {
   console.log(`\n[offline regression] ${test}`);
   const result = spawnSync(process.execPath, [
     ...(test === "scripts/creator-editorial-cross-source-span-repair-test.mjs" ||
+        test === "scripts/creator-editorial-same-source-origin-test.mjs" ||
         test === "scripts/stage-5d2b-science-documentary-routing-test.mjs" ||
         test === "scripts/stage-5d2c-v2-section-evidence-test.mjs" ||
         test === "scripts/stage-5e0-capped-generation-pilot-test.mjs" ||

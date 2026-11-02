@@ -5,6 +5,7 @@ import {
   validateResearchClaimPropositionAuthority,
   type ResearchClaimOrigin,
   type ResearchPropositionKind,
+  type ResearchClaimEvidenceGraph,
 } from "./claimEvidenceGraph.ts";
 
 export const CLAIM_PROPOSITION_AUTHORITY_VERSION = "claim-proposition-authority-v2" as const;
@@ -126,6 +127,54 @@ function isOriginDeattribution(
   return changed;
 }
 
+
+/**
+ * Treat a model's website-domain speaker as a reference to the *same*
+ * already-linked article only when the second classification names exactly
+ * that article. This narrow refinement preserves a primary-source obligation.
+ * It cannot substitute a document, a named person, or unrelated evidence.
+ */
+function isSameSourcePublisherHostRefinement(input: {
+  initial: ClaimPropositionAuthority & {claimType?: string};
+  adjudicated: ClaimPropositionAuthority;
+  initialRequiresPrimary: boolean;
+  adjudicatedRequiresPrimary: boolean;
+  context?: Pick<ResearchClaimEvidenceGraph, "sources" | "evidence" | "links">;
+}): boolean {
+  const {initial, adjudicated, context} = input;
+  if (!context ||
+      (initial.claimType !== "THEORY" && initial.claimType !== "EXPERT_OPINION") ||
+      initial.propositionKind !== "attributed_statement" ||
+      adjudicated.propositionKind !== "document_assertion" ||
+      !input.initialRequiresPrimary || !input.adjudicatedRequiresPrimary ||
+      initial.origin.referencedWork !== null ||
+      adjudicated.origin.attributedEntity !== null ||
+      !initial.origin.attributedEntity || !adjudicated.origin.referencedWork) return false;
+  const work = adjudicated.origin.referencedWork.trim()
+    .replace(/^(?:web|news|academic|primary):(?=https?:\/\/)/iu, "");
+  let workUrl: URL;
+  try {
+    workUrl = new URL(work);
+    if (workUrl.protocol !== "https:" && workUrl.protocol !== "http:") return false;
+  } catch { return false; }
+  const matchingSources = context.sources.filter((source) => {
+    if (!["article", "webpage", "document"].includes(source.mediaKind)) return false;
+    try {
+      const url = new URL(source.url);
+      return url.href === workUrl.href &&
+        url.hostname.toLowerCase() === initial.origin.attributedEntity!.toLowerCase();
+    } catch { return false; }
+  });
+  if (matchingSources.length !== 1) return false;
+  const evidenceIds = new Set(context.evidence
+    .filter((evidence) => evidence.sourceId === matchingSources[0].sourceId)
+    .map((evidence) => evidence.evidenceId));
+  return context.links.some((link) =>
+    link.claimId === initial.claimId &&
+    link.stance === "supports" &&
+    evidenceIds.has(link.evidenceId));
+}
+
 /**
  * Reconciles exactly one provider adjudication against the initial proposal.
  * The adjudicator has authority only over proposition classification; all other
@@ -134,6 +183,7 @@ function isOriginDeattribution(
 export function reconcileClaimPropositionAuthorities(input: {
   initialClaims: unknown;
   adjudication: unknown;
+  sourceContext?: Pick<ResearchClaimEvidenceGraph, "sources" | "evidence" | "links">;
 }) {
   const initialClaims = Array.isArray(input.initialClaims)
     ? input.initialClaims
@@ -297,6 +347,13 @@ export function reconcileClaimPropositionAuthorities(input: {
       sameOriginNonPrimarySemanticKinds.has(initial.propositionKind) &&
       sameOriginNonPrimarySemanticKinds.has(adjudicated.propositionKind);
 
+    const sameSourcePublisherHostRefinement =
+      initialSemanticallyValid &&
+      isSameSourcePublisherHostRefinement({
+        initial, adjudicated, initialRequiresPrimary, adjudicatedRequiresPrimary,
+        context: input.sourceContext,
+      });
+
     const isSameKindEditorialDeattributionRefinement =
       initialSemanticallyValid &&
       claimType === "EDITORIAL_INFERENCE" &&
@@ -314,6 +371,7 @@ export function reconcileClaimPropositionAuthorities(input: {
       !isSameWorkPrimarySemanticRefinement &&
       !isSameOriginResearchAttributionRefinement &&
       !isSameOriginNonPrimarySemanticRefinement &&
+      !sameSourcePublisherHostRefinement &&
       !isSameKindEditorialDeattributionRefinement
     ) {
       throw disagreement();
@@ -325,6 +383,7 @@ export function reconcileClaimPropositionAuthorities(input: {
       isSameWorkPrimarySemanticRefinement ||
       isSameOriginResearchAttributionRefinement ||
       isSameOriginNonPrimarySemanticRefinement ||
+      sameSourcePublisherHostRefinement ||
       isSameKindEditorialDeattributionRefinement
         ? adjudicated
         : initial;

@@ -626,6 +626,7 @@ export async function POST(request: Request) {
       const reconciledClaims = reconcileClaimPropositionAuthorities({
         initialClaims: graph.claims,
         adjudication: parseModelJson(adjudicationResponse.output_text || ""),
+        sourceContext: {sources: graph.sources, evidence: graph.evidence, links: graph.links},
       }) as ResearchClaim[];
       graph = createResearchClaimEvidenceGraph({
         sources: graph.sources,
