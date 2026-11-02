@@ -15,7 +15,7 @@ assert.equal(accepted.claimType,initial.claimType);assert.equal(accepted.text,in
 assert.equal(researchClaimRequiresPrimarySource(accepted),true);
 assert.equal(JSON.stringify({initial,adjudication,context}),copy,"Source and proposal cannot be mutated.");
 const fails=(name,i=initial,a=adjudication,c=context)=>assert.throws(()=>call(i,a,c),e=>e instanceof ClaimPropositionAuthorityDisagreementError,name);
-fails("without linked graph",initial,adjudication,undefined);
+fails("without linked graph",initial,adjudication,null);
 fails("another document",initial,{claims:[{...adjudication.claims[0],origin:{attributedEntity:null,referencedWork:"https://other.example/doc"}}]});
 fails("named individual",{...initial,origin:{attributedEntity:"Doctor Smith",referencedWork:null}});
 fails("another publisher",{...initial,origin:{attributedEntity:"other.example",referencedWork:null}});
