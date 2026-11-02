@@ -88,7 +88,7 @@ export function createCreatorEvidenceUnits(
   const bindingsFor = (evidenceIds: string[]) => uniqueStable(evidenceIds)
     .flatMap((evidenceId): CreatorEvidenceBinding[] => {
       const evidence = evidenceById.get(evidenceId);
-      if (!evidence || !sourceById.has(evidence.sourceId)) return [];
+      if (!evidence?.excerpt?.trim() || !sourceById.has(evidence.sourceId)) return [];
       return [{
         evidenceId: evidence.evidenceId,
         sourceId: evidence.sourceId,
@@ -168,9 +168,16 @@ export function buildCreatorEvidencePromptPack(input: {
 function projectCreatorEvidencePromptUnits(
   units: CreatorEvidenceUnit[],
   maxUnits: number,
+  section?: Pick<CreatorScriptSectionBudget, "ownershipBoundary">,
 ) {
   const projected = units.slice(0, maxUnits).map((unit) => {
-    const compactBindings = (bindings: CreatorEvidenceBinding[]) => bindings
+    const demonstration = section?.ownershipBoundary.owns.some((role) =>
+      role === "grounded_demonstration" || role === "concrete_case");
+    const compactBindings = (bindings: CreatorEvidenceBinding[]) => [...bindings]
+      .sort((left, right) => demonstration
+        ? Number(classifyEditorialGroundingSpanSpecificity(right.excerpt || "") === "concrete_observation") -
+          Number(classifyEditorialGroundingSpanSpecificity(left.excerpt || "") === "concrete_observation")
+        : 0)
       .slice(0, MAX_PROMPT_BINDINGS_PER_STANCE)
       .map((binding) => ({
         evidenceId: binding.evidenceId,
@@ -293,6 +300,7 @@ export function buildCreatorSectionEvidencePromptPack(input: {
   const units = projectCreatorEvidencePromptUnits(
     budgetCandidates.map((candidate) => candidate.unit),
     maxUnits,
+    input.section,
   );
   omissionReasonCounts.character_budget = Math.max(0, budgetCandidates.length - units.length);
   const omittedUnitCount = Object.values(omissionReasonCounts)

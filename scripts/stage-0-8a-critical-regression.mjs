@@ -20,6 +20,7 @@ const tests = [
   "scripts/creator-editorial-cross-source-span-repair-test.mjs",
   "scripts/creator-editorial-same-source-origin-test.mjs",
   "scripts/creator-longform-grounding-plan-integration-test.mjs",
+  "scripts/creator-issue-42-evidence-lifecycle-test.mjs",
   "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
   "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
@@ -131,7 +132,8 @@ for (const test of tests) {
         test === "scripts/stage-5e1g-a-metadata-importer-test.mjs" ||
         test === "scripts/stage-5e1g-b-scientific-computing-test.mjs"
       ? ["--experimental-strip-types"]
-      : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs"
+      : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
+          test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs"
         ? ["--experimental-transform-types"]
         : []),
     test,
