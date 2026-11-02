@@ -350,8 +350,12 @@ function applyRepairSelection(input: {
   return {
     ...input.original,
     evidence: originalEvidence.map((item) => {
-      const excerpt = excerptsByEvidenceId.get(text(item.evidenceId));
-      return excerpt === undefined ? item : { ...item, excerpt };
+      const evidenceId = text(item.evidenceId);
+      const excerpt = excerptsByEvidenceId.get(evidenceId);
+      const spanId = selectedSpanByEvidenceId.get(evidenceId);
+      return excerpt === undefined || spanId === undefined
+        ? item
+        : { ...item, excerpt, spanId };
     }),
   };
 }
@@ -394,12 +398,23 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    const sourceMismatchPrefix = "EDITORIAL_EVIDENCE_SPAN_SOURCE_MISMATCH:";
     const recoverable = message.startsWith(UNGROUNDED_EXCERPT_PREFIX)
       || message.startsWith("EDITORIAL_EVIDENCE_SPAN_REQUIRED:")
-      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_INVALID:");
+      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_INVALID:")
+      || message.startsWith(sourceMismatchPrefix);
     if (!recoverable) throw error;
 
-    const invalidEvidence = discoverInvalidEvidence(input);
+    // Independent sourceId/spanId model selections can disagree. Repair only
+    // the offending evidence against spans owned by its unchanged sourceId.
+    // Never infer a new source from the mismatched span or relax grounding.
+    const discovered = discoverInvalidEvidence(input);
+    const invalidEvidence = message.startsWith(sourceMismatchPrefix)
+      ? discovered.filter((item) =>
+          item.evidenceId === message.slice(sourceMismatchPrefix.length)
+        )
+      : discovered;
+    if (invalidEvidence.length === 0) throw error;
     const invalidSourceIds = new Set(invalidEvidence.map((item) => item.sourceId));
     const invalidSources = input.sources.filter((source) =>
       invalidSourceIds.has(source.sourceId)
