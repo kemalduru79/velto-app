@@ -147,7 +147,6 @@ function isSameSourcePublisherHostRefinement(input: {
       initial.propositionKind !== "attributed_statement" ||
       adjudicated.propositionKind !== "document_assertion" ||
       !input.initialRequiresPrimary || !input.adjudicatedRequiresPrimary ||
-      initial.origin.referencedWork !== null ||
       adjudicated.origin.attributedEntity !== null ||
       !initial.origin.attributedEntity || !adjudicated.origin.referencedWork) return false;
   const work = adjudicated.origin.referencedWork.trim()
@@ -156,6 +155,13 @@ function isSameSourcePublisherHostRefinement(input: {
   try {
     workUrl = new URL(work);
     if (workUrl.protocol !== "https:" && workUrl.protocol !== "http:") return false;
+    // A previously provided work must point to the exact same document.
+    // No substitution by the second model is permitted.
+    if (initial.origin.referencedWork !== null) {
+      const initialWork = initial.origin.referencedWork.trim()
+        .replace(/^(?:web|news|academic|primary):(?=https?:\/\/)/iu, "");
+      if (new URL(initialWork).href !== workUrl.href) return false;
+    }
   } catch { return false; }
   const matchingSources = context.sources.filter((source) => {
     if (!["article", "webpage", "document"].includes(source.mediaKind)) return false;
