@@ -1,0 +1,34 @@
+name: Creator Long Form Grounding Focused
+
+on:
+  push:
+    branches:
+      - agent/creatorlab-longform-validation-20261102
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Readiness role-adaptation safeguards
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Long-form production gate integration
+        run: node --experimental-strip-types scripts/creator-longform-grounding-plan-integration-test.mjs
+      - name: Uncertainty adaptation existing regression
+        run: node --experimental-strip-types scripts/stage-0-19e6p-uncertainty-adaptive-long-form-plan-test.mjs
+      - name: Evidence adaptation existing regression
+        run: node --experimental-strip-types scripts/stage-0-19e6k-evidence-adaptive-long-form-plan-test.mjs
+      - name: Long-form role capability
+        run: node --experimental-strip-types scripts/stage-0-15b-6h-long-form-role-capability-test.mjs
+      - name: Long-form evidence readiness
+        run: node --experimental-strip-types scripts/stage-0-15b-6b-long-form-evidence-readiness-test.mjs
+      - name: Uncertainty context preservation
+        run: node --experimental-strip-types scripts/stage-0-15b-6c-uncertainty-context-preservation-test.mjs
