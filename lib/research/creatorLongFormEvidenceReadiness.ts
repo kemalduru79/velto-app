@@ -517,6 +517,61 @@ export function adaptCreatorLongFormSectionPlanToUncertaintyCapability(input: {
   );
 }
 
+
+/**
+ * Adapt only roles that demand evidence the *already-grounded* project does
+ * not possess. Never synthesize missing sources, claim types, counter-evidence
+ * or limitations, and never suppress independent readiness blockers.
+ * The exact resulting plan is used for both the gate and generation.
+ */
+export function prepareCreatorLongFormSectionPlanForAvailableEvidence(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+  sectionNative: boolean;
+}) {
+  const originalReadiness = createCreatorLongFormEvidenceReadiness(input);
+  const adaptable = new Set<CreatorLongFormEvidenceReadinessReason>([
+    "missing_grounded_demonstration_capability",
+    "missing_uncertainty_capability",
+  ]);
+  const linkedEvidenceIds = new Set(
+    input.context.evidence
+      .filter((evidence) => Boolean(evidence.excerpt?.trim()) && Boolean(evidence.sourceId))
+      .map((evidence) => evidence.evidenceId),
+  );
+  const hasRealGroundedSupport = input.context.claims.some((claim) =>
+    claim.supportingEvidenceIds.some((id) => linkedEvidenceIds.has(id)) ||
+    claim.contextualEvidenceIds.some((id) => linkedEvidenceIds.has(id))
+  );
+  // No adaptation for an entirely ungrounded graph, a missing counterview,
+  // collapsed body authority, scientific tension, or any unknown failure.
+  if (
+    !input.sectionNative ||
+    originalReadiness.eligible ||
+    !hasRealGroundedSupport ||
+    !originalReadiness.reasonCodes.every((reason) => adaptable.has(reason))
+  ) {
+    return { plan: input.plan, originalReadiness, finalReadiness: originalReadiness, adaptedSectionIds: [] as string[] };
+  }
+
+  let plan = input.plan;
+  if (originalReadiness.reasonCodes.includes("missing_grounded_demonstration_capability")) {
+    plan = adaptCreatorLongFormSectionPlanToEvidenceCapability({context: input.context, plan});
+  }
+  if (originalReadiness.reasonCodes.includes("missing_uncertainty_capability")) {
+    plan = adaptCreatorLongFormSectionPlanToUncertaintyCapability({context: input.context, plan});
+  }
+  const finalReadiness = createCreatorLongFormEvidenceReadiness({
+    context: input.context, plan, sectionNative: input.sectionNative,
+  });
+  return {
+    plan, originalReadiness, finalReadiness,
+    adaptedSectionIds: plan.filter((section, index) =>
+      section !== input.plan[index]
+    ).map((section) => section.id),
+  };
+}
+
 export function createCreatorLongFormEvidenceReadiness(input: {
   context: ScriptPlannerEditorialContext;
   plan: CreatorScriptSectionBudget[];

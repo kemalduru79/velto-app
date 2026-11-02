@@ -37,6 +37,7 @@ import {
   createCreatorLongFormEvidenceCapabilityEvaluation,
   createCreatorLongFormEvidenceReadiness,
   createCreatorScriptSectionClaimRouting,
+  prepareCreatorLongFormSectionPlanForAvailableEvidence,
 } from "../../../lib/research/creatorLongFormEvidenceReadiness";
 import {
   buildCreatorEvidencePromptPack,
@@ -745,15 +746,29 @@ async function executeCreatorScriptOperation(input: {
     const hasMaterialCounterview = input.editorialContext.claims.some(
       (claim) => claim.counterEvidenceIds.length > 0,
     );
-    const sectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
+    const originalSectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
       targetDurationSec: durationSec,
       language,
       hasMaterialCounterview,
     });
-    const narrationControlPlan = createCreatorScriptNarrationControlPlan(sectionBudgetPlan);
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
     );
+    // Evidence-limited roles must be adapted before the readiness gate,
+    // narration control and section-native generation consume the plan.
+    const preparedPlan = prepareCreatorLongFormSectionPlanForAvailableEvidence({
+      context: input.editorialContext,
+      plan: originalSectionBudgetPlan,
+      sectionNative,
+    });
+    const sectionBudgetPlan = preparedPlan.plan;
+    const narrationControlPlan = createCreatorScriptNarrationControlPlan(sectionBudgetPlan);
+    console.info("CREATOR_LONG_FORM_EVIDENCE_ROLE_ADAPTATION", {
+      originalReasons: preparedPlan.originalReadiness.reasonCodes,
+      remainingReasons: preparedPlan.finalReadiness.reasonCodes,
+      adaptedSectionIds: preparedPlan.adaptedSectionIds,
+      finalEligible: preparedPlan.finalReadiness.eligible,
+    });
     const evidenceCapabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation({
       context: input.editorialContext,
       plan: sectionBudgetPlan,
@@ -774,11 +789,7 @@ async function executeCreatorScriptOperation(input: {
       hasUncertaintyCapability: evidenceCapabilityEvaluation.hasUncertaintyCapability,
       hasCounterviewCapability: evidenceCapabilityEvaluation.hasCounterviewCapability,
     }));
-    const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
-      context: input.editorialContext,
-      plan: sectionBudgetPlan,
-      sectionNative,
-    });
+    const longFormEvidenceReadiness = preparedPlan.finalReadiness;
     if (!longFormEvidenceReadiness.eligible) {
       console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
         editorialAnalysisStatus: "accepted",
@@ -790,7 +801,7 @@ async function executeCreatorScriptOperation(input: {
         scriptProviderDispatched: false,
       });
       return NextResponse.json(
-        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING" },
+        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: longFormEvidenceReadiness.reasonCodes },
         { status: 422 },
       );
     }
