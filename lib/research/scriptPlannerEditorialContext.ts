@@ -1,3 +1,4 @@
+import { createResearchTopicReadiness } from "./topicEvidenceReadiness.ts";
 import {
   createResearchClaimEvidenceGraph,
   isResearchClaimType,
@@ -55,7 +56,11 @@ export type ScriptPlannerGroundingDiagnostics = {
   groundingStatus: ScriptPlannerEditorialContext["readiness"]["status"];
   evidenceCount: number;
   claimCount: number;
+  /** Compatibility alias for nonemptyExcerptCount; NOT a verified span-ID count. */
   canonicalSpanCount: number;
+  nonemptyExcerptCount: number;
+  missingExcerptEvidenceIds: string[];
+  primaryCoverageApplicable: boolean;
   allowedClaimIdCount: number;
   missingClaimIds: string[];
   unknownClaimIds: string[];
@@ -461,7 +466,10 @@ export function createScriptPlannerGroundingDiagnostics(
     groundingStatus: context.readiness.status,
     evidenceCount: context.evidence.length,
     claimCount: context.claims.length,
-    canonicalSpanCount: context.evidence.filter((item) => Boolean(item.excerpt)).length,
+    canonicalSpanCount: context.evidence.filter((item) => Boolean(item.excerpt?.trim())).length,
+    nonemptyExcerptCount: context.evidence.filter((item) => Boolean(item.excerpt?.trim())).length,
+    missingExcerptEvidenceIds: context.evidence.filter((item) => !item.excerpt?.trim()).map((item) => item.evidenceId),
+    primaryCoverageApplicable: primaryRequiredClaimIds.length > 0,
     allowedClaimIdCount: allowedClaimIds.size,
     missingClaimIds,
     unknownClaimIds,
@@ -532,4 +540,38 @@ export function createScriptPlannerEvidenceGraph(
     evidence: context.evidence.map((item) => ({ ...item, locator: { ...item.locator } })),
     links,
   };
+}
+
+/** Fail closed on legacy/null excerpts and outstanding editorial review. Never
+ * promote client readiness, primary classification or counter-evidence stance. */
+export function createScriptPlannerGenerationGroundingGate(context: ScriptPlannerEditorialContext) {
+  const linkedIds = new Set(context.claims.flatMap((claim) => [
+    ...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds,
+  ]));
+  const missingExcerptEvidenceIds = context.evidence
+    .filter((item) => linkedIds.has(item.evidenceId) && !item.excerpt?.trim())
+    .map((item) => item.evidenceId);
+  const recomputed = createResearchTopicReadiness({
+    graph: createScriptPlannerAuthorityGraph(context),
+    sourceAssessments: context.sources.map((source) => ({
+      sourceId: source.sourceId, directness: source.directness,
+      provenanceStatus: "unknown", reviewStatus: source.reviewStatus, reviewReasons: [],
+    })),
+  });
+  const reasons = new Set([...context.readiness.reviewReasons, ...recomputed.reviewReasons]);
+  if (missingExcerptEvidenceIds.length) reasons.add("EVIDENCE_EXCERPTS_REQUIRED");
+  if (context.readiness.status !== "ready" && reasons.size === 0) reasons.add("EDITORIAL_REVIEW_REQUIRED");
+  const nextActions = [
+    ...(missingExcerptEvidenceIds.length ? ["rerun_editorial_analysis_from_existing_sources"] : []),
+    ...(reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? ["review_material_counter_evidence"] : []),
+    ...(reasons.has("PRIMARY_SOURCE_COVERAGE_REQUIRED") ? ["retrieve_qualifying_primary_sources"] : []),
+    ...(reasons.has("SOURCE_PROVENANCE_REVIEW") ? ["review_source_provenance"] : []),
+  ];
+  const message = [
+    missingExcerptEvidenceIds.length ? "Evidence excerpts are missing. Re-run editorial analysis from the existing sources to restore source-owned passages." : "",
+    reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? "Material counter-evidence requires editorial review; inspect genuine opposing evidence before continuing." : "",
+    reasons.has("PRIMARY_SOURCE_COVERAGE_REQUIRED") ? "Retrieve qualifying primary-source evidence for the claims that require it." : "",
+    reasons.has("SOURCE_PROVENANCE_REVIEW") ? "Review source provenance before generating a script." : "",
+  ].filter(Boolean).join(" ") || "Editorial evidence requires review before script generation.";
+  return { eligible: reasons.size === 0, reasonCodes: [...reasons], missingExcerptEvidenceIds, nextActions, message };
 }

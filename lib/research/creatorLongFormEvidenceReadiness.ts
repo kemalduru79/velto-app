@@ -115,17 +115,21 @@ function concreteDemonstrationClaimId(context: ScriptPlannerEditorialContext) {
     ?.claimId || null;
 }
 
+function hasExcerpt(context: ScriptPlannerEditorialContext, id: string) {
+  return context.evidence.some((item) => item.evidenceId === id && Boolean(item.excerpt?.trim()) && Boolean(item.sourceId));
+}
+
 function uncertaintyClaimId(context: ScriptPlannerEditorialContext) {
-  return context.claims.find((claim) => claim.contextualEvidenceIds.length > 0)?.claimId ||
+  return context.claims.find((claim) => claim.contextualEvidenceIds.some((id) => hasExcerpt(context, id)))?.claimId ||
     context.claims.find((claim) =>
       UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) &&
-      claim.supportingEvidenceIds.length > 0
+      claim.supportingEvidenceIds.some((id) => hasExcerpt(context, id))
     )?.claimId ||
     null;
 }
 
 function counterviewClaimId(context: ScriptPlannerEditorialContext) {
-  return context.claims.find((claim) => claim.counterEvidenceIds.length > 0)?.claimId ||
+  return context.claims.find((claim) => claim.counterEvidenceIds.some((id) => hasExcerpt(context, id)))?.claimId ||
     null;
 }
 
@@ -370,7 +374,7 @@ export function createCreatorLongFormEvidenceCapabilityEvaluation(input: {
     ];
     return relations.flatMap(({ evidenceId, stance }) => {
       const evidence = evidenceById.get(evidenceId);
-      if (!evidence) return [];
+      if (!evidence?.excerpt?.trim()) return [];
       const specificityClassification = classifyEditorialGroundingSpanSpecificity(
         evidence.excerpt || "",
       );
@@ -411,13 +415,13 @@ export function createCreatorLongFormEvidenceCapabilityEvaluation(input: {
     ? [...limitsClaimIds].some((claimId) => {
         const claim = claimById.get(claimId);
         if (!claim) return false;
-        return claim.contextualEvidenceIds.length > 0 ||
-          (UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) && claim.supportingEvidenceIds.length > 0);
+        return claim.contextualEvidenceIds.some((id) => hasExcerpt(input.context, id)) ||
+          (UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) && claim.supportingEvidenceIds.some((id) => hasExcerpt(input.context, id)));
       })
     : false;
   const hasCounterviewCapability = counterviewSection
     ? (routingBySectionId.get(counterviewSection.id)?.claimIds || []).some((claimId) =>
-        (claimById.get(claimId)?.counterEvidenceIds.length || 0) > 0
+        (claimById.get(claimId)?.counterEvidenceIds || []).some((id) => hasExcerpt(input.context, id))
       )
     : false;
 
@@ -547,6 +551,8 @@ export function prepareCreatorLongFormSectionPlanForAvailableEvidence(input: {
   // collapsed body authority, scientific tension, or any unknown failure.
   if (
     !input.sectionNative ||
+    input.context.readiness.status !== "ready" ||
+    input.context.readiness.reviewReasons.length > 0 ||
     originalReadiness.eligible ||
     !hasRealGroundedSupport ||
     !originalReadiness.reasonCodes.every((reason) => adaptable.has(reason))

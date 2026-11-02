@@ -257,6 +257,10 @@ export function installCanonicalEditorialEvidenceSpans(input: {
   proposal: EditorialAnalysisProposal;
   candidateSpans: EditorialGroundingCandidateSpan[];
 }): EditorialAnalysisProposal {
+  if (new Set(input.candidateSpans.map((span) => span.spanId)).size !== input.candidateSpans.length) {
+    throw new Error("EDITORIAL_CANDIDATE_SPAN_ID_DUPLICATE");
+  }
+  const selectedIdentities = new Set<string>();
   const spanBySourceAndId = new Map(
     input.candidateSpans.map((span) => [`${span.sourceId}\0${span.spanId}`, span]),
   );
@@ -273,6 +277,9 @@ export function installCanonicalEditorialEvidenceSpans(input: {
         throw new Error(`EDITORIAL_EVIDENCE_SPAN_SOURCE_MISMATCH:${evidenceId}`);
       }
       if (!span) throw new Error(`EDITORIAL_EVIDENCE_SPAN_INVALID:${evidenceId}`);
+      const identity = `${sourceId}\0${spanId}`;
+      if (selectedIdentities.has(identity)) throw new Error(`EDITORIAL_EVIDENCE_SPAN_DUPLICATE:${evidenceId}`);
+      selectedIdentities.add(identity);
       return {
         evidenceId,
         sourceId,
@@ -367,8 +374,9 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
   requirePropositionAuthority?: boolean;
   allowAmbiguousPropositionAuthority?: boolean;
   provisionalPropositionAuthority?: boolean;
+  requireSpanSelections?: boolean;
 }) {
-  const proposalUsesSpanSelections = (Array.isArray(input.proposal.evidence)
+  const proposalUsesSpanSelections = input.requireSpanSelections === true || (Array.isArray(input.proposal.evidence)
     ? input.proposal.evidence
     : []).some((item) => text(item.spanId));
   const initialCandidateSpans = proposalUsesSpanSelections
@@ -423,6 +431,7 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
     if (candidateSpans.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
       throw new Error("EDITORIAL_GROUNDING_REPAIR_CANDIDATE_LIMIT_EXCEEDED");
     }
+    if (candidateSpans.length === 0) throw new Error("EDITORIAL_GROUNDING_REPAIR_NO_SOURCE_SPANS");
     const selection = await input.repair({
       diagnosticCategory: message.split(":", 1)[0],
       invalidEvidence,
@@ -431,13 +440,29 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
         ? message.slice(UNGROUNDED_EXCERPT_PREFIX.length)
         : invalidEvidence[0]?.sourceId || "",
     });
+    const originalIds = new Set((input.proposal.evidence || []).map((item) => text(item.evidenceId)));
+    const parsedSelection = parseRepairSelection(selection);
+    const unknownRepair = parsedSelection.repairs.find((item) => !originalIds.has(item.evidenceId));
+    if (unknownRepair) throw new Error(`EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING:${unknownRepair.evidenceId}`);
+    const invalidIds = new Set(invalidEvidence.map((item) => item.evidenceId));
+    if (parsedSelection.repairs.some((item) => !invalidIds.has(item.evidenceId))) {
+      throw new Error("EDITORIAL_GROUNDING_REPAIR_UNEXPECTED_EVIDENCE");
+    }
+    const repairedProposal = applyRepairSelection({
+      original: input.proposal,
+      selection,
+      candidateSpans,
+    });
     return createValidatedEditorialAnalysis({
       sources: input.sources,
-      proposal: applyRepairSelection({
-        original: input.proposal,
-        selection,
-        candidateSpans,
-      }),
+      // Repair selects only invalid items. Materialize ALL still-valid original
+      // selections too: the legacy excerpt parser cannot interpret spanId.
+      proposal: proposalUsesSpanSelections
+        ? installCanonicalEditorialEvidenceSpans({
+            proposal: repairedProposal,
+            candidateSpans: initialCandidateSpans,
+          })
+        : repairedProposal,
       requirePropositionAuthority: input.requirePropositionAuthority,
       allowAmbiguousPropositionAuthority: input.allowAmbiguousPropositionAuthority,
       provisionalPropositionAuthority: input.provisionalPropositionAuthority,

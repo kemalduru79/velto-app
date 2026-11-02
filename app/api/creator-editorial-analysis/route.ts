@@ -177,6 +177,7 @@ export async function POST(request: Request) {
       "Use ambiguous when the supplied material cannot safely distinguish claim-origin semantics. Never hide ambiguity by choosing world_state.",
       "A metaphysical proposition remains METAPHYSICAL_CLAIM unless the supplied material supports a different explicit classification; do not silently convert belief into fact.",
       "FORECAST, HYPOTHESIS, THEORY, EXPERT_OPINION and EDITORIAL_INFERENCE must retain their uncertainty.",
+      "Clearly imagined creator-requested future scenarios belong to THOUGHT_EXPERIMENT, not established facts. Their factual premises still require real source evidence. Never relabel an actual forecast or attributed claim merely to avoid counter-evidence or primary-source review.",
       "Evidence must select an exact supplied candidate spanId owned by its sourceId. Never write evidence excerpt text.",
       "For FACT, PRIMARY_SOURCE_CLAIM, and RESEARCH_FINDING claims, prefer a claim-relevant candidate marked concrete_observation over an abstract_or_conceptual thesis summary when the supplied source contains one.",
       "Concrete preference means extraction only: never infer or manufacture a researcher, participant, sample, procedure, comparison, number, result, case, or limitation absent from the selected span.",
@@ -368,6 +369,7 @@ export async function POST(request: Request) {
         requirePropositionAuthority: true,
         allowAmbiguousPropositionAuthority: true,
         provisionalPropositionAuthority: true,
+        requireSpanSelections: true,
       });
     } catch (error) {
       const diagnostic = error instanceof Error ? error.message : "Editorial analysis grounding failed.";
@@ -380,7 +382,9 @@ export async function POST(request: Request) {
         {
           success: false,
           code: "EDITORIAL_ANALYSIS_GROUNDING_FAILED",
-          error: "Evidence validation could not be completed. Please retry.",
+          error: diagnostic === "EDITORIAL_GROUNDING_REPAIR_NO_SOURCE_SPANS"
+            ? "These sources contain no recoverable evidence passages. Add source material before rerunning editorial analysis."
+            : "Evidence validation could not be completed. Review the source-bound evidence selections before rerunning editorial analysis.",
           detailCode: diagnostic,
         },
         { status: 422 },
@@ -530,6 +534,7 @@ export async function POST(request: Request) {
         requirePropositionAuthority: true,
         allowAmbiguousPropositionAuthority: true,
         provisionalPropositionAuthority: true,
+        requireSpanSelections: true,
       }),
     });
     graph = selectionRepair.graph;

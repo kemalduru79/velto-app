@@ -609,7 +609,7 @@ export function createCreatorScriptNarrationEditorialContext(
       counterEvidenceIds: claim.counterEvidenceIds.filter((id) => narrationEvidenceIds.has(id)),
       contextualEvidenceIds: claim.contextualEvidenceIds.filter((id) => narrationEvidenceIds.has(id)),
     }))
-    .filter((claim) => [
+    .filter((claim) => claim.claimType === "THOUGHT_EXPERIMENT" || [
       ...claim.supportingEvidenceIds,
       ...claim.counterEvidenceIds,
       ...claim.contextualEvidenceIds,

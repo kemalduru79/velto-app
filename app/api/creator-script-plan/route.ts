@@ -27,6 +27,7 @@ import {
 } from "../../../lib/creator/characterIdentity";
 import {
   createScriptPlannerGroundingDiagnostics,
+  createScriptPlannerGenerationGroundingGate,
   createScriptPlannerEvidenceGraph,
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
@@ -700,7 +701,8 @@ async function executeCreatorScriptOperation(input: {
   const groundingDiagnostics = createScriptPlannerGroundingDiagnostics(
     input.editorialContext,
   );
-  if (input.editorialContext.readiness.status === "blocked") {
+  const groundingGate = createScriptPlannerGenerationGroundingGate(input.editorialContext);
+  if (!groundingGate.eligible) {
     console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
       editorialAnalysisStatus: "accepted",
       ...groundingDiagnostics,
@@ -710,12 +712,13 @@ async function executeCreatorScriptOperation(input: {
             targetDurationSec: requestedDurationSec,
             language: input.body.language === "tr" ? "tr" : "en",
           }).length,
+      groundingGate,
       exactBlockingCode: "CREATOR_SCRIPT_GROUNDING_BLOCKED",
       repairAttempted: null,
       scriptProviderDispatched: false,
     });
     return NextResponse.json(
-      { error: "Editorial grounding is blocked.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING" },
+      { error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, missingExcerptEvidenceIds: groundingGate.missingExcerptEvidenceIds, nextActions: groundingGate.nextActions },
       { status: 422 },
     );
   }
@@ -729,6 +732,7 @@ async function executeCreatorScriptOperation(input: {
     "You are a senior evidence-grounded documentary and long-form creator script editor.",
     "Return strict JSON only. Do not return production scenes, visual prompts, camera instructions, assets, or shot segmentation.",
     "All factual and interpretive claims must stay inside the supplied editorial context and preserve its uncertainty.",
+    "Creator-supplied future scenarios and THOUGHT_EXPERIMENT claims must remain explicitly hypothetical, never researched facts. Ground their factual premises only in the supplied source-backed evidence.",
     "Claim ids are backstage metadata and must be selected only from the exact allowlist. Never place ids or citations in spoken text.",
     `Honor this priority order without trading a higher priority for a lower one: ${CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY.join(" > ")}.`,
     ...CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT,
@@ -743,7 +747,8 @@ async function executeCreatorScriptOperation(input: {
       language,
       actualWordCount: 0,
     });
-    const hasMaterialCounterview = input.editorialContext.claims.some(
+    const narrationEditorialContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
+    const hasMaterialCounterview = narrationEditorialContext.claims.some(
       (claim) => claim.counterEvidenceIds.length > 0,
     );
     const originalSectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
@@ -757,7 +762,7 @@ async function executeCreatorScriptOperation(input: {
     // Evidence-limited roles must be adapted before the readiness gate,
     // narration control and section-native generation consume the plan.
     const preparedPlan = prepareCreatorLongFormSectionPlanForAvailableEvidence({
-      context: input.editorialContext,
+      context: narrationEditorialContext,
       plan: originalSectionBudgetPlan,
       sectionNative,
     });
@@ -770,7 +775,7 @@ async function executeCreatorScriptOperation(input: {
       finalEligible: preparedPlan.finalReadiness.eligible,
     });
     const evidenceCapabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation({
-      context: input.editorialContext,
+      context: narrationEditorialContext,
       plan: sectionBudgetPlan,
     });
     const boundedCapabilityInventory = evidenceCapabilityEvaluation.inventory.slice(0, 40);
@@ -801,7 +806,7 @@ async function executeCreatorScriptOperation(input: {
         scriptProviderDispatched: false,
       });
       return NextResponse.json(
-        { error: "Editorial grounding is not ready for this long-form script.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: longFormEvidenceReadiness.reasonCodes },
+        { error: "This section plan lacks source-backed evidence for its required roles. Review the listed capabilities and re-run editorial analysis with qualifying source passages.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: longFormEvidenceReadiness.reasonCodes, nextActions: ["review_section_evidence_capabilities"] },
         { status: 422 },
       );
     }
@@ -813,7 +818,6 @@ async function executeCreatorScriptOperation(input: {
       editorialContext: input.editorialContext,
       creatorProvidedText: [input.body.topic, input.body.title, input.body.strategy],
     });
-    const narrationEditorialContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
     const narrationAllowedClaimIds = narrationEditorialContext.claims.map((claim) => claim.claimId);
     const evidenceMomentPack = sectionNative
       ? null
