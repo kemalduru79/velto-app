@@ -1,0 +1,29 @@
+name: Creator claim-origin focused verification
+on:
+  push:
+    branches:
+      - agent/claim-origin-qa-20261102
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  origin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Publisher-document provenance regression
+        run: node --experimental-strip-types scripts/creator-claim-origin-publisher-document-test.mjs
+      - name: Existing claim-origin adjudication tests
+        run: node --experimental-strip-types scripts/stage-0-19e6a-claim-origin-adjudication-test.mjs
+      - name: Proposition-kind refinement regression
+        run: node --experimental-strip-types scripts/stage-0-19-proposition-kind-refinement-test.mjs
+      - name: Editorial analysis API contract
+        run: node --experimental-strip-types scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs
+      - name: Cross-source evidence repair
+        run: node --experimental-strip-types scripts/creator-editorial-cross-source-span-repair-test.mjs
