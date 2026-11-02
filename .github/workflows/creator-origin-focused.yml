@@ -1,0 +1,32 @@
+name: Creator Origin Focused Regression
+
+on:
+  push:
+    branches:
+      - agent/creatorlab-origin-validation-20261102
+
+permissions:
+  contents: read
+
+jobs:
+  origin:
+    name: Same-source reconciliation fail-closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Same-source claim-origin regression
+        run: node --experimental-strip-types scripts/creator-editorial-same-source-origin-test.mjs
+      - name: Existing claim origin adjudication
+        run: node --experimental-strip-types scripts/stage-0-19e6a-claim-origin-adjudication-test.mjs
+      - name: Proposition-kind refinement protection
+        run: node --experimental-strip-types scripts/stage-0-19-proposition-kind-refinement-test.mjs
+      - name: Editorial API contract
+        run: node --experimental-strip-types scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs
+      - name: Cross-source evidence protection
+        run: node --experimental-strip-types scripts/creator-editorial-cross-source-span-repair-test.mjs
