@@ -10,7 +10,7 @@ import {createEditorialScriptContext} from '../lib/research/editorialScriptConte
 import {parseCreatorProfile} from '../lib/creator/creatorProfile.ts';
 import {normalizeScriptPlannerEditorialContext as normalize,createScriptPlannerGroundingDiagnostics as diagnostics,createScriptPlannerGenerationGroundingGate as gate,createCounterEvidenceReview as review,applyCounterEvidenceScopeReview as applyWithSnapshot,createScriptPlannerEvidenceGraph} from '../lib/research/scriptPlannerEditorialContext.ts';
 import {runCreatorEditorialScriptPipeline} from '../lib/research/creatorEditorialPipeline.client.ts';
-import {createCreatorScriptNarrationEditorialContext,createCreatorScriptSectionBudgetPlan,createCreatorScriptNarrationControlPlan} from '../lib/creator/creatorScript.ts';
+import {createCreatorScript,createCreatorScriptNarrationEditorialContext,createCreatorScriptSectionBudgetPlan,createCreatorScriptNarrationControlPlan} from '../lib/creator/creatorScript.ts';
 import {prepareCreatorLongFormSectionPlanForAvailableEvidence} from '../lib/research/creatorLongFormEvidenceReadiness.ts';
 import {issue44EvidenceFixture} from './fixtures/creator-issue-44-evidence.mjs';
 import {createOfflineScriptPlanHarness} from './fixtures/creator-script-plan-offline-harness.mjs';
@@ -154,6 +154,21 @@ for(const mode of ['stop','stale','partial']){
  assert.equal(dispatched,0);assert.equal(reviewCalls,1);assert.equal(JSON.stringify(request),originalRequest);
 }
 const blockedHarness=await createOfflineScriptPlanHarness();const blocked=await blockedHarness.execute({body:request,editorialContext:context});const blockedPayload=await blocked.json();assert.deepEqual(blockedPayload.unresolvedClaimIds,['claim-2','claim-3']);assert.equal(blockedHarness.calls.length,0);
+// Exercise the actual authenticated API branch with synthetic auth only.
+// Legacy scene planning must never bypass unresolved grounding either.
+const legacyHarness=await createOfflineScriptPlanHarness({includePost:true,authenticatedUserId:'synthetic-owner'});
+const legacyRequest=(scriptContext)=>new Request('http://offline.invalid/api/creator-script-plan',{method:'POST',headers:{authorization:'Bearer synthetic-never-sent','content-type':'application/json'},body:JSON.stringify({productionPackage:{title:'Synthetic package',scenes:[]},durationSec:600,scriptContext})});
+const legacyBlocked=await legacyHarness.post(legacyRequest(context));assert.equal(legacyBlocked.status,422);
+assert.deepEqual((await legacyBlocked.json()).unresolvedClaimIds,['claim-2','claim-3']);assert.equal(legacyHarness.calls.length,0);
+const primaryBlocked=await legacyHarness.post(legacyRequest(unverifiedStudy));assert.equal(primaryBlocked.status,422);assert((await primaryBlocked.json()).reasonCodes.includes('PRIMARY_SOURCE_COVERAGE_REQUIRED'));assert.equal(legacyHarness.calls.length,0);
+const altered=structuredClone(scoped);altered.claims[0].text+=' Fabricated.';
+assert.equal((await legacyHarness.post(legacyRequest(altered))).status,400);assert.equal(legacyHarness.calls.length,0);
+const regenHarness=await createOfflineScriptPlanHarness();
+const existingScript=createCreatorScript({title:'Synthetic existing draft',targetDurationSec:600,strategyFingerprint:request.strategyFingerprint,generatedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',grounding:{context},sections:['opening','body','conclusion'].map((kind,index)=>({id:`section-${index+1}`,kind,heading:'Synthetic',text:'A bounded synthetic statement.',claimIds:['claim-1'],evidenceReviewRequired:true}))});
+const regeneration=await regenHarness.execute({body:{...request,operation:'regenerate_section',targetSectionId:'section-2',creatorScript:existingScript},editorialContext:scoped});
+assert.equal(regeneration.status,409);assert.equal((await regeneration.json()).code,'CREATOR_SCRIPT_REGENERATION_GROUNDING_MISMATCH');assert.equal(regenHarness.calls.length,0,'a ready request cannot launder a different unreviewed script context');
+const rhetoric=structuredClone(f);rhetoric.sources[5].summary='Some commentators disagree rhetorically without supplying observations or an alternative tested explanation.';rhetoric.evidence[5].excerpt=rhetoric.sources[5].summary;
+assert(gate(make(rhetoric).context).reasonCodes.includes('MATERIAL_COUNTER_EVIDENCE_REVIEW'),'mere rhetorical context is never promoted to contradictory evidence');
 // Render the actual dialog without mounting effects or opening any browser.
 const jiti=createJiti(import.meta.url,{fsCache:false,jsx:{runtime:'automatic'},alias:{'@':new URL('..',import.meta.url).pathname}});
 const React=await jiti.import('react');const {renderToStaticMarkup}=await jiti.import('react-dom/server');

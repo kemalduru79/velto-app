@@ -25,12 +25,13 @@ export function CreatorCounterEvidenceReview({ review, onDecision }: {
       onCancel={() => onDecision(null)} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40">
       <h2 id="counter-review-title" className="text-xl font-semibold">Review evidence before writing</h2>
       <p id="counter-review-explanation" className="my-3">These assertions need material counter-evidence. Read the exact passages below. A limitation or alternative explanation is context, not proof of a contradiction. Imagined 2055/2075 scenarios remain hypothetical; this review never changes a prediction into a thought experiment.</p>
+      <p className="my-3">Conceptual uncertainty and rhetorical disagreement are not empirical counter-findings. A scoped limitation bounds a result; a material counter-finding challenges the same assertion under relevant conditions. Stop if a passage does not justify its editorial stance label.</p>
       <p className="my-3">No qualifying opposing passage was linked for the unresolved claims in this research snapshot. You can explicitly omit those assertions from this script, or stop and obtain qualifying sources. The original research, classifications, passages and stances are preserved. This is a script-scope decision, not scientific approval.</p>
       {review.claims.map((claim) => (
         <fieldset key={claim.claimId} className="my-4 rounded border border-slate-300 p-4">
           <legend className="px-1 font-semibold">{claim.claimId} · {claim.claimType}</legend>
           <p>{claim.text}</p>
-          <p className="my-2 font-medium">{claim.outcome === "counterevidence_present" ? "Opposing evidence is linked; preserve both findings." : claim.outcome === "context_only_not_counterevidence" ? "Documented context is present; the counter-evidence requirement remains unresolved." : "No counter-evidence in this snapshot. This does not establish that none exists."}</p>
+          <p className="my-2 font-medium">{claim.outcome === "counterevidence_present" ? "An opposing passage is linked. Inspect its relevance and preserve support and opposition." : claim.outcome === "context_only_not_counterevidence" ? "Documented context is present; the counter-evidence requirement remains unresolved." : "No counter-evidence in this snapshot. This does not establish that none exists."}</p>
           {([ ["Supporting passages", claim.support], ["Opposing passages", claim.counter], ["Context and limitations (not contradictions)", claim.contextual] ] as const).map(([label, passages]) => (
             <section key={label} className="my-2">
               <h3 className="font-medium">{label}</h3>

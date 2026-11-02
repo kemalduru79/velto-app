@@ -25,6 +25,7 @@ export async function createOfflineScriptPlanHarness(options = {}) {
       return{status:'completed',output_text:JSON.stringify({title:'Synthetic documentary',sections})};
     }}}};
     else if(/economics/.test(spec))dependency={recordOpenAITextEconomics:async()=>{}};
+    else if(/supabase/.test(spec) && options.authenticatedUserId) dependency={createServerSupabaseClient:()=>({auth:{getUser:async()=>({data:{user:{id:options.authenticatedUserId}},error:null})}})};
     else if(/persistence/.test(spec) && options.readProjectForOwner) dependency={getPersistenceServices:()=>({projectRepository:{getForOwner:options.readProjectForOwner}})};
     else if(/persistence|supabase/.test(spec))dependency=new Proxy({}, {get:()=>forbidden});
     else dependency=await jiti.import(spec.startsWith('@/')?repo+'/'+spec.slice(2):path.resolve(repo+'/app/api/creator-script-plan',spec));
@@ -32,9 +33,10 @@ export async function createOfflineScriptPlanHarness(options = {}) {
     if(clause.name)context[clause.name.text]=dependency.default;
     for(const element of clause.namedBindings?.elements||[])if(!element.isTypeOnly)context[element.name.text]=dependency[element.propertyName?.text||element.name.text];
   }
-  const declarations=ast.statements.filter(node=>!ts.isImportDeclaration(node)&&!(ts.isFunctionDeclaration(node)&&node.name?.text==='POST')).map(node=>node.getFullText(ast)).join('\n');
+  const declarations=ast.statements.filter(node=>!ts.isImportDeclaration(node)&&!(ts.isFunctionDeclaration(node)&&node.name?.text==='POST'&&!options.includePost)).map(node=>node.getFullText(ast)).join('\n');
   const compiled=ts.transpileModule(declarations,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   vm.createContext(context);vm.runInContext(compiled+'\nthis.execute=executeCreatorScriptOperation;this.authority=validateCreatorScriptProjectAuthority;',context);
+  if(options.includePost)vm.runInContext('this.post=POST;',context);
   assert.equal(typeof context.execute,'function');
-  return{calls,logs,execute:context.execute,authority:context.authority};
+  return{calls,logs,execute:context.execute,authority:context.authority,post:context.post};
 }

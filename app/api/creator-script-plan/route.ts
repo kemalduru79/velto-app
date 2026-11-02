@@ -1673,6 +1673,9 @@ async function executeCreatorScriptOperation(input: {
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Creator script is invalid." }, { status: 400 });
     }
+    if (JSON.stringify(script.grounding.context) !== JSON.stringify(input.editorialContext)) {
+      return NextResponse.json({ error: "The script's research differs from the reviewed request. Rebuild from the current validated research before regenerating a section.", code: "CREATOR_SCRIPT_REGENERATION_GROUNDING_MISMATCH" }, { status: 409 });
+    }
     const targetSectionId = asString(input.body.targetSectionId, "");
     const targetIndex = script.sections.findIndex((section) => section.id === targetSectionId);
     if (targetIndex < 0 || script.strategyFingerprint !== strategyFingerprint) {
@@ -1820,6 +1823,19 @@ export async function POST(req: Request) {
         { error: "productionPackage is required." },
         { status: 400 },
       );
+    }
+    // The source-scene adapter shares the same fail-closed grounding policy as
+    // canonical script operations whenever it carries editorial authority.
+    if (editorialContext) {
+      const groundingGate = createScriptPlannerGenerationGroundingGate(editorialContext);
+      if (!groundingGate.eligible) {
+        console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
+          ...createScriptPlannerGroundingDiagnostics(editorialContext),
+          exactBlockingCode: "CREATOR_SCRIPT_GROUNDING_BLOCKED",
+          scriptProviderDispatched: false,
+        });
+        return NextResponse.json({ success: false, error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, nextActions: groundingGate.nextActions, unresolvedClaimIds: groundingGate.unresolvedCounterClaimIds }, { status: 422 });
+      }
     }
     const allowedClaimIds = editorialContext
       ? new Set(editorialContext.claims.map((claim) => claim.claimId))

@@ -6,7 +6,7 @@ Base: `d44ab5d8b713d14e57408f026487a6dc13eec015` (owner-verified production). Al
 
 The excerpt repair is intact. A synthetic reconstruction reproduces the supplied production signature: four claims, seven nonempty excerpts, no missing excerpt IDs, nine globally secondary sources, and only MATERIAL_COUNTER_EVIDENCE_REVIEW blocking generation. A document-relative primary obligation can also be covered with zero globally primary evidence records.
 
-`topicEvidenceReadiness.ts` recommends counter-evidence for THEORY, FORECAST, HYPOTHESIS, METAPHYSICAL_CLAIM and EDITORIAL_INFERENCE. It requires a contradicts link; a contextualizes link does not establish opposition. This policy did not have a user-completable client branch. `creatorEditorialPipeline.client.ts` handled primary acquisition but passed counter-review directly into the deliberately closed script gate. A legacy page adapter also replaced the actionable error with a generic retry instruction. Repeating generation repeated research rather than resolving the editorial decision.
+`topicEvidenceReadiness.ts` recommends counter-evidence for THEORY, FORECAST, HYPOTHESIS, METAPHYSICAL_CLAIM and EDITORIAL_INFERENCE. It requires a contradicts link; a contextualizes link does not establish opposition. This policy did not have a user-completable client branch. `creatorEditorialPipeline.client.ts` handled primary acquisition but passed counter-review directly into the deliberately closed script gate. Section regeneration could also validate one submitted context but narrate from a different script context; mismatches now stop before dispatch. The legacy source-scene API branch also omitted the shared grounding gate despite carrying editorial authority; it now uses the same gate. A legacy page adapter also replaced the actionable error with a generic retry instruction. Repeating generation repeated research rather than resolving the editorial decision.
 
 `npm run test:issue-44-counter-review -- --baseline` loads the exact production client and source-assessment functions using synthetic fixtures. The client never invokes a supplied review callback, posts the blocked graph, and dispatches no script provider. It also reproduces a separate qualification defect: a secondary report matching the referenced work's title/URL could qualify as an original research result.
 
@@ -46,7 +46,7 @@ Runtime:
 - `lib/research/creatorEditorialPipeline.client.ts`: one explicit review pause, actionable cancellation/failure, stale-operation guard and reviewed handoff.
 - `lib/research/sourceAssessment.ts`: secondary report identity cannot establish original-study authority; document/statement-relative authority remains supported.
 - `lib/creator/creatorScript.ts`: exclude scope provenance and unused omitted evidence from narration projection.
-- `app/api/creator-script-plan/route.ts`: expose unresolved claim IDs with blocked next actions.
+- `app/api/creator-script-plan/route.ts`: expose unresolved claim IDs with blocked next actions; enforce the same gate in the older source-scene branch and reject regeneration context mismatches.
 - `app/create/page.tsx`: wire both existing pipeline entry points, cancel stale dialogs, preserve actionable errors.
 - `components/create/CreatorCounterEvidenceReview.tsx`: accessible native dialog, exact passages, explicit unchecked scope choices and Stop.
 
