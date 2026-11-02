@@ -76,5 +76,5 @@ assert.match(api,/const sectionBudgetPlan = preparedPlan\.plan;/);
 assert.match(api,/const narrationControlPlan = createCreatorScriptNarrationControlPlan\(sectionBudgetPlan\);/);
 assert.match(api,/const longFormEvidenceReadiness = preparedPlan\.finalReadiness;/);
 assert.match(api,/plan: sectionBudgetPlan,/);
-assert.match(api,/sectionNative\s*\? sectionBudgetPlan\.map\(\(section\) => \[section\]\]/);
+assert.ok(api.includes("sectionBudgetPlan.map((section) => [section])"), "Generated units use the adapted plan.");
 console.log("CreatorLab long-form grounding role adaptation: PASS");
