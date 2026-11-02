@@ -1,0 +1,31 @@
+name: Evidence Span Focused Regression
+
+on:
+  push:
+    branches:
+      - agent/evidence-span-qa-20261102
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Evidence span fail-closed checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Focused cross-source repair
+        run: node --experimental-strip-types scripts/creator-editorial-cross-source-span-repair-test.mjs
+      - name: Editorial analysis contract
+        run: node --experimental-strip-types scripts/stage-0-10h-2f-editorial-analysis-contract-test.mjs
+      - name: Editorial analysis API
+        run: node --experimental-strip-types scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs
+      - name: Source-span catalog
+        run: node --experimental-strip-types scripts/stage-0-19b-editorial-evidence-span-catalog-test.mjs
