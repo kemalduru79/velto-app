@@ -153,7 +153,7 @@ function isVerifiedPublisherDocumentRefinement(input: {
   const claimedDomain = input.initial.origin.attributedEntity?.trim().toLowerCase();
   const work = input.adjudicated.origin.referencedWork?.trim();
   if (!claimedDomain || !work ||
-      !/^(?:[a-z0-9-]+\\.)+[a-z0-9-]+$/u.test(claimedDomain)) return false;
+      !/^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/u.test(claimedDomain)) return false;
 
   let documentUrl: URL;
   try {
