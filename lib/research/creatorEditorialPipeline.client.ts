@@ -345,6 +345,7 @@ export async function runCreatorEditorialScriptPipeline(
     },
   });
 
+  const initialResearchSnapshot = structuredClone(editorial.graph) as ResearchClaimEvidenceGraph;
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(
     firstReadiness?.primarySourceRequiredClaimIds,
@@ -616,7 +617,7 @@ export async function runCreatorEditorialScriptPipeline(
     if (!decision) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STOPPED", message: `Review stopped. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}. Obtain qualifying counter-evidence before retrying these assertions, or explicitly omit them from the script.` });
     if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
     try {
-      scriptContext = applyCounterEvidenceScopeReview(normalizedContext, decision, editorial.graph as ResearchClaimEvidenceGraph) as unknown as JsonRecord;
+      scriptContext = applyCounterEvidenceScopeReview(normalizedContext, decision, editorial.graph as ResearchClaimEvidenceGraph, initialResearchSnapshot) as unknown as JsonRecord;
     } catch (error) {
       throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_UNRESOLVED", message: error instanceof Error && error.message.startsWith("COUNTER_REVIEW_UNRESOLVED:")
         ? `Claims ${error.message.split(":")[1]} remain unresolved. Explicitly omit them or obtain qualifying counter-evidence before retrying.`

@@ -422,7 +422,7 @@ export function normalizeScriptPlannerEditorialContext(
     const original = normalizeScriptPlannerEditorialContext(record?.originalContext, false);
     if (!original) throw new Error("COUNTER_REVIEW_ORIGINAL_MISSING");
     const decision = record?.decision as CounterEvidenceScopeDecision;
-    const derived = applyCounterEvidenceScopeReview(original, decision, record?.originalResearchSnapshot as ResearchClaimEvidenceGraph);
+    const derived = applyCounterEvidenceScopeReview(original, decision, record?.originalResearchSnapshot as ResearchClaimEvidenceGraph, record?.initialResearchSnapshot as ResearchClaimEvidenceGraph);
     const { counterEvidenceReview: provenance, ...expected } = derived;
     if (JSON.stringify(expected) !== JSON.stringify(context)) throw new Error("COUNTER_REVIEW_PROJECTION_MISMATCH");
     return { ...context, counterEvidenceReview: provenance };
@@ -612,6 +612,7 @@ export type CounterEvidenceScopeDecision = {
   confirmed: true;
 };
 export type CounterEvidenceScopeReview = {
+  initialResearchSnapshot: ResearchClaimEvidenceGraph;
   originalResearchSnapshot: ResearchClaimEvidenceGraph;
   originalContext: ScriptPlannerEditorialContext;
   decision: CounterEvidenceScopeDecision;
@@ -664,10 +665,16 @@ export function applyCounterEvidenceScopeReview(
   original: ScriptPlannerEditorialContext,
   decision: CounterEvidenceScopeDecision,
   originalResearchSnapshot: ResearchClaimEvidenceGraph,
+  initialResearchSnapshot = originalResearchSnapshot,
 ): ScriptPlannerEditorialContext {
   if (original.counterEvidenceReview) throw new Error("COUNTER_REVIEW_ALREADY_APPLIED");
   if (!originalResearchSnapshot || originalResearchSnapshot.version !== "0.10H-1B") throw new Error("COUNTER_REVIEW_RESEARCH_SNAPSHOT_REQUIRED");
   const research = createResearchClaimEvidenceGraph(originalResearchSnapshot);
+  const initial = createResearchClaimEvidenceGraph(initialResearchSnapshot);
+  for (const claim of research.claims) {
+    const first = initial.claims.find((item) => item.claimId === claim.claimId);
+    if (!first || JSON.stringify(first) !== JSON.stringify(claim)) throw new Error("COUNTER_REVIEW_INITIAL_CLAIM_CHANGED");
+  }
   const assessments = research.sources.map((source) => {
     const originalSource = original.sources.find((item) => item.sourceId === source.sourceId);
     if (!originalSource || classifyResearchSourceDirectness(source).directness !== originalSource.directness) throw new Error("COUNTER_REVIEW_SOURCE_PROVENANCE_MISMATCH");
@@ -713,7 +720,7 @@ export function applyCounterEvidenceScopeReview(
   const reviewed: ScriptPlannerEditorialContext = {
     ...projected,
     readiness: normalizeReadiness({ ...readiness, status: readiness.status === "blocked" ? "blocked" : reviewReasons.length ? "review" : "ready", reviewReasons }),
-    counterEvidenceReview: { originalResearchSnapshot: structuredClone(originalResearchSnapshot), originalContext: structuredClone(original), decision: structuredClone(decision) },
+    counterEvidenceReview: { initialResearchSnapshot: structuredClone(initialResearchSnapshot), originalResearchSnapshot: structuredClone(originalResearchSnapshot), originalContext: structuredClone(original), decision: structuredClone(decision) },
   };
   if (new TextEncoder().encode(JSON.stringify(reviewed)).byteLength > 2_000_000) throw new Error("COUNTER_REVIEW_SNAPSHOT_TOO_LARGE");
   return reviewed;

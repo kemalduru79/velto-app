@@ -97,7 +97,11 @@ const secondaryStudy=structuredClone(f);secondaryStudy.claims[3].propositionKind
 const unverifiedStudy=make(secondaryStudy).context;assert(gate(unverifiedStudy).reasonCodes.includes('PRIMARY_SOURCE_COVERAGE_REQUIRED'));
 assert.deepEqual(diagnostics(unverifiedStudy).primaryMissingClaimIds,['claim-4']);
 const verifiedStudy=structuredClone(secondaryStudy);verifiedStudy.sources[8].adapterId='academic';verifiedStudy.sources[8].mediaKind='paper';verifiedStudy.assessments[8].directness='primary';
-assert.deepEqual(diagnostics(make(verifiedStudy).context).primaryCoveredClaimIds,['claim-4']);
+const verified=make(verifiedStudy);assert.deepEqual(diagnostics(verified.context).primaryCoveredClaimIds,['claim-4']);
+const withInitial=applyWithSnapshot(verified.context,{...decision,snapshotFingerprint:review(verified.context).snapshotFingerprint},verified.graph,make(secondaryStudy).graph);
+assert.deepEqual(withInitial.counterEvidenceReview.initialResearchSnapshot,make(secondaryStudy).graph,'the original snapshot must survive legitimate primary augmentation');
+assert.deepEqual(normalize(withInitial),withInitial);
+
 const forecastPrimary=structuredClone(secondaryStudy);forecastPrimary.claims[3].claimType='FORECAST';
 const pinned=make(forecastPrimary).context;assert.equal(review(pinned).claims.find(c=>c.claimId==='claim-4').canExclude,false);
 assert.throws(()=>apply(pinned,{...decision,snapshotFingerprint:review(pinned).snapshotFingerprint,excludedClaimIds:review(pinned).unresolvedClaimIds}),/PRIMARY_OBLIGATION_RETAINED/);
@@ -129,7 +133,7 @@ const fakeFetch=async(url,init)=>{
 // final prose acceptance. We inspect actual all-six section dispatches, not claim
 // authenticated production or accepted documentary prose.
 await runCreatorEditorialScriptPipeline({accessToken:'synthetic-never-sent',topic:request.topic,scriptPlanRequest:request,fetchImpl:fakeFetch,onCounterEvidenceReview:async r=>{reviewCount++;return{...decision,snapshotFingerprint:r.snapshotFingerprint};}}).catch(error=>assert.equal(error.stage,'script_plan'));
-assert.equal(reviewCount,1);assert(handoff.counterEvidenceReview);assert.deepEqual(handoff.counterEvidenceReview.originalContext,context);assert.deepEqual(handoff.counterEvidenceReview.originalResearchSnapshot,graph);
+assert.equal(reviewCount,1);assert(handoff.counterEvidenceReview);assert.deepEqual(handoff.counterEvidenceReview.originalContext,context);assert.deepEqual(handoff.counterEvidenceReview.originalResearchSnapshot,graph);assert.deepEqual(handoff.counterEvidenceReview.initialResearchSnapshot,graph);
 const calls=harness.calls.filter(call=>call.body.requestedSectionBudgets);assert.equal(calls.length,6);
 const narration=createCreatorScriptNarrationEditorialContext(scoped);assert.equal(narration.counterEvidenceReview,undefined);
 assert(narration.evidence.every(e=>!['evidence-3','evidence-4','evidence-5','evidence-6'].includes(e.evidenceId)));
