@@ -8,26 +8,22 @@ import {createJiti} from 'jiti';
 import {createResearchClaimEvidenceGraph} from '../lib/research/claimEvidenceGraph.ts';
 import {createEditorialScriptContext} from '../lib/research/editorialScriptContext.ts';
 import {parseCreatorProfile} from '../lib/creator/creatorProfile.ts';
-import {normalizeScriptPlannerEditorialContext as normalize,createScriptPlannerGroundingDiagnostics as diagnostics,createScriptPlannerGenerationGroundingGate as gate,createCounterEvidenceReview as review,applyCounterEvidenceScopeReview as applyWithSnapshot,createScriptPlannerEvidenceGraph} from '../lib/research/scriptPlannerEditorialContext.ts';
+import {normalizeScriptPlannerEditorialContext as normalize,createScriptPlannerGroundingDiagnostics as diagnostics,createScriptPlannerGenerationGroundingGate as gate,createCounterEvidenceReview as review,applyCounterEvidenceScopeReview as applyWithSnapshot} from '../lib/research/scriptPlannerEditorialContext.ts';
 import {runCreatorEditorialScriptPipeline} from '../lib/research/creatorEditorialPipeline.client.ts';
 import {createCreatorScript,createCreatorScriptNarrationEditorialContext,createCreatorScriptSectionBudgetPlan,createCreatorScriptNarrationControlPlan} from '../lib/creator/creatorScript.ts';
 import {prepareCreatorLongFormSectionPlanForAvailableEvidence} from '../lib/research/creatorLongFormEvidenceReadiness.ts';
 import {issue44EvidenceFixture} from './fixtures/creator-issue-44-evidence.mjs';
 import {createOfflineScriptPlanHarness} from './fixtures/creator-script-plan-offline-harness.mjs';
 const f=issue44EvidenceFixture();
+const sourceSnapshots=new WeakMap();
 const make=(fixture=f)=>{
  const graph=createResearchClaimEvidenceGraph(fixture);
  const raw=createEditorialScriptContext({profile:parseCreatorProfile(null),graph,sourceAssessments:fixture.assessments});
- return{graph,raw,context:normalize(raw)};
+ const context=normalize(raw);sourceSnapshots.set(context,graph);return{graph,raw,context};
 };
-const apply=(context,decision)=>{
- const projected=createScriptPlannerEvidenceGraph(context);
- const originalResearchSnapshot=createResearchClaimEvidenceGraph({...projected,sources:f.sources.map(source=>{
-  const claimed=context.sources.find(s=>s.sourceId===source.sourceId);
-  return {...source,adapterId:claimed.searchLane,mediaKind:claimed.sourceKind,summary:context.evidence.filter(e=>e.sourceId===source.sourceId).map(e=>e.excerpt).join(' ' )||source.summary};
- })});
- return applyWithSnapshot(context,decision,originalResearchSnapshot);
-};
+// Positive tests use the exact original fixture graph; never manufacture a
+// source summary from the excerpt being validated.
+const apply=(context,decision)=>applyWithSnapshot(context,decision,sourceSnapshots.get(context)||graph);
 const {graph,raw,context}=make();const original=JSON.stringify(context);
 const diag=diagnostics(context);
 assert.equal(diag.claimCount,4);assert.equal(diag.evidenceCount,7);assert.equal(diag.nonemptyExcerptCount,7);assert.deepEqual(diag.missingExcerptEvidenceIds,[]);
@@ -75,6 +71,7 @@ assert.deepEqual(scoped.evidence,context.evidence);assert.deepEqual(scoped.sourc
 assert.deepEqual(normalize(JSON.parse(JSON.stringify(scoped))),scoped,'server normalization must rederive the exact reviewed scope');
 assert.deepEqual(normalize(scoped).counterEvidenceReview.originalContext.claims,context.claims);
 assert.throws(()=>apply(context,{...decision,confirmed:false}),/UNCONFIRMED/);
+assert.throws(()=>apply(context,{...decision,snapshotFingerprint:'old-snapshot'}),/STALE/);
 assert.throws(()=>applyWithSnapshot(context,decision,null),/SNAPSHOT_REQUIRED/);
 const unowned=structuredClone(graph);unowned.sources[0].summary='A different source passage.';
 assert.throws(()=>applyWithSnapshot(context,decision,unowned),/EXCERPT_OWNERSHIP_UNVERIFIED/);
@@ -82,7 +79,7 @@ const mismatched=structuredClone(graph);mismatched.claims[0].text+=' Changed.';
 assert.throws(()=>applyWithSnapshot(context,decision,mismatched),/SNAPSHOT_MISMATCH/);
 assert(context.evidence.every(e=>e.locator.timecodeStartSec===null));
 assert.deepEqual(normalize(context),context,'normalization must never fabricate zero-second locators');
-assert.throws(()=>apply({...context,evidence:context.evidence.map((e,i)=>i?e:{...e,excerpt:e.excerpt+' Changed.'})},decision),/STALE/);
+assert.throws(()=>apply({...context,evidence:context.evidence.map((e,i)=>i?e:{...e,excerpt:e.excerpt+' Changed.'})},decision),/STALE|SNAPSHOT_MISMATCH/);
 assert.throws(()=>apply(context,{...decision,excludedClaimIds:['claim-2']}),/UNRESOLVED:claim-3/);
 assert.throws(()=>apply(context,{...decision,excludedClaimIds:['claim-4']}),/NOT_UNRESOLVED/);
 assert.throws(()=>apply(context,{...decision,excludedClaimIds:['claim-2','claim-2']}),/DECISION_INVALID/);
@@ -107,6 +104,7 @@ const pinned=make(forecastPrimary).context;assert.equal(review(pinned).claims.fi
 assert.throws(()=>apply(pinned,{...decision,snapshotFingerprint:review(pinned).snapshotFingerprint,excludedClaimIds:review(pinned).unresolvedClaimIds}),/PRIMARY_OBLIGATION_RETAINED/);
 // A real counter-finding remains a contradicts link, never a relabelled limit.
 const conflicting=structuredClone(f);conflicting.evidence[4].excerpt='In a synthetic follow-up trial, researchers observed three failures, contradicting the prediction of success on every tested task.';
+conflicting.sources[4].summary=conflicting.evidence[4].excerpt;
 conflicting.links.find(link=>link.evidenceId==='evidence-5').stance='contradicts';
 const withCounter=make(conflicting).context;assert.deepEqual(review(withCounter).unresolvedClaimIds,['claim-3']);
 const keepCounter=apply(withCounter,{...decision,snapshotFingerprint:review(withCounter).snapshotFingerprint,excludedClaimIds:['claim-3']});
