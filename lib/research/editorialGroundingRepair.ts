@@ -416,10 +416,10 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
       : discovered;
     if (invalidEvidence.length === 0) throw error;
     const invalidSourceIds = new Set(invalidEvidence.map((item) => item.sourceId));
-    const invalidSources = input.sources.filter((source) =>
-      invalidSourceIds.has(source.sourceId)
-    );
-    const candidateSpans = createEditorialGroundingCandidateSpans(invalidSources);
+    // Keep request-wide span IDs stable: rebuilding from the filtered
+    // source subset would renumber spans and can misattribute evidence.
+    const candidateSpans = createEditorialGroundingCandidateSpans(input.sources)
+      .filter((span) => invalidSourceIds.has(span.sourceId));
     if (candidateSpans.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
       throw new Error("EDITORIAL_GROUNDING_REPAIR_CANDIDATE_LIMIT_EXCEEDED");
     }
@@ -427,7 +427,9 @@ export async function createValidatedEditorialAnalysisWithOneRepair(input: {
       diagnosticCategory: message.split(":", 1)[0],
       invalidEvidence,
       candidateSpans,
-      failingSourceId: message.slice(UNGROUNDED_EXCERPT_PREFIX.length),
+      failingSourceId: message.startsWith(UNGROUNDED_EXCERPT_PREFIX)
+        ? message.slice(UNGROUNDED_EXCERPT_PREFIX.length)
+        : invalidEvidence[0]?.sourceId || "",
     });
     return createValidatedEditorialAnalysis({
       sources: input.sources,
