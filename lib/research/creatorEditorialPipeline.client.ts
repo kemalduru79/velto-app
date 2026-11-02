@@ -608,7 +608,7 @@ export async function runCreatorEditorialScriptPipeline(
     });
   }
 
-  const normalizedContext = normalizeScriptPlannerEditorialContext(scriptContext);
+  const normalizedContext = input.onCounterEvidenceReview ? normalizeScriptPlannerEditorialContext(scriptContext) : null;
   const counterReview = normalizedContext ? createCounterEvidenceReview(normalizedContext) : null;
   if (normalizedContext && counterReview?.unresolvedClaimIds.length && input.onCounterEvidenceReview) {
     if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
