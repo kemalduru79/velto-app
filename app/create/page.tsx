@@ -33,6 +33,8 @@ import { resolveCreatorFinalExportRevisionAdvance } from "@/lib/creator/creatorF
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toCreatorPublishingMetadataPackage } from "@/lib/creator/publishingMetadataPayload";
 import { useRouter } from "next/navigation";
+import { CreatorCounterEvidenceReview } from "@/components/create/CreatorCounterEvidenceReview";
+import type { CounterEvidenceScopeDecision, createCounterEvidenceReview } from "@/lib/research/scriptPlannerEditorialContext";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
 import { getFlowByKey, type FlowZone } from "../../lib/flows";
@@ -3843,6 +3845,19 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
   const [error, setError] = useState("");
+  const [counterEvidenceReview, setCounterEvidenceReview] = useState<ReturnType<typeof createCounterEvidenceReview> | null>(null);
+  const counterEvidenceReviewResolver = useRef<((decision: CounterEvidenceScopeDecision | null) => void) | null>(null);
+  const finishCounterEvidenceReview = (decision: CounterEvidenceScopeDecision | null) => {
+    const resolve = counterEvidenceReviewResolver.current;
+    counterEvidenceReviewResolver.current = null;
+    setCounterEvidenceReview(null);
+    resolve?.(decision);
+  };
+  const requestCounterEvidenceReview = (review: ReturnType<typeof createCounterEvidenceReview>) => {
+    counterEvidenceReviewResolver.current?.(null);
+    setCounterEvidenceReview(review);
+    return new Promise<CounterEvidenceScopeDecision | null>((resolve) => { counterEvidenceReviewResolver.current = resolve; });
+  };
 
   const [saveMessage, setSaveMessage] = useState("");
   const [creatorBriefDraftSaveState, setCreatorBriefDraftSaveState] =
@@ -14760,6 +14775,15 @@ const generateSceneImage = async (
       creatorMentorResult,
     ],
   );
+  const counterReviewStrategyRef = useRef(creatorStrategyFingerprint);
+  useEffect(() => {
+    counterReviewStrategyRef.current = creatorStrategyFingerprint;
+    return () => {
+      counterEvidenceReviewResolver.current?.(null);
+      counterEvidenceReviewResolver.current = null;
+      setCounterEvidenceReview(null);
+    };
+  }, [creatorStrategyFingerprint, currentProjectId]);
   const creatorScriptIsCurrent = isCreatorScriptCurrentForStrategy({
     script: creatorScript,
     strategyFingerprint: creatorStrategyFingerprint,
@@ -14780,6 +14804,10 @@ const generateSceneImage = async (
     topic: string;
     accessToken: string;
   }) => {
+    const reviewOrigin = { projectId: currentProjectIdRef.current, generation: projectGenerationRef.current, strategyFingerprint: creatorStrategyFingerprint };
+    const reviewIsCurrent = () => reviewOrigin.projectId === currentProjectIdRef.current
+      && reviewOrigin.generation === projectGenerationRef.current
+      && reviewOrigin.strategyFingerprint === counterReviewStrategyRef.current;
     const productionPackageWithCharacterIds = {
       ...productionPackage,
       characters: normalizeCreatorLabCharacters(productionPackage.characters),
@@ -14810,6 +14838,8 @@ const generateSceneImage = async (
           accessToken,
           topic,
       creatorProfile: creatorStrategyProfileSnapshot || creatorProfile,
+          onCounterEvidenceReview: requestCounterEvidenceReview,
+          operationIsCurrent: reviewIsCurrent,
           scriptPlanRequest,
         });
 
@@ -14827,11 +14857,7 @@ const generateSceneImage = async (
       return plannedPackage as CreatorProductionPackage;
     } catch (error) {
       if (error instanceof CreatorEditorialPipelineError) {
-        throw new Error(
-          uiLanguage === "en"
-            ? "Grounded editorial preparation could not be completed. Please try again."
-            : "Kaynaklara dayalı editoryal hazırlık tamamlanamadı. Lütfen tekrar dene."
-        );
+        throw new Error(error.message);
       }
       const message = error instanceof Error ? error.message : "";
       throw new Error(
@@ -15481,6 +15507,8 @@ const generateSceneImage = async (
         topic: normalizeCreatorTopicAuthority(input),
         researchSubject: creatorMarketEvidenceSubject,
         creatorProfile,
+        onCounterEvidenceReview: requestCounterEvidenceReview,
+        operationIsCurrent: () => operationIsActive() && creatorStrategyFingerprint === counterReviewStrategyRef.current,
         scriptPlanRequest: {
           operation: "generate_full_script",
           title: creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title,
@@ -21502,6 +21530,7 @@ const generateSceneImage = async (
   return (
     <WorldProvider>
       <ActiveProductShell>
+        {counterEvidenceReview && <CreatorCounterEvidenceReview key={counterEvidenceReview.snapshotFingerprint} review={counterEvidenceReview} onDecision={finishCounterEvidenceReview} />}
         {isCreatorLabFlow && (
           <style>{`
 /* Velto Studio UX-R2 — product workspace shell

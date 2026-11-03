@@ -10,6 +10,7 @@ import {
   isValidCreatorProjectState,
   readCreatorProjectState,
 } from "./projectState.ts";
+import { normalizeCreatorScript } from "./creatorScript.ts";
 import type {
   ProjectRepository,
   VeltoProjectApiRecord,
@@ -70,7 +71,13 @@ function canonicalStateFromProject(project: VeltoProjectApiRecord) {
       422,
     );
   }
-  return readCreatorProjectState(project);
+  const state = readCreatorProjectState(project);
+  if (state.strategy.script) {
+    try { normalizeCreatorScript(state.strategy.script); } catch {
+      throw new CreatorScriptBuildSnapshotError("CREATOR_SCRIPT_BUILD_LEGACY_REVALIDATION_REQUIRED", 409);
+    }
+  }
+  return state;
 }
 
 function assertMentorAuthority(value: Record<string, unknown>) {

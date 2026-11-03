@@ -1,4 +1,8 @@
 import {
+  normalizeScriptPlannerEditorialContext, createCounterEvidenceReview, applyCounterEvidenceScopeReview,
+  type CounterEvidenceScopeDecision,
+} from "./scriptPlannerEditorialContext.ts";
+import {
   normalizeCreatorDocumentarySourcePlanningContext,
   normalizeCreatorEvidenceVisualPlanningContext,
 } from "../creator/productionIntelligenceRequest.ts";
@@ -48,6 +52,8 @@ export type CreatorEditorialPipelineInput = {
   includeRecentContext?: boolean;
   maxResultsPerLane?: number;
   fetchImpl?: typeof fetch;
+  onCounterEvidenceReview?: (review: ReturnType<typeof createCounterEvidenceReview>) => Promise<CounterEvidenceScopeDecision | null>;
+  operationIsCurrent?: () => boolean;
 };
 
 export type CreatorEditorialPipelineProductionIntelligenceContext = {
@@ -339,6 +345,7 @@ export async function runCreatorEditorialScriptPipeline(
     },
   });
 
+  const initialResearchSnapshot = structuredClone(editorial.graph) as ResearchClaimEvidenceGraph;
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(
     firstReadiness?.primarySourceRequiredClaimIds,
@@ -593,13 +600,31 @@ export async function runCreatorEditorialScriptPipeline(
     }
   }
 
-  const scriptContext = asRecord(editorial.scriptContext);
+  let scriptContext = asRecord(editorial.scriptContext);
   if (!scriptContext) {
     throw new CreatorEditorialPipelineError({
       stage: "editorial_analysis",
       code: "EDITORIAL_PIPELINE_CONTEXT_MISSING",
       message: "Editorial analysis did not return a grounded script context.",
     });
+  }
+
+  const normalizedContext = input.onCounterEvidenceReview ? normalizeScriptPlannerEditorialContext(scriptContext) : null;
+  const counterReview = normalizedContext ? createCounterEvidenceReview(normalizedContext) : null;
+  if (normalizedContext && counterReview?.unresolvedClaimIds.length && input.onCounterEvidenceReview) {
+    if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
+    const decision = await input.onCounterEvidenceReview(counterReview);
+    if (!decision) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STOPPED", message: `Review stopped. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}. Obtain qualifying counter-evidence before retrying these assertions, or explicitly omit them from the script.` });
+    if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
+    try {
+      scriptContext = applyCounterEvidenceScopeReview(normalizedContext, decision, editorial.graph as ResearchClaimEvidenceGraph, initialResearchSnapshot) as unknown as JsonRecord;
+    } catch (error) {
+      throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_UNRESOLVED", message: error instanceof Error && error.message.startsWith("COUNTER_REVIEW_UNRESOLVED:")
+        ? `Claims ${error.message.split(":")[1]} remain unresolved. Explicitly omit them or obtain qualifying counter-evidence before retrying.`
+        : error instanceof Error && error.message === "COUNTER_REVIEW_NO_FACTUAL_SCRIPT_BASIS"
+          ? "No factual script basis remains. Obtain qualifying research or narrow the script before retrying."
+          : "The review snapshot or decision could not be validated. Stop and rerun editorial analysis before reviewing again; primary-source and scientific requirements remain in force." });
+    }
   }
 
   const scriptPlan = await postJson({

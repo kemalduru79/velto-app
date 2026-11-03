@@ -133,7 +133,9 @@ function canonicalWorkReferenceMatches(
  * claim origin and the source itself:
  *
  * - attributed_statement -> named author/publisher
- * - document_assertion/original_research_result -> originating work title
+ * - document_assertion -> that exact document's own assertions
+ * Original research results require verified original-source provenance above;
+ * matching a secondary report's URL/title cannot establish study authority.
  *
  * Retrieval lane alone never establishes primary authority.
  */
@@ -157,8 +159,7 @@ export function researchSourceIsPrimaryForClaim(
   }
 
   if (
-    claim.propositionKind === "document_assertion" ||
-    claim.propositionKind === "original_research_result"
+    claim.propositionKind === "document_assertion"
   ) {
     return canonicalWorkReferenceMatches(
       claim.origin.referencedWork,
@@ -167,6 +168,22 @@ export function researchSourceIsPrimaryForClaim(
   }
 
   return false;
+}
+
+/**
+ * Read-time compatibility with the exact pre-PR45 work-title rule.
+ * NEVER use this in current generation, source acquisition or approval.
+ * In particular, original research in a secondary article is not primary
+ * evidence under the current policy.
+ */
+export function historicalSourceWasPrimaryForClaim(
+  source: ResearchSource,
+  claim: ResearchClaim | null | undefined,
+) {
+  return researchSourceIsPrimaryForClaim(source, claim) ||
+    (claim?.propositionKind === "original_research_result" &&
+      Boolean(claim.origin) &&
+      canonicalWorkReferenceMatches(claim.origin?.referencedWork, source));
 }
 
 function hasText(value: unknown) {

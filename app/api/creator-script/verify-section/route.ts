@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { attachCreatorProjectState, readCreatorProjectState } from "@/lib/creator/projectState";
-import { getCreatorScriptSectionSourceReview, verifyCreatorScriptSectionSources } from "@/lib/creator/creatorScript";
+import { getCreatorScriptSectionSourceReview, normalizeCreatorScript, verifyCreatorScriptSectionSources } from "@/lib/creator/creatorScript";
 
 export const runtime = "nodejs";
 
@@ -24,6 +24,9 @@ export async function POST(req: Request) {
     const review = getCreatorScriptSectionSourceReview(script, sectionId);
     if (!review) return NextResponse.json({ error: "Source verification is unavailable for this section." }, { status: 422 });
     if (!confirm) return NextResponse.json({ success: true, review });
+    try { normalizeCreatorScript(script); } catch {
+      return NextResponse.json({ error: "Historical source authority requires revalidation before verification.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
+    }
     const verifiedScript = verifyCreatorScriptSectionSources(script, sectionId);
     const nextState = { ...state, strategy: { ...state.strategy, script: verifiedScript, pendingRefinement: null } };
     const result = await services.projectRepository.saveForOwner({

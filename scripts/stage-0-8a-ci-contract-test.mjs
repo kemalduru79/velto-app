@@ -42,3 +42,20 @@ assert.doesNotMatch(workflow, /(?:runway|veo|elevenlabs|epidemic|openai).*(?:gen
 assert.doesNotMatch(workflow, /curl\b[^\n|]*\|\s*(?:ba)?sh/i);
 
 console.log("STAGE_0_8A_CI_CONTRACT=PASS");
+
+// PR45: Dedicated scientific acceptance must remain visible and fail closed.
+const scientificWorkflowPath = ".github/workflows/scientific-ci.yml";
+assert.ok(fs.existsSync(scientificWorkflowPath),"Scientific workflow must exist");
+const scientificWorkflow=fs.readFileSync(scientificWorkflowPath,"utf8");
+const criticalSuite=fs.readFileSync("scripts/stage-0-8a-critical-regression.mjs","utf8");
+const pkg=JSON.parse(fs.readFileSync("package.json","utf8"));
+assert.match(workflow,/run:\s*npm run test:ci-critical/);
+assert.match(scientificWorkflow,/run:\s*npm run test:ci-scientific/);
+assert.match(scientificWorkflow,/runs-on:\s*ubuntu-latest/);
+assert.match(scientificWorkflow,/workflow_dispatch:/);
+assert.match(scientificWorkflow,/push:/);
+assert.match(scientificWorkflow,/pull_request:/);
+assert.match(pkg.scripts["test:ci-scientific"],/stage-5e1g-b-scientific-computing-test\.mjs/);
+assert.doesNotMatch(criticalSuite,/["']scripts\/stage-5e1g-b-scientific-computing-test\.mjs["']/);
+assert.doesNotMatch(scientificWorkflow,/continue-on-error|\|\|\s*true|\bexit\s+0\b/);
+assert.doesNotMatch(workflow,/continue-on-error|\|\|\s*true/);

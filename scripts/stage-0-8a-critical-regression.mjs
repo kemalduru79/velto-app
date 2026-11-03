@@ -21,6 +21,11 @@ const tests = [
   "scripts/creator-editorial-same-source-origin-test.mjs",
   "scripts/creator-longform-grounding-plan-integration-test.mjs",
   "scripts/creator-issue-42-evidence-lifecycle-test.mjs",
+  "scripts/creator-issue-44-counter-review-test.mjs",
+  "scripts/creator-pr-45-release-readiness-test.mjs",
+  "scripts/creator-pr45-historical-compat-test.mjs",
+  "scripts/creator-pr45-legacy-audit-test.mjs",
+  "scripts/creator-pr45-scientific-boundary-test.mjs",
   "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
   "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
@@ -113,7 +118,7 @@ const tests = [
   "scripts/stage-5e1b-pilot-readiness-test.mjs",
   "scripts/stage-5e1f-agentic-scientific-review-test.mjs",
   "scripts/stage-5e1g-a-metadata-importer-test.mjs",
-  "scripts/stage-5e1g-b-scientific-computing-test.mjs",
+  "scripts/creator-pr45-scientific-runtime-integrity-test.mjs",
   "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
 ];
 
@@ -130,10 +135,13 @@ for (const test of tests) {
         test === "scripts/stage-5e1b-pilot-readiness-test.mjs" ||
         test === "scripts/stage-5e1f-agentic-scientific-review-test.mjs" ||
         test === "scripts/stage-5e1g-a-metadata-importer-test.mjs" ||
-        test === "scripts/stage-5e1g-b-scientific-computing-test.mjs"
+        test === "scripts/creator-pr45-scientific-runtime-integrity-test.mjs"
       ? ["--experimental-strip-types"]
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
-          test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs"
+          test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs" ||
+          test === "scripts/creator-issue-44-counter-review-test.mjs" ||
+          test === "scripts/creator-pr-45-release-readiness-test.mjs" ||
+          test === "scripts/creator-pr45-historical-compat-test.mjs"
         ? ["--experimental-transform-types"]
         : []),
     test,

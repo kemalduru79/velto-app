@@ -428,12 +428,12 @@ function normalizeSection(
   };
 }
 
-export function normalizeCreatorScript(value: unknown): CreatorScript {
+export function normalizeCreatorScript(value: unknown, historicalReadOnly = false): CreatorScript {
   const script = record(value);
   const grounding = record(script?.grounding);
   let editorialContext: ScriptPlannerEditorialContext | null = null;
   try {
-    editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context);
+    editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context, true, historicalReadOnly);
   } catch {
     editorialContext = null;
   }
@@ -525,6 +525,25 @@ export function assertCreatorScriptVerificationAuthority(persisted: CreatorScrip
   return candidate;
 }
 
+/** Historical scripts are readable, not newly approved or generation-eligible. */
+export function normalizeHistoricalCreatorScript(value: unknown): CreatorScript {
+  // Current records may carry scope-review provenance, which the legacy-only
+  // parser intentionally refuses. Never route a valid current record through
+  // that exception, or grant historical semantics to its review snapshot.
+  try { return normalizeCreatorScript(value); }
+  catch { return normalizeCreatorScript(value, true); }
+}
+
+export function isCreatorScriptHistoricalResearchOnly(value: unknown) {
+  try { normalizeCreatorScript(value); return false; } catch {
+    try { normalizeHistoricalCreatorScript(value); return true; } catch { return false; }
+  }
+}
+
+export function isValidHistoricalCreatorScript(value: unknown): value is CreatorScript {
+  try { normalizeHistoricalCreatorScript(value); return true; } catch { return false; }
+}
+
 export function isValidCreatorScript(value: unknown): value is CreatorScript {
   try {
     normalizeCreatorScript(value);
@@ -539,7 +558,8 @@ export function createCreatorScript(input: Omit<CreatorScript, "version" | "revi
 }
 
 export function getCreatorScriptStatus(script: CreatorScript, currentStrategyFingerprint: string): CreatorScriptStatus {
-  if (script.strategyFingerprint !== currentStrategyFingerprint) return "stale";
+  // Historical approval is an archived record, never renewed production authority.
+  if (script.strategyFingerprint !== currentStrategyFingerprint || isCreatorScriptHistoricalResearchOnly(script)) return "stale";
   return script.approval && script.approval.approvedRevision === script.revision && script.approval.approvedStrategyFingerprint === script.strategyFingerprint
     ? "approved"
     : "draft";
@@ -600,7 +620,11 @@ export function createCreatorScriptNarrationEditorialContext(
       }
     })
     .map((source) => source.sourceId));
-  const evidence = context.evidence.filter((item) => !controlOnlySourceIds.has(item.sourceId));
+  const retainedEvidenceIds = new Set(context.claims.flatMap((claim) => [
+    ...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds,
+  ]));
+  const evidence = context.evidence.filter((item) => !controlOnlySourceIds.has(item.sourceId)
+    && (!context.counterEvidenceReview || retainedEvidenceIds.has(item.evidenceId)));
   const narrationEvidenceIds = new Set(evidence.map((item) => item.evidenceId));
   const claims = context.claims
     .map((claim) => ({
@@ -615,8 +639,10 @@ export function createCreatorScriptNarrationEditorialContext(
       ...claim.contextualEvidenceIds,
     ].length > 0);
   const narrationSourceIds = new Set(evidence.map((item) => item.sourceId));
+  const { counterEvidenceReview: provenance, ...narrationContext } = context;
+  void provenance; // Full immutable research remains backstage, outside provider prompts.
   return {
-    ...context,
+    ...narrationContext,
     editorialConstitution: "Backstage editorial controls are enforced separately and are not narration material.",
     claims,
     evidence,
@@ -1764,7 +1790,9 @@ export function verifyCreatorScriptSectionSources(script: CreatorScript, section
 }
 
 export function creatorScriptHasGroundingBlocker(script: CreatorScript) {
-  return script.grounding.context.readiness.status === "blocked" || script.sections.some((section) => section.evidenceReviewRequired);
+  return isCreatorScriptHistoricalResearchOnly(script) ||
+    script.grounding.context.readiness.status === "blocked" ||
+    script.sections.some((section) => section.evidenceReviewRequired);
 }
 
 export function canBuildScenesFromCreatorScript(script: CreatorScript | null, currentStrategyFingerprint: string) {

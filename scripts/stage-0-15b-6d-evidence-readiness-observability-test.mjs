@@ -116,12 +116,12 @@ const readyContext = context({
   claims: readyClaims,
   evidence: [
     evidence("e1", "s1", abstract),
-    evidence("e2", "s2", abstract),
+    evidence("e2", "s2", "A synthetic account describes the role of retrieval cues in reconstruction."),
     evidence("e3", "s3", concrete),
-    evidence("e4", "s4", abstract),
+    evidence("e4", "s4", "A synthetic model distinguishes prior schemas from incoming details."),
     evidence("e5", "s5", contextual),
-    evidence("e6", "s6", abstract),
-    evidence("e7", "s7", abstract),
+    evidence("e6", "s6", "A synthetic account separates reported confidence from the recorded event."),
+    evidence("e7", "s7", "A synthetic account discusses social retelling and subsequent reports."),
   ],
   sources: Array.from({ length: 7 }, (_, index) => source(`s${index + 1}`)),
 });
@@ -180,6 +180,7 @@ assert.deepEqual(blockedAfterDiagnostics, blockedBeforeDiagnostics);
 assert.deepEqual(blockedBeforeDiagnostics.reasonCodes, [
   "missing_grounded_demonstration_capability",
   "missing_uncertainty_capability",
+  "insufficient_factual_foundation",
 ]);
 assert.equal(blockedDiagnostics.hasGroundedDemonstrationCapability, false);
 assert.equal(blockedDiagnostics.hasUncertaintyCapability, false);

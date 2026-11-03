@@ -1,4 +1,5 @@
 import { readCreatorProjectState } from "./projectState";
+import { normalizeCreatorScript } from "./creatorScript";
 import { buildCreatorFinalProductionSignature } from "./finalProductionSignature";
 import { DEFAULT_CREATOR_BACKGROUND_MUSIC } from "./backgroundMusic";
 import { CreatorAudioRenderabilityError, resolveCreatorAudioRenderability } from "./audioRenderability.server";
@@ -38,6 +39,9 @@ const record = (value: unknown): Record<string, unknown> =>
 
 export function currentCreatorFinalProductionAuthority(project: VeltoProjectApiRecord) {
   const state = readCreatorProjectState(project);
+  // Historical approvals remain visible, but cannot authorize new exports,
+  // publication or new render signatures under superseded source policy.
+  if (state.strategy.script) normalizeCreatorScript(state.strategy.script);
   const scenes: Array<Record<string, unknown> & { id: string | number }> = state.createReview.scenes.map((value, index) => {
     const scene = record(value);
     return {

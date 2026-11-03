@@ -109,7 +109,7 @@ if(!baseline){
  for(const call of initial){assert.deepEqual(call.body.editorialSectionPlan,controls);assert(call.request.input[0].content.includes('explicitly hypothetical'));for(const e of call.body.editorialContext.evidence)assert(e.excerpt);}
  assert.equal(JSON.stringify(good),goodBefore);
  // A control-only source cannot qualify a narrated empirical demonstration.
- const controlOnly={...demonstrated,sources:demonstrated.sources.map(s=>s.sourceId==='source-2'?{...s,url:'https://thnkfirst.com/applied-inquiry/control'}:s)};
+ const controlOnly={...demonstrated,claims:[...demonstrated.claims,context.claims[4]],sources:demonstrated.sources.map(s=>s.sourceId==='source-2'?{...s,url:'https://thnkfirst.com/applied-inquiry/control'}:s)};
  const controlHarness=await createOfflineScriptPlanHarness();await controlHarness.execute({body:request,editorialContext:controlOnly});
  const controlInitial=controlHarness.calls.filter(c=>c.body.requestedSectionBudgets);assert(controlInitial.length>0);
  assert(controlInitial[0].body.editorialSectionPlan.find(s=>s.sectionId==='section-3').owns.includes('grounded_synthesis'));

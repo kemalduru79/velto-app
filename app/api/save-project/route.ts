@@ -12,7 +12,7 @@ import {
   type CreatorProjectStateSnapshot,
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
-import { assertCreatorScriptVerificationAuthority } from "@/lib/creator/creatorScript";
+import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly, normalizeCreatorScript } from "@/lib/creator/creatorScript";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 import { assertCreatorScriptApprovalAuthority, creatorSceneOutputIsCurrent, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
@@ -108,6 +108,36 @@ async function handleSaveProjectRequest(
     const persistedCreatorStateAuthority = persistedCreatorProject
       ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
       : null;
+    const historicalResearchLocked = Boolean(
+      persistedCreatorStateAuthority?.status === "valid" &&
+      persistedCreatorStateAuthority.script &&
+      isCreatorScriptHistoricalResearchOnly(persistedCreatorStateAuthority.script),
+    );
+    if (historicalResearchLocked && persistedCreatorProject) {
+      // An approved historical script remains readable, not writable scientific
+      // authority. Preserve its exact serialized snapshot, legacy columns and
+      // final media; no autosave may silently clear or reconstruct it.
+      const savedState = readCreatorProjectState(persistedCreatorProject);
+      const protectedFields: Array<[string, unknown]> = [
+        ["creatorProjectState", savedState],
+        ["scenes", persistedCreatorProject.scenes],
+        ["refinedCreatorScenes", persistedCreatorProject.refined_creator_scenes],
+        ["creatorProductionPackage", persistedCreatorProject.creator_production_package],
+        ["creatorMentorResult", persistedCreatorProject.creator_mentor_result],
+        ["youtubeMetadataResult", persistedCreatorProject.youtube_metadata],
+        ["youtubeThumbnailResult", persistedCreatorProject.youtube_thumbnail],
+        ["exportedMovieUrl", persistedCreatorProject.exported_movie_url],
+        ["exportSignature", persistedCreatorProject.export_signature],
+      ];
+      if (has("creatorScriptMutation") || protectedFields.some(([name, original]) =>
+        has(name) && JSON.stringify(body[name]) !== JSON.stringify(original)
+      )) {
+        return NextResponse.json({
+          error: "Historical script content remains accessible, but production or script changes require current source revalidation.",
+          code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED",
+        }, { status: 409 });
+      }
+    }
     // Durable final export always starts with canonical Creator state. Its absence
     // after installation must never be treated as permission to recreate it from an editor.
     if (persistedCreatorStateAuthority?.status === "legacy_absent" &&
@@ -143,13 +173,20 @@ async function handleSaveProjectRequest(
       );
     }
     if (hasCreatorProjectState && !projectId && authoritativeCreatorState) {
+      // Historical read compatibility is not authority to install an obsolete
+      // research classification into a new project.
+      try {
+        if (authoritativeCreatorState.strategy.script) normalizeCreatorScript(authoritativeCreatorState.strategy.script);
+      } catch {
+        return NextResponse.json({ error: "New script installation requires current research validation.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
+      }
       authoritativeCreatorState = { ...authoritativeCreatorState, strategy: { ...authoritativeCreatorState.strategy, pendingRefinement: null, revisionHistory: [] } };
     }
     if (hasCreatorProjectState && projectId) {
       const persistedProject = persistedCreatorProject!;
       const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
       const persistedState = readCreatorProjectState(persistedProject);
-      suppressStaleCreatorFinalProjection = Boolean(persistedScript) && !creatorSceneOutputIsCurrent({
+      suppressStaleCreatorFinalProjection = !historicalResearchLocked && Boolean(persistedScript) && !creatorSceneOutputIsCurrent({
         script: persistedScript,
         productionPackage: persistedState.production.package,
         scenes: persistedState.createReview.scenes,
@@ -277,7 +314,7 @@ async function handleSaveProjectRequest(
     if (flowType === "creator_lab" && projectId && !hasCreatorProjectState && !quarantinedCreatorState) {
       const persistedProject = persistedCreatorProject!;
       const persistedState = readCreatorProjectState(persistedProject);
-      suppressStaleCreatorFinalProjection = Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
+      suppressStaleCreatorFinalProjection = !historicalResearchLocked && Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
         script: persistedState.strategy.script,
         productionPackage: persistedState.production.package,
         scenes: persistedState.createReview.scenes,
@@ -319,9 +356,11 @@ async function handleSaveProjectRequest(
           creatorStateForAttachment,
         )
       : body.exportedMovieResult;
-    const exportedMovieResult = persistedCreatorStateAuthority
-      ? preserveQuarantinedCreatorProjectState({ authority: persistedCreatorStateAuthority, exportedMovieResult: candidateExportedMovieResult })
-      : candidateExportedMovieResult;
+    const exportedMovieResult = historicalResearchLocked && persistedCreatorProject
+      ? persistedCreatorProject.exported_movie_result
+      : persistedCreatorStateAuthority
+        ? preserveQuarantinedCreatorProjectState({ authority: persistedCreatorStateAuthority, exportedMovieResult: candidateExportedMovieResult })
+        : candidateExportedMovieResult;
     const result =
       await services.projectRepository.saveForOwner({
         projectId,
@@ -353,7 +392,9 @@ async function handleSaveProjectRequest(
 
     let mediaReferenceSync: "ok" | "deferred" = "ok";
     try {
-      await services.mediaAssetRepository.replaceProjectReferences(
+      // A preservation-only save must not rewrite the historical reference
+      // index or initiate superseded-media cleanup.
+      if (!historicalResearchLocked) await services.mediaAssetRepository.replaceProjectReferences(
         principal.id,
         result.project.id,
         extractProjectMediaReferences(result.project),
@@ -375,7 +416,7 @@ async function handleSaveProjectRequest(
         : "";
     if (
       flowType === "creator_lab" && mediaReferenceSync === "ok" &&
-      authoritativeExportedMovieUrl
+      authoritativeExportedMovieUrl && !historicalResearchLocked
     ) {
       try {
         const reconciliation = await reconcileSupersededFinalVideosForProject({

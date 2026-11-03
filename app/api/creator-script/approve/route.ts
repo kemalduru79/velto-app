@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { approveCreatorScriptForProduction } from "@/lib/creator/creatorScriptApproval";
+import { normalizeCreatorScript } from "@/lib/creator/creatorScript";
 import { attachCreatorProjectState, readCreatorProjectState } from "@/lib/creator/projectState";
 
 export const runtime = "nodejs";
@@ -18,6 +19,11 @@ export async function POST(req: Request) {
     if (!project) return NextResponse.json({ error: "Project not found." }, { status: 404 });
     const state = readCreatorProjectState(project);
     const script = state.strategy.script;
+    if (script) {
+      try { normalizeCreatorScript(script); } catch {
+        return NextResponse.json({ error: "Historical source authority requires revalidation before approval.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
+      }
+    }
     if (!script || script.revision !== revision) return NextResponse.json({ error: "Script changed. Review the current revision before approval.", code: "CREATOR_SCRIPT_APPROVAL_STALE" }, { status: 409 });
     const approvedScript = approveCreatorScriptForProduction({ script, strategyFingerprint: state.strategy.strategyFingerprint || script.strategyFingerprint, language: state.brief.language, hasPendingRefinement: Boolean(state.strategy.pendingRefinement) });
     const nextState = { ...state, strategy: { ...state.strategy, script: approvedScript } };
