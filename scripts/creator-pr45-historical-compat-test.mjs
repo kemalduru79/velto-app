@@ -129,6 +129,9 @@ const execute=async(body,{foreign=false,initial=project}={})=>{
      if(Object.hasOwn(patch,"exportedMovieUrl"))saved.exported_movie_url=patch.exportedMovieUrl;
      if(Object.hasOwn(patch,"exportSignature"))saved.export_signature=patch.exportSignature;
      if(Object.hasOwn(patch,"scenes"))saved.scenes=patch.scenes;
+     for(const [key,column] of Object.entries({refinedCreatorScenes:"refined_creator_scenes",creatorProductionPackage:"creator_production_package",creatorMentorResult:"creator_mentor_result",youtubeMetadataResult:"youtube_metadata",youtubeThumbnailResult:"youtube_thumbnail"})){
+       if(Object.hasOwn(patch,key))saved[column]=patch[key];
+     }
      saved.updated_at="r"+(Number(saved.updated_at.slice(1))+1);
      return {project:structuredClone(saved),created:false};
    },
@@ -166,6 +169,12 @@ for(const mutation of [
   {...body,creatorScriptMutation:{type:"manual_document_edit",expectedRevision:1,documentText:"Altered"}},
   {...body,exportSignature:"forged"},
 ]){const x=await execute(mutation);assert.equal(x.status,409,JSON.stringify(x.payload));assert.equal(x.payload.code,"CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED");assert.equal(x.writes.length,0);}
+const full=await execute({...body,scenes:project.scenes,refinedCreatorScenes:project.refined_creator_scenes,
+ creatorProductionPackage:project.creator_production_package,creatorMentorResult:project.creator_mentor_result,
+ youtubeMetadataResult:project.youtube_metadata,youtubeThumbnailResult:project.youtube_thumbnail,
+ exportedMovieUrl:project.exported_movie_url,exportSignature:project.export_signature});
+assert.equal(full.status,200);
+assert.deepEqual(full.saved,{...project,updated_at:"r2"},"A full unchanged legacy save must preserve every legacy column, not recompute it from normalized state.");
 const cloned=await execute({...body,projectId:undefined,title:"Synthetic legacy clone",scenes:[]});
 assert.equal(cloned.status,409,"Historical-read compatibility cannot authorize a new script installation.");
 assert.equal(cloned.writes.length,0);

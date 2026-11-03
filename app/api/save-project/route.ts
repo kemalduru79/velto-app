@@ -415,8 +415,8 @@ async function handleSaveProjectRequest(
         ? result.project.exported_movie_url.trim()
         : "";
     if (
-      flowType === "creator_lab" && !historicalResearchLocked && mediaReferenceSync === "ok" &&
-      authoritativeExportedMovieUrl
+      flowType === "creator_lab" && mediaReferenceSync === "ok" &&
+      authoritativeExportedMovieUrl && !historicalResearchLocked
     ) {
       try {
         const reconciliation = await reconcileSupersededFinalVideosForProject({
