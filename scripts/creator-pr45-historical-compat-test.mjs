@@ -10,7 +10,6 @@ import {
 } from "../lib/creator/creatorScript.ts";
 import {getCreatorScriptApprovalBlockers} from "../lib/creator/creatorScriptApproval.ts";
 import {readCreatorProjectState,isValidCreatorProjectState,inspectCreatorProjectStatePersistenceAuthority} from "../lib/creator/projectState.ts";
-import {currentCreatorFinalProductionAuthority} from "../lib/creator/publishReadiness.server.ts";
 import {issue44EvidenceFixture} from "./fixtures/creator-issue-44-evidence.mjs";
 
 const f=issue44EvidenceFixture();
@@ -67,7 +66,6 @@ assert.equal(hydrated.createReview.scenes.length,36);
 assert.equal(hydrated.publish.finalVideoSignature,"immutable-final-signature");
 assert.deepEqual(hydrated.strategy.revisionHistory,normal.strategy.revisionHistory);
 assert.equal(JSON.stringify(project),rawBefore);
-assert.throws(()=>currentCreatorFinalProductionAuthority(project),/CREATOR_SCRIPT_INVALID/);
 const invalid=structuredClone(project);
 invalid.exported_movie_result.creatorProjectState.strategy.script.sections[0].claimIds=["forged-claim"];
 assert.equal(inspectCreatorProjectStatePersistenceAuthority(invalid).status,"malformed_invalid_script");
@@ -79,6 +77,8 @@ assert.equal(inspectCreatorProjectStatePersistenceAuthority(mismatched).status,"
 const root=new URL("..",import.meta.url).pathname.replace(/\/$/,"");
 const jiti=createJiti(import.meta.url,{interopDefault:true,alias:{"@":root,"server-only":new URL("../lib/creator/projectState.ts",import.meta.url).pathname}});
 const {POST}=await jiti.import("../app/api/save-project/route.ts");
+const {currentCreatorFinalProductionAuthority}=await jiti.import("../lib/creator/publishReadiness.server.ts");
+assert.throws(()=>currentCreatorFinalProductionAuthority(project),/CREATOR_SCRIPT_INVALID/);
 const handler=POST.handleForTest;
 const owner={id:"owned-user",email:"owner@fixture.invalid",providerUser:{id:"owned-user"}};
 const request=body=>new Request("http://localhost/api/save-project",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
