@@ -554,7 +554,8 @@ export function createCreatorScript(input: Omit<CreatorScript, "version" | "revi
 }
 
 export function getCreatorScriptStatus(script: CreatorScript, currentStrategyFingerprint: string): CreatorScriptStatus {
-  if (script.strategyFingerprint !== currentStrategyFingerprint) return "stale";
+  // Historical approval is an archived record, never renewed production authority.
+  if (script.strategyFingerprint !== currentStrategyFingerprint || isCreatorScriptHistoricalResearchOnly(script)) return "stale";
   return script.approval && script.approval.approvedRevision === script.revision && script.approval.approvedStrategyFingerprint === script.strategyFingerprint
     ? "approved"
     : "draft";
@@ -1785,7 +1786,9 @@ export function verifyCreatorScriptSectionSources(script: CreatorScript, section
 }
 
 export function creatorScriptHasGroundingBlocker(script: CreatorScript) {
-  return script.grounding.context.readiness.status === "blocked" || script.sections.some((section) => section.evidenceReviewRequired);
+  return isCreatorScriptHistoricalResearchOnly(script) ||
+    script.grounding.context.readiness.status === "blocked" ||
+    script.sections.some((section) => section.evidenceReviewRequired);
 }
 
 export function canBuildScenesFromCreatorScript(script: CreatorScript | null, currentStrategyFingerprint: string) {

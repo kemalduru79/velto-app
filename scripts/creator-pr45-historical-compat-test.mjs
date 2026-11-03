@@ -6,7 +6,8 @@ import {parseCreatorProfile} from "../lib/creator/creatorProfile.ts";
 import {normalizeScriptPlannerEditorialContext} from "../lib/research/scriptPlannerEditorialContext.ts";
 import {
   isCreatorScriptHistoricalResearchOnly,isValidHistoricalCreatorScript,
-  normalizeCreatorScript,normalizeHistoricalCreatorScript
+  normalizeCreatorScript,normalizeHistoricalCreatorScript,
+  getCreatorScriptStatus,canBuildScenesFromCreatorScript,creatorScriptHasGroundingBlocker
 } from "../lib/creator/creatorScript.ts";
 import {getCreatorScriptApprovalBlockers} from "../lib/creator/creatorScriptApproval.ts";
 import {readCreatorProjectState,isValidCreatorProjectState,inspectCreatorProjectStatePersistenceAuthority} from "../lib/creator/projectState.ts";
@@ -37,6 +38,9 @@ assert.throws(()=>normalizeCreatorScript(script),/CREATOR_SCRIPT_INVALID/);
 assert.equal(isValidHistoricalCreatorScript(script),true);
 assert.equal(isCreatorScriptHistoricalResearchOnly(script),true);
 assert.deepEqual(normalizeHistoricalCreatorScript(script).approval,script.approval);
+assert.equal(getCreatorScriptStatus(normalizeHistoricalCreatorScript(script),"historical-strategy"),"stale");
+assert.equal(canBuildScenesFromCreatorScript(normalizeHistoricalCreatorScript(script),"historical-strategy"),false);
+assert.equal(creatorScriptHasGroundingBlocker(normalizeHistoricalCreatorScript(script)),true);
 assert(getCreatorScriptApprovalBlockers({script:normalizeHistoricalCreatorScript(script),strategyFingerprint:"historical-strategy",language:"en",hasPendingRefinement:false}).includes("grounding"));
 const normal=readCreatorProjectState({});
 const pending={proposalId:"pending-1",baseRevision:1,scope:"whole_script",instruction:"Historical revision, unchanged",createdAt:"2026-01-01",
