@@ -24,6 +24,7 @@ const tests = [
   "scripts/creator-issue-44-counter-review-test.mjs",
   "scripts/creator-pr-45-release-readiness-test.mjs",
   "scripts/creator-pr45-historical-compat-test.mjs",
+  "scripts/creator-pr45-legacy-audit-test.mjs",
   "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
   "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",

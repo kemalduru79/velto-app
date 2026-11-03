@@ -32,5 +32,7 @@ jobs:
         run: node --experimental-transform-types scripts/stage-r2-safety-creator-project-quarantine-test.mjs
       - name: Existing counter-review regression
         run: node --experimental-transform-types scripts/creator-issue-44-counter-review-test.mjs
+      - name: Offline audit scope and privacy
+        run: node scripts/creator-pr45-legacy-audit-test.mjs
       - name: CI contract
         run: npm run test:ci-contract

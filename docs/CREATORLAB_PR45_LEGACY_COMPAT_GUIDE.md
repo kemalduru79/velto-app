@@ -10,7 +10,7 @@ Historical loading must never be confused with current scientific approval.
 
 ## Read-only audit procedure (NOT executed)
 1. Owner authorizes a limited, read-only export of their own CreatorLab project metadata, including saved project state. Use existing RLS/owner-access path. Never query other users or export raw text to logs.
-2. Run `node --experimental-transform-types scripts/creator-pr45-legacy-audit.mjs < authorized-owner-projects.ndjson` on the secured offline data.
+2. Run `VELTO_AUDIT_OWNER_ID=<authorized-owner-uuid> node --experimental-transform-types scripts/creator-pr45-legacy-audit.mjs < authorized-owner-projects.ndjson` in an isolated owner-approved offline environment. Every row must match `user_id` and `flow_type=creator_lab`; any mismatch fails the audit without reporting partial counts.
 3. Retain only `counts` and reason categories in the audit report; securely dispose of the export. A count of zero must be established with correct population and pagination, not assumed.
 4. Do not migrate, approve, delete or overwrite legacy data in response to audit output.
 
@@ -21,3 +21,5 @@ Production release stays **NO-GO** until focused validation, compatibility resul
 Focused workflow: [GitHub run 41674203437](https://github.com/kemalduru79/velto-app/actions/runs/41674203437) — SUCCESS on compatibility branch commit `74704aa`. Preview deployment `dpl_B1CN6oAmmBVDz4qkt2taBDRPz3Fx` — READY. Production remains `d44ab5d`.
 
 The broader Ubuntu CI progresses beyond its previous renderer and publish guards but cannot execute the strictly digest-pinned Darwin Python binary required for stage 5E1G-B scientific calculations. This scientific runtime restriction is **not bypassed**; full CI is not green. Actual owner-scoped historical data audit and authenticated production tests have **not been run**. PR #45 remains draft and release NO-GO.
+
+The audit also counts pending refinement proposals independently from current scripts, even where a current script remains valid. It enforces an input byte cap and never outputs owner IDs, source excerpts, project IDs, titles, or URLs. Its scope test uses synthetic rows only.
