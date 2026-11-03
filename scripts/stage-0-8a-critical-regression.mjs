@@ -118,6 +118,7 @@ const tests = [
   "scripts/stage-5e1b-pilot-readiness-test.mjs",
   "scripts/stage-5e1f-agentic-scientific-review-test.mjs",
   "scripts/stage-5e1g-a-metadata-importer-test.mjs",
+  "scripts/scientific-runtime-v2-test.mjs",
   "scripts/creator-pr45-scientific-runtime-integrity-test.mjs",
   "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
 ];
@@ -135,6 +136,7 @@ for (const test of tests) {
         test === "scripts/stage-5e1b-pilot-readiness-test.mjs" ||
         test === "scripts/stage-5e1f-agentic-scientific-review-test.mjs" ||
         test === "scripts/stage-5e1g-a-metadata-importer-test.mjs" ||
+        test === "scripts/scientific-runtime-v2-test.mjs" ||
         test === "scripts/creator-pr45-scientific-runtime-integrity-test.mjs"
       ? ["--experimental-strip-types"]
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
