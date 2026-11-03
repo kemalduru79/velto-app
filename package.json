@@ -13,6 +13,7 @@
     "test:issue-44-counter-review": "node --experimental-transform-types scripts/creator-issue-44-counter-review-test.mjs",
     "test:issue-42-evidence": "node --experimental-transform-types scripts/creator-issue-42-evidence-lifecycle-test.mjs",
     "test:ci-critical": "node scripts/stage-0-8a-critical-regression.mjs",
+    "test:ci-scientific": "node --experimental-strip-types scripts/stage-5e1g-b-scientific-computing-test.mjs",
     "test:ci-contract": "node scripts/stage-0-8a-ci-contract-test.mjs",
     "ci:quality": "node scripts/stage-0-8a-quality.mjs",
     "test:creator-static-images": "node scripts/creator-static-images-test.mjs",
