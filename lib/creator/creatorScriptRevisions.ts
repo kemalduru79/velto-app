@@ -1,4 +1,4 @@
-import { getCreatorScriptDocumentText, normalizeCreatorScript, type CreatorScript } from "./creatorScript.ts";
+import { getCreatorScriptDocumentText, normalizeCreatorScript, normalizeHistoricalCreatorScript, type CreatorScript } from "./creatorScript.ts";
 import type { CreatorScriptRefinementMode, CreatorScriptRewriteGoalResult } from "./creatorScriptEditorialRewrite.ts";
 import { applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, type CreatorScriptRefinementScope } from "./creatorScriptRefinement.ts";
 
@@ -53,7 +53,7 @@ export function isValidCreatorScriptChange(value: unknown): value is CreatorScri
     (!Object.prototype.hasOwnProperty.call(item, "selectionEnd") || Number.isInteger(item.selectionEnd));
 }
 
-export function isValidCreatorScriptPendingRefinement(value: unknown): value is CreatorScriptPendingRefinement {
+export function isValidCreatorScriptPendingRefinement(value: unknown, historicalReadOnly = false): value is CreatorScriptPendingRefinement {
   const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return typeof item.proposalId === "string" && item.proposalId.length > 0 && item.proposalId.length <= 120 && Number.isInteger(item.baseRevision) &&
     ["selection", "opening", "whole_script"].includes(String(item.scope)) &&
@@ -63,7 +63,7 @@ export function isValidCreatorScriptPendingRefinement(value: unknown): value is 
       return typeof advisory.code === "string" && advisory.code.length <= 80 && Array.isArray(advisory.sectionIds) && advisory.sectionIds.length <= 20 && advisory.sectionIds.every((sectionId) => typeof sectionId === "string" && sectionId.length <= 200) && typeof advisory.summary === "string" && advisory.summary.length > 0 && advisory.summary.length <= 1000;
     }))) &&
     (!Object.prototype.hasOwnProperty.call(item, "mode") || ["focused_edit", "editorial_rewrite", "research_backed_rewrite"].includes(String(item.mode))) &&
-    (!Object.prototype.hasOwnProperty.call(item, "proposedScript") || (() => { try { normalizeCreatorScript(item.proposedScript); return true; } catch { return false; } })()) &&
+    (!Object.prototype.hasOwnProperty.call(item, "proposedScript") || (() => { try { (historicalReadOnly ? normalizeHistoricalCreatorScript : normalizeCreatorScript)(item.proposedScript); return true; } catch { return false; } })()) &&
     (!Object.prototype.hasOwnProperty.call(item, "goalResults") || (Array.isArray(item.goalResults) && item.goalResults.length <= 30)) &&
     (!Object.prototype.hasOwnProperty.call(item, "evidenceDelta") || (item.evidenceDelta !== null && typeof item.evidenceDelta === "object")) &&
     Array.isArray(item.changes) && item.changes.length > 0 && item.changes.every(isValidCreatorScriptChange);
@@ -148,7 +148,7 @@ export function creatorScriptTextChanged(before: CreatorScript | null, after: Cr
   return Boolean(before && after && getCreatorScriptDocumentText(before) !== getCreatorScriptDocumentText(after));
 }
 
-export const normalizeCreatorScriptRevisionState = (input: { pending?: unknown; history?: unknown }) => ({
-  pending: isValidCreatorScriptPendingRefinement(input.pending) ? input.pending : null,
+export const normalizeCreatorScriptRevisionState = (input: { pending?: unknown; history?: unknown; historicalReadOnly?: boolean }) => ({
+  pending: isValidCreatorScriptPendingRefinement(input.pending, input.historicalReadOnly === true) ? input.pending : null,
   history: isValidCreatorScriptHistory(input.history) ? input.history : [],
 });

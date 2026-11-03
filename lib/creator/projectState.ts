@@ -1,6 +1,6 @@
 import {
-  isValidCreatorScript,
-  normalizeCreatorScript,
+  isValidHistoricalCreatorScript,
+  normalizeHistoricalCreatorScript,
   type CreatorScript,
 } from "./creatorScript.ts";
 import {
@@ -158,8 +158,8 @@ export function isValidCreatorProjectState(value: unknown): value is CreatorProj
     typeof strategy.selectedHook === "string" &&
     (!hasOwn(strategy, "strategyFingerprint") || typeof strategy.strategyFingerprint === "string") &&
     (!hasOwn(strategy, "profileSnapshot") || isObjectOrNull(strategy.profileSnapshot)) &&
-    (!hasOwn(strategy, "script") || strategy.script === null || isValidCreatorScript(strategy.script)) &&
-    (!hasOwn(strategy, "pendingRefinement") || strategy.pendingRefinement === null || isValidCreatorScriptPendingRefinement(strategy.pendingRefinement)) &&
+    (!hasOwn(strategy, "script") || strategy.script === null || isValidHistoricalCreatorScript(strategy.script)) &&
+    (!hasOwn(strategy, "pendingRefinement") || strategy.pendingRefinement === null || isValidCreatorScriptPendingRefinement(strategy.pendingRefinement, true)) &&
     (!hasOwn(strategy, "revisionHistory") || isValidCreatorScriptHistory(strategy.revisionHistory)) &&
     isObjectOrNull(candidate.production) && candidate.production !== null &&
     isObjectOrNull(production.package) &&
@@ -198,14 +198,14 @@ export function inspectCreatorProjectStatePersistenceAuthority(
   if (isValidCreatorProjectState(snapshot)) {
     const strategy = record(candidate.strategy);
     const script = hasOwn(strategy, "script") && strategy.script != null
-      ? normalizeCreatorScript(strategy.script)
+      ? normalizeHistoricalCreatorScript(strategy.script)
       : null;
     return { status: "valid", snapshot, script, envelope: exportResult };
   }
   const strategy = record(candidate.strategy);
   if (!hasOwn(strategy, "script") || strategy.script === null) return { status: "malformed_null_script", snapshot, script: null, envelope: exportResult };
   try {
-    return { status: "malformed_valid_script", snapshot, script: normalizeCreatorScript(strategy.script), envelope: exportResult };
+    return { status: "malformed_valid_script", snapshot, script: normalizeHistoricalCreatorScript(strategy.script), envelope: exportResult };
   } catch {
     return { status: "malformed_invalid_script", snapshot, script: null, envelope: exportResult };
   }
@@ -316,7 +316,7 @@ export function readCreatorProjectState(
   const savedCreateReview = record(saved.createReview);
   const savedPublish = record(saved.publish);
   const savedNavigation = record(saved.navigation);
-  const revisionState = normalizeCreatorScriptRevisionState({ pending: savedStrategy.pendingRefinement, history: savedStrategy.revisionHistory });
+  const revisionState = normalizeCreatorScriptRevisionState({ pending: savedStrategy.pendingRefinement, history: savedStrategy.revisionHistory, historicalReadOnly: true });
   const hasCanonicalSnapshot = saved.version === CREATOR_PROJECT_STATE_VERSION;
   const legacyPackage = record(project.creator_production_package);
   const legacyMentor = project.creator_mentor_result || null;
@@ -380,7 +380,7 @@ export function readCreatorProjectState(
       ...(hasOwn(savedStrategy, "profileSnapshot") ? { profileSnapshot: savedStrategy.profileSnapshot } : {}),
       script:
         hasCanonicalSnapshot && hasOwn(savedStrategy, "script") && savedStrategy.script !== null
-          ? normalizeCreatorScript(savedStrategy.script)
+          ? normalizeHistoricalCreatorScript(savedStrategy.script)
           : persistenceAuthority.status === "malformed_valid_script" ? persistenceAuthority.script : null,
       pendingRefinement: revisionState.pending,
       revisionHistory: revisionState.history,

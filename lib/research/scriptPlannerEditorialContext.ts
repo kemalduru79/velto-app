@@ -1,6 +1,6 @@
 import { createEditorialScriptContext } from "./editorialScriptContext.ts";
 import { parseCreatorProfile } from "../creator/creatorProfile.ts";
-import { classifyResearchSourceDirectness } from "./sourceAssessment.ts";
+import { classifyResearchSourceDirectness, historicalSourceWasPrimaryForClaim } from "./sourceAssessment.ts";
 import { createResearchTopicReadiness } from "./topicEvidenceReadiness.ts";
 import {
   createResearchClaimEvidenceGraph,
@@ -360,13 +360,32 @@ function sameIds(left: string[], right: string[]) {
 
 function assertScriptPlannerPrimaryAuthority(
   context: ScriptPlannerEditorialContext,
+  historicalReadOnly = false,
 ) {
   const authority = resolveScriptPlannerClaimAuthority(context);
   const primarySourceRequiredClaimIds = authority.claims
     .filter((resolution) => resolution.requiresPrimary)
     .map((resolution) => resolution.claimId);
-  const primarySourceCoveredClaimIds = authority.claims
+  const historicalCoveredIds = new Set(authority.claims
     .filter((resolution) => resolution.status === "SUPPORTED_PRIMARY")
+    .map((resolution) => resolution.claimId));
+  if (historicalReadOnly) {
+    const sourceById = new Map(createScriptPlannerAuthorityGraph(context).sources.map((source) => [source.sourceId, source]));
+    const evidenceById = new Map(context.evidence.map((evidence) => [evidence.evidenceId, evidence]));
+    for (const claim of context.claims) {
+      if (claim.propositionKind !== "original_research_result" || historicalCoveredIds.has(claim.claimId)) continue;
+      const resolution = authority.claims.find((item) => item.claimId === claim.claimId);
+      if (!resolution?.requiresPrimary || !claim.supportingEvidenceIds.some((id) => {
+        const source = sourceById.get(evidenceById.get(id)?.sourceId || "");
+        return source && historicalSourceWasPrimaryForClaim(source, claim);
+      })) continue;
+      historicalCoveredIds.add(claim.claimId);
+    }
+  }
+  const primarySourceCoveredClaimIds = authority.claims
+    .filter((resolution) => historicalReadOnly
+      ? historicalCoveredIds.has(resolution.claimId)
+      : resolution.status === "SUPPORTED_PRIMARY")
     .map((resolution) => resolution.claimId);
 
   if (
@@ -390,6 +409,7 @@ function assertScriptPlannerPrimaryAuthority(
 export function normalizeScriptPlannerEditorialContext(
   value: unknown,
   allowScopeReview = true,
+  historicalReadOnly = false,
 ): ScriptPlannerEditorialContext | null {
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
@@ -415,7 +435,12 @@ export function normalizeScriptPlannerEditorialContext(
     sources: normalizeSources(raw.sources),
   };
   assertReferences(context);
-  assertScriptPlannerPrimaryAuthority(context);
+  assertScriptPlannerPrimaryAuthority(context, historicalReadOnly);
+  // PR45 review snapshots are already subject to current verification. Do not
+  // permit a legacy-only exception to rewrite or attest their scope.
+  if (historicalReadOnly && raw.counterEvidenceReview !== undefined) {
+    throw new Error("COUNTER_REVIEW_HISTORICAL_REVALIDATION_REQUIRED");
+  }
   if (raw.counterEvidenceReview !== undefined) {
     if (!allowScopeReview) throw new Error("COUNTER_REVIEW_NESTED_SNAPSHOT");
     const record = asRecord(raw.counterEvidenceReview);
@@ -428,6 +453,14 @@ export function normalizeScriptPlannerEditorialContext(
     return { ...context, counterEvidenceReview: provenance };
   }
   return context;
+}
+
+/**
+ * Historical data reader only. The public normalizer always keeps strict
+ * current scientific primary-source qualification by default.
+ */
+export function normalizeScriptPlannerEditorialContextForHistoricalRead(value: unknown) {
+  return normalizeScriptPlannerEditorialContext(value, true, true);
 }
 
 /** Safe, content-free diagnostics for the script provider grounding gate. */

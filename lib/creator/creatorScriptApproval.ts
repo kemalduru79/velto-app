@@ -1,4 +1,4 @@
-import { approveCreatorScript, creatorScriptHasGroundingBlocker, getCreatorScriptDurationContractForScript, type CreatorScript } from "./creatorScript.ts";
+import { approveCreatorScript, creatorScriptHasGroundingBlocker, getCreatorScriptDurationContractForScript, normalizeCreatorScript, type CreatorScript } from "./creatorScript.ts";
 import type { CreatorProjectStateSnapshot } from "./projectState.ts";
 
 export type CreatorScriptApprovalBlocker = "script_missing" | "strategy_stale" | "pending_refinement" | "duration" | "grounding";
@@ -9,7 +9,8 @@ export function getCreatorScriptApprovalBlockers(input: { script: CreatorScript 
   if (input.script.strategyFingerprint !== input.strategyFingerprint) blockers.push("strategy_stale");
   if (input.hasPendingRefinement) blockers.push("pending_refinement");
   if (getCreatorScriptDurationContractForScript(input.script, input.language).status !== "compliant") blockers.push("duration");
-  if (creatorScriptHasGroundingBlocker(input.script)) blockers.push("grounding");
+  try { normalizeCreatorScript(input.script); } catch { blockers.push("grounding"); }
+  if (creatorScriptHasGroundingBlocker(input.script) && !blockers.includes("grounding")) blockers.push("grounding");
   return blockers;
 }
 

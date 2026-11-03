@@ -170,6 +170,22 @@ export function researchSourceIsPrimaryForClaim(
   return false;
 }
 
+/**
+ * Read-time compatibility with the exact pre-PR45 work-title rule.
+ * NEVER use this in current generation, source acquisition or approval.
+ * In particular, original research in a secondary article is not primary
+ * evidence under the current policy.
+ */
+export function historicalSourceWasPrimaryForClaim(
+  source: ResearchSource,
+  claim: ResearchClaim | null | undefined,
+) {
+  return researchSourceIsPrimaryForClaim(source, claim) ||
+    (claim?.propositionKind === "original_research_result" &&
+      Boolean(claim.origin) &&
+      canonicalWorkReferenceMatches(claim.origin?.referencedWork, source));
+}
+
 function hasText(value: unknown) {
   return typeof value === "string" && Boolean(value.trim());
 }

@@ -428,12 +428,12 @@ function normalizeSection(
   };
 }
 
-export function normalizeCreatorScript(value: unknown): CreatorScript {
+export function normalizeCreatorScript(value: unknown, historicalReadOnly = false): CreatorScript {
   const script = record(value);
   const grounding = record(script?.grounding);
   let editorialContext: ScriptPlannerEditorialContext | null = null;
   try {
-    editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context);
+    editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context, true, historicalReadOnly);
   } catch {
     editorialContext = null;
   }
@@ -523,6 +523,21 @@ export function assertCreatorScriptVerificationAuthority(persisted: CreatorScrip
     }
   }
   return candidate;
+}
+
+/** Historical scripts are readable, not newly approved or generation-eligible. */
+export function normalizeHistoricalCreatorScript(value: unknown): CreatorScript {
+  return normalizeCreatorScript(value, true);
+}
+
+export function isCreatorScriptHistoricalResearchOnly(value: unknown) {
+  try { normalizeCreatorScript(value); return false; } catch {
+    try { normalizeHistoricalCreatorScript(value); return true; } catch { return false; }
+  }
+}
+
+export function isValidHistoricalCreatorScript(value: unknown): value is CreatorScript {
+  try { normalizeHistoricalCreatorScript(value); return true; } catch { return false; }
 }
 
 export function isValidCreatorScript(value: unknown): value is CreatorScript {
