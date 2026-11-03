@@ -15,3 +15,9 @@ Historical loading must never be confused with current scientific approval.
 4. Do not migrate, approve, delete or overwrite legacy data in response to audit output.
 
 Production release stays **NO-GO** until focused validation, compatibility results, CI triage, and an separately authorized disposable-project canary pass.
+
+## Validated offline scope and unresolved release items
+
+Focused workflow: [GitHub run 41674203437](https://github.com/kemalduru79/velto-app/actions/runs/41674203437) — SUCCESS on compatibility branch commit `74704aa`. Preview deployment `dpl_B1CN6oAmmBVDz4qkt2taBDRPz3Fx` — READY. Production remains `d44ab5d`.
+
+The broader Ubuntu CI progresses beyond its previous renderer and publish guards but cannot execute the strictly digest-pinned Darwin Python binary required for stage 5E1G-B scientific calculations. This scientific runtime restriction is **not bypassed**; full CI is not green. Actual owner-scoped historical data audit and authenticated production tests have **not been run**. PR #45 remains draft and release NO-GO.

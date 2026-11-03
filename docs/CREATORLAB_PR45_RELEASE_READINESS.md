@@ -141,3 +141,19 @@ commit and green focused gates; (4) separate deployment authorization followed b
 fresh-session disposable-project canary covering review/Stop, persisted reload,
 primary acquisition, hypothetical/forecast distinction and accepted final prose.
 Until then, keep PR #45 in draft. Do not merge or activate production.
+
+
+## 6. Historical-read mitigation and independently discovered CI blocker (2026-11-03)
+
+Follow-up branch `agent/pr45-historical-compat-20261103` introduces a narrow, historical-read-only exception to the *former* original-study source-work matching rule, without reinstating it for any current source-qualification decisions.
+
+- Previously accepted scripts and pending refinement previews can load and preserve their prior approval/revision records. Current script normalizer, new research, production approval, verification, refinement, section regeneration, final export, publish readiness and scene build remain bound to present-day strict authority.
+- Historical approved status is visible as an archival record but is **stale for new production**; scene generation is blocked.
+- Unchanged autosaves of affected older projects preserve the exact persisted Creator JSON/envelope, existing scenes/media, legacy columns and final-video references. Changed script/production/media payloads return a 409, while owner checks, CAS, and malformed-data quarantine remain enforced. The historical snapshot is never silently upgraded or migrated.
+- A standalone, offline, owner-scoped audit script is prepared to count current, historical-read-only and invalid contexts (including pending previews). **It has NOT been run on production, and no live impacted-project count is asserted.** It must be authorized and supplied with owner-scoped read-only data before use.
+- Prior two CI failures were corrected *as behavior tests*, not disabled. The renderer contract now explicitly checks static visual filters, actual video trim, audio mix/mastering and durable job identity; the publish contract checks the current disclosure-governance resolver and retains missing-source/attribution blocking.
+- Focused GitHub workflow for `74704aae86b50bcc4fd9fdf2e7ee6bd54c40a937`: **SUCCESS** (TypeScript, historical route/preservation, PR45 release regression, existing quarantine, counter-review, CI contract). Vercel preview build of the same commit: **READY**. These are synthetic and build tests, not authenticated production acceptance.
+- After those two CI fixes, the broader Ubuntu CI progressed to `scripts/stage-5e1g-b-scientific-computing-test.mjs` and stopped on `STAGE_5E1G_B_CALCULATION_PYTHON_IDENTITY_MISMATCH`. This is a **different pre-existing host-runtime mismatch**: its pinned manifest requires a Darwin system Python `/usr/bin/python3` version `3.9.6` and an exact executable SHA-256, whereas GitHub Actions uses Ubuntu. Altering the pinned digest or skipping the safety test would be an unauthorized scientific-runtime change. It remains separately unresolved. The initial two CI blockers are not ongoing; the newly visible host-pinning failure is.
+- Full CI therefore is **NOT GREEN**, and the correct release decision remains **NO-GO**, notwithstanding successful focused tests. No release/merge/Supabase/production canary or project/media mutation occurred.
+
+**Remaining release conditions:** (1) approve and run a genuinely read-only, owner-scoped persisted-context population audit (or separately approve a reviewed alternate compatibility proof); (2) verify protected historical read and current research blocking in fresh authenticated, disposable-project tests; (3) resolve the platform-specific scientific computing CI gate through separately attested runtime provisioning, without disabling the identity safeguard; (4) review and approve exact commit before any production deployment. Avoid using live historical projects as write canaries.
