@@ -129,9 +129,11 @@ await withRevision(productionSha,names,async load=>{
   const original=JSON.stringify(project);
   assert.throws(()=>normalize(context),/PRIMARY_AUTHORITY_MISMATCH/);
   assert.throws(()=>normalizeCreatorScript(script),/CREATOR_SCRIPT_INVALID/);
-  assert.throws(()=>readCreatorProjectState(project),/CREATOR_PROJECT_STATE_SCRIPT_INVALID/);
+  const compatible=readCreatorProjectState(project);
+  assert.deepEqual(compatible.strategy.script?.approval,script.approval,'Historical approval is retained, not renewed.');
+  assert.deepEqual(compatible.strategy.script?.sections.map(section=>section.text),script.sections.map(section=>section.text));
+  assert.throws(()=>normalizeCreatorScript(compatible.strategy.script),/CREATOR_SCRIPT_INVALID/,'New generation still requires current primary authority.');
   assert.equal(JSON.stringify(project),original);
-  // BLOCKER characterization, deliberately not labelled backward-compatible.
-  console.log('PR45_LEGACY_APPROVED_PROJECT_COMPATIBILITY=BLOCKED (exact d44 accepted -> strict policy rejects; no rewrite/waiver)');
+  console.log('PR45_LEGACY_APPROVED_PROJECT_READ_COMPATIBILITY=PASS (current strict authority unchanged)');
 });
 console.log('PR45_READONLY_COMPATIBILITY_MATRIX=PASS; live population impact and source truth remain unverified.');
