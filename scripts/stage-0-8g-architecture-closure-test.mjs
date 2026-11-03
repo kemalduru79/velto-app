@@ -115,7 +115,26 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
 });
 check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
 check("worker runtime includes the reviewed durable final-export handler", () => assert.equal(sha256("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9"));
-check("export runtime includes canonical audio mixing, pre-render identity validation, and durable job-bound output provenance", () => assert.equal(sha256("export-service/src/server.js"), "ba04d1c67e348ed29449eff67b9020b2c85da29d0587ad226016deaef6a80a0c"));
+check("export runtime preserves reviewed static output, real video trim, audio mixing and durable output provenance", () => {
+  // The old whole-file checksum pinned an obsolete motion renderer and rejected
+  // the verified static-image replacement. Check the protected behaviors
+  // instead of silently updating that checksum to accept arbitrary code.
+  const server = read("export-service/src/server.js");
+  const still = read("export-service/src/staticImage.js");
+  assert.match(server, /import \{ buildStaticImageFilter \} from "\.\/staticImage\.js"/);
+  assert.match(server, /function normalizeCreatorVideoTrim\(/);
+  assert.match(server, /clipOutSec - clipInSec < CREATOR_MIN_VIDEO_CLIP_SECONDS/);
+  assert.match(server, /trim=start=\$\{clipInSec\.toFixed\(3\)\}/);
+  assert.match(server, /buildCreatorSceneAudioMixFilter\(/);
+  assert.match(server, /buildCreatorProgramLoudnessMasterFilter\(/);
+  assert.match(server, /function durableFinalExportIdentity\(/);
+  assert.match(server, /manifestSha256/);
+  assert.match(server, /renderPayloadSha256/);
+  assert.match(server, /timingSafeEqual\(/);
+  assert.match(still, /buildCreatorVisualFitFilters/);
+  assert.match(still, /trim=start=0:duration/);
+  assert.doesNotMatch(still, /zoompan=/);
+});
 check("container contracts are unchanged", () => {
   assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
   assert.equal(sha256("Dockerfile.worker"), "97b5c693969f1bec0e5e34c6720aab338f1077fff624af709b8f0c8d7637465b");

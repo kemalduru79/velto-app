@@ -149,8 +149,13 @@ assert.match(
 );
 assert.match(
   exportRoute,
-  /project\.flow_type === "creator_lab"[\s\S]*?resolveCreatorProjectUsedMediaGovernance\(\{[\s\S]*?ownerUserId:\s*principal\.id,[\s\S]*?project,[\s\S]*?\}\)\)\.governance[\s\S]*?: undefined/,
+  /const usedMediaGovernance = project\.flow_type === "creator_lab"[\s\S]*?await resolveCreatorProjectUsedMediaGovernance\(\{[\s\S]*?ownerUserId:\s*principal\.id,[\s\S]*?project,[\s\S]*?\}\)[\s\S]*?: null/,
 );
+assert.match(exportRoute,/const preparedDisclosure = prepareCreatorPackageSyntheticDisclosure\(\{[\s\S]*?syntheticMediaCount:/);
+assert.match(exportRoute,/const evidenceGovernance = resolveCreatorPackageDisclosureGovernance\(\s*usedMediaGovernance\?\.governance,\s*preparedDisclosure,/);
+assert.match(exportRoute,/productionPackage:\s*preparedDisclosure\.productionPackage/);
+assert.match(exportRoute,/metadata:\s*preparedDisclosure\.metadata/);
+assert.match(exportRoute,/createCreatorPublishReadyPackageReport\(\{[\s\S]*?evidenceGovernance,/);
 assert.match(
   exportRoute,
   /createCreatorPublishReadyPackageReport\(\{[\s\S]*?evidenceGovernance,/,
