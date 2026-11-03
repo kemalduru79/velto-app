@@ -9,3 +9,6 @@ export * from "./metadataImporter.ts";
 export * from "./calculationContracts.ts";
 export * from "./calculationRunner.ts";
 export * from "./containerRuntime.ts";
+export * from "./runtimeProfiles.ts";
+export * from "./runtimeV2Contracts.ts";
+// The synthetic transport harness is intentionally not re-exported here.
