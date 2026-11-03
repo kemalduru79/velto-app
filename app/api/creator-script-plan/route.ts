@@ -806,7 +806,7 @@ async function executeCreatorScriptOperation(input: {
         scriptProviderDispatched: false,
       });
       return NextResponse.json(
-        { error: "This section plan lacks source-backed evidence for its required roles. Review the listed capabilities and re-run editorial analysis with qualifying source passages.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: longFormEvidenceReadiness.reasonCodes, nextActions: ["review_section_evidence_capabilities"] },
+        { error: "This section plan lacks enough distinct source-backed passages for its required roles. Re-run editorial analysis with qualifying passages, or choose a shorter supported scope; do not restore unresolved assertions to fill the plan.", code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: longFormEvidenceReadiness.reasonCodes, factualFoundation: longFormEvidenceReadiness.factualFoundation, nextActions: ["review_section_evidence_capabilities"] },
         { status: 422 },
       );
     }

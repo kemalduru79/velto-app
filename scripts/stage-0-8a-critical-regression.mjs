@@ -22,6 +22,7 @@ const tests = [
   "scripts/creator-longform-grounding-plan-integration-test.mjs",
   "scripts/creator-issue-42-evidence-lifecycle-test.mjs",
   "scripts/creator-issue-44-counter-review-test.mjs",
+  "scripts/creator-pr-45-release-readiness-test.mjs",
   "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
   "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
   "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
@@ -135,7 +136,8 @@ for (const test of tests) {
       ? ["--experimental-strip-types"]
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
           test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs" ||
-          test === "scripts/creator-issue-44-counter-review-test.mjs"
+          test === "scripts/creator-issue-44-counter-review-test.mjs" ||
+          test === "scripts/creator-pr-45-release-readiness-test.mjs"
         ? ["--experimental-transform-types"]
         : []),
     test,

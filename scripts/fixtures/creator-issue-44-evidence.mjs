@@ -17,3 +17,18 @@ export function issue44EvidenceFixture() {
   const assessments=sources.map(source=>({sourceId:source.sourceId,directness:'secondary',provenanceStatus:'complete',reviewStatus:'usable',reviewReasons:[]}));
   return{sources,claims,evidence,links,assessments};
 }
+
+// Separate, richer synthetic corpus for positive six-section handoff tests.
+// Never pretend that the four-claim incident signature itself has this breadth.
+export function issue44SupportedScopeFixture() {
+  const fixture=issue44EvidenceFixture();
+  fixture.sources[6].summary='The synthetic policy document distinguishes local task performance from deployment authority.';
+  fixture.sources[7].summary='The synthetic governance record assigns deployment decisions to named human reviewers.';
+  for (const [claimNumber, sourceNumber] of [[5,7],[6,8]]) {
+    const source=fixture.sources[sourceNumber-1];
+    fixture.claims.push({claimId:`claim-${claimNumber}`,claimType:'FACT',text:source.summary,propositionKind:'world_state',origin:{attributedEntity:null,referencedWork:null}});
+    fixture.evidence.push({evidenceId:`evidence-${sourceNumber+1}`,sourceId:source.sourceId,excerpt:source.summary,contextNote:null,locator:{section:null,page:null,timecodeStartSec:null,timecodeEndSec:null}});
+    fixture.links.push({claimId:`claim-${claimNumber}`,evidenceId:`evidence-${sourceNumber+1}`,stance:'supports'});
+  }
+  return fixture;
+}

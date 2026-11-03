@@ -12,7 +12,7 @@ import {normalizeScriptPlannerEditorialContext as normalize,createScriptPlannerG
 import {runCreatorEditorialScriptPipeline} from '../lib/research/creatorEditorialPipeline.client.ts';
 import {createCreatorScript,createCreatorScriptNarrationEditorialContext,createCreatorScriptSectionBudgetPlan,createCreatorScriptNarrationControlPlan} from '../lib/creator/creatorScript.ts';
 import {prepareCreatorLongFormSectionPlanForAvailableEvidence} from '../lib/research/creatorLongFormEvidenceReadiness.ts';
-import {issue44EvidenceFixture} from './fixtures/creator-issue-44-evidence.mjs';
+import {issue44EvidenceFixture,issue44SupportedScopeFixture} from './fixtures/creator-issue-44-evidence.mjs';
 import {createOfflineScriptPlanHarness} from './fixtures/creator-script-plan-offline-harness.mjs';
 const f=issue44EvidenceFixture();
 const sourceSnapshots=new WeakMap();
@@ -117,11 +117,14 @@ const basisFixture=structuredClone(f);basisFixture.claims=basisFixture.claims.fi
 assert.throws(()=>apply(noBasis,{...decision,snapshotFingerprint:review(noBasis).snapshotFingerprint,excludedClaimIds:['claim-3']}),/NO_FACTUAL_SCRIPT_BASIS/);
 // Pause the actual client once. Its original request/snapshot stays unchanged.
 const request={operation:'generate_full_script',projectId:'offline-owned-project',expectedProjectUpdatedAt:'synthetic-cas',strategyFingerprint:'offline-strategy',durationSec:600,language:'en',topic:'Synthetic documentary with imagined 2055/2075 scenarios'};
+const supportedFixture=issue44SupportedScopeFixture();
+const supported=make(supportedFixture);
+const supportedScope=apply(supported.context,{...decision,snapshotFingerprint:review(supported.context).snapshotFingerprint});
 const harness=await createOfflineScriptPlanHarness();let reviewCount=0;let handoff;
 const fakeFetch=async(url,init)=>{
  const body=JSON.parse(init.body);
- if(url==='/api/creator-research')return Response.json({success:true,sources:f.sources});
- if(url==='/api/creator-editorial-analysis')return Response.json({success:true,graph,readiness:raw.readiness,scriptContext:raw});
+ if(url==='/api/creator-research')return Response.json({success:true,sources:supportedFixture.sources});
+ if(url==='/api/creator-editorial-analysis')return Response.json({success:true,graph:supported.graph,readiness:supported.raw.readiness,scriptContext:supported.raw});
  assert.equal(url,'/api/creator-script-plan');
  if(body.operation==='validate_generation_authority')return Response.json({success:true});
  handoff=body.scriptContext;
@@ -131,13 +134,14 @@ const fakeFetch=async(url,init)=>{
 // final prose acceptance. We inspect actual all-six section dispatches, not claim
 // authenticated production or accepted documentary prose.
 await runCreatorEditorialScriptPipeline({accessToken:'synthetic-never-sent',topic:request.topic,scriptPlanRequest:request,fetchImpl:fakeFetch,onCounterEvidenceReview:async r=>{reviewCount++;return{...decision,snapshotFingerprint:r.snapshotFingerprint};}}).catch(error=>assert.equal(error.stage,'script_plan'));
-assert.equal(reviewCount,1);assert(handoff.counterEvidenceReview);assert.deepEqual(handoff.counterEvidenceReview.originalContext,context);assert.deepEqual(handoff.counterEvidenceReview.originalResearchSnapshot,graph);assert.deepEqual(handoff.counterEvidenceReview.initialResearchSnapshot,graph);
+assert.equal(reviewCount,1);assert(handoff.counterEvidenceReview);assert.deepEqual(handoff.counterEvidenceReview.originalContext,supported.context);assert.deepEqual(handoff.counterEvidenceReview.originalResearchSnapshot,supported.graph);assert.deepEqual(handoff.counterEvidenceReview.initialResearchSnapshot,supported.graph);
 const calls=harness.calls.filter(call=>call.body.requestedSectionBudgets);assert.equal(calls.length,6);
-const narration=createCreatorScriptNarrationEditorialContext(scoped);assert.equal(narration.counterEvidenceReview,undefined);
+const narration=createCreatorScriptNarrationEditorialContext(supportedScope);assert.equal(narration.counterEvidenceReview,undefined);
 assert(narration.evidence.every(e=>!['evidence-3','evidence-4','evidence-5','evidence-6'].includes(e.evidenceId)));
 const plan=prepareCreatorLongFormSectionPlanForAvailableEvidence({context:narration,plan:createCreatorScriptSectionBudgetPlan({targetDurationSec:600,language:'en',hasMaterialCounterview:false}),sectionNative:true});
 for(const call of calls){assert.deepEqual(call.body.editorialSectionPlan,JSON.parse(JSON.stringify(createCreatorScriptNarrationControlPlan(plan.plan))));assert(call.body.allowedClaimIds.every(id=>!decision.excludedClaimIds.includes(id)));assert(!JSON.stringify(call.body.editorialContext).includes('inevitably'));assert.equal(call.body.editorialContext.counterEvidenceReview,undefined);}
-const imaginedContext=make(imagined).context;
+const imaginedSupported=issue44SupportedScopeFixture();imaginedSupported.claims[2]=imagined.claims[2];
+const imaginedContext=make(imaginedSupported).context;
 const imaginedScope=apply(imaginedContext,{...decision,snapshotFingerprint:review(imaginedContext).snapshotFingerprint,excludedClaimIds:['claim-2']});
 const imaginedHarness=await createOfflineScriptPlanHarness();await imaginedHarness.execute({body:request,editorialContext:imaginedScope});
 const imaginedCalls=imaginedHarness.calls.filter(call=>call.body.requestedSectionBudgets);assert.equal(imaginedCalls.length,6);

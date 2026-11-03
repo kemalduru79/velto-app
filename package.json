@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "lint:changed": "node scripts/stage-0-8a-changed-lint.mjs",
+    "test:pr-45-release-readiness": "node --experimental-transform-types scripts/creator-pr-45-release-readiness-test.mjs",
     "test:issue-44-counter-review": "node --experimental-transform-types scripts/creator-issue-44-counter-review-test.mjs",
     "test:issue-42-evidence": "node --experimental-transform-types scripts/creator-issue-42-evidence-lifecycle-test.mjs",
     "test:ci-critical": "node scripts/stage-0-8a-critical-regression.mjs",

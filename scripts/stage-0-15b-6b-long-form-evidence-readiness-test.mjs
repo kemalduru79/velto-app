@@ -93,10 +93,13 @@ const empiricalClaims = [
 const empiricalContext = context({
   claims: empiricalClaims,
   evidence: [
-    evidence("e1", "s1", abstract), evidence("e2", "s2", abstract),
-    evidence("e3", "s3", concreteExcerpt), evidence("e4", "s4", abstract),
-    evidence("e5", "s5", contextualExcerpt), evidence("e6", "s6", abstract),
-    evidence("e7", "s7", abstract),
+    evidence("e1", "s1", abstract),
+    evidence("e2", "s2", "A synthetic account describes the role of retrieval cues in reconstruction."),
+    evidence("e3", "s3", concreteExcerpt),
+    evidence("e4", "s4", "A synthetic model distinguishes prior schemas from incoming details."),
+    evidence("e5", "s5", contextualExcerpt),
+    evidence("e6", "s6", "A synthetic account separates reported confidence from the recorded event."),
+    evidence("e7", "s7", "A synthetic account discusses the influence of social retelling on later reports."),
   ],
   sources: Array.from({ length: 7 }, (_, index) => source(`s${index + 1}`)),
 });
@@ -121,7 +124,14 @@ const conceptualClaims = [
 ];
 const conceptualContext = context({
   claims: conceptualClaims,
-  evidence: conceptualClaims.map((item, index) => evidence(`te${index + 1}`, `ts${index + 1}`, "A traceable documented argument develops the concept and preserves its uncertainty.")),
+  evidence: conceptualClaims.map((item, index) => evidence(`te${index + 1}`, `ts${index + 1}`, [
+    "A synthetic argument distinguishes a concept from its material implementation.",
+    "A synthetic account separates individual purpose from institutional incentives.",
+    "A synthetic argument connects institutional incentives with coordination costs.",
+    "A synthetic hypothesis identifies the scope conditions of the proposed relationship.",
+    "A synthetic inference compares the consequences of two bounded alternatives.",
+    "A synthetic metaphysical argument distinguishes an interpretation from an observation.",
+  ][index])),
   sources: conceptualClaims.map((_, index) => source(`ts${index + 1}`)),
 });
 assert.equal(createCreatorLongFormEvidenceReadiness({ context: conceptualContext, plan: limitsPlan, sectionNative }).eligible, true);

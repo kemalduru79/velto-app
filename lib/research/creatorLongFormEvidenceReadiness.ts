@@ -19,7 +19,8 @@ export type CreatorLongFormEvidenceReadinessReason =
   | "missing_counterview_capability"
   | "missing_uncertainty_capability"
   | "missing_scientific_tension_capability"
-  | "collapsed_body_authority";
+  | "collapsed_body_authority"
+  | "insufficient_factual_foundation";
 
 export type CreatorLongFormEvidenceReadiness = {
   applicable: boolean;
@@ -28,6 +29,7 @@ export type CreatorLongFormEvidenceReadiness = {
   fallbackBodySectionIds: string[];
   collapsedBodySectionIds: string[];
   evidenceDependentBodySectionIds: string[];
+  factualFoundation?: { requiredPassageCount: number; availablePassageCount: number };
 };
 
 export type CreatorLongFormEvidenceCapabilityItem = {
@@ -645,6 +647,29 @@ export function createCreatorLongFormEvidenceReadiness(input: {
     : [];
   if (collapsedBodySectionIds.length > 0) reasonCodes.add("collapsed_body_authority");
 
+  // A scope review can leave different claim-id combinations that evade the
+  // all-identical-routing check above. Require at least one distinct grounded
+  // passage per evidence-dependent body section before spending on long form.
+  // This is a necessary floor, not a scientific/completeness attestation. Role,
+  // primary, counter-evidence and final prose checks remain independent.
+  const evidenceById = new Map(input.context.evidence.map((item) => [item.evidenceId, item]));
+  const routedClaimIds = new Set(bodyRouting.flatMap((route) => route.claimIds));
+  const factualPassages = new Set(input.context.claims
+    .filter((claim) => routedClaimIds.has(claim.claimId) &&
+      claim.claimType !== "THOUGHT_EXPERIMENT" &&
+      claim.supportingEvidenceIds.some((id) => hasExcerpt(input.context, id)))
+    .flatMap((claim) => linkedEvidenceIdsForClaims([claim.claimId]))
+    .map((id) => evidenceById.get(id))
+    .filter((item) => item?.sourceId && item.excerpt?.trim())
+    .map((item) => item!.excerpt!.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("en-US")));
+  const factualFoundation = {
+    requiredPassageCount: evidenceDependentBodySections.length,
+    availablePassageCount: factualPassages.size,
+  };
+  if (factualFoundation.availablePassageCount < factualFoundation.requiredPassageCount) {
+    reasonCodes.add("insufficient_factual_foundation");
+  }
+
   return {
     applicable: true,
     eligible: reasonCodes.size === 0,
@@ -652,5 +677,6 @@ export function createCreatorLongFormEvidenceReadiness(input: {
     fallbackBodySectionIds: bodyRouting.filter((route) => route.usedFallback).map((route) => route.sectionId),
     collapsedBodySectionIds,
     evidenceDependentBodySectionIds: evidenceDependentBodySections.map((section) => section.id),
+    factualFoundation,
   };
 }
