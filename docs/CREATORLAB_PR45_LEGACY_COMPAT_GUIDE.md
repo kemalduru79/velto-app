@@ -23,3 +23,7 @@ Focused workflow: [GitHub run 41674203437](https://github.com/kemalduru79/velto-
 The broader Ubuntu CI progresses beyond its previous renderer and publish guards but cannot execute the strictly digest-pinned Darwin Python binary required for stage 5E1G-B scientific calculations. This scientific runtime restriction is **not bypassed**; full CI is not green. Actual owner-scoped historical data audit and authenticated production tests have **not been run**. PR #45 remains draft and release NO-GO.
 
 The audit also counts pending refinement proposals independently from current scripts, even where a current script remains valid. It enforces an input byte cap and never outputs owner IDs, source excerpts, project IDs, titles, or URLs. Its scope test uses synthetic rows only.
+
+## Current-head follow-up
+
+See [runtime/read-boundary assessment](CREATORLAB_PR45_RUNTIME_READINESS.md) for the strict-first loader correction, preservation-only media handling, new-installation guard, v3 bounded audit, full validation and unresolved scientific runtime provisioning. Audit input requires full owner-authorized rows with unique project UUIDs; `current` is schema compatibility, not generation approval. No production export is authorized by the audit utility itself.

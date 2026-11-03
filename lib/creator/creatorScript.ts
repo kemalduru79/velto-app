@@ -527,7 +527,11 @@ export function assertCreatorScriptVerificationAuthority(persisted: CreatorScrip
 
 /** Historical scripts are readable, not newly approved or generation-eligible. */
 export function normalizeHistoricalCreatorScript(value: unknown): CreatorScript {
-  return normalizeCreatorScript(value, true);
+  // Current records may carry scope-review provenance, which the legacy-only
+  // parser intentionally refuses. Never route a valid current record through
+  // that exception, or grant historical semantics to its review snapshot.
+  try { return normalizeCreatorScript(value); }
+  catch { return normalizeCreatorScript(value, true); }
 }
 
 export function isCreatorScriptHistoricalResearchOnly(value: unknown) {

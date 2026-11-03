@@ -1,3 +1,5 @@
+> Current follow-up: [scientific runtime investigation and compatibility boundary results](CREATORLAB_PR45_RUNTIME_READINESS.md). That report supersedes older status statements below; release remains **NO-GO**.
+
 # PR #45 pre-production compatibility assessment
 
 Reviewed SHA: `4f48029f7c51c3c32ee365b210647dd02e54ea2c`.

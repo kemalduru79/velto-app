@@ -12,7 +12,7 @@ import {
   type CreatorProjectStateSnapshot,
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
-import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly } from "@/lib/creator/creatorScript";
+import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly, normalizeCreatorScript } from "@/lib/creator/creatorScript";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 import { assertCreatorScriptApprovalAuthority, creatorSceneOutputIsCurrent, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
@@ -173,6 +173,13 @@ async function handleSaveProjectRequest(
       );
     }
     if (hasCreatorProjectState && !projectId && authoritativeCreatorState) {
+      // Historical read compatibility is not authority to install an obsolete
+      // research classification into a new project.
+      try {
+        if (authoritativeCreatorState.strategy.script) normalizeCreatorScript(authoritativeCreatorState.strategy.script);
+      } catch {
+        return NextResponse.json({ error: "New script installation requires current research validation.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
+      }
       authoritativeCreatorState = { ...authoritativeCreatorState, strategy: { ...authoritativeCreatorState.strategy, pendingRefinement: null, revisionHistory: [] } };
     }
     if (hasCreatorProjectState && projectId) {
@@ -385,7 +392,9 @@ async function handleSaveProjectRequest(
 
     let mediaReferenceSync: "ok" | "deferred" = "ok";
     try {
-      await services.mediaAssetRepository.replaceProjectReferences(
+      // A preservation-only save must not rewrite the historical reference
+      // index or initiate superseded-media cleanup.
+      if (!historicalResearchLocked) await services.mediaAssetRepository.replaceProjectReferences(
         principal.id,
         result.project.id,
         extractProjectMediaReferences(result.project),
@@ -406,7 +415,7 @@ async function handleSaveProjectRequest(
         ? result.project.exported_movie_url.trim()
         : "";
     if (
-      flowType === "creator_lab" && mediaReferenceSync === "ok" &&
+      flowType === "creator_lab" && !historicalResearchLocked && mediaReferenceSync === "ok" &&
       authoritativeExportedMovieUrl
     ) {
       try {
