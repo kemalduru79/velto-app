@@ -5,7 +5,7 @@ import { classifyCreatorScriptRefinementFailure, creatorScriptRefinementModelOpt
 import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
 import { getPersistenceServices } from "@/lib/persistence";
 import { attachCreatorProjectState, readCreatorProjectState } from "@/lib/creator/projectState";
-import { getCreatorScriptDurationContractForScript, getCreatorScriptSectionSourceReview, type CreatorScript } from "@/lib/creator/creatorScript";
+import { getCreatorScriptDurationContractForScript, getCreatorScriptSectionSourceReview, normalizeCreatorScript, type CreatorScript } from "@/lib/creator/creatorScript";
 import { applyCreatorScriptHolisticEdits, applyCreatorScriptOpeningRefinement, applyCreatorScriptSelectionRefinement, applyCreatorScriptWholeRefinement, assertCreatorScriptForbiddenTermsRemoved, createCreatorScriptEditableUnits, createCreatorScriptHolisticCandidateSchema, createCreatorScriptHolisticCorrectionSchema, createCreatorScriptHolisticExecutionSchema, createCreatorScriptHolisticQaSchema, createCreatorScriptImmutableConstraintCatalog, createCreatorScriptMandatoryCandidates, createCreatorScriptWholeRefinementPlan, CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED, getCreatorScriptForbiddenLiteralTerms, getCreatorScriptHolisticCorrectionDiagnostics, getCreatorScriptHolisticDurationCorrection, getCreatorScriptHolisticEditDiagnostics, getCreatorScriptHolisticExecutionDiagnostics, getCreatorScriptImmutableCreatorConstraints, getCreatorScriptRemainingForbiddenTerms, normalizeCreatorScriptHolisticCandidates, parseCreatorScriptHolisticCandidates, parseCreatorScriptHolisticQa, projectCreatorScriptHolisticCandidates, reconcileCreatorScriptHolisticQaConstraints, validateCreatorScriptSelection, type CreatorScriptHolisticQa, type CreatorScriptHolisticSelection, type CreatorScriptHolisticUnitEdit, type CreatorScriptRefinementScope } from "@/lib/creator/creatorScriptRefinement";
 import { appendCreatorScriptHistory, applyCreatorScriptProposal, createCreatorScriptProposal, discardCreatorScriptProposal } from "@/lib/creator/creatorScriptRevisions";
 import { invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
@@ -58,6 +58,9 @@ async function handleCreatorScriptRefinementRequest(req: Request, dependencies: 
       const nextState = { ...state, strategy: discardCreatorScriptProposal(state.strategy, proposalId) };
       const result = await saveState(nextState);
       return NextResponse.json({ success: true, action: "discard", creatorScript: script, pendingRefinement: null, revisionHistory: state.strategy.revisionHistory || [], project: result.project });
+    }
+    try { normalizeCreatorScript(script); } catch {
+      return NextResponse.json({ error: "Historical source authority must be revalidated before refinement.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
     }
     if (action === "apply") {
       const proposalId = text(body.proposalId, 120); const proposal = state.strategy.pendingRefinement;
