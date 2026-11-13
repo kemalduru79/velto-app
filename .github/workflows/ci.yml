@@ -54,8 +54,48 @@ jobs:
       - name: P0 quality gate contracts
         run: node scripts/p0-quality-gate-test.mjs
 
+      - name: Reconstruct reviewed Sprint 20 staged snapshot for CI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/codex/p0-sprint20-controlled-integration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REVIEWED_BASE=ba55a5bdc65d9016f88f65b6411de35c9acbff97
+          APPROVED_CANDIDATE=bc30a72440cfbeaafa5c3aac283bdaa5efd70656
+          TARGET="$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET"
+          git cat-file -e "$REVIEWED_BASE^{commit}"
+          git cat-file -e "$APPROVED_CANDIDATE^{commit}"
+          git merge-base --is-ancestor "$REVIEWED_BASE" "$APPROVED_CANDIDATE"
+          git merge-base --is-ancestor "$APPROVED_CANDIDATE" "$TARGET"
+          reviewed_count="$(git diff --name-only "$REVIEWED_BASE" "$APPROVED_CANDIDATE" -- | wc -l | tr -d '[:space:]')"
+          test "$reviewed_count" = 115
+          while IFS= read -r changed; do
+            case "$changed" in
+              .github/workflows/ci.yml|vercel.json) ;;
+              *) echo "STOP: protected candidate changed: $changed" >&2; exit 1 ;;
+            esac
+          done < <(git diff --name-only "$APPROVED_CANDIDATE" "$TARGET" --)
+          git checkout --detach "$REVIEWED_BASE"
+          git diff --binary --no-ext-diff "$REVIEWED_BASE" "$TARGET" | git apply --index
+          git diff --cached --quiet "$TARGET" --
+          git diff --cached --check
+          printf '{"before":"%s"}\n' "$REVIEWED_BASE" > "$RUNNER_TEMP/sprint20-reviewed-lint-event.json"
+          echo "P0_REVIEWED_LINT_EVENT_PATH=$RUNNER_TEMP/sprint20-reviewed-lint-event.json" >> "$GITHUB_ENV"
+          echo "REVIEWED_SPRINT20_SNAPSHOT=PASS BASE=$REVIEWED_BASE CANDIDATE=$APPROVED_CANDIDATE"
+          echo "PROTECTED_115_SOURCE_FILES=UNCHANGED"
+
       - name: No new lint debt
+        if: github.event_name != 'push' || github.ref != 'refs/heads/codex/p0-sprint20-controlled-integration'
         run: npm run lint:changed
+
+      - name: Reviewed Sprint 20 no-new-lint-debt against exact baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/codex/p0-sprint20-controlled-integration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${P0_REVIEWED_LINT_EVENT_PATH:-}"
+          test -f "$P0_REVIEWED_LINT_EVENT_PATH"
+          GITHUB_EVENT_PATH="$P0_REVIEWED_LINT_EVENT_PATH" npm run lint:changed
 
       - name: Critical offline regressions
         run: npm run test:ci-critical
