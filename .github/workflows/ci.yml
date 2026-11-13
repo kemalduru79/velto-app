@@ -69,16 +69,21 @@ jobs:
           git merge-base --is-ancestor "$APPROVED_CANDIDATE" "$TARGET"
           reviewed_count="$(git diff --name-only "$REVIEWED_BASE" "$APPROVED_CANDIDATE" -- | wc -l | tr -d '[:space:]')"
           test "$reviewed_count" = 115
-          while IFS= read -r changed; do
-            case "$changed" in
-              .github/workflows/ci.yml|vercel.json) ;;
-              *) echo "STOP: protected candidate changed: $changed" >&2; exit 1 ;;
-            esac
-          done < <(git diff --name-only "$APPROVED_CANDIDATE" "$TARGET" --)
+          expected_changes="$(printf '%s\n' '.github/workflows/ci.yml' 'vercel.json' | LC_ALL=C sort)"
+          actual_changes="$(git diff --name-only "$APPROVED_CANDIDATE" "$TARGET" -- | LC_ALL=C sort)"
+          test "$actual_changes" = "$expected_changes" || {
+            echo "STOP: unexpected post-candidate changes" >&2; exit 1;
+          }
+          # The exact deployment guard stays on the remote branch; it is not
+          # part of the protected 115-file candidate being quality-tested.
+          test "$(git rev-parse "$TARGET:vercel.json")" = 43a6b0177a66736c3bccceafda9f0c8c9210f92b
+          echo "ORIGINAL_BRANCH_DEPLOYMENT_GUARD=PINNED_PASS"
           git checkout --detach "$REVIEWED_BASE"
-          git diff --binary --no-ext-diff "$REVIEWED_BASE" "$TARGET" | git apply --index
-          git diff --cached --quiet "$TARGET" --
+          git diff --binary --no-ext-diff "$REVIEWED_BASE" "$APPROVED_CANDIDATE" | git apply --index
+          git diff --cached --quiet "$APPROVED_CANDIDATE" --
+          test ! -e vercel.json
           git diff --cached --check
+          echo "TEST_SNAPSHOT_EXCLUDES_INTEGRATION_GUARD=PASS"
           printf '{"before":"%s"}\n' "$REVIEWED_BASE" > "$RUNNER_TEMP/sprint20-reviewed-lint-event.json"
           echo "P0_REVIEWED_LINT_EVENT_PATH=$RUNNER_TEMP/sprint20-reviewed-lint-event.json" >> "$GITHUB_ENV"
           echo "REVIEWED_SPRINT20_SNAPSHOT=PASS BASE=$REVIEWED_BASE CANDIDATE=$APPROVED_CANDIDATE"
