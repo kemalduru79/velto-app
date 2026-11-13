@@ -12,6 +12,16 @@ type YoutubeResearchVideo = {
   url?: string;
 };
 
+// Read-only property access only; fields remain unknown until existing checks.
+// Non-null primitives retain their original JavaScript boxing/getter behavior.
+type PatternErrorReadValue = Readonly<{ message?: unknown; }>;
+function hasPatternErrorReadValue(value: unknown): value is PatternErrorReadValue {
+  return value !== null && value !== undefined;
+}
+function patternErrorReadValue(value: unknown): PatternErrorReadValue | undefined {
+  return hasPatternErrorReadValue(value) ? value : undefined;
+}
+
 function normalizeVideos(value: unknown): Required<YoutubeResearchVideo>[] {
   if (!Array.isArray(value)) {
     return [];
@@ -254,11 +264,11 @@ export async function POST(req: Request) {
         reasoning,
       },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("youtube-pattern-engine error:", e);
 
     return NextResponse.json(
-      { error: e?.message || "Pattern engine error" },
+      { error: patternErrorReadValue(e)?.message || "Pattern engine error" },
       { status: 500 }
     );
   }

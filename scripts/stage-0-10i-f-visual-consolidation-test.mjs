@@ -1,10 +1,12 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
+import { readWorkspaceChangePaths, unreviewedWorkspacePaths } from "./quality/p0-workspace-scope.mjs";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
 import { createCreatorPublishPreflight } from "../lib/creator/publishPreflight.ts";
 import { CREATOR_VISUAL_SOURCE_METHODS } from "../lib/creator/visualSourceMethod.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const globals = read("app/globals.css");
 const layout = read("app/layout.tsx");
@@ -54,8 +56,8 @@ assert.match(layers.at(-1).source, /@media \(forced-colors: active\)/);
 assert.match(layers[0].source, /:focus-visible[\s\S]*?var\(--cl-primary\)/);
 
 assert.match(page, /const \[creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen\][\s\S]*?useState\(true\)/);
-const customizeStart = page.indexOf('id="creatorlab-production-customize"');
-const customize = page.slice(customizeStart, customizeStart + 900);
+const customizeStart = production.indexOf('id="creatorlab-production-customize"');
+const customize = production.slice(customizeStart, customizeStart + 900);
 assert.ok(customizeStart > -1);
 assert.match(customize, /open=\{creatorProductionCustomizeOpen\}/);
 assert.match(customize, /onToggle=\{\(event\)[\s\S]*?setCreatorProductionCustomizeOpen\(event\.currentTarget\.open\)/);
@@ -67,7 +69,7 @@ assert.deepEqual(
   "the exact five source methods remain unchanged",
 );
 for (const label of ["Velto Recommended", "Stock", "AI Image", "AI Video", "Upload"]) {
-  assert.match(page, new RegExp(label));
+  assert.match(production, new RegExp(label));
 }
 
 assert.deepEqual(
@@ -83,9 +85,7 @@ assert.deepEqual(
   "the exact six Publish preflight categories remain unchanged",
 );
 
-const changed = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" })
-  .trimEnd().split("\n").filter(Boolean)
-  .map((line) => line.slice(3).split(" -> ").at(-1));
+const changed = readWorkspaceChangePaths();
 const presentationOnly = new Set([
   "app/creatorlab-ux-i-d.css",
   "app/creatorlab-ux-i-b.css",
@@ -336,7 +336,7 @@ const presentationOnly = new Set([
     ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
-assert.deepEqual(changed.filter((path) => !presentationOnly.has(path) && path !== "docs/creatorlab/receipts/"), []);
+assert.deepEqual(unreviewedWorkspacePaths(changed, presentationOnly), []);
 assert.equal(
   (critical.match(/scripts\/stage-0-10i-f-visual-consolidation-test\.mjs/g) || []).length,
   1,

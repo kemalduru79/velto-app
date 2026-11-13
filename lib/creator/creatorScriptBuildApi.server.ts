@@ -78,6 +78,7 @@ function mappedError(error: unknown): CreatorScriptBuildApiResult {
   if (code === "PROJECT_STALE" || code.includes("PROJECT_STALE")) {
     return response(409, { success: false, code: "PROJECT_STALE" });
   }
+  if (code.startsWith("CREATOR_EDITORIAL_"))return response(422,{success:false,code});
   if (
     code.includes("STATE_INVALID") ||
     code === "CREATOR_SCRIPT_BUILD_OPERATION_RECONCILIATION_REQUIRED" ||
@@ -201,6 +202,7 @@ export function createCreatorScriptBuildApiController(
           projectId,
           expectedProjectUpdatedAt,
         });
+        if(body.draftOnly===true && (!text(body.strategyFingerprint,300) || body.strategyFingerprint!==snapshot.strategyFingerprint))return response(409,{success:false,code:"PROJECT_STALE"});
         const runtime = await dependencies.createRuntime({
           ownerId: guarded.principal.ownerId,
           projectId,
@@ -231,6 +233,8 @@ export function createCreatorScriptBuildApiController(
         return terminalStatus(await runtime.advance({
           ownerId: guarded.principal.ownerId,
           buildId,
+          ...(body.editorialReviewDecision ? {editorialReviewDecision:body.editorialReviewDecision as import("./creatorScriptBuildEditorialReview").CreatorEditorialReviewDecision} : {}),
+          draftOnly: body.draftOnly === true,
         }));
       }
       return response(400, {

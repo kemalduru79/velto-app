@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -7,6 +8,7 @@ import {
 } from "../lib/creator/visualGenerationStatus.ts";
 import { executeCreatorRecommendedVisualBatch } from "../lib/creator/recommendedVisualExecution.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const page = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const statusInput = {
   phase: "processing",
@@ -77,15 +79,16 @@ await executeCreatorRecommendedVisualBatch({
 });
 assert.deepEqual(dispatchedSceneIds, [3, 5]);
 
-assert.match(page, /const sceneVisualGenerating = isCreatorSceneVisualGenerating\(\{/);
-assert.match(page, /const sceneVisualActionBlocked = isCreatorSceneVisualActionBlocked\(\{/);
+assert.match(production, /const sceneVisualGenerating = isCreatorSceneVisualGenerating\(\{/);
+assert.match(production, /const sceneVisualActionBlocked = isCreatorSceneVisualActionBlocked\(\{/);
 assert.match(page, /startCreatorSceneVisualCountdown\(\{/);
 assert.match(page, /setActiveVisualGenerationSceneIds\(\(current\) => Object\.freeze\(Array\.from/);
 assert.match(page, /current\.filter\(\(sceneId\) => !scopedTargetSceneIds\.includes\(sceneId\)\)/);
-assert.match(page, /: sceneVisualGenerating\s*\? uiLanguage === "en" \? "Generating…"/);
+assert.match(production, /: sceneVisualGenerating\s*\? uiLanguage === "en" \? "Generating…"/);
 assert.doesNotMatch(page, /\{isBatchRendering \|\| redrawLoadingId === scene\.id\s*\? uiLanguage === "en" \? "Generating…"/);
+assert.doesNotMatch(production, /\{isBatchRendering \|\| redrawLoadingId === scene\.id\s*\? uiLanguage === "en" \? "Generating…"/);
 assert.match(
-  page,
+  production,
   /disabled=\{\s*\(sceneVisualActionBlocked && !sceneVisualCountdownActive\) \|\|\s*scene\.videoStatus === "processing" \|\|\s*scene\.videoStatus === "delayed" \|\|\s*creatorMediaPreflightLoading \|\|\s*sceneExplicitAiVideoBlocked\s*\}/,
   "single-scene visual CTA must remain scene-scoped and must not inherit the global batch-rendering lock",
 );

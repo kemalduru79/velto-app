@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../lib/creator/uploadedMedia.ts";
 import { createCreatorMediaGovernanceProjection, inferCreatorMediaOrigin } from "../lib/creator/mediaOrigin.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]);
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const webp = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
@@ -61,11 +63,12 @@ assert.equal(createCreatorMediaGovernanceProjection({ assetId: "asset", metadata
 const unconfirmed = createCreatorUploadedMediaMetadata({ projectId: "project", originalFilename: "mine.jpg", mediaKind: "image", mimeType: "image/jpeg", uploadedAt, rightsConfirmed: false });
 assert.equal(createCreatorMediaGovernanceProjection({ assetId: "asset", metadata: unconfirmed }).originReviewRequired, true);
 
-const page = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const component = readFileSync(new URL("../components/create/CreatorUploadPicker.tsx", import.meta.url), "utf8");
 const route = readFileSync(new URL("../app/api/creator-upload/route.ts", import.meta.url), "utf8");
-const activeSelector = page.slice(page.indexOf('data-creator-visual-source-selector="true"'), page.indexOf("sceneVisualCountdownActive &&", page.indexOf('data-creator-visual-source-selector="true"')));
-const bulkSelector = page.slice(page.indexOf("creatorlab-p2c-batch-mode"), page.indexOf("creatorlab-p2c-batch-actions"));
+const activeSelector = production.slice(production.indexOf('data-creator-visual-source-selector="true"'), production.indexOf("sceneVisualCountdownActive &&", production.indexOf('data-creator-visual-source-selector="true"')));
+const bulkSelector = production.slice(production.indexOf("creatorlab-p2c-batch-mode"), production.indexOf("creatorlab-p2c-batch-actions"));
+assert.ok(production.indexOf('data-creator-visual-source-selector="true"') >= 0 && activeSelector.length > 0);
+assert.ok(production.indexOf("creatorlab-p2c-batch-mode") >= 0 && production.indexOf("creatorlab-p2c-batch-actions") > production.indexOf("creatorlab-p2c-batch-mode"), "The no-bulk-upload check must inspect the real nonempty selector");
 assert.match(activeSelector, /\["upload"/);
 assert.doesNotMatch(bulkSelector, /\["upload"/);
 assert.match(component, /data-upload-preview="unbound"/);

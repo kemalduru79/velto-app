@@ -89,7 +89,14 @@ assert.match(storage, /validatePersistedVideoJobBinding\(job\)/);
 assert.match(storage, /MAX_CREATOR_VIDEO_BYTES/);
 assert.match(storage, /readBoundedVerifiedVideoResponse\([\s\S]*MAX_CREATOR_VIDEO_BYTES/);
 assert.match(storage, /queue-\$\{input\.queueJobId\}/);
-assert.match(storage, /upsert:\s*true/);
+const uploadStart = storage.indexOf("services.objectStorage.uploadPublic({");
+assert.ok(uploadStart >= 0, "creator video storage upload missing");
+const uploadEnd = storage.indexOf("});", uploadStart);
+assert.ok(uploadEnd > uploadStart, "creator video storage upload malformed");
+const uploadOptions = storage.slice(uploadStart, uploadEnd);
+assert.equal((uploadOptions.match(/\bupsert\s*:/g) || []).length, 1, "exactly one upsert option required");
+assert.match(uploadOptions, /\bupsert:\s*false\b/);
+assert.doesNotMatch(uploadOptions, /\bupsert:\s*true\b/);
 assert.doesNotMatch(storage, /randomUUID|safeRemoteMediaFetch\(|input\.videoUrl|input\.taskId|input\.provider/);
 assert.doesNotMatch(storage, /\.arrayBuffer\(\)/);
 assert.doesNotMatch(storage, /console\.error\([^\n]*error\)|error\.message/);
@@ -111,7 +118,58 @@ assert.doesNotMatch(internal, /searchParams\.get|req\.json|nativeTaskId:\s*req|p
 assert.match(internal, /canonicalProviderFailure\(\)/);
 assert.doesNotMatch(internal, /failureCode:\s*task|failureMessage:\s*task|console\.error\([^\n]*error\)/);
 
-assert.match(worker, /const internalWorkerToken = process\.env\.VELTO_INTERNAL_WORKER_TOKEN/);
+// The token belongs to the runtime, not to the extracted handler factory.
+// Verify the full runtime -> factory -> outbound-authentication chain.
+const workerTokenRuntimeSource = read("lib/worker/runtime.mjs");
+const checkWorkerTokenWiring = (runtimeSource, handlerSource) => {
+  assert.match(runtimeSource, /const internalWorkerToken = process\.env\.VELTO_INTERNAL_WORKER_TOKEN;/);
+  assert.match(runtimeSource, /if\s*\(!supabaseUrl\s*\|\|\s*!serviceRoleKey\s*\|\|\s*!internalWorkerToken\)/);
+  const callStart = runtimeSource.indexOf("createJobHandlers({");
+  assert.ok(callStart >= 0, "worker handler factory call missing");
+  const callEnd = runtimeSource.indexOf("});", callStart);
+  assert.ok(callEnd > callStart, "worker handler factory call boundary missing");
+  assert.match(runtimeSource.slice(callStart, callEnd), /\binternalWorkerToken\s*,/);
+  const factoryStart = handlerSource.indexOf("export function createJobHandlers({");
+  assert.ok(factoryStart >= 0, "worker handler factory missing");
+  const factoryEnd = handlerSource.indexOf("}) {", factoryStart);
+  assert.ok(factoryEnd > factoryStart, "worker handler argument boundary missing");
+  assert.match(handlerSource.slice(factoryStart, factoryEnd), /\binternalWorkerToken\s*,/);
+  // Verify each outbound operation separately: a surviving header in one route
+  // must never mask loss of authentication in the other.
+  const videoHandlerStart = handlerSource.indexOf("async function handleVideoReconcile(");
+  const exportHandlerStart = handlerSource.indexOf("async function handleCreatorFinalExport(");
+  assert.ok(videoHandlerStart >= 0 && exportHandlerStart > videoHandlerStart, "worker handler boundaries missing");
+  const bearerHeader = /Authorization:\s*`Bearer \$\{internalWorkerToken\}`/;
+  assert.match(handlerSource.slice(videoHandlerStart, exportHandlerStart), bearerHeader);
+  assert.match(handlerSource.slice(exportHandlerStart), bearerHeader);
+};
+checkWorkerTokenWiring(workerTokenRuntimeSource, worker);
+// Reversible, synthetic negative controls: no runtime or handler files are edited.
+const missingWorkerToken = workerTokenRuntimeSource.replace(
+  "const internalWorkerToken = process.env.VELTO_INTERNAL_WORKER_TOKEN;",
+  "const internalWorkerToken = undefined;",
+);
+assert.notEqual(missingWorkerToken, workerTokenRuntimeSource);
+assert.throws(() => checkWorkerTokenWiring(missingWorkerToken, worker));
+const factoryCallStart = workerTokenRuntimeSource.indexOf("createJobHandlers({");
+const factoryCallEnd = workerTokenRuntimeSource.indexOf("});", factoryCallStart);
+const originalFactoryCall = workerTokenRuntimeSource.slice(factoryCallStart, factoryCallEnd);
+const missingInjectionCall = originalFactoryCall.replace(/\binternalWorkerToken\s*,/, "");
+assert.notEqual(missingInjectionCall, originalFactoryCall);
+assert.throws(() => checkWorkerTokenWiring(
+  workerTokenRuntimeSource.slice(0, factoryCallStart) + missingInjectionCall + workerTokenRuntimeSource.slice(factoryCallEnd),
+  worker,
+));
+const missingAuthorization = worker.replace("Authorization: `Bearer ${internalWorkerToken}`", "Authorization: `Bearer MISSING`");
+assert.notEqual(missingAuthorization, worker);
+assert.throws(() => checkWorkerTokenWiring(workerTokenRuntimeSource, missingAuthorization));
+// Separately prove that removing the final-export bearer header is detected.
+const exportStartForMutation = worker.indexOf("async function handleCreatorFinalExport(");
+assert.ok(exportStartForMutation >= 0, "final-export handler missing");
+const missingExportAuthorization = worker.slice(0, exportStartForMutation) +
+  worker.slice(exportStartForMutation).replace("Authorization: `Bearer ${internalWorkerToken}`", "Authorization: `Bearer MISSING`");
+assert.notEqual(missingExportAuthorization, worker);
+assert.throws(() => checkWorkerTokenWiring(workerTokenRuntimeSource, missingExportAuthorization));
 assert.match(worker, /api\/internal\/jobs\/\$\{encodeURIComponent\(queueJobId\)\}\/provider-status/);
 assert.doesNotMatch(worker, /creator-video\?taskId|encodeURIComponent\(taskId\)|\btaskId\b/);
 assert.doesNotMatch(worker, /log\([^\n]*internalWorkerToken|console\.[^(]+\([^\n]*internalWorkerToken/);
@@ -153,24 +211,47 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
-const currentPackageLock = fs.readFileSync("package-lock.json", "utf8");
-const baselinePackageLock = execFileSync(
-  "git",
-  ["show", "HEAD:package-lock.json"],
-  { encoding: "utf8" },
-);
+// Historical baseline remains independently verifiable, while the reviewed
+// security candidate is admitted by its exact content hash before integration.
+const historicPackageLock = execFileSync("git", ["show", "ba55a5bdc65d9016f88f65b6411de35c9acbff97:package-lock.json"]);
 assert.equal(
-  currentPackageLock,
-  baselinePackageLock,
-  "package-lock.json changed from the committed baseline",
+  createHash("sha256").update(historicPackageLock).digest("hex"),
+  "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe",
+  "historical lockfile provenance changed",
+);
+const currentPackageLock = fs.readFileSync("package-lock.json");
+assert.equal(
+  createHash("sha256").update(currentPackageLock).digest("hex"),
+  "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52",
+  "dependency security candidate lockfile differs from the reviewed exact bytes",
 );
 
+// Later owner-reviewed P0 scope independently approved this exact public page.
+// Keep every other historical file pinned to HEAD; never grant a prefix exception.
+const REVIEWED_PUBLIC_EPISODE_PAGE = "app/episode/public/[shareId]/page.tsx";
+const REVIEWED_PUBLIC_EPISODE_SHA256 = "c890688c06e40db2d0a2b66c387065842d10fc1864fa742b40945b37357b9a92";
+const digestReviewedPage = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const assertReviewedPage = (bytes) => assert.equal(
+  digestReviewedPage(bytes), REVIEWED_PUBLIC_EPISODE_SHA256,
+  `${REVIEWED_PUBLIC_EPISODE_PAGE} changed`,
+);
 for (const file of [
   ...execFileSync("git", ["ls-files", "supabase/migrations", "app/episode", "app/api/video/route.ts", "app/api/public-project", "app/api/share-project", "lib/security/publicStoryverseProjection.ts"], { encoding: "utf8" }).trim().split("\n"),
 ].filter(Boolean)) {
-  const baseline = execFileSync("git", ["show", `HEAD:${file}`]);
-  assert.equal(createHash("sha256").update(fs.readFileSync(file)).digest("hex"), createHash("sha256").update(baseline).digest("hex"), `${file} changed`);
+  const bytes = fs.readFileSync(file);
+  if (file === REVIEWED_PUBLIC_EPISODE_PAGE) {
+    assertReviewedPage(bytes);
+  } else {
+    const baseline = execFileSync("git", ["show", `HEAD:${file}`]);
+    assert.equal(digestReviewedPage(bytes), digestReviewedPage(baseline), `${file} changed`);
+  }
 }
+// Negative control: an unreviewed change to the approved page must fail.
+const approvedPageBytes = fs.readFileSync(REVIEWED_PUBLIC_EPISODE_PAGE);
+assertReviewedPage(approvedPageBytes);
+assert.throws(() => assertReviewedPage(Buffer.concat([
+  approvedPageBytes, Buffer.from("\n// synthetic unreviewed change\n"),
+])), /changed/);
 
 assert.match(read(".env.container.example"), /^VELTO_INTERNAL_WORKER_TOKEN=/m);
 console.log("BETA-DATA-P1B-3B-2B-2C queue-job owner/worker smoke test passed.");

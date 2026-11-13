@@ -1,3 +1,4 @@
+import {researchClaimRequiresEvidence} from "./claimEvidenceGraph.ts";
 import type {
   ResearchClaimEvidenceGraph,
   ResearchClaimType,
@@ -28,10 +29,6 @@ export type ResearchTopicReadinessReport = {
   };
   reviewReasons: string[];
 };
-
-const EVIDENCE_OPTIONAL_CLAIM_TYPES = new Set<ResearchClaimType>([
-  "THOUGHT_EXPERIMENT",
-]);
 
 const COUNTER_EVIDENCE_RECOMMENDED_TYPES = new Set<ResearchClaimType>([
   "THEORY",
@@ -89,7 +86,7 @@ export function createResearchTopicReadiness(input: {
   }
 
   const evidenceRequiredClaims = graph.claims.filter(
-    (claim) => !EVIDENCE_OPTIONAL_CLAIM_TYPES.has(claim.claimType),
+    researchClaimRequiresEvidence,
   );
   const supportedClaimIds = evidenceRequiredClaims
     .filter((claim) =>

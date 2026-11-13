@@ -1,8 +1,10 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import { createCreatorPublishPreflight } from "../lib/creator/publishPreflight.ts";
 
+const publish = readMountedWorkspacePanel("CreatorPublishPanel");
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const layout = fs.readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 const tokens = fs.readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -35,10 +37,9 @@ assert.deepEqual(
   "I-E does not change canonical readiness semantics",
 );
 
-const publishStart = page.indexOf('id="creatorlab-publish-canvas"');
-const publishEnd = page.indexOf("{!isCreatorLabFlow", publishStart);
-const publish = page.slice(publishStart, publishEnd);
-assert.ok(publishStart > -1 && publishEnd > publishStart, "Publish workspace remains present");
+const publishStart = publish.indexOf('id="creatorlab-publish-canvas"');
+assert.ok(publishStart > -1, "The authoritative mounted Publish workspace remains present");
+assert.doesNotMatch(publish, /!isCreatorLabFlow/, "The extracted panel cannot contain Storyverse presentation");
 
 for (const contract of [
   /data-creator-publish-preflight/,

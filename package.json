@@ -144,7 +144,9 @@
     "test:beta-data-p1b-3b-1": "node scripts/beta-data-p1b-3b-1-smoke-test.mjs",
     "test:beta-data-p1b-3b-2a": "node scripts/beta-data-p1b-3b-2a-smoke-test.mjs",
     "test:beta-data-p1b-3b-2bc": "node scripts/beta-data-p1b-3b-2bc-smoke-test.mjs",
-    "test:beta-data-p1b-3b-2bc:stream": "node scripts/beta-data-p1b-3b-2bc-stream-test.mjs"
+    "test:beta-data-p1b-3b-2bc:stream": "node scripts/beta-data-p1b-3b-2bc-stream-test.mjs",
+    "test:creator-integrated-workflow": "node --experimental-transform-types scripts/creator-integrated-workflow-test.mjs",
+    "test:creator-duration-scenes": "node --experimental-transform-types scripts/creator-duration-scene-contract-test.mjs"
   },
   "dependencies": {
     "@runwayml/sdk": "^3.20.0",
@@ -153,7 +155,7 @@
     "ffprobe-static": "^3.1.0",
     "geist": "1.7.2",
     "hls.js": "1.6.16",
-    "next": "16.2.3",
+    "next": "16.4.6",
     "openai": "^6.39.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"
@@ -164,7 +166,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

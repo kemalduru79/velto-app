@@ -1,3 +1,8 @@
+import {
+  resolveCreatorSourceSceneConfiguration,
+  reconcileCreatorSceneDurations,
+  CreatorSourceSceneConfigurationError,
+} from "../../../lib/creator/creatorScriptSceneConfiguration";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { recordOpenAITextEconomics } from "@/lib/economics";
@@ -309,7 +314,10 @@ function distributeDurations(
     }
   }
 
-  return durations.map((value) => roundTo(value, 1));
+  return reconcileCreatorSceneDurations(
+    durations.map((value) => roundTo(value, 1)), durationSec,
+    minSceneDuration, maxSceneDuration,
+  );
 }
 
 function getSpeechCoverage(role: SceneRole, format: string) {
@@ -1670,8 +1678,13 @@ async function executeCreatorScriptOperation(input: {
     let script;
     try {
       script = normalizeCreatorScript(input.body.creatorScript);
+      validateCreatorScriptGenerationDuration(script.targetDurationSec);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Creator script is invalid." }, { status: 400 });
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : "Creator script is invalid.",
+        ...(error instanceof CreatorScriptDurationInvalidError
+          ? { code: error.code, providerDispatched: false } : {}),
+      }, { status: 400 });
     }
     if (JSON.stringify(script.grounding.context) !== JSON.stringify(input.editorialContext)) {
       return NextResponse.json({ error: "The script's research differs from the reviewed request. Rebuild from the current validated research before regenerating a section.", code: "CREATOR_SCRIPT_REGENERATION_GROUNDING_MISMATCH" }, { status: 409 });
@@ -1844,20 +1857,15 @@ export async function POST(req: Request) {
     const sourceSceneArray = Array.isArray(productionPackage.scenes)
       ? productionPackage.scenes
       : [];
-    const requestedSceneCount = Math.round(
-      asFiniteNumber(body?.sceneCount, sourceSceneArray.length || 1),
-    );
-    const sceneCount = clamp(requestedSceneCount, 1, 36);
-    const durationSec = clamp(
-      asFiniteNumber(
-        body?.durationSec,
-        asFiniteNumber(productionPackage.durationSec, sceneCount * 10),
-      ),
-      5,
-      3600,
-    );
-    const contentType = asString(body?.contentType, "Professional creator video");
     const format = asString(body?.format, "youtube_video");
+    const { sceneCount, durationSec } = resolveCreatorSourceSceneConfiguration({
+      requestedSceneCount: body?.sceneCount,
+      requestedDurationSec: body?.durationSec,
+      packageDurationSec: productionPackage.durationSec,
+      sourceSceneCount: sourceSceneArray.length,
+      format,
+    });
+    const contentType = asString(body?.contentType, "Professional creator video");
     const language: "tr" | "en" = body?.language === "tr" ? "tr" : "en";
     const qualityMode = asString(
       body?.qualityMode,
@@ -2047,6 +2055,11 @@ export async function POST(req: Request) {
       scriptPlan: resultPackage.scriptPlan,
     });
   } catch (error: unknown) {
+    if (error instanceof CreatorSourceSceneConfigurationError) {
+      return NextResponse.json({
+        success: false, code: error.code, error: error.message, providerDispatched: false,
+      }, { status: 422 });
+    }
     console.error("creator-script-plan error:", error);
     return NextResponse.json(
       {

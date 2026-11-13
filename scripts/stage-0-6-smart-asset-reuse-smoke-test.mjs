@@ -1,7 +1,10 @@
+import { execFileSync as sprint20GitShow } from "node:child_process";
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import ts from "typescript";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const failures = [];
 const check = (condition, message) => { if (!condition) failures.push(message); };
 const read = (file) => fs.readFileSync(file, "utf8");
@@ -42,10 +45,10 @@ check(/targetImageKey[\s\S]*isNoOp/.test(component) && /!isNoOp/.test(component)
 check(/deriveCreatorProjectAssets\(scenes\)/.test(component), "Project Assets derives from same-project scene state");
 check(/scene\.assetHistory/.test(helperSource) && /scene\.image/.test(helperSource), "inventory includes current and historical scene media");
 check(/onRestoreMedia\(selectedScene\.creatorSceneId!, asset\.id\)/.test(editor), "Asset History remains wired");
-check(/onRestoreMedia=/.test(page) && /restoreCreatorSceneAsset/.test(page), "existing onRestoreMedia remains");
+check(/onRestoreMedia=/.test(production) && /restoreCreatorSceneAsset/.test(page), "existing onRestoreMedia remains");
 check(/assetHistory/.test(saveRoute) === false && /scenes/.test(saveRoute), "save-project continues serializing complete scenes without a second asset store");
 check(/normalizeCreatorAssetHistory/.test(page) && /loadedProjectScenes/.test(page), "persisted asset history remains normalized after load");
-check(/onUseProjectImage=\{reuseCreatorProjectImage\}/.test(page), "focused-scene image reuse is wired independently");
+check(/onUseProjectImage=\{reuseCreatorProjectImage\}/.test(production), "focused-scene image reuse is wired independently");
 check(!/creatorSelectedSceneIds[\s\S]{0,250}reuseCreatorProjectImage/.test(page), "reuse does not use bulk selection");
 const reuseBlock = page.slice(page.indexOf("const reuseCreatorProjectImage"), page.indexOf("const acquireAutomaticStockForScene"));
 check(!/fetch\(|creator-image|creator-video|CreatorCostGuard/.test(reuseBlock), "reuse invokes no generation or cost API");
@@ -56,10 +59,47 @@ check(/getCreatorVideoState/.test(page) && /getCreatorNarrationAudioCurrentness/
 check(/No new generation/.test(component) && /Yeni üretim yapılmaz/.test(component), "zero-generation message is present");
 check(!/unsplash|pexels|pixabay|shutterstock|getty|storyblocks/i.test(helperSource + component), "no external stock provider introduced");
 check(!/supabase|create table|migration/i.test(helperSource + component), "no database or schema requirement introduced");
+// Stage 0.6A originally had a fixed runtime dependency snapshot:
+// SHA256 c78fdc671808f55bc3ef9be878c0f3920da3415bd45a483ece123b47f7c0408f.
+// Later reviewed work legitimately added Geist; Sprint 20 only upgrades Next.
+// Retain the "no new dependencies" requirement against Git HEAD, and reject
+// every other version/addition/removal. P0 separately pins package.json bytes.
+const sprint20BaselinePackage = JSON.parse(sprint20GitShow("git", ["show", "HEAD:package.json"], { encoding: "utf8" }));
+const sprint20ReviewedPackageSha = "4fc0a29353bca1f0dba78ca3e3b6651926e697e6f48912d4ceb1986c28451b7e";
+function sprint20MatchesOnlyApprovedUpgrade(candidate, baseline, changedKey, oldVersion, newVersion) {
+  if (!candidate || !baseline || baseline[changedKey] !== oldVersion || candidate[changedKey] !== newVersion) return false;
+  const keys = Object.keys(baseline);
+  if (Object.keys(candidate).length !== keys.length) return false;
+  return keys.every((key) => Object.prototype.hasOwnProperty.call(candidate, key) &&
+    candidate[key] === (key === changedKey ? newVersion : baseline[key]));
+}
 check(
-  createHash("sha256").update(JSON.stringify(packageJson.dependencies || {})).digest("hex") ===
-    "c78fdc671808f55bc3ef9be878c0f3920da3415bd45a483ece123b47f7c0408f",
-  "no package dependency introduced",
+  createHash("sha256").update(fs.readFileSync("package.json")).digest("hex") === sprint20ReviewedPackageSha,
+  "only the reviewed exact Sprint 20 package manifest is admitted",
+);
+check(
+  sprint20MatchesOnlyApprovedUpgrade(packageJson.dependencies, sprint20BaselinePackage.dependencies, "next", "16.2.3", "16.4.6"),
+  "no package dependency introduced; only reviewed Next.js upgrade admitted",
+);
+check(
+  sprint20MatchesOnlyApprovedUpgrade(packageJson.devDependencies, sprint20BaselinePackage.devDependencies, "eslint-config-next", "16.2.3", "16.4.6"),
+  "no unreviewed dev dependency introduced or changed",
+);
+check(
+  !sprint20MatchesOnlyApprovedUpgrade({ ...packageJson.dependencies, "unreviewed-new-dependency": "1.0.0" }, sprint20BaselinePackage.dependencies, "next", "16.2.3", "16.4.6"),
+  "negative control: added runtime dependency rejected",
+);
+check(
+  !sprint20MatchesOnlyApprovedUpgrade({ ...packageJson.dependencies, next: "16.2.3" }, sprint20BaselinePackage.dependencies, "next", "16.2.3", "16.4.6"),
+  "negative control: vulnerable Next.js downgrade rejected",
+);
+check(
+  !sprint20MatchesOnlyApprovedUpgrade({ ...packageJson.dependencies, openai: "0.0.0" }, sprint20BaselinePackage.dependencies, "next", "16.2.3", "16.4.6"),
+  "negative control: unrelated runtime dependency mutation rejected",
+);
+check(
+  !sprint20MatchesOnlyApprovedUpgrade({ ...packageJson.devDependencies, "eslint-config-next": "16.2.3" }, sprint20BaselinePackage.devDependencies, "eslint-config-next", "16.2.3", "16.4.6"),
+  "negative control: vulnerable Next.js ESLint config downgrade rejected",
 );
 check(!reuseBlock.includes("CreatorCostGuard"), "CreatorCostGuard remains outside zero-credit reuse");
 check(!/storyverse/i.test(helperSource + component + reuseBlock), "Storyverse is unaffected by Stage 0.6A implementation");

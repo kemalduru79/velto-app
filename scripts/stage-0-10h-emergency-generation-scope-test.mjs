@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -12,6 +13,7 @@ import {
 } from "../lib/creator/preDispatchPolicy.ts";
 import { executeCreatorRecommendedVisualBatch } from "../lib/creator/recommendedVisualExecution.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 const allSceneIds = Array.from({ length: 30 }, (_, index) => index + 1);
@@ -87,19 +89,23 @@ await executeCreatorRecommendedVisualBatch({
 });
 assert.deepEqual(generated, [3, 5]);
 
-assert.match(page, /mode: "single",\s*sceneIds: \[scene\.id\]/);
+assert.match(production, /mode: "single",\s*sceneIds: \[scene\.id\]/);
 assert.match(page, /mode: "selected",\s*sceneIds: selectedScenes\.map/);
 assert.match(page, /mode: "project",\s*sceneIds: scenes\.filter/);
 assert.doesNotMatch(page, /dispatchMode: "single" \| "batch" = "single"/);
+assert.doesNotMatch(production, /dispatchMode: "single" \| "batch" = "single"/);
 assert.doesNotMatch(page, /isBatchRendering && creatorSelectedSceneIdSet\.has/);
+assert.doesNotMatch(production, /isBatchRendering && creatorSelectedSceneIdSet\.has/);
 assert.doesNotMatch(page, /imageDispatchCountdown\?\.scope === "scene"[\s\S]{0,120}generating/);
-assert.match(page, /creatorVisualDispatchCountdown\.secondsRemaining/);
+assert.doesNotMatch(production, /imageDispatchCountdown\?\.scope === "scene"[\s\S]{0,120}generating/);
+assert.match(production, /creatorVisualDispatchCountdown\.secondsRemaining/);
 assert.match(
-  page,
+  production,
   /No generation request has been sent(?: yet)?\./,
   "countdown UI must make clear that provider generation has not been dispatched yet",
 );
 assert.doesNotMatch(page, /<CreatorCostGuard/);
+assert.doesNotMatch(production, /<CreatorCostGuard/);
 assert.match(page, /creatorCostGuardHeaders/);
 
 console.log("Stage 0.10H emergency generation-scope safety tests passed.");

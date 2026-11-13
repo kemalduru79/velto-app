@@ -39,11 +39,10 @@ import {
   creatorScriptBuildSectionClaimsFitEvidenceAuthority,
   type CreatorScriptBuildSectionEvidenceAuthority,
 } from "./creatorScriptBuildSectionEvidence.ts";
-import { createResearchClaimEvidenceGraph } from "../research/claimEvidenceGraph.ts";
+import {createPermittedGraph, applyBuildEditorialReview, type CreatorEditorialReviewDecision} from "./creatorScriptBuildEditorialReview.ts";
 import { createEditorialScriptContext } from "../research/editorialScriptContext.ts";
 import {
-  adaptCreatorLongFormSectionPlanToEvidenceCapability,
-  adaptCreatorLongFormSectionPlanToUncertaintyCapability,
+  prepareCreatorLongFormSectionPlanForAvailableEvidence,
   createCreatorLongFormEvidenceReadiness,
   createCreatorScriptSectionClaimRouting,
   type CreatorLongFormEvidenceReadiness,
@@ -51,6 +50,7 @@ import {
 } from "../research/creatorLongFormEvidenceReadiness.ts";
 import {
   createScriptPlannerGroundingDiagnostics,
+  createScriptPlannerGenerationGroundingGate,
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
@@ -87,6 +87,7 @@ export type CreatorScriptBuildScriptGenerationInput = Readonly<{
   sectionEvidenceAuthorities?: readonly CreatorScriptBuildSectionEvidenceAuthority[];
   editorialContext: ScriptPlannerEditorialContext;
   permittedClaimIds: readonly string[];
+  editorialReviewDecision?: CreatorEditorialReviewDecision;
 }>;
 
 export type CreatorScriptBuildScriptGenerationStageResult = Readonly<{
@@ -94,6 +95,7 @@ export type CreatorScriptBuildScriptGenerationStageResult = Readonly<{
   script: CreatorScript;
   sectionPlan: readonly CreatorScriptSectionBudget[];
   operationId: string;
+  editorialReviewDecision?: CreatorEditorialReviewDecision;
   contractVersions: Readonly<{
     coordinator: typeof CREATOR_SCRIPT_BUILD_SCRIPT_GENERATION_COORDINATOR_VERSION;
     operation: typeof CREATOR_SCRIPT_BUILD_SCRIPT_GENERATION_OPERATION_VERSION;
@@ -216,98 +218,32 @@ export function createCreatorScriptBuildScriptGenerationOperationId(input: {
   });
 }
 
-function sortedUniqueIds(values: readonly string[], code: string) {
-  const normalized = values.map((value) => clean(value, 300));
-  if (
-    normalized.some((value) => !value) ||
-    new Set(normalized).size !== normalized.length
-  ) {
-    throw new Error(code);
-  }
-  return normalized.toSorted((left, right) => left.localeCompare(right));
-}
-
-function createPermittedGraph(authority: CreatorScriptBuildAuthorityStageResult) {
-  const permittedClaimIds = sortedUniqueIds(
-    authority.permittedClaimIds,
-    "CREATOR_SCRIPT_BUILD_PERMITTED_CLAIMS_INVALID",
-  );
-  const excluded = new Set([
-    ...authority.excludedPrimaryClaimIds,
-    ...authority.unresolvedClaimIds,
-  ]);
-  if (permittedClaimIds.some((claimId) => excluded.has(claimId))) {
-    throw new Error("CREATOR_SCRIPT_BUILD_PERMITTED_CLAIM_EXCLUDED");
-  }
-  const permittedSet = new Set(permittedClaimIds);
-  const graphClaimIds = new Set(authority.graph.claims.map((claim) => claim.claimId));
-  const missing = permittedClaimIds.find((claimId) => !graphClaimIds.has(claimId));
-  if (missing) {
-    throw new Error(`CREATOR_SCRIPT_BUILD_PERMITTED_CLAIM_MISSING:${missing}`);
-  }
-
-  const claims = authority.graph.claims
-    .filter((claim) => permittedSet.has(claim.claimId))
-    .toSorted((left, right) => left.claimId.localeCompare(right.claimId));
-  if (claims.length === 0) {
-    throw new Error("CREATOR_SCRIPT_BUILD_PERMITTED_CLAIMS_REQUIRED");
-  }
-  const links = authority.graph.links
-    .filter((link) => permittedSet.has(link.claimId))
-    .toSorted((left, right) => {
-      const claimOrder = left.claimId.localeCompare(right.claimId);
-      if (claimOrder !== 0) return claimOrder;
-      const evidenceOrder = left.evidenceId.localeCompare(right.evidenceId);
-      return evidenceOrder !== 0
-        ? evidenceOrder
-        : left.stance.localeCompare(right.stance);
-    });
-  const evidenceIds = new Set(links.map((link) => link.evidenceId));
-  const evidence = authority.graph.evidence
-    .filter((item) => evidenceIds.has(item.evidenceId))
-    .toSorted((left, right) => left.evidenceId.localeCompare(right.evidenceId));
-  const sourceIds = new Set(evidence.map((item) => item.sourceId));
-  const sources = authority.graph.sources
-    .filter((source) => sourceIds.has(source.sourceId))
-    .toSorted((left, right) => left.sourceId.localeCompare(right.sourceId));
-  const assessmentBySourceId = new Map(
-    authority.sourceAssessments.map((item) => [item.sourceId, item]),
-  );
-  const sourceAssessments = sources.map((source) => {
-    const assessment = assessmentBySourceId.get(source.sourceId);
-    if (!assessment) {
-      throw new Error(
-        `CREATOR_SCRIPT_BUILD_SOURCE_ASSESSMENT_MISSING:${source.sourceId}`,
-      );
-    }
-    return assessment;
-  });
-  return {
-    graph: createResearchClaimEvidenceGraph({ sources, claims, evidence, links }),
-    sourceAssessments,
-    permittedClaimIds,
-  };
-}
 
 export function createCreatorScriptBuildScriptGenerationInput(input: {
   snapshot: CreatorScriptBuildSnapshot;
   authority: CreatorScriptBuildAuthorityStageResult;
+  buildId?: string;
+  editorialReviewDecision?: CreatorEditorialReviewDecision;
 }): CreatorScriptBuildScriptGenerationInput {
   const duration = validateCreatorScriptGenerationDuration(
     input.snapshot.requestedDurationSeconds,
   );
   const profile = parseCreatorProfile(input.snapshot.creatorProfile);
   const projection = createPermittedGraph(input.authority);
-  const editorialContext = normalizeScriptPlannerEditorialContext(
+  const baseContext = normalizeScriptPlannerEditorialContext(
     createEditorialScriptContext({
       profile,
       graph: projection.graph,
       sourceAssessments: projection.sourceAssessments,
     }),
   );
-  if (!editorialContext) {
+  if (!baseContext) {
     throw new Error("CREATOR_SCRIPT_BUILD_EDITORIAL_CONTEXT_INVALID");
   }
+  const reviewed=input.editorialReviewDecision?applyBuildEditorialReview({buildId:input.buildId||"",snapshot:input.snapshot,authority:input.authority,decision:input.editorialReviewDecision}):null;
+  const editorialContext=reviewed?.context||baseContext;
+  const groundingGate=createScriptPlannerGenerationGroundingGate(editorialContext);
+  if(!groundingGate.eligible)throw new CreatorScriptBuildGenerationContextError({category:"GROUNDING",code:"CREATOR_SCRIPT_BUILD_EDITORIAL_CONTEXT_BLOCKED",diagnostics:{blockingReason:groundingGate.reasonCodes.join(",")}});
   const groundingDiagnostics = createScriptPlannerGroundingDiagnostics(
     editorialContext,
   );
@@ -323,11 +259,12 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
   const hasMaterialCounterview = editorialContext.claims.some(
     (claim) => claim.counterEvidenceIds.length > 0,
   );
-  const baseSectionPlan = createCreatorScriptSectionBudgetPlan({
+  const baseSectionPlan = reviewed?.sectionPlan || createCreatorScriptSectionBudgetPlan({
     targetDurationSec: duration,
     language: input.snapshot.language,
     hasMaterialCounterview,
     narrativePolicy: input.snapshot.strategy.narrativePolicy,
+    storyStructure: reviewed?.decision.storyStructure || undefined,
   });
   const durationContract = getCreatorScriptDurationContract({
     targetDurationSec: duration,
@@ -338,23 +275,13 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     durationContract.targetWordCount,
   );
   const scienceDocumentary = input.snapshot.strategy.narrativePolicy === "science_documentary_v1";
-  const demonstrationAdaptiveSectionPlan = sectionNative && !scienceDocumentary
-    ? adaptCreatorLongFormSectionPlanToEvidenceCapability({
-        context: editorialContext,
-        plan: baseSectionPlan,
-      })
-    : baseSectionPlan;
-  const sectionPlan = sectionNative && !scienceDocumentary
-    ? adaptCreatorLongFormSectionPlanToUncertaintyCapability({
-        context: editorialContext,
-        plan: demonstrationAdaptiveSectionPlan,
-      })
-    : baseSectionPlan;
-  const longFormEvidenceReadiness = createCreatorLongFormEvidenceReadiness({
-    context: editorialContext,
-    plan: sectionPlan,
-    sectionNative,
-  });
+  // An approved plan is carried intact into dispatch and independently checked
+  // against the scoped evidence. Never silently reselect its count or roles.
+  const prepared=reviewed || scienceDocumentary
+    ? {plan:baseSectionPlan,finalReadiness:createCreatorLongFormEvidenceReadiness({context:editorialContext,plan:baseSectionPlan,sectionNative})}
+    : prepareCreatorLongFormSectionPlanForAvailableEvidence({context:editorialContext,plan:baseSectionPlan,sectionNative});
+  const sectionPlan=prepared.plan;
+  const longFormEvidenceReadiness=prepared.finalReadiness;
   if (!longFormEvidenceReadiness.eligible) {
     throw new CreatorScriptBuildGenerationContextError({
       category: "GROUNDING",
@@ -402,7 +329,8 @@ export function createCreatorScriptBuildScriptGenerationInput(input: {
     ...(sectionClaimRouting ? { sectionClaimRouting } : {}),
     ...(sectionEvidenceAuthorities ? { sectionEvidenceAuthorities } : {}),
     editorialContext,
-    permittedClaimIds: projection.permittedClaimIds,
+    permittedClaimIds: editorialContext.claims.map(c=>c.claimId),
+    ...(reviewed ? {editorialReviewDecision:reviewed.decision} : {}),
   });
 }
 
@@ -658,6 +586,7 @@ function createStageResult(input: {
     script: input.script,
     sectionPlan: [...input.authority.sectionPlan],
     operationId: input.operationId,
+    ...(input.authority.editorialReviewDecision ? {editorialReviewDecision:input.authority.editorialReviewDecision} : {}),
     contractVersions: Object.freeze({
       coordinator: CREATOR_SCRIPT_BUILD_SCRIPT_GENERATION_COORDINATOR_VERSION,
       operation: CREATOR_SCRIPT_BUILD_SCRIPT_GENERATION_OPERATION_VERSION,
@@ -698,6 +627,15 @@ export function normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint(
     authority: input.authority,
     operationId,
   });
+}
+
+export function generationInputFromCheckpoint(build:CreatorScriptBuildRecord){
+ const authority=normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(build.checkpoints.authority?.outputReference||null);
+ const output=record(build.checkpoints.script_generation?.outputReference);
+ const result=record(output?.result);
+ const input=createCreatorScriptBuildScriptGenerationInput({snapshot:build.snapshot,authority,buildId:build.buildId,...(result?.editorialReviewDecision?{editorialReviewDecision:result.editorialReviewDecision as CreatorEditorialReviewDecision}:{})});
+ normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint({buildId:build.buildId,value:build.checkpoints.script_generation?.outputReference||null,authority:input});
+ return input;
 }
 
 function checkpoint(input: {
@@ -896,6 +834,7 @@ function assertCoordinatorContract(snapshot: CreatorScriptBuildSnapshot) {
 export async function runCreatorScriptBuildScriptGenerationCoordinator(input: {
   ownerId: string;
   buildId: string;
+  editorialReviewDecision?: CreatorEditorialReviewDecision;
   dependencies: CreatorScriptBuildScriptGenerationCoordinatorDependencies;
 }): Promise<CreatorScriptBuildScriptGenerationCoordinatorResult> {
   const now = input.dependencies.now || (() => new Date().toISOString());
@@ -941,6 +880,8 @@ export async function runCreatorScriptBuildScriptGenerationCoordinator(input: {
     generationInput = createCreatorScriptBuildScriptGenerationInput({
       snapshot: build.snapshot,
       authority,
+      buildId:build.buildId,
+      editorialReviewDecision:input.editorialReviewDecision,
     });
   } catch (error) {
     const contextError = error instanceof CreatorScriptBuildGenerationContextError

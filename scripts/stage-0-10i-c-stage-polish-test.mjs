@@ -1,6 +1,10 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+const brief = readMountedWorkspacePanel("CreateBriefPanel");
+const strategy = readMountedWorkspacePanel("CreatorStrategyPanel");
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const layout = fs.readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 const polish = fs.readFileSync(new URL("../app/creatorlab-ux-i-c.css", import.meta.url), "utf8");
@@ -24,7 +28,7 @@ for (const contract of [
   /creatorlab-platform-choice-grid/,
   /id="creatorlab-brief-action"/,
   /ui\.analyzeContentOpportunity/,
-]) assert.match(page, contract);
+]) assert.match(brief, contract);
 assert.match(polish, /creatorlab-uxp2a-outcome-grid[\s\S]*?grid-template-columns/);
 assert.match(polish, /creatorlab-topic-card[\s\S]*?var\(--cl-shadow-surface\)/);
 assert.match(polish, /creatorlab-brand-memory[\s\S]*?var\(--cl-surface-muted\)/);
@@ -37,9 +41,9 @@ for (const contract of [
   /Add market evidence/,
   /creatorMarketEvidenceReviewOpen/,
   /Approve Strategy & Build Script/,
-  /Strategy is not ready yet/,
-  /Return to Brief/,
-]) assert.match(page, contract);
+]) assert.match(strategy, contract);
+assert.match(page, /Strategy is not ready yet/);
+assert.match(page, /Return to Brief/);
 assert.match(polish, /creatorlab-strategy-recommendation\.is-selected[\s\S]*?var\(--cl-primary\)/);
 assert.match(polish, /creatorlab-strategy-hook-selector[\s\S]*?var\(--cl-info-soft\)/);
 assert.match(polish, /#creatorlab-strategy-youtube[\s\S]*?var\(--cl-surface-muted\)/);
@@ -53,7 +57,7 @@ for (const contract of [
   /creatorlab-setup-group/,
   /creatorMusicConfirmationRequired/,
   /Continue to Create & Review/,
-]) assert.match(page, contract);
+]) assert.match(production, contract);
 assert.match(polish, /creatorlab-setup-recommendation[\s\S]*?var\(--cl-accent-border\)/);
 assert.match(polish, /creatorlab-setup-customize:not|creatorlab-setup-customize/);
 

@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
@@ -18,6 +19,7 @@ import {
   createCreatorScriptSectionClaimRouting,
 } from "../lib/research/creatorLongFormEvidenceReadiness.ts";
 
+const briefPanel = readMountedWorkspacePanel("CreateBriefPanel");
 const locator = { section: null, page: null, timecodeStartSec: null, timecodeEndSec: null };
 const evidence = (evidenceId, sourceId, excerpt) => ({ evidenceId, sourceId, excerpt, contextNote: null, locator });
 const claim = (claimId, claimType, supportingEvidenceIds, options = {}) => ({
@@ -188,8 +190,8 @@ assert.throws(() => createCreatorScriptBuildSnapshot({
 }), /CREATOR_NARRATIVE_POLICY_CONFIGURATION_UNSUPPORTED/);
 
 const pageSource = readFileSync("app/create/page.tsx", "utf8");
-assert.match(pageSource, /Evidence-driven Science Documentary/);
-assert.match(pageSource, /disabled=\{Boolean\(creatorScript\)\}/, "An accepted script prevents silent policy replacement");
+assert.match(briefPanel, /Evidence-driven Science Documentary/);
+assert.match(briefPanel, /disabled=\{Boolean\(creatorScript\)\}/, "An accepted script prevents silent policy replacement");
 assert.match(pageSource, /expectedUpdatedAt: projectUpdatedAtRef\.current/, "Existing stale-project CAS authority remains wired");
 const coordinatorSource = readFileSync("lib/creator/creatorScriptBuildScriptGenerationCoordinator.ts", "utf8");
 assert.match(coordinatorSource, /CREATOR_SCRIPT_BUILD_GENERATED_CLAIM_NOT_ROUTED/);

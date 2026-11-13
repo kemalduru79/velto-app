@@ -51,6 +51,9 @@ jobs:
       - name: TypeScript
         run: npm run typecheck
 
+      - name: P0 quality gate contracts
+        run: node scripts/p0-quality-gate-test.mjs
+
       - name: No new lint debt
         run: npm run lint:changed
 

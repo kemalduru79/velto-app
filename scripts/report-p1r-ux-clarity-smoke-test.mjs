@@ -30,7 +30,7 @@ function compileModule(filePath, dependencies = {}) {
       .join("\n"),
   );
 
-  const module = { exports: {} };
+  const testModule = { exports: {} };
   const localRequire = (specifier) => {
     if (specifier in dependencies) return dependencies[specifier];
     throw new Error(`Unexpected test dependency: ${specifier}`);
@@ -38,11 +38,11 @@ function compileModule(filePath, dependencies = {}) {
 
   new Function("require", "module", "exports", result.outputText)(
     localRequire,
-    module,
-    module.exports,
+    testModule,
+    testModule.exports,
   );
 
-  return module.exports;
+  return testModule.exports;
 }
 
 const operationPolicy = compileModule(
