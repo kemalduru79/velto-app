@@ -2,7 +2,7 @@ import {
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
-import { researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
+import { researchClaimRequiresEvidence, researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
 import {
   assertCreatorNarrativePolicyConfiguration,
   type CreatorNarrativePolicy,
@@ -460,7 +460,7 @@ export function normalizeCreatorScript(value: unknown, historicalReadOnly = fals
       evidenceReviewRequired: normalized.evidenceReviewRequired || normalized.claimIds.some(
         (claimId) => {
           const claim = claimById.get(claimId);
-          return (claim?.supportingEvidenceIds.length || 0) === 0 ||
+          return (claim && researchClaimRequiresEvidence(claim) && (claim.supportingEvidenceIds.length || 0) === 0) ||
             (primarySourceRequiredClaimIds.has(claimId) &&
               !primarySourceCoveredClaimIds.has(claimId));
         },
@@ -786,7 +786,10 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   language: "tr" | "en";
   hasMaterialCounterview?: boolean;
   narrativePolicy?: CreatorNarrativePolicy;
+  storyStructure?: "geopolitical_fiction_2055_2075_v1";
 }) {
+  if(input.storyStructure && (input.storyStructure!=="geopolitical_fiction_2055_2075_v1" || input.narrativePolicy))throw new Error("CREATOR_FICTION_STORY_CONFIGURATION_UNSUPPORTED");
+  validateCreatorScriptGenerationDuration(input.targetDurationSec);
   assertCreatorNarrativePolicyConfiguration({
     narrativePolicy: input.narrativePolicy,
     targetDurationSec: input.targetDurationSec,
@@ -796,7 +799,9 @@ export function createCreatorScriptSectionBudgetPlan(input: {
     language: input.language,
     actualWordCount: 0,
   });
-  const bodyCount = Math.max(1, Math.min(10, Math.round(duration.targetWordCount / 375)));
+  // An explicit five-chapter story owns its structure; duration owns word
+  // budgets. Preserve generic duration-based planning for other requests.
+  const bodyCount = input.storyStructure ? 3 : Math.max(1, Math.min(10, Math.round(duration.targetWordCount / 375)));
   const weights = [0.08, ...Array.from({ length: bodyCount }, () => 0.82 / bodyCount), 0.1];
   const targets = weights.map((weight) => Math.floor(duration.targetWordCount * weight));
   targets[targets.length - 1] += duration.targetWordCount - targets.reduce((sum, value) => sum + value, 0);
@@ -930,6 +935,17 @@ export function createCreatorScriptSectionBudgetPlan(input: {
     && !selectedBodyFunctions.some((item) => item.role.includes("counterview"))
   ) {
     selectedBodyFunctions[selectedBodyFunctions.length - 1] = bodyFunctions[3];
+  }
+  if(input.storyStructure){
+    const roles=[
+      ["Establish documented starting conditions, then explicitly enter a fictional 2055", "What real infrastructure constraints make this imagined world credible?", ["human_stakes","master_question"]],
+      ["Develop fictional 2055 infrastructure choices, ownership and human dependence", "Who controls energy, computation and production in this imagined economy, and who depends on them?", ["grounded_synthesis","evidence_interpretation","fictional_infrastructure_choices"]],
+      ["Trace fictional bloc decisions and resource-dependent alliances", "How do political choices turn dependence into alliances, and which alternatives remain open?", ["scope_conditions","uncertainty","fictional_alliance_choices"]],
+      ["Trace fictional 2075 escalation and the human consequences of nuclear conflict", "Which fictional decisions escalate competition, and what suffering follows without making war inevitable or desirable?", ["material_consequence","fictional_conflict_consequences"]],
+      ["Resolve the fictional autonomy turning point and the creator's closing question", "What happens to human agency when imagined AI systems become strategic participants?", ["highest_order_implication","unresolved_question","fictional_autonomy"]],
+    ] as const;
+    if(targets.length!==5)throw new Error("CREATOR_FICTION_STORY_SECTION_COUNT_INVALID");
+    return targets.map((targetWords,index):CreatorScriptSectionBudget=>({id:index===0?"opening":index===4?"conclusion":`section-${index}`,kind:index===0?"opening":index===4?"conclusion":"body",role:roles[index][0],centralQuestion:roles[index][1],progression:"Advance this explicitly fictional causal story; retain dated facts as starting conditions, never as proof of the future.",ownershipBoundary:{usage:"control_only_never_narrate",owns:[...roles[index][2],"geopolitical_fiction_policy"],excludes:["fiction_as_forecast","unsupported_factual_inference","war_glorification"]},targetWords,minimumWords:Math.floor(targetWords*CREATOR_SCRIPT_MIN_DURATION_RATIO),maximumWords:Math.ceil(targetWords*CREATOR_SCRIPT_MAX_DURATION_RATIO)}));
   }
   return targets.map((targetWords, index): CreatorScriptSectionBudget => {
     const kind: CreatorScriptSectionKind = index === 0

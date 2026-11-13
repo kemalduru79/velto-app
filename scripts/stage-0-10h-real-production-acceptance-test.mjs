@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -10,6 +11,7 @@ import { createStockAssetMetadata } from "../lib/providers/stock/sourceMetadata.
 import { applyCreatorVisualSourceOverride } from "../lib/creator/visualSourceMethod.ts";
 import { executeCreatorRecommendedVisualBatch, estimateCreatorRecommendedVisualManifest } from "../lib/creator/recommendedVisualExecution.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 const safeFetch = read("lib/security/safeRemoteMediaFetch.ts");
@@ -81,9 +83,10 @@ assert.equal(execution.scenes.find((scene) => scene.id === 1).image, undefined);
 assert.equal(execution.scenes.find((scene) => scene.id === 12).image, undefined);
 
 assert.doesNotMatch(page, /<CreatorCostGuard/);
+assert.doesNotMatch(production, /<CreatorCostGuard/);
 assert.match(page, /setSceneScriptFitFeedback/);
-assert.match(page, /Split recommended/);
-assert.match(page, /Apply duration/);
+assert.match(production, /Split recommended/);
+assert.match(production, /Apply duration/);
 assert.match(
   page,
   /const workspaceStep = creatorStageAfterSuccess\(creatorNavigationRef\.current\.workspaceStep,\s*"brief_completed"\);[\s\S]*?creatorNavigationRef\.current = \{ \.\.\.creatorNavigationRef\.current, workspaceStep \};[\s\S]*?setCreatorSelectedWorkspaceStep\(workspaceStep\);/,

@@ -1,3 +1,4 @@
+import type { TimelineSceneInput } from "@/lib/video/timelineSync";
 import { NextResponse } from "next/server";
 import { CREATOR_COST_BASIS_LABEL, CREATOR_DEFAULT_VIDEO_SCENE_COST_USD } from "@/lib/creatorCostConfig";
 
@@ -21,7 +22,20 @@ function includesAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term));
 }
 
-function scoreScene(scene: any) {
+// A read-only property view, not a canonical scene or provider validation.
+// Keep fields unknown until safeText applies the existing string check.
+type SceneScoreReadValue = Readonly<{
+  [Key in keyof Pick<TimelineSceneInput,
+    "id" | "text" | "narration" | "dialogue" | "motionHint" | "cameraDirection" | "visualPrompt"
+  > | "emotion" | "message"]?: unknown;
+}>;
+type SceneScore = { score: number; reasons: string[] };
+function hasSceneScoreReadValue(value: unknown): value is SceneScoreReadValue {
+  return value !== null && value !== undefined;
+}
+
+function scoreScene(value: unknown): SceneScore {
+  const scene = hasSceneScoreReadValue(value) ? value : undefined;
   const combined = [
     safeText(scene?.text),
     safeText(scene?.narration),
@@ -127,8 +141,9 @@ export async function POST(req: Request) {
 
     const threshold = mode === "cinematic" ? 1 : mode === "conservative" ? 4 : 2;
 
-    const result: SceneOptimizationItem[] = scenes.map((scene: any, index: number) => {
-      const { score, reasons } = scoreScene(scene);
+    const result: SceneOptimizationItem[] = scenes.map((value: unknown, index: number) => {
+      const { score, reasons } = scoreScene(value);
+      const scene = hasSceneScoreReadValue(value) ? value : undefined;
       const exportMode: ExportMode = score >= threshold ? "video" : "image";
       const confidence =
         Math.abs(score - threshold) >= 3 ? "high" : Math.abs(score - threshold) >= 1 ? "medium" : "low";
@@ -169,13 +184,13 @@ export async function POST(req: Request) {
         pricingBasis: CREATOR_COST_BASIS_LABEL,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("optimize-scenes error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Scene optimization failed.",
+        error: (hasSceneScoreReadValue(error) ? error : undefined)?.message || "Scene optimization failed.",
       },
       { status: 500 }
     );

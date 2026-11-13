@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../lib/creator/preDispatchPolicy.ts";
 import { executeCreatorRecommendedVisualBatch } from "../lib/creator/recommendedVisualExecution.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 
@@ -65,17 +67,17 @@ await executeCreatorRecommendedVisualBatch({
 });
 assert.deepEqual(calls.order, ["image", "video"], "missing prerequisite image must finish before video dispatch");
 
-const toolbarStart = page.indexOf('data-creator-selected-scenes-toolbar="true"');
-const navigatorStart = page.indexOf("<CreatorSceneProductionStatus", toolbarStart);
+const toolbarStart = production.indexOf('data-creator-selected-scenes-toolbar="true"');
+const navigatorStart = production.indexOf("<CreatorSceneProductionStatus", toolbarStart);
 assert.ok(toolbarStart >= 0 && toolbarStart < navigatorStart, "selected toolbar must render above the complete scene navigator");
-const toolbar = page.slice(toolbarStart, navigatorStart);
+const toolbar = production.slice(toolbarStart, navigatorStart);
 assert.match(toolbar, /creatorSelectedSceneIds\.length/);
 assert.match(toolbar, /Generate Visuals/);
 assert.match(toolbar, /Clear selection/);
 assert.doesNotMatch(toolbar, /Output mode|Estimated credits|Cost Guard|Pexels|OpenAI|Runway/);
 assert.match(toolbar, /creatorSelectedVisualSourceMethod === "stock"/);
-assert.match(page, /creatorVisualDispatchCountdown\.secondsRemaining/);
-assert.match(page, /videoDispatchCountdown \? cancelPendingVideoDispatch : cancelPendingImageDispatch/);
+assert.match(production, /creatorVisualDispatchCountdown\.secondsRemaining/);
+assert.match(production, /videoDispatchCountdown \? cancelPendingVideoDispatch : cancelPendingImageDispatch/);
 assert.match(page, /mode: "selected",\s*sceneIds: selectedScenes\.map\(\(scene\) => scene\.id\)/);
 assert.match(page, /mediaKind === "video"\s*\? SINGLE_VIDEO_DISPATCH_COUNTDOWN_SECONDS\s*: SINGLE_IMAGE_DISPATCH_COUNTDOWN_SECONDS/);
 assert.match(page, /seconds: BATCH_VIDEO_DISPATCH_COUNTDOWN_SECONDS/);

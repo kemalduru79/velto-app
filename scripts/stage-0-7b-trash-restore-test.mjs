@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
@@ -8,6 +9,7 @@ async function loadTs(file) {
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 }
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const { classifyMediaReferenceSafety } = await loadTs("lib/persistence/media/referenceSafety.ts");
 const { removeExactAssetHistoryUrl } = await loadTs("lib/persistence/projects/mediaHistoryCleanup.ts");
 const inventoryRoute = fs.readFileSync("app/api/media-assets/route.ts", "utf8");
@@ -18,7 +20,6 @@ const projectRepository = fs.readFileSync("lib/persistence/projects/supabaseProj
 const migration = fs.readFileSync("supabase/migrations/20260818160000_stage_0_7b_safe_media_trash.sql", "utf8");
 const visualCleanupUi = fs.readFileSync("components/create/CreatorVisualAssetCleanupAction.tsx", "utf8");
 const projectAssetsUi = fs.readFileSync("components/create/CreatorProjectAssets.tsx", "utf8");
-const createPage = fs.readFileSync("app/create/page.tsx", "utf8");
 
 const state = (lifecycle, ...types) => classifyMediaReferenceSafety(lifecycle, types.map((referenceType) => ({ referenceType })));
 for (const type of ["scene_image", "scene_video", "thumbnail", "final_video", "narration_audio", "dialogue_audio", "future_reference"]) {
@@ -89,9 +90,9 @@ assert.match(visualCleanupUi, /cleanupState === "HISTORY_ONLY"/);
 assert.match(visualCleanupUi, /cleanupState === "UNREFERENCED"/);
 assert.match(visualCleanupUi, /cleanupState === "TRASHED"/);
 assert.doesNotMatch(visualCleanupUi, /Permanent(?:ly)? delete|Delete forever/i);
-assert.match(createPage, /CreatorVisualAssetCleanupAction/);
-assert.match(createPage, /data-visual-media-cleanup="asset-version"/);
-assert.match(createPage, /onHistoryRemoved=\{removeCreatorProjectHistoryUrl\}/);
+assert.match(production, /CreatorVisualAssetCleanupAction/);
+assert.match(production, /data-visual-media-cleanup="asset-version"/);
+assert.match(production, /onHistoryRemoved=\{removeCreatorProjectHistoryUrl\}/);
 assert.doesNotMatch(projectAssetsUi, /data-creator-media-storage|Available media|Cleanup status/);
 
 // Physical accounting is invariant across logical Trash/Restore.

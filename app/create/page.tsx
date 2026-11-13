@@ -1,5 +1,30 @@
 "use client";
 
+import CreatorVoiceLibrarySession, { type CreatorVoiceLibrarySessionHandle, type CreatorVoiceCatalogQuery, type CreatorVoiceCatalogPage, type CreatorVoiceApplyOutcome } from "@/components/create/CreatorVoiceLibrarySession";
+import { captureCreatorVoiceOperation, isCreatorVoiceOperationActive, matchesCreatorVoiceOperationScene, type CreatorVoiceOperationBinding, type CreatorVoiceLibraryTarget } from "@/components/create/voiceLibraryOperation";
+
+import CreateBriefPanel from "@/components/create/CreateBriefPanel";
+import type { BulkIdeaResult, CreatorDurationOption } from "@/components/create/createWorkspaceBriefTypes";
+
+import CreatorStrategyPanel from "@/components/create/CreatorStrategyPanel";
+import type { CreatorAgeGroup, CreatorStrategyDirection, CreatorWorkspaceIconName, YoutubePatternSummary, YoutubeResearchVideo } from "@/components/create/createWorkspaceStrategyTypes";
+
+import StoryverseScenePanel from "@/components/create/StoryverseScenePanel";
+import type { BatchRenderItem, BatchSceneStatus, CreatorOpsServiceKey, CreatorOpsStatus } from "@/components/create/createWorkspaceSceneTypes";
+
+import CreatorPublishPanel from "@/components/create/CreatorPublishPanel";
+import type { CreatorThumbnailHistoryItem, CreatorThumbnailRefinementPreset, YoutubeMetadataResult } from "@/components/create/createWorkspacePublishTypes";
+
+import CreatorProductionPanel from "@/components/create/CreatorProductionPanel";
+import type { Character, ContentLanguage, CreatorContentType, CreatorDurationPreset, CreatorFormat, CreatorNoCastMode, CreatorProductionPackage, CreatorProductionScene, CreatorPublishPlatform, CreatorReleaseConfirmationKey, CreatorSceneAssetKind, CreatorSceneAssetVersion, CreatorSceneInspectorTab, CreatorSceneScriptDraft, CreatorSceneScriptFitFeedback, CreatorSceneVisualOperation, CreatorScriptHealth, CreatorThumbnailFont, CreatorThumbnailStudioState, CreatorThumbnailTextAlign, CreatorThumbnailTextPosition, CreatorThumbnailVariant, CreatorUndoEntry, CreatorVisualBlockPlan, CreatorVoicePickerTarget, ExportMovieResult, ImageDispatchCountdown, NarratorSettings, Scene, SceneIntelligence, SceneTiming, VideoDispatchCountdown, VisualBible, YoutubeThumbnailResult } from "@/components/create/createWorkspacePanelTypes";
+
+import type { VeltoProjectApiRecord } from "@/lib/persistence/projects/types";
+
+import {createCreatorStrategyBindingFingerprint} from "@/lib/creator/creatorStrategyBinding";
+
+import { CreatorScriptDraftPreview } from "@/components/create/CreatorScriptDraftPreview";
+import type {CreatorBuildEditorialReview, CreatorEditorialReviewDecision} from "@/lib/creator/creatorScriptBuildEditorialReview";
+
 
 
 
@@ -30,7 +55,7 @@
 // X.7.23 Final Visual Cohesion Pass: reduced section density and refined hierarchy for X7 closure.
 import { CreatorProjectSaveError, readCreatorProjectSaveResponse, creatorProjectSaveFailureDiagnostic, creatorProjectSaveRecoveryMessage } from "@/lib/creator/projectSaveErrors";
 import { resolveCreatorFinalExportRevisionAdvance } from "@/lib/creator/creatorFinalExportPersistence";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import { toCreatorPublishingMetadataPackage } from "@/lib/creator/publishingMetadataPayload";
 import { useRouter } from "next/navigation";
 import { CreatorCounterEvidenceReview } from "@/components/create/CreatorCounterEvidenceReview";
@@ -272,14 +297,10 @@ import {
   getOperationCreditCost,
 } from "@/lib/credits/operationPolicy";
 import {
-  CREATOR_VOICE_FAVORITES_STORAGE_KEY,
-  CREATOR_VOICE_RECENTS_STORAGE_KEY,
   getVoiceLibraryDisplayMeta,
   normalizeVoiceLibrarySelection,
   toVoiceLibrarySelection,
-  uniqueVoiceLibraryItems,
   type CreatorVoiceLibrarySelection,
-  type CreatorVoiceLibrarySource,
   type CreatorVoiceLibraryVoice,
 } from "@/lib/creator/voiceLibrary";
 import {
@@ -389,9 +410,9 @@ import {
 } from "@/lib/video/audioDurationMatching";
 import type { TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
 
-type CreatorWorkspaceIconName = "insights" | "ideas" | "safety" | "package";
+
 type CreatorWorkspaceTone = "blue" | "violet" | "green" | "amber";
-type CreatorNoCastMode = "faceless" | "narrator";
+
 type CreatorDirectorMode = "help" | "project";
 type CreatorDirectorActionType =
   | "update_brief_topic"
@@ -474,40 +495,17 @@ type CreatorTelemetryEventName =
   | "export_succeeded"
   | "export_failed";
 
-type CreatorOpsServiceKey = "database" | "ai" | "voice" | "video" | "export";
-type CreatorOpsStatus = {
-  status: "idle" | "checking" | "ready" | "degraded" | "blocked" | "error";
-  checkedAt: string;
-  release: string;
-  requestId: string;
-  services: Record<CreatorOpsServiceKey, boolean>;
-  message: string;
-};
 
-type VideoDispatchCountdown = {
-  scope: "scene" | "batch";
-  sceneId: number | null;
-  sceneCount: number;
-  secondsRemaining: number;
-  totalSeconds: number;
-};
+
+
+
 
 // VELTO_CANCEL_P1_2 — image generation uses the same pre-dispatch undo
 // boundary as video generation. No provider request or Velto image credit is
 // used until the countdown reaches zero.
-type ImageDispatchCountdown = {
-  scope: "scene" | "batch" | "thumbnail";
-  sceneId: number | null;
-  sceneCount: number;
-  secondsRemaining: number;
-  totalSeconds: number;
-};
 
-type CreatorSceneVisualOperation = {
-  phase: "countdown" | "processing";
-  secondsRemaining: number;
-  mediaKind: "image" | "video";
-};
+
+
 
 type CreatorSceneVisualCountdownControl = {
   timer: ReturnType<typeof setInterval>;
@@ -533,16 +531,23 @@ const CREATOR_DIRECTOR_ACTION_TYPES = new Set<CreatorDirectorActionType>([
   "navigate_workspace_stage",
 ]);
 
+// Read surface only: fields remain unknown until the existing String coercion.
+// Nullish and boxed historical primitive rows retain optional-read semantics;
+// this is not a row schema, action approval or project-mutation authority.
+type CreatorDirectorChangeReadValue = Readonly<{
+  [Field in keyof CreatorDirectorAction["changes"][number]]?: unknown;
+}> | null | undefined;
+
 function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[] {
   if (!Array.isArray(value)) return [];
 
   return value
     .slice(0, 2)
-    .map((item) => (item && typeof item === "object" ? item as Record<string, any> : {}))
+    .map((item) => (item && typeof item === "object" ? item as Record<string, unknown> : {}))
     .filter((item) => CREATOR_DIRECTOR_ACTION_TYPES.has(item.type as CreatorDirectorActionType))
     .map((item, index) => {
       const payload = item.payload && typeof item.payload === "object"
-        ? item.payload as Record<string, any>
+        ? item.payload as Record<string, unknown>
         : {};
       const renderMode = payload.renderMode === "video"
         ? "video"
@@ -564,7 +569,7 @@ function normalizeCreatorDirectorActions(value: unknown): CreatorDirectorAction[
         impact,
         requiresExplicitConfirmation: Boolean(item.requiresExplicitConfirmation),
         changes: Array.isArray(item.changes)
-          ? item.changes.slice(0, 4).map((change: any) => ({
+          ? item.changes.slice(0, 4).map((change: CreatorDirectorChangeReadValue) => ({
               label: String(change?.label || "Change").trim().slice(0, 120),
               before: String(change?.before || "—").trim().slice(0, 520),
               after: String(change?.after || "—").trim().slice(0, 520),
@@ -630,7 +635,7 @@ function parseCreatorCopilotMessages(value: string | null) {
       .slice(-30)
       .map((item) =>
         item && typeof item === "object"
-          ? (item as Record<string, any>)
+          ? (item as Record<string, unknown>)
           : {},
       )
       .filter(
@@ -762,199 +767,36 @@ type CreatorEditPlan = {
   items: CreatorEditPlanItem[];
 };
 
-type SceneTiming = {
-  narrationDuration: number;
-  dialogueDuration: number;
-  totalAudioDuration: number;
-  targetSceneDuration: number;
-  maxSpeechDuration?: number;
-  freezeDuration: number;
-  needsFreezeFrame: boolean;
-  durationMatchStatus?: AudioDurationMatchStatus;
-  plannedSceneDuration?: number;
-  durationDelta?: number;
-  speechTailBuffer?: number;
-  transitionTail?: number;
-  exactTimingLocked?: boolean;
-  unnecessaryExtensionRemoved?: number;
-  splitRecommended?: boolean;
-  recommendedSplitCount?: number;
-};
 
-type SceneIntelligence = {
-  scene_type?:
-    | "hook"
-    | "discovery"
-    | "dialogue"
-    | "action"
-    | "mystery"
-    | "emotional"
-    | "comedy"
-    | "climax"
-    | "resolution"
-    | string;
-  emotional_intensity?: number;
-  pacing_level?: "slow" | "medium" | "fast" | string;
-  curiosity_score?: number;
-  tension_score?: number;
-  climax_level?: number;
-};
 
-type CreatorVisualBlockPlan = {
-  id: string;
-  durationSec: number;
-  purpose: string;
-  prompt: string;
-};
 
-type CreatorScriptHealth = {
-  status: "ready" | "too_short" | "too_long";
-  speechWordCount: number;
-  estimatedSpeechSec: number;
-  targetDurationSec: number;
-  minWords: number;
-  targetWords: number;
-  maxWords: number;
-  visualBlockCount: number;
-  maxMotionBlockSec: number;
-};
 
-type CreatorSceneScriptDraft = {
-  narration: string;
-  dialogue: string;
-};
 
-type CreatorSceneScriptFitFeedback = {
-  state: "accepted" | "extend_duration" | "split_recommended" | "rejected";
-  message: string;
-  suggestedDurationSec?: number;
-};
 
-type CreatorSceneInspectorTab = "script" | "visual" | "audio" | "music";
 
-type CreatorVoicePickerTarget =
-  | { scope: "project_narrator" }
-  | { scope: "project_dialogue" }
-  | { scope: "scene_narrator"; sceneId: number }
-  | { scope: "scene_dialogue"; sceneId: number }
-  | { scope: "character"; characterId: string };
 
-type CreatorVoiceLibraryTab = "available" | "shared" | "favorites" | "recent";
 
-type CreatorSceneAssetKind = "image" | "video";
 
-type CreatorSceneAssetVersion = {
-  id: string;
-  kind: CreatorSceneAssetKind;
-  url: string;
-  createdAt: string;
-  source: "generated" | "restored" | "loaded" | "stock" | "uploaded";
-  durationSec?: number;
-  generationSignature?: string;
-};
 
-type Scene = {
-  renderMode?: "video" | "image";
-  visualSourceMethod?: CreatorVisualSourceMethod;
-  projectContinuityMode?: CreatorProjectContinuityMode;
-  continuityMode?: CreatorSceneContinuityMode;
-  continuity?: CreatorSceneContinuityState;
-  id: number;
-  creatorSceneId?: string;
-  text: string;
-  narration: string;
-  dialogue: string;
-  dialogueSpeakerCharacterId?: string;
-  cameraDirection: string;
-  emotion: string;
-  motionHint: string;
-  visualPrompt?: string;
-  image?: string;
-  audioUrl?: string;
-  audioPath?: string;
-  audioSourceText?: string;
-  audioSettingsKey?: string;
-  dialogueAudioUrl?: string;
-  dialogueAudioPath?: string;
-  dialogueAudioSourceText?: string;
-  dialogueAudioSettingsKey?: string;
-  narratorVoiceProfileId?: CreatorVoiceSelectionId;
-  dialogueVoiceProfileId?: CreatorVoiceSelectionId;
-  narratorVoiceSelection?: CreatorVoiceLibrarySelection;
-  dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
-  videoUrl?: string;
-  videoStatus?: "idle" | "processing" | "delayed" | "done" | "error";
-  videoJobId?: string;
-  videoQueueJobId?: string;
-  videoStorageAdmissionId?: string;
-  videoDurationSeconds?: number;
-  videoGenerationSignature?: string;
-  videoPendingGenerationSignature?: string;
-  clipInSec?: number;
-  clipOutSec?: number;
-  timing?: SceneTiming;
-  intelligence?: SceneIntelligence;
-  targetDurationSec?: number;
-  estimatedSpeechSec?: number;
-  speechWordCount?: number;
-  scriptHealth?: CreatorScriptHealth;
-  visualBlockPlan?: CreatorVisualBlockPlan[];
-  visualCoveragePlan?: CreatorVisualCoverageBeat[];
-  assetHistory?: CreatorSceneAssetVersion[];
-  sceneRole?: import("@/lib/creator/productionIntelligence").CreatorSceneRole;
-  contentNature?: import("@/lib/creator/productionIntelligence").CreatorContentNature;
-  motionImportance?: number;
-  visualImportance?: number;
-  continuityImportance?: number;
-  stockSuitability?: number;
-  customGenerationNeed?: number;
-  authenticityValue?: number;
-  stockSearchQuery?: string;
-  scriptRevision?: number;
-  scriptSectionId?: string;
-  scriptSegmentIndex?: number;
-  editorialClaimIds?: string[];
-};
 
-type BatchSceneStatus = "pending" | "processing" | "done" | "failed" | "skipped";
 
-type BatchRenderItem = {
-  sceneId: number;
-  status: BatchSceneStatus;
-  step:
-    | "waiting"
-    | "route"
-    | "image"
-    | "audio"
-    | "video"
-    | "save"
-    | "complete"
-    | "cancelled"
-    | "error";
-  message?: string;
-  updatedAt: string;
-};
 
-type Character = {
-  id?: string;
-  name: string;
-  age: string;
-  appearance: string;
-  outfit: string;
-  accessory?: string;
-  personality: string;
-  referenceImage?: string;
-  voiceId?: string;
-  voiceProfileId?: CreatorVoiceSelectionId;
-  voiceSelection?: CreatorVoiceLibrarySelection;
-};
 
-type VisualBible = {
-  style: string;
-  palette: string;
-  camera: string;
-  consistencyRules: string;
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 type StorySetup = {
   title: string;
@@ -963,20 +805,7 @@ type StorySetup = {
   visualBible: VisualBible;
 };
 
-type NarratorSettings = {
-  voiceId?: string;
-  voiceSelection?: CreatorVoiceLibrarySelection;
-  dialogueVoiceId?: string;
-  dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
-  voiceProfileId?: CreatorVoiceSelectionId;
-  dialogueVoiceProfileId?: CreatorVoiceSelectionId;
-  advancedTuning?: boolean;
-  modelId: string;
-  stability: number;
-  similarityBoost: number;
-  style?: number;
-  speed?: number;
-};
+
 
 type ParsedDialogueLine = {
   speaker: string;
@@ -984,82 +813,29 @@ type ParsedDialogueLine = {
   voiceId?: string;
 };
 
-type ExportMovieResult = {
-  movieUrl: string;
-  downloadUrl?: string;
-  fileName?: string;
-  sizeBytes?: number;
-  durationSeconds?: number;
-  sceneCount?: number;
-  projectLifecycle?: CreatorProjectLifecycleSnapshot;
-  projectPerformanceHistory?: CreatorProjectPerformanceHistoryEntry[];
-};
+
 
 type ChildProfile = {
   id: string;
   nickname: string;
 };
 
-type ContentLanguage = "tr" | "en";
 
-type CreatorAgeGroup = "broad_18" | "mainstream_18" | "niche_18" | "professional_18";
-type CreatorContentType =
-  | "documentary_biography"
-  | "educational_explainer"
-  | "news_commentary"
-  | "business_thought_leadership"
-  | "product_brand_story"
-  | "review_comparison"
-  | "case_study"
-  | "interview_podcast"
-  | "entertainment_storytelling"
-  | "social_campaign";
-type CreatorFormat = "short_form" | "youtube_video";
-type CreatorPublishPlatform = CreatorPlatformId;
-type CreatorThumbnailVariant = "subject" | "conflict" | "symbol";
-type CreatorThumbnailTextPosition = "top" | "center" | "bottom";
-type CreatorThumbnailFont = "bold_sans" | "editorial" | "condensed";
-type CreatorThumbnailTextAlign = "left" | "center" | "right";
-type CreatorReleaseConfirmationKey =
-  | "videoReviewed"
-  | "claimsVerified"
-  | "rightsConfirmed"
-  | "thumbnailApproved";
+
+
+
+
+
+
+
+
+
+
 
 // VELTO_THUMBNAIL_FIX_P3_2_7
-type CreatorThumbnailStudioState = {
-  variant: CreatorThumbnailVariant;
-  headline: string;
-  subHeadline: string;
-  accentColor: string;
-  headlineColor: string;
-  subHeadlineColor: string;
-  showHeadline: boolean;
-  showSubHeadline: boolean;
-  /** Legacy field retained only for migration of previously saved designs. */
-  textColor?: string;
-  textPosition: CreatorThumbnailTextPosition;
-  font: CreatorThumbnailFont;
-  focalX: number;
-  focalY: number;
-  safeZone: boolean;
-  headlineScale: number;
-  textAlign: CreatorThumbnailTextAlign;
-  textStroke: boolean;
-  textShadow: boolean;
-};
 
-type CreatorDurationPreset =
-  | "short_15"
-  | "short_30"
-  | "short_45"
-  | "short_60"
-  | "video_180"
-  | "video_300"
-  | "video_480"
-  | "video_600"
-  | "video_900"
-  | "custom";
+
+
 
 type CreatorBriefDraftSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -1086,21 +862,9 @@ type CreatorVideoIdea = {
   concept: string;
 };
 
-type CreatorStrategyDirection = {
-  id: string;
-  title: string;
-  concept: string;
-  source: "recommended" | "alternative";
-};
 
-type BulkIdeaResult = {
-  topic: string;
-  title: string;
-  hook: string;
-  score: number;
-  angle: string;
-  reason: string;
-};
+
+
 
 
 type CreatorMentorResult = {
@@ -1123,148 +887,19 @@ type CreatorMentorResult = {
   };
 };
 
-type CreatorProductionScene = {
-  id: number;
-  creatorSceneId?: string;
-  text: string;
-  narration: string;
-  dialogue: string;
-  cameraDirection: string;
-  emotion: string;
-  motionHint: string;
-  visualPrompt?: string;
-  audioUrl?: string;
-  audioPath?: string;
-  audioSourceText?: string;
-  audioSettingsKey?: string;
-  dialogueAudioUrl?: string;
-  dialogueAudioPath?: string;
-  dialogueAudioSourceText?: string;
-  dialogueAudioSettingsKey?: string;
-  timing?: SceneTiming;
-  continuity?: CreatorSceneContinuityState;
-  intelligence?: SceneIntelligence;
-  targetDurationSec?: number;
-  estimatedSpeechSec?: number;
-  speechWordCount?: number;
-  scriptHealth?: CreatorScriptHealth;
-  visualBlockPlan?: CreatorVisualBlockPlan[];
-  visualCoveragePlan?: CreatorVisualCoverageBeat[];
-  clipInSec?: number;
-  clipOutSec?: number;
-  scriptRevision?: number;
-  scriptSectionId?: string;
-  scriptSegmentIndex?: number;
-  editorialClaimIds?: string[];
-};
 
-type CreatorProductionPackage = {
-  sourceScriptRevision?: number;
-  outcome?: CreatorOutcome;
-  format?: CreatorFormat;
-  contentType?: CreatorContentType;
-  durationPreset?: CreatorDurationPreset;
-  title: string;
-  hook: string;
-  storyPremise: string;
-  characters: Character[];
-  visualBible: VisualBible;
-  scenes: CreatorProductionScene[];
-  thumbnailIdea: string;
-  youtubeTitle: string;
-  caption: string;
-  durationSec?: number;
-  sceneCount?: number;
-  targetSceneDurationSec?: number;
-  qualityMode?: CreatorQualityMode;
-  timelineSyncPlan?: TimelineSyncPlan;
-  targetPlatforms?: CreatorPublishPlatform[];
-  platformOutputPlan?: CreatorPlatformOutputPlan;
-  backgroundMusic?: CreatorBackgroundMusicConfig;
-  voicePreferences?: {
-    narratorProfileId: CreatorVoiceSelectionId;
-    dialogueProfileId: CreatorVoiceSelectionId;
-    voiceId?: string;
-    voiceSelection?: CreatorVoiceLibrarySelection;
-    dialogueVoiceId?: string;
-    dialogueVoiceSelection?: CreatorVoiceLibrarySelection;
-    modelId?: string;
-    stability?: number;
-    similarityBoost?: number;
-    style?: number;
-    speed?: number;
-    advancedTuning?: boolean;
-  };
-  scriptPlan?: {
-    version: string;
-    durationSec: number;
-    sceneCount: number;
-    readySceneCount: number;
-    needsReviewSceneIds: number[];
-    providerAwareVisualBlocks: boolean;
-  };
-};
 
-type CreatorUndoEntry = {
-  id: string;
-  label: string;
-  createdAt: string;
-  scenes: Scene[];
-  productionPackage: CreatorProductionPackage | null;
-  refinedScenes: CreatorProductionScene[];
-  audioTimeline: CreatorAudioTimeline | null | undefined;
-  exportSignature: string;
-  selectedCreatorSceneId: string | null;
-  focusedCreatorSceneId: string | null;
-  directorState: {
-    input: string;
-    selectedStrategyDirectionId: string;
-    selectedHookPattern: string;
-    thumbnailStudio: CreatorThumbnailStudioState;
-    thumbnailResult: YoutubeThumbnailResult | null;
-    releaseConfirmations: Record<CreatorReleaseConfirmationKey, boolean>;
-  };
-};
 
-type YoutubeMetadataResult = {
-  titleOptions: string[];
-  recommendedTitle: string;
-  description: string;
-  hashtags: string[];
-  firstComment: string;
-  thumbnailTextIdeas: string[];
-  seoKeywords: string[];
-  audiencePromise: string;
-  hookAlternatives: string[];
-  chapters: string[];
-  shortCaption: string;
-  linkedInCaption: string;
-  uploadChecklist: string[];
-  publishingNotes: string[];
-};
 
-type YoutubeThumbnailResult = {
-  imageUrl: string;
-  prompt: string;
-  headline: string;
-  subHeadline: string;
-  sourceImageUrl?: string;
-  design?: CreatorThumbnailStudioState;
-};
 
-type CreatorThumbnailHistoryItem = {
-  id: string;
-  createdAt: number;
-  label: string;
-  result: YoutubeThumbnailResult;
-};
 
-type CreatorThumbnailRefinementPreset =
-  | "focus"
-  | "contrast"
-  | "title_space"
-  | "cinematic"
-  | "simplify_background";
+
+
+
+
+
+
+
 
 type SceneOptimizationResult = {
   sceneId: number;
@@ -1285,29 +920,9 @@ type SceneOptimizationSummary = {
 };
 
 
-type YoutubeResearchVideo = {
-  id: string;
-  title: string;
-  channel: string;
-  publishedAt: string;
-  views: number;
-  likes: number;
-  durationSec: number;
-  thumbnail: string;
-  url: string;
-  relevanceScore?: number;
-  relevanceReason?: string;
-};
 
-type YoutubePatternSummary = {
-  topTitlePatterns: string[];
-  hookPatterns: string[];
-  recommendedDurationSec: number;
-  opportunityScore: number;
-  competitionLevel: "low" | "medium" | "high";
-  recommendedContentAngle: string;
-  reasoning: string[];
-};
+
+
 
 type CreatorVideoDurationSec = number;
 
@@ -1321,11 +936,7 @@ const getCreatorSceneCountForTargetDuration = (durationSec: number) => {
   );
 };
 
-type CreatorDurationOption = {
-  preset: CreatorDurationPreset;
-  seconds: number;
-  label: string;
-};
+
 
 const CREATOR_SHORT_DURATION_OPTIONS: CreatorDurationOption[] = [
   { preset: "short_15", seconds: 15, label: "15 sec" },
@@ -3499,6 +3110,21 @@ type CreateWorkspaceProps = {
   onStartNewProject: () => void;
 };
 
+type CreatorExportDurationReceipt = Readonly<{
+  projectId: string;
+  generation: number;
+  scenes: Scene[];
+  durations: Record<string, { videoUrl: string; durationSec: number }>;
+}>;
+
+type CreatorExportDurationCheck = Readonly<{
+  projectId: string;
+  generation: number;
+  scenes: Scene[];
+  durations?: CreatorExportDurationReceipt["durations"];
+  resolve: (receipt: CreatorExportDurationReceipt | null) => void;
+}>;
+
 async function observeCreatorVideoSourceDuration(
   videoUrl: string,
 ): Promise<{ videoUrl: string; durationSec: number } | null> {
@@ -3536,12 +3162,735 @@ async function observeCreatorVideoSourceDuration(
   });
 }
 
+type CreatorWorkspaceOverviewInput = Readonly<{
+  audioReadyCount: number;
+  creatorFinalProductionGate: CreatorFinalProductionGateReport | null;
+  creatorFinalVideoReadinessMessage: string;
+  creatorFormat: CreatorFormat;
+  creatorHasFinalVideo: boolean;
+  creatorIntelligenceReport: CreatorIntelligenceReport | null;
+  creatorMentorAudienceInsights: string[];
+  creatorMentorLoading: boolean;
+  creatorMentorResult: CreatorMentorResult | null;
+  creatorPerformanceHistory: CreatorProjectPerformanceHistoryEntry[];
+  creatorProductionComplete: boolean;
+  creatorProductionPackage: CreatorProductionPackage | null;
+  creatorProfile: Readonly<Pick<CreatorProfile, "brandName" | "defaultAudience">>;
+  creatorProjectLifecycle: CreatorProjectExportReadinessReport | null;
+  creatorProjectReadiness: ReturnType<typeof createCreatorProjectReadiness> | null;
+  creatorPublishComplete: boolean;
+  creatorQualityMode: CreatorQualityMode;
+  creatorRawProjectTitle: string;
+  creatorReleaseConfirmations: Record<CreatorReleaseConfirmationKey, boolean>;
+  creatorSelectedStrategyDirection: CreatorStrategyDirection;
+  creatorSelectedStrategyHook: string;
+  creatorServerPublishReadiness: Readonly<{ ready: boolean; status: "checking" | "ready" | "final_video_required" | "production_changed" | "music_attention" }>;
+  creatorTargetPlatforms: ("youtube" | "youtube_shorts" | "instagram_reels" | "tiktok" | "linkedin")[];
+  creatorTimelineMediaGate: Readonly<{ approved: boolean; message: string }>;
+  creatorTimelineNeedsAttention: boolean;
+  creatorVideoDurationSec: number;
+  creatorVisualsComplete: boolean;
+  creatorVoiceOverComplete: boolean;
+  creatorWorkspaceStep: 2 | 3 | 1 | 4;
+  exportFlowValidation: ExportFlowValidationReport | null;
+  exportMovieResult: ExportMovieResult | null;
+  exportedMovieUrl: string;
+  flowContinuityAudit: FlowContinuityAuditReport | null;
+  freezeNeededCount: number;
+  getCreatorDurationLabel: () => string;
+  getCreatorQualityCreditTier: () => string;
+  getCreatorQualityModeLabel: () => string;
+  getProjectKey: () => string;
+  input: string;
+  isCreatorLabFlow: boolean;
+  language: ContentLanguage;
+  readyExportCount: number;
+  scenes: Scene[];
+  title: string;
+  uiLanguage: "tr" | "en";
+  visualAssetReadyCount: number;
+  youtubeMetadataResult: YoutubeMetadataResult | null;
+  youtubePatternSummary: YoutubePatternSummary | null;
+  youtubeResearchVideos: YoutubeResearchVideo[];
+  youtubeThumbnailResult: YoutubeThumbnailResult | null;
+}>;
+
+type CreatorWorkspaceOverview = Readonly<{
+  creatorPublishVideoUrl: string;
+  creatorPublishThumbnailUrl: string;
+  creatorPublishTitle: string;
+  creatorPublishDescription: string;
+  creatorPublishHook: string;
+  creatorPublishSystemChecks: { key: string; label: string; attentionLabel: string; detail: string; ready: boolean; }[];
+  creatorReleaseConfirmationItems: { key: CreatorReleaseConfirmationKey; label: string; attentionLabel: string; detail: string; }[];
+  creatorReleaseReady: boolean;
+  creatorPublishPreflight: ReturnType<typeof createCreatorPublishPreflight>;
+  creatorPublishPreflightLabels: Parameters<typeof CreatorPublishPanel>[0]["creatorPublishPreflightLabels"];
+  creatorPublishPreflightStatusLabels: Parameters<typeof CreatorPublishPanel>[0]["creatorPublishPreflightStatusLabels"];
+  creatorPublishIsOutdated: boolean;
+  creatorPublishAttentionItems: { key: string; label: string; }[];
+  creatorPublishReadinessState: "ready" | "outdated" | "needs-attention";
+  creatorPublishChecklistCount: number;
+  creatorPackageReady: boolean;
+  creatorPublishAssetCount: number;
+  getCreatorPlatformLabel: (platform: CreatorPublishPlatform) => string;
+  getCreatorPlatformCopy: (platform: CreatorPublishPlatform) => string;
+  creatorPublishPackageItems: { name: string; file: string; ready: boolean; }[];
+  creatorProjectPerformanceReport: ReturnType<typeof createCreatorProjectPerformanceReport> | null;
+  creatorWorkspaceStageProgress: number;
+  creatorWorkspaceStageStatus: string;
+  creatorDirectorAttentionCount: number;
+}>;
+
+// Derive the current render only; project/session authority remains in CreateWorkspace.
+function deriveWorkspaceOverview({
+  audioReadyCount,
+  creatorFinalProductionGate,
+  creatorFinalVideoReadinessMessage,
+  creatorFormat,
+  creatorHasFinalVideo,
+  creatorIntelligenceReport,
+  creatorMentorAudienceInsights,
+  creatorMentorLoading,
+  creatorMentorResult,
+  creatorPerformanceHistory,
+  creatorProductionComplete,
+  creatorProductionPackage,
+  creatorProfile,
+  creatorProjectLifecycle,
+  creatorProjectReadiness,
+  creatorPublishComplete,
+  creatorQualityMode,
+  creatorRawProjectTitle,
+  creatorReleaseConfirmations,
+  creatorSelectedStrategyDirection,
+  creatorSelectedStrategyHook,
+  creatorServerPublishReadiness,
+  creatorTargetPlatforms,
+  creatorTimelineMediaGate,
+  creatorTimelineNeedsAttention,
+  creatorVideoDurationSec,
+  creatorVisualsComplete,
+  creatorVoiceOverComplete,
+  creatorWorkspaceStep,
+  exportFlowValidation,
+  exportMovieResult,
+  exportedMovieUrl,
+  flowContinuityAudit,
+  freezeNeededCount,
+  getCreatorDurationLabel,
+  getCreatorQualityCreditTier,
+  getCreatorQualityModeLabel,
+  getProjectKey,
+  input,
+  isCreatorLabFlow,
+  language,
+  readyExportCount,
+  scenes,
+  title,
+  uiLanguage,
+  visualAssetReadyCount,
+  youtubeMetadataResult,
+  youtubePatternSummary,
+  youtubeResearchVideos,
+  youtubeThumbnailResult,
+}: CreatorWorkspaceOverviewInput): CreatorWorkspaceOverview {
+  const creatorBriefSignalCount = [
+    Boolean(input.trim()),
+    Boolean(language),
+    Boolean(creatorFormat),
+    creatorVideoDurationSec > 0,
+    Boolean(creatorQualityMode),
+    creatorTargetPlatforms.length > 0,
+  ].filter(Boolean).length;
+  const creatorBriefSignalPercent = Math.round((creatorBriefSignalCount / 6) * 100);
+  const creatorVisualProgressPercent = scenes.length > 0
+    ? Math.round((visualAssetReadyCount / scenes.length) * 100)
+    : 0;
+  const creatorVoiceProgressPercent = scenes.length > 0
+    ? Math.round((audioReadyCount / scenes.length) * 100)
+    : 0;
+  const creatorProductionProgressPercent = scenes.length > 0
+    ? Math.round((creatorVisualProgressPercent + creatorVoiceProgressPercent) / 2)
+    : 0;
+  const creatorStrategySignalCount = [
+    Boolean(creatorMentorResult),
+    Boolean(youtubePatternSummary),
+    Boolean(creatorIntelligenceReport),
+    Boolean(creatorProductionPackage),
+  ].filter(Boolean).length;
+  const creatorStrategyProgressPercent = Math.round((creatorStrategySignalCount / 4) * 100);
+  const creatorPublishVideoUrl =
+    exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl;
+  const creatorPublishThumbnailUrl = youtubeThumbnailResult?.imageUrl || "";
+  const creatorPublishTitle =
+    youtubeMetadataResult?.recommendedTitle ||
+    creatorProductionPackage?.youtubeTitle ||
+    creatorProductionPackage?.title ||
+    title ||
+    input;
+  const creatorPublishDescription =
+    youtubeMetadataResult?.description || creatorProductionPackage?.caption || "";
+  const creatorPublishHook =
+    youtubeMetadataResult?.hookAlternatives?.[0] ||
+    creatorProductionPackage?.hook ||
+    creatorIntelligenceReport?.recommendedOpening ||
+    "";
+  const creatorPublishCaptionReady = scenes.some(
+    (scene) => Boolean(scene.narration?.trim() || scene.dialogue?.trim()),
+  );
+  const creatorPublishRatioLabel = creatorFormat === "youtube_video" ? "16:9" : "9:16";
+  const creatorPublishSystemChecks = [
+    {
+      key: "finalVideo",
+      label: uiLanguage === "en" ? "Final video is current" : "Final video güncel",
+      attentionLabel: creatorServerPublishReadiness.status === "music_attention"
+        ? uiLanguage === "en" ? "Music needs attention" : "Müzik kontrol edilmeli"
+        : creatorHasFinalVideo
+          ? uiLanguage === "en" ? "Rebuild final video" : "Final videoyu yeniden oluştur"
+          : uiLanguage === "en" ? "Create final video" : "Final videoyu oluştur",
+      detail: uiLanguage === "en" ? "The final render matches the current production." : "Final render mevcut üretimle eşleşiyor.",
+      ready: creatorServerPublishReadiness.ready,
+    },
+    {
+      key: "thumbnail",
+      label: uiLanguage === "en" ? "Thumbnail selected" : "Thumbnail seçildi",
+      attentionLabel: uiLanguage === "en" ? "Select thumbnail" : "Thumbnail seç",
+      detail: uiLanguage === "en" ? "A clean source image and overlay design are defined." : "Temiz kaynak görsel ve yazı katmanı tanımlandı.",
+      ready: Boolean(creatorPublishThumbnailUrl),
+    },
+    {
+      key: "captions",
+      label: uiLanguage === "en" ? "Captions can be generated" : "Altyazılar üretilebilir",
+      attentionLabel: uiLanguage === "en" ? "Prepare captions" : "Altyazıları hazırla",
+      detail: uiLanguage === "en" ? "Narration or dialogue is available for SRT/VTT." : "SRT/VTT için anlatım veya diyalog mevcut.",
+      ready: creatorPublishCaptionReady,
+    },
+    {
+      key: "metadata",
+      label: uiLanguage === "en" ? "Publishing copy prepared" : "Yayın metinleri hazır",
+      attentionLabel: uiLanguage === "en" ? "Prepare publishing copy" : "Yayın metinlerini hazırla",
+      detail: uiLanguage === "en" ? "Title, description and channel copy are ready." : "Başlık, açıklama ve kanal metinleri hazır.",
+      ready: Boolean(youtubeMetadataResult),
+    },
+    {
+      key: "ratio",
+      label: uiLanguage === "en" ? `${creatorPublishRatioLabel} output preset` : `${creatorPublishRatioLabel} çıktı oranı`,
+      attentionLabel: uiLanguage === "en" ? `Prepare ${creatorPublishRatioLabel} output` : `${creatorPublishRatioLabel} çıktıyı hazırla`,
+      detail: uiLanguage === "en" ? "The export format matches the selected primary format." : "Export formatı seçilen ana formatla uyumlu.",
+      ready: Boolean(creatorPublishVideoUrl && creatorFormat),
+    },
+  ];
+  const creatorPublishSystemReady = creatorPublishSystemChecks.every((item) => item.ready);
+  const creatorReleaseConfirmationItems: Array<{
+    key: CreatorReleaseConfirmationKey;
+    label: string;
+    attentionLabel: string;
+    detail: string;
+  }> = [
+    {
+      key: "videoReviewed",
+      label: uiLanguage === "en" ? "I reviewed the final video" : "Final videoyu kontrol ettim",
+      attentionLabel: uiLanguage === "en" ? "Review final video" : "Final videoyu kontrol et",
+      detail: uiLanguage === "en" ? "Playback, timing and visible output were checked." : "Oynatma, zamanlama ve görünen çıktı kontrol edildi.",
+    },
+    {
+      key: "claimsVerified",
+      label: uiLanguage === "en" ? "Claims and facts are verified" : "İddia ve bilgiler doğrulandı",
+      attentionLabel: uiLanguage === "en" ? "Verify claims and facts" : "İddia ve bilgileri doğrula",
+      detail: uiLanguage === "en" ? "Names, figures, quotations and assertions were reviewed." : "İsimler, rakamlar, alıntılar ve iddialar gözden geçirildi.",
+    },
+    {
+      key: "rightsConfirmed",
+      label: uiLanguage === "en" ? "Usage rights are confirmed" : "Kullanım hakları doğrulandı",
+      attentionLabel: uiLanguage === "en" ? "Confirm usage rights" : "Kullanım haklarını doğrula",
+      detail: uiLanguage === "en" ? "Visual, audio, brand and reference permissions are valid." : "Görsel, ses, marka ve referans izinleri geçerli.",
+    },
+    {
+      key: "thumbnailApproved",
+      label: uiLanguage === "en" ? "Thumbnail is approved" : "Thumbnail onaylandı",
+      attentionLabel: uiLanguage === "en" ? "Approve thumbnail" : "Thumbnail'ı onayla",
+      detail: uiLanguage === "en" ? "Crop, text, safe zone and readability were reviewed." : "Kadraj, metin, güvenli alan ve okunabilirlik kontrol edildi.",
+    },
+  ];
+  const creatorReleaseConfirmed = creatorReleaseConfirmationItems.every(
+    (item) => creatorReleaseConfirmations[item.key],
+  );
+  const creatorReleaseReady = creatorPublishSystemReady && creatorReleaseConfirmed;
+  const creatorPublishPreflight = createCreatorPublishPreflight({
+    contentReady: Boolean(creatorProductionPackage && creatorPublishCaptionReady),
+    visualsReady: creatorProjectReadiness?.visuals === "ready",
+    voiceReady: creatorProjectReadiness?.voiceOver === "ready",
+    evidenceVerified: creatorReleaseConfirmations.claimsVerified,
+    rightsConfirmed: creatorReleaseConfirmations.rightsConfirmed,
+    outputReady: Boolean(
+      creatorServerPublishReadiness.ready &&
+        creatorPublishSystemChecks.find((item) => item.key === "ratio")?.ready,
+    ),
+  });
+  const creatorPublishPreflightLabels = {
+    content: uiLanguage === "en" ? "Content" : "İçerik",
+    visuals: uiLanguage === "en" ? "Visuals" : "Görseller",
+    voice: uiLanguage === "en" ? "Voice" : "Ses",
+    evidence: uiLanguage === "en" ? "Evidence" : "Kanıt",
+    rights: uiLanguage === "en" ? "Rights" : "Haklar",
+    output: uiLanguage === "en" ? "Output" : "Çıktı",
+  } as const;
+  const creatorPublishPreflightStatusLabels = {
+    ready: uiLanguage === "en" ? "Ready" : "Hazır",
+    review: uiLanguage === "en" ? "Review" : "Kontrol et",
+    action_required: uiLanguage === "en" ? "Action required" : "İşlem gerekli",
+    blocked: uiLanguage === "en" ? "Blocked" : "Engellendi",
+  } as const;
+  const creatorPublishIsOutdated = creatorServerPublishReadiness.status === "production_changed";
+  const creatorPublishAttentionItems = [
+    ...creatorPublishSystemChecks
+      .filter((item) => !item.ready)
+      .map((item) => ({ key: `system-${item.key}`, label: item.attentionLabel })),
+    ...creatorReleaseConfirmationItems
+      .filter((item) => !creatorReleaseConfirmations[item.key])
+      .map((item) => ({ key: `confirmation-${item.key}`, label: item.attentionLabel })),
+  ];
+  const creatorPublishReadinessState = creatorPublishIsOutdated
+    ? "outdated"
+    : creatorReleaseReady
+      ? "ready"
+      : "needs-attention";
+  const creatorPublishChecklistCount =
+    creatorPublishSystemChecks.filter((item) => item.ready).length +
+    creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length;
+  const creatorPublishProgressPercent = creatorPublishComplete
+    ? 100
+    : Math.round(
+        (creatorPublishChecklistCount /
+          (creatorPublishSystemChecks.length + creatorReleaseConfirmationItems.length)) *
+          100,
+      );
+  const creatorPackageReady = Boolean(creatorProductionPackage && creatorReleaseReady);
+  const creatorPublishAssetCount = [
+    creatorServerPublishReadiness.ready,
+    Boolean(creatorPublishThumbnailUrl),
+    Boolean(youtubeMetadataResult),
+  ].filter(Boolean).length;
+  const getCreatorPlatformLabel = (platform: CreatorPublishPlatform) =>
+    CREATOR_PLATFORM_PRESETS[platform].label[uiLanguage];
+  const getCreatorPlatformCopy = (platform: CreatorPublishPlatform) => {
+    if (platform === "youtube") {
+      return youtubeMetadataResult?.firstComment || creatorProductionPackage?.caption || "";
+    }
+    if (platform === "linkedin") {
+      return youtubeMetadataResult?.linkedInCaption || "";
+    }
+
+    const shortCaption = youtubeMetadataResult?.shortCaption || "";
+    const hashtags = (youtubeMetadataResult?.hashtags || []).join(" ");
+    if (platform === "instagram_reels") {
+      return [shortCaption, hashtags].filter(Boolean).join("\n\n");
+    }
+    if (platform === "tiktok") {
+      return [creatorPublishHook || shortCaption, (youtubeMetadataResult?.hashtags || []).slice(0, 5).join(" ")]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+    return shortCaption;
+  };
+
+  const creatorPublishPackageItems = [
+    {
+      name: uiLanguage === "en" ? "Final video file" : "Final video dosyası",
+      file: "final-video.mp4 / .webm",
+      ready: creatorServerPublishReadiness.ready,
+    },
+    {
+      name: "Thumbnail",
+      file: "thumbnail.png / .jpg / .webp",
+      ready: Boolean(creatorPublishThumbnailUrl),
+    },
+    {
+      name: uiLanguage === "en" ? "Captions" : "Altyazılar",
+      file: "captions.srt + captions.vtt",
+      ready: creatorPublishCaptionReady,
+    },
+    {
+      name: uiLanguage === "en" ? "Publishing copy" : "Yayın metinleri",
+      file: "title, description, hashtags, chapters",
+      ready: Boolean(youtubeMetadataResult),
+    },
+    {
+      name: uiLanguage === "en" ? "Project performance report" : "Proje performans raporu",
+      file: "project-performance-report.html + .json",
+      ready: Boolean(creatorProductionPackage && scenes.length),
+    },
+    {
+      name: uiLanguage === "en" ? "Editable project data" : "Düzenlenebilir proje verisi",
+      file: "production package + scenes + metadata",
+      ready: Boolean(creatorProductionPackage && scenes.length),
+    },
+  ];
+  const creatorProjectPerformanceReport = isCreatorLabFlow
+    ? createCreatorProjectPerformanceReport({
+        locale: uiLanguage === "en" ? "en" : "tr",
+        title: creatorRawProjectTitle,
+        projectId: getProjectKey(),
+        qualityMode: creatorQualityMode,
+        format: creatorFormat,
+        targetPlatforms: creatorTargetPlatforms,
+        scenes,
+        lifecycle: creatorProjectLifecycle,
+        lifecycleHistory: creatorPerformanceHistory,
+        timelineApproved: creatorTimelineMediaGate.approved,
+        continuity: flowContinuityAudit,
+        finalGate: creatorFinalProductionGate,
+        publish: {
+          finalVideoReady: creatorServerPublishReadiness.ready,
+          thumbnailReady: Boolean(creatorPublishThumbnailUrl),
+          metadataReady: Boolean(youtubeMetadataResult),
+          captionsReady: creatorPublishCaptionReady,
+          systemChecksReady: creatorPublishSystemChecks.filter(
+            (item) => item.ready,
+          ).length,
+          systemChecksTotal: creatorPublishSystemChecks.length,
+          confirmationsReady: creatorReleaseConfirmationItems.filter(
+            (item) => creatorReleaseConfirmations[item.key],
+          ).length,
+          confirmationsTotal: creatorReleaseConfirmationItems.length,
+          packageDownloaded: creatorPublishComplete,
+        },
+        intelligence: creatorIntelligenceReport,
+      })
+    : null;
+
+  const creatorWorkspaceStageProgress = creatorWorkspaceStep === 1
+    ? creatorBriefSignalPercent
+    : creatorWorkspaceStep === 2
+      ? creatorStrategyProgressPercent
+      : creatorWorkspaceStep === 3
+        ? creatorProductionProgressPercent
+        : creatorPublishProgressPercent;
+
+  const creatorWorkspaceStageStatus = creatorWorkspaceStep === 1
+    ? input.trim()
+      ? uiLanguage === "en" ? "Ready to analyze" : "Analize hazır"
+      : uiLanguage === "en" ? "Topic required" : "Konu gerekli"
+    : creatorWorkspaceStep === 2
+      ? creatorProductionPackage
+        ? uiLanguage === "en" ? "Plan created" : "Plan oluşturuldu"
+        : uiLanguage === "en" ? "Direction review" : "Yön değerlendirmesi"
+      : creatorWorkspaceStep === 3
+        ? creatorTimelineNeedsAttention
+          ? uiLanguage === "en" ? "Action required" : "Aksiyon gerekli"
+          : creatorProductionComplete
+            ? uiLanguage === "en" ? "Media ready" : "Medya hazır"
+            : uiLanguage === "en" ? "In production" : "Üretimde"
+        : creatorPublishComplete
+          ? uiLanguage === "en" ? "Package exported" : "Paket dışa aktarıldı"
+          : uiLanguage === "en" ? "Final review" : "Final kontrol";
+
+  const creatorWorkspaceCards: Array<{
+    title: string;
+    description: string;
+    status: string;
+    metric?: string;
+    progress?: number;
+    targetId: string;
+    icon: CreatorWorkspaceIconName;
+    tone: CreatorWorkspaceTone;
+    attention?: boolean;
+  }> = creatorWorkspaceStep === 1
+    ? [
+        {
+          title: uiLanguage === "en" ? "Brand Memory" : "Marka Hafızası",
+          description: creatorProfile.brandName || creatorProfile.defaultAudience
+            ? uiLanguage === "en"
+              ? "Velto can reuse this brand context across future projects."
+              : "Velto bu marka bağlamını gelecek projelerde yeniden kullanabilir."
+            : uiLanguage === "en"
+              ? "Optional brand context can be remembered without changing project settings."
+              : "Opsiyonel marka bağlamı proje ayarlarını değiştirmeden hatırlanabilir.",
+          status: creatorProfile.brandName || creatorProfile.defaultAudience
+            ? uiLanguage === "en" ? "Remembered" : "Hatırlanıyor"
+            : uiLanguage === "en" ? "Optional" : "İsteğe bağlı",
+          metric:
+            creatorProfile.brandName ||
+            creatorProfile.defaultAudience ||
+            (uiLanguage === "en" ? "No brand memory" : "Marka hafızası yok"),
+          targetId: "creatorlab-brand-memory",
+          icon: "ideas",
+          tone: "violet",
+        },
+        {
+          title: uiLanguage === "en" ? "Format guidance" : "Format yönlendirmesi",
+          description: uiLanguage === "en" ? "Format, duration and language are aligned in one brief." : "Format, süre ve dil tek brief içinde uyumlandırıldı.",
+          status: uiLanguage === "en" ? "Configured" : "Yapılandırıldı",
+          metric: `${CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || "-"} · ${getCreatorDurationLabel()} · ${language.toUpperCase()}`,
+          targetId: "creatorlab-brief-settings",
+          icon: "insights",
+          tone: "blue",
+        },
+        {
+          title: uiLanguage === "en" ? "Production quality" : "Üretim kalitesi",
+          description: uiLanguage === "en" ? "The single authoritative quality and production decision." : "Tek yetkili kalite ve üretim kararı.",
+          status: getCreatorQualityModeLabel(),
+          metric: getCreatorQualityCreditTier(),
+          targetId: "creatorlab-quality-panel",
+          icon: "safety",
+          tone: "green",
+        },
+        {
+          title: uiLanguage === "en" ? "Opportunity analysis" : "Fırsat analizi",
+          description: input.trim()
+            ? uiLanguage === "en" ? "The brief has enough context for the opportunity check." : "Brief, fırsat kontrolü için yeterli bağlama sahip."
+            : uiLanguage === "en" ? "Add the topic or video idea before analysis." : "Analizden önce konu veya video fikrini ekle.",
+          status: creatorMentorLoading
+            ? uiLanguage === "en" ? "Analyzing" : "Analiz ediliyor"
+            : creatorMentorResult
+              ? uiLanguage === "en" ? "Ready" : "Hazır"
+              : input.trim()
+                ? uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon"
+                : uiLanguage === "en" ? "Blocked" : "Bekliyor",
+          metric: input.trim()
+            ? uiLanguage === "en" ? "Topic captured" : "Konu tanımlandı"
+            : uiLanguage === "en" ? "Topic missing" : "Konu eksik",
+          progress: creatorBriefSignalPercent,
+          targetId: input.trim() ? "creatorlab-brief-action" : "creatorlab-topic-input",
+          icon: "package",
+          tone: "amber",
+          attention: !input.trim(),
+        },
+      ]
+    : creatorWorkspaceStep === 2
+      ? [
+          {
+            title: uiLanguage === "en" ? "YouTube insights" : "YouTube içgörüleri",
+            description: youtubePatternSummary
+              ? uiLanguage === "en" ? "Opportunity and competition signals are summarized." : "Fırsat ve rekabet sinyalleri özetlendi."
+              : uiLanguage === "en" ? "Optional market and trend signals can strengthen positioning." : "İsteğe bağlı pazar ve trend sinyalleri konumlandırmayı güçlendirebilir.",
+            status: youtubePatternSummary
+              ? uiLanguage === "en" ? "Ready" : "Hazır"
+              : youtubeResearchVideos.length > 0
+                ? uiLanguage === "en" ? "Research available" : "Araştırma mevcut"
+                : uiLanguage === "en" ? "Not added" : "Eklenmedi",
+            metric: youtubePatternSummary
+              ? `${uiLanguage === "en" ? "Opportunity" : "Fırsat"} ${youtubePatternSummary.opportunityScore}/100 · ${youtubePatternSummary.competitionLevel}`
+              : `${youtubeResearchVideos.length} ${uiLanguage === "en" ? "reference videos" : "referans video"}`,
+            targetId: "creatorlab-strategy-youtube",
+            icon: "insights",
+            tone: "blue",
+          },
+          {
+            title: uiLanguage === "en" ? "Hook & thumbnail" : "Hook ve thumbnail",
+            description: creatorIntelligenceReport
+              ? creatorIntelligenceReport.recommendedOpening
+              : uiLanguage === "en" ? "Opening and thumbnail directions will appear with the strategy signal." : "Açılış ve thumbnail yönleri strateji sinyaliyle görünür.",
+            status: creatorIntelligenceReport
+              ? uiLanguage === "en" ? "Available" : "Mevcut"
+              : uiLanguage === "en" ? "Pending" : "Bekliyor",
+            metric: creatorIntelligenceReport
+              ? `${uiLanguage === "en" ? "Hook score" : "Hook skoru"} ${creatorIntelligenceReport.hookScore}/100`
+              : uiLanguage === "en" ? "Awaiting intelligence" : "İçgörü bekleniyor",
+            progress: creatorIntelligenceReport?.hookScore,
+            targetId: "creatorlab-strategy-signals",
+            icon: "ideas",
+            tone: "violet",
+          },
+          {
+            title: uiLanguage === "en" ? "Audience signal" : "Kitle sinyali",
+            description: creatorMentorAudienceInsights[0] || (uiLanguage === "en" ? "Audience fit is checked before production begins." : "Üretim başlamadan önce kitle uyumu kontrol edilir."),
+            status: creatorMentorResult
+              ? uiLanguage === "en" ? "Available" : "Mevcut"
+              : uiLanguage === "en" ? "Pending" : "Bekliyor",
+            metric: creatorMentorResult
+              ? `${creatorMentorAudienceInsights.length} ${uiLanguage === "en" ? "signals" : "sinyal"}`
+              : uiLanguage === "en" ? "No signal yet" : "Henüz sinyal yok",
+            targetId: "creatorlab-strategy-recommendation",
+            icon: "safety",
+            tone: "green",
+          },
+          {
+            title: uiLanguage === "en" ? "Approved direction" : "Onaylanan yön",
+            description: creatorSelectedStrategyDirection
+              ? creatorSelectedStrategyDirection.title
+              : uiLanguage === "en" ? "Select the direction that should shape the scene plan." : "Sahne planını şekillendirecek yönü seç.",
+            status: creatorProductionPackage
+              ? uiLanguage === "en" ? "Created" : "Oluşturuldu"
+              : uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon",
+            metric: creatorSelectedStrategyHook
+              ? uiLanguage === "en" ? "Opening direction selected" : "Açılış yönü seçildi"
+              : uiLanguage === "en" ? "Opening direction pending" : "Açılış yönü bekliyor",
+            progress: creatorStrategyProgressPercent,
+            targetId: "creatorlab-strategy-action",
+            icon: "package",
+            tone: "amber",
+          },
+        ]
+      : creatorWorkspaceStep === 3
+        ? [
+            {
+              title: uiLanguage === "en" ? "Timeline safety" : "Timeline güvenliği",
+              description: creatorTimelineNeedsAttention
+                ? creatorTimelineMediaGate.message
+                : uiLanguage === "en" ? "The current plan is safe for the next production action." : "Mevcut plan sıradaki üretim aksiyonu için güvenli.",
+              status: creatorTimelineMediaGate.approved
+                ? uiLanguage === "en" ? "Approved" : "Onaylandı"
+                : uiLanguage === "en" ? "Review" : "Kontrol et",
+              metric: creatorTimelineNeedsAttention
+                ? uiLanguage === "en" ? "Blocking risk detected" : "Engelleyici risk algılandı"
+                : uiLanguage === "en" ? "No blocking risk" : "Engelleyici risk yok",
+              progress: creatorTimelineMediaGate.approved ? 100 : 35,
+              targetId: "creatorlab-production-safety",
+              icon: "safety",
+              tone: "amber",
+              attention: creatorTimelineNeedsAttention,
+            },
+            {
+              title: uiLanguage === "en" ? "Visual readiness" : "Görsel hazırlığı",
+              description: uiLanguage === "en" ? "Missing scene visuals are generated through the guided action." : "Eksik sahne görselleri yönlendirmeli aksiyonla üretilir.",
+              status: creatorVisualsComplete
+                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                : uiLanguage === "en" ? "In progress" : "Devam ediyor",
+              metric: `${readyExportCount}/${scenes.length || 0}`,
+              progress: creatorVisualProgressPercent,
+              targetId: "creatorlab-production-storyboard",
+              icon: "ideas",
+              tone: "violet",
+            },
+            {
+              title: uiLanguage === "en" ? "Voice-over readiness" : "Voice-over hazırlığı",
+              description: uiLanguage === "en" ? "Narration readiness and duration fit are tracked together." : "Anlatım hazırlığı ve süre uyumu birlikte takip edilir.",
+              status: creatorVoiceOverComplete
+                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                : uiLanguage === "en" ? "In progress" : "Devam ediyor",
+              metric: `${audioReadyCount}/${scenes.length || 0}`,
+              progress: creatorVoiceProgressPercent,
+              targetId: "creatorlab-production-storyboard",
+              icon: "insights",
+              tone: "blue",
+            },
+            {
+              title: uiLanguage === "en" ? "Continuity" : "Devamlılık",
+              description: uiLanguage === "en" ? "Freeze and flow risks stay summarized; technical details remain secondary." : "Donma ve akış riskleri özetlenir; teknik detaylar ikincil kalır.",
+              status: exportFlowValidation?.canExport
+                ? uiLanguage === "en" ? "Safe" : "Güvenli"
+                : uiLanguage === "en" ? "Monitoring" : "İzleniyor",
+              metric: freezeNeededCount > 0
+                ? `${freezeNeededCount} ${uiLanguage === "en" ? "scene risks" : "sahne riski"}`
+                : uiLanguage === "en" ? "No freeze risk" : "Donma riski yok",
+              targetId: "creatorlab-production-package-details",
+              icon: "package",
+              tone: "green",
+            },
+          ]
+        : [
+            {
+              title: uiLanguage === "en" ? "Final video" : "Final video",
+              description: uiLanguage === "en" ? "Review the latest production output before packaging." : "Paketlemeden önce son üretim çıktısını kontrol et.",
+              status: exportedMovieUrl
+                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                : uiLanguage === "en" ? "Pending" : "Bekliyor",
+              metric: exportMovieResult?.durationSeconds
+                ? `${Math.round(exportMovieResult.durationSeconds)} sec`
+                : creatorFinalVideoReadinessMessage,
+              progress: exportedMovieUrl ? 100 : creatorProductionComplete ? 85 : 35,
+              targetId: "creatorlab-publish-video",
+              icon: "insights",
+              tone: "blue",
+            },
+            {
+              title: uiLanguage === "en" ? "Metadata & chapters" : "Metadata ve chapters",
+              description: uiLanguage === "en" ? "Title, description, hooks and discovery data stay together." : "Başlık, açıklama, hook ve keşif verileri birlikte tutulur.",
+              status: youtubeMetadataResult
+                ? uiLanguage === "en" ? "Ready" : "Hazır"
+                : uiLanguage === "en" ? "Pending" : "Bekliyor",
+              metric: youtubeMetadataResult
+                ? `${youtubeMetadataResult.titleOptions.length} ${uiLanguage === "en" ? "title options" : "başlık seçeneği"}`
+                : uiLanguage === "en" ? "Metadata not prepared" : "Metadata hazırlanmadı",
+              targetId: "creatorlab-publish-metadata",
+              icon: "ideas",
+              tone: "violet",
+            },
+            {
+              title: uiLanguage === "en" ? "Publishing checklist" : "Yayın kontrol listesi",
+              description: uiLanguage === "en" ? "Confirm platform readiness without exposing export diagnostics." : "Export tanılarını göstermeden platform hazırlığını doğrula.",
+              status: creatorPublishChecklistCount > 0
+                ? uiLanguage === "en" ? "Available" : "Mevcut"
+                : uiLanguage === "en" ? "Pending" : "Bekliyor",
+              metric: `${creatorPublishChecklistCount} ${uiLanguage === "en" ? "checks" : "kontrol"}`,
+              progress: creatorPublishChecklistCount > 0 ? 100 : 0,
+              targetId: "creatorlab-publish-checklist",
+              icon: "safety",
+              tone: "green",
+            },
+            {
+              title: uiLanguage === "en" ? "Creator Package" : "Creator Paketi",
+              description: uiLanguage === "en" ? "Collect the final video, metadata and platform adaptations." : "Final video, metadata ve platform uyarlamalarını bir araya getir.",
+              status: creatorPublishComplete
+                ? uiLanguage === "en" ? "Exported" : "Dışa aktarıldı"
+                : uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon",
+              metric: creatorPublishComplete
+                ? uiLanguage === "en" ? "Package delivered" : "Paket teslim edildi"
+                : uiLanguage === "en" ? "Package available after review" : "Kontrol sonrası paket hazır",
+              progress: creatorPublishProgressPercent,
+              targetId: "creatorlab-publish-action",
+              icon: "package",
+              tone: "amber",
+            },
+          ];
+
+  const creatorDirectorAttentionCount = creatorWorkspaceCards.filter((card) => card.attention).length;
+
+  return {
+    creatorPublishVideoUrl,
+    creatorPublishThumbnailUrl,
+    creatorPublishTitle,
+    creatorPublishDescription,
+    creatorPublishHook,
+    creatorPublishSystemChecks,
+    creatorReleaseConfirmationItems,
+    creatorReleaseReady,
+    creatorPublishPreflight,
+    creatorPublishPreflightLabels,
+    creatorPublishPreflightStatusLabels,
+    creatorPublishIsOutdated,
+    creatorPublishAttentionItems,
+    creatorPublishReadinessState,
+    creatorPublishChecklistCount,
+    creatorPackageReady,
+    creatorPublishAssetCount,
+    getCreatorPlatformLabel,
+    getCreatorPlatformCopy,
+    creatorPublishPackageItems,
+    creatorProjectPerformanceReport,
+    creatorWorkspaceStageProgress,
+    creatorWorkspaceStageStatus,
+    creatorDirectorAttentionCount,
+  };
+}
+
+// A finite, read-only property view of untrusted display inputs, not a
+// canonical project/scene schema. No field is required or certified by this type.
+type CreatorProjectCardDisplayValue = Readonly<Partial<
+  Pick<VeltoProjectApiRecord,
+    "scenes" | "exported_movie_url" | "exported_movie_result" |
+    "projectLifecycle" | "title" | "input_prompt" | "flow_type">
+>> & Readonly<{
+  [Key in keyof Pick<Scene,
+    "image" | "videoUrl" | "videoStatus" | "narration" |
+    "audioUrl" | "dialogue" | "dialogueAudioUrl">]?: unknown;
+}>;
+
+// All properties remain optional and unknown. This admits only property access,
+// including JavaScript's primitive boxing; it does not validate any field.
+// Keep the existing array checks, lifecycle parser and coercions at each use.
+function hasCreatorProjectCardDisplayValue(value: unknown): value is CreatorProjectCardDisplayValue {
+  return value !== null && value !== undefined;
+}
+
 function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
-  const selectedFlow = getFlowByKey(selectedFlowKey);
+  const selectedFlow: ReturnType<typeof getFlowByKey> & Readonly<{ id?: unknown }> = getFlowByKey(selectedFlowKey);
   const activeFlowKey =
-    (selectedFlow as any)?.key || (selectedFlow as any)?.id || selectedFlowKey || "storyverse";
+    selectedFlow?.key || selectedFlow?.id || selectedFlowKey || "storyverse";
   const isStoryverseFlow = activeFlowKey === "storyverse";
   const isCreatorLabFlow = activeFlowKey === "creator_lab";
   const [authLoading, setAuthLoading] = useState(true);
@@ -3845,6 +4194,17 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [buildingStory, setBuildingStory] = useState(false);
   const [error, setError] = useState("");
+  const [editorialResearchReview,setEditorialResearchReview]=useState<CreatorBuildEditorialReview|null>(null);
+  const editorialResearchResolver=useRef<((decision:CreatorEditorialReviewDecision|null)=>void)|null>(null);
+  const [creatorScriptDraftPreview,setCreatorScriptDraftPreview]=useState<CreatorScript|null>(null);
+  const finishEditorialResearchReview=(decision:CreatorEditorialReviewDecision|null)=>{
+    const resolve=editorialResearchResolver.current;editorialResearchResolver.current=null;
+    setEditorialResearchReview(null);resolve?.(decision);
+  };
+  const requestEditorialResearchReview=(review:CreatorBuildEditorialReview)=>{
+    editorialResearchResolver.current?.(null);setEditorialResearchReview(review);
+    return new Promise<CreatorEditorialReviewDecision|null>(resolve=>{editorialResearchResolver.current=resolve;});
+  };
   const [counterEvidenceReview, setCounterEvidenceReview] = useState<ReturnType<typeof createCounterEvidenceReview> | null>(null);
   const counterEvidenceReviewResolver = useRef<((decision: CounterEvidenceScopeDecision | null) => void) | null>(null);
   const finishCounterEvidenceReview = (decision: CounterEvidenceScopeDecision | null) => {
@@ -4422,26 +4782,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(
     defaultNarratorSettings
   );
-  // VELTO_VOICE_P1B — embedded provider voice discovery without manual IDs.
-  const [voiceLibraryTarget, setVoiceLibraryTarget] = useState<CreatorVoicePickerTarget | null>(null);
-  const [voiceLibraryTab, setVoiceLibraryTab] = useState<CreatorVoiceLibraryTab>("available");
-  const [voiceLibraryVoices, setVoiceLibraryVoices] = useState<CreatorVoiceLibraryVoice[]>([]);
-  const [voiceLibraryFavorites, setVoiceLibraryFavorites] = useState<CreatorVoiceLibrarySelection[]>([]);
-  const [voiceLibraryRecents, setVoiceLibraryRecents] = useState<CreatorVoiceLibrarySelection[]>([]);
-  const [voiceLibrarySearch, setVoiceLibrarySearch] = useState("");
-  const [voiceLibraryLanguage, setVoiceLibraryLanguage] = useState("");
-  const [voiceLibraryGender, setVoiceLibraryGender] = useState("");
-  const [voiceLibraryAge, setVoiceLibraryAge] = useState("");
-  const [voiceLibraryAccent, setVoiceLibraryAccent] = useState("");
-  const [voiceLibraryUseCase, setVoiceLibraryUseCase] = useState("");
-  const [voiceLibraryLoading, setVoiceLibraryLoading] = useState(false);
-  const [voiceLibraryApplyingId, setVoiceLibraryApplyingId] = useState("");
-  const [voiceLibraryPlayingId, setVoiceLibraryPlayingId] = useState("");
-  const [voiceLibraryError, setVoiceLibraryError] = useState("");
-  const [voiceLibraryHasMore, setVoiceLibraryHasMore] = useState(false);
-  const [voiceLibraryNextPageToken, setVoiceLibraryNextPageToken] = useState("");
-  const [voiceLibraryStorageReady, setVoiceLibraryStorageReady] = useState(false);
-
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatorBriefDraftTimerRef = useRef<NodeJS.Timeout | null>(null);
   const skipAutosaveRef = useRef(true);
@@ -4465,8 +4805,70 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return projectGenerationRef.current;
   };
 
+  // Receipts are issued only after React commits the actual parent state.
+  // Pending checks hold proposals, not an independently writable scene store.
+  const creatorExportDurationChecksRef = useRef(new Set<CreatorExportDurationCheck>());
+  const creatorExportDurationReceiptRef = useRef<CreatorExportDurationReceipt | null>(null);
+  const [creatorExportDurationCheckSequence, setCreatorExportDurationCheckSequence] = useState(0);
+  useLayoutEffect(() => {
+    const previous = creatorExportDurationReceiptRef.current;
+    const committed = previous && previous.projectId === currentProjectIdRef.current &&
+      previous.generation === projectGenerationRef.current && previous.scenes === scenes &&
+      previous.durations === creatorSceneVideoSourceDurations
+      ? previous
+      : Object.freeze({
+          projectId: currentProjectIdRef.current,
+          generation: projectGenerationRef.current,
+          scenes,
+          durations: creatorSceneVideoSourceDurations,
+        });
+    creatorExportDurationReceiptRef.current = committed;
+    const checks = [...creatorExportDurationChecksRef.current];
+    creatorExportDurationChecksRef.current.clear();
+    for (const check of checks) {
+      check.resolve(!isHydratingRef.current &&
+        ["hydrated_empty", "hydrated_populated"].includes(creatorSceneHydrationAuthorityRef.current) &&
+        check.projectId === committed.projectId && check.generation === committed.generation &&
+        check.scenes === committed.scenes && (!check.durations || check.durations === committed.durations)
+        ? committed : null);
+    }
+  }, [scenes, creatorSceneVideoSourceDurations, creatorExportDurationCheckSequence]);
+  useLayoutEffect(() => () => {
+    creatorExportDurationReceiptRef.current = null;
+    for (const check of creatorExportDurationChecksRef.current) check.resolve(null);
+    creatorExportDurationChecksRef.current.clear();
+  }, []);
+
+  const checkCreatorExportDurationCommit = (
+    origin: Pick<CreatorExportDurationReceipt, "projectId" | "generation">,
+    expectedScenes: Scene[],
+    expectedDurations?: CreatorExportDurationReceipt["durations"],
+  ) => new Promise<CreatorExportDurationReceipt | null>((resolve) => {
+    if (!creatorExportDurationReceiptRef.current || isHydratingRef.current ||
+      !["hydrated_empty", "hydrated_populated"].includes(creatorSceneHydrationAuthorityRef.current) ||
+      !isCreatorProjectOperationActive(origin, {
+      projectId: currentProjectIdRef.current,
+      generation: projectGenerationRef.current,
+    })) {
+      resolve(null);
+      return;
+    }
+    creatorExportDurationChecksRef.current.add(Object.freeze({
+      ...origin, scenes: expectedScenes, durations: expectedDurations, resolve,
+    }));
+    // This independent render request also settles rejected/no-op scene updaters.
+    setCreatorExportDurationCheckSequence((sequence) => sequence + 1);
+  });
+
+  const voiceLibrarySessionRef = useRef<CreatorVoiceLibrarySessionHandle | null>(null);
+  const voiceLibraryOperationRef = useRef<CreatorVoiceOperationBinding | null>(null);
+  const voiceLibraryOwnerSnapshotRef = useRef<{ scenes: Scene[]; characters: Character[] } | null>(null);
+  useLayoutEffect(() => {
+    voiceLibraryOwnerSnapshotRef.current = { scenes, characters };
+    return () => { voiceLibraryOwnerSnapshotRef.current = null; };
+  }, [scenes, characters]);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const voiceLibraryAudioRef = useRef<HTMLAudioElement | null>(null);
   const storyPlaybackTokenRef = useRef(0);
   const dialoguePlaybackTokenRef = useRef(0);
   const draftProjectKeyRef = useRef(`draft-${crypto.randomUUID()}`);
@@ -4475,67 +4877,6 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const delayedVideoPollKeysRef = useRef<Set<string>>(new Set());
   const locallyAwaitedVideoQueueJobsRef = useRef<CreatorVideoQueueReconciliationOwners>(new Map());
   const exportApiBase = process.env.NEXT_PUBLIC_EXPORT_API_URL || "";
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const favoriteValues = JSON.parse(
-        window.localStorage.getItem(CREATOR_VOICE_FAVORITES_STORAGE_KEY) || "[]",
-      );
-      const recentValues = JSON.parse(
-        window.localStorage.getItem(CREATOR_VOICE_RECENTS_STORAGE_KEY) || "[]",
-      );
-      setVoiceLibraryFavorites(
-        uniqueVoiceLibraryItems(
-          Array.isArray(favoriteValues)
-            ? favoriteValues
-                .map(normalizeVoiceLibrarySelection)
-                .filter((item): item is CreatorVoiceLibrarySelection => Boolean(item))
-            : [],
-          50,
-        ),
-      );
-      setVoiceLibraryRecents(
-        uniqueVoiceLibraryItems(
-          Array.isArray(recentValues)
-            ? recentValues
-                .map(normalizeVoiceLibrarySelection)
-                .filter((item): item is CreatorVoiceLibrarySelection => Boolean(item))
-            : [],
-          20,
-        ),
-      );
-    } catch (storageError) {
-      console.warn("Voice library preferences could not be restored.", storageError);
-    } finally {
-      setVoiceLibraryStorageReady(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!voiceLibraryStorageReady || typeof window === "undefined") return;
-    window.localStorage.setItem(
-      CREATOR_VOICE_FAVORITES_STORAGE_KEY,
-      JSON.stringify(voiceLibraryFavorites),
-    );
-  }, [voiceLibraryFavorites, voiceLibraryStorageReady]);
-
-  useEffect(() => {
-    if (!voiceLibraryStorageReady || typeof window === "undefined") return;
-    window.localStorage.setItem(
-      CREATOR_VOICE_RECENTS_STORAGE_KEY,
-      JSON.stringify(voiceLibraryRecents),
-    );
-  }, [voiceLibraryRecents, voiceLibraryStorageReady]);
-
-  useEffect(() => {
-    return () => {
-      if (voiceLibraryAudioRef.current) {
-        voiceLibraryAudioRef.current.pause();
-        voiceLibraryAudioRef.current = null;
-      }
-    };
-  }, []);
 
   const getCreatorVisualContinuitySnapshot = (): CreatorVisualContinuitySettings => ({
     projectMode: creatorProjectContinuityMode,
@@ -4934,7 +5275,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return previewScene?.image || "";
   };
 
-  const getProjectStatusLabel = (project: any) => {
+  const getProjectStatusLabel = (value: unknown) => {
+    const project = hasCreatorProjectCardDisplayValue(value) ? value : undefined;
     if (project?.exported_movie_url) {
       return uiLanguage === "en" ? "🎬 Ready" : "🎬 Hazır";
     }
@@ -4946,13 +5288,16 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     return uiLanguage === "en" ? "🧩 Draft" : "🧩 Taslak";
   };
 
-  const getCreatorProjectSnapshot = (project: any) => {
-    const projectScenes = Array.isArray(project?.scenes) ? project.scenes : [];
+  const getCreatorProjectSnapshot = (value: unknown) => {
+    const project = hasCreatorProjectCardDisplayValue(value) ? value : undefined;
+    const projectScenes: unknown[] = Array.isArray(project?.scenes) ? project.scenes : [];
     const totalScenes = projectScenes.length;
-    const visualReadyCount = projectScenes.filter((scene: any) =>
-      Boolean(scene?.image || (scene?.videoUrl && scene?.videoStatus === "done")),
-    ).length;
-    const voiceReadyCount = projectScenes.filter((scene: any) => {
+    const visualReadyCount = projectScenes.filter((value) => {
+      const scene = hasCreatorProjectCardDisplayValue(value) ? value : undefined;
+      return Boolean(scene?.image || (scene?.videoUrl && scene?.videoStatus === "done"));
+    }).length;
+    const voiceReadyCount = projectScenes.filter((value) => {
+      const scene = hasCreatorProjectCardDisplayValue(value) ? value : undefined;
       const narrationReady =
         !String(scene?.narration || "").trim() || Boolean(scene?.audioUrl);
       const dialogueReady =
@@ -4961,8 +5306,9 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
 
       return narrationReady && dialogueReady;
     }).length;
+    const movieResult = project?.exported_movie_result;
     const lifecycle = parseCreatorProjectLifecycleSnapshot(
-      project?.exported_movie_result?.projectLifecycle,
+      hasCreatorProjectCardDisplayValue(movieResult) ? movieResult.projectLifecycle : undefined,
     );
 
     if (lifecycle) {
@@ -5037,7 +5383,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     });
   };
 
-  const getProjectFlowLabel = (project: any) => {
+  const getProjectFlowLabel = (value: unknown) => {
+    const project = hasCreatorProjectCardDisplayValue(value) ? value : undefined;
     const projectFlowType = project?.flow_type || "storyverse";
 
     if (projectFlowType === "creator_lab") {
@@ -6305,8 +6652,7 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     );
   };
 
-  const getVoiceLibraryTargetSelection = () => {
-    if (!voiceLibraryTarget) return undefined;
+  const getVoiceLibraryTargetSelection = (voiceLibraryTarget: CreatorVoiceLibraryTarget) => {
     if (voiceLibraryTarget.scope === "project_narrator") {
       return normalizeVoiceLibrarySelection(narratorSettings.voiceSelection);
     }
@@ -6315,13 +6661,13 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     }
     if (voiceLibraryTarget.scope === "scene_narrator") {
       return normalizeVoiceLibrarySelection(
-        scenes.find((scene) => scene.id === voiceLibraryTarget.sceneId)
+        scenes.find((scene) => voiceLibraryTarget.creatorSceneId ? scene.creatorSceneId === voiceLibraryTarget.creatorSceneId : scene.id === voiceLibraryTarget.sceneId)
           ?.narratorVoiceSelection,
       );
     }
     if (voiceLibraryTarget.scope === "scene_dialogue") {
       return normalizeVoiceLibrarySelection(
-        scenes.find((scene) => scene.id === voiceLibraryTarget.sceneId)
+        scenes.find((scene) => voiceLibraryTarget.creatorSceneId ? scene.creatorSceneId === voiceLibraryTarget.creatorSceneId : scene.id === voiceLibraryTarget.sceneId)
           ?.dialogueVoiceSelection,
       );
     }
@@ -6331,380 +6677,110 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     );
   };
 
-  const getVoiceLibraryTargetLabel = () => {
-    if (!voiceLibraryTarget) return "";
-    const labels = {
-      project_narrator: uiLanguage === "en" ? "Project narrator" : "Proje anlatıcısı",
-      project_dialogue: uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi",
-      scene_narrator: uiLanguage === "en" ? "Scene narrator" : "Sahne anlatıcısı",
-      scene_dialogue: uiLanguage === "en" ? "Scene dialogue" : "Sahne diyaloğu",
-      character: uiLanguage === "en" ? "Character voice" : "Karakter sesi",
-    } as const;
-    return labels[voiceLibraryTarget.scope];
-  };
-
-  const getVoiceLibraryDisplayedVoices = () => {
-    const source =
-      voiceLibraryTab === "favorites"
-        ? voiceLibraryFavorites
-        : voiceLibraryTab === "recent"
-          ? voiceLibraryRecents
-          : voiceLibraryVoices;
-    const search = voiceLibrarySearch.trim().toLocaleLowerCase("en-US");
-    return source.filter((voice) => {
-      const haystack = [
-        voice.name,
-        voice.description,
-        voice.language,
-        voice.locale,
-        voice.accent,
-        voice.gender,
-        voice.age,
-        voice.useCase,
-        voice.descriptive,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase("en-US");
-      const matchesSearch = !search || haystack.includes(search);
-      const matchesLanguage =
-        !voiceLibraryLanguage ||
-        !voice.language ||
-        `${voice.language} ${voice.locale || ""}`
-          .toLocaleLowerCase("en-US")
-          .includes(voiceLibraryLanguage.toLocaleLowerCase("en-US"));
-      const matchesGender =
-        !voiceLibraryGender ||
-        !voice.gender ||
-        voice.gender.toLocaleLowerCase("en-US").includes(
-          voiceLibraryGender.toLocaleLowerCase("en-US"),
-        );
-      const matchesAge =
-        !voiceLibraryAge ||
-        !voice.age ||
-        voice.age.toLocaleLowerCase("en-US").includes(
-          voiceLibraryAge.toLocaleLowerCase("en-US"),
-        );
-      const matchesAccent =
-        !voiceLibraryAccent ||
-        !voice.accent ||
-        voice.accent.toLocaleLowerCase("en-US").includes(
-          voiceLibraryAccent.toLocaleLowerCase("en-US"),
-        );
-      const matchesUseCase =
-        !voiceLibraryUseCase ||
-        !voice.useCase ||
-        voice.useCase.toLocaleLowerCase("en-US").includes(
-          voiceLibraryUseCase.toLocaleLowerCase("en-US"),
-        );
-      return (
-        matchesSearch &&
-        matchesLanguage &&
-        matchesGender &&
-        matchesAge &&
-        matchesAccent &&
-        matchesUseCase
-      );
-    });
-  };
-
-  const loadCreatorVoiceLibrary = async (
-    source: CreatorVoiceLibrarySource,
-    append = false,
-    pageToken = "",
-    overrides?: { language?: string },
-  ) => {
-    setVoiceLibraryLoading(true);
-    setVoiceLibraryError("");
-    try {
-      const accessToken = await getAccessTokenOrThrow();
-      const params = new URLSearchParams({
-        source,
-        pageSize: "24",
-      });
-      if (voiceLibrarySearch.trim()) params.set("search", voiceLibrarySearch.trim());
-      const requestedLanguage = overrides?.language ?? voiceLibraryLanguage;
-      if (requestedLanguage.trim()) params.set("language", requestedLanguage.trim());
-      if (voiceLibraryGender.trim()) params.set("gender", voiceLibraryGender.trim());
-      if (voiceLibraryAge.trim()) params.set("age", voiceLibraryAge.trim());
-      if (voiceLibraryAccent.trim()) params.set("accent", voiceLibraryAccent.trim());
-      if (voiceLibraryUseCase.trim()) params.set("useCase", voiceLibraryUseCase.trim());
-      if (pageToken) params.set("pageToken", pageToken);
-
-      const response = await fetch(`/api/voice-library?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      });
-      const data = await response.json();
-      if (!response.ok || !data?.ok) {
-        throw new Error(data?.error || "Voice library could not be loaded.");
-      }
-      const incoming = Array.isArray(data.voices) ? data.voices : [];
-      setVoiceLibraryVoices((current) =>
-        uniqueVoiceLibraryItems(
-          append ? [...current, ...incoming] : incoming,
-          100,
-        ),
-      );
-      setVoiceLibraryHasMore(data.hasMore === true);
-      setVoiceLibraryNextPageToken(
-        typeof data.nextPageToken === "string" ? data.nextPageToken : "",
-      );
-    } catch (libraryError) {
-      setVoiceLibraryError(
-        libraryError instanceof Error
-          ? libraryError.message
-          : uiLanguage === "en"
-            ? "Voice library could not be loaded."
-            : "Ses kütüphanesi yüklenemedi.",
-      );
-    } finally {
-      setVoiceLibraryLoading(false);
-    }
-  };
-
   const openCreatorVoiceLibrary = (target: CreatorVoicePickerTarget) => {
-    setVoiceLibraryTarget(target);
-    setVoiceLibraryTab("available");
-    setVoiceLibrarySearch("");
-    setVoiceLibraryLanguage(language);
-    setVoiceLibraryGender("");
-    setVoiceLibraryAge("");
-    setVoiceLibraryAccent("");
-    setVoiceLibraryUseCase("");
-    setVoiceLibraryVoices([]);
-    setVoiceLibraryError("");
-    setVoiceLibraryHasMore(false);
-    setVoiceLibraryNextPageToken("");
-    window.setTimeout(() => {
-      void loadCreatorVoiceLibrary("available", false, "", { language });
-    }, 0);
+    const binding = captureCreatorVoiceOperation(target, {
+      projectId: currentProjectIdRef.current, generation: projectGenerationRef.current,
+    }, scenes, characters);
+    if (!binding) return;
+    voiceLibraryOperationRef.current = binding;
+    voiceLibrarySessionRef.current?.open(binding.target);
   };
 
-  const closeCreatorVoiceLibrary = () => {
-    if (voiceLibraryAudioRef.current) {
-      voiceLibraryAudioRef.current.pause();
-      voiceLibraryAudioRef.current = null;
-    }
-    setVoiceLibraryPlayingId("");
-    setVoiceLibraryTarget(null);
+  const dismissCreatorVoiceLibrary = (target: CreatorVoicePickerTarget) => {
+    if (voiceLibraryOperationRef.current?.target === target) voiceLibraryOperationRef.current = null;
   };
 
-  const previewCreatorVoice = (voice: CreatorVoiceLibraryVoice) => {
-    if (!voice.previewUrl) return;
-    if (voiceLibraryAudioRef.current) {
-      voiceLibraryAudioRef.current.pause();
-      voiceLibraryAudioRef.current = null;
+  const readCreatorVoiceCatalog = async (query: CreatorVoiceCatalogQuery, signal: AbortSignal): Promise<CreatorVoiceCatalogPage> => {
+    const accessToken = await getAccessTokenOrThrow();
+    signal.throwIfAborted();
+    const params = new URLSearchParams({ source: query.source, pageSize: "24" });
+    for (const [key, value] of Object.entries(query)) {
+      if (key !== "source" && value.trim()) params.set(key, value.trim());
     }
-    if (voiceLibraryPlayingId === voice.voiceId) {
-      setVoiceLibraryPlayingId("");
-      return;
-    }
-    const audio = new Audio(voice.previewUrl);
-    voiceLibraryAudioRef.current = audio;
-    setVoiceLibraryPlayingId(voice.voiceId);
-    audio.onended = () => {
-      setVoiceLibraryPlayingId("");
-      voiceLibraryAudioRef.current = null;
-    };
-    audio.onerror = () => {
-      setVoiceLibraryPlayingId("");
-      voiceLibraryAudioRef.current = null;
-      setVoiceLibraryError(
-        uiLanguage === "en"
-          ? "This voice preview could not be played."
-          : "Bu ses önizlemesi oynatılamadı.",
-      );
-    };
-    void audio.play();
+    const response = await fetch(`/api/voice-library?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal,
+    });
+    const data = await response.json();
+    if (!response.ok || !data?.ok) throw new Error(data?.error || "Voice library could not be loaded.");
+    return { voices: Array.isArray(data.voices) ? data.voices : [], hasMore: data.hasMore === true,
+      nextPageToken: typeof data.nextPageToken === "string" ? data.nextPageToken : "" };
   };
 
-  const toggleCreatorVoiceFavorite = (voice: CreatorVoiceLibraryVoice) => {
-    const exists = voiceLibraryFavorites.some((item) => item.voiceId === voice.voiceId);
-    setVoiceLibraryFavorites((current) =>
-      exists
-        ? current.filter((item) => item.voiceId !== voice.voiceId)
-        : uniqueVoiceLibraryItems([toVoiceLibrarySelection(voice), ...current], 50),
-    );
+  const isCreatorVoiceOperationCurrent = (binding: CreatorVoiceOperationBinding, currentScenes = voiceLibraryOwnerSnapshotRef.current?.scenes, currentCharacters = voiceLibraryOwnerSnapshotRef.current?.characters) =>
+    Boolean(currentScenes && currentCharacters && isCreatorVoiceOperationActive(binding, {
+      projectId: currentProjectIdRef.current, generation: projectGenerationRef.current,
+    }, currentScenes, currentCharacters));
+
+  // One guarded scene updater keeps audio invalidation and timing on the same admitted identity.
+  // No canonical state or media mutation capability is passed to the picker component.
+  const commitCreatorVoiceSelection = (binding: CreatorVoiceOperationBinding, selection?: CreatorVoiceLibrarySelection) => {
+    if (!isCreatorVoiceOperationCurrent(binding)) return false;
+    const target = binding.target;
+    if (target.scope === "project_narrator" || target.scope === "project_dialogue") {
+      setNarratorSettings(current => !isCreatorVoiceOperationCurrent(binding) ? current : target.scope === "project_narrator"
+        ? { ...current, voiceId: selection?.voiceId || "", voiceSelection: selection }
+        : { ...current, dialogueVoiceId: selection?.voiceId || "", dialogueVoiceSelection: selection });
+    } else if (target.scope === "character") {
+      const characterSelection = selection ? { ...selection, previewUrl: undefined, publicOwnerId: undefined } : undefined;
+      setCharacters(current => !isCreatorVoiceOperationCurrent(binding, undefined, current) ? current : current.map(character =>
+        character.id === target.characterId ? { ...character, voiceId: characterSelection?.voiceId || "", voiceSelection: characterSelection } : character));
+    }
+    setScenes(current => {
+      if (!isCreatorVoiceOperationCurrent(binding, current)) return current;
+      return current.map(scene => {
+        const selected = matchesCreatorVoiceOperationScene(binding, scene);
+        const narration = target.scope === "project_narrator" || (target.scope === "scene_narrator" && selected);
+        const dialogue = target.scope === "project_dialogue" || target.scope === "character" || (target.scope === "scene_dialogue" && selected);
+        return {
+          ...scene,
+          ...(target.scope === "scene_narrator" && selected ? { narratorVoiceSelection: selection } : {}),
+          ...(target.scope === "scene_dialogue" && selected ? { dialogueVoiceSelection: selection } : {}),
+          ...(narration ? { audioUrl: "", audioPath: "", audioSourceText: "", audioSettingsKey: "" } : {}),
+          ...(dialogue ? { dialogueAudioUrl: "", dialogueAudioPath: "", dialogueAudioSourceText: "", dialogueAudioSettingsKey: "" } : {}),
+          timing: buildSceneTimingForCurrentFlow(0, 0, scene),
+        };
+      });
+    });
+    return true;
   };
 
   const applyCreatorVoiceLibrarySelection = async (
-    selectedVoice: CreatorVoiceLibraryVoice,
-  ) => {
-    if (!voiceLibraryTarget) return;
-    setVoiceLibraryApplyingId(selectedVoice.voiceId);
-    setVoiceLibraryError("");
+    target: CreatorVoicePickerTarget, selectedVoice: CreatorVoiceLibraryVoice, isSessionActive: () => boolean,
+  ): Promise<CreatorVoiceApplyOutcome> => {
+    const binding = voiceLibraryOperationRef.current;
+    const current = () => Boolean(binding && voiceLibraryOperationRef.current === binding && binding.target === target && isSessionActive() && isCreatorVoiceOperationCurrent(binding));
+    if (!binding || !current()) return { status: "stale" };
     try {
       let voice = selectedVoice;
       if (voice.source === "shared") {
-        if (!voice.publicOwnerId) {
-          throw new Error(
-            uiLanguage === "en"
-              ? "This shared voice is missing its owner reference."
-              : "Bu paylaşılan sesin sahip referansı eksik.",
-          );
-        }
+        if (!voice.publicOwnerId) throw new Error(uiLanguage === "en" ? "This shared voice is missing its owner reference." : "Bu paylaşılan sesin sahip referansı eksik.");
         const accessToken = await getAccessTokenOrThrow();
+        if (!current()) return { status: "stale" };
         const response = await fetch("/api/voice-library", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            action: "add_shared",
-            publicOwnerId: voice.publicOwnerId,
-            voiceId: voice.voiceId,
-            name: voice.name,
-          }),
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ action: "add_shared", publicOwnerId: voice.publicOwnerId, voiceId: voice.voiceId, name: voice.name }),
         });
         const data = await response.json();
-        if (!response.ok || !data?.ok) {
-          throw new Error(data?.error || "Voice could not be added.");
-        }
+        if (!current()) return { status: "stale" };
+        if (!response.ok || !data?.ok) throw new Error(data?.error || "Voice could not be added.");
         voice = { ...voice, voiceId: data.voiceId || voice.voiceId };
       }
-
+      if (!current()) return { status: "stale" };
       const selection = toVoiceLibrarySelection(voice);
+      // No await between final admission and parent-owned mutations.
       stopDialoguePlayback();
       stopStoryPlayback();
-
-      if (voiceLibraryTarget.scope === "project_narrator") {
-        setNarratorSettings((current) => ({
-          ...current,
-          voiceId: selection.voiceId,
-          voiceSelection: selection,
-        }));
-        clearAllSceneAudioData();
-      } else if (voiceLibraryTarget.scope === "project_dialogue") {
-        setNarratorSettings((current) => ({
-          ...current,
-          dialogueVoiceId: selection.voiceId,
-          dialogueVoiceSelection: selection,
-        }));
-        clearAllSceneDialogueAudioData();
-      } else if (voiceLibraryTarget.scope === "scene_narrator") {
-        setScenes((currentScenes) =>
-          currentScenes.map((scene) =>
-            scene.id === voiceLibraryTarget.sceneId
-              ? {
-                  ...scene,
-                  narratorVoiceSelection: selection,
-                  audioUrl: "",
-                  audioPath: "",
-                  audioSourceText: "",
-                  audioSettingsKey: "",
-                  timing: buildSceneTimingForCurrentFlow(
-                    0,
-                    scene.timing?.dialogueDuration || 0,
-                    scene,
-                  ),
-                }
-              : scene,
-          ),
-        );
-      } else if (voiceLibraryTarget.scope === "scene_dialogue") {
-        setScenes((currentScenes) =>
-          currentScenes.map((scene) =>
-            scene.id === voiceLibraryTarget.sceneId
-              ? {
-                  ...scene,
-                  dialogueVoiceSelection: selection,
-                  dialogueAudioUrl: "",
-                  dialogueAudioPath: "",
-                  dialogueAudioSourceText: "",
-                  dialogueAudioSettingsKey: "",
-                  timing: buildSceneTimingForCurrentFlow(
-                    scene.timing?.narrationDuration || 0,
-                    0,
-                    scene,
-                  ),
-                }
-              : scene,
-          ),
-        );
-      } else {
-        const characterSelection: CreatorVoiceLibrarySelection = {
-          ...selection,
-          previewUrl: undefined,
-          publicOwnerId: undefined,
-        };
-        setCharacters((current) =>
-          current.map((character) =>
-            character.id === voiceLibraryTarget.characterId
-              ? {
-                  ...character,
-                  voiceId: characterSelection.voiceId,
-                  voiceSelection: characterSelection,
-                }
-              : character,
-          ),
-        );
-        clearAllSceneDialogueAudioData();
-      }
-
-      clearAllSceneTimingData();
-      setVoiceLibraryRecents((current) =>
-        uniqueVoiceLibraryItems([selection, ...current], 20),
-      );
-      closeCreatorVoiceLibrary();
-    } catch (selectionError) {
-      setVoiceLibraryError(
-        selectionError instanceof Error
-          ? selectionError.message
-          : uiLanguage === "en"
-            ? "Voice could not be selected."
-            : "Ses seçilemedi.",
-      );
-    } finally {
-      setVoiceLibraryApplyingId("");
+      if (!commitCreatorVoiceSelection(binding, selection)) return { status: "stale" };
+      return { status: "applied", selection };
+    } catch (error) {
+      if (!current()) return { status: "stale" };
+      return { status: "error", message: error instanceof Error ? error.message : uiLanguage === "en" ? "Voice could not be selected." : "Ses seçilemedi." };
     }
   };
 
-  const clearCreatorVoiceLibrarySelection = () => {
-    if (!voiceLibraryTarget) return;
-    if (voiceLibraryTarget.scope === "project_narrator") {
-      setNarratorSettings((current) => ({
-        ...current,
-        voiceId: "",
-        voiceSelection: undefined,
-      }));
-      clearAllSceneAudioData();
-    } else if (voiceLibraryTarget.scope === "project_dialogue") {
-      setNarratorSettings((current) => ({
-        ...current,
-        dialogueVoiceId: "",
-        dialogueVoiceSelection: undefined,
-      }));
-      clearAllSceneDialogueAudioData();
-    } else if (voiceLibraryTarget.scope === "scene_narrator") {
-      setScenes((current) =>
-        current.map((scene) =>
-          scene.id === voiceLibraryTarget.sceneId
-            ? { ...scene, narratorVoiceSelection: undefined, audioUrl: "", audioPath: "", audioSourceText: "", audioSettingsKey: "" }
-            : scene,
-        ),
-      );
-    } else if (voiceLibraryTarget.scope === "scene_dialogue") {
-      setScenes((current) =>
-        current.map((scene) =>
-          scene.id === voiceLibraryTarget.sceneId
-            ? { ...scene, dialogueVoiceSelection: undefined, dialogueAudioUrl: "", dialogueAudioPath: "", dialogueAudioSourceText: "", dialogueAudioSettingsKey: "" }
-            : scene,
-        ),
-      );
-    } else {
-      setCharacters((current) =>
-        current.map((character) =>
-          character.id === voiceLibraryTarget.characterId
-            ? { ...character, voiceId: "", voiceSelection: undefined }
-            : character,
-        ),
-      );
-      clearAllSceneDialogueAudioData();
-    }
-    clearAllSceneTimingData();
-    closeCreatorVoiceLibrary();
+  const clearCreatorVoiceLibrarySelection = (target: CreatorVoicePickerTarget) => {
+    const binding = voiceLibraryOperationRef.current;
+    return Boolean(binding && binding.target === target && commitCreatorVoiceSelection(binding));
   };
 
   const getCreatorVoiceCreditEstimate = (targetScenes: Scene[]) => {
@@ -11468,9 +11544,45 @@ const generateSceneImage = async (
   };
 
   const handleExportMovie = async (forceRebuild = false) => {
-    const exportOrigin = { projectId: currentProjectIdRef.current, generation: projectGenerationRef.current };
+    const exportOrigin = Object.freeze({ projectId: currentProjectIdRef.current, generation: projectGenerationRef.current });
+    const exportSessionIsCurrent = () => isCreatorProjectOperationActive(exportOrigin, {
+      projectId: currentProjectIdRef.current,
+      generation: projectGenerationRef.current,
+    }) && !isHydratingRef.current &&
+      ["hydrated_empty", "hydrated_populated"].includes(creatorSceneHydrationAuthorityRef.current);
     let exportAuthorityScenes = scenes;
     if (isCreatorLabFlow) {
+      const durationSourceScenes = exportAuthorityScenes;
+      const captureDurationSources = (sourceScenes: Scene[]) => Object.freeze({
+        scenes: sourceScenes,
+        sources: Object.freeze(sourceScenes.map((scene) => Object.freeze({
+          scene,
+          id: scene.id,
+          creatorSceneId: scene.creatorSceneId,
+          videoUrl: scene.videoUrl,
+          videoStatus: scene.videoStatus,
+          clipInSec: scene.clipInSec,
+          clipOutSec: scene.clipOutSec,
+          videoDurationSeconds: scene.videoDurationSeconds,
+        }))),
+      });
+      const durationSources = captureDurationSources(durationSourceScenes);
+      const durationSourcesAreCurrent = (currentScenes: Scene[], snapshot = durationSources) =>
+        currentScenes === snapshot.scenes && currentScenes.length === snapshot.sources.length &&
+        snapshot.sources.every((source, index) => {
+          const current = currentScenes[index];
+          return current === source.scene && current.id === source.id &&
+            current.creatorSceneId === source.creatorSceneId && current.videoUrl === source.videoUrl &&
+            current.videoStatus === source.videoStatus && Object.is(current.clipInSec, source.clipInSec) &&
+            Object.is(current.clipOutSec, source.clipOutSec) &&
+            Object.is(current.videoDurationSeconds, source.videoDurationSeconds);
+        });
+      const receiptIsCurrent = (
+        receipt: CreatorExportDurationReceipt | null,
+        snapshot: ReturnType<typeof captureDurationSources>,
+        durations?: CreatorExportDurationReceipt["durations"],
+      ) => !!receipt && receipt === creatorExportDurationReceiptRef.current && exportSessionIsCurrent() &&
+        durationSourcesAreCurrent(receipt.scenes, snapshot) && (!durations || receipt.durations === durations);
       const observedSources = { ...creatorSceneVideoSourceDurations };
       const observations = await Promise.all(exportAuthorityScenes.map(async (scene) => {
         const creatorSceneId = scene.creatorSceneId?.trim() || "";
@@ -11486,6 +11598,7 @@ const generateSceneImage = async (
         const observation = await observeCreatorVideoSourceDuration(videoUrl);
         return observation ? { creatorSceneId, observation } : null;
       }));
+      if (!exportSessionIsCurrent()) return;
       for (const result of observations) {
         if (result) observedSources[result.creatorSceneId] = result.observation;
       }
@@ -11493,16 +11606,28 @@ const generateSceneImage = async (
         scenes: exportAuthorityScenes,
         observedSources,
       });
+      const sourceReceipt = await checkCreatorExportDurationCommit(exportOrigin, durationSourceScenes);
+      if (!receiptIsCurrent(sourceReceipt, durationSources)) return;
       if (reconciliation.changed) {
-        exportAuthorityScenes = reconciliation.scenes;
-        setScenes(exportAuthorityScenes);
-        setCreatorSceneVideoSourceDurations(observedSources);
+        const reconciledScenes = reconciliation.scenes;
+        const reconciledSources = captureDurationSources(reconciledScenes);
+        setScenes((current) => exportSessionIsCurrent() && durationSourcesAreCurrent(current) ? reconciledScenes : current);
+        const sceneReceipt = await checkCreatorExportDurationCommit(exportOrigin, reconciledScenes);
+        if (!sceneReceipt || !receiptIsCurrent(sceneReceipt, reconciledSources)) return;
+        exportAuthorityScenes = sceneReceipt.scenes;
+        setCreatorSceneVideoSourceDurations((current) => receiptIsCurrent(sceneReceipt, reconciledSources) ? observedSources : current);
+        const saveReceipt = await checkCreatorExportDurationCommit(exportOrigin, exportAuthorityScenes, observedSources);
+        if (!receiptIsCurrent(saveReceipt, reconciledSources, observedSources)) return;
         try {
           await persistProject(false, {
             sourceScenes: exportAuthorityScenes,
             persistScenes: true,
           });
+          const settledReceipt = await checkCreatorExportDurationCommit(exportOrigin, exportAuthorityScenes, observedSources);
+          if (!receiptIsCurrent(settledReceipt, reconciledSources, observedSources)) return;
         } catch (saveError) {
+          const failedReceipt = await checkCreatorExportDurationCommit(exportOrigin, exportAuthorityScenes, observedSources);
+          if (!receiptIsCurrent(failedReceipt, reconciledSources, observedSources)) return;
           setSaveMessage("");
           setError(uiLanguage === "en"
             ? "The current video duration could not be saved. Export was not started."
@@ -12649,6 +12774,11 @@ const generateSceneImage = async (
     if (effectiveProjectId && data.project.id !== effectiveProjectId) {
       throw new CreatorProjectSaveError({ code: "PROJECT_SAVE_RESPONSE_IDENTITY_INVALID", status: res.status });
     }
+    if (!isCreatorProjectSaveBindingActive(requestBinding, {
+      projectId: currentProjectIdRef.current,
+      generation: projectGenerationRef.current,
+    })) return;
+
     if (!lifecycleOverrides.forceNewProject && data?.project?.id) {
       const advancedRevision = resolveCreatorProjectRevisionAdvance({
         responseProjectId: String(data.project.id || ""),
@@ -14741,8 +14871,8 @@ const generateSceneImage = async (
   };
 
   const creatorStrategyFingerprint = useMemo(
-    () => createCreatorStrategyFingerprint({
-      topic: normalizeCreatorTopicAuthority(input),
+    () => createCreatorStrategyBindingFingerprint({
+      topic: input,
       selectedDirectionId: creatorSelectedStrategyDirectionId,
       selectedHook: creatorSelectedHookPattern,
       language,
@@ -14752,13 +14882,7 @@ const generateSceneImage = async (
       format: creatorFormat,
       targetDurationSec: creatorVideoDurationSec,
       creatorProfile: creatorStrategyProfileSnapshot || creatorProfile,
-      mentorResult: creatorMentorResult ? {
-        audienceInsight: creatorMentorResult.audienceInsight,
-        hookPatterns: creatorMentorResult.hookPatterns,
-        videoIdeas: creatorMentorResult.videoIdeas,
-        recommendedIdea: creatorMentorResult.recommendedIdea,
-        productionPlan: creatorMentorResult.productionPlan,
-      } : null,
+      mentorResult: creatorMentorResult,
     }),
     [
       input,
@@ -14778,7 +14902,11 @@ const generateSceneImage = async (
   const counterReviewStrategyRef = useRef(creatorStrategyFingerprint);
   useEffect(() => {
     counterReviewStrategyRef.current = creatorStrategyFingerprint;
+    setCreatorScriptDraftPreview(null);
     return () => {
+      editorialResearchResolver.current?.(null);
+      editorialResearchResolver.current=null;
+      setEditorialResearchReview(null);
       counterEvidenceReviewResolver.current?.(null);
       counterEvidenceReviewResolver.current = null;
       setCounterEvidenceReview(null);
@@ -15402,7 +15530,7 @@ const generateSceneImage = async (
           hook: creatorSelectedHookPattern,
         },
       };
-      const strategyAuthorityPersisted = await persistCreatorStrategyAuthority({
+      const strategyAuthorityPersisted = creatorScriptBuildV2ClientEnabled() ? true : await persistCreatorStrategyAuthority({
         persist: async () => { await persistProject(false, { creatorMentorResult: persistedStrategyResult }); },
         advanceAuthority: () => {
           const advancedOrigin = advanceCreatorProjectOperationOrigin(operationOrigin, {
@@ -15424,6 +15552,10 @@ const generateSceneImage = async (
           accessToken,
           projectId: operationOrigin.projectId,
           expectedProjectUpdatedAt: projectUpdatedAtRef.current,
+          strategyFingerprint:creatorStrategyFingerprint,
+          draftOnly:true,
+          onEditorialReview:requestEditorialResearchReview,
+          operationIsCurrent:()=>operationIsActive() && creatorStrategyFingerprint===counterReviewStrategyRef.current,
           onProgress: (projection) => {
             if (!operationIsActive()) return;
             setSaveMessage(
@@ -15436,6 +15568,11 @@ const generateSceneImage = async (
         });
         if (!operationIsActive()) return;
 
+        if(v2Result.state==="ACCEPTED" && v2Result.disposition==="DRAFT_READY" && v2Result.creatorScript){
+          setCreatorScriptDraftPreview(normalizeCreatorScript(v2Result.creatorScript));
+          setSaveMessage(uiLanguage==="en"?"Script draft ready. Your existing project is unchanged.":"Metin taslağı hazır. Mevcut projen değişmedi.");
+          return;
+        }
         if (
           v2Result.state !== "PERSISTED" ||
           !v2Result.creatorScript ||
@@ -15965,12 +16102,18 @@ const generateSceneImage = async (
   const handleRefineCreatorScript = async (refinement: { scope: "selection" | "opening" | "whole_script"; mode: "focused_edit" | "editorial_rewrite" | "research_backed_rewrite"; instruction: string; selectionStart?: number; selectionEnd?: number; selectedText?: string }) => {
     const sourceScript = creatorScriptRef.current;
     if (!sourceScript) return false;
-    const sourceDocument = getCreatorScriptDocumentText(sourceScript);
+    const origin = Object.freeze({ projectId: currentProjectIdRef.current || currentProjectId, generation: projectGenerationRef.current });
+    const operationIsActive = () => isCreatorProjectOperationActive(origin, {
+      projectId: currentProjectIdRef.current || currentProjectId,
+      generation: projectGenerationRef.current,
+    }) && creatorScriptRef.current?.revision === sourceScript.revision;
     const accessToken = await getAccessTokenOrThrow();
-    const response = await fetch("/api/creator-script/refine", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: currentProjectIdRef.current || currentProjectId, revision: sourceScript.revision, ...refinement }) });
+    if (!operationIsActive()) return false;
+    const response = await fetch("/api/creator-script/refine", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ projectId: origin.projectId, revision: sourceScript.revision, ...refinement }) });
     const data = await response.json().catch(() => null);
+    if (!operationIsActive()) return false;
     if (!response.ok || !data?.pendingRefinement) { setError(data?.error || "Script refinement could not be completed safely."); return false; }
-    setCreatorScriptPendingRefinement(data.pendingRefinement);
+    setCreatorScriptPendingRefinement(current => operationIsActive() ? data.pendingRefinement : current);
     if (typeof data.project?.updated_at === "string") projectUpdatedAtRef.current = data.project.updated_at;
     setError(""); setSaveMessage(uiLanguage === "en" ? "Refinement preview ready." : "İyileştirme önizlemesi hazır.");
     return true;
@@ -20410,548 +20553,83 @@ const generateSceneImage = async (
     window.setTimeout(() => scrollCreatorWorkspaceTo(targetId), 40);
   };
 
-  const creatorBriefSignalCount = [
-    Boolean(input.trim()),
-    Boolean(language),
-    Boolean(creatorFormat),
-    creatorVideoDurationSec > 0,
-    Boolean(creatorQualityMode),
-    creatorTargetPlatforms.length > 0,
-  ].filter(Boolean).length;
-  const creatorBriefSignalPercent = Math.round((creatorBriefSignalCount / 6) * 100);
-  const creatorVisualProgressPercent = scenes.length > 0
-    ? Math.round((visualAssetReadyCount / scenes.length) * 100)
-    : 0;
-  const creatorVoiceProgressPercent = scenes.length > 0
-    ? Math.round((audioReadyCount / scenes.length) * 100)
-    : 0;
-  const creatorProductionProgressPercent = scenes.length > 0
-    ? Math.round((creatorVisualProgressPercent + creatorVoiceProgressPercent) / 2)
-    : 0;
-  const creatorStrategySignalCount = [
-    Boolean(creatorMentorResult),
-    Boolean(youtubePatternSummary),
-    Boolean(creatorIntelligenceReport),
-    Boolean(creatorProductionPackage),
-  ].filter(Boolean).length;
-  const creatorStrategyProgressPercent = Math.round((creatorStrategySignalCount / 4) * 100);
-  const creatorPublishVideoUrl =
-    exportMovieResult?.downloadUrl || exportMovieResult?.movieUrl || exportedMovieUrl;
-  const creatorPublishThumbnailUrl = youtubeThumbnailResult?.imageUrl || "";
-  const creatorPublishTitle =
-    youtubeMetadataResult?.recommendedTitle ||
-    creatorProductionPackage?.youtubeTitle ||
-    creatorProductionPackage?.title ||
-    title ||
-    input;
-  const creatorPublishDescription =
-    youtubeMetadataResult?.description || creatorProductionPackage?.caption || "";
-  const creatorPublishHook =
-    youtubeMetadataResult?.hookAlternatives?.[0] ||
-    creatorProductionPackage?.hook ||
-    creatorIntelligenceReport?.recommendedOpening ||
-    "";
-  const creatorPublishCaptionReady = scenes.some(
-    (scene) => Boolean(scene.narration?.trim() || scene.dialogue?.trim()),
-  );
-  const creatorPublishRatioLabel = creatorFormat === "youtube_video" ? "16:9" : "9:16";
-  const creatorPublishSystemChecks = [
-    {
-      key: "finalVideo",
-      label: uiLanguage === "en" ? "Final video is current" : "Final video güncel",
-      attentionLabel: creatorServerPublishReadiness.status === "music_attention"
-        ? uiLanguage === "en" ? "Music needs attention" : "Müzik kontrol edilmeli"
-        : creatorHasFinalVideo
-          ? uiLanguage === "en" ? "Rebuild final video" : "Final videoyu yeniden oluştur"
-          : uiLanguage === "en" ? "Create final video" : "Final videoyu oluştur",
-      detail: uiLanguage === "en" ? "The final render matches the current production." : "Final render mevcut üretimle eşleşiyor.",
-      ready: creatorServerPublishReadiness.ready,
-    },
-    {
-      key: "thumbnail",
-      label: uiLanguage === "en" ? "Thumbnail selected" : "Thumbnail seçildi",
-      attentionLabel: uiLanguage === "en" ? "Select thumbnail" : "Thumbnail seç",
-      detail: uiLanguage === "en" ? "A clean source image and overlay design are defined." : "Temiz kaynak görsel ve yazı katmanı tanımlandı.",
-      ready: Boolean(creatorPublishThumbnailUrl),
-    },
-    {
-      key: "captions",
-      label: uiLanguage === "en" ? "Captions can be generated" : "Altyazılar üretilebilir",
-      attentionLabel: uiLanguage === "en" ? "Prepare captions" : "Altyazıları hazırla",
-      detail: uiLanguage === "en" ? "Narration or dialogue is available for SRT/VTT." : "SRT/VTT için anlatım veya diyalog mevcut.",
-      ready: creatorPublishCaptionReady,
-    },
-    {
-      key: "metadata",
-      label: uiLanguage === "en" ? "Publishing copy prepared" : "Yayın metinleri hazır",
-      attentionLabel: uiLanguage === "en" ? "Prepare publishing copy" : "Yayın metinlerini hazırla",
-      detail: uiLanguage === "en" ? "Title, description and channel copy are ready." : "Başlık, açıklama ve kanal metinleri hazır.",
-      ready: Boolean(youtubeMetadataResult),
-    },
-    {
-      key: "ratio",
-      label: uiLanguage === "en" ? `${creatorPublishRatioLabel} output preset` : `${creatorPublishRatioLabel} çıktı oranı`,
-      attentionLabel: uiLanguage === "en" ? `Prepare ${creatorPublishRatioLabel} output` : `${creatorPublishRatioLabel} çıktıyı hazırla`,
-      detail: uiLanguage === "en" ? "The export format matches the selected primary format." : "Export formatı seçilen ana formatla uyumlu.",
-      ready: Boolean(creatorPublishVideoUrl && creatorFormat),
-    },
-  ];
-  const creatorPublishSystemReady = creatorPublishSystemChecks.every((item) => item.ready);
-  const creatorReleaseConfirmationItems: Array<{
-    key: CreatorReleaseConfirmationKey;
-    label: string;
-    attentionLabel: string;
-    detail: string;
-  }> = [
-    {
-      key: "videoReviewed",
-      label: uiLanguage === "en" ? "I reviewed the final video" : "Final videoyu kontrol ettim",
-      attentionLabel: uiLanguage === "en" ? "Review final video" : "Final videoyu kontrol et",
-      detail: uiLanguage === "en" ? "Playback, timing and visible output were checked." : "Oynatma, zamanlama ve görünen çıktı kontrol edildi.",
-    },
-    {
-      key: "claimsVerified",
-      label: uiLanguage === "en" ? "Claims and facts are verified" : "İddia ve bilgiler doğrulandı",
-      attentionLabel: uiLanguage === "en" ? "Verify claims and facts" : "İddia ve bilgileri doğrula",
-      detail: uiLanguage === "en" ? "Names, figures, quotations and assertions were reviewed." : "İsimler, rakamlar, alıntılar ve iddialar gözden geçirildi.",
-    },
-    {
-      key: "rightsConfirmed",
-      label: uiLanguage === "en" ? "Usage rights are confirmed" : "Kullanım hakları doğrulandı",
-      attentionLabel: uiLanguage === "en" ? "Confirm usage rights" : "Kullanım haklarını doğrula",
-      detail: uiLanguage === "en" ? "Visual, audio, brand and reference permissions are valid." : "Görsel, ses, marka ve referans izinleri geçerli.",
-    },
-    {
-      key: "thumbnailApproved",
-      label: uiLanguage === "en" ? "Thumbnail is approved" : "Thumbnail onaylandı",
-      attentionLabel: uiLanguage === "en" ? "Approve thumbnail" : "Thumbnail'ı onayla",
-      detail: uiLanguage === "en" ? "Crop, text, safe zone and readability were reviewed." : "Kadraj, metin, güvenli alan ve okunabilirlik kontrol edildi.",
-    },
-  ];
-  const creatorReleaseConfirmed = creatorReleaseConfirmationItems.every(
-    (item) => creatorReleaseConfirmations[item.key],
-  );
-  const creatorReleaseReady = creatorPublishSystemReady && creatorReleaseConfirmed;
-  const creatorPublishPreflight = createCreatorPublishPreflight({
-    contentReady: Boolean(creatorProductionPackage && creatorPublishCaptionReady),
-    visualsReady: creatorProjectReadiness?.visuals === "ready",
-    voiceReady: creatorProjectReadiness?.voiceOver === "ready",
-    evidenceVerified: creatorReleaseConfirmations.claimsVerified,
-    rightsConfirmed: creatorReleaseConfirmations.rightsConfirmed,
-    outputReady: Boolean(
-      creatorServerPublishReadiness.ready &&
-        creatorPublishSystemChecks.find((item) => item.key === "ratio")?.ready,
-    ),
+  const {
+    creatorPublishVideoUrl,
+    creatorPublishThumbnailUrl,
+    creatorPublishTitle,
+    creatorPublishDescription,
+    creatorPublishHook,
+    creatorPublishSystemChecks,
+    creatorReleaseConfirmationItems,
+    creatorReleaseReady,
+    creatorPublishPreflight,
+    creatorPublishPreflightLabels,
+    creatorPublishPreflightStatusLabels,
+    creatorPublishIsOutdated,
+    creatorPublishAttentionItems,
+    creatorPublishReadinessState,
+    creatorPublishChecklistCount,
+    creatorPackageReady,
+    creatorPublishAssetCount,
+    getCreatorPlatformLabel,
+    getCreatorPlatformCopy,
+    creatorPublishPackageItems,
+    creatorProjectPerformanceReport,
+    creatorWorkspaceStageProgress,
+    creatorWorkspaceStageStatus,
+    creatorDirectorAttentionCount,
+  } = deriveWorkspaceOverview({
+    audioReadyCount,
+    creatorFinalProductionGate,
+    creatorFinalVideoReadinessMessage,
+    creatorFormat,
+    creatorHasFinalVideo,
+    creatorIntelligenceReport,
+    creatorMentorAudienceInsights,
+    creatorMentorLoading,
+    creatorMentorResult,
+    creatorPerformanceHistory,
+    creatorProductionComplete,
+    creatorProductionPackage,
+    creatorProfile,
+    creatorProjectLifecycle,
+    creatorProjectReadiness,
+    creatorPublishComplete,
+    creatorQualityMode,
+    creatorRawProjectTitle,
+    creatorReleaseConfirmations,
+    creatorSelectedStrategyDirection,
+    creatorSelectedStrategyHook,
+    creatorServerPublishReadiness,
+    creatorTargetPlatforms,
+    creatorTimelineMediaGate,
+    creatorTimelineNeedsAttention,
+    creatorVideoDurationSec,
+    creatorVisualsComplete,
+    creatorVoiceOverComplete,
+    creatorWorkspaceStep,
+    exportFlowValidation,
+    exportMovieResult,
+    exportedMovieUrl,
+    flowContinuityAudit,
+    freezeNeededCount,
+    getCreatorDurationLabel,
+    getCreatorQualityCreditTier,
+    getCreatorQualityModeLabel,
+    getProjectKey,
+    input,
+    isCreatorLabFlow,
+    language,
+    readyExportCount,
+    scenes,
+    title,
+    uiLanguage,
+    visualAssetReadyCount,
+    youtubeMetadataResult,
+    youtubePatternSummary,
+    youtubeResearchVideos,
+    youtubeThumbnailResult,
   });
-  const creatorPublishPreflightLabels = {
-    content: uiLanguage === "en" ? "Content" : "İçerik",
-    visuals: uiLanguage === "en" ? "Visuals" : "Görseller",
-    voice: uiLanguage === "en" ? "Voice" : "Ses",
-    evidence: uiLanguage === "en" ? "Evidence" : "Kanıt",
-    rights: uiLanguage === "en" ? "Rights" : "Haklar",
-    output: uiLanguage === "en" ? "Output" : "Çıktı",
-  } as const;
-  const creatorPublishPreflightStatusLabels = {
-    ready: uiLanguage === "en" ? "Ready" : "Hazır",
-    review: uiLanguage === "en" ? "Review" : "Kontrol et",
-    action_required: uiLanguage === "en" ? "Action required" : "İşlem gerekli",
-    blocked: uiLanguage === "en" ? "Blocked" : "Engellendi",
-  } as const;
-  const creatorPublishIsOutdated = creatorServerPublishReadiness.status === "production_changed";
-  const creatorPublishAttentionItems = [
-    ...creatorPublishSystemChecks
-      .filter((item) => !item.ready)
-      .map((item) => ({ key: `system-${item.key}`, label: item.attentionLabel })),
-    ...creatorReleaseConfirmationItems
-      .filter((item) => !creatorReleaseConfirmations[item.key])
-      .map((item) => ({ key: `confirmation-${item.key}`, label: item.attentionLabel })),
-  ];
-  const creatorPublishReadinessState = creatorPublishIsOutdated
-    ? "outdated"
-    : creatorReleaseReady
-      ? "ready"
-      : "needs-attention";
-  const creatorPublishChecklistCount =
-    creatorPublishSystemChecks.filter((item) => item.ready).length +
-    creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length;
-  const creatorPublishProgressPercent = creatorPublishComplete
-    ? 100
-    : Math.round(
-        (creatorPublishChecklistCount /
-          (creatorPublishSystemChecks.length + creatorReleaseConfirmationItems.length)) *
-          100,
-      );
-  const creatorPackageReady = Boolean(creatorProductionPackage && creatorReleaseReady);
-  const creatorPublishAssetCount = [
-    creatorServerPublishReadiness.ready,
-    Boolean(creatorPublishThumbnailUrl),
-    Boolean(youtubeMetadataResult),
-  ].filter(Boolean).length;
-  const getCreatorPlatformLabel = (platform: CreatorPublishPlatform) =>
-    CREATOR_PLATFORM_PRESETS[platform].label[uiLanguage];
-  const getCreatorPlatformCopy = (platform: CreatorPublishPlatform) => {
-    if (platform === "youtube") {
-      return youtubeMetadataResult?.firstComment || creatorProductionPackage?.caption || "";
-    }
-    if (platform === "linkedin") {
-      return youtubeMetadataResult?.linkedInCaption || "";
-    }
-
-    const shortCaption = youtubeMetadataResult?.shortCaption || "";
-    const hashtags = (youtubeMetadataResult?.hashtags || []).join(" ");
-    if (platform === "instagram_reels") {
-      return [shortCaption, hashtags].filter(Boolean).join("\n\n");
-    }
-    if (platform === "tiktok") {
-      return [creatorPublishHook || shortCaption, (youtubeMetadataResult?.hashtags || []).slice(0, 5).join(" ")]
-        .filter(Boolean)
-        .join("\n\n");
-    }
-    return shortCaption;
-  };
-
-  const creatorPublishPackageItems = [
-    {
-      name: uiLanguage === "en" ? "Final video file" : "Final video dosyası",
-      file: "final-video.mp4 / .webm",
-      ready: creatorServerPublishReadiness.ready,
-    },
-    {
-      name: "Thumbnail",
-      file: "thumbnail.png / .jpg / .webp",
-      ready: Boolean(creatorPublishThumbnailUrl),
-    },
-    {
-      name: uiLanguage === "en" ? "Captions" : "Altyazılar",
-      file: "captions.srt + captions.vtt",
-      ready: creatorPublishCaptionReady,
-    },
-    {
-      name: uiLanguage === "en" ? "Publishing copy" : "Yayın metinleri",
-      file: "title, description, hashtags, chapters",
-      ready: Boolean(youtubeMetadataResult),
-    },
-    {
-      name: uiLanguage === "en" ? "Project performance report" : "Proje performans raporu",
-      file: "project-performance-report.html + .json",
-      ready: Boolean(creatorProductionPackage && scenes.length),
-    },
-    {
-      name: uiLanguage === "en" ? "Editable project data" : "Düzenlenebilir proje verisi",
-      file: "production package + scenes + metadata",
-      ready: Boolean(creatorProductionPackage && scenes.length),
-    },
-  ];
-  const creatorProjectPerformanceReport = isCreatorLabFlow
-    ? createCreatorProjectPerformanceReport({
-        locale: uiLanguage === "en" ? "en" : "tr",
-        title: creatorRawProjectTitle,
-        projectId: getProjectKey(),
-        qualityMode: creatorQualityMode,
-        format: creatorFormat,
-        targetPlatforms: creatorTargetPlatforms,
-        scenes,
-        lifecycle: creatorProjectLifecycle,
-        lifecycleHistory: creatorPerformanceHistory,
-        timelineApproved: creatorTimelineMediaGate.approved,
-        continuity: flowContinuityAudit,
-        finalGate: creatorFinalProductionGate,
-        publish: {
-          finalVideoReady: creatorServerPublishReadiness.ready,
-          thumbnailReady: Boolean(creatorPublishThumbnailUrl),
-          metadataReady: Boolean(youtubeMetadataResult),
-          captionsReady: creatorPublishCaptionReady,
-          systemChecksReady: creatorPublishSystemChecks.filter(
-            (item) => item.ready,
-          ).length,
-          systemChecksTotal: creatorPublishSystemChecks.length,
-          confirmationsReady: creatorReleaseConfirmationItems.filter(
-            (item) => creatorReleaseConfirmations[item.key],
-          ).length,
-          confirmationsTotal: creatorReleaseConfirmationItems.length,
-          packageDownloaded: creatorPublishComplete,
-        },
-        intelligence: creatorIntelligenceReport,
-      })
-    : null;
-
-  const creatorWorkspaceStageProgress = creatorWorkspaceStep === 1
-    ? creatorBriefSignalPercent
-    : creatorWorkspaceStep === 2
-      ? creatorStrategyProgressPercent
-      : creatorWorkspaceStep === 3
-        ? creatorProductionProgressPercent
-        : creatorPublishProgressPercent;
-
-  const creatorWorkspaceStageStatus = creatorWorkspaceStep === 1
-    ? input.trim()
-      ? uiLanguage === "en" ? "Ready to analyze" : "Analize hazır"
-      : uiLanguage === "en" ? "Topic required" : "Konu gerekli"
-    : creatorWorkspaceStep === 2
-      ? creatorProductionPackage
-        ? uiLanguage === "en" ? "Plan created" : "Plan oluşturuldu"
-        : uiLanguage === "en" ? "Direction review" : "Yön değerlendirmesi"
-      : creatorWorkspaceStep === 3
-        ? creatorTimelineNeedsAttention
-          ? uiLanguage === "en" ? "Action required" : "Aksiyon gerekli"
-          : creatorProductionComplete
-            ? uiLanguage === "en" ? "Media ready" : "Medya hazır"
-            : uiLanguage === "en" ? "In production" : "Üretimde"
-        : creatorPublishComplete
-          ? uiLanguage === "en" ? "Package exported" : "Paket dışa aktarıldı"
-          : uiLanguage === "en" ? "Final review" : "Final kontrol";
-
-  const creatorWorkspaceCards: Array<{
-    title: string;
-    description: string;
-    status: string;
-    metric?: string;
-    progress?: number;
-    targetId: string;
-    icon: CreatorWorkspaceIconName;
-    tone: CreatorWorkspaceTone;
-    attention?: boolean;
-  }> = creatorWorkspaceStep === 1
-    ? [
-        {
-          title: uiLanguage === "en" ? "Brand Memory" : "Marka Hafızası",
-          description: creatorProfile.brandName || creatorProfile.defaultAudience
-            ? uiLanguage === "en"
-              ? "Velto can reuse this brand context across future projects."
-              : "Velto bu marka bağlamını gelecek projelerde yeniden kullanabilir."
-            : uiLanguage === "en"
-              ? "Optional brand context can be remembered without changing project settings."
-              : "Opsiyonel marka bağlamı proje ayarlarını değiştirmeden hatırlanabilir.",
-          status: creatorProfile.brandName || creatorProfile.defaultAudience
-            ? uiLanguage === "en" ? "Remembered" : "Hatırlanıyor"
-            : uiLanguage === "en" ? "Optional" : "İsteğe bağlı",
-          metric:
-            creatorProfile.brandName ||
-            creatorProfile.defaultAudience ||
-            (uiLanguage === "en" ? "No brand memory" : "Marka hafızası yok"),
-          targetId: "creatorlab-brand-memory",
-          icon: "ideas",
-          tone: "violet",
-        },
-        {
-          title: uiLanguage === "en" ? "Format guidance" : "Format yönlendirmesi",
-          description: uiLanguage === "en" ? "Format, duration and language are aligned in one brief." : "Format, süre ve dil tek brief içinde uyumlandırıldı.",
-          status: uiLanguage === "en" ? "Configured" : "Yapılandırıldı",
-          metric: `${CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || "-"} · ${getCreatorDurationLabel()} · ${language.toUpperCase()}`,
-          targetId: "creatorlab-brief-settings",
-          icon: "insights",
-          tone: "blue",
-        },
-        {
-          title: uiLanguage === "en" ? "Production quality" : "Üretim kalitesi",
-          description: uiLanguage === "en" ? "The single authoritative quality and production decision." : "Tek yetkili kalite ve üretim kararı.",
-          status: getCreatorQualityModeLabel(),
-          metric: getCreatorQualityCreditTier(),
-          targetId: "creatorlab-quality-panel",
-          icon: "safety",
-          tone: "green",
-        },
-        {
-          title: uiLanguage === "en" ? "Opportunity analysis" : "Fırsat analizi",
-          description: input.trim()
-            ? uiLanguage === "en" ? "The brief has enough context for the opportunity check." : "Brief, fırsat kontrolü için yeterli bağlama sahip."
-            : uiLanguage === "en" ? "Add the topic or video idea before analysis." : "Analizden önce konu veya video fikrini ekle.",
-          status: creatorMentorLoading
-            ? uiLanguage === "en" ? "Analyzing" : "Analiz ediliyor"
-            : creatorMentorResult
-              ? uiLanguage === "en" ? "Ready" : "Hazır"
-              : input.trim()
-                ? uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon"
-                : uiLanguage === "en" ? "Blocked" : "Bekliyor",
-          metric: input.trim()
-            ? uiLanguage === "en" ? "Topic captured" : "Konu tanımlandı"
-            : uiLanguage === "en" ? "Topic missing" : "Konu eksik",
-          progress: creatorBriefSignalPercent,
-          targetId: input.trim() ? "creatorlab-brief-action" : "creatorlab-topic-input",
-          icon: "package",
-          tone: "amber",
-          attention: !input.trim(),
-        },
-      ]
-    : creatorWorkspaceStep === 2
-      ? [
-          {
-            title: uiLanguage === "en" ? "YouTube insights" : "YouTube içgörüleri",
-            description: youtubePatternSummary
-              ? uiLanguage === "en" ? "Opportunity and competition signals are summarized." : "Fırsat ve rekabet sinyalleri özetlendi."
-              : uiLanguage === "en" ? "Optional market and trend signals can strengthen positioning." : "İsteğe bağlı pazar ve trend sinyalleri konumlandırmayı güçlendirebilir.",
-            status: youtubePatternSummary
-              ? uiLanguage === "en" ? "Ready" : "Hazır"
-              : youtubeResearchVideos.length > 0
-                ? uiLanguage === "en" ? "Research available" : "Araştırma mevcut"
-                : uiLanguage === "en" ? "Not added" : "Eklenmedi",
-            metric: youtubePatternSummary
-              ? `${uiLanguage === "en" ? "Opportunity" : "Fırsat"} ${youtubePatternSummary.opportunityScore}/100 · ${youtubePatternSummary.competitionLevel}`
-              : `${youtubeResearchVideos.length} ${uiLanguage === "en" ? "reference videos" : "referans video"}`,
-            targetId: "creatorlab-strategy-youtube",
-            icon: "insights",
-            tone: "blue",
-          },
-          {
-            title: uiLanguage === "en" ? "Hook & thumbnail" : "Hook ve thumbnail",
-            description: creatorIntelligenceReport
-              ? creatorIntelligenceReport.recommendedOpening
-              : uiLanguage === "en" ? "Opening and thumbnail directions will appear with the strategy signal." : "Açılış ve thumbnail yönleri strateji sinyaliyle görünür.",
-            status: creatorIntelligenceReport
-              ? uiLanguage === "en" ? "Available" : "Mevcut"
-              : uiLanguage === "en" ? "Pending" : "Bekliyor",
-            metric: creatorIntelligenceReport
-              ? `${uiLanguage === "en" ? "Hook score" : "Hook skoru"} ${creatorIntelligenceReport.hookScore}/100`
-              : uiLanguage === "en" ? "Awaiting intelligence" : "İçgörü bekleniyor",
-            progress: creatorIntelligenceReport?.hookScore,
-            targetId: "creatorlab-strategy-signals",
-            icon: "ideas",
-            tone: "violet",
-          },
-          {
-            title: uiLanguage === "en" ? "Audience signal" : "Kitle sinyali",
-            description: creatorMentorAudienceInsights[0] || (uiLanguage === "en" ? "Audience fit is checked before production begins." : "Üretim başlamadan önce kitle uyumu kontrol edilir."),
-            status: creatorMentorResult
-              ? uiLanguage === "en" ? "Available" : "Mevcut"
-              : uiLanguage === "en" ? "Pending" : "Bekliyor",
-            metric: creatorMentorResult
-              ? `${creatorMentorAudienceInsights.length} ${uiLanguage === "en" ? "signals" : "sinyal"}`
-              : uiLanguage === "en" ? "No signal yet" : "Henüz sinyal yok",
-            targetId: "creatorlab-strategy-recommendation",
-            icon: "safety",
-            tone: "green",
-          },
-          {
-            title: uiLanguage === "en" ? "Approved direction" : "Onaylanan yön",
-            description: creatorSelectedStrategyDirection
-              ? creatorSelectedStrategyDirection.title
-              : uiLanguage === "en" ? "Select the direction that should shape the scene plan." : "Sahne planını şekillendirecek yönü seç.",
-            status: creatorProductionPackage
-              ? uiLanguage === "en" ? "Created" : "Oluşturuldu"
-              : uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon",
-            metric: creatorSelectedStrategyHook
-              ? uiLanguage === "en" ? "Opening direction selected" : "Açılış yönü seçildi"
-              : uiLanguage === "en" ? "Opening direction pending" : "Açılış yönü bekliyor",
-            progress: creatorStrategyProgressPercent,
-            targetId: "creatorlab-strategy-action",
-            icon: "package",
-            tone: "amber",
-          },
-        ]
-      : creatorWorkspaceStep === 3
-        ? [
-            {
-              title: uiLanguage === "en" ? "Timeline safety" : "Timeline güvenliği",
-              description: creatorTimelineNeedsAttention
-                ? creatorTimelineMediaGate.message
-                : uiLanguage === "en" ? "The current plan is safe for the next production action." : "Mevcut plan sıradaki üretim aksiyonu için güvenli.",
-              status: creatorTimelineMediaGate.approved
-                ? uiLanguage === "en" ? "Approved" : "Onaylandı"
-                : uiLanguage === "en" ? "Review" : "Kontrol et",
-              metric: creatorTimelineNeedsAttention
-                ? uiLanguage === "en" ? "Blocking risk detected" : "Engelleyici risk algılandı"
-                : uiLanguage === "en" ? "No blocking risk" : "Engelleyici risk yok",
-              progress: creatorTimelineMediaGate.approved ? 100 : 35,
-              targetId: "creatorlab-production-safety",
-              icon: "safety",
-              tone: "amber",
-              attention: creatorTimelineNeedsAttention,
-            },
-            {
-              title: uiLanguage === "en" ? "Visual readiness" : "Görsel hazırlığı",
-              description: uiLanguage === "en" ? "Missing scene visuals are generated through the guided action." : "Eksik sahne görselleri yönlendirmeli aksiyonla üretilir.",
-              status: creatorVisualsComplete
-                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                : uiLanguage === "en" ? "In progress" : "Devam ediyor",
-              metric: `${readyExportCount}/${scenes.length || 0}`,
-              progress: creatorVisualProgressPercent,
-              targetId: "creatorlab-production-storyboard",
-              icon: "ideas",
-              tone: "violet",
-            },
-            {
-              title: uiLanguage === "en" ? "Voice-over readiness" : "Voice-over hazırlığı",
-              description: uiLanguage === "en" ? "Narration readiness and duration fit are tracked together." : "Anlatım hazırlığı ve süre uyumu birlikte takip edilir.",
-              status: creatorVoiceOverComplete
-                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                : uiLanguage === "en" ? "In progress" : "Devam ediyor",
-              metric: `${audioReadyCount}/${scenes.length || 0}`,
-              progress: creatorVoiceProgressPercent,
-              targetId: "creatorlab-production-storyboard",
-              icon: "insights",
-              tone: "blue",
-            },
-            {
-              title: uiLanguage === "en" ? "Continuity" : "Devamlılık",
-              description: uiLanguage === "en" ? "Freeze and flow risks stay summarized; technical details remain secondary." : "Donma ve akış riskleri özetlenir; teknik detaylar ikincil kalır.",
-              status: exportFlowValidation?.canExport
-                ? uiLanguage === "en" ? "Safe" : "Güvenli"
-                : uiLanguage === "en" ? "Monitoring" : "İzleniyor",
-              metric: freezeNeededCount > 0
-                ? `${freezeNeededCount} ${uiLanguage === "en" ? "scene risks" : "sahne riski"}`
-                : uiLanguage === "en" ? "No freeze risk" : "Donma riski yok",
-              targetId: "creatorlab-production-package-details",
-              icon: "package",
-              tone: "green",
-            },
-          ]
-        : [
-            {
-              title: uiLanguage === "en" ? "Final video" : "Final video",
-              description: uiLanguage === "en" ? "Review the latest production output before packaging." : "Paketlemeden önce son üretim çıktısını kontrol et.",
-              status: exportedMovieUrl
-                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                : uiLanguage === "en" ? "Pending" : "Bekliyor",
-              metric: exportMovieResult?.durationSeconds
-                ? `${Math.round(exportMovieResult.durationSeconds)} sec`
-                : creatorFinalVideoReadinessMessage,
-              progress: exportedMovieUrl ? 100 : creatorProductionComplete ? 85 : 35,
-              targetId: "creatorlab-publish-video",
-              icon: "insights",
-              tone: "blue",
-            },
-            {
-              title: uiLanguage === "en" ? "Metadata & chapters" : "Metadata ve chapters",
-              description: uiLanguage === "en" ? "Title, description, hooks and discovery data stay together." : "Başlık, açıklama, hook ve keşif verileri birlikte tutulur.",
-              status: youtubeMetadataResult
-                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                : uiLanguage === "en" ? "Pending" : "Bekliyor",
-              metric: youtubeMetadataResult
-                ? `${youtubeMetadataResult.titleOptions.length} ${uiLanguage === "en" ? "title options" : "başlık seçeneği"}`
-                : uiLanguage === "en" ? "Metadata not prepared" : "Metadata hazırlanmadı",
-              targetId: "creatorlab-publish-metadata",
-              icon: "ideas",
-              tone: "violet",
-            },
-            {
-              title: uiLanguage === "en" ? "Publishing checklist" : "Yayın kontrol listesi",
-              description: uiLanguage === "en" ? "Confirm platform readiness without exposing export diagnostics." : "Export tanılarını göstermeden platform hazırlığını doğrula.",
-              status: creatorPublishChecklistCount > 0
-                ? uiLanguage === "en" ? "Available" : "Mevcut"
-                : uiLanguage === "en" ? "Pending" : "Bekliyor",
-              metric: `${creatorPublishChecklistCount} ${uiLanguage === "en" ? "checks" : "kontrol"}`,
-              progress: creatorPublishChecklistCount > 0 ? 100 : 0,
-              targetId: "creatorlab-publish-checklist",
-              icon: "safety",
-              tone: "green",
-            },
-            {
-              title: uiLanguage === "en" ? "Creator Package" : "Creator Paketi",
-              description: uiLanguage === "en" ? "Collect the final video, metadata and platform adaptations." : "Final video, metadata ve platform uyarlamalarını bir araya getir.",
-              status: creatorPublishComplete
-                ? uiLanguage === "en" ? "Exported" : "Dışa aktarıldı"
-                : uiLanguage === "en" ? "Next action" : "Sıradaki aksiyon",
-              metric: creatorPublishComplete
-                ? uiLanguage === "en" ? "Package delivered" : "Paket teslim edildi"
-                : uiLanguage === "en" ? "Package available after review" : "Kontrol sonrası paket hazır",
-              progress: creatorPublishProgressPercent,
-              targetId: "creatorlab-publish-action",
-              icon: "package",
-              tone: "amber",
-            },
-          ];
-
-  const creatorDirectorAttentionCount = creatorWorkspaceCards.filter((card) => card.attention).length;
 
   useEffect(() => {
     if (!isCreatorLabFlow || !creatorProjectsDrawerOpen) {
@@ -21530,6 +21208,8 @@ const generateSceneImage = async (
   return (
     <WorldProvider>
       <ActiveProductShell>
+        {editorialResearchReview && <CreatorCounterEvidenceReview key={editorialResearchReview.reviewId} review={editorialResearchReview.counterReview} editorialReview={editorialResearchReview} onDecision={()=>finishEditorialResearchReview(null)} onEditorialDecision={finishEditorialResearchReview} />}
+        {creatorScriptDraftPreview && <CreatorScriptDraftPreview script={creatorScriptDraftPreview} onClose={()=>setCreatorScriptDraftPreview(null)} />}
         {counterEvidenceReview && <CreatorCounterEvidenceReview key={counterEvidenceReview.snapshotFingerprint} review={counterEvidenceReview} onDecision={finishCounterEvidenceReview} />}
         {isCreatorLabFlow && (
           <style>{`
@@ -31381,575 +31061,72 @@ const generateSceneImage = async (
           </div>
         )}
 
-        <div id={isCreatorLabFlow ? "creatorlab-brief-canvas" : undefined} className={isCreatorLabFlow ? (creatorBriefCanvasVisible ? "creatorlab-brief-experience" : "hidden") : "space-y-4 rounded-[28px] border border-orange-200/24 bg-white/62 p-6"}>
-          {isCreatorLabFlow && (
-            <>
-              <div className="creatorlab-brief-heading">
-                <div>
-                  <p className="creatorlab-brief-kicker">{uiLanguage === "en" ? "Step 1 · Brief" : "Adım 1 · Brief"}</p>
-                  <h1>{uiLanguage === "en" ? "Project Brief" : "Proje Brief'i"}</h1>
-                  <p>
-                    {uiLanguage === "en"
-                      ? "Define the idea and essential production choices. Velto Studio will use this brief to validate the opportunity before production begins."
-                      : "Fikri ve temel üretim tercihlerini tanımla. Velto Studio, üretim başlamadan önce içerik fırsatını bu brief üzerinden doğrular."}
-                  </p>
-                </div>
-                <span className="creatorlab-brief-step-badge">{uiLanguage === "en" ? "Draft stage" : "Taslak aşaması"}</span>
-              </div>
-
-              <CreatorOutcomeStart
-                language={uiLanguage === "en" ? "en" : "tr"}
-                value={creatorOutcome}
-                onSelect={handleCreatorOutcomeSelect}
-              />
-
-              <section className="creatorlab-topic-card">
-                <div className="creatorlab-topic-header">
-                  <div>
-                    <label htmlFor="creatorlab-topic-input">
-                      {uiLanguage === "en" ? "Describe your idea" : "Fikrini anlat"}
-                    </label>
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Describe the topic, angle or video idea in your own words."
-                        : "Konuyu, yaklaşımı veya video fikrini kendi kelimelerinle anlat."}
-                    </p>
-                  </div>
-                  <span className="creatorlab-required-label">{uiLanguage === "en" ? "Required" : "Zorunlu"}</span>
-                </div>
-                <textarea
-                  id="creatorlab-topic-input"
-                  className="creatorlab-topic-textarea"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder={getFlowAwarePlaceholder()}
-                />
-                <div className="creatorlab-brief-chip-row" aria-label={uiLanguage === "en" ? "Current brief summary" : "Mevcut brief özeti"}>
-                  <span className="creatorlab-brief-chip">{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label}</span>
-                  <span className="creatorlab-brief-chip">{getCreatorDurationLabel()}</span>
-                  <span className="creatorlab-brief-chip">{language.toUpperCase()}</span>
-                  <span className="creatorlab-brief-chip">{getCreatorQualityModeLabel()}</span>
-                </div>
-              </section>
-
-              <details id="creatorlab-brand-memory" className="creatorlab-context-details creatorlab-brand-memory">
-                <summary>
-                  <div>
-                    <div className="creatorlab-brand-memory-title-row">
-                      <strong>{uiLanguage === "en" ? "Brand Memory" : "Marka Hafızası"}</strong>
-                      <span className="creatorlab-brand-memory-optional">
-                        {uiLanguage === "en" ? "Optional" : "İsteğe bağlı"}
-                      </span>
-                    </div>
-                    <span>
-                      {uiLanguage === "en"
-                        ? "Save the essentials Velto should remember for future projects."
-                        : "Velto'nun gelecek projelerde hatırlamasını istediğin temel bilgileri kaydet."}
-                    </span>
-                  </div>
-                  <div className="creatorlab-context-summary-values" aria-hidden="true">
-                    {creatorProfile.brandName && <span>{creatorProfile.brandName}</span>}
-                    {creatorProfile.defaultAudience && <span>{creatorProfile.defaultAudience}</span>}
-                  </div>
-                  <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
-                </summary>
-                <div className="creatorlab-context-body">
-                  <div className="creatorlab-profile-input-grid">
-                    <label className="creatorlab-brief-field">
-                      <span>{uiLanguage === "en" ? "Brand / Creator Name" : "Marka / Creator Adı"}</span>
-                      <input
-                        value={creatorProfile.brandName}
-                        onChange={(event) =>
-                          setCreatorProfile((current) => ({
-                            ...current,
-                            brandName: event.target.value,
-                          }))
-                        }
-                        placeholder={uiLanguage === "en" ? "Example: Northstar Studio" : "Örnek: Northstar Studio"}
-                      />
-                      <small>
-                        {uiLanguage === "en"
-                          ? "The name Velto should associate with this creator or brand."
-                          : "Velto'nun bu creator veya marka ile ilişkilendireceği ad."}
-                      </small>
-                    </label>
-                    <label className="creatorlab-brief-field">
-                      <span>{uiLanguage === "en" ? "Primary Audience" : "Ana Hedef Kitle"}</span>
-                      <input
-                        value={creatorProfile.defaultAudience}
-                        onChange={(event) =>
-                          setCreatorProfile((current) => ({
-                            ...current,
-                            defaultAudience: event.target.value,
-                          }))
-                        }
-                        placeholder={
-                          uiLanguage === "en"
-                            ? "Example: B2B technology decision makers"
-                            : "Örnek: B2B teknoloji karar vericileri"
-                        }
-                      />
-                      <small>
-                        {uiLanguage === "en"
-                          ? "Reusable audience context, more specific than the project-level audience profile."
-                          : "Proje bazlı kitle profilinden daha spesifik, yeniden kullanılabilir hedef kitle bağlamı."}
-                      </small>
-                    </label>
-                  </div>
-                  <div className="creatorlab-brand-memory-footer">
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Saved on this device. Format, platform, duration and quality stay project-specific."
-                        : "Bu cihazda saklanır. Format, platform, süre ve kalite proje bazında kalır."}
-                    </p>
-                    <button type="button" className="cl-primary-button" onClick={saveCreatorProfile}>
-                      {uiLanguage === "en"
-                        ? "Remember for future projects"
-                        : "Gelecek projeler için hatırla"}
-                    </button>
-                  </div>
-                </div>
-              </details>
-            </>
-          )}
-
-          {!isCreatorLabFlow && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-600">{ui.contentLanguage}</label>
-                <select
-                  className="w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value as ContentLanguage)}
-                >
-                  <option value="tr">{ui.turkish}</option>
-                  <option value="en">{ui.english}</option>
-                </select>
-              </div>
-              <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-4 text-sm text-slate-600">
-                {ui.contentLanguageHint}
-              </div>
-            </div>
-          )}
-
-          {isCreatorLabFlow && (
-            <section id="creatorlab-brief-settings" className="creatorlab-brief-card creatorlab-brief-card-v2">
-              <div className="creatorlab-brief-section-heading">
-                <div>
-                  <p>{uiLanguage === "en" ? "Essential decisions" : "Temel kararlar"}</p>
-                  <h3>{uiLanguage === "en" ? "Define the output, not the engine" : "Motoru değil, çıktıyı tanımla"}</h3>
-                  <span>
-                    {uiLanguage === "en"
-                      ? "Choose only the decisions that shape your result. Velto Studio handles the production details."
-                      : "Yalnızca sonucu şekillendiren kararları verin. Velto Studio üretim ayrıntılarını yönetir."}
-                  </span>
-                </div>
-                {creatorBriefDraftRestored && (
-                  <span className="creatorlab-restored-badge">
-                    {uiLanguage === "en" ? "Draft restored" : "Taslak geri yüklendi"}
-                  </span>
-                )}
-              </div>
-
-              <div className="creatorlab-brief-core-grid">
-                <label className="creatorlab-brief-field">
-                  <span>{ui.contentLanguage}</span>
-                  <select value={language} onChange={(event) => setLanguage(event.target.value as ContentLanguage)}>
-                    <option value="tr">{ui.turkish}</option>
-                    <option value="en">{ui.english}</option>
-                  </select>
-                  <small>{uiLanguage === "en" ? "Narration, metadata and captions" : "Anlatım, metadata ve altyazılar"}</small>
-                </label>
-
-                <label className="creatorlab-brief-field">
-                  <span>{ui.targetMarket}</span>
-                  <select value={creatorCountry} onChange={(event) => setCreatorCountry(event.target.value)}>
-                    {CREATOR_COUNTRY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <small>
-                    {uiLanguage === "en"
-                      ? "Used only when regional context improves the result."
-                      : "Yalnızca bölgesel bağlam sonucu iyileştirecekse kullanılır."}
-                  </small>
-                </label>
-
-                <label className="creatorlab-brief-field">
-                  <span>{ui.ageGroup}</span>
-                  <select value={creatorAgeGroup} onChange={(event) => setCreatorAgeGroup(event.target.value as CreatorAgeGroup)}>
-                    {CREATOR_AGE_GROUP_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <small>{uiLanguage === "en" ? "Who should immediately understand and value it?" : "İçeriği kim hemen anlamalı ve değerli bulmalı?"}</small>
-                </label>
-
-                <label className="creatorlab-brief-field">
-                  <span>{ui.contentType}</span>
-                  <select value={creatorContentType} onChange={(event) => setCreatorContentType(event.target.value as CreatorContentType)}>
-                    {CREATOR_CONTENT_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {uiLanguage === "en" ? option.labelEn : option.labelTr}
-                      </option>
-                    ))}
-                  </select>
-                  <small>{uiLanguage === "en" ? "The primary storytelling structure" : "Ana anlatım ve içerik yapısı"}</small>
-                </label>
-
-                <label className="creatorlab-brief-field">
-                  <span>{uiLanguage === "en" ? "Narrative policy" : "Anlatı politikası"}</span>
-                  <select
-                    value={creatorNarrativePolicy || "standard"}
-                    disabled={Boolean(creatorScript)}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setCreatorNarrativePolicy(
-                        value === "science_documentary_v1"
-                          ? "science_documentary_v1"
-                          : undefined,
-                      );
-                    }}
-                  >
-                    <option value="standard">
-                      {uiLanguage === "en" ? "Standard" : "Standart"}
-                    </option>
-                    <option
-                      value="science_documentary_v1"
-                      disabled={creatorVideoDurationSec !== 480}
-                    >
-                      {uiLanguage === "en"
-                        ? "Evidence-driven Science Documentary"
-                        : "Kanıta dayalı Bilim Belgeseli"}
-                    </option>
-                  </select>
-                  <small>
-                    {creatorScript
-                      ? uiLanguage === "en"
-                        ? "The policy is locked after script approval to protect the accepted script."
-                        : "Kabul edilen metni korumak için politika metin onayından sonra kilitlenir."
-                      : uiLanguage === "en"
-                        ? "Science Documentary is an explicit five-section option for the 8-minute format."
-                        : "Bilim Belgeseli, 8 dakikalık format için açıkça seçilen beş bölümlü bir seçenektir."}
-                  </small>
-                </label>
-              </div>
-
-              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-format-title">
-                <div className="creatorlab-decision-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Output" : "Çıktı"}</span>
-                    <strong id="creatorlab-format-title">{ui.videoFormat}</strong>
-                  </div>
-                  <small>{uiLanguage === "en" ? "Choose where the main version will live." : "Ana versiyonun yayınlanacağı formatı seç."}</small>
-                </div>
-                <div className="creatorlab-format-choice-grid">
-                  {CREATOR_FORMAT_OPTIONS.map((option) => {
-                    const isSelected = creatorFormat === option.value;
-                    const localizedGuidance = option.value === "short_form"
-                      ? uiLanguage === "en" ? "Vertical, fast and optimized for short-form feeds." : "Dikey, hızlı ve kısa video akışları için optimize."
-                      : uiLanguage === "en" ? "Structured long-form package ready for platform adaptation." : "Platformlara uyarlanmaya hazır, yapılandırılmış uzun video paketi.";
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`creatorlab-format-choice ${isSelected ? "is-selected" : ""}`}
-                        onClick={() => handleCreatorFormatChange(option.value)}
-                        disabled={Boolean(creatorNarrativePolicy)}
-                        aria-pressed={isSelected}
-                      >
-                        <span className="creatorlab-format-choice-mark" aria-hidden="true">
-                          {option.value === "short_form" ? "9:16" : "16:9"}
-                        </span>
-                        <div>
-                          <strong>{option.label}</strong>
-                          <small>{localizedGuidance}</small>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-platform-title">
-                <div className="creatorlab-decision-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Distribution" : "Dağıtım"}</span>
-                    <strong id="creatorlab-platform-title">
-                      {uiLanguage === "en" ? "Target platforms" : "Hedef platformlar"}
-                    </strong>
-                  </div>
-                  <small>
-                    {creatorTargetPlatforms.length} {uiLanguage === "en" ? "selected" : "seçili"}
-                  </small>
-                </div>
-                <div className="creatorlab-platform-choice-grid">
-                  {CREATOR_PLATFORM_IDS.map((platform) => {
-                    const isSelected = creatorTargetPlatforms.includes(platform);
-                    const preset = CREATOR_PLATFORM_PRESETS[platform];
-                    const outputPlan = creatorPlatformOutputPlan.find(
-                      (item) => item.platform === platform,
-                    );
-                    return (
-                      <button
-                        key={platform}
-                        type="button"
-                        className={`creatorlab-platform-choice ${isSelected ? "is-selected" : ""}`}
-                        onClick={() => toggleCreatorTargetPlatform(platform)}
-                        aria-pressed={isSelected}
-                      >
-                        <span className="creatorlab-platform-choice-check" aria-hidden="true">
-                          {isSelected ? "✓" : "+"}
-                        </span>
-                        <div>
-                          <strong>{preset.label[uiLanguage]}</strong>
-                          <small>
-                            {preset.recommendedAspectRatio} · {preset.metadataPreset[uiLanguage]}
-                          </small>
-                        </div>
-                        <em>
-                          {isSelected && outputPlan?.needsAdaptation
-                            ? uiLanguage === "en"
-                              ? "Adapt at Publish"
-                              : "Publish aşamasında uyarlanacak"
-                            : preset.guidance[uiLanguage]}
-                        </em>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="creatorlab-brief-decision-section" aria-labelledby="creatorlab-duration-title">
-                <div className="creatorlab-decision-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Runtime" : "Süre"}</span>
-                    <strong id="creatorlab-duration-title">{ui.creatorDurationTitle}</strong>
-                  </div>
-                  <small>{getCreatorSceneCount()} {ui.sceneCountLabel} · {getCreatorDurationLabel()}</small>
-                </div>
-                <div className="creatorlab-duration-choice-row">
-                  {getCreatorDurationOptions().map((option) => {
-                    const isSelected = creatorDurationPreset === option.preset;
-                    return (
-                      <button
-                        key={option.preset}
-                        type="button"
-                        className={`creatorlab-duration-choice ${isSelected ? "is-selected" : ""}`}
-                        onClick={() => handleCreatorDurationPresetChange(option.preset)}
-                        disabled={Boolean(creatorNarrativePolicy) && option.seconds !== 480}
-                        aria-pressed={isSelected}
-                      >
-                        <strong>{option.label}</strong>
-                        <span>{getCreatorSceneCountForTargetDuration(option.seconds)} {ui.sceneCountLabel}</span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className={`creatorlab-duration-choice ${creatorDurationPreset === "custom" ? "is-selected" : ""}`}
-                    onClick={() => setCreatorDurationPreset("custom")}
-                    disabled={Boolean(creatorNarrativePolicy)}
-                    aria-pressed={creatorDurationPreset === "custom"}
-                  >
-                    <strong>{ui.customDuration}</strong>
-                    <span>{uiLanguage === "en" ? "Set exact runtime" : "Kesin süre belirle"}</span>
-                  </button>
-                </div>
-                {creatorDurationPreset === "custom" && (
-                  <label className="creatorlab-custom-duration-field">
-                    <span>{creatorFormat === "youtube_video" ? ui.customDurationMinutes : ui.customDurationSeconds}</span>
-                    <input
-                      type="number"
-                      min={creatorFormat === "youtube_video" ? 1 : 5}
-                      max={creatorFormat === "youtube_video" ? 60 : 180}
-                      step={creatorFormat === "youtube_video" ? 0.5 : 1}
-                      value={getCreatorCustomDurationInputValue()}
-                      disabled={Boolean(creatorNarrativePolicy)}
-                      onChange={(event) => handleCreatorCustomDurationChange(event.target.value)}
-                    />
-                  </label>
-                )}
-              </section>
-
-
-
-              <div id="creatorlab-quality-panel" className="creatorlab-quality-panel">
-                <div className="creatorlab-quality-heading">
-                  <div>
-                    <label>{ui.creatorQualityTitle}</label>
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Choose the finish and production quality that best fit this project."
-                        : "Bu projeye en uygun sonuç ve üretim kalitesini seç."}
-                    </p>
-                  </div>
-                </div>
-                <div className="creatorlab-quality-options">
-                  {CREATOR_QUALITY_MODE_OPTIONS.map((option) => {
-                    const isSelected = option.value === creatorQualityMode;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setCreatorQualityMode(option.value)}
-                        className={`creatorlab-quality-option ${isSelected ? "is-selected" : ""}`}
-                        aria-pressed={isSelected}
-                      >
-                        <strong>{uiLanguage === "en" ? option.labelEn : option.labelTr}</strong>
-                        <span>{uiLanguage === "en" ? option.guidanceEn : option.guidanceTr}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {(() => (
-                    <div className="creatorlab-quality-summary">
-                      <div className="creatorlab-quality-metric">
-                        <span>{uiLanguage === "en" ? "Selected quality" : "Seçilen kalite"}</span>
-                        <strong>{getCreatorQualityModeLabel()}</strong>
-                      </div>
-                      <p>{getCreatorQualityModeGuidance()}</p>
-                    </div>
-                ))()}
-              </div>
-
-              <div className="creatorlab-brief-strategy-note">
-                <CreatorWorkspaceIcon name="insights" />
-                <p>
-                  {uiLanguage === "en"
-                    ? "Trend research, creative alternatives and evidence review are handled in Strategy after this brief is analyzed."
-                    : "Trend araştırması, yaratıcı alternatifler ve kanıt incelemesi bu brief analiz edildikten sonra Strateji aşamasında ele alınır."}
-                </p>
-              </div>
-
-              <div id="creatorlab-brief-action" className="creatorlab-brief-action-bar">
-                <div className="creatorlab-brief-action-copy">
-                  <strong>{uiLanguage === "en" ? "Ready to validate the idea?" : "Fikri doğrulamaya hazır mısın?"}</strong>
-                  <p>
-                    {input.trim()
-                      ? uiLanguage === "en" ? "Velto Studio will analyze the opportunity and prepare the Strategy workspace." : "Velto Studio içerik fırsatını analiz edip Strateji çalışma alanını hazırlayacak."
-                      : uiLanguage === "en" ? "Enter a topic or video idea to continue." : "Devam etmek için bir konu veya video fikri gir."}
-                  </p>
-                </div>
-                <button type="button" onClick={createSetup} disabled={loadingSetup || !input.trim()} className="creatorlab-primary-action">
-                  {creatorMentorLoading ? ui.analyzingContentOpportunity : ui.analyzeContentOpportunity}
-                </button>
-              </div>
-            </section>
-          )}
-
-          {isCreatorLabFlow && (
-            <details className="creatorlab-secondary-panel creatorlab-idea-lab-panel">
-              <summary>
-                <div className="creatorlab-secondary-summary-copy">
-                  <strong>{uiLanguage === "en" ? "Idea Lab · multi-topic mode" : "Idea Lab · çoklu konu modu"}</strong>
-                  <span>
-                    {uiLanguage === "en"
-                      ? "Generate and compare several creator directions without crowding the main brief."
-                      : "Ana brief'i kalabalıklaştırmadan birden fazla içerik yönü üret ve karşılaştır."}
-                  </span>
-                </div>
-                <span className="creatorlab-secondary-status">
-                  {bulkResults.length > 0 ? (uiLanguage === "en" ? `${bulkResults.length} ideas` : `${bulkResults.length} fikir`) : (uiLanguage === "en" ? "Optional" : "Opsiyonel")}
-                </span>
-                <span className="creatorlab-details-chevron" aria-hidden="true">⌄</span>
-              </summary>
-              <div className="creatorlab-secondary-body creatorlab-idea-lab-body">
-                <div className="creatorlab-idea-lab-entry">
-                  <label>
-                    <span>{ui.bulkTopicsLabel}</span>
-                    <textarea
-                      value={bulkTopics}
-                      onChange={(event) => setBulkTopics(event.target.value)}
-                      placeholder={ui.bulkTopicsPlaceholder}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleBulkGenerateIdeas}
-                    disabled={bulkLoading || !bulkTopics.trim()}
-                  >
-                    {bulkLoading ? ui.bulkGenerating : ui.bulkGenerate}
-                  </button>
-                </div>
-
-                {bulkResults.length === 0 ? (
-                  <div className="creatorlab-idea-lab-empty">{ui.bulkEmpty}</div>
-                ) : (
-                  <>
-                    <div className="creatorlab-idea-lab-toolbar">
-                      <span>{ui.selectedBulkCount}: <strong>{selectedBulkIds.length}</strong></span>
-                      <button
-                        type="button"
-                        onClick={handleGenerateSelectedBulk}
-                        disabled={selectedBulkIds.length === 0 || selectedBulkLoading || isGeneratingFullYoutubePackage || loadingSetup}
-                      >
-                        {selectedBulkLoading ? ui.generatingSelectedBulk : ui.generateSelectedBulk}
-                      </button>
-                    </div>
-                    <div className="creatorlab-idea-lab-grid">
-                      {bulkResults.map((idea, index) => (
-                        <article key={`${idea.topic}-${index}`} className={selectedBulkIds.includes(index) ? "is-selected" : ""}>
-                          <label className="creatorlab-idea-select">
-                            <input
-                              type="checkbox"
-                              checked={selectedBulkIds.includes(index)}
-                              onChange={() => toggleBulkSelection(index)}
-                            />
-                            <span>{uiLanguage === "en" ? "Select" : "Seç"}</span>
-                          </label>
-                          <div className="creatorlab-idea-title-row">
-                            <strong>{idea.title}</strong>
-                            <span>{ui.bulkScore}: {Math.round((idea.score || 0) * 100)}</span>
-                          </div>
-                          <p>{idea.hook}</p>
-                          <small><b>{ui.bulkAngle}:</b> {idea.angle}</small>
-                          <small><b>{ui.bulkReason}:</b> {idea.reason}</small>
-                          <div className="creatorlab-idea-actions">
-                            <button type="button" onClick={() => handleUseBulkTopic(idea)}>{ui.useBulkTopic}</button>
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateFullPackageFromBulk(idea)}
-                              disabled={isGeneratingFullYoutubePackage || loadingSetup}
-                            >
-                              {isGeneratingFullYoutubePackage ? ui.generatingFullYoutubePackage : ui.generateFullPackageFromBulk}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </details>
-          )}
-
-          {!isCreatorLabFlow && (
-            <>
-          <label className="block text-sm font-medium text-slate-600">
-  {getFlowAwareInputLabel()}
-</label>
-
-          <textarea
-            className="min-h-36 w-full rounded-2xl border border-orange-200/26 bg-white/82 p-4 text-black placeholder:text-slate-500"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={getFlowAwarePlaceholder()}
+        <CreateBriefPanel
+            isCreatorLabFlow={isCreatorLabFlow}
+            creatorBriefCanvasVisible={creatorBriefCanvasVisible}
+            uiLanguage={uiLanguage}
+            creatorOutcome={creatorOutcome}
+            handleCreatorOutcomeSelect={handleCreatorOutcomeSelect}
+            input={input}
+            setInput={setInput}
+            getFlowAwarePlaceholder={getFlowAwarePlaceholder}
+            CREATOR_FORMAT_OPTIONS={CREATOR_FORMAT_OPTIONS}
+            creatorFormat={creatorFormat}
+            getCreatorDurationLabel={getCreatorDurationLabel}
+            language={language}
+            getCreatorQualityModeLabel={getCreatorQualityModeLabel}
+            creatorProfile={creatorProfile}
+            setCreatorProfile={setCreatorProfile}
+            saveCreatorProfile={saveCreatorProfile}
+            ui={ui}
+            setLanguage={setLanguage}
+            creatorBriefDraftRestored={creatorBriefDraftRestored}
+            creatorCountry={creatorCountry}
+            setCreatorCountry={setCreatorCountry}
+            CREATOR_COUNTRY_OPTIONS={CREATOR_COUNTRY_OPTIONS}
+            creatorAgeGroup={creatorAgeGroup}
+            setCreatorAgeGroup={setCreatorAgeGroup}
+            CREATOR_AGE_GROUP_OPTIONS={CREATOR_AGE_GROUP_OPTIONS}
+            creatorContentType={creatorContentType}
+            setCreatorContentType={setCreatorContentType}
+            CREATOR_CONTENT_TYPE_OPTIONS={CREATOR_CONTENT_TYPE_OPTIONS}
+            creatorNarrativePolicy={creatorNarrativePolicy}
+            creatorScript={creatorScript}
+            setCreatorNarrativePolicy={setCreatorNarrativePolicy}
+            creatorVideoDurationSec={creatorVideoDurationSec}
+            handleCreatorFormatChange={handleCreatorFormatChange}
+            creatorTargetPlatforms={creatorTargetPlatforms}
+            creatorPlatformOutputPlan={creatorPlatformOutputPlan}
+            toggleCreatorTargetPlatform={toggleCreatorTargetPlatform}
+            getCreatorSceneCount={getCreatorSceneCount}
+            getCreatorDurationOptions={getCreatorDurationOptions}
+            creatorDurationPreset={creatorDurationPreset}
+            handleCreatorDurationPresetChange={handleCreatorDurationPresetChange}
+            getCreatorSceneCountForTargetDuration={getCreatorSceneCountForTargetDuration}
+            setCreatorDurationPreset={setCreatorDurationPreset}
+            getCreatorCustomDurationInputValue={getCreatorCustomDurationInputValue}
+            handleCreatorCustomDurationChange={handleCreatorCustomDurationChange}
+            creatorQualityMode={creatorQualityMode}
+            setCreatorQualityMode={setCreatorQualityMode}
+            getCreatorQualityModeGuidance={getCreatorQualityModeGuidance}
+            CreatorWorkspaceIcon={CreatorWorkspaceIcon}
+            createSetup={createSetup}
+            loadingSetup={loadingSetup}
+            creatorMentorLoading={creatorMentorLoading}
+            bulkResults={bulkResults}
+            bulkTopics={bulkTopics}
+            setBulkTopics={setBulkTopics}
+            handleBulkGenerateIdeas={handleBulkGenerateIdeas}
+            bulkLoading={bulkLoading}
+            selectedBulkIds={selectedBulkIds}
+            handleGenerateSelectedBulk={handleGenerateSelectedBulk}
+            selectedBulkLoading={selectedBulkLoading}
+            isGeneratingFullYoutubePackage={isGeneratingFullYoutubePackage}
+            toggleBulkSelection={toggleBulkSelection}
+            handleUseBulkTopic={handleUseBulkTopic}
+            handleGenerateFullPackageFromBulk={handleGenerateFullPackageFromBulk}
+            getFlowAwareInputLabel={getFlowAwareInputLabel}
           />
-
-
-          <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
-            <button
-              onClick={createSetup}
-              disabled={loadingSetup}
-              className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
-            >
-              {loadingSetup ? ui.preparingSetup : ui.createCharacters}
-            </button>
-          </div>
-            </>
-          )}
-        </div>
 
         {error && (
           <div role={isCreatorLabFlow ? "alert" : undefined} aria-live={isCreatorLabFlow ? "assertive" : undefined} className="rounded-2xl border border-red-500/30 bg-rose-50/80 p-4 text-red-200">
@@ -32016,4592 +31193,339 @@ const generateSceneImage = async (
         )}
 
         {isCreatorLabFlow && creatorStageVisibility.strategy && creatorMentorResult && (
-          <section id="creatorlab-strategy-canvas" className="creatorlab-strategy-experience">
-            <header className="creatorlab-strategy-heading">
-              <div>
-                <p className="creatorlab-strategy-kicker">
-                  {uiLanguage === "en" ? "Step 2 · Strategy" : "Adım 2 · Strateji"}
-                </p>
-                <h1>{uiLanguage === "en" ? "Strategy" : "Strateji"}</h1>
-                <p>
-                  {uiLanguage === "en"
-                    ? "Validate the strongest creative direction before media generation. Review the audience signal, opening angle and production scope, then create the production plan."
-                    : "Medya üretimine geçmeden önce en güçlü yaratıcı yönü doğrula. Kitle sinyalini, açılış açısını ve üretim kapsamını inceleyip üretim planını oluştur."}
-                </p>
-              </div>
-              <span className="creatorlab-strategy-stage-badge">
-                {uiLanguage === "en" ? "Opportunity analyzed" : "Fırsat analiz edildi"}
-              </span>
-            </header>
-
-            <div className="creatorlab-strategy-brief-strip">
-              <div className="creatorlab-strategy-brief-copy">
-                <span>{uiLanguage === "en" ? "Brief complete" : "Brief tamamlandı"}</span>
-                <strong title={input.trim()}>
-                  {input.trim() || (uiLanguage === "en" ? "Untitled creator brief" : "İsimsiz içerik brief'i")}
-                </strong>
-                <div className="creatorlab-strategy-brief-meta">
-                  <span className="creatorlab-strategy-chip">
-                    {CREATOR_AGE_GROUP_OPTIONS.find((option) => option.value === creatorAgeGroup)?.label}
-                  </span>
-                  <span className="creatorlab-strategy-chip">
-                    {CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label}
-                  </span>
-                  <span className="creatorlab-strategy-chip">{getCreatorDurationLabel()}</span>
-                  <span className="creatorlab-strategy-chip">{getCreatorQualityModeLabel()}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="creatorlab-strategy-edit-button"
-                onClick={() => navigateCreatorWorkspaceStep(1)}
-              >
-                {uiLanguage === "en" ? "Review or edit brief" : "Brief'i incele veya düzenle"}
-              </button>
-            </div>
-
-            <article
-              id="creatorlab-strategy-recommendation"
-              className={`creatorlab-strategy-recommendation ${
-                creatorSelectedStrategyDirectionId === "recommended" ? "is-selected" : ""
-              }`}
-            >
-              <div className="creatorlab-strategy-recommendation-copy">
-                <div className="creatorlab-strategy-recommendation-topline">
-                  <span className="creatorlab-strategy-recommendation-label">
-                    {uiLanguage === "en" ? "Recommended direction" : "Önerilen yön"}
-                  </span>
-                  <span className={`creatorlab-strategy-selection-badge ${
-                    creatorSelectedStrategyDirectionId === "recommended" ? "is-selected" : ""
-                  }`}>
-                    {creatorSelectedStrategyDirectionId === "recommended"
-                      ? uiLanguage === "en" ? "Selected direction" : "Seçili yön"
-                      : uiLanguage === "en" ? "Mentor recommendation" : "Mentor önerisi"}
-                  </span>
-                </div>
-                <h2>{creatorMentorRecommendedIdea.title}</h2>
-                <p>{creatorMentorRecommendedIdea.reason}</p>
-                {creatorSelectedStrategyDirectionId !== "recommended" && (
-                  <button
-                    type="button"
-                    className="creatorlab-strategy-direction-button"
-                    onClick={() => setCreatorSelectedStrategyDirectionId("recommended")}
-                  >
-                    {uiLanguage === "en" ? "Use recommendation" : "Önerilen yönü kullan"}
-                  </button>
-                )}
-              </div>
-              <div className="creatorlab-strategy-recommendation-aside">
-                <div>
-                  <span>{uiLanguage === "en" ? "Market" : "Pazar"}</span>
-                  <strong>
-                    {CREATOR_COUNTRY_OPTIONS.find((option) => option.value === creatorCountry)?.label}
-                  </strong>
-                </div>
-                <div>
-                  <span>{uiLanguage === "en" ? "Format" : "Format"}</span>
-                  <strong>
-                    {CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label}
-                  </strong>
-                </div>
-                <div>
-                  <span>{uiLanguage === "en" ? "Planned scenes" : "Planlanan sahne"}</span>
-                  <strong>{getCreatorSceneCount()}</strong>
-                </div>
-              </div>
-            </article>
-
-            <div id="creatorlab-strategy-signals" className="creatorlab-strategy-signal-grid">
-              <div className="creatorlab-strategy-signal-card is-decision">
-                <span>{uiLanguage === "en" ? "Audience fit" : "Kitle uyumu"}</span>
-                <strong>{creatorAudienceFitLabel}</strong>
-                <p>
-                  {creatorMentorAudienceInsights[0] ||
-                    (uiLanguage === "en"
-                      ? "Review the audience promise before production."
-                      : "Üretimden önce kitle vaadini kontrol et.")}
-                </p>
-              </div>
-              <div className="creatorlab-strategy-signal-card is-decision">
-                <span>{uiLanguage === "en" ? "Opening direction" : "Açılış yönü"}</span>
-                <strong>{creatorSelectedStrategyHook || (uiLanguage === "en" ? "Choose below" : "Aşağıdan seç")}</strong>
-                <p>{uiLanguage === "en" ? "Strategic angle for the first scene" : "İlk sahne için stratejik açı"}</p>
-              </div>
-              <div className="creatorlab-strategy-signal-card is-decision">
-                <span>{uiLanguage === "en" ? "Market evidence" : "Pazar kanıtı"}</span>
-                <strong>
-                  {youtubeResearchVideos.length > 0 || youtubePatternSummary
-                    ? uiLanguage === "en" ? "Included" : "Eklendi"
-                    : uiLanguage === "en" ? "Not added" : "Eklenmedi"}
-                </strong>
-                <p>
-                  {youtubeResearchVideos.length > 0 || youtubePatternSummary
-                    ? creatorCompetitionLabel
-                    : uiLanguage === "en"
-                      ? "Optional market and trend signals to strengthen positioning."
-                      : "Konumlandırmayı güçlendiren isteğe bağlı pazar ve trend sinyalleri."}
-                </p>
-                <button
-                  type="button"
-                  className="creatorlab-strategy-secondary-action"
-                  onClick={() => {
-                    setCreatorMarketEvidenceReviewOpen(true);
-                    if (youtubeResearchVideos.length === 0 && !youtubeResearchLoading) {
-                      void handleYoutubeResearch();
-                    } else {
-                      window.setTimeout(() => document.getElementById("creatorlab-strategy-youtube")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
-                    }
-                  }}
-                  disabled={youtubeResearchLoading}
-                >
-                  {youtubeResearchLoading
-                    ? uiLanguage === "en" ? "Adding…" : "Ekleniyor…"
-                    : youtubeResearchVideos.length > 0 || youtubePatternSummary
-                      ? uiLanguage === "en" ? "Review" : "İncele"
-                      : uiLanguage === "en" ? "Add market evidence" : "Pazar kanıtı ekle"}
-                </button>
-              </div>
-              <div className="creatorlab-strategy-signal-card is-decision">
-                <span>{uiLanguage === "en" ? "Production scope" : "Üretim kapsamı"}</span>
-                <strong>{getCreatorDurationLabel()}</strong>
-                <p>{uiLanguage === "en" ? `${getCreatorSceneCount()} scenes · ${getCreatorQualityModeLabel()}` : `${getCreatorSceneCount()} sahne · ${getCreatorQualityModeLabel()}`}</p>
-              </div>
-            </div>
-
-            <div className="creatorlab-strategy-grid">
-              <section className="creatorlab-strategy-panel">
-                <div className="creatorlab-strategy-panel-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Audience & opening" : "Kitle ve açılış"}</span>
-                    <h3>{uiLanguage === "en" ? "Why this direction can work" : "Bu yön neden çalışabilir"}</h3>
-                    <p>{uiLanguage === "en" ? "Review the essential audience signals, then choose the strategic opening angle." : "Temel kitle sinyallerini incele, ardından stratejik açılış açısını seç."}</p>
-                  </div>
-                </div>
-                <ul className="creatorlab-strategy-insight-list">
-                  {creatorMentorAudienceInsights.map((item, index) => (
-                    <li key={`strategy-audience-${index}`}>{item}</li>
-                  ))}
-                </ul>
-                <div className="creatorlab-strategy-hook-selector">
-                  <div>
-                    <strong>{uiLanguage === "en" ? "Choose the opening direction" : "Açılış yönünü seç"}</strong>
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Select the strategic angle here. Exact narration and timing remain editable in Production."
-                        : "Stratejik açıyı burada seç. Kesin anlatım ve süre Production aşamasında düzenlenebilir."}
-                    </p>
-                  </div>
-                  {creatorStrategyHookOptions.length > 0 ? (
-                    <div className="creatorlab-strategy-hook-options">
-                      {creatorStrategyHookOptions.map((hook, index) => {
-                        const isSelected = hook === creatorSelectedStrategyHook;
-                        return (
-                          <button
-                            key={`strategy-hook-${index}`}
-                            type="button"
-                            className={`creatorlab-strategy-hook-option ${isSelected ? "is-selected" : ""}`}
-                            aria-pressed={isSelected}
-                            onClick={() => setCreatorSelectedHookPattern(hook)}
-                          >
-                            <span>{isSelected ? "✓" : String(index + 1).padStart(2, "0")}</span>
-                            <strong>{hook}</strong>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="creatorlab-strategy-hook-empty">
-                      {uiLanguage === "en"
-                        ? "No separate hook angle was returned; the selected creative direction will guide the opening scene."
-                        : "Ayrı bir hook açısı üretilmedi; seçilen yaratıcı yön açılış sahnesini yönlendirecek."}
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <section className="creatorlab-strategy-panel">
-                <div className="creatorlab-strategy-panel-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Creative options" : "Yaratıcı seçenekler"}</span>
-                    <h3>{uiLanguage === "en" ? "Compare and approve one direction" : "Tek bir yönü karşılaştır ve onayla"}</h3>
-                    <p>{uiLanguage === "en" ? "The recommendation remains selected by default. Two useful alternatives stay available without creating decision overload." : "Önerilen yön varsayılan olarak seçilidir. Karar yükü oluşturmadan iki yararlı alternatif erişilebilir kalır."}</p>
-                  </div>
-                </div>
-                {creatorStrategyAlternativeDirections.length > 0 ? (
-                  <div className="creatorlab-strategy-idea-list">
-                    {creatorStrategyAlternativeDirections.map((direction, index) => {
-                      const isSelected = creatorSelectedStrategyDirectionId === direction.id;
-                      return (
-                        <article
-                          key={direction.id}
-                          className={`creatorlab-strategy-idea-card ${isSelected ? "is-selected" : ""}`}
-                        >
-                          <span className="creatorlab-strategy-idea-number">
-                            {String(index + 1).padStart(2, "0")}
-                          </span>
-                          <div>
-                            <div className="creatorlab-strategy-idea-title-row">
-                              <strong>{direction.title}</strong>
-                              {isSelected && (
-                                <span>{uiLanguage === "en" ? "Selected" : "Seçildi"}</span>
-                              )}
-                            </div>
-                            <p>{direction.concept}</p>
-                          </div>
-                          <button
-                            type="button"
-                            className="creatorlab-strategy-direction-button"
-                            disabled={isSelected}
-                            onClick={() => setCreatorSelectedStrategyDirectionId(direction.id)}
-                          >
-                            {isSelected
-                              ? uiLanguage === "en" ? "Selected" : "Seçildi"
-                              : uiLanguage === "en" ? "Use this direction" : "Bu yönü kullan"}
-                          </button>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="creatorlab-strategy-direction-empty">
-                    <strong>{uiLanguage === "en" ? "The mentor recommendation is the approved direction." : "Mentor önerisi onaylanan yön olarak kullanılacak."}</strong>
-                    <p>{uiLanguage === "en" ? "No additional direction is needed to continue." : "Devam etmek için ek bir yön seçimi gerekmiyor."}</p>
-                  </div>
-                )}
-              </section>
-            </div>
-
-            {creatorMarketEvidenceReviewOpen && (
-            <section id="creatorlab-strategy-youtube" className="creatorlab-strategy-panel creatorlab-strategy-youtube">
-              <div className="creatorlab-strategy-panel-heading">
-                <div>
-                  <span>{uiLanguage === "en" ? "Market evidence" : "Pazar kanıtı"}</span>
-                  <h3>{uiLanguage === "en" ? "Optional market and trend intelligence" : "İsteğe bağlı pazar ve trend içgörüleri"}</h3>
-                  <p>{uiLanguage === "en" ? "Additional strategic signals can strengthen positioning without changing the grounded evidence foundation." : "Ek stratejik sinyaller, kaynaklara dayalı kanıt temelini değiştirmeden konumlandırmayı güçlendirebilir."}</p>
-                </div>
-                <div className="creatorlab-strategy-youtube-actions">
-                  <button
-                    type="button"
-                    className="creatorlab-strategy-secondary-action"
-                    onClick={handleYoutubeResearch}
-                    disabled={youtubeResearchLoading}
-                  >
-                    {youtubeResearchLoading
-                      ? ui.youtubeResearchLoading
-                      : youtubeResearchVideos.length > 0
-                        ? uiLanguage === "en" ? "Refresh insights" : "İçgörüleri yenile"
-                        : uiLanguage === "en" ? "Research YouTube trends" : "YouTube trendlerini araştır"}
-                  </button>
-                  <button
-                    type="button"
-                    className="creatorlab-strategy-secondary-action"
-                    onClick={handleYoutubePatternEngine}
-                    disabled={youtubePatternLoading || youtubeResearchVideos.length === 0}
-                  >
-                    {youtubePatternLoading
-                      ? ui.patternEngineLoading
-                      : youtubePatternSummary
-                        ? uiLanguage === "en" ? "Refresh pattern analysis" : "Pattern analizini yenile"
-                        : uiLanguage === "en" ? "Analyze patterns" : "Pattern analizi yap"}
-                  </button>
-                </div>
-              </div>
-
-              {youtubeResearchVideos.length > 0 && (
-                <div className="creatorlab-strategy-research-context">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Research subject" : "Araştırma konusu"}</span>
-                    <strong>{creatorMarketEvidenceSubject}</strong>
-                  </div>
-                  <small>
-                    {youtubeResearchVideos.length} {uiLanguage === "en" ? "relevant references retained" : "ilgili referans korundu"}
-                  </small>
-                </div>
-              )}
-
-              {youtubeResearchVideos.length === 0 ? (
-                <div className="creatorlab-strategy-empty">
-                  <div className="creatorlab-strategy-empty-icon">
-                    <CreatorWorkspaceIcon name="insights" />
-                  </div>
-                  <div>
-                    <strong>{uiLanguage === "en" ? "No external research is required to continue." : "Devam etmek için harici araştırma zorunlu değil."}</strong>
-                    <p>{uiLanguage === "en" ? "Run YouTube research only when current market signals will improve the decision." : "YouTube araştırmasını yalnızca güncel pazar sinyalleri kararı iyileştirecekse çalıştır."}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="creatorlab-strategy-research-preview">
-                  {youtubeResearchVideos.slice(0, 3).map((video) => (
-                    <a
-                      key={video.id}
-                      href={video.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="creatorlab-strategy-video-card"
-                    >
-                      <div className="creatorlab-strategy-video-thumb">
-                        {video.thumbnail ? <img src={video.thumbnail} alt="" /> : null}
-                      </div>
-                      <div className="creatorlab-strategy-video-copy">
-                        <div className="creatorlab-strategy-video-title-row">
-                          <strong>{video.title}</strong>
-                          {typeof video.relevanceScore === "number" && (
-                            <span className="creatorlab-strategy-video-match">
-                              {Math.min(100, Math.max(0, Math.round(video.relevanceScore)))}% {uiLanguage === "en" ? "match" : "uyum"}
-                            </span>
-                          )}
-                        </div>
-                        <span>{formatYoutubeNumber(video.views)} {ui.youtubeResearchViews} · {video.channel}</span>
-                        <p className="creatorlab-strategy-video-reason">
-                          {video.relevanceReason ||
-                            (uiLanguage === "en"
-                              ? "Retained as evidence for title, opening and duration patterns."
-                              : "Başlık, açılış ve süre pattern'leri için kanıt olarak korundu.")}
-                        </p>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              )}
-
-              {youtubePatternSummary && (
-                <div className="creatorlab-strategy-pattern">
-                  <div className="creatorlab-strategy-pattern-metrics">
-                    <div className="creatorlab-strategy-pattern-metric">
-                      <span>{uiLanguage === "en" ? "Opportunity" : "Fırsat"}</span>
-                      <strong>{youtubePatternSummary.opportunityScore}/100</strong>
-                    </div>
-                    <div className="creatorlab-strategy-pattern-metric">
-                      <span>{uiLanguage === "en" ? "Competition" : "Rekabet"}</span>
-                      <strong>{youtubePatternSummary.competitionLevel}</strong>
-                    </div>
-                    <div className="creatorlab-strategy-pattern-metric">
-                      <span>{uiLanguage === "en" ? "Suggested duration" : "Önerilen süre"}</span>
-                      <strong>{formatYoutubeDuration(youtubePatternSummary.recommendedDurationSec)}</strong>
-                    </div>
-                  </div>
-                  <div className="creatorlab-strategy-angle">
-                    <strong>{uiLanguage === "en" ? "Recommended content angle" : "Önerilen içerik açısı"}</strong>
-                    {youtubePatternSummary.recommendedContentAngle}
-                  </div>
-                </div>
-              )}
-
-              {(youtubeResearchVideos.length > 0 || youtubePatternSummary) && (
-                <details className="creatorlab-strategy-details">
-                  <summary>{uiLanguage === "en" ? "View research details" : "Araştırma detaylarını görüntüle"}</summary>
-                  <div className="creatorlab-strategy-details-body">
-                    {youtubeResearchVideos.length > 3 && (
-                      <div className="creatorlab-strategy-raw-grid">
-                        {youtubeResearchVideos.slice(3).map((video) => (
-                          <div key={`strategy-research-${video.id}`}>
-                            <strong>{video.title}</strong>
-                            <ul>
-                              <li>{video.channel}</li>
-                              <li>{formatYoutubeNumber(video.views)} {ui.youtubeResearchViews}</li>
-                              <li>{formatYoutubeDuration(video.durationSec)}</li>
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {youtubePatternSummary && (
-                      <div className="creatorlab-strategy-raw-grid">
-                        <div>
-                          <strong>{ui.patternTopTitles}</strong>
-                          <ul>
-                            {youtubePatternSummary.topTitlePatterns.map((item, index) => (
-                              <li key={`strategy-title-pattern-${index}`}>{item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <strong>{uiLanguage === "en" ? "Opening application" : "Açılış uygulaması"}</strong>
-                          <ul>
-                            <li>
-                              {uiLanguage === "en"
-                                ? "Hook alternatives are available inside the opening scene in Production."
-                                : "Hook alternatifleri Production içindeki açılış sahnesinde kullanılabilir."}
-                            </li>
-                          </ul>
-                        </div>
-                        <div>
-                          <strong>{uiLanguage === "en" ? "Reasoning" : "Gerekçe"}</strong>
-                          <ul>
-                            {youtubePatternSummary.reasoning.map((item, index) => (
-                              <li key={`strategy-reasoning-${index}`}>{item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </details>
-              )}
-            </section>
-            )}
-
-            <section className="creatorlab-strategy-panel">
-              <div className="creatorlab-strategy-panel-heading">
-                <div>
-                  <span>{uiLanguage === "en" ? "Production package preview" : "Üretim paketi önizlemesi"}</span>
-                  <h3>{uiLanguage === "en" ? "What the production plan will contain" : "Üretim planı neleri içerecek"}</h3>
-                  <p>{uiLanguage === "en" ? "This is the approved strategic outline. Scene-level planning is created only after the next action." : "Bu, onaylanan stratejik taslaktır. Sahne düzeyi planlama yalnızca sıradaki aksiyondan sonra oluşturulur."}</p>
-                </div>
-              </div>
-              <ol className="creatorlab-strategy-production-list">
-                {creatorMentorProductionPlan.map((item, index) => (
-                  <li key={`strategy-production-${index}`}>{item}</li>
-                ))}
-              </ol>
-            </section>
-
-            {creatorScriptEditorialState !== "current" && (
-            <div id="creatorlab-strategy-action" className="creatorlab-strategy-action-bar">
-              <div className="creatorlab-strategy-action-copy">
-                <strong>{creatorScriptEditorialState === "stale"
-                  ? (uiLanguage === "en" ? "Your strategy has changed" : "Stratejin değişti")
-                  : (uiLanguage === "en" ? "Ready to approve this strategy?" : "Bu stratejiyi onaylamaya hazır mısın?")}</strong>
-                <p>
-                  {creatorScriptEditorialState === "stale"
-                    ? (uiLanguage === "en"
-                        ? "Your previous script is preserved, but it no longer matches the current direction. Rebuild the script to continue."
-                        : "Önceki metnin korunuyor ancak artık mevcut yönle eşleşmiyor. Devam etmek için metni yeniden oluştur.")
-                    : uiLanguage === "en"
-                      ? `Velto Studio will use “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” and the selected opening direction to build one grounded full script for review. No scenes or paid media are generated yet.`
-                      : `Velto Studio, “${creatorSelectedStrategyDirection?.title || creatorMentorRecommendedIdea.title}” yönünü ve seçilen açılış açısını kullanarak inceleme için kaynaklı bir tam metin oluşturacak. Henüz sahne veya ücretli medya üretilmez.`}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCreatorProductionPackage}
-                disabled={creatorWorkflowLoadingState.scriptGenerating || creatorWorkflowLoadingState.scenesBuilding}
-                className="creatorlab-strategy-primary-action"
-              >
-                {creatorWorkflowLoadingState.scriptGenerating
-                  ? uiLanguage === "en" ? "Building full script..." : "Tam metin oluşturuluyor..."
-                  : creatorScriptEditorialState === "stale"
-                    ? (uiLanguage === "en" ? "Rebuild script" : "Metni yeniden oluştur")
-                    : (uiLanguage === "en" ? "Approve Strategy & Build Script" : "Stratejiyi Onayla ve Metni Oluştur")}
-              </button>
-            </div>
-            )}
-
-            {creatorScriptIsCurrent && creatorScript && (
-              <CreatorScriptReview
-                key={`${currentProjectId || "unsaved"}:${creatorScript.revision}`}
-                script={creatorScript}
-                currentStrategyFingerprint={creatorStrategyFingerprint}
-                language={language}
-                busySectionId={creatorScriptBusySectionId}
-                buildingScenes={creatorWorkflowLoadingState.scenesBuilding}
-                generatingScript={creatorWorkflowLoadingState.scriptGenerating}
-                onSaveDocument={handleSaveCreatorScriptDocument}
-                onRegenerateSection={handleRegenerateCreatorScriptSection}
-                onReviewSources={handleReviewCreatorScriptSources}
-                onRefine={handleRefineCreatorScript}
-                pendingRefinement={creatorScriptPendingRefinement}
-                revisionHistory={creatorScriptRevisionHistory}
-                onApplyRefinement={() => handleResolveCreatorScriptRefinement("apply")}
-                onDiscardRefinement={() => handleResolveCreatorScriptRefinement("discard")}
-                refinementHighlights={creatorScriptRefinementHighlights}
-                onApproveAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
-              />
-            )}
-          </section>
+          <CreatorStrategyPanel
+            uiLanguage={uiLanguage}
+            input={input}
+            CREATOR_AGE_GROUP_OPTIONS={CREATOR_AGE_GROUP_OPTIONS}
+            creatorAgeGroup={creatorAgeGroup}
+            CREATOR_FORMAT_OPTIONS={CREATOR_FORMAT_OPTIONS}
+            creatorFormat={creatorFormat}
+            getCreatorDurationLabel={getCreatorDurationLabel}
+            getCreatorQualityModeLabel={getCreatorQualityModeLabel}
+            navigateCreatorWorkspaceStep={navigateCreatorWorkspaceStep}
+            creatorSelectedStrategyDirectionId={creatorSelectedStrategyDirectionId}
+            creatorMentorRecommendedIdea={creatorMentorRecommendedIdea}
+            setCreatorSelectedStrategyDirectionId={setCreatorSelectedStrategyDirectionId}
+            CREATOR_COUNTRY_OPTIONS={CREATOR_COUNTRY_OPTIONS}
+            creatorCountry={creatorCountry}
+            getCreatorSceneCount={getCreatorSceneCount}
+            creatorAudienceFitLabel={creatorAudienceFitLabel}
+            creatorMentorAudienceInsights={creatorMentorAudienceInsights}
+            creatorSelectedStrategyHook={creatorSelectedStrategyHook}
+            youtubeResearchVideos={youtubeResearchVideos}
+            youtubePatternSummary={youtubePatternSummary}
+            creatorCompetitionLabel={creatorCompetitionLabel}
+            setCreatorMarketEvidenceReviewOpen={setCreatorMarketEvidenceReviewOpen}
+            youtubeResearchLoading={youtubeResearchLoading}
+            handleYoutubeResearch={handleYoutubeResearch}
+            creatorStrategyHookOptions={creatorStrategyHookOptions}
+            setCreatorSelectedHookPattern={setCreatorSelectedHookPattern}
+            creatorStrategyAlternativeDirections={creatorStrategyAlternativeDirections}
+            creatorMarketEvidenceReviewOpen={creatorMarketEvidenceReviewOpen}
+            ui={ui}
+            handleYoutubePatternEngine={handleYoutubePatternEngine}
+            youtubePatternLoading={youtubePatternLoading}
+            creatorMarketEvidenceSubject={creatorMarketEvidenceSubject}
+            CreatorWorkspaceIcon={CreatorWorkspaceIcon}
+            formatYoutubeNumber={formatYoutubeNumber}
+            formatYoutubeDuration={formatYoutubeDuration}
+            creatorMentorProductionPlan={creatorMentorProductionPlan}
+            creatorScriptEditorialState={creatorScriptEditorialState}
+            creatorSelectedStrategyDirection={creatorSelectedStrategyDirection}
+            handleCreatorProductionPackage={handleCreatorProductionPackage}
+            creatorWorkflowLoadingState={creatorWorkflowLoadingState}
+            creatorScriptIsCurrent={creatorScriptIsCurrent}
+            creatorScript={creatorScript}
+            currentProjectId={currentProjectId}
+            creatorStrategyFingerprint={creatorStrategyFingerprint}
+            language={language}
+            creatorScriptBusySectionId={creatorScriptBusySectionId}
+            handleSaveCreatorScriptDocument={handleSaveCreatorScriptDocument}
+            handleRegenerateCreatorScriptSection={handleRegenerateCreatorScriptSection}
+            handleReviewCreatorScriptSources={handleReviewCreatorScriptSources}
+            handleRefineCreatorScript={handleRefineCreatorScript}
+            creatorScriptPendingRefinement={creatorScriptPendingRefinement}
+            creatorScriptRevisionHistory={creatorScriptRevisionHistory}
+            handleResolveCreatorScriptRefinement={handleResolveCreatorScriptRefinement}
+            creatorScriptRefinementHighlights={creatorScriptRefinementHighlights}
+            handleApproveCreatorScriptAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
+          />
         )}
 
         {isCreatorLabFlow && (creatorStageVisibility.production_setup || creatorStageVisibility.create_review) && creatorProductionPackage && (
-          <section id="creatorlab-production-canvas" className="creatorlab-production-experience">
-            <header className="creatorlab-production-heading">
-              <div>
-                <p className="creatorlab-production-kicker">
-                  {creatorProductionSubstep === "setup"
-                    ? uiLanguage === "en" ? "Step 3 · Production Setup" : "Adım 3 · Üretim Kurulumu"
-                    : uiLanguage === "en" ? "Step 4 · Create & Review" : "Adım 4 · Üret ve İncele"}
-                </p>
-                <h1>{creatorProductionPackage.title}</h1>
-                <div className="creatorlab-p2c-production-header-meta" aria-label={uiLanguage === "en" ? "Current production plan" : "Mevcut üretim planı"}>
-                  <span>{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}</span>
-                  <span>{getCreatorDurationLabel()}</span>
-                  <span>{scenes.length} {uiLanguage === "en" ? "scenes" : "sahne"}</span>
-                  <span>{getCreatorQualityModeLabel()}</span>
-                </div>
-              </div>
-              <span className="creatorlab-production-stage-badge">
-                {scenes.length > 0
-                  ? uiLanguage === "en" ? `${scenes.length} scenes planned` : `${scenes.length} sahne planlandı`
-                  : uiLanguage === "en" ? "Plan approved" : "Plan onaylandı"}
-              </span>
-            </header>
-
-            {currentProjectId && (
-              <CreatorProductionHistory
-                projectId={currentProjectId}
-                language={uiLanguage === "en" ? "en" : "tr"}
-              />
-            )}
-
-            {creatorStageVisibility.create_review && (
-              <>
-                <CreatorProductionSetupSummary
-                  title={creatorProductionPackage.title}
-                  premise={creatorProductionPackage.storyPremise}
-                  format={CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}
-                  runtime={getCreatorDurationLabel()}
-                  quality={getCreatorQualityModeLabel()}
-                  approach={creatorPresentationModeLabel}
-                  castSummary={creatorCharacterVoiceSummary}
-                  music={creatorMusicSummary}
-                  continuity={creatorContinuitySummary}
-                  sceneCount={scenes.length}
-                  onEdit={() => selectCreatorProductionSubstep("setup")}
-                  language={uiLanguage === "en" ? "en" : "tr"}
-                />
-              </>
-            )}
-
-            {creatorStageVisibility.production_setup && (
-              <div className="creatorlab-setup-shell" data-production-substep="setup">
-                <section className="creatorlab-setup-recommendation" aria-labelledby="creatorlab-setup-recommendation-title">
-                  <div className="creatorlab-setup-recommendation-copy">
-                    <span className="creatorlab-setup-recommendation-kicker">
-                      {uiLanguage === "en" ? "Recommended setup" : "Önerilen kurulum"}
-                    </span>
-                    <h2 id="creatorlab-setup-recommendation-title">
-                      {creatorProductionSetupPresentation.headline}
-                    </h2>
-                    <p>
-                      {uiLanguage === "en"
-                        ? "Optimized for this format, quality mode and current project settings."
-                        : "Bu format, kalite modu ve mevcut proje ayarları için optimize edildi."}
-                    </p>
-                  </div>
-                  <div className="creatorlab-setup-summary-grid" aria-label={uiLanguage === "en" ? "Current production setup" : "Mevcut üretim kurulumu"}>
-                    <div><span>{uiLanguage === "en" ? "Presentation" : "Sunum"}</span><strong>{creatorPresentationModeLabel}</strong></div>
-                    <div><span>{uiLanguage === "en" ? "Narrator" : "Anlatıcı"}</span><strong>{creatorNarratorSummary}</strong></div>
-                    <div><span>{uiLanguage === "en" ? "Music" : "Müzik"}</span><strong>{creatorMusicSummary}</strong></div>
-                    <div><span>{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</span><strong>{creatorContinuitySummary}</strong></div>
-                    <div className="creatorlab-setup-summary-visual"><span>{uiLanguage === "en" ? "Visual style" : "Görsel stil"}</span><strong>{creatorProductionSetupPresentation.visualStyleSummary}</strong></div>
-                  </div>
-                  {creatorProductionSetupPresentation.actionRequired && (
-                    <div className="creatorlab-setup-action-required" role="alert">
-                      <strong>{uiLanguage === "en" ? "Action required" : "Aksiyon gerekli"}</strong>
-                      <span>{uiLanguage === "en" ? "Confirm the selected premium music before final production." : "Final üretimden önce seçilen premium müziği onayla."}</span>
-                    </div>
-                  )}
-                </section>
-
-                <details
-                  id="creatorlab-production-customize"
-                  className={`creatorlab-setup-customize ${creatorMusicConfirmationRequired ? "has-action-required" : ""}`}
-                  open={creatorProductionCustomizeOpen}
-                  onToggle={(event) =>
-                    setCreatorProductionCustomizeOpen(event.currentTarget.open)
-                  }
-                >
-                  <summary>
-                    <div>
-                      <strong>{uiLanguage === "en" ? "Customize production" : "Üretimi özelleştir"}</strong>
-                      <span>{uiLanguage === "en" ? "Presentation, brand, voice, music and continuity" : "Sunum, marka, ses, müzik ve devamlılık"}</span>
-                    </div>
-                  </summary>
-                  <div className="creatorlab-setup-customize-body">
-                <div id="creatorlab-cast-brand" className="space-y-5">
-                  <div className="creatorlab-cast-brand-body">
-
-                <section className="creatorlab-cast-brand-section creatorlab-setup-group" data-setup-group="presentation-cast">
-                  <div className="creatorlab-setup-group-label">
-                    <strong>{uiLanguage === "en" ? "Presentation & Cast" : "Sunum ve Kadro"}</strong>
-                    <span>{creatorPresentationModeLabel}</span>
-                  </div>
-                  <div className="creatorlab-cast-brand-section-heading">
-                    <div>
-                      <span>{uiLanguage === "en" ? "Production approach" : "Üretim yaklaşımı"}</span>
-                      <h3>{uiLanguage === "en" ? "Choose how the audience experiences the story" : "Kitlenin hikâyeyi nasıl deneyimleyeceğini seç"}</h3>
-                      <p>{uiLanguage === "en" ? "The current approach is inferred from the active cast and narrator configuration." : "Mevcut yaklaşım aktif kadro ve anlatıcı yapılandırmasından otomatik belirlenir."}</p>
-                    </div>
-                    <span className="creatorlab-cast-brand-current-mode">{creatorPresentationModeLabel}</span>
-                  </div>
-
-                  <div className="creatorlab-presentation-mode-grid">
-                    <button
-                      type="button"
-                      className={`creatorlab-presentation-mode ${creatorPresentationMode === "faceless" ? "is-selected" : ""}`}
-                      disabled={characters.length > 0}
-                      onClick={() => {
-                        setCreatorNoCastMode("faceless");
-                        stopDialoguePlayback();
-                        stopStoryPlayback();
-                        setNarratorSettings((current) => ({ ...current, voiceId: "", voiceSelection: undefined }));
-                        clearAllSceneAudioData();
-                        clearAllSceneDialogueAudioData();
-                        clearAllSceneTimingData();
-                      }}
-                    >
-                      <span className="creatorlab-presentation-mode-mark">F</span>
-                      <strong>{uiLanguage === "en" ? "Faceless" : "Faceless"}</strong>
-                      <small>{uiLanguage === "en" ? "Visual storytelling without a recurring on-screen identity." : "Tekrar eden ekran kimliği olmadan görsel anlatım."}</small>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`creatorlab-presentation-mode ${creatorPresentationMode === "narrator" ? "is-selected" : ""}`}
-                      disabled={characters.length > 0}
-                      onClick={() => {
-                        setCreatorNoCastMode("narrator");
-                        scrollCreatorWorkspaceTo("creatorlab-cast-voice");
-                      }}
-                    >
-                      <span className="creatorlab-presentation-mode-mark">N</span>
-                      <strong>{uiLanguage === "en" ? "Narrator-led" : "Anlatıcı odaklı"}</strong>
-                      <small>{uiLanguage === "en" ? "A consistent voice leads the video without an on-screen host." : "Ekran sunucusu olmadan tutarlı bir ses videoyu yönlendirir."}</small>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`creatorlab-presentation-mode ${creatorPresentationMode === "presenter" ? "is-selected" : ""}`}
-                      onClick={() => {
-                        if (characters.length === 0) {
-                          addCharacter();
-                        }
-                        scrollCreatorWorkspaceTo("creatorlab-cast-list");
-                      }}
-                    >
-                      <span className="creatorlab-presentation-mode-mark">P</span>
-                      <strong>{uiLanguage === "en" ? "Presenter-led" : "Sunucu odaklı"}</strong>
-                      <small>{uiLanguage === "en" ? "One recognizable host or persona anchors the production." : "Tek bir tanınabilir sunucu veya persona üretimi taşır."}</small>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`creatorlab-presentation-mode ${creatorPresentationMode === "ensemble" ? "is-selected" : ""}`}
-                      onClick={() => {
-                        addCharacter();
-                        scrollCreatorWorkspaceTo("creatorlab-cast-list");
-                      }}
-                    >
-                      <span className="creatorlab-presentation-mode-mark">C</span>
-                      <strong>{uiLanguage === "en" ? "Cast-led" : "Kadrolu anlatım"}</strong>
-                      <small>{uiLanguage === "en" ? "Multiple presenters or recurring characters share the story." : "Birden fazla sunucu veya tekrar eden karakter hikâyeyi paylaşır."}</small>
-                    </button>
-                  </div>
-
-                  {characters.length > 0 && (
-                    <div className="creatorlab-cast-presence-note">
-                      <div>
-                        <strong>{characters.length} {uiLanguage === "en" ? characters.length === 1 ? "cast member is active" : "cast members are active" : "kadro üyesi aktif"}</strong>
-                        <p>{uiLanguage === "en" ? "Faceless and narrator-led modes become available after the active cast is removed." : "Faceless ve anlatıcı odaklı modlar aktif kadro kaldırıldıktan sonra kullanılabilir."}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCharacters([]);
-                          setCreatorNoCastMode("faceless");
-                        }}
-                      >
-                        {uiLanguage === "en" ? "Clear active cast" : "Aktif kadroyu temizle"}
-                      </button>
-                    </div>
-                  )}
-                </section>
-
-                <section className="creatorlab-setup-group space-y-3" data-setup-group="brand-visual">
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      {uiLanguage === "en" ? "Brand & Visual Direction" : "Marka ve Görsel Yön"}
-                    </span>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      {uiLanguage === "en" ? "Set the identity, style and atmosphere shared across the project." : "Proje genelinde kullanılan kimliği, stili ve atmosferi belirle."}
-                    </p>
-                  </div>
-                  <div className="creatorlab-cast-brand-grid">
-                  <section className="creatorlab-cast-brand-card">
-                    <div className="creatorlab-cast-brand-card-heading">
-                      <span>{uiLanguage === "en" ? "Brand foundation" : "Marka temeli"}</span>
-                      <strong>{creatorBrandConfigured ? (uiLanguage === "en" ? "Configured" : "Yapılandırıldı") : (uiLanguage === "en" ? "Optional" : "Opsiyonel")}</strong>
-                    </div>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Creator or brand name" : "Creator veya marka adı"}</span>
-                      <input
-                        value={creatorProfile.brandName}
-                        onChange={(event) => setCreatorProfile((current) => ({ ...current, brandName: event.target.value }))}
-                        placeholder={uiLanguage === "en" ? "Example: Northstar Studio" : "Örnek: Northstar Studio"}
-                      />
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Brand voice" : "Marka sesi"}</span>
-                      <textarea
-                        value={creatorProfile.brandVoice}
-                        onChange={(event) => setCreatorProfile((current) => ({ ...current, brandVoice: event.target.value }))}
-                        placeholder={uiLanguage === "en" ? "Clear, expert, confident and human — never sensational." : "Net, uzman, güven veren ve insani — sansasyonel değil."}
-                      />
-                    </label>
-                    <button type="button" className="creatorlab-cast-brand-save" onClick={saveCreatorProfile}>
-                      {uiLanguage === "en" ? "Save brand defaults" : "Marka varsayılanlarını kaydet"}
-                    </button>
-                  </section>
-
-                  <section className="creatorlab-cast-brand-card">
-                    <div className="creatorlab-cast-brand-card-heading">
-                      <span>{uiLanguage === "en" ? "Visual direction" : "Görsel yön"}</span>
-                      <strong>{creatorVisualDirectionConfigured ? (uiLanguage === "en" ? "Configured" : "Yapılandırıldı") : (uiLanguage === "en" ? "Optional" : "Opsiyonel")}</strong>
-                    </div>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Visual style" : "Görsel stil"}</span>
-                      <textarea
-                        value={visualBible?.style || ""}
-                        onChange={(event) => setVisualBible((current) => ({ ...(current || emptyVisualBible), style: event.target.value }))}
-                        placeholder={ui.stylePlaceholder}
-                      />
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Palette and atmosphere" : "Palet ve atmosfer"}</span>
-                      <textarea
-                        value={visualBible?.palette || ""}
-                        onChange={(event) => setVisualBible((current) => ({ ...(current || emptyVisualBible), palette: event.target.value }))}
-                        placeholder={ui.palettePlaceholder}
-                      />
-                    </label>
-                    <details className="creatorlab-cast-brand-nested-details">
-                      <summary>{uiLanguage === "en" ? "Advanced" : "Gelişmiş"}</summary>
-                      <div>
-                        <label>
-                          <span>{uiLanguage === "en" ? "Camera language" : "Kamera dili"}</span>
-                          <textarea
-                            value={visualBible?.camera || ""}
-                            onChange={(event) => setVisualBible((current) => ({ ...(current || emptyVisualBible), camera: event.target.value }))}
-                            placeholder={ui.cameraPlaceholder}
-                          />
-                        </label>
-                        <label>
-                          <span>{uiLanguage === "en" ? "Consistency rules" : "Tutarlılık kuralları"}</span>
-                          <textarea
-                            value={visualBible?.consistencyRules || ""}
-                            onChange={(event) => setVisualBible((current) => ({ ...(current || emptyVisualBible), consistencyRules: event.target.value }))}
-                            placeholder={ui.consistencyRulesPlaceholder}
-                          />
-                        </label>
-                      </div>
-                    </details>
-                  </section>
-                  </div>
-                </section>
-
-                <section id="creatorlab-cast-voice" className="creatorlab-cast-brand-section creatorlab-voice-direction-section creatorlab-setup-group" data-setup-group="voice">
-                  <div className="creatorlab-setup-group-label">
-                    <strong>{uiLanguage === "en" ? "Voice" : "Ses"}</strong>
-                    <span>{creatorNarratorSummary}</span>
-                  </div>
-                  <div className="creatorlab-cast-brand-section-heading">
-                    <div>
-                      <span>{uiLanguage === "en" ? "Cast & Voices" : "Kadro ve Sesler"}</span>
-                      <h3>{uiLanguage === "en" ? "Set narration, character defaults and individual voices" : "Anlatımı, karakter varsayılanını ve bireysel sesleri ayarla"}</h3>
-                      <p>{uiLanguage === "en" ? "Characters inherit the default unless you choose an individual voice." : "Bireysel bir ses seçmediğin karakterler varsayılan sesi kullanır."}</p>
-                    </div>
-                    <span className="creatorlab-cast-brand-current-mode">
-                      {getCreatorVoiceSelectionLabel(
-                        getEffectiveNarratorVoiceProfileId(),
-                        uiLanguage === "en" ? "en" : "tr",
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="creatorlab-voice-direction-grid">
-                    <label>
-                      <span>{uiLanguage === "en" ? "Narrator delivery style" : "Anlatıcı ifade stili"}</span>
-                      <select
-                        value={getEffectiveNarratorVoiceProfileId()}
-                        onChange={(event) =>
-                          applyCreatorVoiceProfile(
-                            event.target.value as CreatorVoiceSelectionId,
-                            "narrator",
-                          )
-                        }
-                      >
-                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
-                          <option key={`narrator-${profile.id}`} value={profile.id}>
-                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
-                          </option>
-                        ))}
-                      </select>
-                      <small>
-                        {uiLanguage === "en"
-                          ? getCreatorVoiceSelection(getEffectiveNarratorVoiceProfileId()).descriptionEn
-                          : getCreatorVoiceSelection(getEffectiveNarratorVoiceProfileId()).descriptionTr}
-                      </small>
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Default character delivery style" : "Varsayılan karakter ifade stili"}</span>
-                      <select
-                        value={getEffectiveDialogueVoiceProfileId()}
-                        onChange={(event) =>
-                          applyCreatorVoiceProfile(
-                            event.target.value as CreatorVoiceSelectionId,
-                            "dialogue",
-                          )
-                        }
-                      >
-                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
-                          <option key={`dialogue-${profile.id}`} value={profile.id}>
-                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
-                          </option>
-                        ))}
-                      </select>
-                      <small>
-                        {uiLanguage === "en"
-                          ? getCreatorVoiceSelection(getEffectiveDialogueVoiceProfileId()).descriptionEn
-                          : getCreatorVoiceSelection(getEffectiveDialogueVoiceProfileId()).descriptionTr}
-                      </small>
-                    </label>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            {uiLanguage === "en" ? "Project narrator voice" : "Proje anlatıcı sesi"}
-                          </span>
-                          <strong className="mt-2 block text-sm text-slate-950">
-                            {narratorSettings.voiceSelection?.name ||
-                              (uiLanguage === "en" ? "Velto default voice" : "Velto varsayılan sesi")}
-                          </strong>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            {narratorSettings.voiceSelection
-                              ? getVoiceLibraryDisplayMeta(narratorSettings.voiceSelection) ||
-                                (uiLanguage === "en" ? "Selected from the voice library" : "Ses kütüphanesinden seçildi")
-                              : uiLanguage === "en"
-                                ? "Use the default or browse real voices by language, gender, accent and style."
-                                : "Varsayılanı kullan veya gerçek sesleri dil, cinsiyet, aksan ve stile göre keşfet."}
-                          </p>
-                        </div>
-                        {narratorSettings.voiceSelection && (
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
-                            {uiLanguage === "en" ? "Selected" : "Seçildi"}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openCreatorVoiceLibrary({ scope: "project_narrator" })}
-                        className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
-                      >
-                        {uiLanguage === "en" ? "Browse narrator voices" : "Anlatıcı seslerini keşfet"}
-                      </button>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            {uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi"}
-                          </span>
-                          <strong className="mt-2 block text-sm text-slate-950">
-                            {narratorSettings.dialogueVoiceSelection?.name ||
-                              (uiLanguage === "en" ? "Velto default character voice" : "Velto varsayılan karakter sesi")}
-                          </strong>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            {narratorSettings.dialogueVoiceSelection
-                              ? getVoiceLibraryDisplayMeta(narratorSettings.dialogueVoiceSelection) ||
-                                (uiLanguage === "en" ? "Selected from the voice library" : "Ses kütüphanesinden seçildi")
-                              : uiLanguage === "en"
-                                ? "Characters can inherit this voice or use their own selection."
-                                : "Karakterler bu sesi devralabilir veya kendi sesini kullanabilir."}
-                          </p>
-                        </div>
-                        {narratorSettings.dialogueVoiceSelection && (
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
-                            {uiLanguage === "en" ? "Selected" : "Seçildi"}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openCreatorVoiceLibrary({ scope: "project_dialogue" })}
-                        className="mt-4 min-h-11 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
-                      >
-                        {uiLanguage === "en" ? "Browse character voices" : "Karakter seslerini keşfet"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
-                    <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 border-b border-violet-200 pb-3 text-xs font-semibold text-violet-900">
-                      <span>{uiLanguage === "en" ? "Narrator voice · Ready" : "Anlatıcı sesi · Hazır"}</span>
-                      <span>
-                        {creatorBoundDialogueCharacterIds.size > 0
-                          ? `${uiLanguage === "en" ? "Character voices" : "Karakter sesleri"} · ${creatorResolvedCharacterVoiceCount}/${creatorBoundDialogueCharacterIds.size} ${uiLanguage === "en" ? "resolved" : "çözümlendi"}`
-                          : uiLanguage === "en"
-                            ? characters.length === 0 ? "Character voices · Not needed for this project" : "Character voices · No character dialogue yet"
-                            : characters.length === 0 ? "Karakter sesleri · Bu proje için gerekli değil" : "Karakter sesleri · Henüz karakter diyaloğu yok"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>
-                        {uiLanguage === "en" ? "Voice generation" : "Ses üretimi"}
-                      </strong>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-violet-800">
-                        {getCreatorVoiceCreditEstimate(scenes).totalTracks} {uiLanguage === "en" ? "missing" : "eksik"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-violet-800">
-                      {uiLanguage === "en"
-                        ? `${getCreatorVoiceCreditEstimate(scenes).totalTracks} missing voice track(s).`
-                        : `${getCreatorVoiceCreditEstimate(scenes).totalTracks} eksik ses kaydı var.`}
-                    </p>
-                  </div>
-
-                  <details className="creatorlab-cast-brand-nested-details">
-                    <summary>{uiLanguage === "en" ? "Advanced voice tuning" : "Gelişmiş ses ayarları"}</summary>
-                    <div className="creatorlab-voice-direction-grid">
-                      <label>
-                        <span>{uiLanguage === "en" ? "Custom voice reference" : "Özel ses referansı"}</span>
-                        <input
-                          value={narratorSettings.voiceId || ""}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({
-                              ...current,
-                              voiceId: event.target.value,
-                            }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                          placeholder={uiLanguage === "en" ? "Optional saved voice reference" : "Opsiyonel kayıtlı ses referansı"}
-                        />
-                        <small>{uiLanguage === "en" ? "Optional. Leave empty to use the selected Velto voice." : "Opsiyoneldir. Seçili Velto sesini kullanmak için boş bırak."}</small>
-                      </label>
-                      <label>
-                        <span>{uiLanguage === "en" ? "Performance mode" : "Performans modu"}</span>
-                        <select
-                          value={narratorSettings.modelId}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({
-                              ...current,
-                              modelId: event.target.value,
-                            }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                        >
-                          <option value="eleven_multilingual_v2">{uiLanguage === "en" ? "Natural multilingual" : "Doğal çok dilli"}</option>
-                          <option value="eleven_flash_v2_5">{uiLanguage === "en" ? "Fast preview" : "Hızlı önizleme"}</option>
-                        </select>
-                        <small>{uiLanguage === "en" ? "Natural delivery prioritizes nuance; Fast preview prioritizes speed." : "Doğal anlatım nüansı, Hızlı önizleme ise hızı önceliklendirir."}</small>
-                      </label>
-                    </div>
-                    <div className="creatorlab-voice-tuning-grid">
-                      <label>
-                        <span>{uiLanguage === "en" ? "Stability" : "Stabilite"} · {narratorSettings.stability.toFixed(2)}</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={narratorSettings.stability}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, stability: Number(event.target.value), advancedTuning: true }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                        />
-                      </label>
-                      <label>
-                        <span>{uiLanguage === "en" ? "Similarity" : "Benzerlik"} · {narratorSettings.similarityBoost.toFixed(2)}</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={narratorSettings.similarityBoost}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, similarityBoost: Number(event.target.value), advancedTuning: true }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                        />
-                      </label>
-                      <label>
-                        <span>{uiLanguage === "en" ? "Expression" : "İfade"} · {(narratorSettings.style ?? 0.35).toFixed(2)}</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={narratorSettings.style ?? 0.35}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, style: Number(event.target.value), advancedTuning: true }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                        />
-                      </label>
-                      <label>
-                        <span>{uiLanguage === "en" ? "Pace" : "Tempo"} · {(narratorSettings.speed ?? 0.93).toFixed(2)}</span>
-                        <input
-                          type="range"
-                          min="0.7"
-                          max="1.2"
-                          step="0.01"
-                          value={narratorSettings.speed ?? 0.93}
-                          onChange={(event) => {
-                            stopDialoguePlayback();
-                            stopStoryPlayback();
-                            setNarratorSettings((current) => ({ ...current, speed: Number(event.target.value), advancedTuning: true }));
-                            clearAllSceneAudioData();
-                            clearAllSceneDialogueAudioData();
-                            clearAllSceneTimingData();
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </details>
-                </section>
-
-                <section id="creatorlab-cast-list" className="creatorlab-cast-brand-section creatorlab-cast-list-section creatorlab-setup-group" data-setup-group="presentation-cast">
-                  <div className="creatorlab-cast-brand-section-heading">
-                    <div>
-                      <span>{uiLanguage === "en" ? "Presenters and personas" : "Sunucular ve personalar"}</span>
-                      <h3>{uiLanguage === "en" ? "Manage only the identities the production needs" : "Yalnızca üretimin ihtiyaç duyduğu kimlikleri yönet"}</h3>
-                      <p>{uiLanguage === "en" ? "Keep this empty for faceless or narrator-led formats. Add a presenter, expert, host or recurring character when visual continuity requires one." : "Faceless veya anlatıcı odaklı formatlar için boş bırak. Görsel süreklilik gerektirdiğinde sunucu, uzman, host veya tekrar eden karakter ekle."}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="creatorlab-cast-brand-add"
-                      onClick={addCharacter}
-                    >
-                      {uiLanguage === "en" ? "Add presenter or persona" : "Sunucu veya persona ekle"}
-                    </button>
-                  </div>
-
-                  {characters.length === 0 ? (
-                    <div className="creatorlab-cast-empty-state">
-                      <span aria-hidden="true">F</span>
-                      <div>
-                        <strong>{uiLanguage === "en" ? "No recurring cast is required" : "Tekrar eden kadro gerekmiyor"}</strong>
-                        <p>{uiLanguage === "en" ? "The project can continue as faceless or narrator-led content without creating a blocking setup step." : "Proje, engelleyici bir kurulum adımı oluşturmadan faceless veya anlatıcı odaklı içerik olarak devam edebilir."}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="creatorlab-cast-card-list">
-                      {characters.map((character, index) => (
-                        <details key={character.id} className="creatorlab-cast-member">
-                          <summary>
-                            <div className="creatorlab-cast-member-avatar">
-                              {character.referenceImage ? (
-                                <img src={character.referenceImage} alt="" />
-                              ) : (
-                                <span>{(character.name || String(index + 1)).slice(0, 1).toUpperCase()}</span>
-                              )}
-                            </div>
-                            <div className="creatorlab-cast-member-summary-copy">
-                              <strong>{character.name || `${ui.characterLabel} ${index + 1}`}</strong>
-                              <span>{character.age || (uiLanguage === "en" ? "Role not defined" : "Rol tanımlanmadı")}</span>
-                            </div>
-                            <span className="creatorlab-cast-member-status">
-                              {uiLanguage === "en" ? "Voice" : "Ses"} · {character.voiceSelection?.name || (uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi")}
-                            </span>
-                            <span className="creatorlab-cast-brand-chevron" aria-hidden="true">⌄</span>
-                          </summary>
-
-                          <div className="creatorlab-cast-member-body">
-                            <div className="creatorlab-cast-member-grid">
-                              <label>
-                                <span>{uiLanguage === "en" ? "Name" : "Ad"}</span>
-                                <input
-                                  value={character.name}
-                                  onChange={(event) => updateCharacter(index, "name", event.target.value)}
-                                  placeholder={ui.namePlaceholder}
-                                />
-                              </label>
-                              <label>
-                                <span>{uiLanguage === "en" ? "Role or archetype" : "Rol veya arketip"}</span>
-                                <input
-                                  value={character.age}
-                                  onChange={(event) => updateCharacter(index, "age", event.target.value)}
-                                  placeholder={uiLanguage === "en" ? "Host, expert, customer, fictional guide..." : "Sunucu, uzman, müşteri, kurgu rehber..."}
-                                />
-                              </label>
-                            </div>
-                            <label>
-                              <span>{uiLanguage === "en" ? "Appearance" : "Görünüm"}</span>
-                              <textarea value={character.appearance} onChange={(event) => updateCharacter(index, "appearance", event.target.value)} placeholder={ui.appearancePlaceholder} />
-                            </label>
-                            <div className="creatorlab-cast-member-grid">
-                              <label>
-                                <span>{uiLanguage === "en" ? "Wardrobe" : "Kıyafet"}</span>
-                                <textarea value={character.outfit} onChange={(event) => updateCharacter(index, "outfit", event.target.value)} placeholder={ui.outfitPlaceholder} />
-                              </label>
-                              <label>
-                                <span>{uiLanguage === "en" ? "Personality and delivery" : "Kişilik ve anlatım"}</span>
-                                <textarea value={character.personality} onChange={(event) => updateCharacter(index, "personality", event.target.value)} placeholder={ui.personalityPlaceholder} />
-                              </label>
-                            </div>
-                            <details className="creatorlab-cast-brand-nested-details">
-                              <summary>{uiLanguage === "en" ? "Additional identity controls" : "Ek kimlik kontrolleri"}</summary>
-                              <div className="creatorlab-cast-member-grid">
-                                <label>
-                                  <span>{uiLanguage === "en" ? "Signature accessory" : "İmza aksesuar"}</span>
-                                  <input value={character.accessory || ""} onChange={(event) => updateCharacter(index, "accessory", event.target.value)} placeholder={ui.accessoryPlaceholder} />
-                                </label>
-                                <label>
-                                  <span>{uiLanguage === "en" ? "Character delivery style" : "Karakter ifade stili"}</span>
-                                  <select
-                                    value={normalizeCreatorVoiceSelectionId(character.voiceProfileId, "velto_warm")}
-                                    onChange={(event) => {
-                                      updateCharacter(
-                                        index,
-                                        "voiceProfileId",
-                                        normalizeCreatorVoiceSelectionId(
-                                          event.target.value,
-                                          "velto_warm",
-                                        ),
-                                      );
-                                      clearAllSceneDialogueAudioData();
-                                      clearAllSceneTimingData();
-                                    }}
-                                  >
-                                    {CREATOR_VOICE_SELECTIONS.map((profile) => (
-                                      <option key={`character-${index}-${profile.id}`} value={profile.id}>
-                                        {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                    {uiLanguage === "en" ? "Actual character voice" : "Gerçek karakter sesi"}
-                                  </span>
-                                  <strong className="mt-2 block text-sm text-slate-950">
-                                    {character.voiceSelection?.name ||
-                                      (uiLanguage === "en" ? "Default Character Voice" : "Varsayılan Karakter Sesi")}
-                                  </strong>
-                                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                                    {character.voiceSelection
-                                      ? getVoiceLibraryDisplayMeta(character.voiceSelection)
-                                      : uiLanguage === "en"
-                                        ? "Choose a real voice without copying a voice ID."
-                                        : "Voice ID kopyalamadan gerçek bir ses seç."}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => openCreatorVoiceLibrary({ scope: "character", characterId: character.id || "" })}
-                                    className="mt-3 min-h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                                  >
-                                    {character.voiceSelection
-                                      ? uiLanguage === "en" ? "Change voice" : "Sesi değiştir"
-                                      : uiLanguage === "en" ? "Choose voice" : "Ses seç"}
-                                  </button>
-                                  {character.voiceSelection && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCharacters((current) =>
-                                          current.map((item) =>
-                                            item.id === character.id
-                                              ? { ...item, voiceId: "", voiceSelection: undefined }
-                                              : item,
-                                          ),
-                                        );
-                                        clearAllSceneDialogueAudioData();
-                                        clearAllSceneTimingData();
-                                      }}
-                                      className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                                    >
-                                      {uiLanguage === "en" ? "Use Default Character Voice" : "Varsayılan Karakter Sesini Kullan"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </details>
-
-                            <div className="creatorlab-cast-reference-row">
-                              <div>
-                                <strong>{uiLanguage === "en" ? "Visual reference" : "Görsel referans"}</strong>
-                                <p>{uiLanguage === "en" ? "Generate once the name and visual direction are clear." : "Ad ve görsel yön netleştiğinde üret."}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => generateCharacterReference(index)}
-                                disabled={characterLoadingIndex === index}
-                              >
-                                {characterLoadingIndex === index
-                                  ? ui.preparingReferenceImage
-                                  : character.referenceImage
-                                    ? (uiLanguage === "en" ? "Regenerate reference" : "Referansı yeniden üret")
-                                    : ui.generateReferenceImage}
-                              </button>
-                            </div>
-
-                            {character.referenceImage && (
-                              <img
-                                src={character.referenceImage}
-                                alt={`${character.name || `${ui.characterLabel} ${index + 1}`} ${ui.referenceImageAlt}`}
-                                className="creatorlab-cast-reference-image"
-                              />
-                            )}
-
-                            <div className="creatorlab-cast-member-footer">
-                              <span>{uiLanguage === "en" ? "Changes apply to new generations and retries." : "Değişiklikler yeni üretimlere ve tekrar denemelerine uygulanır."}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  removeCharacter(index);
-                                  if (characters.length <= 1) {
-                                    setCreatorNoCastMode("faceless");
-                                  }
-                                }}
-                              >
-                                {uiLanguage === "en" ? "Remove from cast" : "Kadrodan kaldır"}
-                              </button>
-                            </div>
-                          </div>
-                        </details>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                  </div>
-                </div>
-
-                <section className={`creatorlab-setup-group creatorlab-setup-music-group ${creatorMusicConfirmationRequired ? "has-action-required" : ""}`} data-setup-group="music">
-                  <div className="creatorlab-setup-group-label">
-                    <strong>{uiLanguage === "en" ? "Music" : "Müzik"}</strong>
-                    <span>{creatorMusicConfirmationRequired ? (uiLanguage === "en" ? "Action required" : "Aksiyon gerekli") : creatorMusicSummary}</span>
-                  </div>
-                <CreatorBackgroundMusic
-                  key={`creator-background-music-${creatorBackgroundMusicHydrationRevision}`}
-                  timeline={creatorAudioTimeline}
-                  projectId={currentProjectId}
-                  sceneIds={scenes.map((scene) => scene.creatorSceneId || `legacy-${scene.id}`)}
-                  getAccessToken={getAccessTokenOrThrow}
-                  autoMatchInput={{ contentType: creatorContentType, outcome: creatorOutcome, format: creatorFormat, topic: input, visualStyle: visualBible?.style }}
-                  onChange={(nextTimeline) => {
-                    const nextMode = getCreatorMusicSetupMode(nextTimeline);
-                    setCreatorBackgroundMusic({
-                      ...DEFAULT_CREATOR_BACKGROUND_MUSIC,
-                      mode: nextMode === "auto" ? "auto" : "none",
-                    });
-                    applyCreatorAudioTimelineChange(nextTimeline);
-                  }}
-                  language={uiLanguage === "en" ? "en" : "tr"}
-                />
-                </section>
-
-                <section className="creatorlab-setup-group rounded-3xl border border-slate-200 bg-white p-5" data-setup-group="continuity">
-                  <div className="creatorlab-setup-group-label">
-                    <strong>{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</strong>
-                    <span>{creatorContinuitySummary}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
-                      {uiLanguage === "en" ? "Visual Continuity" : "Görsel Devamlılık"}
-                    </span>
-                    <h3 className="mt-2 text-lg font-semibold text-slate-950">
-                      {uiLanguage === "en" ? "Choose one project-level continuity rule" : "Proje düzeyinde bir devamlılık kuralı seç"}
-                    </h3>
-                  </div>
-                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                    {([
-                      {
-                        value: "independent" as const,
-                        label: uiLanguage === "en" ? "Independent scenes" : "Bağımsız sahneler",
-                        description: uiLanguage === "en" ? "Each scene can use its own visual direction." : "Her sahne kendi görsel yönünü kullanabilir.",
-                      },
-                      {
-                        value: "consistent" as const,
-                        label: uiLanguage === "en" ? "Keep continuity" : "Devamlılığı koru",
-                        description: uiLanguage === "en" ? "Maintain visual consistency across connected scenes." : "Bağlantılı sahnelerde görsel tutarlılığı koru.",
-                      },
-                      {
-                        value: "selective" as const,
-                        label: uiLanguage === "en" ? "Choose per scene" : "Sahne başına seç",
-                        description: uiLanguage === "en" ? "Set continuity individually for each scene." : "Devamlılığı her sahne için ayrı ayarla.",
-                      },
-                    ]).map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setCreatorProjectContinuityMode(option.value)}
-                        aria-pressed={creatorProjectContinuityMode === option.value}
-                        className={`rounded-2xl border p-4 text-left transition ${creatorProjectContinuityMode === option.value ? "border-blue-400 bg-blue-50 ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                      >
-                        <strong className="block text-sm text-slate-950">{option.label}</strong>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                  </div>
-                </details>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    data-production-primary-continue="true"
-                    onClick={() => selectCreatorProductionSubstep("create_review")}
-                    className="creatorlab-setup-primary-action"
-                  >
-                    {uiLanguage === "en" ? "Continue to Create & Review" : "Üret ve İncele'ye Devam Et"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {creatorStageVisibility.create_review && (scenes.length === 0 ? (
-              <div className="creatorlab-production-empty">
-                <div className="creatorlab-production-empty-icon" aria-hidden="true">▤</div>
-                <div>
-                  <strong>{creatorSceneHydrationAuthority === "recovery_required"
-                    ? uiLanguage === "en" ? "Saved scenes need recovery" : "Kaydedilmiş sahnelerin kurtarılması gerekiyor"
-                    : uiLanguage === "en" ? "Prepare the editable scene plan" : "Düzenlenebilir sahne planını hazırla"}</strong>
-                  <p>
-                    {creatorSceneHydrationAuthority === "recovery_required"
-                      ? uiLanguage === "en"
-                        ? "A current production scene plan still exists, but the saved Create & Review state is inconsistent. Nothing has been rebuilt or discarded."
-                        : "Güncel bir üretim sahne planı hâlâ mevcut, ancak kaydedilmiş Oluştur ve İncele durumu tutarsız. Hiçbir şey yeniden oluşturulmadı veya silinmedi."
-                      : uiLanguage === "en"
-                        ? "This creates the storyboard structure only. Visual and voice generation starts later in Create & Review."
-                        : "Bu işlem yalnızca storyboard yapısını oluşturur. Görsel ve ses üretimi daha sonra Oluştur ve İncele aşamasında başlar."}
-                  </p>
-                </div>
-                {creatorSceneHydrationAuthority !== "recovery_required" && (
-                  <button
-                    type="button"
-                    onClick={buildStory}
-                    disabled={buildingStory}
-                    className="creatorlab-production-primary-action"
-                  >
-                    {buildingStory
-                      ? uiLanguage === "en" ? "Preparing scenes..." : "Sahneler hazırlanıyor..."
-                      : uiLanguage === "en" ? "Prepare Scenes" : "Sahneleri Hazırla"}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                <section className="creatorlab-p2c-production-status" aria-labelledby="creatorlab-production-status-title">
-                  <div className="creatorlab-p2c-production-status-heading">
-                    <div>
-                      <span>{uiLanguage === "en" ? "Create & Review" : "Üret ve İncele"}</span>
-                      <h2 id="creatorlab-production-status-title">{uiLanguage === "en" ? "Production status" : "Üretim durumu"}</h2>
-                    </div>
-                    <p aria-live="polite">
-                      {uiLanguage === "en"
-                        ? `${scenes.length} scenes · ${getCreatorQualityModeLabel()} · Visuals ${visualAssetReadyCount}/${scenes.length} · Voice ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`
-                        : `${scenes.length} sahne · ${getCreatorQualityModeLabel()} · Görsel ${visualAssetReadyCount}/${scenes.length} · Ses ${audioReadyCount}/${scenes.length} · Final ${creatorFinalVideoProgressDetail}`}
-                    </p>
-                  </div>
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      data-creator-preview-project="true"
-                      onClick={playWholeStory}
-                      disabled={
-                        !isPlayingStory &&
-                        (isPreparingAudio || playingDialogueSceneId !== null || loadingAudioSceneId !== null)
-                      }
-                      className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {isPlayingStory
-                        ? uiLanguage === "en" ? "Stop Preview" : "Önizlemeyi Durdur"
-                        : uiLanguage === "en" ? "Preview Project" : "Projeyi Önizle"}
-                    </button>
-                  </div>
-                  <div
-                    data-production-compact-progress="true"
-                    className="creatorlab-p2c-production-progress"
-                    role="list"
-                    aria-label={uiLanguage === "en" ? "Production status" : "Üretim durumu"}
-                  >
-                  {[
-                    {
-                      number: 1,
-                      label: uiLanguage === "en" ? "Visuals" : "Görseller",
-                      detail: `${visualAssetReadyCount}/${scenes.length} ${uiLanguage === "en" ? "ready" : "hazır"}`,
-                      complete: creatorVisualsComplete,
-                      active: !creatorTimelineNeedsAttention && !creatorVisualsComplete,
-                    },
-                    {
-                      number: 2,
-                      label: uiLanguage === "en" ? "Voice-over" : "Seslendirme",
-                      detail: `${audioReadyCount}/${scenes.length} ${uiLanguage === "en" ? "ready" : "hazır"}`,
-                      complete: creatorVoiceOverComplete,
-                      active: creatorVisualsComplete && !creatorVoiceOverComplete,
-                    },
-                    ...(creatorMotionRequired
-                      ? [
-                          {
-                            number: 3,
-                            label: uiLanguage === "en" ? "Motion" : "Hareket",
-                            detail:
-                              creatorRoutedMotionSceneIds.length > 0
-                                ? `${creatorMotionReadyCount}/${creatorRoutedMotionSceneIds.length} ${uiLanguage === "en" ? "ready" : "hazır"}`
-                                : uiLanguage === "en"
-                                  ? "No Video scenes selected"
-                                  : "Video sahnesi seçilmedi",
-                            complete: creatorMotionComplete,
-                            active:
-                              creatorVisualsComplete &&
-                              creatorVoiceOverComplete &&
-                              !creatorMotionComplete,
-                          },
-                        ]
-                      : []),
-                    {
-                      number: creatorMotionRequired ? 4 : 3,
-                      label: uiLanguage === "en" ? "Final video" : "Final video",
-                      detail: creatorFinalVideoProgressDetail,
-                      complete: creatorProductionComplete,
-                      active:
-                        creatorVisualsComplete &&
-                        creatorVoiceOverComplete &&
-                        creatorMotionComplete &&
-                        !creatorProductionComplete,
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.number}
-                      role="listitem"
-                      aria-current={item.active ? "step" : undefined}
-                      className={item.active ? "is-active" : undefined}
-                    >
-                      <div>
-                        <strong>{item.label}</strong>
-                        <span>{item.detail}</span>
-                      </div>
-                      <span aria-hidden="true" data-state={item.complete ? "complete" : item.active ? "active" : "waiting"} />
-                    </div>
-                  ))}
-                  </div>
-                  {!creatorProductionComplete && (
-                    <div id="creatorlab-production-action" data-production-compact-action="true" className="creatorlab-p2c-production-next-action">
-                      {(creatorTimelineNeedsAttention || creatorMusicConfirmationRequired) && (
-                        <div className="min-w-0" aria-live="polite">
-                          <strong>{creatorNextProductionAction.title}</strong>
-                          <p>{creatorNextProductionAction.description}</p>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={continueCreatorProduction}
-                        disabled={
-                          creatorMediaPreflightLoading ||
-                          isBatchRendering ||
-                          isPreparingAudio ||
-                          isExportingMovie ||
-                          buildingStory ||
-                          (creatorVisualsComplete && creatorVoiceOverComplete && creatorMotionComplete && creatorMusicConfirmationRequired)
-                        }
-                      >
-                        {creatorMediaPreflightLoading
-                          ? uiLanguage === "en" ? "Checking production..." : "Üretim kontrol ediliyor..."
-                          : isBatchRendering
-                            ? uiLanguage === "en" ? "Producing media..." : "Medya üretiliyor..."
-                            : isPreparingAudio
-                              ? uiLanguage === "en" ? "Generating voice-over..." : "Seslendirme üretiliyor..."
-                              : isExportingMovie
-                                ? ui.creatingMovie
-                                : creatorNextProductionAction.buttonLabel}
-                      </button>
-                    </div>
-                  )}
-                </section>
-
-                {(creatorMediaPreflightLoading || creatorTimelineNeedsAttention) && (
-                <div id="creatorlab-production-safety" className={`creatorlab-production-safety ${creatorTimelineNeedsAttention ? "is-review" : "is-safe"}`}>
-                  <div className="creatorlab-production-safety-icon" aria-hidden="true">
-                    {creatorMediaPreflightLoading ? "…" : creatorTimelineNeedsAttention ? "!" : "✓"}
-                  </div>
-                  <div>
-                    <strong>
-                      {creatorMediaPreflightLoading
-                        ? uiLanguage === "en" ? "Production safeguards are running" : "Üretim güvenlik kontrolleri çalışıyor"
-                        : creatorTimelineMediaGate.title || (uiLanguage === "en" ? "Production safeguards are ready" : "Üretim güvenlik kontrolleri hazır")}
-                    </strong>
-                    <p>{creatorTimelineMediaGate.message}</p>
-                  </div>
-                  <span className="creatorlab-production-safety-status">
-                    {creatorMediaPreflightLoading
-                      ? uiLanguage === "en" ? "Checking" : "Kontrol ediliyor"
-                      : creatorTimelineMediaGate.status === "auto_managed"
-                        ? uiLanguage === "en" ? "Automatic" : "Otomatik"
-                        : creatorTimelineNeedsAttention
-                          ? uiLanguage === "en" ? "Action needed" : "Aksiyon gerekli"
-                          : uiLanguage === "en" ? "Ready" : "Hazır"}
-                  </span>
-                </div>
-                )}
-
-                {creatorMusicConfirmationRequired && (
-                  <div data-premium-music-confirmation="required" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-                    <strong className="block text-sm font-semibold">
-                      {uiLanguage === "en" ? "Premium music selected" : "Premium müzik seçildi"}
-                    </strong>
-                    <p className="mt-1 text-xs leading-5">
-                      {uiLanguage === "en"
-                        ? "Premium music must be confirmed before final export. Review and preview the exact selected track to continue."
-                        : "Final dışa aktarmadan önce premium müzik onaylanmalıdır. Devam etmek için seçili parçayı inceleyip önizle."}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        data-change-premium-music="true"
-                        onClick={() => {
-                          selectCreatorProductionSubstep("setup");
-                          window.setTimeout(
-                            () => document.getElementById("creatorlab-background-music")?.scrollIntoView({ behavior: getCreatorScrollBehavior(), block: "start" }),
-                            60,
-                          );
-                        }}
-                        className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100"
-                      >
-                        {uiLanguage === "en" ? "Change Music" : "Müziği Değiştir"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {creatorHasFinalVideo && (
-                  <section role="status" aria-live="polite" aria-atomic="true" data-creator-final-video-lifecycle={creatorFinalVideoNeedsRebuild ? "outdated" : "current"} className={`min-w-0 rounded-2xl border p-4 ${creatorFinalVideoNeedsRebuild ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">{uiLanguage === "en" ? "Final Video" : "Final Video"}</span>
-                        <strong className="mt-1 block text-sm text-slate-950">
-                          {creatorFinalVideoNeedsRebuild
-                            ? uiLanguage === "en" ? "Final video needs rebuild" : "Final videonun yeniden oluşturulması gerekiyor"
-                            : uiLanguage === "en" ? "Final video is current" : "Final video güncel"}
-                        </strong>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">
-                          {creatorFinalVideoNeedsRebuild
-                            ? uiLanguage === "en" ? "Your existing final video remains available while production changes are reviewed or rebuilt." : "Üretim değişiklikleri incelenirken veya yeniden oluşturulurken mevcut final video kullanılabilir kalır."
-                            : uiLanguage === "en" ? "Continue editing at any time, or rebuild this output intentionally." : "İstediğin zaman düzenlemeye devam et veya bu çıktıyı bilinçli olarak yeniden oluştur."}
-                        </p>
-                      </div>
-                      <video src={exportMovieResult?.downloadUrl || exportedMovieUrl} controls preload="metadata" className="max-h-44 w-full rounded-xl bg-black object-contain lg:w-72" />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {!creatorEditorOpen && <button
-                        type="button"
-                        data-edit-current-final-video="true"
-                        onClick={() => setCreatorEditorOpen(true)}
-                        className={`min-h-11 rounded-xl px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${creatorFinalVideoNeedsRebuild ? "border border-slate-300 bg-white text-slate-700" : "bg-blue-700 text-white shadow-md hover:bg-blue-800"}`}
-                      >
-                        {uiLanguage === "en" ? "Edit Video" : "Videoyu Düzenle"}
-                      </button>}
-                      <button
-                        type="button"
-                        data-rebuild-final-video="true"
-                        onClick={() => void handleExportMovie(true)}
-                        disabled={isExportingMovie || creatorMusicConfirmationRequired}
-                        className={`min-h-11 rounded-xl px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${creatorFinalVideoNeedsRebuild ? "bg-blue-700 text-white shadow-md hover:bg-blue-800" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
-                      >
-                        {isExportingMovie
-                          ? uiLanguage === "en" ? "Building Final Video…" : "Final Video Oluşturuluyor…"
-                          : uiLanguage === "en" ? "Rebuild Final Video" : "Final Videoyu Yeniden Oluştur"}
-                      </button>
-                    </div>
-                  </section>
-                )}
-
-                {creatorEditorOpen && (
-                  <CreatorEditor
-                    creatorFormat={creatorFormat === "youtube_video" ? "youtube_video" : "short_form"}
-                    scenes={scenes}
-                    selectedCreatorSceneId={selectedCreatorEditorSceneId}
-                    onSelectScene={setSelectedCreatorEditorSceneId}
-                    onMoveScene={moveSelectedCreatorEditorScene}
-                    onAddScene={addCreatorEditorScene}
-                    onDuplicateScene={duplicateSelectedCreatorEditorScene}
-                    onDeleteScene={deleteSelectedCreatorEditorScene}
-                    onUndo={undoLastCreatorChange}
-                    canUndo={creatorUndoStack.length > 0}
-                    onUpdateTrim={updateSelectedCreatorSceneTrim}
-                    onSaveText={saveSelectedCreatorSceneText}
-                    getNarrationAudioState={(creatorSceneId) => {
-                      const scene = scenes.find(
-                        (item) => item.creatorSceneId === creatorSceneId,
-                      );
-                      return scene
-                        ? getCreatorNarrationAudioCurrentness(scene)
-                        : "missing";
-                    }}
-                    getDialogueAudioState={(creatorSceneId) => {
-                      const scene = scenes.find(
-                        (item) => item.creatorSceneId === creatorSceneId,
-                      );
-                      return scene
-                        ? getCreatorDialogueAudioCurrentness(scene)
-                        : "missing";
-                    }}
-                    getVideoState={(creatorSceneId) => {
-                      const scene = scenes.find(
-                        (item) => item.creatorSceneId === creatorSceneId,
-                      );
-                      return scene ? getCreatorVideoState(scene) : "missing";
-                    }}
-                    getContinuityWarning={(creatorSceneId) => {
-                      const sceneAudit = flowContinuityAudit?.scenes.find((audit) => {
-                        const scene = scenes.find((item) => item.creatorSceneId === creatorSceneId);
-                        return scene && String(audit.id) === String(scene.id);
-                      });
-                      return getCreatorContinuityWarning(sceneAudit, uiLanguage === "en" ? "en" : "tr");
-                    }}
-                    onRefreshVideo={(creatorSceneId) => {
-                      const scene = scenes.find(
-                        (item) => item.creatorSceneId === creatorSceneId,
-                      );
-                      if (scene) void handleGenerateVideo(scene.id);
-                    }}
-                    onRestoreMedia={(creatorSceneId, assetId) => {
-                      const scene = scenes.find(
-                        (item) => item.creatorSceneId === creatorSceneId,
-                      );
-                      const asset = scene?.assetHistory?.find((item) => item.id === assetId);
-                      if (scene && asset) restoreCreatorSceneAsset(scene.id, asset);
-                    }}
-                    onUseProjectImage={reuseCreatorProjectImage}
-                    onUseStockMedia={useCreatorStockMedia}
-                    projectId={currentProjectId}
-                    getAccessToken={getAccessTokenOrThrow}
-                    onProjectHistoryRemoved={removeCreatorProjectHistoryUrl}
-                    audioTimeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
-                    onAudioTimelineChange={applyCreatorAudioTimelineChange}
-                    sceneOperationsDisabled={creatorSceneStructuralOperationsDisabled}
-                    language={uiLanguage === "en" ? "en" : "tr"}
-                  />
-                )}
-
-                <section
-                  id="creatorlab-production-storyboard"
-                  className="creatorlab-production-storyboard creatorlab-p2c-production-workspace"
-                  data-admitted-visual-scene-ids={activeVisualGenerationSceneIds.join(",")}
-                  data-generating-visual-scene-ids={creatorGeneratingVisualSceneIds.join(",")}
-                >
-                  <div className="creatorlab-p2c-scene-rail">
-                  {(creatorSelectedSceneIds.length > 1 || creatorVisualDispatchCountdown) && (
-                    <div
-                      className="creatorlab-p2c-batch-toolbar creatorlab-p2c-batch-toolbar-sticky"
-                      data-creator-selected-scenes-toolbar="true"
-                      data-batch-selection-state={creatorSelectedSceneIds.length > 0 ? "selected" : "empty"}
-                    >
-                      {creatorVisualDispatchCountdown ? (
-                        <div className="creatorlab-p2c-countdown" role="status" aria-live="assertive">
-                          <strong>
-                            {creatorVisualDispatchCountdown.scope === "batch"
-                              ? `${creatorVisualDispatchCountdown.sceneCount} ${uiLanguage === "en" ? "scenes selected" : "sahne seçili"} · `
-                              : ""}
-                            {uiLanguage === "en" ? "Starting in" : "Başlıyor"} {creatorVisualDispatchCountdown.secondsRemaining}s
-                          </strong>
-                          <span>{uiLanguage === "en" ? "No generation request has been sent." : "Henüz üretim talebi gönderilmedi."}</span>
-                          <button
-                            type="button"
-                            onClick={videoDispatchCountdown ? cancelPendingVideoDispatch : cancelPendingImageDispatch}
-                            className="creatorlab-p2c-batch-action is-cancel"
-                          >
-                            {uiLanguage === "en" ? "Cancel" : "İptal"}
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="creatorlab-p2c-batch-selection" aria-live="polite">
-                            <strong>{creatorSelectedSceneIds.length}</strong> {uiLanguage === "en" ? "scenes selected" : "sahne seçili"}
-                            <span>{` · ${creatorSelectedMissingVisualCount} ${uiLanguage === "en" ? "visuals" : "görsel"} · ${creatorSelectedMissingVoiceCount} ${uiLanguage === "en" ? "voice tracks missing" : "ses eksik"}`}</span>
-                          </div>
-                          <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Visual source" : "Görsel kaynağı"}>
-                            <span>{uiLanguage === "en" ? "Source" : "Kaynak"}</span>
-                            <div className="creatorlab-p2c-batch-segmented">
-                              {([
-                                ["recommended", uiLanguage === "en" ? "Velto Recommended" : "Velto Önerilen"],
-                                ["stock", uiLanguage === "en" ? "Stock" : "Stok"],
-                                ["ai_image", uiLanguage === "en" ? "AI Image" : "AI Görsel"],
-                                ["ai_video", "AI Video"],
-                              ] as const).map(([method, label]) => (
-                                <button
-                                  key={method}
-                                  type="button"
-                                  aria-pressed={creatorSelectedVisualSourceMethod === method}
-                                  onClick={() => setCreatorScenesVisualSourceMethod(creatorSelectedSceneIds, method)}
-                                  disabled={method === "ai_video" && creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic"}
-                                  className="creatorlab-p2c-batch-mode-button"
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          {creatorSelectedVisualSourceMethod === "stock" && (
-                            <div className="creatorlab-p2c-batch-mode" role="group" aria-label={uiLanguage === "en" ? "Stock type" : "Stok türü"}>
-                              <span>{uiLanguage === "en" ? "Stock type" : "Stok türü"}</span>
-                              <div className="creatorlab-p2c-batch-segmented">
-                                <button type="button" onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "image")} className="creatorlab-p2c-batch-mode-button">{uiLanguage === "en" ? "Photos" : "Fotoğraflar"}</button>
-                                <button type="button" onClick={() => setCreatorScenesRenderMode(creatorSelectedSceneIds, "video")} className="creatorlab-p2c-batch-mode-button">{uiLanguage === "en" ? "Videos" : "Videolar"}</button>
-                              </div>
-                            </div>
-                          )}
-                          <div className="creatorlab-p2c-batch-actions">
-                            <button type="button" onClick={() => void generateSelectedSceneVisuals()} disabled={isBatchRendering || creatorMediaPreflightLoading} className="creatorlab-p2c-batch-action">
-                              {uiLanguage === "en" ? "Generate Visuals" : "Görselleri Üret"}
-                            </button>
-                            <button type="button" onClick={() => void prepareSelectedSceneAudio()} disabled={isPreparingAudio || creatorMediaPreflightLoading} className="creatorlab-p2c-batch-action">
-                              {isPreparingAudio ? (uiLanguage === "en" ? "Preparing voice..." : "Ses hazırlanıyor...") : (uiLanguage === "en" ? "Generate Voice" : "Ses Üret")}
-                            </button>
-                            <button type="button" onClick={() => setCreatorSelectedSceneIds([])} className="creatorlab-p2c-batch-action is-secondary">
-                              {uiLanguage === "en" ? "Clear selection" : "Seçimi temizle"}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  <CreatorSceneProductionStatus
-                    scenes={creatorSceneProductionSummaries}
-                    focusedSceneId={creatorFocusedSceneId}
-                    onFocusScene={setCreatorFocusedSceneId}
-                    selectedSceneIds={creatorSelectedSceneIdSet}
-                    onToggleSceneSelection={toggleCreatorSceneSelection}
-                    language={uiLanguage === "en" ? "en" : "tr"}
-                    contextualAction={!creatorEditorOpen ? (
-                      <button
-                        type="button"
-                        data-creator-editor-entry="true"
-                        onClick={() => setCreatorEditorOpen(true)}
-                        className="creatorlab-p2c-open-editor"
-                      >
-                        {uiLanguage === "en" ? "Open Editor" : "Editörü Aç"}
-                      </button>
-                    ) : undefined}
-                  />
-                  </div>
-
-                  <div className="creatorlab-p2c-active-scene space-y-3">
-                    {scenes.filter((scene) => scene.id === creatorFocusedSceneId).map((scene) => {
-                      const index = scenes.findIndex((item) => item.id === scene.id);
-                      const visualReady = hasCreatorUsableVisual(scene);
-                      const voiceReady = getSceneVoiceStatus(scene);
-                      const motionRouted = creatorRoutedMotionSceneIdSet.has(scene.id);
-                      const motionReady =
-                        motionRouted &&
-                        Boolean(scene.videoUrl) &&
-                        scene.videoStatus === "done";
-                      const motionFailed = motionRouted && scene.videoStatus === "error";
-                      const outputState = resolveCreatorMediaOutputState({
-                        recommendedOutput: creatorRecommendedMotionSceneIdSet.has(scene.id)
-                          ? "video"
-                          : "image",
-                        explicitOutput: scene.renderMode,
-                      });
-                      const veltoRecommendedOutputMode = outputState.recommendedOutput;
-                      const sceneOutputMode = outputState.effectiveOutput;
-                      const sceneOutputIsUserChoice = outputState.isUserOverride;
-                      const sceneVisualSourceMethod = normalizeCreatorVisualSourceMethod(
-                        scene.visualSourceMethod,
-                      );
-                      const sceneExplicitAiVideoBlocked =
-                        sceneVisualSourceMethod === "ai_video" &&
-                        creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic";
-                      const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
-                        narration: scene.narration || "",
-                        dialogue: scene.dialogue || "",
-                      };
-                      const sceneFitFeedback = sceneScriptFitFeedback[scene.id];
-                      const sceneDraftHealth = assessCreatorSceneScriptDraft({
-                        scene,
-                        draft: sceneScriptDraft,
-                        language,
-                        qualityMode: creatorQualityMode,
-                      });
-                      const focusedSceneContinuityAudit = flowContinuityAudit?.scenes.find(
-                        (audit) => String(audit.id) === String(scene.id),
-                      );
-                      const effectiveSceneDraftHealthStatus = resolveCreatorMeasuredScriptHealthStatus({
-                        scriptHealthStatus: sceneDraftHealth.status,
-                        speechMatchesMeasuredSource:
-                          normalizeCreatorScriptText(sceneScriptDraft.narration) ===
-                            normalizeCreatorScriptText(scene.narration || "") &&
-                          normalizeCreatorScriptText(sceneScriptDraft.dialogue) ===
-                            normalizeCreatorScriptText(scene.dialogue || ""),
-                        narrationState: getCreatorNarrationAudioCurrentness(scene),
-                        measuredNarrationDurationSec: scene.timing?.narrationDuration,
-                        continuityAudit: focusedSceneContinuityAudit,
-                      });
-                      const measuredAudioDurationSec = Number(
-                        scene.timing?.totalAudioDuration || 0,
-                      );
-                      const exactTimingLocked = Boolean(
-                        scene.timing?.exactTimingLocked ||
-                          (measuredAudioDurationSec > 0 &&
-                            scene.timing?.durationMatchStatus !== "unmeasured"),
-                      );
-                      const plannedDurationSec = Math.max(
-                        3,
-                        Number(
-                          scene.timing?.plannedSceneDuration ||
-                            scene.targetDurationSec ||
-                            scene.scriptHealth?.targetDurationSec ||
-                            sceneDraftHealth.targetDurationSec,
-                        ),
-                      );
-                      const targetDurationSec = Math.max(
-                        3,
-                        Number(
-                          exactTimingLocked
-                            ? scene.timing?.targetSceneDuration
-                            : plannedDurationSec,
-                        ),
-                      );
-                      const timingDeltaSec = exactTimingLocked
-                        ? Number(
-                            (
-                              scene.timing?.durationDelta ??
-                              targetDurationSec - plannedDurationSec
-                            ).toFixed(1),
-                          )
-                        : 0;
-                      const simpleGuidance =
-                        effectiveSceneDraftHealthStatus === "too_long"
-                          ? uiLanguage === "en" ? "Narration may be long" : "Anlatım uzun olabilir"
-                          : effectiveSceneDraftHealthStatus === "too_short"
-                            ? uiLanguage === "en" ? "Needs more substance" : "Daha zengin olmalı"
-                            : index === 0 && Number(scene.intelligence?.curiosity_score || 0) >= 6
-                              ? uiLanguage === "en" ? "Strong opening" : "Güçlü açılış"
-                              : (scene.visualBlockPlan?.length || 0) > 1
-                                ? uiLanguage === "en" ? "Visual rhythm planned" : "Görsel ritim planlandı"
-                                : uiLanguage === "en" ? "Pacing balanced" : "Tempo dengeli";
-                      const isEditingScene = editingSceneId === scene.id;
-                      const activeSceneInspectorTab = creatorSceneInspectorTabs[scene.id] || "script";
-                      const sceneVideoDispatchCountdownActive =
-                        videoDispatchCountdown?.scope === "scene" &&
-                        videoDispatchCountdown.sceneId === scene.id;
-                      const creatorSceneVisualOperation = creatorSceneVisualOperations[scene.id];
-                      const sceneVisualCountdownActive = isCreatorSceneVisualCountdown({
-                        sceneId: scene.id,
-                        countdownSceneIds: creatorSceneVisualCountdownSceneIds,
-                      });
-                      const sceneVisualGenerating = isCreatorSceneVisualGenerating({
-                        sceneId: scene.id,
-                        phase: creatorVisualGenerationPhase,
-                        admittedSceneIds: activeVisualGenerationSceneIds,
-                        processingSceneIds: creatorProcessingVisualSceneIds,
-                      });
-                      const sceneVisualActionBlocked = isCreatorSceneVisualActionBlocked({
-                        sceneId: scene.id,
-                        countdownSceneIds: creatorSceneVisualCountdownSceneIds,
-                        phase: creatorVisualGenerationPhase,
-                        admittedSceneIds: activeVisualGenerationSceneIds,
-                        processingSceneIds: creatorProcessingVisualSceneIds,
-                      });
-                      const stableCreatorSceneId = scene.creatorSceneId || "";
-                      const cachedSceneVideoSource =
-                        creatorSceneVideoSourceDurations[stableCreatorSceneId];
-                      const sceneVideoSourceDurationSec = resolveCreatorSceneVideoSourceDuration({
-                        cachedSource: cachedSceneVideoSource,
-                        videoUrl: scene.videoUrl,
-                        persistedDurationSec: scene.videoDurationSeconds,
-                      });
-                      const verifiedSceneVideoSourceDurationSec =
-                        cachedSceneVideoSource?.videoUrl === scene.videoUrl &&
-                        Number.isFinite(cachedSceneVideoSource?.durationSec) &&
-                        Number(cachedSceneVideoSource?.durationSec) > 0
-                          ? Number(cachedSceneVideoSource.durationSec)
-                          : undefined;
-                      const sceneCardTrim = normalizeCreatorSceneTrim({
-                        clipInSec: scene.clipInSec,
-                        clipOutSec: scene.clipOutSec,
-                        sourceDurationSec: sceneVideoSourceDurationSec,
-                        sourceType: "video",
-                      });
-                      const sceneTrimDisabled =
-                        sceneVisualActionBlocked ||
-                        sceneVisualCountdownActive ||
-                        sceneVisualGenerating ||
-                        sceneVideoDispatchCountdownActive ||
-                        scene.videoStatus === "processing" ||
-                        scene.videoStatus === "delayed" ||
-                        isBatchRendering ||
-                        creatorMediaPreflightLoading;
-                      const hasDialogue = Boolean(scene.dialogue?.trim());
-                      const narrationReady = !scene.narration?.trim() || getSceneAudioStatus(scene);
-                      const dialogueReady = !hasDialogue || getSceneDialogueAudioStatus(scene);
-                      const narrationDurationSec = Number(scene.timing?.narrationDuration || 0);
-                      const dialogueDurationSec = Number(scene.timing?.dialogueDuration || 0);
-                      const effectiveNarratorVoiceProfileId =
-                        getEffectiveNarratorVoiceProfileId(scene);
-                      const effectiveDialogueVoiceProfileId =
-                        getEffectiveDialogueVoiceProfileId(scene);
-                      const sceneVoiceCreditEstimate =
-                        getCreatorVoiceCreditEstimate([scene]);
-                      const sceneNarratorVoiceRoute = getCreatorSceneVoiceContext({
-                        scene,
-                        role: "narrator",
-                        text: scene.narration,
-                        companionText: scene.dialogue,
-                        hasExplicitVoiceId: Boolean(narratorSettings.voiceId),
-                        voiceProfile: getCreatorNarratorProfileHint(),
-                      });
-                      const sceneAssetHistory = [...(scene.assetHistory || [])].reverse();
-                      const sceneComparedAssetIds = creatorAssetCompareSelection[scene.id] || [];
-                      const sceneComparedAssets = sceneComparedAssetIds
-                        .map((assetId) => sceneAssetHistory.find((asset) => asset.id === assetId))
-                        .filter((asset): asset is CreatorSceneAssetVersion => Boolean(asset));
-                      const sceneOperationalSummary = creatorSceneProductionSummaries.find(
-                        (item) => item.id === scene.id,
-                      );
-                      const sceneContinuityWarning = getCreatorContinuityWarning(
-                        focusedSceneContinuityAudit,
-                        uiLanguage === "en" ? "en" : "tr",
-                      );
-                      const sceneContinuitySelection = getCreatorSceneContinuityMode(scene);
-                      const sceneContinuityLabel =
-                        sceneContinuitySelection === "project"
-                          ? uiLanguage === "en" ? "Project default" : "Proje varsayılanı"
-                          : sceneContinuitySelection === "previous"
-                            ? uiLanguage === "en" ? "Continue previous" : "Önceki sahneyi devam ettir"
-                            : sceneContinuitySelection === "consistent"
-                              ? uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"
-                              : uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne";
-                      const scenePrimaryTab: CreatorSceneInspectorTab =
-                        effectiveSceneDraftHealthStatus !== "ready"
-                          ? "script"
-                          : !visualReady || motionFailed || (motionRouted && !motionReady)
-                            ? "visual"
-                            : !voiceReady
-                              ? "audio"
-                              : "script";
-                      const scenePrimaryActionLabel =
-                        effectiveSceneDraftHealthStatus !== "ready"
-                          ? uiLanguage === "en" ? "Review Script" : "Metni Kontrol Et"
-                          : !visualReady
-                            ? uiLanguage === "en" ? "Generate Visual" : "Görsel Üret"
-                            : !voiceReady
-                              ? uiLanguage === "en" ? "Generate Voice" : "Ses Üret"
-                              : motionFailed
-                                ? uiLanguage === "en" ? "Retry Video" : "Videoyu Yeniden Dene"
-                                : motionRouted && !motionReady
-                                  ? uiLanguage === "en" ? "Generate Video" : "Video Üret"
-                                  : uiLanguage === "en" ? "Review Scene" : "Sahneyi Kontrol Et";
-                      const scenePrimaryActionUsesCredits =
-                        effectiveSceneDraftHealthStatus === "ready" &&
-                        (!visualReady || !voiceReady || (motionRouted && !motionReady));
-                      const sceneAttentionSummary =
-                        sceneVisualGenerating
-                          ? uiLanguage === "en" ? "Visual generation is in progress." : "Görsel üretimi devam ediyor."
-                          : scene.videoStatus === "processing" || scene.videoStatus === "delayed"
-                            ? uiLanguage === "en" ? "Video generation is in progress." : "Video üretimi devam ediyor."
-                          : motionFailed
-                            ? uiLanguage === "en" ? "Video generation failed and can be retried." : "Video üretimi başarısız oldu ve yeniden denenebilir."
-                            : effectiveSceneDraftHealthStatus !== "ready"
-                              ? simpleGuidance
-                              : !visualReady
-                                ? uiLanguage === "en" ? "This scene needs a visual." : "Bu sahnenin görsele ihtiyacı var."
-                                : !voiceReady
-                                  ? uiLanguage === "en" ? "This scene needs its voice track." : "Bu sahnenin ses kaydına ihtiyacı var."
-                                  : motionRouted && !motionReady
-                                    ? uiLanguage === "en" ? "The scene image is ready for video generation." : "Sahne görseli video üretimine hazır."
-                                    : uiLanguage === "en" ? "All required scene assets are ready for review." : "Gerekli tüm sahne varlıkları kontrole hazır.";
-                      const runCreatorScenePrimaryAction = () => {
-                        if (sceneVisualCountdownActive) {
-                          cancelCreatorSceneVisualCountdown(scene.id);
-                          return;
-                        }
-                        setCreatorSceneInspectorTabs((current) => ({
-                          ...current,
-                          [scene.id]: scenePrimaryTab,
-                        }));
-                        if (effectiveSceneDraftHealthStatus !== "ready") return;
-                        if (!visualReady) {
-                          void runCreatorRecommendedVisualGeneration({
-                            mode: "single",
-                            sceneIds: [scene.id],
-                          });
-                          return;
-                        }
-                        if (!voiceReady) {
-                          void prepareSelectedSceneAudio([scene.id]);
-                          return;
-                        }
-                        if (motionRouted && !motionReady) {
-                          void handleGenerateVideo(scene.id);
-                        }
-                      };
-
-                      return (
-                        <details
-                          id={`creator-scene-${scene.id}`}
-                          key={`creator-scene-workspace-${scene.id}`}
-                          open
-                          data-focused-scene="true"
-                          data-scene-triage-status={sceneOperationalSummary?.status}
-                          className="creatorlab-p2c-focused-scene group overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]"
-                        >
-                          <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-4 transition hover:bg-slate-50 md:px-5 [&::-webkit-details-marker]:hidden">
-                            <input
-                              type="checkbox"
-                              checked={creatorSelectedSceneIdSet.has(scene.id)}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={() => toggleCreatorSceneSelection(scene.id)}
-                              aria-label={uiLanguage === "en" ? `Select scene ${index + 1}` : `Sahne ${index + 1} seç`}
-                              className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600"
-                            />
-                            <div className="creatorlab-p2c-focused-scene-heading min-w-0 flex-1">
-                              <span>
-                                {uiLanguage === "en" ? `Selected Scene ${String(index + 1).padStart(2, "0")}` : `Seçili Sahne ${String(index + 1).padStart(2, "0")}`}
-                              </span>
-                              <strong>
-                                {scene.text || (uiLanguage === "en" ? `Scene ${scene.id}` : `Sahne ${scene.id}`)}
-                              </strong>
-                              <p>{targetDurationSec.toFixed(0)}s · {simpleGuidance}</p>
-                            </div>
-                          </summary>
-
-                          <div className="border-t border-slate-200 bg-slate-50/60 p-4 md:p-5">
-                            {sceneOperationalSummary?.status === "review" && sceneOperationalSummary.reviewReasons.length > 0 && (
-                              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950" data-scene-review-reasons="true">
-                                <strong className="block text-sm">{uiLanguage === "en" ? "Review required" : "Kontrol gerekli"}</strong>
-                                <ul className="mt-2 space-y-2 text-xs leading-5">
-                                  {sceneOperationalSummary.reviewReasons.map((reason) => (
-                                    <li key={reason.code}>
-                                      <span className="font-semibold">{reason.message}</span>
-                                      {reason.action && <span className="block text-amber-800">{uiLanguage === "en" ? "Recommended action: " : "Önerilen aksiyon: "}{reason.action}</span>}
-                                    </li>
-                                  ))}
-                                  {sceneOperationalSummary.reviewAdvisories.map((advisory) => (
-                                    <li key={advisory.code} className="text-amber-800">
-                                      {advisory.message} {advisory.action}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {(scenePrimaryActionUsesCredits || effectiveSceneDraftHealthStatus !== "ready" || motionFailed) && <div className="creatorlab-p2c-scene-next-action" data-scene-primary-action={scenePrimaryTab}>
-                              <div>
-                                <span>
-                                  {sceneOperationalSummary
-                                    ? getCreatorSceneTriageLabel(sceneOperationalSummary.status, uiLanguage === "en" ? "en" : "tr")
-                                    : uiLanguage === "en" ? "Needs action" : "Aksiyon gerekli"}
-                                </span>
-                                <strong>{sceneAttentionSummary}</strong>
-                                {scenePrimaryActionUsesCredits && (
-                                  <small>{uiLanguage === "en" ? "Generation starts after a short cancel window" : "Üretim kısa bir iptal süresinden sonra başlar"}</small>
-                                )}
-                              </div>
-                              {(scenePrimaryActionUsesCredits || effectiveSceneDraftHealthStatus !== "ready" || motionFailed) && <button
-                                type="button"
-                                onClick={runCreatorScenePrimaryAction}
-                                disabled={
-                                  sceneVisualGenerating ||
-                                  scene.videoStatus === "processing" ||
-                                  scene.videoStatus === "delayed" ||
-                                  redrawLoadingId === scene.id ||
-                                  loadingAudioSceneId === scene.id ||
-                                  loadingDialogueSceneId === scene.id ||
-                                  isBatchRendering ||
-                                  creatorMediaPreflightLoading ||
-                                  Boolean(imageDispatchCountdown) ||
-                                  Boolean(videoDispatchCountdown)
-                                }
-                              >
-                                {sceneVisualCountdownActive
-                                  ? uiLanguage === "en"
-                                    ? `Cancel · ${creatorSceneVisualOperation?.secondsRemaining}s`
-                                    : `İptal · ${creatorSceneVisualOperation?.secondsRemaining} sn`
-                                  : sceneVisualGenerating || scene.videoStatus === "processing" || scene.videoStatus === "delayed"
-                                  ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
-                                  : scenePrimaryActionLabel}
-                              </button>}
-                            </div>}
-
-                            <div className="scene-production-navigator sticky top-4 z-20 mb-5">
-                              <div
-                                className="scene-production-navigator__tabs"
-                                role="tablist"
-                                aria-label={uiLanguage === "en" ? `Scene ${scene.id} production navigator` : `Sahne ${scene.id} üretim navigasyonu`}
-                              >
-                                <button
-                                  key={`scene-${scene.id}-tab-script`}
-                                  id={`scene-${scene.id}-script-tab`}
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={activeSceneInspectorTab === "script"}
-                                  aria-controls={`scene-${scene.id}-script-panel`}
-                                  data-production-step="script"
-                                  data-complete={sceneDraftHealth.status === "ready"}
-                                  data-state={
-                                    activeSceneInspectorTab === "script"
-                                      ? "active"
-                                      : sceneDraftHealth.status === "ready"
-                                        ? "ready"
-                                        : "pending"
-                                  }
-                                  onClick={() =>
-                                    setCreatorSceneInspectorTabs((prev) => ({
-                                      ...prev,
-                                      [scene.id]: "script",
-                                    }))
-                                  }
-                                  className="scene-production-tab"
-                                >
-                                  <span className="scene-production-tab__icon" aria-hidden="true">
-                                    {sceneDraftHealth.status === "ready" ? "✓" : "1"}
-                                  </span>
-                                  <span className="scene-production-tab__content">
-                                    <strong className="scene-production-tab__title">
-                                      {uiLanguage === "en" ? "Script" : "Metin"}
-                                    </strong>
-                                    <span className="scene-production-tab__subtitle">
-                                      {uiLanguage === "en" ? "Review & edit" : "Kontrol et ve düzenle"}
-                                    </span>
-                                  </span>
-                                </button>
-
-                                <button
-                                  key={`scene-${scene.id}-tab-visual`}
-                                  id={`scene-${scene.id}-visual-tab`}
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={activeSceneInspectorTab === "visual"}
-                                  aria-controls={`scene-${scene.id}-visual-panel`}
-                                  data-production-step="visual"
-                                  data-complete={visualReady}
-                                  data-state={
-                                    activeSceneInspectorTab === "visual"
-                                      ? "active"
-                                      : visualReady
-                                        ? "ready"
-                                        : "pending"
-                                  }
-                                  onClick={() =>
-                                    setCreatorSceneInspectorTabs((prev) => ({
-                                      ...prev,
-                                      [scene.id]: "visual",
-                                    }))
-                                  }
-                                  className="scene-production-tab"
-                                >
-                                  <span className="scene-production-tab__icon" aria-hidden="true">
-                                    {visualReady ? "✓" : "2"}
-                                  </span>
-                                  <span className="scene-production-tab__content">
-                                    <strong className="scene-production-tab__title">
-                                      {uiLanguage === "en" ? "Visual" : "Görsel"}
-                                    </strong>
-                                    <span className="scene-production-tab__subtitle">
-                                      {visualReady
-                                        ? uiLanguage === "en"
-                                          ? "Visual ready"
-                                          : "Görsel hazır"
-                                        : uiLanguage === "en"
-                                          ? "Create visual"
-                                          : "Görsel oluştur"}
-                                    </span>
-                                  </span>
-                                </button>
-
-                                <button
-                                  key={`scene-${scene.id}-tab-audio`}
-                                  id={`scene-${scene.id}-audio-tab`}
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={activeSceneInspectorTab === "audio"}
-                                  aria-controls={`scene-${scene.id}-audio-panel`}
-                                  data-production-step="audio"
-                                  data-complete={voiceReady}
-                                  data-state={
-                                    activeSceneInspectorTab === "audio"
-                                      ? "active"
-                                      : voiceReady
-                                        ? "ready"
-                                        : "pending"
-                                  }
-                                  onClick={() =>
-                                    setCreatorSceneInspectorTabs((prev) => ({
-                                      ...prev,
-                                      [scene.id]: "audio",
-                                    }))
-                                  }
-                                  className="scene-production-tab"
-                                >
-                                  <span className="scene-production-tab__icon" aria-hidden="true">
-                                    {voiceReady ? "✓" : "3"}
-                                  </span>
-                                  <span className="scene-production-tab__content">
-                                    <strong className="scene-production-tab__title">
-                                      {uiLanguage === "en" ? "Voice" : "Ses"}
-                                    </strong>
-                                    <span className="scene-production-tab__subtitle">
-                                      {voiceReady
-                                        ? uiLanguage === "en"
-                                          ? "Audio ready"
-                                          : "Ses hazır"
-                                        : uiLanguage === "en"
-                                          ? "Create audio"
-                                          : "Ses oluştur"}
-                                    </span>
-                                  </span>
-                                </button>
-
-                                <button
-                                  key={`scene-${scene.id}-tab-music`}
-                                  id={`scene-${scene.id}-music-tab`}
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={activeSceneInspectorTab === "music"}
-                                  aria-controls={`scene-${scene.id}-music-panel`}
-                                  data-production-step="music"
-                                  data-complete="true"
-                                  data-state={activeSceneInspectorTab === "music" ? "active" : "ready"}
-                                  onClick={() => setCreatorSceneInspectorTabs((prev) => ({ ...prev, [scene.id]: "music" }))}
-                                  className="scene-production-tab"
-                                >
-                                  <span className="scene-production-tab__icon" aria-hidden="true">✓</span>
-                                  <span className="scene-production-tab__content">
-                                    <strong className="scene-production-tab__title">{uiLanguage === "en" ? "Music" : "Müzik"}</strong>
-                                    <span className="scene-production-tab__subtitle">{uiLanguage === "en" ? "Review transitions" : "Geçişleri incele"}</span>
-                                  </span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {activeSceneInspectorTab === "script" && (
-                              <div
-                                id={`scene-${scene.id}-script-panel`}
-                                role="tabpanel"
-                                aria-labelledby={`scene-${scene.id}-script-tab`}
-                                className="space-y-4"
-                              >
-                                {index === 0 && creatorOpeningHookOptions.length > 0 && (
-                                  <details className="creatorlab-editorial-opening-alternatives" data-opening-alternatives="collapsed">
-                                    <summary>{uiLanguage === "en" ? "Opening alternatives" : "Açılış alternatifleri"}</summary>
-                                    <div>
-                                      <p>{uiLanguage === "en" ? "Choose an opening direction while reviewing the script." : "Metni incelerken bir açılış yönü seç."}</p>
-                                      <div>
-                                        {creatorOpeningHookOptions.map((hook, hookIndex) => (
-                                          <button key={`opening-hook-${hookIndex}`} type="button" onClick={() => stageCreatorOpeningHookDraft(scene, hook)}>{hook}</button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </details>
-                                )}
-                                <div className="creatorlab-editorial-script-surface rounded-2xl border border-slate-200 bg-white p-4">
-                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div className="min-w-0">
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Narration" : "Anlatım"}
-                                      </span>
-                                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">
-                                        {scene.narration || (uiLanguage === "en" ? "No narration" : "Anlatım yok")}
-                                      </p>
-                                      {hasDialogue && (
-                                        <div className="mt-4 border-t border-slate-100 pt-4">
-                                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                            {uiLanguage === "en" ? "Dialogue" : "Diyalog"}
-                                          </span>
-                                          <p className="mt-2 text-sm leading-6 text-slate-600">{scene.dialogue}</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {!isEditingScene && (
-                                      <div className="flex shrink-0 flex-wrap gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => openCreatorSceneEditor(scene)}
-                                          className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                        >
-                                          {uiLanguage === "en" ? "Edit script" : "Metni düzenle"}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          data-delete-creator-scene={scene.creatorSceneId || "missing"}
-                                          aria-label={uiLanguage === "en" ? `Delete Scene ${index + 1}` : `Sahne ${index + 1} sil`}
-                                          onClick={() => scene.creatorSceneId && deleteCreatorScene(scene.creatorSceneId)}
-                                          disabled={
-                                            !scene.creatorSceneId ||
-                                            scenes.length <= 1 ||
-                                            creatorSceneStructuralOperationsDisabled
-                                          }
-                                          className="min-h-11 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                        >
-                                          {uiLanguage === "en" ? "Delete Scene" : "Sahneyi Sil"}
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="creatorlab-editorial-script-metrics mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-3">
-                                    <div className="rounded-xl bg-slate-50 p-3">
-                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Words" : "Kelime"}</span>
-                                      <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.speechWordCount}</strong>
-                                    </div>
-                                    <div className="rounded-xl bg-slate-50 p-3">
-                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Estimated speech" : "Tahmini konuşma"}</span>
-                                      <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s / {sceneDraftHealth.targetDurationSec.toFixed(1)}s</strong>
-                                    </div>
-                                    <div className="rounded-xl bg-slate-50 p-3">
-                                      <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Timing" : "Süre"}</span>
-                                      <strong className={`mt-1 block text-sm ${sceneDraftHealth.status === "ready" ? "text-emerald-700" : sceneDraftHealth.status === "too_long" ? "text-rose-700" : "text-amber-700"}`}>
-                                        {sceneDraftHealth.status === "ready"
-                                          ? uiLanguage === "en" ? "Safe" : "Güvenli"
-                                          : sceneDraftHealth.status === "too_long"
-                                            ? uiLanguage === "en" ? "Over target" : "Hedefi aşıyor"
-                                            : uiLanguage === "en" ? "Needs substance" : "İçerik gerekli"}
-                                      </strong>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {isEditingScene && (
-                                  <div className="space-y-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                      <div>
-                                        <strong className="text-sm text-slate-950">
-                                          {uiLanguage === "en" ? "Script and timing" : "Metin ve süre"}
-                                        </strong>
-                                        <p className="mt-1 text-xs leading-5 text-slate-600">
-                                          {uiLanguage === "en"
-                                            ? "Timing updates while you type. Saving rebuilds the safe scene window and visual beats."
-                                            : "Yazdıkça süre güncellenir. Kaydetme, güvenli sahne aralığını ve görsel akışları yeniden kurar."}
-                                        </p>
-                                      </div>
-                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${sceneDraftHealth.status === "ready" ? "bg-emerald-100 text-emerald-700" : sceneDraftHealth.status === "too_long" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
-                                        {sceneDraftHealth.status === "ready"
-                                          ? uiLanguage === "en" ? "Timing safe" : "Süre güvenli"
-                                          : sceneDraftHealth.status === "too_long"
-                                            ? uiLanguage === "en" ? "Over target" : "Hedefi aşıyor"
-                                            : uiLanguage === "en" ? "Needs more substance" : "Daha zengin olmalı"}
-                                      </span>
-                                    </div>
-
-                                    <label className="text-xs font-semibold text-slate-700">
-                                      {uiLanguage === "en" ? "Narration" : "Anlatım"}
-                                      <textarea
-                                        value={sceneScriptDraft.narration}
-                                        onChange={(event) =>
-                                          setSceneScriptDrafts((prev) => ({
-                                            ...prev,
-                                            [scene.id]: {
-                                              narration: event.target.value,
-                                              dialogue: prev[scene.id]?.dialogue ?? scene.dialogue ?? "",
-                                            },
-                                          }))
-                                        }
-                                        className="mt-2 min-h-40 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
-                                      />
-                                    </label>
-
-                                    {hasDialogue || sceneScriptDraft.dialogue.trim() ? (
-                                      <label className="text-xs font-semibold text-slate-700">
-                                        {uiLanguage === "en" ? "Dialogue · optional" : "Diyalog · opsiyonel"}
-                                        <textarea
-                                          value={sceneScriptDraft.dialogue}
-                                          onChange={(event) =>
-                                            setSceneScriptDrafts((prev) => ({
-                                              ...prev,
-                                              [scene.id]: {
-                                                narration: prev[scene.id]?.narration ?? scene.narration ?? "",
-                                                dialogue: event.target.value,
-                                              },
-                                            }))
-                                          }
-                                          className="mt-2 min-h-28 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
-                                        />
-                                      </label>
-                                    ) : (
-                                      <details className="rounded-xl border border-blue-100 bg-white">
-                                        <summary className="cursor-pointer list-none px-3 py-3 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
-                                          {uiLanguage === "en" ? "+ Add optional dialogue" : "+ Opsiyonel diyalog ekle"}
-                                        </summary>
-                                        <div className="border-t border-blue-100 p-3">
-                                          <textarea
-                                            value={sceneScriptDraft.dialogue}
-                                            onChange={(event) =>
-                                              setSceneScriptDrafts((prev) => ({
-                                                ...prev,
-                                                [scene.id]: {
-                                                  narration: prev[scene.id]?.narration ?? scene.narration ?? "",
-                                                  dialogue: event.target.value,
-                                                },
-                                              }))
-                                            }
-                                            placeholder={uiLanguage === "en" ? "Add dialogue only when the scene needs a speaking character." : "Yalnızca sahnede konuşan bir karakter gerekiyorsa diyalog ekle."}
-                                            className="min-h-28 w-full rounded-xl border border-blue-200 bg-white p-3 text-sm font-normal leading-6 text-slate-950"
-                                          />
-                                        </div>
-                                      </details>
-                                    )}
-
-                                    <div className="grid gap-2 sm:grid-cols-3">
-                                      <div className="rounded-xl border border-blue-100 bg-white p-3">
-                                        <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Words" : "Kelime"}</span>
-                                        <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.speechWordCount} · {sceneDraftHealth.minWords}–{sceneDraftHealth.maxWords}</strong>
-                                      </div>
-                                      <div className="rounded-xl border border-blue-100 bg-white p-3">
-                                        <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Speech" : "Konuşma"}</span>
-                                        <strong className="mt-1 block text-sm text-slate-950">{sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s / {sceneDraftHealth.targetDurationSec.toFixed(1)}s</strong>
-                                      </div>
-                                      <div className="rounded-xl border border-blue-100 bg-white p-3">
-                                        <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">{uiLanguage === "en" ? "Visual beats" : "Görsel akış"}</span>
-                                        <strong className="mt-1 block text-sm text-slate-950">{scene.visualBlockPlan?.length || sceneDraftHealth.visualBlockCount}</strong>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => autoFitCreatorSceneScript(scene.id)}
-                                        disabled={sceneScriptFitLoadingId === scene.id}
-                                        className="min-h-11 rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
-                                      >
-                                        {sceneScriptFitLoadingId === scene.id
-                                          ? uiLanguage === "en" ? "Fitting..." : "Uyarlanıyor..."
-                                          : uiLanguage === "en" ? "Auto-fit with AI" : "AI ile süreye uyarla"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => splitCreatorScene(scene.id)}
-                                        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                                      >
-                                        {uiLanguage === "en" ? "Split scene" : "Sahneyi böl"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => saveCreatorSceneScript(scene.id)}
-                                        className="min-h-11 rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
-                                      >
-                                        {uiLanguage === "en" ? "Save script" : "Metni kaydet"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingSceneId(null);
-                                          setSceneScriptDrafts((prev) => {
-                                            const next = { ...prev };
-                                            delete next[scene.id];
-                                            return next;
-                                          });
-                                        }}
-                                        className="min-h-11 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500"
-                                      >
-                                        {ui.cancel}
-                                      </button>
-                                    </div>
-
-                                    {sceneFitFeedback && (
-                                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950" role="status" aria-live="polite">
-                                        <strong className="block">
-                                          {sceneFitFeedback.state === "split_recommended"
-                                            ? uiLanguage === "en" ? "Split recommended" : "Bölme önerilir"
-                                            : sceneFitFeedback.state === "extend_duration"
-                                              ? uiLanguage === "en" ? "Extend duration" : "Süreyi uzat"
-                                              : sceneFitFeedback.state === "accepted"
-                                                ? uiLanguage === "en" ? "Autofit applied" : "Auto-fit uygulandı"
-                                                : uiLanguage === "en" ? "Autofit kept the original" : "Auto-fit orijinali korudu"}
-                                        </strong>
-                                        <span>{sceneFitFeedback.message}</span>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                          {sceneFitFeedback.state === "extend_duration" && sceneFitFeedback.suggestedDurationSec && (
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const duration = sceneFitFeedback.suggestedDurationSec!;
-                                                setScenes((current) => current.map((item) => item.id === scene.id ? {
-                                                  ...item,
-                                                  targetDurationSec: duration,
-                                                  timing: item.timing ? { ...item.timing, targetSceneDuration: duration, plannedSceneDuration: duration } : item.timing,
-                                                } : item));
-                                                setSaveMessage(uiLanguage === "en" ? `Scene duration updated to ${duration.toFixed(1)} seconds.` : `Sahne süresi ${duration.toFixed(1)} saniyeye güncellendi.`);
-                                              }}
-                                              className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800"
-                                            >
-                                              {uiLanguage === "en" ? "Apply duration" : "Süreyi uygula"}
-                                            </button>
-                                          )}
-                                          {sceneFitFeedback.state === "split_recommended" && (
-                                            <button type="button" onClick={() => splitCreatorScene(scene.id)} className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 font-semibold text-blue-800">
-                                              {uiLanguage === "en" ? "Split scene" : "Sahneyi böl"}
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    <details className="rounded-xl border border-blue-100 bg-white">
-                                      <summary className="cursor-pointer list-none px-3 py-3 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
-                                        {uiLanguage === "en" ? "Improve this scene with AI" : "Bu sahneyi AI ile geliştir"}
-                                      </summary>
-                                      <div className="border-t border-blue-100 p-3">
-                                        <textarea
-                                          value={sceneInstructions[scene.id] || ""}
-                                          onChange={(event) =>
-                                            setSceneInstructions((prev) => ({ ...prev, [scene.id]: event.target.value }))
-                                          }
-                                          placeholder={ui.sceneEditPlaceholder}
-                                          className="min-h-24 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-950"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => updateScene(scene.id)}
-                                          disabled={sceneLoadingId === scene.id}
-                                          className="mt-2 min-h-11 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
-                                        >
-                                          {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
-                                        </button>
-                                      </div>
-                                    </details>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {activeSceneInspectorTab === "visual" && (
-                              <div
-                                id={`scene-${scene.id}-visual-panel`}
-                                role="tabpanel"
-                                aria-labelledby={`scene-${scene.id}-visual-tab`}
-                                className="creatorlab-scene-visual-workspace"
-                              >
-                                        <div className="creatorlab-scene-visual-storage" data-visual-storage-status-mount="true">
-                                          <CreatorVisualStorageStatus
-                                            language={uiLanguage === "en" ? "en" : "tr"}
-                                            getAccessToken={getAccessTokenOrThrow}
-                                          />
-                                        </div>
-                                <div className="creatorlab-scene-visual-main space-y-3">
-                                  <div className="rounded-xl border border-slate-200 bg-white p-3" data-creator-visual-source-selector="true">
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                      {uiLanguage === "en" ? "Visual source" : "Görsel kaynağı"}
-                                    </span>
-                                    <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={uiLanguage === "en" ? "Visual source method" : "Görsel kaynak yöntemi"}>
-                                      {([
-                                        ["recommended", uiLanguage === "en" ? "Velto Recommended" : "Velto Önerilen"],
-                                        ["stock", uiLanguage === "en" ? "Stock" : "Stok"],
-                                        ["ai_image", uiLanguage === "en" ? "AI Image" : "AI Görsel"],
-                                        ["ai_video", "AI Video"],
-                                        ["upload", uiLanguage === "en" ? "Upload" : "Yükle"],
-                                      ] as const).map(([method, label]) => {
-                                        const blocked = method === "ai_video" && creatorQualityMode !== "pro" && creatorQualityMode !== "cinematic";
-                                        return (
-                                          <button
-                                            key={method}
-                                            type="button"
-                                            aria-pressed={sceneVisualSourceMethod === method}
-                                            disabled={blocked}
-                                            title={blocked
-                                              ? (uiLanguage === "en" ? "AI Video unavailable for Standard quality" : "AI Video Standart kalitede kullanılamaz")
-                                              : undefined}
-                                            onClick={() => setCreatorScenesVisualSourceMethod([scene.id], method)}
-                                            className={`min-h-9 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                                              sceneVisualSourceMethod === method
-                                                ? "border-blue-600 bg-blue-600 text-white"
-                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                            }`}
-                                          >
-                                            {label}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                    {sceneExplicitAiVideoBlocked && (
-                                      <p className="mt-2 text-xs text-amber-700" role="status">
-                                        {uiLanguage === "en" ? "AI Video unavailable for Standard quality." : "AI Video Standart kalitede kullanılamaz."}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {sceneVisualSourceMethod === "stock" && currentProjectId && (
-                                    <CreatorStockPicker
-                                      creatorFormat={creatorFormat === "youtube_video" ? "youtube_video" : "short_form"}
-                                      projectId={currentProjectId}
-                                      disabled={isBatchRendering || creatorMediaPreflightLoading}
-                                      language={uiLanguage === "en" ? "en" : "tr"}
-                                      getAccessToken={getAccessTokenOrThrow}
-                                      onUse={(asset) => useCreatorStockMedia(scene.creatorSceneId!, asset)}
-                                    />
-                                  )}
-                                  {sceneVisualSourceMethod === "upload" && currentProjectId && (
-                                    <CreatorUploadPicker
-                                      projectId={currentProjectId}
-                                      sceneId={scene.id}
-                                      disabled={isBatchRendering || creatorMediaPreflightLoading}
-                                      language={uiLanguage === "en" ? "en" : "tr"}
-                                      hasBoundUpload={
-                                        scene.assetHistory?.some((asset) =>
-                                          asset.source === "uploaded" &&
-                                          (asset.url === scene.image || asset.url === scene.videoUrl)
-                                        ) === true
-                                      }
-                                      getAccessToken={getAccessTokenOrThrow}
-                                      onUse={(asset) => useCreatorUploadedMedia(scene.id, asset)}
-                                      onRemove={() => removeCreatorUploadedMediaFromScene(scene.id)}
-                                    />
-                                  )}
-                                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                                    {sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" ? (
-                                      <video
-                                        data-creator-scene-video-preview="contain"
-                                        ref={(element) => {
-                                          creatorSceneVideoPreviewRefs.current[stableCreatorSceneId] = element;
-                                        }}
-                                        src={scene.videoUrl}
-                                        controls
-                                        playsInline
-                                        preload="metadata"
-                                        onLoadedMetadata={(event) => {
-                                          const videoUrl = scene.videoUrl || "";
-                                          if (!matchesExpectedCreatorVideoSource({
-                                            expectedUrl: videoUrl,
-                                            currentSrc: event.currentTarget.currentSrc,
-                                            baseUrl: event.currentTarget.ownerDocument?.baseURI,
-                                          })) return;
-                                          const duration = event.currentTarget.duration;
-                                          if (!Number.isFinite(duration) || duration <= 0) return;
-                                          setCreatorSceneVideoSourceDurations((current) => {
-                                            const cached = current[stableCreatorSceneId];
-                                            return cached?.videoUrl === videoUrl && cached.durationSec === duration
-                                              ? current
-                                              : { ...current, [stableCreatorSceneId]: { videoUrl, durationSec: duration } };
-                                          });
-                                          const trim = normalizeCreatorSceneTrim({
-                                            clipInSec: scene.clipInSec,
-                                            clipOutSec: scene.clipOutSec,
-                                            sourceDurationSec: duration,
-                                            sourceType: "video",
-                                          });
-                                          if (trim.isTrimmed) event.currentTarget.currentTime = trim.clipInSec || 0;
-                                        }}
-                                        onPlay={(event) => {
-                                          if (!sceneCardTrim.isTrimmed) return;
-                                          const start = sceneCardTrim.clipInSec || 0;
-                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
-                                          if (event.currentTarget.currentTime < start || event.currentTarget.currentTime >= end - 0.02) {
-                                            event.currentTarget.currentTime = start;
-                                          }
-                                        }}
-                                        onTimeUpdate={(event) => {
-                                          if (!sceneCardTrim.isTrimmed) return;
-                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
-                                          if (event.currentTarget.currentTime >= end - 0.02) {
-                                            event.currentTarget.currentTime = end;
-                                            event.currentTarget.pause();
-                                          }
-                                        }}
-                                        onSeeking={(event) => {
-                                          if (!sceneCardTrim.isTrimmed) return;
-                                          const start = sceneCardTrim.clipInSec || 0;
-                                          const end = sceneCardTrim.clipOutSec || sceneVideoSourceDurationSec;
-                                          if (event.currentTarget.currentTime < start) event.currentTarget.currentTime = start;
-                                          if (event.currentTarget.currentTime > end) event.currentTarget.currentTime = end;
-                                        }}
-                                        className="aspect-video w-full bg-slate-950 object-contain"
-                                      />
-                                    ) : scene.image ? (
-                                      <img src={scene.image} alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`} className="aspect-video w-full bg-slate-950 object-contain" />
-                                    ) : (
-                                      <div className="flex aspect-video items-center justify-center bg-slate-100 px-4 text-center text-xs text-slate-500">
-                                        {uiLanguage === "en" ? "Continue Production will generate this visual." : "Üretime Devam Et bu görseli oluşturacak."}
-                                      </div>
-                                    )}
-                                    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                      <div>
-                                        <strong className="text-xs text-slate-900">{simpleGuidance}</strong>
-                                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                                          {uiLanguage === "en"
-                                            ? "Continuity and quality diagnostics run automatically in the background."
-                                            : "Süreklilik ve kalite kontrolleri arka planda otomatik çalışır."}
-                                        </p>
-                                      </div>
-                                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visualReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                          {visualReady ? uiLanguage === "en" ? "Visual ready" : "Görsel hazır" : uiLanguage === "en" ? "Visual pending" : "Görsel bekliyor"}
-                                        </span>
-                                        {sceneVisualSourceMethod !== "stock" && sceneVisualSourceMethod !== "upload" && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (sceneVisualCountdownActive) {
-                                                cancelCreatorSceneVisualCountdown(scene.id);
-                                                return;
-                                              }
-                                              void runCreatorRecommendedVisualGeneration({
-                                                mode: "single",
-                                                sceneIds: [scene.id],
-                                              });
-                                            }}
-                                            disabled={
-                                              (sceneVisualActionBlocked && !sceneVisualCountdownActive) ||
-                                              scene.videoStatus === "processing" ||
-                                              scene.videoStatus === "delayed" ||
-                                              creatorMediaPreflightLoading ||
-                                              sceneExplicitAiVideoBlocked
-                                            }
-                                            title={
-                                              sceneExplicitAiVideoBlocked
-                                                ? uiLanguage === "en" ? "AI Video unavailable for Standard quality" : "AI Video Standart kalitede kullanılamaz"
-                                                : undefined
-                                            }
-                                            className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                                          >
-                                            {sceneVisualCountdownActive
-                                              ? uiLanguage === "en"
-                                                ? `Cancel · ${creatorSceneVisualOperation?.secondsRemaining}s`
-                                                : `İptal · ${creatorSceneVisualOperation?.secondsRemaining} sn`
-                                              : sceneVisualGenerating
-                                              ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
-                                              : sceneVisualSourceMethod === "ai_image"
-                                                ? scene.image
-                                                  ? uiLanguage === "en" ? "Regenerate image" : "Görseli yeniden üret"
-                                                  : uiLanguage === "en" ? "Generate Image" : "Görsel Üret"
-                                                : sceneVisualSourceMethod === "ai_video"
-                                                  ? sceneExplicitAiVideoBlocked
-                                                    ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                                    : scene.videoUrl && scene.videoStatus === "done"
-                                                      ? uiLanguage === "en" ? "Regenerate video" : "Videoyu yeniden üret"
-                                                      : uiLanguage === "en" ? "Generate Video" : "Video Üret"
-                                                  : uiLanguage === "en" ? "Generate Visual" : "Görsel Üret"}
-                                          </button>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() => setCreatorAssetHistoryOpen((prev) => ({ ...prev, [scene.id]: !prev[scene.id] }))}
-                                          className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                                        >
-                                          {uiLanguage === "en" ? "Versions" : "Sürümler"} ({sceneAssetHistory.length})
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {stableCreatorSceneId && sceneOutputMode === "video" && scene.videoUrl && scene.videoStatus === "done" && (
-                                    <section className="rounded-xl border border-slate-200 bg-white p-4" data-creator-scene-card-video-trim={stableCreatorSceneId}>
-                                      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                                        <div>
-                                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                            {uiLanguage === "en" ? "Media & Timing" : "Medya ve Zamanlama"}
-                                          </span>
-                                          <strong className="mt-1 block text-sm text-slate-950">
-                                            {uiLanguage === "en" ? "Trim Video" : "Videoyu Kırp"}
-                                          </strong>
-                                        </div>
-                                        <span className="text-xs text-slate-500">
-                                          {uiLanguage === "en" ? "Source" : "Kaynak"}: {sceneVideoSourceDurationSec.toFixed(1)}s
-                                        </span>
-                                      </div>
-                                      <CreatorVideoTrimControl
-                                        sourceDurationSec={sceneVideoSourceDurationSec}
-                                        clipInSec={scene.clipInSec}
-                                        clipOutSec={scene.clipOutSec}
-                                        targetDurationSec={targetDurationSec}
-                                        speechDurationSec={measuredAudioDurationSec}
-                                        speechTailBufferSec={scene.timing?.speechTailBuffer}
-                                        language={uiLanguage === "en" ? "en" : "tr"}
-                                        disabled={sceneTrimDisabled}
-                                        onPreviewBoundary={(seconds) => {
-                                          const video = creatorSceneVideoPreviewRefs.current[stableCreatorSceneId];
-                                          if (video) video.currentTime = seconds;
-                                        }}
-                                        onCommitTrim={(trim) => updateCreatorSceneTrim({
-                                          creatorSceneId: stableCreatorSceneId,
-                                          ...trim,
-                                          verifiedSourceDurationSec: verifiedSceneVideoSourceDurationSec,
-                                        })}
-                                      />
-                                    </section>
-                                  )}
-
-                                  {sceneVisualCountdownActive && (
-                                    <span className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
-                                      {uiLanguage === "en"
-                                        ? `Starting in ${creatorSceneVisualOperation?.secondsRemaining}s · No generation request has been sent yet.`
-                                        : `${creatorSceneVisualOperation?.secondsRemaining} sn içinde başlıyor · Henüz üretim talebi gönderilmedi.`}
-                                    </span>
-                                  )}
-                                  {sceneVideoDispatchCountdownActive && (
-                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800" aria-live="assertive">
-                                      {uiLanguage === "en"
-                                        ? "No generation request has been sent yet."
-                                        : "Henüz üretim talebi gönderilmedi."}
-                                    </p>
-                                  )}
-
-                                  {(scene.videoStatus === "processing" || scene.videoStatus === "delayed") && scene.videoQueueJobId && (
-                                    <button
-                                      type="button"
-                                      onClick={() => void requestCancelSceneVideo(scene)}
-                                      disabled={cancellingVideoSceneId === scene.id}
-                                      title={uiLanguage === "en" ? "Stop this generation. A request that already started may still complete." : "Bu üretimi durdur. Başlamış bir talep yine de tamamlanabilir."}
-                                      className="min-h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      {cancellingVideoSceneId === scene.id
-                                        ? uiLanguage === "en" ? "Cancelling video..." : "Video iptal ediliyor..."
-                                        : uiLanguage === "en" ? "Stop video · no refund" : "Videoyu durdur · iade yok"}
-                                    </button>
-                                  )}
-
-                                  {creatorAssetHistoryOpen[scene.id] && (
-                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                      <div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                          {uiLanguage === "en" ? "Asset versions" : "Varlık sürümleri"}
-                                        </span>
-                                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                                          {uiLanguage === "en"
-                                            ? "Generated images and completed video blocks remain available for comparison and restore."
-                                            : "Üretilen görseller ve tamamlanan video blokları karşılaştırma ve geri yükleme için korunur."}
-                                        </p>
-                                      </div>
-
-                                      <div className="mt-4 space-y-4">
-                                        {sceneAssetHistory.length === 0 ? (
-                                          <div className="rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
-                                            {uiLanguage === "en"
-                                              ? "Versions will appear after an image or video is generated."
-                                              : "Bir görsel veya video üretildikten sonra sürümler burada görünecek."}
-                                          </div>
-                                        ) : (
-                                          <div className="grid gap-3 sm:grid-cols-2">
-                                            {sceneAssetHistory.map((asset, assetIndex) => {
-                                              const isCurrentAsset =
-                                                asset.kind === "image"
-                                                  ? scene.image === asset.url
-                                                  : scene.videoUrl === asset.url && scene.videoStatus === "done";
-                                              const isSelectedForCompare = sceneComparedAssetIds.includes(asset.id);
-                                              const assetVersionNumber = sceneAssetHistory
-                                                .slice(assetIndex)
-                                                .filter((item) => item.kind === asset.kind).length;
-
-                                              return (
-                                                <article
-                                                  key={asset.id}
-                                                  className={`overflow-hidden rounded-xl border ${
-                                                    isCurrentAsset
-                                                      ? "border-emerald-300 bg-emerald-50/40"
-                                                      : isSelectedForCompare
-                                                        ? "border-blue-300 bg-blue-50/40"
-                                                        : "border-slate-200 bg-white"
-                                                  }`}
-                                                >
-                                                  {asset.kind === "video" ? (
-                                                    <video
-                                                      src={asset.url}
-                                                      muted
-                                                      playsInline
-                                                      preload="metadata"
-                                                      className="aspect-video w-full bg-slate-950 object-contain"
-                                                    />
-                                                  ) : (
-                                                    <img
-                                                      src={asset.url}
-                                                      alt={uiLanguage === "en" ? `Scene ${scene.id} image version` : `Sahne ${scene.id} görsel sürümü`}
-                                                      className="aspect-video w-full bg-slate-950 object-contain"
-                                                    />
-                                                  )}
-                                                  <div className="space-y-3 p-3">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                      <div>
-                                                        <strong className="text-xs text-slate-900">
-                                                          {asset.kind === "video"
-                                                            ? uiLanguage === "en" ? "Video version" : "Video sürümü"
-                                                            : uiLanguage === "en" ? "Image version" : "Görsel sürümü"}
-                                                          {` ${Math.max(1, assetVersionNumber)}`}
-                                                        </strong>
-                                                        <p className="mt-1 text-[10px] text-slate-500">
-                                                          {formatCreatorAssetTimestamp(asset.createdAt, uiLanguage)}
-                                                          {asset.durationSec ? ` · ${asset.durationSec.toFixed(1)}s` : ""}
-                                                        </p>
-                                                      </div>
-                                                      {isCurrentAsset && (
-                                                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
-                                                          {uiLanguage === "en" ? "Used in scene" : "Sahnede kullanılıyor"}
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => toggleCreatorAssetCompare(scene.id, asset.id)}
-                                                        className={`min-h-10 rounded-lg border px-2 py-2 text-[11px] font-semibold ${
-                                                          isSelectedForCompare
-                                                            ? "border-blue-300 bg-blue-50 text-blue-800"
-                                                            : "border-slate-200 bg-white text-slate-600"
-                                                        }`}
-                                                      >
-                                                        {isSelectedForCompare
-                                                          ? uiLanguage === "en" ? "Remove" : "Çıkar"
-                                                          : uiLanguage === "en" ? "Compare" : "Karşılaştır"}
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => restoreCreatorSceneAsset(scene.id, asset)}
-                                                        disabled={isCurrentAsset}
-                                                        className="min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-2 py-2 text-[11px] font-semibold text-violet-800 disabled:cursor-not-allowed disabled:opacity-40"
-                                                      >
-                                                        {uiLanguage === "en" ? "Restore" : "Geri yükle"}
-                                                      </button>
-                                                    </div>
-                                                    {!isCurrentAsset && (
-                                                      <div data-visual-media-cleanup="asset-version">
-                                                        <CreatorVisualAssetCleanupAction
-                                                          mediaUrl={asset.url}
-                                                          projectId={currentProjectId}
-                                                          language={uiLanguage === "en" ? "en" : "tr"}
-                                                          getAccessToken={getAccessTokenOrThrow}
-                                                          onHistoryRemoved={removeCreatorProjectHistoryUrl}
-                                                        />
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                </article>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
-
-                                        {sceneComparedAssets.length > 0 && (
-                                          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3">
-                                            <div className="flex items-center justify-between gap-3">
-                                              <strong className="text-xs text-blue-950">
-                                                {uiLanguage === "en" ? "Version comparison" : "Sürüm karşılaştırması"}
-                                              </strong>
-                                              <span className="text-[10px] font-semibold text-blue-700">
-                                                {sceneComparedAssets.length}/2
-                                              </span>
-                                            </div>
-                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                              {sceneComparedAssets.map((asset) => (
-                                                <div key={`compare-${asset.id}`} className="overflow-hidden rounded-lg border border-blue-200 bg-white">
-                                                  {asset.kind === "video" ? (
-                                                    <video src={asset.url} controls playsInline className="aspect-video w-full bg-slate-950 object-contain" />
-                                                  ) : (
-                                                    <img
-                                                      src={asset.url}
-                                                      alt={uiLanguage === "en" ? "Compared image version" : "Karşılaştırılan görsel sürümü"}
-                                                      className="aspect-video w-full bg-slate-950 object-contain"
-                                                    />
-                                                  )}
-                                                  <p className="px-2 py-2 text-[10px] font-semibold text-slate-600">
-                                                    {asset.kind === "video"
-                                                      ? uiLanguage === "en" ? "Video" : "Video"
-                                                      : uiLanguage === "en" ? "Image" : "Görsel"}
-                                                    {` · ${formatCreatorAssetTimestamp(asset.createdAt, uiLanguage)}`}
-                                                  </p>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <aside className="creatorlab-scene-visual-inspector space-y-3">
-                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                      {uiLanguage === "en" ? "Output" : "Çıktı"}
-                                    </span>
-                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                      <div>
-                                        <strong className="block text-base text-slate-950">
-                                          {uiLanguage === "en" ? "Using" : "Kullanılan"}: {sceneOutputMode === "video" ? "Video" : uiLanguage === "en" ? "Image" : "Görsel"}
-                                        </strong>
-                                        <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${sceneOutputIsUserChoice ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}>
-                                          {sceneOutputIsUserChoice
-                                            ? uiLanguage === "en" ? "Your choice" : "Senin seçimin"
-                                            : uiLanguage === "en" ? "Velto recommended" : "Velto önerisi"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className={`mt-3 border-t border-slate-100 pt-3 ${sceneOutputIsUserChoice ? "rounded-xl border border-blue-100 bg-blue-50/50 p-3" : ""}`}>
-                                      <strong className="text-[11px] text-slate-800">
-                                        {sceneOutputIsUserChoice
-                                          ? `${uiLanguage === "en" ? "Velto recommends" : "Velto öneriyor"} ${veltoRecommendedOutputMode === "video" ? "Video" : uiLanguage === "en" ? "Image" : "Görsel"}`
-                                          : uiLanguage === "en" ? "Why this" : "Neden bu"}
-                                      </strong>
-                                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                                        {veltoRecommendedOutputMode === "video"
-                                          ? uiLanguage === "en" ? "Motion strengthens this scene's visual beat." : "Hareket, bu sahnenin görsel etkisini güçlendirir."
-                                          : uiLanguage === "en" ? "A focused image keeps this scene clear and efficient." : "Odaklı bir görsel bu sahneyi net ve verimli tutar."}
-                                      </p>
-                                      {sceneOutputIsUserChoice && (
-                                        <button
-                                          type="button"
-                                          onClick={() => returnCreatorSceneToRecommendedOutput(scene.id)}
-                                          className="mt-2 min-h-10 rounded-lg border border-blue-200 bg-white px-3 py-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
-                                        >
-                                          {uiLanguage === "en" ? "Use recommendation" : "Öneriyi kullan"}
-                                        </button>
-                                      )}
-                                    </div>
-                                    <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70">
-                                      <summary className="min-h-10 cursor-pointer list-none px-3 py-2.5 text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
-                                        {uiLanguage === "en" ? "Change output" : "Çıktıyı değiştir"}
-                                      </summary>
-                                      <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => setCreatorSceneRenderMode(scene.id, "image")}
-                                        className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                                          sceneOutputMode === "image"
-                                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                                        }`}
-                                      >
-                                        {uiLanguage === "en" ? "Image" : "Görsel"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setCreatorSceneRenderMode(scene.id, "video")}
-                                        className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                                          sceneOutputMode === "video"
-                                            ? "border-blue-300 bg-blue-50 text-blue-800"
-                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                                        }`}
-                                      >
-                                        Video
-                                      </button>
-                                      </div>
-                                    </details>
-                                    {sceneOutputMode === "video" && creatorVideoSelectionBlockedByQuality && (
-                                      <p className="mt-2 text-[11px] leading-4 text-amber-700">
-                                        {uiLanguage === "en"
-                                          ? "Video generation requires Pro or Cinematic Production Quality."
-                                          : "Video üretimi Pro veya Cinematic Production Quality gerektirir."}
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Production brief" : "Üretim özeti"}
-                                      </span>
-                                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
-                                        {(scene.visualBlockPlan?.length || sceneDraftHealth.visualBlockCount)} {uiLanguage === "en" ? "beats" : "akış"}
-                                      </span>
-                                    </div>
-                                    <div className="mt-3 divide-y divide-slate-100">
-                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Camera" : "Kamera"}</span>
-                                        <p className="text-xs leading-5 text-slate-600">{scene.cameraDirection || "—"}</p>
-                                      </div>
-                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Emotion" : "Duygu"}</span>
-                                        <p className="text-xs leading-5 text-slate-600">{scene.emotion || "—"}</p>
-                                      </div>
-                                      <div className="grid grid-cols-[72px_1fr] gap-3 py-2">
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Motion" : "Hareket"}</span>
-                                        <p className="text-xs leading-5 text-slate-600">{scene.motionHint || "—"}</p>
-                                      </div>
-                                      <details className="group/continuity py-2">
-                                        <summary className="grid min-h-10 cursor-pointer list-none grid-cols-[72px_1fr_auto] items-center gap-3 rounded-lg text-left [&::-webkit-details-marker]:hidden">
-                                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{uiLanguage === "en" ? "Continuity" : "Devamlılık"}</span>
-                                          <span className="text-xs leading-5 text-slate-600">{sceneContinuityLabel}</span>
-                                          <span className="text-xs text-slate-400 transition group-open/continuity:rotate-180" aria-hidden="true">⌄</span>
-                                        </summary>
-                                        <label className="mt-2 block">
-                                          <span className="sr-only">{uiLanguage === "en" ? "Scene continuity mode" : "Sahne devamlılık modu"}</span>
-                                          <select
-                                            value={sceneContinuitySelection}
-                                            onChange={(event) => updateCreatorSceneContinuityMode(scene.id, event.target.value as CreatorSceneContinuityMode)}
-                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                          >
-                                            <option value="project">{uiLanguage === "en" ? "Use project default" : "Proje varsayılanını kullan"}</option>
-                                            <option value="independent">{uiLanguage === "en" ? "Independent scene" : "Bağımsız sahne"}</option>
-                                            <option value="consistent">{uiLanguage === "en" ? "Keep character & world" : "Karakter ve evreni koru"}</option>
-                                            <option value="previous" disabled={index === 0}>{uiLanguage === "en" ? "Continue previous scene" : "Önceki sahneyi devam ettir"}</option>
-                                          </select>
-                                          <small className="mt-2 block text-[11px] leading-5 text-slate-500">
-                                            {getCreatorResolvedContinuityMode(scene) === "previous"
-                                              ? uiLanguage === "en" ? "Directly continues the previous scene." : "Önceki sahnenin doğrudan devamıdır."
-                                              : getCreatorResolvedContinuityMode(scene) === "consistent"
-                                                ? uiLanguage === "en" ? "Keeps the recurring character and visual world." : "Tekrar eden karakteri ve görsel evreni korur."
-                                                : uiLanguage === "en" ? "Generated as an independent visual beat." : "Bağımsız bir görsel anlatım olarak üretilir."}
-                                          </small>
-                                        </label>
-                                      </details>
-                                    </div>
-                                    {sceneContinuityWarning && (
-                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3" role="status">
-                                        <strong className="text-[11px] text-amber-900">
-                                          {uiLanguage === "en" ? "Continuity needs attention" : "Devamlılık kontrol edilmeli"}
-                                        </strong>
-                                        <ul className="mt-1 space-y-1 text-[11px] leading-5 text-amber-800">
-                                          {sceneContinuityWarning.messages.map((message) => <li key={message}>{message}</li>)}
-                                        </ul>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (scene.creatorSceneId) setSelectedCreatorEditorSceneId(scene.creatorSceneId);
-                                            setCreatorEditorOpen(true);
-                                          }}
-                                          className="mt-2 min-h-10 rounded-lg border border-amber-300 bg-white px-3 py-2 text-[11px] font-semibold text-amber-900"
-                                        >
-                                          {uiLanguage === "en" ? "Review in editor" : "Editörde kontrol et"}
-                                        </button>
-                                      </div>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => void editCreatorSceneVisualDirectionWithAI(scene)}
-                                      disabled={creatorVisualDirectionLoadingId !== null}
-                                      className="mt-3 min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      {creatorVisualDirectionLoadingId === scene.id
-                                        ? uiLanguage === "en"
-                                          ? "Improving direction..."
-                                          : "Görsel yön geliştiriliyor..."
-                                        : uiLanguage === "en"
-                                          ? "Edit direction"
-                                          : "Yönü düzenle"}
-                                    </button>
-                                  </div>
-                                </aside>
-                              </div>
-                            )}
-
-                            {activeSceneInspectorTab === "audio" && (
-                              <div
-                                id={`scene-${scene.id}-audio-panel`}
-                                role="tabpanel"
-                                aria-labelledby={`scene-${scene.id}-audio-tab`}
-                                className="space-y-4"
-                              >
-                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
-                                  <label className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
-                                      {uiLanguage === "en" ? "Narrator delivery for this scene" : "Bu sahnenin anlatıcı ifade stili"}
-                                    </span>
-                                    <select
-                                      className="mt-2 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      value={scene.narratorVoiceProfileId || ""}
-                                      onChange={(event) => {
-                                        const nextProfileId = event.target.value
-                                          ? normalizeCreatorVoiceSelectionId(event.target.value)
-                                          : undefined;
-                                        setScenes((currentScenes) =>
-                                          currentScenes.map((item) =>
-                                            item.id === scene.id
-                                              ? {
-                                                  ...item,
-                                                  narratorVoiceProfileId: nextProfileId,
-                                                  audioUrl: "",
-                                                  audioPath: "",
-                                                  audioSourceText: "",
-                                                  audioSettingsKey: "",
-                                                  timing: buildSceneTimingForCurrentFlow(
-                                                    0,
-                                                    item.timing?.dialogueDuration || 0,
-                                                    item,
-                                                  ),
-                                                }
-                                              : item,
-                                          ),
-                                        );
-                                      }}
-                                    >
-                                      <option value="">
-                                        {uiLanguage === "en"
-                                          ? `Project default · ${getCreatorVoiceSelectionLabel(
-                                              getEffectiveNarratorVoiceProfileId(),
-                                              "en",
-                                            )}`
-                                          : `Proje varsayılanı · ${getCreatorVoiceSelectionLabel(
-                                              getEffectiveNarratorVoiceProfileId(),
-                                              "tr",
-                                            )}`}
-                                      </option>
-                                      {CREATOR_VOICE_SELECTIONS.map((profile) => (
-                                        <option key={`scene-${scene.id}-narrator-${profile.id}`} value={profile.id}>
-                                          {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <small className="mt-2 block text-xs leading-5 text-violet-800">
-                                      {uiLanguage === "en"
-                                        ? getCreatorVoiceSelection(effectiveNarratorVoiceProfileId).descriptionEn
-                                        : getCreatorVoiceSelection(effectiveNarratorVoiceProfileId).descriptionTr}
-                                    </small>
-                                  </label>
-
-                                  {hasDialogue && (
-                                    <label className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-700">
-                                        {uiLanguage === "en" ? "Dialogue delivery for this scene" : "Bu sahnenin diyalog ifade stili"}
-                                      </span>
-                                      <select
-                                        className="mt-2 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        value={scene.dialogueVoiceProfileId || ""}
-                                        onChange={(event) => {
-                                          const nextProfileId = event.target.value
-                                            ? normalizeCreatorVoiceSelectionId(event.target.value, "velto_warm")
-                                            : undefined;
-                                          setScenes((currentScenes) =>
-                                            currentScenes.map((item) =>
-                                              item.id === scene.id
-                                                ? {
-                                                    ...item,
-                                                    dialogueVoiceProfileId: nextProfileId,
-                                                    dialogueAudioUrl: "",
-                                                    dialogueAudioPath: "",
-                                                    dialogueAudioSourceText: "",
-                                                    dialogueAudioSettingsKey: "",
-                                                    timing: buildSceneTimingForCurrentFlow(
-                                                      item.timing?.narrationDuration || 0,
-                                                      0,
-                                                      item,
-                                                    ),
-                                                  }
-                                                : item,
-                                            ),
-                                          );
-                                        }}
-                                      >
-                                        <option value="">
-                                          {uiLanguage === "en"
-                                            ? `Project or cast default · ${getCreatorVoiceSelectionLabel(
-                                                effectiveDialogueVoiceProfileId,
-                                                "en",
-                                              )}`
-                                            : `Proje veya kadro varsayılanı · ${getCreatorVoiceSelectionLabel(
-                                                effectiveDialogueVoiceProfileId,
-                                                "tr",
-                                              )}`}
-                                        </option>
-                                        {CREATOR_VOICE_SELECTIONS.map((profile) => (
-                                          <option key={`scene-${scene.id}-dialogue-${profile.id}`} value={profile.id}>
-                                            {uiLanguage === "en" ? profile.labelEn : profile.labelTr}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <small className="mt-2 block text-xs leading-5 text-rose-800">
-                                        {uiLanguage === "en"
-                                          ? getCreatorVoiceSelection(effectiveDialogueVoiceProfileId).descriptionEn
-                                          : getCreatorVoiceSelection(effectiveDialogueVoiceProfileId).descriptionTr}
-                                      </small>
-                                    </label>
-                                  )}
-                                </div>
-
-                                {hasDialogue && characters.length > 0 && (
-                                  <label className="block rounded-2xl border border-slate-200 bg-white p-4">
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                      {uiLanguage === "en" ? "Dialogue speaker" : "Diyalog konuşmacısı"}
-                                    </span>
-                                    <select
-                                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      value={
-                                        normalizeCreatorDialogueSpeakerCharacterId(
-                                          scene.dialogueSpeakerCharacterId,
-                                          characters,
-                                        ) || ""
-                                      }
-                                      onChange={(event) => {
-                                        const nextSpeakerId = normalizeCreatorDialogueSpeakerCharacterId(
-                                          event.target.value,
-                                          characters,
-                                        );
-                                        setScenes((currentScenes) =>
-                                          currentScenes.map((item) =>
-                                            item.id === scene.id
-                                              ? {
-                                                  ...item,
-                                                  dialogueSpeakerCharacterId: nextSpeakerId,
-                                                  dialogueAudioUrl: "",
-                                                  dialogueAudioPath: "",
-                                                  dialogueAudioSourceText: "",
-                                                  dialogueAudioSettingsKey: "",
-                                                  timing: buildSceneTimingForCurrentFlow(
-                                                    item.timing?.narrationDuration || 0,
-                                                    0,
-                                                    item,
-                                                  ),
-                                                }
-                                              : item,
-                                          ),
-                                        );
-                                      }}
-                                    >
-                                      <option value="">
-                                        {uiLanguage === "en"
-                                          ? "Default character voice"
-                                          : "Varsayılan karakter sesi"}
-                                      </option>
-                                      {characters.map((character) => (
-                                        <option key={character.id} value={character.id}>
-                                          {character.name || (uiLanguage === "en" ? "Unnamed character" : "Adsız karakter")}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <small className="mt-2 block text-xs leading-5 text-slate-500">
-                                      {uiLanguage === "en"
-                                        ? "This scene supports one dialogue speaker. Selection is free and does not generate audio."
-                                        : "Bu sahne tek diyalog konuşmacısını destekler. Seçim ücretsizdir ve ses üretmez."}
-                                    </small>
-                                  </label>
-                                )}
-
-                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
-                                  <div className="creatorlab-voice-selection-card rounded-2xl border border-slate-200 bg-white p-4">
-                                    <div className="min-w-0">
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Actual narrator voice" : "Gerçek anlatıcı sesi"}
-                                      </span>
-                                      <strong className="mt-2 block text-sm text-slate-950">
-                                        {getEffectiveNarratorVoiceSelection(scene)?.name ||
-                                          (uiLanguage === "en" ? "Project / Velto default" : "Proje / Velto varsayılanı")}
-                                      </strong>
-                                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                                        {getEffectiveNarratorVoiceSelection(scene)
-                                          ? getVoiceLibraryDisplayMeta(getEffectiveNarratorVoiceSelection(scene))
-                                          : uiLanguage === "en"
-                                            ? "This scene inherits the project narrator voice."
-                                            : "Bu sahne proje anlatıcı sesini devralır."}
-                                      </p>
-                                      <p className="mt-1 text-[11px] leading-4 text-slate-400">
-                                        {uiLanguage === "en"
-                                          ? "Preview and choose another voice without leaving Velto Studio."
-                                          : "Velto Studio'dan ayrılmadan başka bir sesi dinle ve seç."}
-                                      </p>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openCreatorVoiceLibrary({ scope: "scene_narrator", sceneId: scene.id })}
-                                      className="creatorlab-voice-change-button"
-                                      ref={(node) => {
-                                        if (!node) return;
-                                        node.style.setProperty("background-color", "#E8F5F1", "important");
-                                        node.style.setProperty("border-color", "#B7DDD2", "important");
-                                        node.style.setProperty("color", "#2F6F62", "important");
-                                      }}
-                                      onMouseEnter={(event) => {
-                                        event.currentTarget.style.setProperty("background-color", "#DDF0EA", "important");
-                                        event.currentTarget.style.setProperty("border-color", "#9DCFC1", "important");
-                                      }}
-                                      onMouseLeave={(event) => {
-                                        event.currentTarget.style.setProperty("background-color", "#E8F5F1", "important");
-                                        event.currentTarget.style.setProperty("border-color", "#B7DDD2", "important");
-                                      }}
-                                    >
-                                      {uiLanguage === "en" ? "Change voice" : "Sesi değiştir"}
-                                    </button>
-                                  </div>
-
-                                  {hasDialogue && (
-                                    <div className="creatorlab-voice-selection-card rounded-2xl border border-slate-200 bg-white p-4">
-                                      <div className="min-w-0">
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                          {uiLanguage === "en" ? "Actual dialogue voice" : "Gerçek diyalog sesi"}
-                                        </span>
-                                        <strong className="mt-2 block text-sm text-slate-950">
-                                          {getEffectiveDialogueVoiceSelection(scene)?.name ||
-                                            (uiLanguage === "en" ? "Character / project default" : "Karakter / proje varsayılanı")}
-                                        </strong>
-                                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                                          {getEffectiveDialogueVoiceSelection(scene)
-                                            ? getVoiceLibraryDisplayMeta(getEffectiveDialogueVoiceSelection(scene))
-                                            : uiLanguage === "en"
-                                              ? "This scene inherits the matching character or project voice."
-                                              : "Bu sahne eşleşen karakter veya proje sesini devralır."}
-                                        </p>
-                                        <p className="mt-1 text-[11px] leading-4 text-slate-400">
-                                          {uiLanguage === "en"
-                                            ? "Preview and choose another voice without leaving Velto Studio."
-                                            : "Velto Studio'dan ayrılmadan başka bir sesi dinle ve seç."}
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => openCreatorVoiceLibrary({ scope: "scene_dialogue", sceneId: scene.id })}
-                                        className="creatorlab-voice-change-button"
-                                        style={{
-                                          backgroundColor: "#E8F5F1",
-                                          borderColor: "#B7DDD2",
-                                          color: "#2F6F62",
-                                        }}
-                                      >
-                                        {uiLanguage === "en" ? "Change voice" : "Sesi değiştir"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className={`grid gap-3 ${hasDialogue ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
-                                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                          {uiLanguage === "en" ? "Narrator" : "Anlatıcı"}
-                                        </span>
-                                        <strong className="mt-2 block text-sm text-slate-950">
-                                          {narrationReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
-                                        </strong>
-                                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                                          {scene.narration?.trim()
-                                            ? `${sceneDraftHealth.speechWordCount} ${uiLanguage === "en" ? "spoken words in the scene" : "sahne konuşma kelimesi"}`
-                                            : uiLanguage === "en" ? "No narrator text in this scene." : "Bu sahnede anlatıcı metni yok."}
-                                        </p>
-                                      </div>
-                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${narrationReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                        {narrationDurationSec > 0 ? `${narrationDurationSec.toFixed(1)}s` : "—"}
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => playNarration(scene.id, scene.narration)}
-                                      disabled={
-                                        !scene.narration?.trim() ||
-                                        loadingAudioSceneId === scene.id ||
-                                        isPreparingAudio ||
-                                        playingDialogueSceneId !== null
-                                      }
-                                      className={`mt-4 min-h-11 w-full rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
-                                        narrationReady
-                                          ? "creatorlab-voice-listen-button"
-                                          : "creatorlab-voice-generate-button"
-                                      }`}
-                                    >
-                                      {loadingAudioSceneId === scene.id
-                                        ? uiLanguage === "en" ? "Preparing narrator..." : "Anlatıcı hazırlanıyor..."
-                                        : playingSceneId === scene.id
-                                          ? uiLanguage === "en" ? "Stop narrator" : "Anlatıcıyı durdur"
-                                          : narrationReady
-                                            ? uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı dinle"
-                                            : uiLanguage === "en"
-                                              ? "Generate narrator"
-                                              : "Anlatıcı üret"}
-                                    </button>
-                                  </div>
-
-                                  {hasDialogue && (
-                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                            {uiLanguage === "en" ? "Dialogue" : "Diyalog"}
-                                          </span>
-                                          <strong className="mt-2 block text-sm text-slate-950">
-                                            {dialogueReady ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}
-                                          </strong>
-                                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{scene.dialogue}</p>
-                                        </div>
-                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${dialogueReady ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                          {dialogueDurationSec > 0 ? `${dialogueDurationSec.toFixed(1)}s` : "—"}
-                                        </span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => playSceneDialogue(scene)}
-                                        disabled={
-                                          loadingDialogueSceneId === scene.id ||
-                                          isPreparingAudio ||
-                                          isPlayingStory
-                                        }
-                                        className={`mt-4 min-h-11 w-full rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
-                                          dialogueReady
-                                            ? "creatorlab-voice-listen-button"
-                                            : "creatorlab-voice-generate-button"
-                                        }`}
-                                      >
-                                        {loadingDialogueSceneId === scene.id
-                                          ? uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor..."
-                                          : playingDialogueSceneId === scene.id
-                                            ? uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu durdur"
-                                            : dialogueReady
-                                              ? uiLanguage === "en" ? "Listen to dialogue" : "Diyaloğu dinle"
-                                              : uiLanguage === "en"
-                                                ? "Generate dialogue"
-                                                : "Diyalog üret"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        {uiLanguage === "en" ? "Audio timing" : "Ses zamanlaması"}
-                                      </span>
-                                      <strong className="mt-2 block text-sm text-slate-950">
-                                        {exactTimingLocked
-                                          ? uiLanguage === "en"
-                                            ? `${measuredAudioDurationSec.toFixed(1)}s measured audio · ${targetDurationSec.toFixed(1)}s exact scene`
-                                            : `${measuredAudioDurationSec.toFixed(1)} sn ölçülen ses · ${targetDurationSec.toFixed(1)} sn kesin sahne`
-                                          : uiLanguage === "en"
-                                            ? `${sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s estimated speech · ${plannedDurationSec.toFixed(1)}s planned scene`
-                                            : `${sceneDraftHealth.estimatedSpeechSec.toFixed(1)} sn tahmini konuşma · ${plannedDurationSec.toFixed(1)} sn planlanan sahne`}
-                                      </strong>
-                                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                                        {exactTimingLocked
-                                          ? uiLanguage === "en"
-                                            ? `Final timing is locked to measured audio plus a ${Number(scene.timing?.transitionTail || scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)}s transition tail. Preview and export use this same duration.`
-                                            : `Final süre, ölçülen sese ${Number(scene.timing?.transitionTail || scene.timing?.speechTailBuffer || CREATOR_SPEECH_TAIL_BUFFER_SECONDS).toFixed(2)} sn geçiş payı eklenerek sabitlendi. Önizleme ve export aynı süreyi kullanır.`
-                                          : uiLanguage === "en"
-                                            ? "Generate the missing voice track to measure audio and lock the exact scene duration."
-                                            : "Sesi ölçmek ve kesin sahne süresini sabitlemek için eksik ses kaydını üret."}
-                                      </p>
-                                    </div>
-                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${voiceReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                      {exactTimingLocked
-                                        ? uiLanguage === "en" ? "Exact timing" : "Kesin süre"
-                                        : voiceReady
-                                          ? uiLanguage === "en" ? "Audio ready" : "Ses hazır"
-                                          : uiLanguage === "en" ? "Generation needed" : "Üretim gerekli"}
-                                    </span>
-                                  </div>
-                                  {!hasDialogue && (
-                                    <p className="mt-4 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-600">
-                                      {uiLanguage === "en"
-                                        ? "This scene is narrator-only, so dialogue controls are intentionally hidden."
-                                        : "Bu sahne yalnızca anlatıcı içerdiği için diyalog kontrolleri bilinçli olarak gizlendi."}
-                                    </p>
-                                  )}
-
-                                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                    <div className={`rounded-xl px-3 py-3 text-xs leading-5 ${
-                                      scene.timing?.splitRecommended ||
-                                      scene.timing?.durationMatchStatus === "unsafe" ||
-                                      sceneNarratorVoiceRoute?.timingStatus === "blocked"
-                                        ? "bg-rose-50 text-rose-800"
-                                        : sceneNarratorVoiceRoute?.timingStatus === "tight"
-                                          ? "bg-amber-50 text-amber-800"
-                                          : "bg-emerald-50 text-emerald-800"
-                                    }`}>
-                                      <strong className="block">
-                                        {uiLanguage === "en" ? "Speech-cut protection" : "Konuşma kesilme koruması"}
-                                      </strong>
-                                      <span>
-                                        {scene.timing?.splitRecommended
-                                          ? uiLanguage === "en"
-                                            ? `Split into ${scene.timing.recommendedSplitCount || 2} scenes is recommended after measuring the real audio.`
-                                            : `Gerçek ses ölçümüne göre ${scene.timing.recommendedSplitCount || 2} sahneye bölme öneriliyor.`
-                                          : sceneNarratorVoiceRoute?.timingStatus === "blocked"
-                                            ? uiLanguage === "en"
-                                              ? "The estimated speech exceeds this scene. Generation can continue, but the timeline will extend or recommend a split."
-                                              : "Tahmini konuşma bu sahneyi aşıyor. Üretim devam edebilir; timeline uzatılır veya sahne bölme önerilir."
-                                            : sceneNarratorVoiceRoute?.timingStatus === "tight"
-                                              ? uiLanguage === "en"
-                                                ? "Speech is close to the safe limit. Smart pacing and measured audio duration will be applied."
-                                                : "Konuşma güvenli sınıra yakın. Akıllı tempo ve ölçülen gerçek ses süresi uygulanır."
-                                              : exactTimingLocked && timingDeltaSec < -0.35
-                                                ? uiLanguage === "en"
-                                                  ? `Scene shortened by ${Math.abs(timingDeltaSec).toFixed(1)}s. The silent/frozen tail is removed.`
-                                                  : `Sahne ${Math.abs(timingDeltaSec).toFixed(1)} sn kısaltıldı. Sessiz/donuk kuyruk kaldırıldı.`
-                                                : exactTimingLocked && timingDeltaSec > 0.35
-                                                  ? uiLanguage === "en"
-                                                    ? `Scene extended by ${timingDeltaSec.toFixed(1)}s so speech finishes without being cut.`
-                                                    : `Konuşmanın kesilmemesi için sahne ${timingDeltaSec.toFixed(1)} sn uzatıldı.`
-                                                  : exactTimingLocked
-                                                    ? uiLanguage === "en"
-                                                      ? "Measured audio and scene duration are exactly aligned."
-                                                      : "Ölçülen ses ve sahne süresi tam olarak eşleşiyor."
-                                                    : uiLanguage === "en"
-                                                      ? "The script fits the planned window. Exact timing will be locked after voice generation."
-                                                      : "Metin planlanan aralığa uyuyor. Kesin süre ses üretiminden sonra sabitlenecek."}
-                                      </span>
-                                    </div>
-                                    <div className="rounded-xl bg-violet-50 px-3 py-3 text-xs leading-5 text-violet-800">
-                                      <strong className="block">
-                                        {uiLanguage === "en" ? "Estimated generation cost" : "Tahmini üretim maliyeti"}
-                                      </strong>
-                                      <span>
-                                        {sceneVoiceCreditEstimate.totalTracks} {uiLanguage === "en" ? "missing track(s)" : "eksik ses kaydı"}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {activeSceneInspectorTab === "music" && (
-                              <div id={`scene-${scene.id}-music-panel`} role="tabpanel" aria-labelledby={`scene-${scene.id}-music-tab`}>
-                                <CreatorSceneMusicControls
-                                  timeline={creatorAudioTimeline || createDefaultCreatorMusicTimeline()}
-                                  projectId={currentProjectId}
-                                  sceneIds={scenes.map((item) => item.creatorSceneId || `legacy-${item.id}`)}
-                                  sceneId={scene.creatorSceneId || `legacy-${scene.id}`}
-                                  disabled={isBatchRendering || creatorMediaPreflightLoading}
-                                  getAccessToken={getAccessTokenOrThrow}
-                                  language={uiLanguage === "en" ? "en" : "tr"}
-                                  onChange={applyCreatorAudioTimelineChange}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </details>
-                      );
-                    })}
-                  </div>
-                </section>
-
-              </>
-            ))}
-          </section>
+          <CreatorProductionPanel
+            creatorProductionSubstep={creatorProductionSubstep}
+            uiLanguage={uiLanguage}
+            creatorProductionPackage={creatorProductionPackage}
+            CREATOR_FORMAT_OPTIONS={CREATOR_FORMAT_OPTIONS}
+            creatorFormat={creatorFormat}
+            getCreatorDurationLabel={getCreatorDurationLabel}
+            scenes={scenes}
+            getCreatorQualityModeLabel={getCreatorQualityModeLabel}
+            currentProjectId={currentProjectId}
+            creatorStageVisibility={creatorStageVisibility}
+            creatorPresentationModeLabel={creatorPresentationModeLabel}
+            creatorCharacterVoiceSummary={creatorCharacterVoiceSummary}
+            creatorMusicSummary={creatorMusicSummary}
+            creatorContinuitySummary={creatorContinuitySummary}
+            selectCreatorProductionSubstep={selectCreatorProductionSubstep}
+            creatorProductionSetupPresentation={creatorProductionSetupPresentation}
+            creatorNarratorSummary={creatorNarratorSummary}
+            creatorMusicConfirmationRequired={creatorMusicConfirmationRequired}
+            creatorProductionCustomizeOpen={creatorProductionCustomizeOpen}
+            setCreatorProductionCustomizeOpen={setCreatorProductionCustomizeOpen}
+            creatorPresentationMode={creatorPresentationMode}
+            characters={characters}
+            setCreatorNoCastMode={setCreatorNoCastMode}
+            stopDialoguePlayback={stopDialoguePlayback}
+            stopStoryPlayback={stopStoryPlayback}
+            setNarratorSettings={setNarratorSettings}
+            clearAllSceneAudioData={clearAllSceneAudioData}
+            clearAllSceneDialogueAudioData={clearAllSceneDialogueAudioData}
+            clearAllSceneTimingData={clearAllSceneTimingData}
+            scrollCreatorWorkspaceTo={scrollCreatorWorkspaceTo}
+            addCharacter={addCharacter}
+            setCharacters={setCharacters}
+            creatorBrandConfigured={creatorBrandConfigured}
+            creatorProfile={creatorProfile}
+            setCreatorProfile={setCreatorProfile}
+            saveCreatorProfile={saveCreatorProfile}
+            creatorVisualDirectionConfigured={creatorVisualDirectionConfigured}
+            visualBible={visualBible}
+            setVisualBible={setVisualBible}
+            emptyVisualBible={emptyVisualBible}
+            ui={ui}
+            getEffectiveNarratorVoiceProfileId={getEffectiveNarratorVoiceProfileId}
+            applyCreatorVoiceProfile={applyCreatorVoiceProfile}
+            getEffectiveDialogueVoiceProfileId={getEffectiveDialogueVoiceProfileId}
+            narratorSettings={narratorSettings}
+            openCreatorVoiceLibrary={openCreatorVoiceLibrary}
+            creatorBoundDialogueCharacterIds={creatorBoundDialogueCharacterIds}
+            creatorResolvedCharacterVoiceCount={creatorResolvedCharacterVoiceCount}
+            getCreatorVoiceCreditEstimate={getCreatorVoiceCreditEstimate}
+            updateCharacter={updateCharacter}
+            generateCharacterReference={generateCharacterReference}
+            characterLoadingIndex={characterLoadingIndex}
+            removeCharacter={removeCharacter}
+            creatorBackgroundMusicHydrationRevision={creatorBackgroundMusicHydrationRevision}
+            creatorAudioTimeline={creatorAudioTimeline}
+            getAccessTokenOrThrow={getAccessTokenOrThrow}
+            creatorContentType={creatorContentType}
+            creatorOutcome={creatorOutcome}
+            input={input}
+            setCreatorBackgroundMusic={setCreatorBackgroundMusic}
+            applyCreatorAudioTimelineChange={applyCreatorAudioTimelineChange}
+            setCreatorProjectContinuityMode={setCreatorProjectContinuityMode}
+            creatorProjectContinuityMode={creatorProjectContinuityMode}
+            creatorSceneHydrationAuthority={creatorSceneHydrationAuthority}
+            buildStory={buildStory}
+            buildingStory={buildingStory}
+            visualAssetReadyCount={visualAssetReadyCount}
+            audioReadyCount={audioReadyCount}
+            creatorFinalVideoProgressDetail={creatorFinalVideoProgressDetail}
+            playWholeStory={playWholeStory}
+            isPlayingStory={isPlayingStory}
+            isPreparingAudio={isPreparingAudio}
+            playingDialogueSceneId={playingDialogueSceneId}
+            loadingAudioSceneId={loadingAudioSceneId}
+            creatorVisualsComplete={creatorVisualsComplete}
+            creatorTimelineNeedsAttention={creatorTimelineNeedsAttention}
+            creatorVoiceOverComplete={creatorVoiceOverComplete}
+            creatorMotionRequired={creatorMotionRequired}
+            creatorRoutedMotionSceneIds={creatorRoutedMotionSceneIds}
+            creatorMotionReadyCount={creatorMotionReadyCount}
+            creatorMotionComplete={creatorMotionComplete}
+            creatorProductionComplete={creatorProductionComplete}
+            creatorNextProductionAction={creatorNextProductionAction}
+            continueCreatorProduction={continueCreatorProduction}
+            creatorMediaPreflightLoading={creatorMediaPreflightLoading}
+            isBatchRendering={isBatchRendering}
+            isExportingMovie={isExportingMovie}
+            creatorTimelineMediaGate={creatorTimelineMediaGate}
+            getCreatorScrollBehavior={getCreatorScrollBehavior}
+            creatorHasFinalVideo={creatorHasFinalVideo}
+            creatorFinalVideoNeedsRebuild={creatorFinalVideoNeedsRebuild}
+            exportMovieResult={exportMovieResult}
+            exportedMovieUrl={exportedMovieUrl}
+            creatorEditorOpen={creatorEditorOpen}
+            setCreatorEditorOpen={setCreatorEditorOpen}
+            handleExportMovie={handleExportMovie}
+            selectedCreatorEditorSceneId={selectedCreatorEditorSceneId}
+            setSelectedCreatorEditorSceneId={setSelectedCreatorEditorSceneId}
+            moveSelectedCreatorEditorScene={moveSelectedCreatorEditorScene}
+            addCreatorEditorScene={addCreatorEditorScene}
+            duplicateSelectedCreatorEditorScene={duplicateSelectedCreatorEditorScene}
+            deleteSelectedCreatorEditorScene={deleteSelectedCreatorEditorScene}
+            undoLastCreatorChange={undoLastCreatorChange}
+            creatorUndoStack={creatorUndoStack}
+            updateSelectedCreatorSceneTrim={updateSelectedCreatorSceneTrim}
+            saveSelectedCreatorSceneText={saveSelectedCreatorSceneText}
+            getCreatorNarrationAudioCurrentness={getCreatorNarrationAudioCurrentness}
+            getCreatorDialogueAudioCurrentness={getCreatorDialogueAudioCurrentness}
+            getCreatorVideoState={getCreatorVideoState}
+            flowContinuityAudit={flowContinuityAudit}
+            handleGenerateVideo={handleGenerateVideo}
+            restoreCreatorSceneAsset={restoreCreatorSceneAsset}
+            reuseCreatorProjectImage={reuseCreatorProjectImage}
+            onUseCreatorStockMedia={useCreatorStockMedia}
+            removeCreatorProjectHistoryUrl={removeCreatorProjectHistoryUrl}
+            creatorSceneStructuralOperationsDisabled={creatorSceneStructuralOperationsDisabled}
+            activeVisualGenerationSceneIds={activeVisualGenerationSceneIds}
+            creatorGeneratingVisualSceneIds={creatorGeneratingVisualSceneIds}
+            creatorSelectedSceneIds={creatorSelectedSceneIds}
+            creatorVisualDispatchCountdown={creatorVisualDispatchCountdown}
+            videoDispatchCountdown={videoDispatchCountdown}
+            cancelPendingVideoDispatch={cancelPendingVideoDispatch}
+            cancelPendingImageDispatch={cancelPendingImageDispatch}
+            creatorSelectedMissingVisualCount={creatorSelectedMissingVisualCount}
+            creatorSelectedMissingVoiceCount={creatorSelectedMissingVoiceCount}
+            creatorSelectedVisualSourceMethod={creatorSelectedVisualSourceMethod}
+            setCreatorScenesVisualSourceMethod={setCreatorScenesVisualSourceMethod}
+            creatorQualityMode={creatorQualityMode}
+            setCreatorScenesRenderMode={setCreatorScenesRenderMode}
+            generateSelectedSceneVisuals={generateSelectedSceneVisuals}
+            prepareSelectedSceneAudio={prepareSelectedSceneAudio}
+            setCreatorSelectedSceneIds={setCreatorSelectedSceneIds}
+            creatorSceneProductionSummaries={creatorSceneProductionSummaries}
+            creatorFocusedSceneId={creatorFocusedSceneId}
+            setCreatorFocusedSceneId={setCreatorFocusedSceneId}
+            creatorSelectedSceneIdSet={creatorSelectedSceneIdSet}
+            toggleCreatorSceneSelection={toggleCreatorSceneSelection}
+            getSceneVoiceStatus={getSceneVoiceStatus}
+            creatorRoutedMotionSceneIdSet={creatorRoutedMotionSceneIdSet}
+            creatorRecommendedMotionSceneIdSet={creatorRecommendedMotionSceneIdSet}
+            sceneScriptDrafts={sceneScriptDrafts}
+            sceneScriptFitFeedback={sceneScriptFitFeedback}
+            assessCreatorSceneScriptDraft={assessCreatorSceneScriptDraft}
+            language={language}
+            normalizeCreatorScriptText={normalizeCreatorScriptText}
+            editingSceneId={editingSceneId}
+            creatorSceneInspectorTabs={creatorSceneInspectorTabs}
+            creatorSceneVisualOperations={creatorSceneVisualOperations}
+            creatorSceneVisualCountdownSceneIds={creatorSceneVisualCountdownSceneIds}
+            creatorVisualGenerationPhase={creatorVisualGenerationPhase}
+            creatorProcessingVisualSceneIds={creatorProcessingVisualSceneIds}
+            creatorSceneVideoSourceDurations={creatorSceneVideoSourceDurations}
+            getSceneAudioStatus={getSceneAudioStatus}
+            getSceneDialogueAudioStatus={getSceneDialogueAudioStatus}
+            getCreatorSceneVoiceContext={getCreatorSceneVoiceContext}
+            getCreatorNarratorProfileHint={getCreatorNarratorProfileHint}
+            creatorAssetCompareSelection={creatorAssetCompareSelection}
+            getCreatorSceneContinuityMode={getCreatorSceneContinuityMode}
+            cancelCreatorSceneVisualCountdown={cancelCreatorSceneVisualCountdown}
+            setCreatorSceneInspectorTabs={setCreatorSceneInspectorTabs}
+            runCreatorRecommendedVisualGeneration={runCreatorRecommendedVisualGeneration}
+            redrawLoadingId={redrawLoadingId}
+            loadingDialogueSceneId={loadingDialogueSceneId}
+            imageDispatchCountdown={imageDispatchCountdown}
+            creatorOpeningHookOptions={creatorOpeningHookOptions}
+            stageCreatorOpeningHookDraft={stageCreatorOpeningHookDraft}
+            openCreatorSceneEditor={openCreatorSceneEditor}
+            deleteCreatorScene={deleteCreatorScene}
+            setSceneScriptDrafts={setSceneScriptDrafts}
+            autoFitCreatorSceneScript={autoFitCreatorSceneScript}
+            sceneScriptFitLoadingId={sceneScriptFitLoadingId}
+            splitCreatorScene={splitCreatorScene}
+            saveCreatorSceneScript={saveCreatorSceneScript}
+            setEditingSceneId={setEditingSceneId}
+            setScenes={setScenes}
+            setSaveMessage={setSaveMessage}
+            sceneInstructions={sceneInstructions}
+            setSceneInstructions={setSceneInstructions}
+            updateScene={updateScene}
+            sceneLoadingId={sceneLoadingId}
+            onUseCreatorUploadedMedia={useCreatorUploadedMedia}
+            removeCreatorUploadedMediaFromScene={removeCreatorUploadedMediaFromScene}
+            creatorSceneVideoPreviewRefs={creatorSceneVideoPreviewRefs}
+            setCreatorSceneVideoSourceDurations={setCreatorSceneVideoSourceDurations}
+            setCreatorAssetHistoryOpen={setCreatorAssetHistoryOpen}
+            updateCreatorSceneTrim={updateCreatorSceneTrim}
+            requestCancelSceneVideo={requestCancelSceneVideo}
+            cancellingVideoSceneId={cancellingVideoSceneId}
+            creatorAssetHistoryOpen={creatorAssetHistoryOpen}
+            formatCreatorAssetTimestamp={formatCreatorAssetTimestamp}
+            toggleCreatorAssetCompare={toggleCreatorAssetCompare}
+            returnCreatorSceneToRecommendedOutput={returnCreatorSceneToRecommendedOutput}
+            setCreatorSceneRenderMode={setCreatorSceneRenderMode}
+            creatorVideoSelectionBlockedByQuality={creatorVideoSelectionBlockedByQuality}
+            updateCreatorSceneContinuityMode={updateCreatorSceneContinuityMode}
+            getCreatorResolvedContinuityMode={getCreatorResolvedContinuityMode}
+            editCreatorSceneVisualDirectionWithAI={editCreatorSceneVisualDirectionWithAI}
+            creatorVisualDirectionLoadingId={creatorVisualDirectionLoadingId}
+            buildSceneTimingForCurrentFlow={buildSceneTimingForCurrentFlow}
+            getEffectiveNarratorVoiceSelection={getEffectiveNarratorVoiceSelection}
+            getEffectiveDialogueVoiceSelection={getEffectiveDialogueVoiceSelection}
+            playNarration={playNarration}
+            playingSceneId={playingSceneId}
+            playSceneDialogue={playSceneDialogue}
+            CREATOR_SPEECH_TAIL_BUFFER_SECONDS={CREATOR_SPEECH_TAIL_BUFFER_SECONDS}
+          />
         )}
 
         {isCreatorLabFlow && creatorStageVisibility.publish && creatorProductionPackage && (
-          <section id="creatorlab-publish-canvas" className="creatorlab-publish-experience">
-            <div className="creatorlab-publish-heading">
-              <div>
-                <p className="creatorlab-publish-kicker">
-                  {uiLanguage === "en" ? "Step 5 · Publish" : "Adım 5 · Yayınla"}
-                </p>
-                <h1>{creatorProductionPackage.title}</h1>
-                <div className="creatorlab-p2d-publish-meta" aria-label={uiLanguage === "en" ? "Publish package summary" : "Yayın paketi özeti"}>
-                  <span>{CREATOR_FORMAT_OPTIONS.find((option) => option.value === creatorFormat)?.label || creatorFormat}</span>
-                  <span>{getCreatorDurationLabel()}</span>
-                  <span>{scenes.length} {uiLanguage === "en" ? "scenes" : "sahne"}</span>
-                  <span>{creatorProductionComplete
-                    ? uiLanguage === "en" ? "Final video ready" : "Final video hazır"
-                    : uiLanguage === "en" ? "Final video needs attention" : "Final video kontrol edilmeli"}</span>
-                </div>
-              </div>
-              <span className="creatorlab-publish-stage-badge" data-readiness-state={creatorPublishReadinessState}>
-                {creatorPublishIsOutdated
-                  ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
-                  : creatorReleaseReady
-                    ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır"
-                    : `${creatorPublishAttentionItems.length} ${uiLanguage === "en" ? "items need attention" : "öğe kontrol edilmeli"}`}
-              </span>
-            </div>
-
-            <section
-              className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6"
-              aria-label={uiLanguage === "en" ? "Publish preflight" : "Yayın ön kontrolü"}
-              data-creator-publish-preflight
-            >
-              {creatorPublishPreflight.map((item) => (
-                <div
-                  key={item.category}
-                  className="rounded-2xl border border-orange-200/24 bg-white/74 px-4 py-3"
-                  data-preflight-category={item.category}
-                  data-preflight-status={item.status}
-                >
-                  <strong className="block text-sm text-slate-900">
-                    {creatorPublishPreflightLabels[item.category]}
-                  </strong>
-                  <span className="mt-1 block text-xs text-slate-600">
-                    {creatorPublishPreflightStatusLabels[item.status]}
-                  </span>
-                </div>
-              ))}
-            </section>
-
-            <section
-              className="creatorlab-p2d-readiness"
-              data-publish-readiness={creatorPublishReadinessState}
-              aria-labelledby="creatorlab-publish-readiness-title"
-            >
-              <div className="creatorlab-p2d-readiness-summary">
-                <span aria-hidden="true">{creatorPublishIsOutdated ? "!" : creatorReleaseReady ? "✓" : creatorPublishAttentionItems.length}</span>
-                <div>
-                  <small>{uiLanguage === "en" ? "Publish readiness" : "Yayın hazırlığı"}</small>
-                  <h2 id="creatorlab-publish-readiness-title">
-                    {creatorPublishIsOutdated
-                      ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
-                      : creatorReleaseReady
-                        ? uiLanguage === "en" ? "Ready to publish" : "Yayına hazır"
-                        : uiLanguage === "en"
-                          ? `${creatorPublishAttentionItems.length} items need attention`
-                          : `${creatorPublishAttentionItems.length} öğe kontrol edilmeli`}
-                  </h2>
-                </div>
-              </div>
-              {creatorPublishAttentionItems.length > 0 && (
-                <ul className="creatorlab-p2d-readiness-actions">
-                  {creatorPublishAttentionItems.slice(0, 4).map((item) => (
-                    <li key={item.key}>{item.label}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <div className="creatorlab-p2d-package-heading">
-              <div>
-                <span>{uiLanguage === "en" ? "Publish Package" : "Yayın Paketi"}</span>
-                <h2>{uiLanguage === "en" ? "Final assets and publishing copy" : "Final varlıklar ve yayın metinleri"}</h2>
-              </div>
-              <div className="creatorlab-p2d-package-heading-actions">
-                <small>{creatorPublishAssetCount}/3 {uiLanguage === "en" ? "core assets ready" : "temel varlık hazır"}</small>
-                <button
-                  type="button"
-                  className="creatorlab-publish-essential-action"
-                  onClick={() => setCreatorThumbnailChooserOpen((prev) => !prev)}
-                  aria-expanded={creatorThumbnailChooserOpen}
-                  aria-controls="creatorlab-primary-thumbnail-chooser"
-                >
-                  {creatorPublishThumbnailUrl
-                    ? uiLanguage === "en" ? "Change thumbnail" : "Thumbnail'ı değiştir"
-                    : uiLanguage === "en" ? "Select thumbnail" : "Thumbnail seç"}
-                </button>
-              </div>
-            </div>
-
-            {creatorThumbnailChooserOpen && (
-              <div
-                className="creatorlab-primary-thumbnail-chooser"
-                id="creatorlab-primary-thumbnail-chooser"
-              >
-                <div className="creatorlab-primary-thumbnail-heading">
-                  <div>
-                    <span>
-                      {uiLanguage === "en" ? "Release essential" : "Yayın için zorunlu"}
-                    </span>
-                    <strong>
-                      {uiLanguage === "en"
-                        ? "Select the thumbnail source"
-                        : "Thumbnail kaynak görselini seç"}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCreatorThumbnailChooserOpen(false)}
-                    aria-label={
-                      uiLanguage === "en"
-                        ? "Close thumbnail selection"
-                        : "Thumbnail seçimini kapat"
-                    }
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="creatorlab-primary-thumbnail-grid">
-                  {scenes
-                    .filter((scene) => scene.image)
-                    .slice(0, 6)
-                    .map((scene) => (
-                      <button
-                        key={`creatorlab-primary-thumbnail-${scene.id}`}
-                        type="button"
-                        className={
-                          creatorPublishThumbnailUrl === scene.image ? "is-selected" : ""
-                        }
-                        onClick={() => {
-                          handleSelectSceneAsYoutubeThumbnail(scene);
-                          setCreatorThumbnailChooserOpen(false);
-                        }}
-                      >
-                        <img
-                          src={scene.image}
-                          alt={`${uiLanguage === "en" ? "Scene" : "Sahne"} ${scene.id}`}
-                        />
-                        <span>
-                          {uiLanguage === "en"
-                            ? `Scene ${scene.id}`
-                            : `Sahne ${scene.id}`}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-                <div className="creatorlab-primary-thumbnail-footer">
-                  <span>
-                    {uiLanguage === "en"
-                      ? "Selection is primary. Detailed styling stays collapsed below."
-                      : "Seçim primary alandadır. Detaylı tasarım aşağıda kapalı kalır."}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleGenerateYoutubeThumbnail}
-                    disabled={
-                      youtubeThumbnailLoading || !scenes.some((scene) => scene.image)
-                    }
-                  >
-                    {youtubeThumbnailLoading
-                      ? uiLanguage === "en" ? "Selecting…" : "Seçiliyor…"
-                      : uiLanguage === "en"
-                        ? "Let AI select the best scene"
-                        : "En iyi sahneyi AI seçsin"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={
-                      imageDispatchCountdown?.scope === "thumbnail"
-                        ? cancelPendingImageDispatch
-                        : handleGeneratePremiumYoutubeThumbnail
-                    }
-                    disabled={
-                      imageDispatchCountdown?.scope !== "thumbnail" &&
-                      (youtubeThumbnailLoading ||
-                        !creatorProductionPackage ||
-                        Boolean(imageDispatchCountdown) ||
-                        Boolean(videoDispatchCountdown))
-                    }
-                    title={
-                      imageDispatchCountdown?.scope === "thumbnail"
-                        ? uiLanguage === "en"
-                          ? "Cancel before generation starts."
-                          : "Üretim başlamadan iptal et."
-                        : uiLanguage === "en"
-                          ? "Generates an image using the selected quality tier"
-                          : "Seçili kalite seviyesini kullanarak görsel üretir"
-                    }
-                  >
-                    {imageDispatchCountdown?.scope === "thumbnail"
-                      ? uiLanguage === "en"
-                        ? `Cancel AI thumbnail · ${imageDispatchCountdown.secondsRemaining}s`
-                        : `AI thumbnail'ı iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
-                      : youtubeThumbnailLoading
-                        ? uiLanguage === "en" ? "Generating…" : "Üretiliyor…"
-                        : uiLanguage === "en"
-                          ? "Generate new AI thumbnail"
-                          : "Yeni AI thumbnail üret"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="creatorlab-publish-media-grid">
-              <article id="creatorlab-publish-video" className="creatorlab-publish-video-card">
-                <div className="creatorlab-publish-card-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Final video" : "Final video"}</span>
-                    <strong>{creatorProductionPackage.title}</strong>
-                  </div>
-                  <small>{creatorPublishVideoUrl ? uiLanguage === "en" ? "Ready" : "Hazır" : uiLanguage === "en" ? "Pending" : "Bekliyor"}</small>
-                </div>
-                <div className="creatorlab-publish-video-frame">
-                  {creatorPublishVideoUrl ? (
-                    <video controls preload="metadata" src={creatorPublishVideoUrl} />
-                  ) : (
-                    <div className="creatorlab-publish-video-empty">
-                      {uiLanguage === "en" ? "The final video will appear here after export." : "Final video export sonrasında burada görünecek."}
-                    </div>
-                  )}
-                </div>
-                <div className="creatorlab-publish-video-meta">
-                  <span>
-                    {exportMovieResult?.durationSeconds
-                      ? `${formatDurationLabel(exportMovieResult.durationSeconds)} · ${formatFileSizeLabel(exportMovieResult.sizeBytes)}`
-                      : `${getCreatorDurationLabel()} · ${scenes.length} ${uiLanguage === "en" ? "scenes" : "sahne"}`}
-                  </span>
-                  {creatorPublishVideoUrl && (
-                    <a href={creatorPublishVideoUrl} target="_blank" rel="noreferrer">
-                      {uiLanguage === "en" ? "Open video" : "Videoyu aç"}
-                    </a>
-                  )}
-                </div>
-              </article>
-
-              <details
-                id="creatorlab-publish-thumbnail"
-                className="creatorlab-publish-thumbnail-card creatorlabs-thumbnail-studio creatorlab-thumbnail-studio-details"
-              >
-                <summary className="creatorlab-publish-card-heading creatorlab-thumbnail-studio-summary">
-                  <div className="creatorlab-p2d-thumbnail-summary-preview">
-                    {creatorPublishThumbnailUrl ? (
-                      <img src={creatorPublishThumbnailUrl} alt="" />
-                    ) : (
-                      <span aria-hidden="true">+</span>
-                    )}
-                  </div>
-                  <div className="creatorlab-p2d-thumbnail-summary-copy">
-                    <span>Thumbnail</span>
-                    <strong>
-                      {creatorPublishThumbnailUrl
-                        ? uiLanguage === "en" ? "Ready for publishing" : "Yayın için hazır"
-                        : uiLanguage === "en" ? "Thumbnail required" : "Thumbnail gerekli"}
-                    </strong>
-                    <small>
-                      {creatorPublishThumbnailUrl
-                        ? uiLanguage === "en" ? "Current saved design" : "Mevcut kayıtlı tasarım"
-                        : uiLanguage === "en" ? "Select a source image above" : "Yukarıdan bir kaynak görsel seç"}
-                    </small>
-                  </div>
-                  <span className="creatorlab-p2d-thumbnail-edit-action">
-                    {uiLanguage === "en" ? "Edit thumbnail" : "Thumbnail'ı düzenle"}
-                  </span>
-                </summary>
-
-                <div
-                  className={`creatorlab-thumbnail-studio-preview ${creatorFormat === "youtube_video" ? "is-wide" : "is-vertical"} is-${creatorThumbnailStudio.textPosition} font-${creatorThumbnailStudio.font}`}
-                  style={{ "--thumbnail-headline-scale": creatorThumbnailStudio.headlineScale / 100 } as React.CSSProperties}
-                >
-                  {creatorPublishThumbnailUrl ? (
-                    <>
-                      <img
-                        src={creatorPublishThumbnailUrl}
-                        alt={uiLanguage === "en" ? "Thumbnail source preview" : "Thumbnail kaynak önizlemesi"}
-                        style={{ objectPosition: `${creatorThumbnailStudio.focalX}% ${creatorThumbnailStudio.focalY}%` }}
-                      />
-                      <div className="creatorlab-thumbnail-studio-shade" />
-                      <div
-                        className="creatorlab-thumbnail-studio-accent"
-                        style={{ backgroundColor: creatorThumbnailStudio.accentColor }}
-                      />
-                      <div
-                        className="creatorlab-thumbnail-studio-copy"
-                        style={{
-                          textAlign: creatorThumbnailStudio.textAlign,
-                          textShadow: creatorThumbnailStudio.textShadow ? "0 3px 18px rgba(0, 0, 0, 0.72)" : "none",
-                          WebkitTextStroke: creatorThumbnailStudio.textStroke ? "1.5px rgba(0,0,0,.9)" : "0 transparent",
-                        } as React.CSSProperties}
-                      >
-                        {creatorThumbnailStudio.showHeadline && creatorThumbnailStudio.headline.trim() && (
-                          <strong
-                            style={{
-                              color: creatorThumbnailStudio.headlineColor,
-                              WebkitTextFillColor: creatorThumbnailStudio.headlineColor,
-                            }}
-                          >
-                            {creatorThumbnailStudio.headline}
-                          </strong>
-                        )}
-                        {creatorThumbnailStudio.showSubHeadline && creatorThumbnailStudio.subHeadline.trim() && (
-                          <span
-                            style={{
-                              color: creatorThumbnailStudio.subHeadlineColor,
-                              WebkitTextFillColor: creatorThumbnailStudio.subHeadlineColor,
-                            }}
-                          >
-                            {creatorThumbnailStudio.subHeadline}
-                          </span>
-                        )}
-                      </div>
-                      {creatorThumbnailStudio.safeZone && <div className="creatorlab-thumbnail-safe-zone" aria-hidden="true" />}
-                    </>
-                  ) : (
-                    <span>{uiLanguage === "en" ? "Select a scene image to start designing." : "Tasarıma başlamak için bir sahne görseli seç."}</span>
-                  )}
-                </div>
-
-                <div className="creatorlab-thumbnail-variant-row" aria-label={uiLanguage === "en" ? "Thumbnail direction" : "Thumbnail yönü"}>
-                  {([
-                    ["subject", uiLanguage === "en" ? "Subject-led" : "Konu odaklı"],
-                    ["conflict", uiLanguage === "en" ? "Conflict-led" : "Çatışma odaklı"],
-                    ["symbol", uiLanguage === "en" ? "Symbol-led" : "Sembol odaklı"],
-                  ] as Array<[CreatorThumbnailVariant, string]>).map(([variant, label]) => (
-                    <button
-                      key={variant}
-                      type="button"
-                      className={creatorThumbnailStudio.variant === variant ? "is-selected" : ""}
-                      onClick={() => applyCreatorThumbnailVariant(variant)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="creatorlab-thumbnail-studio-controls">
-                  <label>
-                    <span className="flex items-center justify-between gap-3">
-                      <span>{uiLanguage === "en" ? "Headline" : "Başlık"}</span>
-                      <span className="creatorlab-thumbnail-safe-toggle">
-                        <input
-                          type="checkbox"
-                          checked={creatorThumbnailStudio.showHeadline}
-                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, showHeadline: event.target.checked }))}
-                        />
-                        <span>{uiLanguage === "en" ? "Show" : "Göster"}</span>
-                      </span>
-                    </span>
-                    <input
-                      value={creatorThumbnailStudio.headline}
-                      maxLength={80}
-                      disabled={!creatorThumbnailStudio.showHeadline}
-                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headline: event.target.value }))}
-                      placeholder={creatorPublishTitle}
-                    />
-                  </label>
-                  <label>
-                    <span className="flex items-center justify-between gap-3">
-                      <span>{uiLanguage === "en" ? "Sub-headline" : "Alt başlık"}</span>
-                      <span className="creatorlab-thumbnail-safe-toggle">
-                        <input
-                          type="checkbox"
-                          checked={creatorThumbnailStudio.showSubHeadline}
-                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, showSubHeadline: event.target.checked }))}
-                        />
-                        <span>{uiLanguage === "en" ? "Show" : "Göster"}</span>
-                      </span>
-                    </span>
-                    <input
-                      value={creatorThumbnailStudio.subHeadline}
-                      maxLength={110}
-                      disabled={!creatorThumbnailStudio.showSubHeadline}
-                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadline: event.target.value }))}
-                      placeholder={creatorPublishHook}
-                    />
-                  </label>
-                  <div className="creatorlab-thumbnail-focal-controls">
-                    <label>
-                      <span>
-                        {uiLanguage === "en" ? "Headline size" : "Başlık boyutu"} · {creatorThumbnailStudio.headlineScale}%
-                      </span>
-                      <input
-                        type="range"
-                        min="55"
-                        max="125"
-                        step="5"
-                        value={creatorThumbnailStudio.headlineScale}
-                        disabled={!creatorThumbnailStudio.showHeadline}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineScale: Number(event.target.value) }))}
-                      />
-                    </label>
-                  </div>
-                  <div className="creatorlab-thumbnail-control-grid">
-                    <label>
-                      <span>{uiLanguage === "en" ? "Font" : "Yazı tipi"}</span>
-                      <select
-                        value={creatorThumbnailStudio.font}
-                        disabled={!creatorThumbnailStudio.showHeadline}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, font: event.target.value as CreatorThumbnailFont }))}
-                      >
-                        <option value="bold_sans">Bold Sans</option>
-                        <option value="editorial">Editorial</option>
-                        <option value="condensed">Condensed</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Text position" : "Metin konumu"}</span>
-                      <select
-                        value={creatorThumbnailStudio.textPosition}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textPosition: event.target.value as CreatorThumbnailTextPosition }))}
-                      >
-                        <option value="top">{uiLanguage === "en" ? "Top" : "Üst"}</option>
-                        <option value="center">{uiLanguage === "en" ? "Center" : "Orta"}</option>
-                        <option value="bottom">{uiLanguage === "en" ? "Bottom" : "Alt"}</option>
-                      </select>
-                    </label>
-                    <label className="creatorlab-thumbnail-color-control">
-                      <span>{uiLanguage === "en" ? "Accent" : "Vurgu"}</span>
-                      <input
-                        type="color"
-                        value={creatorThumbnailStudio.accentColor}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, accentColor: event.target.value }))}
-                      />
-                    </label>
-                    <label className="creatorlab-thumbnail-color-control">
-                      <span>{uiLanguage === "en" ? "Headline color" : "Başlık rengi"}</span>
-                      <input
-                        type="color"
-                        value={creatorThumbnailStudio.headlineColor}
-                        disabled={!creatorThumbnailStudio.showHeadline}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: event.target.value }))}
-                      />
-                    </label>
-                    <label className="creatorlab-thumbnail-color-control">
-                      <span>{uiLanguage === "en" ? "Sub-headline color" : "Alt başlık rengi"}</span>
-                      <input
-                        type="color"
-                        value={creatorThumbnailStudio.subHeadlineColor}
-                        disabled={!creatorThumbnailStudio.showSubHeadline}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: event.target.value }))}
-                      />
-                    </label>
-                  </div>
-                  <div className="creatorlab-thumbnail-typography-panel">
-                    <div>
-                      <span className="creatorlab-thumbnail-control-label">{uiLanguage === "en" ? "Headline color presets" : "Başlık hazır renkleri"}</span>
-                      <div className="creatorlab-thumbnail-color-palette">
-                        {["#ffffff", "#f8e71c", "#ff6b35", "#ff3b30", "#35c759", "#32ade6", "#5856d6", "#111827"].map((color) => (
-                          <button
-                            key={`headline-${color}`}
-                            type="button"
-                            disabled={!creatorThumbnailStudio.showHeadline}
-                            className={creatorThumbnailStudio.headlineColor.toLowerCase() === color ? "is-selected" : ""}
-                            style={{ backgroundColor: color }}
-                            aria-label={`${uiLanguage === "en" ? "Use headline color" : "Başlık rengini kullan"} ${color}`}
-                            onClick={() => setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: color }))}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Headline HEX" : "Başlık HEX"}</span>
-                      <input
-                        value={creatorThumbnailStudio.headlineColor}
-                        maxLength={7}
-                        disabled={!creatorThumbnailStudio.showHeadline}
-                        onChange={(event) => {
-                          const value = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
-                          if (/^#[0-9a-fA-F]{0,6}$/.test(value)) {
-                            setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: value }));
-                          }
-                        }}
-                        onBlur={() => {
-                          if (!/^#[0-9a-fA-F]{6}$/.test(creatorThumbnailStudio.headlineColor)) {
-                            setCreatorThumbnailStudio((prev) => ({ ...prev, headlineColor: "#ffffff" }));
-                          }
-                        }}
-                        placeholder="#ffffff"
-                      />
-                    </label>
-                    <div>
-                      <span className="creatorlab-thumbnail-control-label">{uiLanguage === "en" ? "Sub-headline color presets" : "Alt başlık hazır renkleri"}</span>
-                      <div className="creatorlab-thumbnail-color-palette">
-                        {["#ffffff", "#f8e71c", "#ff6b35", "#ff3b30", "#35c759", "#32ade6", "#5856d6", "#111827"].map((color) => (
-                          <button
-                            key={`subheadline-${color}`}
-                            type="button"
-                            disabled={!creatorThumbnailStudio.showSubHeadline}
-                            className={creatorThumbnailStudio.subHeadlineColor.toLowerCase() === color ? "is-selected" : ""}
-                            style={{ backgroundColor: color }}
-                            aria-label={`${uiLanguage === "en" ? "Use sub-headline color" : "Alt başlık rengini kullan"} ${color}`}
-                            onClick={() => setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: color }))}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Sub-headline HEX" : "Alt başlık HEX"}</span>
-                      <input
-                        value={creatorThumbnailStudio.subHeadlineColor}
-                        maxLength={7}
-                        disabled={!creatorThumbnailStudio.showSubHeadline}
-                        onChange={(event) => {
-                          const value = event.target.value.startsWith("#") ? event.target.value : `#${event.target.value}`;
-                          if (/^#[0-9a-fA-F]{0,6}$/.test(value)) {
-                            setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: value }));
-                          }
-                        }}
-                        onBlur={() => {
-                          if (!/^#[0-9a-fA-F]{6}$/.test(creatorThumbnailStudio.subHeadlineColor)) {
-                            setCreatorThumbnailStudio((prev) => ({ ...prev, subHeadlineColor: "#ffffff" }));
-                          }
-                        }}
-                        placeholder="#ffffff"
-                      />
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Alignment" : "Hizalama"}</span>
-                      <select
-                        value={creatorThumbnailStudio.textAlign}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textAlign: event.target.value as CreatorThumbnailTextAlign }))}
-                      >
-                        <option value="left">{uiLanguage === "en" ? "Left" : "Sol"}</option>
-                        <option value="center">{uiLanguage === "en" ? "Center" : "Orta"}</option>
-                        <option value="right">{uiLanguage === "en" ? "Right" : "Sağ"}</option>
-                      </select>
-                    </label>
-                    <div className="creatorlab-thumbnail-effect-toggles">
-                      <label className="creatorlab-thumbnail-safe-toggle">
-                        <input
-                          type="checkbox"
-                          checked={creatorThumbnailStudio.textStroke}
-                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textStroke: event.target.checked }))}
-                        />
-                        <span>{uiLanguage === "en" ? "Text outline" : "Yazı konturu"}</span>
-                      </label>
-                      <label className="creatorlab-thumbnail-safe-toggle">
-                        <input
-                          type="checkbox"
-                          checked={creatorThumbnailStudio.textShadow}
-                          onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, textShadow: event.target.checked }))}
-                        />
-                        <span>{uiLanguage === "en" ? "Text shadow" : "Yazı gölgesi"}</span>
-                      </label>
-                    </div>
-                  </div>
-                  <div className="creatorlab-thumbnail-focal-controls">
-                    <label>
-                      <span>{uiLanguage === "en" ? "Horizontal focus" : "Yatay odak"} · {creatorThumbnailStudio.focalX}%</span>
-                      <input
-                        type="range" min="0" max="100" value={creatorThumbnailStudio.focalX}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, focalX: Number(event.target.value) }))}
-                      />
-                    </label>
-                    <label>
-                      <span>{uiLanguage === "en" ? "Vertical focus" : "Dikey odak"} · {creatorThumbnailStudio.focalY}%</span>
-                      <input
-                        type="range" min="0" max="100" value={creatorThumbnailStudio.focalY}
-                        onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, focalY: Number(event.target.value) }))}
-                      />
-                    </label>
-                  </div>
-                  <label className="creatorlab-thumbnail-safe-toggle">
-                    <input
-                      type="checkbox"
-                      checked={creatorThumbnailStudio.safeZone}
-                      onChange={(event) => setCreatorThumbnailStudio((prev) => ({ ...prev, safeZone: event.target.checked }))}
-                    />
-                    <span>{uiLanguage === "en" ? "Show platform safe zone" : "Platform güvenli alanını göster"}</span>
-                  </label>
-                </div>
-
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div>
-                    <strong className="block text-sm text-slate-950">
-                      {creatorThumbnailHasUnsavedChanges
-                        ? uiLanguage === "en" ? "Unsaved thumbnail edits" : "Kaydedilmemiş thumbnail düzenlemeleri"
-                        : uiLanguage === "en" ? "Thumbnail saved" : "Thumbnail kaydedildi"}
-                    </strong>
-                    <span className="text-xs text-slate-500">
-                      {uiLanguage === "en" ? "Saving does not start generation." : "Kaydetme işlemi üretimi başlatmaz."}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="creatorlab-publish-secondary-button"
-                      onClick={handleRevertCreatorThumbnail}
-                      disabled={!creatorThumbnailHasUnsavedChanges || creatorThumbnailSaving}
-                    >
-                      {uiLanguage === "en" ? "Revert" : "Geri al"}
-                    </button>
-                    <button
-                      type="button"
-                      className="creatorlab-publish-secondary-button px-5 py-3 font-bold"
-                      style={{ minWidth: "190px", borderRadius: "12px" }}
-                      onClick={handleSaveCreatorThumbnail}
-                      disabled={!creatorPublishThumbnailUrl || !creatorThumbnailHasUnsavedChanges || creatorThumbnailSaving}
-                    >
-                      {creatorThumbnailSaving
-                        ? uiLanguage === "en" ? "Saving..." : "Kaydediliyor..."
-                        : uiLanguage === "en" ? "Save thumbnail" : "Thumbnail'ı kaydet"}
-                    </button>
-                  </div>
-                </div>
-
-                {imageDispatchCountdown?.scope === "thumbnail" && (
-                  <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900" aria-live="assertive">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <strong className="text-sm">
-                          {uiLanguage === "en"
-                            ? `AI thumbnail generation starts in ${imageDispatchCountdown.secondsRemaining} seconds`
-                            : `AI thumbnail gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
-                        </strong>
-                        <p className="mt-1 text-xs leading-5 text-amber-800">
-                          {uiLanguage === "en"
-                            ? "Generation starts when the countdown reaches zero."
-                            : "Sayaç sıfıra ulaştığında üretim başlar."}
-                        </p>
-                      </div>
-                      <button type="button" onClick={cancelPendingImageDispatch} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700">
-                        {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="creatorlab-publish-thumbnail-actions">
-                  <button
-                    type="button"
-                    className="creatorlab-publish-secondary-button"
-                    onClick={handleGenerateYoutubeThumbnail}
-                    disabled={youtubeThumbnailLoading || !scenes.some((scene) => scene.image)}
-                  >
-                    {youtubeThumbnailLoading
-                      ? uiLanguage === "en" ? "Selecting..." : "Seçiliyor..."
-                      : creatorPublishThumbnailUrl
-                        ? uiLanguage === "en" ? "Select best scene again" : "En iyi sahneyi yeniden seç"
-                        : uiLanguage === "en" ? "Select best scene" : "En iyi sahneyi seç"}
-                  </button>
-                  <button
-                    type="button"
-                    className="creatorlab-publish-secondary-button"
-                    onClick={
-                      imageDispatchCountdown?.scope === "thumbnail"
-                        ? cancelPendingImageDispatch
-                        : handleGeneratePremiumYoutubeThumbnail
-                    }
-                    disabled={
-                      imageDispatchCountdown?.scope !== "thumbnail" &&
-                      (youtubeThumbnailLoading ||
-                        !creatorProductionPackage ||
-                        Boolean(imageDispatchCountdown) ||
-                        Boolean(videoDispatchCountdown))
-                    }
-                  >
-                    {imageDispatchCountdown?.scope === "thumbnail"
-                      ? uiLanguage === "en"
-                        ? `Cancel AI thumbnail · ${imageDispatchCountdown.secondsRemaining}s`
-                        : `AI thumbnail'ı iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
-                      : youtubeThumbnailLoading
-                        ? uiLanguage === "en" ? "Generating..." : "Üretiliyor..."
-                        : uiLanguage === "en"
-                          ? "Generate new AI thumbnail"
-                          : "Yeni AI thumbnail üret"}
-                  </button>
-                </div>
-
-                {creatorPublishThumbnailUrl && (
-                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <strong className="text-sm text-slate-950">{uiLanguage === "en" ? "AI quick refinements" : "AI hızlı iyileştirmeler"}</strong>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{uiLanguage === "en" ? "Each refinement generates a new image variation." : "Her iyileştirme yeni bir görsel varyasyonu üretir."}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {([
-                        ["focus", uiLanguage === "en" ? "Strengthen focus" : "Odağı güçlendir"],
-                        ["contrast", uiLanguage === "en" ? "More contrast" : "Kontrastı artır"],
-                        ["title_space", uiLanguage === "en" ? "Create title space" : "Başlık alanı aç"],
-                        ["cinematic", uiLanguage === "en" ? "More cinematic" : "Daha sinematik"],
-                        ["simplify_background", uiLanguage === "en" ? "Simplify background" : "Arka planı sadeleştir"],
-                      ] as Array<[CreatorThumbnailRefinementPreset, string]>).map(([preset, label]) => (
-                        <button key={preset} type="button" className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => handleRefinePremiumYoutubeThumbnail(preset)} disabled={youtubeThumbnailLoading || Boolean(imageDispatchCountdown) || Boolean(videoDispatchCountdown)}>
-                          {creatorThumbnailRefining === preset ? (uiLanguage === "en" ? "Generating..." : "Üretiliyor...") : label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {creatorThumbnailHistory.length > 0 && (
-                  <div className="mt-5">
-                    <div className="flex items-end justify-between gap-4">
-                      <div>
-                        <strong className="block text-sm text-slate-950">{uiLanguage === "en" ? "Thumbnail history" : "Thumbnail geçmişi"}</strong>
-                        <span className="text-xs text-slate-500">{uiLanguage === "en" ? "Restore any of the last 10 AI variations without generating again." : "Son 10 AI varyasyonundan birini yeniden üretmeden geri yükle."}</span>
-                      </div>
-                      <button type="button" className="text-xs font-semibold text-slate-500 hover:text-slate-950" onClick={() => setCreatorThumbnailHistory([])}>{uiLanguage === "en" ? "Clear" : "Temizle"}</button>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                      {creatorThumbnailHistory.map((item) => (
-                        <button key={item.id} type="button" className={`overflow-hidden rounded-xl border bg-white text-left transition hover:-translate-y-0.5 hover:shadow-sm ${creatorPublishThumbnailUrl === item.result.imageUrl ? "border-slate-950 ring-1 ring-slate-950" : "border-slate-200"}`} onClick={() => selectCreatorThumbnailHistoryItem(item)}>
-                          <img src={item.result.imageUrl} alt={item.label} className="aspect-video w-full object-cover" />
-                          <span className="block truncate px-2 py-2 text-[10px] font-semibold text-slate-600">{item.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </details>
-            </div>
-
-            <div className="creatorlab-publish-content-grid">
-              <article id="creatorlab-publish-metadata" className="creatorlab-publish-metadata-card">
-                <div className="creatorlab-publish-card-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Publishing copy" : "Yayın metinleri"}</span>
-                    <strong>{uiLanguage === "en" ? "Title, hook and description" : "Başlık, hook ve açıklama"}</strong>
-                  </div>
-                  {!youtubeMetadataResult && (
-                    <button
-                      type="button"
-                      className="creatorlab-publish-secondary-button"
-                      onClick={handleGenerateYoutubeMetadata}
-                      disabled={youtubeMetadataLoading}
-                    >
-                      {youtubeMetadataLoading
-                        ? uiLanguage === "en" ? "Preparing..." : "Hazırlanıyor..."
-                        : uiLanguage === "en" ? "Prepare metadata" : "Metadata hazırla"}
-                    </button>
-                  )}
-                </div>
-                <div className="creatorlab-publish-metadata-body">
-                  <div className="creatorlab-publish-metadata-section">
-                    <div className="creatorlab-publish-copy-row">
-                      <span>{uiLanguage === "en" ? "Recommended title" : "Önerilen başlık"}</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText(uiLanguage === "en" ? "Title" : "Başlık", creatorPublishTitle)}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <strong>{creatorPublishTitle || (uiLanguage === "en" ? "Title not prepared yet" : "Başlık henüz hazırlanmadı")}</strong>
-                  </div>
-                  <div className="creatorlab-publish-metadata-section">
-                    <div className="creatorlab-publish-copy-row">
-                      <span>Hook</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText("Hook", creatorPublishHook)}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <p>{creatorPublishHook || (uiLanguage === "en" ? "The production hook will be included in the package." : "Üretim hook'u pakete dahil edilecek.")}</p>
-                  </div>
-                  <div className="creatorlab-publish-metadata-section">
-                    <div className="creatorlab-publish-copy-row">
-                      <span>{uiLanguage === "en" ? "Description" : "Açıklama"}</span>
-                      <button
-                        type="button"
-                        className="creatorlab-publish-copy-button"
-                        onClick={() => copyCreatorPublishText(uiLanguage === "en" ? "Description" : "Açıklama", creatorPublishDescription)}
-                      >
-                        {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                      </button>
-                    </div>
-                    <p>{creatorPublishDescription || (uiLanguage === "en" ? "Prepare metadata to generate a platform-ready description." : "Platforma hazır açıklama için metadata hazırla.")}</p>
-                  </div>
-                  {(youtubeMetadataResult?.hashtags?.length ?? 0) > 0 && (
-                    <div className="creatorlab-publish-metadata-section">
-                      <div className="creatorlab-publish-copy-row">
-                        <span>Hashtags</span>
-                        <button
-                          type="button"
-                          className="creatorlab-publish-copy-button"
-                          onClick={() => copyCreatorPublishText("Hashtags", (youtubeMetadataResult?.hashtags ?? []).join(" "))}
-                        >
-                          {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                        </button>
-                      </div>
-                      <p>{(youtubeMetadataResult?.hashtags ?? []).join(" ")}</p>
-                    </div>
-                  )}
-                </div>
-              </article>
-
-              <article className="creatorlab-publish-platform-card">
-                <div className="creatorlab-publish-card-heading">
-                  <div>
-                    <span>{uiLanguage === "en" ? "Selected channels" : "Seçili kanallar"}</span>
-                    <strong>{uiLanguage === "en" ? "Channel-specific publishing copy" : "Kanala özel yayın metinleri"}</strong>
-                  </div>
-                  <small>{creatorTargetPlatforms.length} {uiLanguage === "en" ? "targets" : "hedef"}</small>
-                </div>
-                <div className="creatorlab-publish-platform-list">
-                  {creatorTargetPlatforms.map((platform) => {
-                    const platformCopy = getCreatorPlatformCopy(platform);
-                    const platformLabel = getCreatorPlatformLabel(platform);
-                    return (
-                      <div key={platform} className="creatorlab-publish-platform-item">
-                        <div className="creatorlab-publish-platform-heading">
-                          <span>{platformLabel}</span>
-                          <button
-                            type="button"
-                            className="creatorlab-publish-copy-button"
-                            onClick={() => copyCreatorPublishText(platformLabel, platformCopy)}
-                          >
-                            {uiLanguage === "en" ? "Copy" : "Kopyala"}
-                          </button>
-                        </div>
-                        <p>
-                          {platformCopy ||
-                            (uiLanguage === "en"
-                              ? "Prepare metadata to create the selected channel copy."
-                              : "Seçili kanal metnini oluşturmak için metadata hazırla.")}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </article>
-            </div>
-
-            <article id="creatorlab-publish-checklist" className="creatorlab-publish-checklist-card">
-              <div className="creatorlab-publish-card-heading">
-                <div>
-                  <span>{uiLanguage === "en" ? "Release validation" : "Yayın doğrulaması"}</span>
-                  <strong>{uiLanguage === "en" ? "System checks + creator approval" : "Sistem kontrolleri + creator onayı"}</strong>
-                </div>
-                <small>
-                  {creatorPublishChecklistCount}/{creatorPublishSystemChecks.length + creatorReleaseConfirmationItems.length}
-                </small>
-              </div>
-              <div className="creatorlab-release-validation-grid">
-                <section>
-                  <div className="creatorlab-release-validation-heading">
-                    <strong>{uiLanguage === "en" ? "System checks" : "Sistem kontrolleri"}</strong>
-                    <span>{creatorPublishSystemChecks.filter((item) => item.ready).length}/{creatorPublishSystemChecks.length}</span>
-                  </div>
-                  <div className="creatorlab-publish-checklist">
-                    {creatorPublishSystemChecks.map((item) => (
-                      <div key={item.key} className={`creatorlab-publish-check ${item.ready ? "is-ready" : "is-pending"}`}>
-                        <span>{item.ready ? "✓" : "!"}</span>
-                        <div>
-                          <strong>{item.label}</strong>
-                          <small>{item.detail}</small>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-                <section>
-                  <div className="creatorlab-release-validation-heading">
-                    <strong>{uiLanguage === "en" ? "Creator confirmations" : "Creator onayları"}</strong>
-                    <span>{creatorReleaseConfirmationItems.filter((item) => creatorReleaseConfirmations[item.key]).length}/{creatorReleaseConfirmationItems.length}</span>
-                  </div>
-                  <div className="creatorlab-release-confirmations">
-                    {creatorReleaseConfirmationItems.map((item) => (
-                      <label key={item.key} className={creatorReleaseConfirmations[item.key] ? "is-confirmed" : ""}>
-                        <input
-                          type="checkbox"
-                          checked={creatorReleaseConfirmations[item.key]}
-                          onChange={() => toggleCreatorReleaseConfirmation(item.key)}
-                        />
-                        <span>
-                          <strong>{item.label}</strong>
-                          <small>{item.detail}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            </article>
-
-            {/* REPORT-P1R CENTRAL REPORTING CENTER
-                Project reporting is intentionally available from /reports,
-                independent from the active production workspace. */}
-
-            <article className="creatorlab-publish-package-card">
-              <div className="creatorlab-publish-card-heading">
-                <div>
-                  <span>{uiLanguage === "en" ? "Creator Package contents" : "Creator Paketi içeriği"}</span>
-                  <strong>{uiLanguage === "en" ? "Files prepared for publishing and reuse" : "Yayın ve yeniden kullanım için hazırlanan dosyalar"}</strong>
-                </div>
-                <small>{creatorPublishPackageItems.filter((item) => item.ready).length}/{creatorPublishPackageItems.length} {uiLanguage === "en" ? "ready" : "hazır"}</small>
-              </div>
-              <div className="creatorlab-publish-package-grid">
-                {creatorPublishPackageItems.map((item) => (
-                  <div
-                    key={`creatorlab-package-${item.file}`}
-                    className={`creatorlab-publish-package-item ${item.ready ? "is-ready" : ""}`}
-                  >
-                    <span>{item.ready ? uiLanguage === "en" ? "Included" : "Dahil" : uiLanguage === "en" ? "Prepared during export" : "Dışa aktarımda hazırlanır"}</span>
-                    <strong>{item.name}</strong>
-                    <small>{item.file}</small>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <div id="creatorlab-publish-action" className="creatorlab-publish-action-bar">
-              <div className="creatorlab-publish-action-copy">
-                <strong>
-                  {creatorPublishIsOutdated
-                    ? uiLanguage === "en" ? "Package needs update" : "Paket güncellenmeli"
-                    : creatorReleaseReady
-                      ? uiLanguage === "en" ? "Ready to export" : "Dışa aktarıma hazır"
-                      : uiLanguage === "en"
-                        ? `${creatorPublishAttentionItems.length} items need attention`
-                        : `${creatorPublishAttentionItems.length} öğe kontrol edilmeli`}
-                </strong>
-                <p>
-                  {youtubeMetadataResult
-                    ? uiLanguage === "en"
-                      ? "The ZIP includes the final video file, thumbnail, SRT/VTT captions, publishing copy, checklist and editable project data."
-                      : "ZIP; final video dosyası, thumbnail, SRT/VTT altyazılar, yayın metinleri, checklist ve düzenlenebilir proje verilerini içerir."
-                    : uiLanguage === "en"
-                      ? "Prepare the publishing copy, complete the system checks and confirm the release before export."
-                      : "Dışa aktarımdan önce yayın metinlerini hazırla, sistem kontrollerini tamamla ve yayını onayla."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleDownloadCreatorPackage}
-                disabled={isDownloadingCreatorPackage || !creatorPackageReady}
-                title={!creatorPackageReady ? (uiLanguage === "en" ? "Complete all system checks and creator confirmations." : "Tüm sistem kontrollerini ve creator onaylarını tamamla.") : undefined}
-                className="creatorlab-publish-primary-action"
-              >
-                {isDownloadingCreatorPackage
-                  ? uiLanguage === "en" ? "Preparing package..." : "Paket hazırlanıyor..."
-                  : creatorPublishIsOutdated
-                    ? uiLanguage === "en" ? "Refresh Creator Package" : "Creator Paketini Güncelle"
-                    : creatorPublishComplete
-                      ? uiLanguage === "en" ? "Download Creator Package Again" : "Creator Paketini Yeniden İndir"
-                    : uiLanguage === "en" ? "Approve & Export Creator Package" : "Onayla ve Creator Paketini Dışa Aktar"}
-              </button>
-            </div>
-          </section>
+          <CreatorPublishPanel
+            uiLanguage={uiLanguage}
+            creatorProductionPackage={creatorProductionPackage}
+            CREATOR_FORMAT_OPTIONS={CREATOR_FORMAT_OPTIONS}
+            creatorFormat={creatorFormat}
+            getCreatorDurationLabel={getCreatorDurationLabel}
+            scenes={scenes}
+            creatorProductionComplete={creatorProductionComplete}
+            creatorPublishReadinessState={creatorPublishReadinessState}
+            creatorPublishIsOutdated={creatorPublishIsOutdated}
+            creatorReleaseReady={creatorReleaseReady}
+            creatorPublishAttentionItems={creatorPublishAttentionItems}
+            creatorPublishPreflight={creatorPublishPreflight}
+            creatorPublishPreflightLabels={creatorPublishPreflightLabels}
+            creatorPublishPreflightStatusLabels={creatorPublishPreflightStatusLabels}
+            creatorPublishAssetCount={creatorPublishAssetCount}
+            setCreatorThumbnailChooserOpen={setCreatorThumbnailChooserOpen}
+            creatorThumbnailChooserOpen={creatorThumbnailChooserOpen}
+            creatorPublishThumbnailUrl={creatorPublishThumbnailUrl}
+            handleSelectSceneAsYoutubeThumbnail={handleSelectSceneAsYoutubeThumbnail}
+            handleGenerateYoutubeThumbnail={handleGenerateYoutubeThumbnail}
+            youtubeThumbnailLoading={youtubeThumbnailLoading}
+            imageDispatchCountdown={imageDispatchCountdown}
+            cancelPendingImageDispatch={cancelPendingImageDispatch}
+            handleGeneratePremiumYoutubeThumbnail={handleGeneratePremiumYoutubeThumbnail}
+            videoDispatchCountdown={videoDispatchCountdown}
+            creatorPublishVideoUrl={creatorPublishVideoUrl}
+            exportMovieResult={exportMovieResult}
+            formatDurationLabel={formatDurationLabel}
+            formatFileSizeLabel={formatFileSizeLabel}
+            creatorThumbnailStudio={creatorThumbnailStudio}
+            applyCreatorThumbnailVariant={applyCreatorThumbnailVariant}
+            setCreatorThumbnailStudio={setCreatorThumbnailStudio}
+            creatorPublishTitle={creatorPublishTitle}
+            creatorPublishHook={creatorPublishHook}
+            creatorThumbnailHasUnsavedChanges={creatorThumbnailHasUnsavedChanges}
+            handleRevertCreatorThumbnail={handleRevertCreatorThumbnail}
+            creatorThumbnailSaving={creatorThumbnailSaving}
+            handleSaveCreatorThumbnail={handleSaveCreatorThumbnail}
+            handleRefinePremiumYoutubeThumbnail={handleRefinePremiumYoutubeThumbnail}
+            creatorThumbnailRefining={creatorThumbnailRefining}
+            creatorThumbnailHistory={creatorThumbnailHistory}
+            setCreatorThumbnailHistory={setCreatorThumbnailHistory}
+            selectCreatorThumbnailHistoryItem={selectCreatorThumbnailHistoryItem}
+            youtubeMetadataResult={youtubeMetadataResult}
+            handleGenerateYoutubeMetadata={handleGenerateYoutubeMetadata}
+            youtubeMetadataLoading={youtubeMetadataLoading}
+            copyCreatorPublishText={copyCreatorPublishText}
+            creatorPublishDescription={creatorPublishDescription}
+            creatorTargetPlatforms={creatorTargetPlatforms}
+            getCreatorPlatformCopy={getCreatorPlatformCopy}
+            getCreatorPlatformLabel={getCreatorPlatformLabel}
+            creatorPublishChecklistCount={creatorPublishChecklistCount}
+            creatorPublishSystemChecks={creatorPublishSystemChecks}
+            creatorReleaseConfirmationItems={creatorReleaseConfirmationItems}
+            creatorReleaseConfirmations={creatorReleaseConfirmations}
+            toggleCreatorReleaseConfirmation={toggleCreatorReleaseConfirmation}
+            creatorPublishPackageItems={creatorPublishPackageItems}
+            handleDownloadCreatorPackage={handleDownloadCreatorPackage}
+            isDownloadingCreatorPackage={isDownloadingCreatorPackage}
+            creatorPackageReady={creatorPackageReady}
+            creatorPublishComplete={creatorPublishComplete}
+          />
         )}
 
         {!isCreatorLabFlow && (
@@ -37002,1677 +31926,120 @@ const generateSceneImage = async (
         )}
 
         {!isCreatorLabFlow && scenes.length > 0 && (
-          <div className="contents">
-            {isCreatorLabFlow && (
-              <div className="rounded-[28px] border border-rose-300/20 bg-slate-950/55 p-5 shadow-[0_16px_44px_rgba(15,23,42,0.28)]">
-                <p className="text-xs uppercase tracking-[0.25em] text-rose-200/80">
-                  {uiLanguage === "en" ? "Velto Studio Scene Review" : "Velto Studio Sahne İnceleme"}
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">
-                  {uiLanguage === "en" ? "Review scenes before asset generation" : "Medya üretiminden önce sahneleri kontrol et"}
-                </h2>
-                <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
-                  {uiLanguage === "en"
-                    ? "Edit narration, dialogue, visual prompts and timeline decisions here before starting image, voice, video or export actions."
-                    : "Görsel, ses, video veya export aksiyonlarından önce narration, dialogue, visual prompt ve timeline kararlarını burada düzenle."}
-                </p>
-
-                <div className={`mt-4 rounded-3xl border p-4 ${
-                  creatorTimelineMediaGate.approved
-                    ? "border-emerald-300/25 bg-emerald-500/10"
-                    : "border-amber-300/30 bg-amber-500/10"
-                }`}>
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
-                        {uiLanguage === "en" ? "Media generation gate" : "Medya üretim kontrolü"}
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">
-                        {creatorTimelineMediaGate.title}
-                      </h3>
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                        {creatorTimelineMediaGate.message}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100">
-                        {creatorMediaPreflightLoading
-                          ? uiLanguage === "en" ? "Automatic check running" : "Otomatik kontrol çalışıyor"
-                          : uiLanguage === "en" ? "Managed automatically" : "Otomatik yönetiliyor"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
-              {isCreatorLabFlow ? (
-                <div>
-                  <div className="flex flex-col gap-2 text-center md:text-left">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
-                      {uiLanguage === "en" ? "Guided production" : "Yönlendirmeli üretim"}
-                    </p>
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {uiLanguage === "en" ? "Simple creator workflow" : "Sade creator akışı"}
-                    </h3>
-                    <p className="text-sm leading-6 text-slate-600">
-                      {uiLanguage === "en"
-                        ? "Use the main actions for the standard workflow. Advanced AI video block controls stay hidden unless advanced mode is enabled."
-                        : "Standart akış için ana aksiyonları kullan. Gelişmiş AI video block kontrolleri yalnızca advanced mode açıkken görünür."}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/75 p-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {uiLanguage === "en" ? "Production actions are centralized" : "Üretim aksiyonları tek alanda toplandı"}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-slate-600">
-                        {uiLanguage === "en"
-                          ? "Use Continue Production above. Velto Studio selects visuals, voice, motion and final-video actions in the correct order."
-                          : "Yukarıdaki Üretime Devam Et aksiyonunu kullan. Velto Studio görsel, ses, hareket ve final-video işlemlerini doğru sırada seçer."}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={saveProject}
-                        disabled={isSavingProject}
-                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
-                      >
-                        {isSavingProject ? ui.savingProject : ui.saveProject}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => document.getElementById("creatorlab-production-action")?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-                      >
-                        {uiLanguage === "en" ? "Back to production control" : "Üretim kontrolüne dön"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {creatorFinalVideoReadiness && (
-                    <p
-                      className={`mt-3 text-center text-xs leading-5 ${
-                        creatorFinalVideoReadiness.status === "ready"
-                          ? "text-emerald-700"
-                          : "text-amber-700"
-                      }`}
-                    >
-                      <span className="font-semibold">Final video:</span>{" "}
-                      {creatorFinalVideoReadinessMessage}
-                    </p>
-                  )}
-
-                  {creatorFinalProductionGate && (
-                    <div
-                      className={`mt-4 rounded-3xl border p-4 ${
-                        creatorFinalProductionGate.status === "ready"
-                          ? "border-emerald-300/50 bg-emerald-50/90"
-                          : creatorFinalProductionGate.status === "review"
-                            ? "border-amber-300/50 bg-amber-50/90"
-                            : creatorFinalProductionGate.status === "checking"
-                              ? "border-blue-300/50 bg-blue-50/90"
-                              : "border-rose-300/50 bg-rose-50/90"
-                      }`}
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                            3Q · {uiLanguage === "en" ? "Final Production Gate" : "Final Üretim Kontrolü"}
-                          </p>
-                          <h4 className="mt-2 text-sm font-semibold text-slate-950">
-                            {creatorFinalProductionGate.status === "ready"
-                              ? uiLanguage === "en" ? "Ready to create the final video" : "Final video üretimine hazır"
-                              : creatorFinalProductionGate.status === "review"
-                                ? uiLanguage === "en" ? "Ready with confirmation" : "Onay ile hazır"
-                                : creatorFinalProductionGate.status === "checking"
-                                  ? uiLanguage === "en" ? "Production service check required" : "Üretim servisi kontrolü gerekli"
-                                  : uiLanguage === "en" ? "Final production is blocked" : "Final üretim engellendi"}
-                          </h4>
-                          <p className="mt-1 text-xs leading-5 text-slate-600">
-                            {creatorFinalProductionGateMessage}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void refreshCreatorOpsStatus()}
-                          disabled={creatorOpsStatus.status === "checking"}
-                          className="min-h-10 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                        >
-                          {creatorOpsStatus.status === "checking"
-                            ? uiLanguage === "en" ? "Checking…" : "Kontrol ediliyor…"
-                            : uiLanguage === "en" ? "Check again" : "Tekrar kontrol et"}
-                        </button>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-6">
-                        {([
-                          ["Timeline", creatorFinalProductionGate.checks.timeline],
-                          [uiLanguage === "en" ? "Visuals" : "Görseller", creatorFinalProductionGate.checks.visuals],
-                          [uiLanguage === "en" ? "Voice" : "Ses", creatorFinalProductionGate.checks.voiceOver],
-                          [uiLanguage === "en" ? "Audio" : "Ses miks", creatorFinalProductionGate.checks.audio],
-                          [uiLanguage === "en" ? "Continuity" : "Devamlılık", creatorFinalProductionGate.checks.continuity],
-                          [uiLanguage === "en" ? "Final service" : "Final servis", creatorFinalProductionGate.checks.exportService],
-                        ] as Array<[string, string]>).map(([label, status]) => (
-                          <div key={label} className="rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-center">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                            <p className={`mt-1 text-xs font-semibold ${
-                              status === "ready"
-                                ? "text-emerald-700"
-                                : status === "review"
-                                  ? "text-amber-700"
-                                  : status === "checking"
-                                    ? "text-blue-700"
-                                    : "text-rose-700"
-                            }`}>
-                              {status === "ready"
-                                ? uiLanguage === "en" ? "Ready" : "Hazır"
-                                : status === "review"
-                                  ? uiLanguage === "en" ? "Review" : "Kontrol"
-                                  : status === "checking"
-                                    ? uiLanguage === "en" ? "Checking" : "Kontrol"
-                                    : uiLanguage === "en" ? "Blocked" : "Engelli"}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {flowContinuityAudit && (
-                    <div
-                      className={`mt-4 rounded-3xl border p-4 ${
-                        exportFlowValidation?.status === "blocked"
-                          ? "border-rose-300/40 bg-rose-50/90"
-                          : exportFlowValidation?.status === "confirmation_required"
-                            ? "border-amber-300/40 bg-amber-50/90"
-                            : "border-emerald-300/40 bg-emerald-50/90"
-                      }`}
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                            3N-1 · {uiLanguage === "en" ? "Flow continuity audit" : "Akış sürekliliği denetimi"}
-                          </p>
-                          <h4 className="mt-2 text-sm font-semibold text-slate-950">
-                            {flowContinuityAudit.status === "ready"
-                              ? uiLanguage === "en"
-                                ? "No freeze or duration gap detected"
-                                : "Donma veya süre boşluğu tespit edilmedi"
-                              : flowContinuityAudit.status === "review"
-                                ? uiLanguage === "en"
-                                  ? "Review timing warnings before export"
-                                  : "Export öncesi süre uyarılarını kontrol et"
-                                : uiLanguage === "en"
-                                  ? "High freeze or duration risk detected"
-                                  : "Yüksek donma veya süre riski tespit edildi"}
-                          </h4>
-                          <p className="mt-1 text-xs leading-5 text-slate-600">
-                            {uiLanguage === "en"
-                              ? "Detection only: this micro-sprint reports risk and does not change or block the export."
-                              : "Yalnızca tespit: bu mikro sprint riski raporlar; export'u değiştirmez veya engellemez."}
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                          <div className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-emerald-700">
-                            <p className="text-base font-semibold">{flowContinuityAudit.safeScenes}</p>
-                            <p>{uiLanguage === "en" ? "Safe" : "Güvenli"}</p>
-                          </div>
-                          <div className="rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-amber-700">
-                            <p className="text-base font-semibold">{flowContinuityAudit.warningScenes}</p>
-                            <p>{uiLanguage === "en" ? "Review" : "Kontrol"}</p>
-                          </div>
-                          <div className="rounded-xl border border-rose-200 bg-white/80 px-3 py-2 text-rose-700">
-                            <p className="text-base font-semibold">{flowContinuityAudit.highRiskScenes}</p>
-                            <p>{uiLanguage === "en" ? "High" : "Yüksek"}</p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-slate-700">
-                            <p className="text-base font-semibold">
-                              {flowContinuityAudit.totalUncoveredDurationSec.toFixed(1)}s
-                            </p>
-                            <p>{uiLanguage === "en" ? "Gap" : "Boşluk"}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-sky-200/70 bg-white/75 px-3 py-2 text-xs text-slate-600 md:flex-row md:items-center md:justify-between">
-                        <p>
-                          <span className="font-semibold text-sky-800">
-                            3N-2 · {uiLanguage === "en" ? "Audio-first duration matching" : "Ses öncelikli süre eşleme"}
-                          </span>
-                          {" · "}
-                          {audioDurationMatchedCount > 0
-                            ? uiLanguage === "en"
-                              ? `${audioDurationMatchedCount} scene duration(s) matched to measured audio.`
-                              : `${audioDurationMatchedCount} sahnenin süresi ölçülen sese eşlendi.`
-                            : uiLanguage === "en"
-                              ? "Generate voice-over to measure and match scene durations."
-                              : "Sahne sürelerini ölçüp eşlemek için seslendirme üret."}
-                        </p>
-                        <p className={audioSplitRecommendedCount > 0 ? "font-semibold text-amber-700" : "text-slate-500"}>
-                          {audioSplitRecommendedCount > 0
-                            ? uiLanguage === "en"
-                              ? `${audioSplitRecommendedCount} long scene(s): split suggested`
-                              : `${audioSplitRecommendedCount} uzun sahne: bölme öneriliyor`
-                            : uiLanguage === "en"
-                              ? `${unnecessaryExtensionRemovedTotal.toFixed(1)}s unnecessary extension removed`
-                              : `${unnecessaryExtensionRemovedTotal.toFixed(1)} sn gereksiz uzama kaldırıldı`}
-                        </p>
-                      </div>
-
-                      {exportFlowValidation && (
-                        <div
-                          className={`mt-3 flex flex-col gap-2 rounded-2xl border px-3 py-2 text-xs md:flex-row md:items-center md:justify-between ${
-                            exportFlowValidation.status === "blocked"
-                              ? "border-rose-200 bg-rose-50 text-rose-800"
-                              : exportFlowValidation.status === "confirmation_required"
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          }`}
-                        >
-                          <p>
-                            <span className="font-semibold">
-                              3N-5 · {uiLanguage === "en" ? "Export preflight" : "Export öncesi kontrol"}
-                            </span>
-                            {" · "}
-                            {exportFlowValidation.status === "blocked"
-                              ? uiLanguage === "en"
-                                ? `Export is blocked for scene(s): ${exportFlowValidation.blockingSceneIds.join(", ")}.`
-                                : `Export şu sahneler için durdurulacak: ${exportFlowValidation.blockingSceneIds.join(", ")}.`
-                              : exportFlowValidation.status === "confirmation_required"
-                                ? uiLanguage === "en"
-                                  ? "Export will ask for confirmation because timing is not fully measured."
-                                  : "Süreler tam ölçülmediği için export onay isteyecek."
-                                : uiLanguage === "en"
-                                  ? "Export can start safely."
-                                  : "Export güvenle başlatılabilir."}
-                          </p>
-                          <p className="font-semibold">
-                            {uiLanguage === "en"
-                              ? `${exportFlowValidation.autoFixedScenes} safe auto-fix(es)`
-                              : `${exportFlowValidation.autoFixedScenes} güvenli otomatik düzeltme`}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setIsAdvancedMode((prev) => !prev)}
-                      className="rounded-2xl border border-slate-300 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 transition hover:bg-slate-100"
-                    >
-                      {isAdvancedMode
-                        ? uiLanguage === "en"
-                          ? "Hide Advanced Mode"
-                          : "Advanced Mode'u Gizle"
-                        : uiLanguage === "en"
-                          ? "Show Advanced Mode"
-                          : "Advanced Mode'u Göster"}
-                    </button>
-                  </div>
-
-                  {!isAdvancedMode && (
-                    <p className="mt-3 rounded-2xl border border-slate-200 bg-white/60 p-3 text-center text-xs leading-5 text-slate-500">
-                      {uiLanguage === "en"
-                        ? "Standard users can create the output with visuals, voice-over and final video. Advanced AI video blocks are optional for Pro/Cinematic workflows."
-                        : "Standart kullanıcı görseller, seslendirme ve final video ile çıktıyı oluşturabilir. Gelişmiş AI video block üretimi Pro/Cinematic akışlar için opsiyoneldir."}
-                    </p>
-                  )}
-
-                  {isAdvancedMode && (
-                    <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                        {uiLanguage === "en" ? "Production diagnostics" : "Üretim tanılama"}
-                      </p>
-                      <p className="mt-2 text-xs leading-5 text-slate-600">
-                        {uiLanguage === "en"
-                          ? "Media generation remains controlled by Continue Production. This area shows recovery actions only when generation fails."
-                          : "Medya üretimi Üretime Devam Et tarafından yönetilir. Bu alan yalnızca üretim başarısız olduğunda kurtarma aksiyonlarını gösterir."}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap justify-center gap-3">
-                        {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering ? (
-                          <button
-                            type="button"
-                            onClick={() => retryFailedScenes()}
-                            disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null}
-                            className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-white transition hover:scale-105 disabled:opacity-50"
-                          >
-                            {getBatchLabel("retryFailed")}
-                          </button>
-                        ) : (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            {uiLanguage === "en" ? "No failed media tasks" : "Başarısız medya görevi yok"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-wrap justify-center gap-3">
-                  <button
-                    onClick={saveProject}
-                    disabled={isSavingProject}
-                    className="rounded-2xl bg-green-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isSavingProject ? ui.savingProject : ui.saveProject}
-                  </button>
-
-                  <button
-                    onClick={prepareAllAudio}
-                    disabled={isPreparingAudio || isPlayingStory || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
-                    className="rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isPreparingAudio ? ui.preparingAudio : ui.prepareAudio}
-                  </button>
-
-                  <button
-                    onClick={playWholeStory}
-                    disabled={
-                      (loadingAudioSceneId !== null && !isPlayingStory) ||
-                      isPreparingAudio ||
-                      playingDialogueSceneId !== null
-                    }
-                    className="rounded-2xl bg-purple-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isPlayingStory ? ui.stopStory : ui.listenStory}
-                  </button>
-
-                  <button
-                    onClick={() => handleExportMovie(false)}
-                    disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
-                    className="rounded-2xl bg-orange-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isExportingMovie
-                      ? ui.creatingMovie
-                      : exportedMovieUrl && hasReusableExport()
-                        ? (uiLanguage === "en" ? "▶ Open Existing Movie" : "▶ Mevcut Filmi Aç")
-                        : `${ui.createFinalMovieWithCount} (${readyExportCount})`}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleExportMovie(true)}
-                    disabled={isExportingMovie || readyExportCount === 0 || isCreatorMediaGenerationBlocked}
-                    className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-6 py-3 font-semibold text-amber-700 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isExportingMovie
-                      ? ui.creatingMovie
-                      : uiLanguage === "en"
-                        ? "🔁 Re-create Movie"
-                        : "🔁 Yeniden Oluştur"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetExport}
-                    disabled={isExportingMovie || !exportedMovieUrl}
-                    className="rounded-2xl border border-red-400/40 bg-rose-50/80 px-6 py-3 font-semibold text-rose-700 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {uiLanguage === "en" ? "🗑 Reset Export" : "🗑 Exportu Sıfırla"}
-                  </button>
-
-                  <button
-                    onClick={
-                      videoDispatchCountdown?.scope === "batch"
-                        ? cancelPendingVideoDispatch
-                        : imageDispatchCountdown?.scope === "batch"
-                          ? cancelPendingImageDispatch
-                          : isBatchRendering
-                            ? stopBatchRender
-                            : startBatchRender
-                    }
-                    disabled={
-                      videoDispatchCountdown?.scope !== "batch" &&
-                      imageDispatchCountdown?.scope !== "batch" &&
-                      (isPreparingAudio ||
-                        isExportingMovie ||
-                        playingDialogueSceneId !== null ||
-                        Boolean(videoDispatchCountdown) ||
-                        Boolean(imageDispatchCountdown) ||
-                        (loadingAudioSceneId !== null && !isBatchRendering) ||
-                        (!isBatchRendering && isCreatorMediaGenerationBlocked))
-                    }
-                    className={`rounded-2xl px-6 py-3 font-semibold transition hover:scale-105 disabled:opacity-50 ${
-                      videoDispatchCountdown?.scope === "batch" || imageDispatchCountdown?.scope === "batch"
-                        ? "border border-rose-300 bg-rose-50 text-rose-700"
-                        : "bg-cyan-600 text-slate-900"
-                    }`}
-                  >
-                    {videoDispatchCountdown?.scope === "batch"
-                      ? uiLanguage === "en"
-                        ? `Cancel batch start · ${videoDispatchCountdown.secondsRemaining}s`
-                        : `Toplu başlangıcı iptal et · ${videoDispatchCountdown.secondsRemaining} sn`
-                      : imageDispatchCountdown?.scope === "batch"
-                        ? uiLanguage === "en"
-                          ? `Cancel image start · ${imageDispatchCountdown.secondsRemaining}s`
-                          : `Görsel başlangıcını iptal et · ${imageDispatchCountdown.secondsRemaining} sn`
-                        : isBatchRendering
-                          ? getBatchLabel("cancel")
-                          : getBatchLabel("start")}
-                  </button>
-
-                  {batchRenderItems.some((item) => item.status === "failed") && !isBatchRendering && (
-                    <button
-                      onClick={() => retryFailedScenes()}
-                      disabled={isPreparingAudio || isExportingMovie || playingDialogueSceneId !== null || isCreatorMediaGenerationBlocked}
-                      className="rounded-2xl bg-rose-600 px-6 py-3 font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                    >
-                      {getBatchLabel("retryFailed")}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {imageDispatchCountdown?.scope === "batch" && (
-              <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm" aria-live="assertive">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <strong className="text-sm">
-                      {uiLanguage === "en"
-                        ? `Image generation starts in ${imageDispatchCountdown.secondsRemaining} seconds`
-                        : `Görsel gönderimi ${imageDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
-                    </strong>
-                    <p className="mt-1 text-xs leading-5 text-amber-800">
-                      {uiLanguage === "en"
-                        ? `${imageDispatchCountdown.sceneCount} image task(s) are pending. Generation begins when the countdown reaches zero.`
-                        : `${imageDispatchCountdown.sceneCount} görsel görevi bekliyor. Sayaç sıfıra ulaştığında üretim başlar.`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={cancelPendingImageDispatch}
-                    className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
-                  >
-                    {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {videoDispatchCountdown?.scope === "batch" && (
-              <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm" aria-live="assertive">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <strong className="text-sm">
-                      {uiLanguage === "en"
-                        ? `Video generation starts in ${videoDispatchCountdown.secondsRemaining} seconds`
-                        : `Video gönderimi ${videoDispatchCountdown.secondsRemaining} saniye içinde başlayacak`}
-                    </strong>
-                    <p className="mt-1 text-xs leading-5 text-amber-800">
-                      {uiLanguage === "en"
-                        ? `${videoDispatchCountdown.sceneCount} video task(s) are pending. Generation begins when the countdown reaches zero.`
-                        : `${videoDispatchCountdown.sceneCount} video görevi bekliyor. Sayaç sıfıra ulaştığında üretim başlar.`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={cancelPendingVideoDispatch}
-                    className="min-h-11 shrink-0 rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700"
-                  >
-                    {uiLanguage === "en" ? "Cancel start" : "Başlatmayı iptal et"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {(batchRenderItems.length > 0 || isBatchRendering) && (
-              <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-5 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {getBatchLabel("statusTitle")}
-                    </h3>
-                    <p className="mt-1 text-sm text-sky-800/80">
-                      {isBatchRendering
-                        ? getBatchLabel("rendering")
-                        : `${getBatchLabel("progress")}: ${getBatchProgress()}%`}
-                    </p>
-                    {batchRenderStartedAt && (
-                      <p className="mt-1 text-xs text-sky-800/50">
-                        {new Date(batchRenderStartedAt).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="min-w-[120px] text-right text-2xl font-bold text-sky-800">
-                    {getBatchProgress()}%
-                  </div>
-                </div>
-
-                <div className="h-3 overflow-hidden rounded-full bg-white/74">
-                  <div
-                    className="h-full rounded-full bg-cyan-400 transition-all"
-                    style={{ width: `${getBatchProgress()}%` }}
-                  />
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                  {batchRenderItems.map((item) => (
-                    <div
-                      key={item.sceneId}
-                      className="rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-slate-900">
-                          {ui.scene} {item.sceneId}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                            item.status === "done"
-                              ? "bg-green-50/800/20 text-green-700"
-                              : item.status === "failed"
-                                ? "bg-red-500/20 text-red-200"
-                                : item.status === "processing"
-                                  ? "bg-yellow-500/20 text-yellow-100"
-                                  : "bg-white/68 text-gray-200"
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-sky-800/70">
-                        {item.step} {item.message ? `→ ${item.message}` : ""}
-                      </p>
-                      {item.status === "failed" && !isBatchRendering && (
-                        <button
-                          onClick={() => retryFailedScenes(item.sceneId)}
-                          disabled={retryingSceneId === item.sceneId}
-                          className="mt-3 rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                        >
-                          {retryingSceneId === item.sceneId
-                            ? getBatchLabel("retrying")
-                            : getBatchLabel("retryScene")}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {exportedMovieUrl && (
-              <div className="rounded-[28px] border border-orange-200/24 bg-white/62 p-6 space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold">{ui.finalMovie}</h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {ui.finalMovieDesc}
-                  </p>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Dosya</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900 break-all">
-                      {exportMovieResult?.fileName || "-"}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Süre</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">
-                      {formatDurationLabel(exportMovieResult?.durationSeconds)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Boyut</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">
-                      {formatFileSizeLabel(exportMovieResult?.sizeBytes)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-orange-200 bg-white p-4">
-                  <p className="text-sm text-slate-600">Final Video URL</p>
-                  <a
-                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 block break-all text-sm text-sky-700 underline"
-                  >
-                    {exportMovieResult?.downloadUrl || exportedMovieUrl}
-                  </a>
-                </div>
-
-                <video
-                  src={exportedMovieUrl}
-                  controls
-                  className="w-full rounded-2xl border border-orange-200/24 bg-black"
-                />
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={handleDownloadVideo}
-                    className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:scale-105"
-                  >
-                    {ui.download}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleStitchVideo}
-                    disabled={
-                      isExportingMovie ||
-                      scenes.filter((scene) => scene.videoUrl && scene.videoStatus === "done").length < 2
-                    }
-                    className="inline-flex items-center rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:scale-105 disabled:opacity-50"
-                  >
-                    {isExportingMovie
-                      ? ui.creatingMovie
-                      : uiLanguage === "en"
-                        ? "Stitch Final Video"
-                        : "Final Videoyu Birleştir"}
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(exportMovieResult?.downloadUrl || exportedMovieUrl);
-                        setSaveMessage("Final film linki kopyalandı ✅");
-                      } catch {
-                        setError("Link kopyalanamadı.");
-                      }
-                    }}
-                    className="inline-flex items-center rounded-xl border border-orange-200/26 px-4 py-2 text-sm text-slate-900 transition hover:scale-105"
-                  >
-                    Linki Kopyala
-                  </button>
-
-                  <a
-                    href={exportMovieResult?.downloadUrl || exportedMovieUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center rounded-xl border border-orange-200/26 px-4 py-2 text-sm text-slate-900 transition hover:scale-105"
-                  >
-                    Yeni sekmede aç
-                  </a>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-bold">{ui.sceneListTitle}</h2>
-                  <p className="mt-1 text-sm text-slate-600">{ui.sceneProductionPanelDesc}</p>
-                </div>
-                <div className="rounded-full border border-orange-200/24 bg-white/62 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-600">
-                  Studio Timeline View
-                </div>
-              </div>
-
-              {scenes.map((scene) => {
-                const isLastScene = scene.id === scenes[scenes.length - 1]?.id;
-                const isAudioReady = getSceneAudioStatus(scene);
-                const hasDialogue = !!scene.dialogue?.trim();
-                const hasImage = !!scene.image;
-                const hasVideo = !!scene.videoUrl && scene.videoStatus === "done";
-                const narrationReady = !!scene.audioUrl;
-                const dialogueReady = !hasDialogue || !!scene.dialogueAudioUrl;
-                const totalDuration = scene.timing?.targetSceneDuration || 0;
-                const totalAudio = scene.timing?.totalAudioDuration || 0;
-                const productionScore =
-                  [hasImage, narrationReady, dialogueReady, hasVideo].filter(Boolean).length;
-                const sceneVideoDispatchCountdownActive =
-                  videoDispatchCountdown?.scope === "scene" &&
-                  videoDispatchCountdown.sceneId === scene.id;
-                const sceneImageDispatchCountdownActive =
-                  imageDispatchCountdown?.scope === "scene" &&
-                  imageDispatchCountdown.sceneId === scene.id;
-                const sceneScriptDraft = sceneScriptDrafts[scene.id] || {
-                  narration: scene.narration || "",
-                  dialogue: scene.dialogue || "",
-                };
-                const sceneDraftHealth = assessCreatorSceneScriptDraft({
-                  scene,
-                  draft: sceneScriptDraft,
-                  language,
-                  qualityMode: creatorQualityMode,
-                });
-                const sceneDraftOverrunSec = Math.max(
-                  0,
-                  roundCreatorTiming(
-                    sceneDraftHealth.estimatedSpeechSec -
-                      Math.max(0, sceneDraftHealth.targetDurationSec - 0.8),
-                    1,
-                  ),
-                );
-                const sceneDraftGapSec = Math.max(
-                  0,
-                  roundCreatorTiming(
-                    sceneDraftHealth.targetDurationSec -
-                      sceneDraftHealth.estimatedSpeechSec -
-                      1.8,
-                    1,
-                  ),
-                );
-
-                return (
-                  <div
-                    id={`creatorlab-scene-editor-${scene.id}`}
-                    key={scene.id}
-                    className="overflow-hidden rounded-[30px] border border-orange-200/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <div className="rounded-full border border-sky-200 bg-sky-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-800">
-                            Scene {scene.id}
-                          </div>
-
-                          <div
-                            className={`rounded-full px-3 py-1 text-xs ${
-                              isAudioReady
-                                ? "border border-green-200 bg-green-50/80 text-green-700"
-                                : "border border-yellow-500/30 bg-yellow-500/10 text-amber-700"
-                            }`}
-                          >
-                            {isAudioReady ? "Narration ready" : "Narration pending"}
-                          </div>
-
-                          <div
-                            className={`rounded-full px-3 py-1 text-xs ${
-                              dialogueReady
-                                ? "border border-pink-500/30 bg-pink-500/10 text-pink-200"
-                                : "border border-orange-500/30 bg-orange-500/10 text-orange-700"
-                            }`}
-                          >
-                            {dialogueReady ? "Dialogue ready" : "Dialogue pending"}
-                          </div>
-
-                          <div
-                            className={`rounded-full px-3 py-1 text-xs ${
-                              scene.videoStatus === "done"
-                                ? "border border-green-200 bg-green-50/80 text-green-700"
-                                : scene.videoStatus === "delayed"
-                                ? "border border-amber-300 bg-amber-50 text-amber-800"
-                                : scene.videoStatus === "processing"
-                                ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
-                                : scene.videoStatus === "error"
-                                ? "border border-red-500/30 bg-rose-50/80 text-red-200"
-                                : "border border-orange-200/65/30 bg-gray-500/10 text-gray-200"
-                            }`}
-                          >
-                            {scene.videoStatus === "done"
-                              ? "Video ready"
-                              : scene.videoStatus === "delayed"
-                              ? "Video delayed · refresh to check"
-                              : scene.videoStatus === "processing"
-                              ? "Video rendering"
-                              : scene.videoStatus === "error"
-                              ? "Video error"
-                              : "Video pending"}
-                          </div>
-
-                          {isLastScene && (
-                            <span className="rounded-full border border-orange-200/22 px-3 py-1 text-xs text-slate-600">
-                              {ui.lastScene}
-                            </span>
-                          )}
-                        </div>
-
-                        <div>
-                          <h3 className="text-xl font-semibold text-slate-900">Production Scene Card</h3>
-                          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                            {ui.sceneCardPurpose}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 lg:w-[360px]">
-                        <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Production score</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-900">{productionScore}/4</p>
-                          <p className="mt-1 text-xs text-slate-500">Image, narration, dialogue ve video durumu.</p>
-                        </div>
-                        <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Target duration</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-900">{totalDuration.toFixed(1)}s</p>
-                          <p className="mt-1 text-xs text-slate-500">Audio + video ritmi için hesaplanan hedef.</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-                      <div className="space-y-4">
-                        <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-base leading-7 text-gray-100">{scene.text}</p>
-                        </div>
-
-                        <div className="grid gap-3 rounded-[28px] border border-orange-200/24 bg-white/74 p-4 text-sm text-gray-200 md:grid-cols-2">
-                          <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Narration</p>
-                            <p>{scene.narration}</p>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Dialogue</p>
-                            <p>{scene.dialogue || "Yok"}</p>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Camera</p>
-                            <p>{scene.cameraDirection}</p>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Emotion</p>
-                            <p>{scene.emotion}</p>
-                          </div>
-                          <div className="md:col-span-2">
-                            <p className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Motion hint</p>
-                            <p>{scene.motionHint}</p>
-                          </div>
-                        </div>
-
-                        <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-800">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <p className="font-semibold">Timing & export kararları</p>
-                            <span
-                              className={`rounded-full px-3 py-1 text-[11px] font-medium ${
-                                scene.timing?.needsFreezeFrame
-                                  ? "border border-yellow-500/30 bg-yellow-500/10 text-amber-700"
-                                  : "border border-green-200 bg-green-50/80 text-green-700"
-                              }`}
-                            >
-                              {scene.timing?.needsFreezeFrame ? "Freeze required" : "Video sufficient"}
-                            </span>
-                          </div>
-
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/62 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Audio total</p>
-                              <p className="mt-2 text-lg font-semibold text-slate-900">{totalAudio.toFixed(2)}s</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/62 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Target scene</p>
-                              <p className="mt-2 text-lg font-semibold text-slate-900">{totalDuration.toFixed(2)}s</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/62 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-sky-700/70">Freeze need</p>
-                              <p className="mt-2 text-lg font-semibold text-slate-900">{(scene.timing?.freezeDuration || 0).toFixed(2)}s</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Scene pipeline</p>
-                          <div className="mt-3 grid gap-2">
-                            {[
-                              { label: uiLanguage === "en" ? "Image" : "Görsel", ready: hasImage, pending: redrawLoadingId === scene.id },
-                              { label: uiLanguage === "en" ? "Narration" : "Anlatım", ready: narrationReady, pending: loadingAudioSceneId === scene.id },
-                              { label: uiLanguage === "en" ? "Dialogue" : "Diyalog", ready: dialogueReady, pending: loadingDialogueSceneId === scene.id && hasDialogue },
-                              { label: uiLanguage === "en" ? "Video" : "Video", ready: hasVideo, pending: scene.videoStatus === "processing" },
-                            ].map((item) => (
-                              <div key={item.label} className="flex items-center justify-between rounded-2xl border border-orange-200/24 bg-white/62 px-3 py-2">
-                                <span className="text-sm text-slate-700">{item.label}</span>
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-[11px] ${
-                                    item.pending
-                                      ? "border border-blue-500/30 bg-blue-500/10 text-blue-200"
-                                      : item.ready
-                                      ? "border border-green-200 bg-green-50/80 text-green-700"
-                                      : "border border-orange-200/22 bg-white/62 text-slate-500"
-                                  }`}
-                                >
-                                  {item.pending ? (uiLanguage === "en" ? "Processing" : "İşleniyor") : item.ready ? (uiLanguage === "en" ? "Ready" : "Hazır") : (uiLanguage === "en" ? "Pending" : "Bekliyor")}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{uiLanguage === "en" ? "Quick actions" : "Hızlı aksiyonlar"}</p>
-                          <div className="mt-3 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => playNarration(scene.id, scene.narration)}
-                        disabled={
-                          !scene.narration?.trim() ||
-                          loadingAudioSceneId === scene.id ||
-                          isPreparingAudio ||
-                          (isPlayingStory && playingSceneId !== scene.id) ||
-                          playingDialogueSceneId !== null
-                        }
-                        title={
-                          !scene.narration?.trim()
-                            ? (uiLanguage === "en" ? "This scene has no narrator text." : "Bu sahnede anlatıcı metni yok.")
-                            : isCreatorActionBlocked("voice_over") || isCreatorMediaGenerationBlocked
-                              ? getCreatorMediaActionError("voice_over")
-                              : (uiLanguage === "en" ? "Generate or play this scene's narration." : "Bu sahnenin anlatımını üret veya oynat.")
-                        }
-                        className="rounded-xl border border-purple-400/40 bg-violet-50/80 px-4 py-2 text-sm text-purple-100 disabled:opacity-50"
-                      >
-                        {loadingAudioSceneId === scene.id
-                          ? (uiLanguage === "en" ? "Preparing narration..." : "Ses hazırlanıyor...")
-                          : playingSceneId === scene.id
-                          ? (uiLanguage === "en" ? "Stop narration" : "Sesi Durdur")
-                          : (uiLanguage === "en" ? "Listen to narrator" : "Anlatıcıyı Dinle")}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => playSceneDialogue(scene)}
-                        disabled={
-                          !hasDialogue ||
-                          loadingDialogueSceneId === scene.id ||
-                          isPlayingStory ||
-                          isPreparingAudio
-                        }
-                        title={
-                          !hasDialogue
-                            ? (uiLanguage === "en" ? "This scene has no character dialogue." : "Bu sahnede karakter diyaloğu yok.")
-                            : isCreatorActionBlocked("voice_over") || isCreatorMediaGenerationBlocked
-                              ? getCreatorMediaActionError("voice_over")
-                              : (uiLanguage === "en" ? "Generate or play this scene's character dialogue." : "Bu sahnenin karakter diyaloğunu üret veya oynat.")
-                        }
-                        className="rounded-xl border border-pink-400/40 bg-pink-500/10 px-4 py-2 text-sm text-pink-100 disabled:opacity-50"
-                      >
-                        {loadingDialogueSceneId === scene.id
-                          ? (uiLanguage === "en" ? "Preparing dialogue..." : "Diyalog hazırlanıyor...")
-                          : playingDialogueSceneId === scene.id
-                          ? (uiLanguage === "en" ? "Stop dialogue" : "Diyaloğu Durdur")
-                          : (uiLanguage === "en" ? "Listen to character dialogue" : "Karakter Diyaloğunu Dinle")}
-                      </button>
-
-                      <label className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-teal-50/80 px-3 py-2 text-xs text-teal-800">
-                        <span>{uiLanguage === "en" ? "Export" : "Dışa aktar"}</span>
-                        <select
-                          value={scene.renderMode || ""}
-                          onChange={(e) => {
-                            const mode = e.target.value as "" | "video" | "image";
-
-                            setScenes((prev) =>
-                              prev.map((item) =>
-                                item.id === scene.id
-                                  ? { ...item, renderMode: mode || undefined }
-                                  : item
-                              )
-                            );
-
-                            setExportedMovieUrl("");
-                            setExportMovieResult(null);
-                            setExportSignature("");
-                          }}
-                          className="rounded-md border border-orange-200/24 bg-[radial-gradient(circle_at_10%_6%,#ffe0f2_0%,transparent_30%),radial-gradient(circle_at_90%_10%,#d9f5ff_0%,transparent_32%),radial-gradient(circle_at_48%_92%,#fff0bd_0%,transparent_36%),linear-gradient(180deg,#fffaf4_0%,#f8fbff_46%,#f4fff8_100%)] px-2 py-1 text-xs text-slate-900"
-                        >
-                          <option value="">{uiLanguage === "en" ? "Auto · Production Quality" : "Otomatik · Üretim Kalitesi"}</option>
-                          <option value="video">Video</option>
-                          <option value="image">Image</option>
-                        </select>
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (sceneVideoDispatchCountdownActive) {
-                            cancelPendingVideoDispatch();
-                          } else {
-                            void handleGenerateVideo(scene.id);
-                          }
-                        }}
-                        disabled={
-                          !sceneVideoDispatchCountdownActive &&
-                          ((scene.videoStatus === "processing" || scene.videoStatus === "delayed") ||
-                            !scene.image ||
-                            creatorMediaPreflightLoading ||
-                            Boolean(videoDispatchCountdown) ||
-                            Boolean(imageDispatchCountdown) ||
-                            (isCreatorLabFlow &&
-                              getCreatorEffectiveSceneOutputMode(scene) !== "video"))
-                        }
-                        title={
-                          sceneVideoDispatchCountdownActive
-                            ? uiLanguage === "en"
-                              ? "Cancel before generation starts."
-                              : "Üretim başlamadan iptal et."
-                            : !scene.image
-                              ? (uiLanguage === "en" ? "Generate the scene visual first." : "Önce sahne görselini üret.")
-                              : isCreatorActionBlocked("ai_video_blocks")
-                                ? getCreatorMediaRoutingError("ai_video_blocks")
-                                : isCreatorLabFlow && getCreatorEffectiveSceneOutputMode(scene) !== "video"
-                                  ? (uiLanguage === "en"
-                                      ? "Production Quality routes this scene to Image."
-                                      : "Üretim Kalitesi bu sahneyi Görsel rotasına yönlendiriyor.")
-                                  : (uiLanguage === "en" ? "Create an AI motion block from this visual." : "Bu görselden AI hareketli video bloğu üret.")
-                        }
-                        className={`rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50 ${
-                          sceneVideoDispatchCountdownActive
-                            ? "border-rose-300 bg-rose-50 text-rose-700"
-                            : "border-blue-400/40 bg-blue-500/10 text-blue-100"
-                        }`}
-                      >
-                        {sceneVideoDispatchCountdownActive
-                          ? uiLanguage === "en"
-                            ? `Cancel start · ${videoDispatchCountdown?.secondsRemaining}s`
-                            : `Başlatmayı iptal et · ${videoDispatchCountdown?.secondsRemaining} sn`
-                          : creatorMediaPreflightLoading
-                            ? uiLanguage === "en" ? "Checking video service..." : "Video servisi kontrol ediliyor..."
-                            : scene.videoStatus === "processing"
-                              ? ui.videoCreating
-                              : scene.videoStatus === "delayed"
-                                ? uiLanguage === "en" ? "Taking longer · refresh to check" : "Uzun sürüyor · kontrol için yenile"
-                              : isCreatorActionBlocked("ai_video_blocks")
-                                ? uiLanguage === "en" ? "Pro quality required" : "Pro kalite gerekli"
-                                : ui.convertToVideo}
-                      </button>
-
-                      {sceneVideoDispatchCountdownActive && (
-                        <span className="basis-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800" aria-live="assertive">
-                          {uiLanguage === "en"
-                            ? "No generation request has been sent yet. You can cancel until the countdown reaches zero."
-                            : "Henüz üretim talebi gönderilmedi. Geri sayım sıfıra ulaşana kadar iptal edebilirsiniz."}
-                        </span>
-                      )}
-
-                      {(scene.videoStatus === "processing" || scene.videoStatus === "delayed") && scene.videoQueueJobId && (
-                        <button
-                          type="button"
-                          onClick={() => void requestCancelSceneVideo(scene)}
-                          disabled={cancellingVideoSceneId === scene.id}
-                          title={uiLanguage === "en" ? "Stop this generation. A request that already started may still complete." : "Bu üretimi durdur. Başlamış bir talep yine de tamamlanabilir."}
-                          className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {cancellingVideoSceneId === scene.id
-                            ? uiLanguage === "en" ? "Cancelling..." : "İptal ediliyor..."
-                            : uiLanguage === "en" ? "Stop video · no refund" : "Videoyu durdur · iade yok"}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isCreatorLabFlow) {
-                            openCreatorSceneEditor(scene);
-                          } else {
-                            setEditingSceneId(scene.id);
-                            setBranchingSceneId(null);
-                          }
-                        }}
-                        className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm"
-                      >
-                        {ui.editScene}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBranchingSceneId(scene.id);
-                          setEditingSceneId(null);
-                        }}
-                        className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm"
-                      >
-                        {ui.branchAfterScene}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (sceneImageDispatchCountdownActive) {
-                            cancelPendingImageDispatch();
-                          } else {
-                            void redrawSceneImage(scene);
-                          }
-                        }}
-                        disabled={
-                          !sceneImageDispatchCountdownActive &&
-                          (redrawLoadingId === scene.id ||
-                            Boolean(imageDispatchCountdown) ||
-                            Boolean(videoDispatchCountdown))
-                        }
-                        title={
-                          sceneImageDispatchCountdownActive
-                            ? uiLanguage === "en"
-                              ? "Cancel before generation starts."
-                              : "Üretim başlamadan iptal et."
-                            : isCreatorActionBlocked("visuals") || isCreatorMediaGenerationBlocked
-                              ? getCreatorMediaActionError("visuals")
-                              : (uiLanguage === "en" ? "Regenerate this scene visual." : "Bu sahne görselini yeniden üret.")
-                        }
-                        className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-50 ${
-                          sceneImageDispatchCountdownActive
-                            ? "border-rose-300 bg-rose-50 text-rose-700"
-                            : "border-orange-200/26"
-                        }`}
-                      >
-                        {sceneImageDispatchCountdownActive
-                          ? uiLanguage === "en"
-                            ? `Cancel start · ${imageDispatchCountdown?.secondsRemaining}s`
-                            : `Başlatmayı iptal et · ${imageDispatchCountdown?.secondsRemaining} sn`
-                          : redrawLoadingId === scene.id ? ui.redrawing : ui.redraw}
-                      </button>
-                    </div>
-
-                    <div className="rounded-[28px] border border-orange-200/24 bg-white/74 p-4 space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{ui.scenePreviews}</p>
-                        <div className="flex flex-wrap gap-2 text-[11px]">
-                          <span className={`rounded-full px-2.5 py-1 ${hasImage ? "border border-green-200 bg-green-50/80 text-green-700" : "border border-orange-200/22 bg-white/62 text-slate-500"}`}>
-                            {hasImage ? ui.imageReady : ui.imagePending}
-                          </span>
-                          <span className={`rounded-full px-2.5 py-1 ${hasVideo ? "border border-green-200 bg-green-50/80 text-green-700" : "border border-orange-200/22 bg-white/62 text-slate-500"}`}>
-                            {hasVideo ? ui.videoReady : ui.videoPending}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="rounded-[28px] border border-sky-200 bg-sky-50/80 p-4">
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-sky-700">{ui.intelligencePanel}</p>
-                          <span className="rounded-full border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-[11px] text-sky-800">v1</span>
-                        </div>
-
-                        {scene.intelligence ? (
-                          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.sceneType}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneIntelligenceValue(scene.intelligence.scene_type)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.pacingLevel}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneIntelligenceValue(scene.intelligence.pacing_level)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.emotionalIntensity}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.emotional_intensity)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.curiosityScore}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.curiosity_score)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.tensionScore}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.tension_score)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-orange-200/24 bg-white/74 p-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{ui.climaxLevel}</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{formatSceneScore(scene.intelligence.climax_level)}</p>
-                            </div>
-
-                            <div className="rounded-2xl border border-emerald-500/30 bg-teal-50/80 p-3">
-                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-emerald-300">
-                                {ui.thumbnailScore}
-                              </p>
-
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {calculateThumbnailScore(scene.intelligence)}/10
-                              </p>
-
-                              {isBestThumbnailCandidate(scene, scenes) ? (
-                                <div className="mt-2">
-                                  <span className="inline-flex max-w-full rounded-full border border-emerald-400/30 bg-teal-50/80 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-teal-700">
-                                    ⭐ {ui.bestThumbnailCandidate}
-                                  </span>
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="rounded-2xl border border-sky-500/30 bg-sky-50/800/10 p-3">
-                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-sky-300">
-                                {ui.hookScore}
-                              </p>
-
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {calculateHookScore(scene.intelligence)}/10
-                              </p>
-
-                              {isBestHookCandidate(scene, scenes) ? (
-                                <div className="mt-2">
-                                  <span className="inline-flex max-w-full rounded-full border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.06em] text-sky-200">
-                                    ⚡ {ui.bestHookCandidate}
-                                  </span>
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
-                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-amber-300">
-                                {ui.retentionRisk}
-                              </p>
-
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {calculateRetentionRisk(scene.intelligence).level === "low"
-                                  ? ui.lowRisk
-                                  : calculateRetentionRisk(scene.intelligence).level === "medium"
-                                  ? ui.mediumRisk
-                                  : ui.highRisk}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-3">
-                              <p className="text-[9px] uppercase tracking-[0.12em] opacity-80 text-fuchsia-300">
-                                {ui.youtubeReadiness}
-                              </p>
-
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {calculateYoutubeReadinessScore(scene.intelligence)}/10
-                              </p>
-
-                              <p className="mt-1 text-[11px] font-medium text-slate-700">
-                                {getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "strong"
-                                  ? ui.strongReady
-                                  : getYoutubeReadinessLevel(calculateYoutubeReadinessScore(scene.intelligence)) === "moderate"
-                                  ? ui.moderateReady
-                                  : ui.weakReady}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl border border-violet-500/30 bg-violet-50/800/10 p-3 md:col-span-2 lg:col-span-3">
-                              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                <p className="shrink-0 text-[9px] uppercase tracking-[0.12em] opacity-80 text-violet-300">
-                                  {ui.recommendation}
-                                </p>
-
-                                <p className="text-left text-[11px] leading-snug text-violet-700/85 sm:text-right">
-                                  {generateSceneRecommendation(scene.intelligence)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="rounded-2xl border border-dashed border-orange-200/24 bg-white/62 p-4 text-sm text-slate-500">
-                            {ui.noSceneIntelligence}
-                          </div>
-                        )}
-                      </div>
-
-                      {scene.image ? (
-                        <div className="space-y-2">
-                          <p className="text-xs text-slate-500">{ui.readySceneImage}</p>
-                          <img
-                            src={scene.image}
-                            alt={`${ui.scene} ${scene.id}`}
-                            className="w-full rounded-[28px] border border-orange-200/24 bg-white/74 object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-orange-200/24 bg-white/62 p-4 text-sm text-slate-500">
-                          {ui.noSceneImagePreview}
-                        </div>
-                      )}
-
-                      {scene.videoUrl && scene.videoStatus === "done" ? (
-                        <div className="space-y-2">
-                          <p className="text-xs text-slate-500">{ui.readySceneVideo}</p>
-                          <video
-                            src={scene.videoUrl}
-                            controls
-                            playsInline
-                            className="w-full rounded-[28px] border border-orange-200/24 bg-white/74"
-                          />
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-orange-200/24 bg-white/62 p-4 text-sm text-slate-500">
-                          {ui.noSceneVideoPreview}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-
-                <div className="mt-3 rounded-2xl border border-orange-200/24 bg-white/74 p-3 text-xs text-slate-600">
-                  <div className="flex flex-wrap gap-3">
-                    <span>🎯 {ui.target}: {(scene.timing?.targetSceneDuration || TARGET_SCENE_DURATION_SECONDS).toFixed(1)} {ui.secondShort}</span>
-                    <span>🎤 {ui.speech}: {(scene.timing?.totalAudioDuration || 0).toFixed(1)} {ui.secondShort}</span>
-                    <span>🧊 Freeze: {(scene.timing?.freezeDuration || 0).toFixed(1)} {ui.secondShort}</span>
-                  </div>
-
-                  {isSceneSpeechTooLong(scene.timing) ? (
-                    <p className="mt-2 text-rose-300">{ui.speechTooLong}</p>
-                  ) : (
-                    <p className="mt-2 text-emerald-300">{ui.speechTimingOk}</p>
-                  )}
-                </div>
-
-{editingSceneId === scene.id && (
-                      isCreatorLabFlow ? (
-                      <div className="mt-4 space-y-4 rounded-[28px] border border-sky-200 bg-sky-50/70 p-5">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-700">
-                              {uiLanguage === "en" ? "Script & timing" : "Metin ve süre"}
-                            </p>
-                            <h4 className="mt-1 text-base font-semibold text-slate-950">
-                              {uiLanguage === "en"
-                                ? "Edit the spoken content safely"
-                                : "Konuşma metnini güvenli şekilde düzenle"}
-                            </h4>
-                            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
-                              {uiLanguage === "en"
-                                ? "Timing is recalculated while you type. Saving automatically adjusts the scene window and visual beats to prevent cutoffs or dead time."
-                                : "Yazdıkça süre yeniden hesaplanır. Kaydetme sırasında kesilme veya boş süreyi önlemek için sahne aralığı ve görsel akış otomatik ayarlanır."}
-                            </p>
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                              sceneDraftHealth.status === "ready"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : sceneDraftHealth.status === "too_long"
-                                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {sceneDraftHealth.status === "ready"
-                              ? uiLanguage === "en" ? "Timing safe" : "Süre güvenli"
-                              : sceneDraftHealth.status === "too_long"
-                                ? uiLanguage === "en" ? "Over target" : "Hedefi aşıyor"
-                                : uiLanguage === "en" ? "Needs more substance" : "Daha zengin olmalı"}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-                          <label className="block text-sm font-medium text-slate-700">
-                            {uiLanguage === "en" ? "Narration" : "Anlatım"}
-                            <textarea
-                              className="mt-2 min-h-40 w-full rounded-2xl border border-sky-200 bg-white p-3 text-sm leading-6 text-slate-950 placeholder:text-slate-400"
-                              value={sceneScriptDraft.narration}
-                              onChange={(event) =>
-                                setSceneScriptDrafts((prev) => ({
-                                  ...prev,
-                                  [scene.id]: {
-                                    narration: event.target.value,
-                                    dialogue: prev[scene.id]?.dialogue ?? scene.dialogue ?? "",
-                                  },
-                                }))
-                              }
-                              placeholder={
-                                uiLanguage === "en"
-                                  ? "Write clear, information-rich narration for this scene."
-                                  : "Bu sahne için açık ve içerik açısından zengin bir anlatım yaz."
-                              }
-                            />
-                          </label>
-
-                          <label className="block text-sm font-medium text-slate-700">
-                            {uiLanguage === "en" ? "Dialogue · optional" : "Diyalog · opsiyonel"}
-                            <textarea
-                              className="mt-2 min-h-40 w-full rounded-2xl border border-sky-200 bg-white p-3 text-sm leading-6 text-slate-950 placeholder:text-slate-400"
-                              value={sceneScriptDraft.dialogue}
-                              onChange={(event) =>
-                                setSceneScriptDrafts((prev) => ({
-                                  ...prev,
-                                  [scene.id]: {
-                                    narration: prev[scene.id]?.narration ?? scene.narration ?? "",
-                                    dialogue: event.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder={
-                                uiLanguage === "en"
-                                  ? "Leave empty for narrator-led scenes."
-                                  : "Anlatıcı odaklı sahnelerde boş bırak."
-                              }
-                            />
-                          </label>
-                        </div>
-
-                        <div
-                          className={`rounded-2xl border p-4 ${
-                            sceneDraftHealth.status === "ready"
-                              ? "border-emerald-200 bg-emerald-50/80"
-                              : sceneDraftHealth.status === "too_long"
-                                ? "border-rose-200 bg-rose-50/80"
-                                : "border-amber-200 bg-amber-50/80"
-                          }`}
-                        >
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div>
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                                {uiLanguage === "en" ? "Words" : "Kelime"}
-                              </p>
-                              <p className="mt-1 text-sm font-semibold text-slate-950">
-                                {sceneDraftHealth.speechWordCount} · {sceneDraftHealth.minWords}–{sceneDraftHealth.maxWords}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                                {uiLanguage === "en" ? "Estimated speech" : "Tahmini konuşma"}
-                              </p>
-                              <p className="mt-1 text-sm font-semibold text-slate-950">
-                                {sceneDraftHealth.estimatedSpeechSec.toFixed(1)}s / {sceneDraftHealth.targetDurationSec.toFixed(1)}s
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                                {uiLanguage === "en" ? "Visual beats" : "Görsel akış"}
-                              </p>
-                              <p className="mt-1 text-sm font-semibold text-slate-950">
-                                {scene.visualBlockPlan?.length || sceneDraftHealth.visualBlockCount}
-                              </p>
-                            </div>
-                          </div>
-
-                          <p className="mt-3 text-xs leading-5 text-slate-700">
-                            {sceneDraftHealth.status === "ready"
-                              ? uiLanguage === "en"
-                                ? "The script fits the planned scene and can be saved safely."
-                                : "Metin planlanan sahneye uyuyor ve güvenle kaydedilebilir."
-                              : sceneDraftHealth.status === "too_long"
-                                ? uiLanguage === "en"
-                                  ? `Speech exceeds the safe window by about ${sceneDraftOverrunSec.toFixed(1)} seconds. Auto-fit, add a visual beat, or split the scene.`
-                                  : `Konuşma güvenli aralığı yaklaşık ${sceneDraftOverrunSec.toFixed(1)} saniye aşıyor. Auto-fit kullan, görsel akış ekle veya sahneyi böl.`
-                                : uiLanguage === "en"
-                                  ? `The scene may contain about ${sceneDraftGapSec.toFixed(1)} seconds of weak or idle time. Auto-fit can enrich the script; saving will also tighten the scene automatically.`
-                                  : `Sahnede yaklaşık ${sceneDraftGapSec.toFixed(1)} saniyelik zayıf veya boş süre oluşabilir. Auto-fit metni zenginleştirir; kaydetme de sahneyi otomatik daraltır.`}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => saveCreatorSceneScript(scene.id)}
-                            className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800"
-                          >
-                            {uiLanguage === "en" ? "Save Script" : "Metni Kaydet"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => autoFitCreatorSceneScript(scene.id)}
-                            disabled={sceneScriptFitLoadingId === scene.id}
-                            className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
-                          >
-                            {sceneScriptFitLoadingId === scene.id
-                              ? uiLanguage === "en" ? "Fitting…" : "Uyarlanıyor…"
-                              : uiLanguage === "en" ? "Auto-fit with AI" : "AI ile Auto-fit"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => addCreatorSceneVisualBlock(scene.id)}
-                            className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                          >
-                            {uiLanguage === "en" ? "Add Visual Beat" : "Görsel Akış Ekle"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => splitCreatorScene(scene.id)}
-                            disabled={sceneDraftHealth.status !== "too_long"}
-                            className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            {uiLanguage === "en" ? "Split Scene" : "Sahneyi Böl"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingSceneId(null);
-                              setSceneInstructions((prev) => ({
-                                ...prev,
-                                [scene.id]: "",
-                              }));
-                              setSceneScriptDrafts((prev) => {
-                                const next = { ...prev };
-                                delete next[scene.id];
-                                return next;
-                              });
-                            }}
-                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600"
-                          >
-                            {ui.cancel}
-                          </button>
-                        </div>
-
-                        <details className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-                            {uiLanguage === "en" ? "Refine the full scene with AI" : "Sahnenin tamamını AI ile geliştir"}
-                          </summary>
-                          <div className="mt-3 space-y-3">
-                            <textarea
-                              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-950 placeholder:text-slate-400"
-                              value={sceneInstructions[scene.id] || ""}
-                              onChange={(event) =>
-                                setSceneInstructions((prev) => ({
-                                  ...prev,
-                                  [scene.id]: event.target.value,
-                                }))
-                              }
-                              placeholder={ui.sceneEditPlaceholder}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => updateScene(scene.id)}
-                              disabled={sceneLoadingId === scene.id}
-                              className="rounded-xl border border-slate-300 bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                            >
-                              {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
-                            </button>
-                          </div>
-                        </details>
-                      </div>
-                      ) : (
-                      <div className="mt-4 space-y-3 rounded-2xl border border-orange-200/24 bg-white/74 p-4">
-                        <label className="block text-sm text-slate-600">
-                          {ui.sceneEditQuestion}
-                        </label>
-
-                        <textarea
-                          className="min-h-24 w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black placeholder:text-slate-500"
-                          value={sceneInstructions[scene.id] || ""}
-                          onChange={(e) =>
-                            setSceneInstructions((prev) => ({
-                              ...prev,
-                              [scene.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={ui.sceneEditPlaceholder}
-                        />
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => updateScene(scene.id)}
-                            disabled={sceneLoadingId === scene.id}
-                            className="rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                          >
-                            {sceneLoadingId === scene.id ? ui.updating : ui.updateScene}
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setEditingSceneId(null);
-                              setSceneInstructions((prev) => ({
-                                ...prev,
-                                [scene.id]: "",
-                              }));
-                            }}
-                            className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm"
-                          >
-                            {ui.cancel}
-                          </button>
-                        </div>
-                      </div>
-                      )
-                    )}
-
-                    {branchingSceneId === scene.id && (
-                      <div className="mt-4 space-y-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-4">
-                        <label className="block text-sm text-yellow-100">
-                          {ui.branchQuestion}
-                        </label>
-
-                        <textarea
-                          className="min-h-24 w-full rounded-2xl border border-orange-200/26 bg-white/82 p-3 text-black placeholder:text-slate-500"
-                          value={branchInstructions[scene.id] || ""}
-                          onChange={(e) =>
-                            setBranchInstructions((prev) => ({
-                              ...prev,
-                              [scene.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={ui.branchPlaceholder}
-                        />
-
-                        <p className="text-xs text-slate-600">
-                          {ui.branchWarning}
-                        </p>
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => handleBranchFromScene(scene.id)}
-                            disabled={branchLoadingId === scene.id}
-                            className="rounded-xl bg-white/82 px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
-                          >
-                            {branchLoadingId === scene.id ? ui.writingNewFlow : ui.continueFromHere}
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setBranchingSceneId(null);
-                              setBranchInstructions((prev) => ({
-                                ...prev,
-                                [scene.id]: "",
-                              }));
-                            }}
-                            className="rounded-xl border border-orange-200/26 px-4 py-2 text-sm"
-                          >
-                            {ui.cancel}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-                );
-              })}
-            </div>
-
-            <div className="rounded-[28px] border border-orange-200/24 bg-white/62 p-6 space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{ui.continueFromLastScene}</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {ui.continueFromLastSceneDesc}
-                </p>
-              </div>
-
-              <textarea
-                className="min-h-28 w-full rounded-2xl border border-orange-200/26 bg-white/82 p-4 text-black placeholder:text-slate-500"
-                value={continuePrompt}
-                onChange={(e) => setContinuePrompt(e.target.value)}
-                placeholder={ui.continuePromptPlaceholder}
-              />
-
-              <div>
-                <button
-                  onClick={handleContinueStory}
-                  disabled={isContinuing}
-                  className="rounded-2xl bg-white/82 px-6 py-3 font-semibold text-black transition hover:scale-105 disabled:opacity-50"
-                >
-                  {isContinuing ? ui.writingContinue : ui.writeContinue}
-                </button>
-              </div>
-            </div>
-          </div>
+          <StoryverseScenePanel
+            isCreatorLabFlow={isCreatorLabFlow}
+            uiLanguage={uiLanguage}
+            creatorTimelineMediaGate={creatorTimelineMediaGate}
+            creatorMediaPreflightLoading={creatorMediaPreflightLoading}
+            saveProject={saveProject}
+            isSavingProject={isSavingProject}
+            ui={ui}
+            creatorFinalVideoReadiness={creatorFinalVideoReadiness}
+            creatorFinalVideoReadinessMessage={creatorFinalVideoReadinessMessage}
+            creatorFinalProductionGate={creatorFinalProductionGate}
+            creatorFinalProductionGateMessage={creatorFinalProductionGateMessage}
+            refreshCreatorOpsStatus={refreshCreatorOpsStatus}
+            creatorOpsStatus={creatorOpsStatus}
+            flowContinuityAudit={flowContinuityAudit}
+            exportFlowValidation={exportFlowValidation}
+            audioDurationMatchedCount={audioDurationMatchedCount}
+            audioSplitRecommendedCount={audioSplitRecommendedCount}
+            unnecessaryExtensionRemovedTotal={unnecessaryExtensionRemovedTotal}
+            setIsAdvancedMode={setIsAdvancedMode}
+            isAdvancedMode={isAdvancedMode}
+            batchRenderItems={batchRenderItems}
+            isBatchRendering={isBatchRendering}
+            retryFailedScenes={retryFailedScenes}
+            isPreparingAudio={isPreparingAudio}
+            isExportingMovie={isExportingMovie}
+            playingDialogueSceneId={playingDialogueSceneId}
+            getBatchLabel={getBatchLabel}
+            prepareAllAudio={prepareAllAudio}
+            isPlayingStory={isPlayingStory}
+            isCreatorMediaGenerationBlocked={isCreatorMediaGenerationBlocked}
+            playWholeStory={playWholeStory}
+            loadingAudioSceneId={loadingAudioSceneId}
+            handleExportMovie={handleExportMovie}
+            readyExportCount={readyExportCount}
+            exportedMovieUrl={exportedMovieUrl}
+            hasReusableExport={hasReusableExport}
+            handleResetExport={handleResetExport}
+            videoDispatchCountdown={videoDispatchCountdown}
+            cancelPendingVideoDispatch={cancelPendingVideoDispatch}
+            imageDispatchCountdown={imageDispatchCountdown}
+            cancelPendingImageDispatch={cancelPendingImageDispatch}
+            stopBatchRender={stopBatchRender}
+            startBatchRender={startBatchRender}
+            getBatchProgress={getBatchProgress}
+            batchRenderStartedAt={batchRenderStartedAt}
+            retryingSceneId={retryingSceneId}
+            exportMovieResult={exportMovieResult}
+            formatDurationLabel={formatDurationLabel}
+            formatFileSizeLabel={formatFileSizeLabel}
+            handleDownloadVideo={handleDownloadVideo}
+            handleStitchVideo={handleStitchVideo}
+            scenes={scenes}
+            setSaveMessage={setSaveMessage}
+            setError={setError}
+            getSceneAudioStatus={getSceneAudioStatus}
+            sceneScriptDrafts={sceneScriptDrafts}
+            assessCreatorSceneScriptDraft={assessCreatorSceneScriptDraft}
+            language={language}
+            creatorQualityMode={creatorQualityMode}
+            roundCreatorTiming={roundCreatorTiming}
+            redrawLoadingId={redrawLoadingId}
+            loadingDialogueSceneId={loadingDialogueSceneId}
+            playNarration={playNarration}
+            playingSceneId={playingSceneId}
+            isCreatorActionBlocked={isCreatorActionBlocked}
+            getCreatorMediaActionError={getCreatorMediaActionError}
+            playSceneDialogue={playSceneDialogue}
+            setScenes={setScenes}
+            setExportedMovieUrl={setExportedMovieUrl}
+            setExportMovieResult={setExportMovieResult}
+            setExportSignature={setExportSignature}
+            handleGenerateVideo={handleGenerateVideo}
+            getCreatorEffectiveSceneOutputMode={getCreatorEffectiveSceneOutputMode}
+            getCreatorMediaRoutingError={getCreatorMediaRoutingError}
+            requestCancelSceneVideo={requestCancelSceneVideo}
+            cancellingVideoSceneId={cancellingVideoSceneId}
+            openCreatorSceneEditor={openCreatorSceneEditor}
+            setEditingSceneId={setEditingSceneId}
+            setBranchingSceneId={setBranchingSceneId}
+            redrawSceneImage={redrawSceneImage}
+            formatSceneIntelligenceValue={formatSceneIntelligenceValue}
+            formatSceneScore={formatSceneScore}
+            calculateThumbnailScore={calculateThumbnailScore}
+            isBestThumbnailCandidate={isBestThumbnailCandidate}
+            calculateHookScore={calculateHookScore}
+            isBestHookCandidate={isBestHookCandidate}
+            calculateRetentionRisk={calculateRetentionRisk}
+            calculateYoutubeReadinessScore={calculateYoutubeReadinessScore}
+            getYoutubeReadinessLevel={getYoutubeReadinessLevel}
+            generateSceneRecommendation={generateSceneRecommendation}
+            TARGET_SCENE_DURATION_SECONDS={TARGET_SCENE_DURATION_SECONDS}
+            isSceneSpeechTooLong={isSceneSpeechTooLong}
+            editingSceneId={editingSceneId}
+            setSceneScriptDrafts={setSceneScriptDrafts}
+            saveCreatorSceneScript={saveCreatorSceneScript}
+            autoFitCreatorSceneScript={autoFitCreatorSceneScript}
+            sceneScriptFitLoadingId={sceneScriptFitLoadingId}
+            addCreatorSceneVisualBlock={addCreatorSceneVisualBlock}
+            splitCreatorScene={splitCreatorScene}
+            setSceneInstructions={setSceneInstructions}
+            sceneInstructions={sceneInstructions}
+            updateScene={updateScene}
+            sceneLoadingId={sceneLoadingId}
+            branchingSceneId={branchingSceneId}
+            branchInstructions={branchInstructions}
+            setBranchInstructions={setBranchInstructions}
+            handleBranchFromScene={handleBranchFromScene}
+            branchLoadingId={branchLoadingId}
+            continuePrompt={continuePrompt}
+            setContinuePrompt={setContinuePrompt}
+            handleContinueStory={handleContinueStory}
+            isContinuing={isContinuing}
+          />
         )}
       </div>
         </div>
@@ -38680,280 +32047,16 @@ const generateSceneImage = async (
 </div>
         </main>
 
-        {voiceLibraryTarget && (
-          <div
-            className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-5"
-            role="dialog"
-            aria-modal="true"
-            aria-label={uiLanguage === "en" ? "Voice library" : "Ses kütüphanesi"}
-          >
-            <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl sm:rounded-[28px]">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-                <div>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-700">
-                    {getVoiceLibraryTargetLabel()}
-                  </span>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    {uiLanguage === "en" ? "Choose a voice in Velto Studio" : "Velto Studio içinde ses seç"}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    {uiLanguage === "en"
-                      ? "Search, filter and preview ElevenLabs voices without copying a voice ID. Preview playback does not start generation."
-                      : "Voice ID kopyalamadan ElevenLabs seslerini ara, filtrele ve önizle. Önizleme üretimi başlatmaz."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeCreatorVoiceLibrary}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-lg text-slate-600 hover:bg-slate-50"
-                  aria-label={uiLanguage === "en" ? "Close voice library" : "Ses kütüphanesini kapat"}
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    ["available", uiLanguage === "en" ? "My & default voices" : "Seslerim ve varsayılanlar"],
-                    ["shared", uiLanguage === "en" ? "Explore library" : "Kütüphaneyi keşfet"],
-                    ["favorites", uiLanguage === "en" ? "Favorites" : "Favoriler"],
-                    ["recent", uiLanguage === "en" ? "Recent" : "Son kullanılanlar"],
-                  ] as Array<[CreatorVoiceLibraryTab, string]>).map(([tab, label]) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => {
-                        setVoiceLibraryTab(tab);
-                        setVoiceLibraryError("");
-                        if (tab === "available" || tab === "shared") {
-                          setVoiceLibraryVoices([]);
-                          setVoiceLibraryHasMore(false);
-                          setVoiceLibraryNextPageToken("");
-                          void loadCreatorVoiceLibrary(tab);
-                        }
-                      }}
-                      className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                        voiceLibraryTab === tab
-                          ? "border-violet-600 bg-violet-600 text-white"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
-                  <input
-                    value={voiceLibrarySearch}
-                    onChange={(event) => setVoiceLibrarySearch(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && (voiceLibraryTab === "available" || voiceLibraryTab === "shared")) {
-                        void loadCreatorVoiceLibrary(voiceLibraryTab);
-                      }
-                    }}
-                    placeholder={uiLanguage === "en" ? "Search name or style" : "Ad veya stil ara"}
-                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-950 sm:col-span-2"
-                  />
-                  <select
-                    value={voiceLibraryLanguage}
-                    onChange={(event) => setVoiceLibraryLanguage(event.target.value)}
-                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
-                  >
-                    <option value="">{uiLanguage === "en" ? "All languages" : "Tüm diller"}</option>
-                    <option value="tr">Türkçe</option>
-                    <option value="en">English</option>
-                    <option value="de">Deutsch</option>
-                    <option value="es">Español</option>
-                    <option value="fr">Français</option>
-                    <option value="it">Italiano</option>
-                  </select>
-                  <select
-                    value={voiceLibraryGender}
-                    onChange={(event) => setVoiceLibraryGender(event.target.value)}
-                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
-                  >
-                    <option value="">{uiLanguage === "en" ? "All genders" : "Tüm cinsiyetler"}</option>
-                    <option value="female">{uiLanguage === "en" ? "Female" : "Kadın"}</option>
-                    <option value="male">{uiLanguage === "en" ? "Male" : "Erkek"}</option>
-                    <option value="neutral">{uiLanguage === "en" ? "Neutral" : "Nötr"}</option>
-                  </select>
-                  <select
-                    value={voiceLibraryAge}
-                    onChange={(event) => setVoiceLibraryAge(event.target.value)}
-                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
-                  >
-                    <option value="">{uiLanguage === "en" ? "All ages" : "Tüm yaşlar"}</option>
-                    <option value="young">{uiLanguage === "en" ? "Young" : "Genç"}</option>
-                    <option value="middle">{uiLanguage === "en" ? "Middle aged" : "Orta yaş"}</option>
-                    <option value="old">{uiLanguage === "en" ? "Mature" : "Olgun"}</option>
-                  </select>
-                  <input
-                    value={voiceLibraryAccent}
-                    onChange={(event) => setVoiceLibraryAccent(event.target.value)}
-                    placeholder={uiLanguage === "en" ? "Accent" : "Aksan"}
-                    className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-950"
-                  />
-                  <select
-                    value={voiceLibraryUseCase}
-                    onChange={(event) => setVoiceLibraryUseCase(event.target.value)}
-                    className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
-                  >
-                    <option value="">{uiLanguage === "en" ? "All styles" : "Tüm stiller"}</option>
-                    <option value="narration">{uiLanguage === "en" ? "Narration" : "Anlatım"}</option>
-                    <option value="conversational">{uiLanguage === "en" ? "Conversational" : "Sohbet"}</option>
-                    <option value="characters">{uiLanguage === "en" ? "Characters" : "Karakter"}</option>
-                    <option value="advertisement">{uiLanguage === "en" ? "Commercial" : "Reklam"}</option>
-                    <option value="educational">{uiLanguage === "en" ? "Educational" : "Eğitim"}</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (voiceLibraryTab === "available" || voiceLibraryTab === "shared") {
-                        void loadCreatorVoiceLibrary(voiceLibraryTab);
-                      }
-                    }}
-                    className="min-h-11 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-50"
-                    disabled={voiceLibraryLoading || voiceLibraryTab === "favorites" || voiceLibraryTab === "recent"}
-                  >
-                    {voiceLibraryLoading
-                      ? uiLanguage === "en" ? "Loading..." : "Yükleniyor..."
-                      : uiLanguage === "en" ? "Apply filters" : "Filtreleri uygula"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="overflow-y-auto px-5 py-5 sm:px-6">
-                {getVoiceLibraryTargetSelection() && (
-                  <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-                        {uiLanguage === "en" ? "Current selection" : "Mevcut seçim"}
-                      </span>
-                      <strong className="mt-1 block text-sm text-emerald-950">
-                        {getVoiceLibraryTargetSelection()?.name}
-                      </strong>
-                      <p className="mt-1 text-xs text-emerald-800">
-                        {getVoiceLibraryDisplayMeta(getVoiceLibraryTargetSelection())}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={clearCreatorVoiceLibrarySelection}
-                      className="min-h-10 rounded-xl border border-emerald-300 bg-white px-4 text-xs font-semibold text-emerald-800"
-                    >
-                      {uiLanguage === "en" ? "Use inherited default" : "Devralınan varsayılanı kullan"}
-                    </button>
-                  </div>
-                )}
-
-                {voiceLibraryError && (
-                  <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-                    {voiceLibraryError}
-                  </div>
-                )}
-
-                {voiceLibraryLoading && getVoiceLibraryDisplayedVoices().length === 0 ? (
-                  <div className="grid min-h-56 place-items-center text-sm text-slate-500">
-                    {uiLanguage === "en" ? "Loading voices..." : "Sesler yükleniyor..."}
-                  </div>
-                ) : getVoiceLibraryDisplayedVoices().length === 0 ? (
-                  <div className="grid min-h-56 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                    <div>
-                      <strong className="text-sm text-slate-800">
-                        {uiLanguage === "en" ? "No matching voices" : "Eşleşen ses bulunamadı"}
-                      </strong>
-                      <p className="mt-2 text-xs leading-5 text-slate-500">
-                        {uiLanguage === "en"
-                          ? "Try fewer filters or explore the shared voice library."
-                          : "Daha az filtre kullan veya paylaşılan ses kütüphanesini keşfet."}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {getVoiceLibraryDisplayedVoices().map((voice) => {
-                      const isFavorite = voiceLibraryFavorites.some((item) => item.voiceId === voice.voiceId);
-                      return (
-                        <article key={`${voice.source}-${voice.voiceId}`} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <strong className="block truncate text-sm text-slate-950">{voice.name}</strong>
-                              <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">
-                                {voice.description || voice.descriptive ||
-                                  (uiLanguage === "en" ? "ElevenLabs voice" : "ElevenLabs sesi")}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleCreatorVoiceFavorite(voice)}
-                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border text-base ${
-                                isFavorite
-                                  ? "border-amber-300 bg-amber-50 text-amber-600"
-                                  : "border-slate-200 bg-white text-slate-400"
-                              }`}
-                              aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
-                            >
-                              {isFavorite ? "★" : "☆"}
-                            </button>
-                          </div>
-
-                          <div className="mt-3 flex min-h-12 flex-wrap content-start gap-1.5">
-                            {[voice.language || voice.locale, voice.accent, voice.gender, voice.age, voice.useCase]
-                              .filter(Boolean)
-                              .slice(0, 5)
-                              .map((item) => (
-                                <span key={`${voice.voiceId}-${item}`} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
-                                  {item}
-                                </span>
-                              ))}
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => previewCreatorVoice(voice)}
-                              disabled={!voice.previewUrl}
-                              className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
-                            >
-                              {voiceLibraryPlayingId === voice.voiceId
-                                ? uiLanguage === "en" ? "Stop preview" : "Önizlemeyi durdur"
-                                : uiLanguage === "en" ? "Preview" : "Önizle"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void applyCreatorVoiceLibrarySelection(voice)}
-                              disabled={Boolean(voiceLibraryApplyingId)}
-                              className="min-h-10 rounded-xl bg-violet-600 px-3 text-xs font-semibold text-white disabled:opacity-50"
-                            >
-                              {voiceLibraryApplyingId === voice.voiceId
-                                ? uiLanguage === "en" ? "Selecting..." : "Seçiliyor..."
-                                : uiLanguage === "en" ? "Use voice" : "Sesi kullan"}
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {voiceLibraryHasMore && (voiceLibraryTab === "available" || voiceLibraryTab === "shared") && (
-                  <button
-                    type="button"
-                    onClick={() => void loadCreatorVoiceLibrary(voiceLibraryTab, true, voiceLibraryNextPageToken)}
-                    disabled={voiceLibraryLoading}
-                    className="mx-auto mt-5 block min-h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 disabled:opacity-50"
-                  >
-                    {voiceLibraryLoading
-                      ? uiLanguage === "en" ? "Loading..." : "Yükleniyor..."
-                      : uiLanguage === "en" ? "Load more voices" : "Daha fazla ses yükle"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <CreatorVoiceLibrarySession
+          ref={voiceLibrarySessionRef}
+          language={language}
+          uiLanguage={uiLanguage}
+          readCatalog={readCreatorVoiceCatalog}
+          getSelection={getVoiceLibraryTargetSelection}
+          onApply={applyCreatorVoiceLibrarySelection}
+          onClear={clearCreatorVoiceLibrarySelection}
+          onDismiss={dismissCreatorVoiceLibrary}
+        />
       </ActiveProductShell>
     </WorldProvider>
   );

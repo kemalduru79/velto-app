@@ -1,6 +1,8 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 const editor = read("components/create/CreatorEditor.tsx");
@@ -19,24 +21,24 @@ check(/videoGenerationSignature: asset\.generationSignature/.test(page), "select
 check(/getCreatorVideoState\(scene\)/.test(page) && /videoCurrent: getCreatorVideoState/.test(page), "stale selected video remains blocked");
 const restoreBlock = page.slice(page.indexOf("const restoreCreatorSceneAsset"), page.indexOf("const acquireAutomaticStockForScene"));
 check(!/credit|reserve|fetch\(/i.test(restoreBlock), "selection uses no credits or provider call");
-check(/!creatorProductionComplete/.test(page) && /Continue · Build Final Video/.test(page), "no final output exposes Build Final Video");
-check(/creatorHasFinalVideo[\s\S]*data-edit-current-final-video="true"/.test(page), "final output exposes Edit Video");
-check(/data-rebuild-final-video="true"/.test(page), "final output exposes Rebuild Final Video");
-check(/creatorHasFinalVideo && \(/.test(page), "completed output does not hide production actions");
+check(/!creatorProductionComplete/.test(production) && /Continue · Build Final Video/.test(page), "no final output exposes Build Final Video");
+check(/creatorHasFinalVideo[\s\S]*data-edit-current-final-video="true"/.test(production), "final output exposes Edit Video");
+check(/data-rebuild-final-video="true"/.test(production), "final output exposes Rebuild Final Video");
+check(/creatorHasFinalVideo && \(/.test(production), "completed output does not hide production actions");
 check(!/\btext:|\bnarration:|\bdialogue:/.test(finalSignature), "non-render script text is excluded from final signature");
 check(/creatorSceneId: scene\.creatorSceneId/.test(finalSignature), "ordered stable scene identities affect signature");
 check(/selectedMedia: canonicalCreatorMediaIdentity/.test(finalSignature), "selected media affects signature");
 check(/clipInSec: Number/.test(finalSignature) && /clipOutSec: Number/.test(finalSignature), "trim affects signature");
 check(/backgroundMusic: renderMusicConfig/.test(finalSignature), "music affects signature");
 check(/exportSignature === currentSignature/.test(page), "unchanged project keeps final output current");
-check(/<video src=\{exportMovieResult\?\.downloadUrl \|\| exportedMovieUrl\}/.test(page), "stale final output remains playable");
+check(/<video src=\{exportMovieResult\?\.downloadUrl \|\| exportedMovieUrl\}/.test(production), "stale final output remains playable");
 const rebuildStart = page.slice(page.indexOf("setIsExportingMovie(true)"), page.indexOf("try {", page.indexOf("setIsExportingMovie(true)")));
 check(!/setExportedMovieUrl\(""\)|setExportMovieResult\(null\)|setExportSignature\(""\)/.test(rebuildStart), "rebuild preserves old output before success");
 check(/catch \(e: any\)[\s\S]*setError/.test(page), "rebuild failure preserves old output");
 check(/setExportedMovieUrl\(nextExportResult\.movieUrl\)[\s\S]*setExportSignature\(authoritativeExportSignature\)/.test(page), "rebuild success replaces output with server-authoritative provenance");
 check(!/onRestoreMedia[\s\S]{0,500}handleExportMovie/.test(editor), "editing never auto rebuilds");
 check(/getOperationCreditCost\("creator_export"/.test(page) && /requestCreatorCostGuardConfirmation/.test(page), "creator_export Cost Guard remains authoritative");
-check(/disabled=\{isExportingMovie \|\| creatorMusicConfirmationRequired\}/.test(page), "double rebuild is blocked while running");
+check(/disabled=\{isExportingMovie \|\| creatorMusicConfirmationRequired\}/.test(production), "double rebuild is blocked while running");
 check(/exportedMovieUrl: isCreatorLabFlow[\s\S]*candidateFinalVideoUrl/.test(page) && /exportSignature: isCreatorLabFlow[\s\S]*candidateFinalVideoSignature/.test(page), "refresh preserves current or outdated output state");
 check(/isCreatorLabFlow/.test(page) && /isStoryverseFlow/.test(page), "Storyverse remains separately gated");
 
@@ -48,7 +50,7 @@ check(/setScenes\(\(prev\)[\s\S]*renderMode/.test(renderModeHandler), "media tog
 check(/invalidateFinalVideoForProductionChange/.test(renderModeHandler), "media toggle recalculates signature-derived final readiness");
 check(/creatorFinalVideoNeedsRebuild = creatorHasFinalVideo && !creatorProductionComplete/.test(page), "toggle can mark an existing Final Video outdated");
 check(/if \(isCreatorLabFlow\) return;/.test(page), "CreatorLab preserves the old Final Video during toggle");
-check(/data-rebuild-final-video="true"/.test(page), "Rebuild Final Video remains available");
+check(/data-rebuild-final-video="true"/.test(production), "Rebuild Final Video remains available");
 check(/if \(creatorProgressStep < previousProgressStep\)[\s\S]*Math\.min\(creatorNavigationRef\.current\.workspaceStep, creatorProgressStep\)/.test(page), "automatic workflow correction only moves backward and never jumps to Publish");
 check(!/setCreatorSelectedWorkspaceStep\(creatorProgressStep\)/.test(page), "passive readiness cannot navigate to Publish");
 check(/const navigateCreatorWorkspaceStep[\s\S]*setCreatorSelectedWorkspaceStep\(step\)/.test(page), "explicit workspace navigation still reaches Publish");

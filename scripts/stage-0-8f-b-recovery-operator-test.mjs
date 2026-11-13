@@ -45,7 +45,7 @@ for (const marker of [
   "disabled by default", "application rollback never implies database rollback", "Fail closed; do not guess",
 ]) assert.ok(runbook.includes(marker), `runbook missing: ${marker}`);
 
-assert.equal(hash("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe");
+assert.equal(hash("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52");
 assert.equal(hash("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9");
 assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
   "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",

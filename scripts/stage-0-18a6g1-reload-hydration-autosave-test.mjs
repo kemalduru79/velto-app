@@ -138,10 +138,22 @@ assert.ok(
   saveResponseBlock.indexOf("readCreatorProjectSaveResponse(res)") < saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
   "HTTP failure must be handled before active-binding discard",
 );
-assert.ok(
-  saveResponseBlock.indexOf("resolveCreatorProjectRevisionAdvance") <
-    saveResponseBlock.indexOf("isCreatorProjectSaveBindingActive"),
-  "successful save revision must advance before an inactive binding can discard UI effects",
+const activeBindingStart = saveResponseBlock.indexOf("if (!isCreatorProjectSaveBindingActive(requestBinding,");
+const revisionAdvanceStart = saveResponseBlock.indexOf("resolveCreatorProjectRevisionAdvance");
+const revisionWriteStart = saveResponseBlock.indexOf("projectUpdatedAtRef.current = advancedRevision");
+const identityWriteStart = saveResponseBlock.indexOf("setCurrentProjectId(data.project.id)");
+assert.ok(activeBindingStart >= 0 && activeBindingStart < revisionAdvanceStart,
+  "active project and generation must be checked BEFORE revision adoption");
+assert.match(
+  saveResponseBlock.slice(activeBindingStart, revisionAdvanceStart),
+  /projectId: currentProjectIdRef\.current,[\s\S]*generation: projectGenerationRef\.current,[\s\S]*\}\)\) return;/,
+  "inactive project/generation must return before any CAS adoption",
 );
+assert.ok(revisionAdvanceStart < revisionWriteStart && revisionWriteStart < identityWriteStart,
+  "valid current-project responses must still advance CAS and preserve identity installation ordering");
+
+// Preserve the existing hydration/currentness assertions above, and exercise
+// real parent response/refinement bodies, including both stale and valid cases.
+await import("./creator-stale-origin-safety-test.mjs");
 
 console.log("Stage 0.18A6G.1 reload hydration/autosave regression passed.");

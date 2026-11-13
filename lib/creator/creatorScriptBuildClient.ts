@@ -1,3 +1,4 @@
+import type {CreatorBuildEditorialReview,CreatorEditorialReviewDecision} from "./creatorScriptBuildEditorialReview";
 export const CREATOR_SCRIPT_BUILD_CLIENT_VERSION = "0.19E5B" as const;
 export const CREATOR_SCRIPT_BUILD_MAX_ADVANCES = 12;
 
@@ -43,6 +44,7 @@ export type CreatorScriptBuildClientProjection = Readonly<{
   disposition: string | null;
   failure: CreatorScriptBuildClientFailure | null;
   creatorScript?: unknown;
+  editorialReview?: CreatorBuildEditorialReview;
   persistence?: Readonly<{
     installedProjectRevision: string;
   }>;
@@ -115,6 +117,7 @@ function normalizeProjection(
     terminal: raw.terminal,
     disposition: text(raw.disposition, 120) || null,
     failure: normalizeFailure(raw.failure),
+    ...(raw.editorialReview ? {editorialReview:raw.editorialReview as CreatorBuildEditorialReview} : {}),
     ...(Object.hasOwn(raw, "creatorScript")
       ? { creatorScript: raw.creatorScript }
       : {}),
@@ -189,11 +192,14 @@ async function startWithOneTransportRetry(input: {
   accessToken: string;
   projectId: string;
   expectedProjectUpdatedAt: string;
+  strategyFingerprint?: string;
+  draftOnly?: boolean;
 }) {
   const body = {
     action: "start",
     projectId: input.projectId,
     expectedProjectUpdatedAt: input.expectedProjectUpdatedAt,
+    ...(input.draftOnly ? {draftOnly:true,strategyFingerprint:input.strategyFingerprint} : {}),
   };
   try {
     return await requestJson({
@@ -234,10 +240,14 @@ async function advanceWithTransportReconciliation(input: {
   fetchImpl: FetchLike;
   accessToken: string;
   buildId: string;
+  editorialReviewDecision?: CreatorEditorialReviewDecision;
+  draftOnly?: boolean;
 }) {
   const body = {
     action: "advance",
     buildId: input.buildId,
+    ...(input.editorialReviewDecision ? {editorialReviewDecision:input.editorialReviewDecision} : {}),
+    ...(input.draftOnly ? {draftOnly:true} : {}),
   };
   try {
     return await requestJson({
@@ -361,8 +371,12 @@ export async function runCreatorScriptBuildV2(input: {
   accessToken: string;
   projectId: string;
   expectedProjectUpdatedAt: string;
+  strategyFingerprint?: string;
   fetchImpl?: FetchLike;
   maxAdvances?: number;
+  onEditorialReview?: (review:CreatorBuildEditorialReview)=>Promise<CreatorEditorialReviewDecision|null>;
+  operationIsCurrent?: ()=>boolean;
+  draftOnly?: boolean;
   onProgress?: (projection: CreatorScriptBuildClientProjection) => void;
 }) {
   const accessToken = text(input.accessToken, 8_000);
@@ -387,16 +401,30 @@ export async function runCreatorScriptBuildV2(input: {
     accessToken,
     projectId,
     expectedProjectUpdatedAt,
+    strategyFingerprint:input.strategyFingerprint,
+    draftOnly:input.draftOnly,
   });
+  if(input.draftOnly && current.state==="PERSISTED")throw new CreatorScriptBuildClientError({code:"CREATOR_EDITORIAL_DRAFT_ALREADY_INSTALLED",status:409});
   input.onProgress?.(current);
   if (current.terminal) return current;
 
   const buildId = current.buildId;
+  let editorialReviewDecision:CreatorEditorialReviewDecision|undefined;
   for (let attempt = 0; attempt < maxAdvances; attempt += 1) {
+    if(input.operationIsCurrent && !input.operationIsCurrent())throw new CreatorScriptBuildClientError({code:"PROJECT_STALE",status:409});
+    if(current.editorialReview && !editorialReviewDecision){
+      if(!input.onEditorialReview)throw new CreatorScriptBuildClientError({code:"CREATOR_EDITORIAL_REVIEW_REQUIRED",status:422});
+      const decision=await input.onEditorialReview(current.editorialReview);
+      if(!decision)throw new CreatorScriptBuildClientError({code:"CREATOR_EDITORIAL_REVIEW_STOPPED",status:422});
+      if(input.operationIsCurrent && !input.operationIsCurrent())throw new CreatorScriptBuildClientError({code:"PROJECT_STALE",status:409});
+      editorialReviewDecision=decision;
+    }
     current = await advanceWithTransportReconciliation({
       fetchImpl,
       accessToken,
       buildId,
+      editorialReviewDecision,
+      draftOnly:input.draftOnly,
     });
     input.onProgress?.(current);
     if (current.terminal) return current;

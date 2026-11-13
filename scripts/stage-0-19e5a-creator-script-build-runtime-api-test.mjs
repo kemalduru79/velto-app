@@ -1,3 +1,5 @@
+import {createIntegratedFixture} from "./fixtures/creator-integrated-workflow.mjs";
+import {reviewForBuild} from "../lib/creator/creatorScriptBuildEditorialReview.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
@@ -159,6 +161,15 @@ function snapshot() {
   });
 }
 
+// Runtime review is now mandatory. Empty authority checkpoints are corruption,
+// not a valid fixture for advancing generation or persistence.
+function reviewAuthority(){
+ const source={sourceId:"memory-source",adapterId:"web",mediaKind:"document",externalId:null,title:"Synthetic memory register",url:"https://fixture.example/memory",publisher:"Synthetic Fixture Office",author:null,publishedAt:"2026-01-01",language:"en",summary:"Memory is reconstructed in this synthetic fixture.",thumbnailUrl:null,durationSec:null,metrics:{},sourceMetadata:{}};
+ const graph={version:"0.10H-1B",sources:[source],claims:[{claimId:"memory-claim",claimType:"FACT",text:source.summary,propositionKind:"world_state",origin:{attributedEntity:null,referencedWork:null}}],evidence:[{evidenceId:"memory-evidence",sourceId:source.sourceId,excerpt:source.summary,contextNote:null,locator:{section:"Synthetic register",page:null,timecodeStartSec:null,timecodeEndSec:null}}],links:[{claimId:"memory-claim",evidenceId:"memory-evidence",stance:"supports"}]};
+ return {stage:"authority",status:"COMPLETED",outputReference:{version:"0.19E2B-authority-checkpoint-output-v1",result:{version:"0.19E2B-authority-result-v1",graph,sourceAssessments:[{sourceId:source.sourceId,directness:"secondary",reviewStatus:"usable",provenanceStatus:"complete",reviewReasons:[]}],permittedClaimIds:["memory-claim"],excludedPrimaryClaimIds:[],unresolvedClaimIds:[]}}};
+}
+function reviewed(build){const view=reviewForBuild(build);return {reviewId:view.reviewId,confirmed:true,excludedClaimIds:[],rationale:"Explicit synthetic runtime routing fixture review.",storyStructure:null};}
+
 function build(state = "REQUESTED") {
   const value = snapshot();
   return {
@@ -168,7 +179,7 @@ function build(state = "REQUESTED") {
     idempotencyKey: createCreatorScriptBuildIdempotencyKey({ ownerId, snapshot: value }),
     state,
     snapshot: value,
-    checkpoints: {},
+    checkpoints: ["EDITORIAL_COMPILED","AUTHORITY_RESOLVED","SCRIPT_GENERATED","REPAIRING","ACCEPTED"].includes(state)?{authority:reviewAuthority()}:{},
     failure: state === "FAILED"
       ? {
           category: "SCRIPT_POLICY",
@@ -321,18 +332,27 @@ for (const scenario of [
       persistence: runner("persistence", "FAILED"),
     },
   });
-  await runtime.advance({ ownerId, buildId: builds.build.buildId });
-  assert.deepEqual(calls, [expected], `${state} routes only to ${expected}`);
+  const advance=()=>runtime.advance({ ownerId, buildId: builds.build.buildId,...(["AUTHORITY_RESOLVED","ACCEPTED"].includes(state)?{editorialReviewDecision:reviewed(builds.build)}:{}) });
+  if(state==="ACCEPTED"){
+    await assert.rejects(advance,/AUTHORITY_INVALID|CHECKPOINT_OUTPUT_INVALID/);
+    assert.deepEqual(calls,[],"missing accepted authority must not reach persistence");
+  }else{
+    await advance();assert.deepEqual(calls,[expected],`${state} routes only to ${expected}`);
+  }
   assert.equal(providers.calls.count, 0);
 }
 
 for (const state of ["SCRIPT_GENERATED", "REPAIRING"]) {
-  const builds = new BuildRepository(build(state));
+  const fixture=await createIntegratedFixture();
+  await fixture.runtime.advance({ownerId,buildId:fixture.repository.build.buildId});
+  const paused=await fixture.runtime.advance({ownerId,buildId:fixture.repository.build.buildId});
+  await fixture.runtime.advance({ownerId,buildId:fixture.repository.build.buildId,editorialReviewDecision:{reviewId:paused.editorialReview.reviewId,confirmed:true,excludedClaimIds:[],rationale:"Explicit synthetic routing fixture review.",storyStructure:null}});
+  const builds = new BuildRepository({...fixture.repository.build,state});
   const calls = [];
   const providers = zeroProviders();
   const runtime = createCreatorScriptBuildRuntime({
     buildRepository: builds,
-    projectRepository: new ProjectRepository(),
+    projectRepository: {getForOwner:async()=>clone(fixture.project)},
     providers: providers.value,
     runners: {
       repair: async () => {
@@ -345,7 +365,7 @@ for (const state of ["SCRIPT_GENERATED", "REPAIRING"]) {
       },
     },
   });
-  const result = await runtime.advance({ ownerId, buildId: builds.build.buildId });
+  const result = await runtime.advance({ ownerId, buildId: builds.build.buildId,editorialReviewDecision:builds.build.checkpoints.script_generation.outputReference.result.editorialReviewDecision });
   assert.deepEqual(calls, ["repair", "acceptance"]);
   assert.equal(result.state, "ACCEPTED");
   assert.equal(providers.calls.count, 0);

@@ -582,6 +582,8 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
           evidenceIds: [...activeSectionEvidenceAuthority.evidenceIds],
         }
       : routedAuthority;
+    const {editorialReviewDecision: _reviewDecision, ...providerInput}=input.value;
+    void _reviewDecision;
     const generationAuthority = scienceDocumentary
       ? (() => {
           const {
@@ -589,13 +591,13 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
             sectionClaimRouting: _sectionClaimRouting,
             sectionEvidenceAuthorities: _sectionEvidenceAuthorities,
             ...boundedAuthority
-          } = input.value;
+          } = providerInput;
           return {
             ...boundedAuthority,
             permittedClaimIds: activeSectionEvidenceAuthority?.claimIds || [],
           };
         })()
-      : input.value;
+      : providerInput;
     const completedSections = sections.map((section, completedIndex) => ({
       id: input.value.sectionPlan[completedIndex]!.id,
       kind: input.value.sectionPlan[completedIndex]!.kind,
@@ -609,7 +611,7 @@ export async function executeCreatorScriptBuildScriptGenerationProvider(input: {
       operationType: "creator_script_build_script_generation",
       logicalOperationId:
         `${baseIdentity}:section:${index + 1}:${activeSection.id}`,
-      system: SECTION_NATIVE_GENERATION_SYSTEM,
+      system: SECTION_NATIVE_GENERATION_SYSTEM + (input.value.editorialReviewDecision?.storyStructure ? " This is an explicitly fictional geopolitical story in 2055–2075. Develop political choices, alliances, consequences and human suffering as fiction, not predictions or inevitable history. Preserve all documented facts as dated source-scoped starting conditions. Never present fictional war, nuclear destruction or casualties as desirable. Finish with the creator-supplied closing question. No new scientific or factual authority may be invented." : ""),
       user: {
         generationAuthority,
         activeSection,

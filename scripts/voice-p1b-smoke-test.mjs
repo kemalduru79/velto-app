@@ -11,18 +11,23 @@ const assert = (condition, message) => {
 };
 
 const page = read("app/create/page.tsx");
+const session = read("components/create/CreatorVoiceLibrarySession.tsx");
+const production = read("components/create/CreatorProductionPanel.tsx");
+// Independently verified mounted boundaries, not concatenated/dead source.
+assert(page.includes('<CreatorVoiceLibrarySession') && page.includes('onApply={applyCreatorVoiceLibrarySelection}'), "parent voice command binding is missing");
+assert(page.includes('<CreatorProductionPanel') && page.includes('openCreatorVoiceLibrary={openCreatorVoiceLibrary}'), "production voice-open binding is missing");
 const route = read("app/api/voice-library/route.ts");
 const adapter = read("lib/providers/voice/elevenLabsVoiceAdapter.ts");
 const types = read("lib/providers/voice/types.ts");
 const dialogue = read("app/api/store-dialogue-audio/route.ts");
 const library = read("lib/creator/voiceLibrary.ts");
 
-assert(page.includes("VELTO_VOICE_P1B"), "page marker is missing");
-assert(page.includes("Browse narrator voices"), "project narrator browser is missing");
-assert(page.includes("Browse character voices"), "character voice browser is missing");
-assert(page.includes('openCreatorVoiceLibrary({ scope: "scene_narrator", sceneId: scene.id })'), "scene narrator override is missing");
-assert(page.includes("Explore library"), "shared voice library tab is missing");
-assert(page.includes("Preview playback does not start generation"), "preview generation disclosure is missing");
+assert(session.includes("VELTO_VOICE_P1B"), "page marker is missing");
+assert(production.includes("Browse narrator voices"), "project narrator browser is missing");
+assert(production.includes("Browse character voices"), "character voice browser is missing");
+assert(production.includes('openCreatorVoiceLibrary({ scope: "scene_narrator", sceneId: scene.id })'), "scene narrator override is missing");
+assert(session.includes("Explore library"), "shared voice library tab is missing");
+assert(session.includes("Preview playback does not start generation"), "preview generation disclosure is missing");
 assert(page.includes("voiceSelection: narratorSettings.voiceSelection"), "project voice selection persistence is missing");
 assert(page.includes("narratorVoiceSelection: normalizeVoiceLibrarySelection"), "scene voice hydration is missing");
 assert(page.includes("getEffectiveDialogueVoiceId(scene)"), "dialogue voice routing is missing");
@@ -35,6 +40,6 @@ assert(types.includes("listVoices"), "voice provider list contract is missing");
 assert(types.includes("addSharedVoice"), "voice provider add contract is missing");
 assert(dialogue.includes("explicitBodyVoiceId"), "explicit scene/project dialogue voice is not respected");
 assert(library.includes("CREATOR_VOICE_FAVORITES_STORAGE_KEY"), "favorites persistence is missing");
-assert(!page.includes("NEXT_PUBLIC_ELEVENLABS_API_KEY"), "provider API key leaked to the client");
+assert(!page.includes("NEXT_PUBLIC_ELEVENLABS_API_KEY") && !session.includes("NEXT_PUBLIC_ELEVENLABS_API_KEY"), "provider API key leaked to the client");
 
 console.log("VOICE-P1B smoke verification passed.");

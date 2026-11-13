@@ -68,18 +68,30 @@ type ResearchContext = {
   extractionMode: "ai" | "fallback";
 };
 
-type CandidateVideo = {
-  id: string;
-  title: string;
-  description: string;
-  channel: string;
-  publishedAt: string;
+// Mapped provider metadata remains unqualified until a consumer converts it.
+// Numeric conversions and the constructed URL retain their existing types.
+type RawCandidateVideo = {
+  id: unknown;
+  title: unknown;
+  description: unknown;
+  channel: unknown;
+  publishedAt: unknown;
   views: number;
   likes: number;
   durationSec: number;
-  thumbnail: string;
+  thumbnail: unknown;
   url: string;
 };
+
+// Search identifiers remain unknown until the existing filter/join operations.
+// This view grants neither a string guarantee nor source/evidence authority.
+type YoutubeSearchReadValue = Readonly<{ id?: unknown; videoId?: unknown }>;
+function hasYoutubeSearchReadValue(value: unknown): value is YoutubeSearchReadValue {
+  return value !== null && value !== undefined;
+}
+function readYoutubeSearchValue(value: unknown) {
+  return hasYoutubeSearchReadValue(value) ? value : undefined;
+}
 
 function asString(value: unknown, fallback = "") {
   const result = String(value || "").replace(/\s+/g, " ").trim();
@@ -279,7 +291,7 @@ async function createResearchContext({
   }
 }
 
-function scoreCandidate(video: CandidateVideo, context: ResearchContext) {
+function scoreCandidate(video: RawCandidateVideo, context: ResearchContext) {
   const haystack = normalizeText(
     `${video.title} ${video.description} ${video.channel}`,
   );
@@ -386,7 +398,7 @@ export async function POST(req: Request) {
     }
 
     const videoIds = (searchData.items || [])
-      .map((item: any) => item?.id?.videoId)
+      .map((item: unknown) => readYoutubeSearchValue(readYoutubeSearchValue(item)?.id)?.videoId)
       .filter(Boolean)
       .slice(0, 25);
 
@@ -421,7 +433,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const candidates: CandidateVideo[] = (videosData.items || []).map((video: any) => ({
+    const candidates: RawCandidateVideo[] = (videosData.items || []).map((video: any) => ({
       id: video.id,
       title: video?.snippet?.title || "",
       description: video?.snippet?.description || "",

@@ -1,6 +1,8 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const page = fs.readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 const layout = fs.readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
 const polish = fs.readFileSync(new URL("../app/creatorlab-ux-i-d.css", import.meta.url), "utf8");
@@ -40,7 +42,7 @@ for (const contract of [
   /Clear selection/,
   /data-scene-primary-action=/,
   /runCreatorRecommendedVisualGeneration/,
-]) assert.match(page, contract);
+]) assert.match(production, contract);
 assert.match(polish, /creatorlab-p2c-batch-toolbar-sticky/);
 assert.match(polish, /creatorlab-p2c-batch-action\.is-secondary/);
 
@@ -54,14 +56,14 @@ for (const contract of [
   /Split scene/,
   /sceneScriptFitFeedback/,
   /Opening alternatives/,
-]) assert.match(page, contract);
+]) assert.match(production, contract);
 assert.match(polish, /scene-production-navigator/);
 assert.match(polish, /\[id\$="-audio-panel"\]/);
 
 // Visual source methods and acquisition surfaces remain exactly available.
-const sceneSourceSelector = page.slice(
-  page.indexOf('data-creator-visual-source-selector="true"'),
-  page.indexOf('data-creator-visual-source-selector="true"') + 5200,
+const sceneSourceSelector = production.slice(
+  production.indexOf('data-creator-visual-source-selector="true"'),
+  production.indexOf('data-creator-visual-source-selector="true"') + 5200,
 );
 for (const method of ["recommended", "stock", "ai_image", "ai_video", "upload"]) {
   assert.match(sceneSourceSelector, new RegExp(`\\["${method}"`));
@@ -78,23 +80,23 @@ assert.match(
 
 // Production Intelligence stays accessible through its quiet recommendation and explanation surfaces.
 for (const contract of [/Velto recommends/, /Why this/, /Production brief/, /scene\.cameraDirection/, /scene\.emotion/, /scene\.motionHint/]) {
-  assert.match(page, contract);
+  assert.match(production, contract);
 }
 assert.match(polish, /\[role="tabpanel"\] aside/);
 
 // Project status and final output remain visible without taking over the editor.
-assert.match(page, /creatorlab-p2c-production-status/);
-assert.match(page, /data-creator-final-video-lifecycle=/);
+assert.match(production, /creatorlab-p2c-production-status/);
+assert.match(production, /data-creator-final-video-lifecycle=/);
 assert.match(polish, /data-creator-final-video-lifecycle[\s\S]*?var\(--cl-surface-muted\)/);
 
 // Carry-forward: customization remains the same disclosure, but no Optional status badge is rendered.
-const customizeStart = page.indexOf('id="creatorlab-production-customize"');
-const customizeSummaryEnd = page.indexOf("</summary>", customizeStart);
-const customizeSummary = page.slice(customizeStart, customizeSummaryEnd);
+const customizeStart = production.indexOf('id="creatorlab-production-customize"');
+const customizeSummaryEnd = production.indexOf("</summary>", customizeStart);
+const customizeSummary = production.slice(customizeStart, customizeSummaryEnd);
 assert.ok(customizeStart > -1 && customizeSummaryEnd > customizeStart);
 assert.match(customizeSummary, /Customize production/);
 assert.doesNotMatch(customizeSummary, /creatorlab-setup-customize-status|customizeStatus|Optional/);
-assert.match(page.slice(customizeSummaryEnd, customizeSummaryEnd + 1200), /creatorlab-setup-customize-body/);
+assert.match(production.slice(customizeSummaryEnd, customizeSummaryEnd + 1200), /creatorlab-setup-customize-body/);
 assert.match(
   page,
   /\[creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen\][\s\S]*?useState\(true\)/,
@@ -111,10 +113,10 @@ assert.doesNotMatch(
   /fetch\(|\/api\/|generate|research|saveCreator|setCreatorProductionPackage/i,
   "initial disclosure expansion causes no production, provider, research, generation or save action",
 );
-assert.match(page, /creatorlab-setup-recommendation/);
-assert.match(page, /Recommended setup/);
+assert.match(production, /creatorlab-setup-recommendation/);
+assert.match(production, /Recommended setup/);
 assert.ok(
-  page.indexOf("creatorlab-setup-recommendation") < customizeStart,
+  production.indexOf("creatorlab-setup-recommendation") < customizeStart,
   "Recommended Setup remains the first and dominant Production Setup surface",
 );
 

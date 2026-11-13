@@ -37,9 +37,19 @@ function clampScore(value: unknown) {
   return Math.max(0, Math.min(1, numeric));
 }
 
-function normalizeIdeas(topics: string[], sourceIdeas: any[]): BulkIdeaResult[] {
+// Untrusted idea fields stay optional/unknown until the existing validators
+// consume them; this property view does not certify a provider response.
+type BulkIdeaReadValue = Readonly<{
+  [Key in keyof BulkIdeaResult | "ideas" | "message"]?: unknown;
+}>;
+function hasBulkIdeaReadValue(value: unknown): value is BulkIdeaReadValue {
+  return value !== null && value !== undefined;
+}
+
+function normalizeIdeas(topics: string[], sourceIdeas: readonly unknown[]): BulkIdeaResult[] {
   return topics.map((topic: string, index: number) => {
-    const item = sourceIdeas[index] || {};
+    const value = sourceIdeas[index] || {};
+    const item = hasBulkIdeaReadValue(value) ? value : undefined;
 
     return {
       topic: safeString(item?.topic, topic),
@@ -150,7 +160,7 @@ ${JSON.stringify(topics, null, 2)}
     await recordOpenAITextEconomics({ route: "/api/bulk-ideas", operationType: "legacy_bulk_ideas", model: "gpt-4.1-mini", response: completion });
 
     const raw = completion.choices?.[0]?.message?.content || "{}";
-    let parsed: any = { ideas: [] };
+    let parsed: unknown = { ideas: [] };
 
     try {
       parsed = JSON.parse(raw);
@@ -159,20 +169,21 @@ ${JSON.stringify(topics, null, 2)}
       parsed = { ideas: [] };
     }
 
-    const sourceIdeas = Array.isArray(parsed?.ideas) ? parsed.ideas : [];
+    const decoded = hasBulkIdeaReadValue(parsed) ? parsed : undefined;
+    const sourceIdeas = Array.isArray(decoded?.ideas) ? decoded.ideas : [];
     const ideas = normalizeIdeas(topics, sourceIdeas);
 
     return NextResponse.json({
       ok: true,
       ideas,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("bulk-ideas error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Bulk idea generation failed.",
+        error: (hasBulkIdeaReadValue(error) ? error : undefined)?.message || "Bulk idea generation failed.",
       },
       { status: 500 }
     );

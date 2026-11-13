@@ -1,3 +1,5 @@
+import type { TimelineSceneInput, TimelineScenePlan, TimelineSyncPlan } from "@/lib/video/timelineSync";
+import type { AudioDurationMatch } from "@/lib/video/audioDurationMatching";
 import { NextResponse } from "next/server";
 import {
   authenticateRequest,
@@ -296,25 +298,45 @@ function videoExtension(contentType: string, url: string) {
   return "mp4";
 }
 
+// A finite, read-only view of caption inputs. Every field stays unknown;
+// this grants no canonical timing, source, media or persistence authority.
+type CaptionReadValue = Readonly<{
+  [Key in keyof Pick<TimelineSceneInput, "id" | "text" | "narration" | "dialogue">
+    | keyof Pick<TimelineScenePlan, "durationMatch" | "targetVisualSeconds">
+    | keyof Pick<TimelineSyncPlan, "scenes">
+    | keyof Pick<AudioDurationMatch, "targetDurationSec">
+    | "timing" | "targetSceneDuration" | "durationSec" | "plannedSceneDuration"
+    | "videoDurationSeconds" | "targetSceneDurationSec"]?: unknown;
+}>;
+function hasCaptionReadValue(value: unknown): value is CaptionReadValue {
+  return value !== null && value !== undefined;
+}
+function captionReadValue(value: unknown): CaptionReadValue | undefined {
+  return hasCaptionReadValue(value) ? value : undefined;
+}
+
 function getSceneDuration(
-  scene: Record<string, any>,
+  sceneValue: unknown,
   index: number,
-  productionPackage: Record<string, any>,
-  timelineSyncPlan: Record<string, any>,
+  productionPackageValue: unknown,
+  timelineSyncPlanValue: unknown,
 ) {
-  const timelineScene = Array.isArray(timelineSyncPlan?.scenes)
+  const scene = captionReadValue(sceneValue);
+  const productionPackage = captionReadValue(productionPackageValue);
+  const timelineSyncPlan = captionReadValue(timelineSyncPlanValue);
+  const timelineScene = captionReadValue(Array.isArray(timelineSyncPlan?.scenes)
     ? timelineSyncPlan.scenes.find(
-        (item: Record<string, any>) => Number(item?.id) === Number(scene?.id ?? index + 1),
+        (item: unknown) => Number(captionReadValue(item)?.id) === Number(scene?.id ?? index + 1),
       )
-    : null;
+    : null);
   // VELTO_VOICE_P1C: measured exact timing must win over the original
   // production budget so captions/package metadata match final render timing.
   const candidates = [
-    scene?.timing?.targetSceneDuration,
+    captionReadValue(scene?.timing)?.targetSceneDuration,
     scene?.durationSec,
-    timelineScene?.durationMatch?.targetDurationSec,
+    captionReadValue(timelineScene?.durationMatch)?.targetDurationSec,
     timelineScene?.targetVisualSeconds,
-    scene?.timing?.plannedSceneDuration,
+    captionReadValue(scene?.timing)?.plannedSceneDuration,
     scene?.videoDurationSeconds,
     productionPackage?.targetSceneDurationSec,
   ];
@@ -327,16 +349,17 @@ function getSceneDuration(
   return 5;
 }
 
-function getSceneCaptionText(scene: Record<string, any>) {
+function getSceneCaptionText(value: unknown) {
+  const scene = captionReadValue(value);
   return [safeString(scene?.narration), safeString(scene?.dialogue)]
     .filter(Boolean)
     .join("\n") || safeString(scene?.text);
 }
 
 function createCaptionCues(
-  scenes: Record<string, any>[],
-  productionPackage: Record<string, any>,
-  timelineSyncPlan: Record<string, any>,
+  scenes: readonly unknown[],
+  productionPackage: unknown,
+  timelineSyncPlan: unknown,
 ): CaptionCue[] {
   const cues: CaptionCue[] = [];
   let cursor = 0;
@@ -398,7 +421,7 @@ function createProductionSummary(input: {
   language: string;
   format: string;
   qualityMode: string;
-  scenes: Record<string, any>[];
+  scenes: readonly unknown[];
   cues: CaptionCue[];
   includedVideoFile: string;
   includedThumbnailFile: string;

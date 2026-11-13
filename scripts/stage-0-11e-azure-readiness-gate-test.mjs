@@ -1,3 +1,4 @@
+import { readWorkspaceChangePaths, unreviewedWorkspacePaths } from "./quality/p0-workspace-scope.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -39,7 +40,7 @@ const tracked = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().s
 assert.equal(tracked.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
 assert.equal((critical.match(/scripts\/stage-0-11e-azure-readiness-gate-test\.mjs/g) || []).length, 1);
 
-const changed = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean).map((line) => line.slice(3).split(" -> ").at(-1));
+const changed = readWorkspaceChangePaths();
 const allowed = new Set([
   "app/creatorlab-ux-i-d.css",
   "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
@@ -244,6 +245,6 @@ const allowed = new Set([
     ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
-assert.deepEqual(changed.filter((path) => !allowed.has(path) && path !== "docs/creatorlab/receipts/"), []);
+assert.deepEqual(unreviewedWorkspacePaths(changed, allowed), []);
 
 console.log("STAGE_0_11E_AZURE_READINESS_GATE=PASS");

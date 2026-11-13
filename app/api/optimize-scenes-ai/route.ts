@@ -1,3 +1,4 @@
+import type { TimelineSceneInput } from "@/lib/video/timelineSync";
 import OpenAI from "openai";
 import { recordOpenAITextEconomics } from "@/lib/economics";
 import { NextResponse } from "next/server";
@@ -52,8 +53,23 @@ function parseJson(text: string) {
   return JSON.parse(cleaned);
 }
 
+// Optional unknown fields preserve legacy property access without certifying
+// a scene, source identity, provider decision or persistence authority.
+type FallbackSceneReadValue = Readonly<{
+  [Key in keyof Pick<TimelineSceneInput,
+    "id" | "text" | "narration" | "dialogue" | "motionHint" | "cameraDirection" | "visualPrompt"
+  > | "emotion" | keyof SceneOptimizationItem | "message"]?: unknown;
+}>;
+function hasFallbackSceneReadValue(value: unknown): value is FallbackSceneReadValue {
+  return value !== null && value !== undefined;
+}
+
+function fallbackSceneReadValue(value: unknown): FallbackSceneReadValue | undefined {
+  return hasFallbackSceneReadValue(value) ? value : undefined;
+}
+
 function fallbackOptimizeScenes(
-  scenes: any[],
+  scenes: readonly unknown[],
   estimatedVideoCostUsd: number
 ): SceneOptimizationItem[] {
   const motionTerms = [
@@ -67,7 +83,8 @@ function fallbackOptimizeScenes(
     "fact", "question", "imagine", "narrator"
   ];
 
-  return scenes.map((scene, index) => {
+  return scenes.map((value, index) => {
+    const scene = hasFallbackSceneReadValue(value) ? value : undefined;
     const text = [
       scene?.text,
       scene?.narration,
@@ -128,7 +145,7 @@ export async function POST(req: Request) {
   try {
     const client = getOpenAIClient();
 
-    const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
+    const scenes: readonly unknown[] = Array.isArray(body?.scenes) ? body.scenes : [];
     const estimatedVideoCostUsd =
       typeof body?.estimatedVideoCostUsd === "number" && body.estimatedVideoCostUsd >= 0
         ? body.estimatedVideoCostUsd
@@ -142,16 +159,19 @@ export async function POST(req: Request) {
       });
     }
 
-    const compactScenes = scenes.slice(0, 60).map((scene: any, index: number) => ({
-      id: Number(scene?.id || index + 1),
-      text: safeString(scene?.text).slice(0, 600),
-      narration: safeString(scene?.narration).slice(0, 600),
-      dialogue: safeString(scene?.dialogue).slice(0, 400),
-      cameraDirection: safeString(scene?.cameraDirection).slice(0, 300),
-      emotion: safeString(scene?.emotion).slice(0, 120),
-      motionHint: safeString(scene?.motionHint).slice(0, 300),
-      visualPrompt: safeString(scene?.visualPrompt).slice(0, 500),
-    }));
+    const compactScenes = scenes.slice(0, 60).map((value: unknown, index: number) => {
+      const scene = fallbackSceneReadValue(value);
+      return {
+        id: Number(scene?.id || index + 1),
+        text: safeString(scene?.text).slice(0, 600),
+        narration: safeString(scene?.narration).slice(0, 600),
+        dialogue: safeString(scene?.dialogue).slice(0, 400),
+        cameraDirection: safeString(scene?.cameraDirection).slice(0, 300),
+        emotion: safeString(scene?.emotion).slice(0, 120),
+        motionHint: safeString(scene?.motionHint).slice(0, 300),
+        visualPrompt: safeString(scene?.visualPrompt).slice(0, 500),
+      };
+    });
 
     const prompt = `
 You are a production cost optimization director for an AI video generation product.
@@ -210,10 +230,10 @@ ${JSON.stringify(compactScenes, null, 2)}
 
     const raw = completion.choices?.[0]?.message?.content || "";
     const parsed = parseJson(raw);
-    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    const items: readonly unknown[] = Array.isArray(parsed?.items) ? parsed.items : [];
 
-    let result: SceneOptimizationItem[] = compactScenes.map((scene: any) => {
-      const match = items.find((item: any) => Number(item?.sceneId) === Number(scene.id));
+    let result: SceneOptimizationItem[] = compactScenes.map((scene) => {
+      const match = fallbackSceneReadValue(items.find((item) => Number(fallbackSceneReadValue(item)?.sceneId) === Number(scene.id)));
 
       const exportMode = normalizeMode(match?.exportMode);
       const confidence = normalizeConfidence(match?.confidence);
@@ -244,7 +264,7 @@ ${JSON.stringify(compactScenes, null, 2)}
       summary: buildSummary(result, estimatedVideoCostUsd),
       engine: "ai",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("optimize-scenes-ai error:", error);
 
     const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
@@ -259,7 +279,7 @@ ${JSON.stringify(compactScenes, null, 2)}
       result,
       summary: buildSummary(result, estimatedVideoCostUsd),
       engine: "fallback",
-      warning: error?.message || "AI optimizer failed; fallback optimizer used.",
+      warning: fallbackSceneReadValue(error)?.message || "AI optimizer failed; fallback optimizer used.",
     });
   }
 }

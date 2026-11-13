@@ -130,14 +130,15 @@ assert.deepEqual(
   {
     ...basePackage.dependencies,
     geist: "1.7.2",
+    next: "16.4.6",
   },
-  "only the reviewed Geist runtime dependency may extend the Stage 0.9 baseline",
+  "only reviewed Geist and patched Next.js runtime dependencies may extend the Stage 0.9 baseline",
 );
 
 assert.deepEqual(
   currentPackage.devDependencies,
-  basePackage.devDependencies,
-  "Stage 0.9 dev dependency baseline must remain unchanged",
+  { ...basePackage.devDependencies, "eslint-config-next": "16.4.6" },
+  "only the reviewed patched Next.js ESLint configuration may extend the Stage 0.9 dev dependency baseline",
 );
 
 assert.equal(
