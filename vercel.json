@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "codex/p0-sprint20-controlled-integration": false
+      "codex/p0-sprint20-controlled-integration": false,
+      "codex/issue50-controlled-integration-review-v1": false
     }
   }
 }
