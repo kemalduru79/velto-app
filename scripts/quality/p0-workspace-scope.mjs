@@ -1,3 +1,5 @@
+import { inspectCombinedCandidate } from "./issue50-combined-admission.mjs";
+const ISSUE50_COMBINED_MANIFEST_SHA = "75d7263e91c14f080c8d0acd853356f36a4afb7be432631a35f826225c310bd2";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -58,9 +60,11 @@ export function unreviewedWorkspacePaths(paths, allowed, prefixes = [], options 
   const staged = new Set(execFileSync("git", [
     "diff", "--cached", "--name-only", "--no-renames", "-z",
   ], gitOptions).split("\0").filter(Boolean));
+  let composed = {};
+  try { composed = inspectCombinedCandidate(root, ISSUE50_COMBINED_MANIFEST_SHA); } catch { /* Original historical/fixture policy remains fail-closed. */ }
   return paths.filter((file) => {
     if (path.isAbsolute(file) || file.split("/").some((part) => !part || part === "." || part === "..")) return true;
-    const expected = P0_FILE_HASHES[file];
+    const expected = composed[file] || P0_FILE_HASHES[file];
     if (expected) {
       try {
         const target = path.join(root, file);

@@ -1,3 +1,4 @@
+import { CREATOR_EDITORIAL_REVISION_CONTRACT } from "./creatorEditorialNarrativeReview.ts";
 import {
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
@@ -32,6 +33,7 @@ export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
 ] as const;
 
 export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
+  ...CREATOR_EDITORIAL_REVISION_CONTRACT,
   "Write as an intelligent, calm, precise, curious human documentary narrator: state substantive ideas directly instead of announcing, labeling, or explaining the paragraph's function.",
   "Treat established premises as known. Do not restate a thesis merely to transition, summarize prior sections, or give each section a self-contained introduction; each section must add new role-owned intellectual value.",
   "Let transitions emerge from unresolved logic. Never use meta transitions such as 'this brings us to', 'having established', 'we now turn to', 'the next question is', or 'this section examines'.",
@@ -181,8 +183,8 @@ export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSecti
                   owns.includes("uncertainty") ||
                   owns.includes("grounded_tension") ||
                   owns.includes("evidence_boundary")
-                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final unresolved question."
-                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's highest-order synthesis or final unresolved question.";
+                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or closing question early."
+                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's final synthesis or closing question early.";
     const control = {
       sectionId: section.id,
       kind: section.kind,

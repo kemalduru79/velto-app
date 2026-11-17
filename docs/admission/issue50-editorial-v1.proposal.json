@@ -1,0 +1,76 @@
+{
+  "schema": "velto-editorial-source-admission-proposal/v1",
+  "id": "ISSUE50-EDITORIAL-ADMISSION-V1",
+  "status": "PROPOSED_NOT_ADMITTED",
+  "version": 1,
+  "referenceBaseCommit": "bc30a72440cfbeaafa5c3aac283bdaa5efd70656",
+  "reviewedParentHead": "7e8c8e42d031489abb5848197459b1b01953abbe",
+  "originalPolicy": {
+    "path": "scripts/quality/p0-scope-admission.json",
+    "sha256": "938eb04b677476f903b493adc8d42e68e32513ff2d22de2cb48b3b001686cf73",
+    "pinCount": 104,
+    "modificationAllowed": false
+  },
+  "subjects": [
+    {
+      "path": "lib/creator/creatorScript.ts",
+      "baseSha256": "721acfaa73a3170992f8b798c9d4828f48d1e0e921a22c580acdf4e5d32ffd16",
+      "proposedSha256": "982c8c196855ac278bc22ac1118757fa9ebc6cb65f28e35fe73dcc868017e9c0",
+      "originalFrozenPin": "721acfaa73a3170992f8b798c9d4828f48d1e0e921a22c580acdf4e5d32ffd16"
+    },
+    {
+      "path": "lib/creator/creatorScriptEditorialRewriteProviders.server.ts",
+      "baseSha256": "c2facf736d6ff880b1268744f837e9eecc6fa60bf3f2439efa92b4653e471904",
+      "proposedSha256": "fe8e9b91c6b112e5112da5940ac8beb4a37919bd7875369a5503b919b9854e85",
+      "originalFrozenPin": "NOT_IN_ORIGINAL_104_PINS"
+    },
+    {
+      "path": "lib/creator/creatorEditorialNarrativeReview.ts",
+      "baseSha256": "ABSENT",
+      "proposedSha256": "4e53676673c80942853601565e358c86a6250c34f7594bfe3f080eaaf96f2d4d",
+      "originalFrozenPin": "NOT_IN_ORIGINAL_104_PINS"
+    },
+    {
+      "path": "scripts/post-script-duration-workflow-authority-test.mjs",
+      "baseSha256": "ee22cc9bd0420d62a66ad7186874f989956a1749e110fd1257547e8f8099fa9c",
+      "proposedSha256": "29548e3fc056ecfaa9712c2c08933a059edf881a5ac1916059b23cb4f7ea7dba",
+      "originalFrozenPin": "NOT_IN_ORIGINAL_104_PINS"
+    },
+    {
+      "path": "scripts/post-strategy-script-long-form-acceptance-test.mjs",
+      "baseSha256": "c1282d1725415ece8cbc7ab4c2bf1bf138a121326276563868ad09b0674f8781",
+      "proposedSha256": "05d4a16321262b7a6356296e370322f23c633f2a7ab522264edf2495c621336d",
+      "originalFrozenPin": "NOT_IN_ORIGINAL_104_PINS"
+    }
+  ],
+  "purpose": "Exact bounded editorial feature and relocated-owner test corrections; no scientific/runtime/security-gate exemptions.",
+  "admissionSemanticsProposed": [
+    "Separate version may admit only these exact hashes after named independent source review and explicit owner acceptance.",
+    "Original Sprint20 policy/all104 pins remain immutable historical authority; never replace original JSON/hash to imply old acceptance.",
+    "Unlisted files remain under original policy; no wildcard/prefix/dependency/CI/scientific exemption.",
+    "Further subject edit requires a new proposal version, never silent hash refresh.",
+    "Future activation needs separate review and positive/negative drift/staged-content tests; none installed here."
+  ],
+  "activation": {
+    "enabled": false,
+    "currentGateReadsThisProposal": false,
+    "effectivePolicy": "ORIGINAL_SPRINT20_FROZEN_POLICY",
+    "originalAdmissionExpected": "DENY_CHANGED_CREATOR_SCRIPT",
+    "sourceReview": "PENDING",
+    "ownerAcceptance": "PENDING",
+    "mechanismImplementation": "NOT_AUTHORIZED_BY_PROPOSAL",
+    "scientificOrG0AuthorityGranted": false
+  },
+  "requiredEvidence": [
+    "All8 programs/native candidate checks",
+    "Original frozen gate denial retained until separate acceptance",
+    "Exact patch/base/source lineage/no-new-call regression",
+    "Unchanged scientific pins/253cases/original policy"
+  ],
+  "explicitExclusions": [
+    "scientific qualification/enablement",
+    "provider spending or live-run authority",
+    "merge/deploy/beta",
+    "changing frozen scientific gates/pins"
+  ]
+}

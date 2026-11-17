@@ -13,6 +13,19 @@ export type CreatorScriptRefinementScope = "selection" | "opening" | "whole_scri
 // Intentionally disabled in the production creator path until real-provider reliability reaches the acceptance bar.
 export const CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED = false;
 
+// Disabled by default: this is source capability only, never release authorization.
+// Vercel Preview builds typically have NODE_ENV=production; both server-side
+// environment identity and an explicit private feature flag are required.
+export function isCreatorScriptFullRefinementPreviewEnabled(env: {
+  VERCEL_ENV?: string;
+  NODE_ENV?: string;
+  CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED?: string;
+}) {
+  return env.VERCEL_ENV === "preview" &&
+    env.NODE_ENV === "production" &&
+    env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED === "true";
+}
+
 export type CreatorScriptWholeRefinementSectionPlan = {
   id: string;
   kind: CreatorScript["sections"][number]["kind"];

@@ -1,0 +1,268 @@
+{
+  "id": "ISSUE50-RESEARCH-CORPUS-V2",
+  "version": 2,
+  "state": "PUBLIC_PUBLISHER_INTAKE_VERIFIED_OWNER_ACCEPTANCE_PENDING",
+  "topic": "When a digital memory starts answering back: comfort, reconstruction and consent",
+  "sources": [
+    {
+      "sourceId": "research-1",
+      "url": "https://arxiv.org/html/2603.01017v1",
+      "finalUrl": "https://arxiv.org/html/2603.01017v1",
+      "bytes": 152527,
+      "sha256": "b7ee088571613cfbfe472a3279af676ecfccab09369996af3e90544664010ae2",
+      "retrievedAt": "2026-11-15T12:01:49.136456+00:00",
+      "authentication": "System-CA verified HTTPS publisher origin; not signed publisher attestation",
+      "title": "Remember You: Understanding How Users Use Deadbots to Reconstruct Memories of the Deceased",
+      "kind": "Empirical qualitative HCI study / arXiv version, CHI EA DOI stated"
+    },
+    {
+      "sourceId": "research-2",
+      "url": "https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1852514/full",
+      "finalUrl": "https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1852514/full",
+      "bytes": 780315,
+      "sha256": "d54d19b193384e704991dfe8f78e9210ea49e920d9f402558af3aeebffe4adff",
+      "retrievedAt": "2026-11-15T12:01:49.581970+00:00",
+      "authentication": "System-CA verified HTTPS publisher origin; not signed publisher attestation",
+      "title": "Exploring public perceptions of artificial intelligence in bereavement support: a qualitative study of griefbots",
+      "kind": "Peer-reviewed qualitative public-perception study"
+    },
+    {
+      "sourceId": "research-3",
+      "url": "https://link.springer.com/article/10.1007/s13347-024-00744-w",
+      "finalUrl": "https://link.springer.com/article/10.1007/s13347-024-00744-w?error=cookies_not_supported&code=c29db3c3-bd76-46fd-900c-cf5fd96c548b",
+      "bytes": 432087,
+      "sha256": "97ab2c89aa1f8230b5010a4c4375e9693d9db61ed9301f057be53994564d03be",
+      "retrievedAt": "2026-11-15T12:01:51.549933+00:00",
+      "authentication": "System-CA verified HTTPS publisher origin; not signed publisher attestation",
+      "title": "Griefbots, Deadbots, Postmortem Avatars",
+      "kind": "Normative speculative-design ethics paper"
+    }
+  ],
+  "evidence": [
+    {
+      "evidenceId": "research-e1",
+      "sourceId": "research-1",
+      "claimType": "FACT",
+      "summary": "The interview study included 26 participants in China, purposively recruited after at least one month of conversational deadbot use.",
+      "summarySha256": "eb93b49fbd4f9d4ec7a0d546ca81eb76ae94da9d1373a899163ede827e8a03b5",
+      "role": "method",
+      "locator": {
+        "section": "HTML substantive paragraph 13; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 54328,
+      "rawByteEnd": 55140,
+      "rawPassageSha256": "9b18a5cc45870569de336905fd962814836242c791d172cb76e7050d07d508b8",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e2",
+      "sourceId": "research-1",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "Researchers found that interview participants actively shaped the simulated person through remembered details and personal expectations.",
+      "summarySha256": "1f77c0ac46a9cf206b77cd267fb5d6b2e82488637faee6c906a94352a638ee32",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 16; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 67989,
+      "rawByteEnd": 68241,
+      "rawPassageSha256": "f405a329cdc9081e8e65639c372dda093ac6b19ffcb363b1d90e7543dec783dd",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e3",
+      "sourceId": "research-1",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "Participants reported correcting replies and interpreting mismatches in ways that sustained their sense of authenticity.",
+      "summarySha256": "057f9ade4452d373ff890873f7237a8698015650e0e9b81ab231e02f27dc1ac5",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 19; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 69842,
+      "rawByteEnd": 71082,
+      "rawPassageSha256": "f5920ddf67b8b070b8317ac7c6ce3af48402eb1fc2b8dd8ba806ac6df551d208",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e4",
+      "sourceId": "research-1",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "Respondents described negotiating boundaries and reconsidering immersion when a bot contradicted established memories.",
+      "summarySha256": "3925a1c3407de0ea161aa3b24cb07400a78afc0c3d32599458df28e456eb2510",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 24; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 74957,
+      "rawByteEnd": 75904,
+      "rawPassageSha256": "1c8476b9820e6bf495ab426d36890e6589a7dd8068a3c8b78d585d95e5941888",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e5",
+      "sourceId": "research-1",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "During an interview, one participant questioned whether a newly generated anecdote had happened; this is self-report, not a controlled false-memory measurement.",
+      "summarySha256": "569469c4c0b172377efe7456d71edaf938809d8c3eb81d49ccdd14d075570940",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 29; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 79451,
+      "rawByteEnd": 80547,
+      "rawPassageSha256": "fca5fe67be53823b81bc59e7f1e79828b0c75f293a04b4c72143aa746f08da82",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e6",
+      "sourceId": "research-1",
+      "claimType": "HYPOTHESIS",
+      "summary": "Reported comfort does not establish clinical benefit; the authors identify uncertain longer-term clinical consequences.",
+      "summarySha256": "884f730532c5dc14a91633cd378a2d3fa8ec0d0652a6117d62d360adb2d4121d",
+      "role": "limitation",
+      "locator": {
+        "section": "HTML substantive paragraph 31; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 81607,
+      "rawByteEnd": 83221,
+      "rawPassageSha256": "4b37e413ee4aba10caf43d817e5438a427a2afb4298e49aa9e1a6949de2b8324",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e7",
+      "sourceId": "research-1",
+      "claimType": "FACT",
+      "summary": "Online recruitment may select technology-receptive users; relationship differences were not finely stratified.",
+      "summarySha256": "596310c06e7babf94c3db92f5a6e90baf232ab2ae75b3ba0440e520f6d9215d3",
+      "role": "limitation",
+      "locator": {
+        "section": "HTML substantive paragraph 33; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 85071,
+      "rawByteEnd": 86330,
+      "rawPassageSha256": "19bb42799a01ca771e44880025c97572f3895be4a12c13e7884c2a41d6395867",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e8",
+      "sourceId": "research-2",
+      "claimType": "FACT",
+      "summary": "The separate interview study included 25 participants in Guangdong and used phenomenological analysis.",
+      "summarySha256": "2cadaf45e5af01ff0b2a4c20cdffe68cc7909039bec8b26ba1a7b08533d99927",
+      "role": "method",
+      "locator": {
+        "section": "HTML substantive paragraph 1; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 89222,
+      "rawByteEnd": 89575,
+      "rawPassageSha256": "5bc42c9ccf8086600af50553e4502d017a6b6567b1302865523be997a305f691",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e9",
+      "sourceId": "research-2",
+      "claimType": "FACT",
+      "summary": "The second study included adults with basic AI knowledge; prior bereavement was not required, and participants received an explanation before interview.",
+      "summarySha256": "275da916255e3678e8e4c0aec4593f11868ce15eb80c399051ad867c061a4022",
+      "role": "method",
+      "locator": {
+        "section": "HTML substantive paragraph 13; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 104940,
+      "rawByteEnd": 105678,
+      "rawPassageSha256": "5949d3105dd3a2ee99bc2066fa1cdc56d9c92004c802834e3d99a53799950561",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e10",
+      "sourceId": "research-2",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "Participants reported weighing possible benefits against emotional, ethical and governance concerns, rather than uniformly approving or rejecting griefbots.",
+      "summarySha256": "a8d01f339d9127d874c14af90f3bc97d5e073b05de163716bf2df623a06bdf84",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 18; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 132198,
+      "rawByteEnd": 132653,
+      "rawPassageSha256": "8025b5de16d39bde7b99e30de882869e2812a56cfa8c6c0489b73469c0fbb264",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e11",
+      "sourceId": "research-2",
+      "claimType": "RESEARCH_FINDING",
+      "summary": "Participants worried that inaccurate simulations could distort a remembered identity; these were perceptions, not measured treatment outcomes.",
+      "summarySha256": "c4fccc81aded56a92978be3487eac01c7364dc967603ea2bca4dc509acb92e77",
+      "role": "finding",
+      "locator": {
+        "section": "HTML substantive paragraph 35; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 142243,
+      "rawByteEnd": 142588,
+      "rawPassageSha256": "122d34feb7705ee6c4fe256078e187cbd669cf9823e77ce8e9f69a520e97dd40",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    },
+    {
+      "evidenceId": "research-e12",
+      "sourceId": "research-3",
+      "claimType": "THEORY",
+      "summary": "An ethics paper uses three speculative scenarios to distinguish donors, data holders and interactants, proposing mutual consent and retirement procedures.",
+      "summarySha256": "fcff785296026a0d0bdf5785de996223e5916449d2b27cf2ede96bab9ea9bb33",
+      "role": "normative",
+      "locator": {
+        "section": "HTML substantive paragraph 0; zero-based filtered paragraphs >100 characters",
+        "page": null,
+        "timecodeStartSec": null,
+        "timecodeEndSec": null
+      },
+      "rawByteStart": 219732,
+      "rawByteEnd": 221077,
+      "rawPassageSha256": "c4daf8300bb2340af6ca30d4d08af2f5c832f690a7e6cc14022800ef4a8e2d39",
+      "binding": "Publisher paragraph -> explicitly authored faithful summary; not verbatim quote or independent owner acceptance"
+    }
+  ],
+  "rules": [
+    "No therapy recommendation or claim that griefbots cure or cause illness.",
+    "Qualitative self-reports and public perceptions are not causal estimates or population prevalence.",
+    "Speculative ethics scenarios are not observed events.",
+    "No dialogue attributed to a deceased individual; no private interviews or customer material.",
+    "Retain distinct evidence, uncertainty and editorial inference in all sections."
+  ],
+  "ownerAccepted": false,
+  "providerCalls": 0
+}

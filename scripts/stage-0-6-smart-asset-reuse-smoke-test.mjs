@@ -62,9 +62,9 @@ check(!/supabase|create table|migration/i.test(helperSource + component), "no da
 // Stage 0.6A originally had a fixed runtime dependency snapshot:
 // SHA256 c78fdc671808f55bc3ef9be878c0f3920da3415bd45a483ece123b47f7c0408f.
 // Later reviewed work legitimately added Geist; Sprint 20 only upgrades Next.
-// Retain the "no new dependencies" requirement against Git HEAD, and reject
+// Retain the "no new dependencies" requirement against the immutable reviewed pre-upgrade baseline, and reject
 // every other version/addition/removal. P0 separately pins package.json bytes.
-const sprint20BaselinePackage = JSON.parse(sprint20GitShow("git", ["show", "HEAD:package.json"], { encoding: "utf8" }));
+const sprint20BaselinePackage = JSON.parse(sprint20GitShow("git", ["show", "ba55a5bdc65d9016f88f65b6411de35c9acbff97:package.json"], { encoding: "utf8" }));
 const sprint20ReviewedPackageSha = "4fc0a29353bca1f0dba78ca3e3b6651926e697e6f48912d4ceb1986c28451b7e";
 function sprint20MatchesOnlyApprovedUpgrade(candidate, baseline, changedKey, oldVersion, newVersion) {
   if (!candidate || !baseline || baseline[changedKey] !== oldVersion || candidate[changedKey] !== newVersion) return false;
