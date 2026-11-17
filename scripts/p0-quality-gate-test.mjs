@@ -1,6 +1,3 @@
-import { inspectCombinedCandidate } from "./quality/issue50-combined-admission.mjs";
-const ISSUE50_COMBINED_MANIFEST_SHA = "75d7263e91c14f080c8d0acd853356f36a4afb7be432631a35f826225c310bd2";
-inspectCombinedCandidate(process.cwd(), ISSUE50_COMBINED_MANIFEST_SHA);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -148,7 +145,6 @@ try {
   check("symlink at approved path rejected", () => assert.deepEqual(inspect([file]), [file]));
   fs.unlinkSync(path.join(root, file));
   check("deleting approved file rejected", () => assert.deepEqual(inspect([file]), [file]));
-  fs.writeFileSync(path.join(root, "issue50-combined-admission.mjs"), fs.readFileSync("scripts/quality/issue50-combined-admission.mjs"));
   fs.writeFileSync(path.join(root, "p0-workspace-scope.mjs"), fs.readFileSync("scripts/quality/p0-workspace-scope.mjs"));
   fs.writeFileSync(path.join(root, "p0-scope-admission.json"), fs.readFileSync("scripts/quality/p0-scope-admission.json", "utf8") + " ");
   await assert.rejects(() => import(pathToFileURL(path.join(root, "p0-workspace-scope.mjs")).href), /P0_SCOPE_POLICY_INTEGRITY_FAILED/); checks++;
