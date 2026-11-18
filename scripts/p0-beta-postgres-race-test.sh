@@ -84,6 +84,7 @@ SQL
 
 pg < docs/p0/BETA_ATOMIC_RESERVATION_REVIEW.sql
 pg < docs/p0/BETA_ATOMIC_FINALIZATION_REVIEW.sql
+pg < docs/p0/BETA_ATOMIC_DISPATCH_INTENT_REVIEW.sql
 
 pg <<'SQL'
 INSERT INTO public.velto_beta_provider_budget_limits
@@ -201,6 +202,7 @@ test "$missing" = DENIED_NO_AUTHORIZED_BUDGET
 echo "PASS: UNCONFIGURED_BUDGET_DENIED"
 
 source scripts/p0-beta-postgres-finalization-assertions.sh
+source scripts/p0-beta-postgres-dispatch-intent-assertions.sh
 echo "P0_REAL_POSTGRES_ATOMIC_RESERVATION=PASS"
 echo "LIVE_SUPABASE=NOT_ACCESSED"
 echo "PROVIDER_CALLS=0"
