@@ -122,6 +122,14 @@ function publicError(error: unknown) {
   return "The CreatorLab video service could not start this motion task.";
 }
 
+
+// Explicitly reject legacy video requests before paid dispatch.
+// A boolean helper avoids narrowing the rest of the route to an
+// unreachable TypeScript branch.
+function isLegacyPaidVideoRequest(productProfile: unknown): boolean {
+  return productProfile !== "creatorlab";
+}
+
 async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
   let providerTaskAccepted = false;
@@ -149,6 +157,21 @@ async function postHandler(req: NextRequest) {
       );
     }
     const { body, projectBinding } = boundary;
+
+    if (isLegacyPaidVideoRequest(body.productProfile)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
+          error: "Video production is blocked until budget enforcement is active.",
+        },
+        {
+          status: 503,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+
     const qualityMode = normalizeCreatorQualityMode(
       body.qualityMode,
       "standard",
