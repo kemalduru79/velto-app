@@ -34,7 +34,7 @@ echo "P0_POSTGRES_TEST_STARTED"
 
 test "$(git branch --show-current)" = \
   "local/velto-p0-issue49-parallel-20261118"
-test "$(git rev-parse --short HEAD)" = "0519c59"
+git merge-base --is-ancestor 6622d59 HEAD
 test -f docs/p0/BETA_ATOMIC_RESERVATION_REVIEW.sql
 docker image inspect postgres:17-alpine >/dev/null
 
@@ -83,6 +83,7 @@ INSERT INTO auth.users(id) VALUES
 SQL
 
 pg < docs/p0/BETA_ATOMIC_RESERVATION_REVIEW.sql
+pg < docs/p0/BETA_ATOMIC_FINALIZATION_REVIEW.sql
 
 pg <<'SQL'
 INSERT INTO public.velto_beta_provider_budget_limits
@@ -199,6 +200,7 @@ SELECT public.velto_beta_budget_reserve_v1(
 test "$missing" = DENIED_NO_AUTHORIZED_BUDGET
 echo "PASS: UNCONFIGURED_BUDGET_DENIED"
 
+source scripts/p0-beta-postgres-finalization-assertions.sh
 echo "P0_REAL_POSTGRES_ATOMIC_RESERVATION=PASS"
 echo "LIVE_SUPABASE=NOT_ACCESSED"
 echo "PROVIDER_CALLS=0"
