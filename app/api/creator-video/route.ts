@@ -302,6 +302,23 @@ async function postHandler(req: NextRequest) {
       if (!admission.allowed) return NextResponse.json({ ok: false, code: "CREATOR_PRODUCTION_ALLOWANCE_EXCEEDED", error: "Your current production allowance cannot cover this operation." }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
 
+
+    // P0 Beta USD budget boundary. No provider call is permitted while
+    // the atomic budget dispatch protocol remains unactivated.
+    if (body.productProfile === "creatorlab") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
+          error: "Beta video budget enforcement is not yet activated.",
+        },
+        {
+          status: 503,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_video",
       qualityMode,
