@@ -118,7 +118,8 @@ const menu = readFileSync(
 assert.match(adapter, /if \(isInvalidRefreshTokenError\(error\)\) \{\s*await clearInvalidLocalSession\(\);\s*return null;/);
 assert.match(adapter, /const getSessionSingleFlight = createSingleFlight\(loadSession\)/);
 assert.match(menu, /createTrailingSingleFlight/);
-assert.match(menu, /void loadAccount\(true\)/);
+assert.match(menu, /const handleFocus = \(\) => void loadAccount\(true\)/);
+assert.match(menu, /if \(open\) void accountLoaderRef\.current\?\.\(true\)/);
 assert.match(menu, /if \(!mountedRef\.current\) return/);
 
 console.log("Supabase auth lock-contention regression checks passed.");
