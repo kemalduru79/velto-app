@@ -21,7 +21,7 @@ export type CreatorVideoRouteDecision = {
 const score = (value: unknown) => Math.max(0, Math.min(1, Number(value) || 0));
 const enabled = (value: unknown) => value === true || String(value || "").toLowerCase() === "true" || value === "1";
 export function getCreatorVideoRuntimeContext(): CreatorVideoRuntimeContext {
-  return { runwayAvailable: isProviderConfigured("runway"), veoAvailable: isProviderConfigured("veo"), veoSmartRoutingEnabled: enabled(process.env.VELTO_VEO_SMART_ROUTING_ENABLED), veoHeroStandardEnabled: enabled(process.env.VELTO_VEO_HERO_STANDARD_ENABLED) };
+  return { runwayAvailable: isProviderConfigured("runway"), veoAvailable: false, veoSmartRoutingEnabled: enabled(process.env.VELTO_VEO_SMART_ROUTING_ENABLED), veoHeroStandardEnabled: enabled(process.env.VELTO_VEO_HERO_STANDARD_ENABLED) };
 }
 function capabilityFits(profile: CreatorVideoProfile, intent: CreatorVideoRoutingIntent) {
   if (!profile.supportedRatios.includes(intent.requestedRatio)) return false;
