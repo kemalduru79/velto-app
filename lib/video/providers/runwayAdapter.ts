@@ -143,7 +143,7 @@ async function createRunwayTask(
       promptText: input.promptText,
       ratio: getGen4Ratio(input.requestedRatio),
       duration: input.durationSec,
-    });
+    }, { maxRetries: 0 });
   }
 
   return client.imageToVideo.create({
@@ -152,7 +152,7 @@ async function createRunwayTask(
     promptText: input.promptText,
     ratio: getSeedance2Ratio(input.requestedRatio),
     duration: input.durationSec,
-  });
+  }, { maxRetries: 0 });
 }
 
 export class RunwayVideoProvider implements VideoProvider {
