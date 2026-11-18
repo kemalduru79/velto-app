@@ -14,70 +14,50 @@ const input = {
   verifiedCostUpperBoundUsd: 2,
 };
 
-let reservations = 0;
-let dispatches = 0;
+let rpcCalls = 0;
+let providerCalls = 0;
 
-const acceptRpc = async (_name, args) => {
-  reservations++;
-  assert.equal(args.p_cost_upper_bound_micro_usd, 2_000_000);
+const rpc = async () => {
+  rpcCalls++;
   return { data: "RESERVED", error: null };
 };
 
 const provider = async () => {
-  dispatches++;
+  providerCalls++;
   return { nativeTaskId: "fake-task-1" };
 };
 
-const accepted = await execute(input, acceptRpc, provider);
+const inactive = await execute(input, rpc, provider);
 
-assert.equal(accepted.state, "ACCEPTED_HELD");
-assert.equal(accepted.task.nativeTaskId, "fake-task-1");
-assert.match(accepted.attemptKey, /^video:[a-f0-9]{64}$/);
-assert.equal(reservations, 1);
-assert.equal(dispatches, 1);
-console.log("PASS: RESERVE_BEFORE_SINGLE_PROVIDER_DISPATCH");
+assert.equal(inactive.state, "BLOCKED");
+assert.equal(inactive.reason, "DISPATCH_PROTOCOL_NOT_ACTIVE");
+assert.equal(rpcCalls, 0);
+assert.equal(providerCalls, 0);
+console.log("PASS: INACTIVE_PROTOCOL_NO_HOLD_NO_DISPATCH");
 
-const denied = await execute(
-  input,
-  async () => ({ data: "DENIED_HARD_CAP", error: null }),
-  provider,
-);
-
-assert.equal(denied.state, "BLOCKED");
-assert.equal(dispatches, 1);
-console.log("PASS: DENIED_BUDGET_PREVENTS_DISPATCH");
-
-const uncertain = await execute(
-  input,
-  acceptRpc,
-  async () => { throw Error("provider timeout"); },
-);
-
-assert.equal(uncertain.state, "HELD_UNCERTAIN");
-assert.match(uncertain.attemptKey, /^video:[a-f0-9]{64}$/);
-console.log("PASS: PROVIDER_TIMEOUT_RETAINS_HOLD");
-
-const noTaskId = await execute(
-  input,
-  acceptRpc,
-  async () => ({ nativeTaskId: "" }),
-);
-
-assert.equal(noTaskId.state, "HELD_UNCERTAIN");
-console.log("PASS: MISSING_TASK_ID_RETAINS_HOLD");
-
-const before = reservations;
-const noCeiling = await execute(
+const unknownCost = await execute(
   { ...input, verifiedCostUpperBoundUsd: null },
-  acceptRpc,
+  rpc,
   provider,
 );
 
-assert.equal(noCeiling.state, "BLOCKED");
-assert.equal(reservations, before);
-assert.equal(dispatches, 1);
-console.log("PASS: NO_VERIFIED_CEILING_NO_SIDE_EFFECTS");
+assert.equal(unknownCost.state, "BLOCKED");
+assert.equal(unknownCost.reason, "COST_CEILING_UNVERIFIED");
+console.log("PASS: UNKNOWN_COST_FAIL_CLOSED");
+
+const badIdentity = await execute(
+  { ...input, idempotencyKey: null },
+  rpc,
+  provider,
+);
+
+assert.equal(badIdentity.state, "BLOCKED");
+assert.equal(badIdentity.reason, "INVALID_DISPATCH_IDENTITY");
+console.log("PASS: INVALID_IDENTITY_FAIL_CLOSED");
+
+assert.equal(rpcCalls, 0);
+assert.equal(providerCalls, 0);
 
 console.log("P0_BUDGETED_DISPATCH_LIFECYCLE=PASS");
-console.log("REAL_PROVIDER_CALLS=0");
-console.log("REAL_SUPABASE_CALLS=0");
+console.log("ACTUAL_AND_MOCK_RPC_CALLS=0");
+console.log("ACTUAL_AND_MOCK_PROVIDER_CALLS=0");

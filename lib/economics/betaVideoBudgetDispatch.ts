@@ -1,7 +1,4 @@
-import {
-  requestBetaBudgetReservation,
-  type BetaBudgetRpc,
-} from "./betaBudgetReservationAdapter.ts";
+import type { BetaBudgetRpc } from "./betaBudgetReservationAdapter.ts";
 import {
   prepareBetaVideoBudgetReservation,
   type BetaVideoBudgetContext,
@@ -11,66 +8,21 @@ export async function executeBetaVideoBudgetedStart<
   T extends { nativeTaskId: string }
 >(
   input: BetaVideoBudgetContext,
-  rpc: BetaBudgetRpc,
-  startProvider: () => Promise<T>,
-): Promise<
-  | { state: "BLOCKED"; reason: string }
-  | {
-      state: "ACCEPTED_HELD";
-      attemptKey: string;
-      task: T;
-    }
-  | {
-      state: "HELD_UNCERTAIN";
-      attemptKey: string;
-      reason: "PROVIDER_OUTCOME_UNCERTAIN";
-    }
-> {
+  _rpc: BetaBudgetRpc,
+  _startProvider: () => Promise<T>,
+): Promise<{ state: "BLOCKED"; reason: string }> {
   const prepared = prepareBetaVideoBudgetReservation(input);
 
   if (!prepared.ok) {
     return { state: "BLOCKED", reason: prepared.reason };
   }
 
-  const reservation = await requestBetaBudgetReservation(
-    rpc,
-    prepared.request,
-  );
-
-  if (reservation.state !== "HELD_REVIEW_ONLY") {
-    return {
-      state: "BLOCKED",
-      reason: reservation.reason,
-    };
-  }
-
-  // From this boundary onward, any failed/unknown provider response
-  // must retain the hold until trusted reconciliation.
-  try {
-    const task = await startProvider();
-
-    if (
-      !task ||
-      typeof task.nativeTaskId !== "string" ||
-      !task.nativeTaskId.trim()
-    ) {
-      return {
-        state: "HELD_UNCERTAIN",
-        attemptKey: reservation.attemptKey,
-        reason: "PROVIDER_OUTCOME_UNCERTAIN",
-      };
-    }
-
-    return {
-      state: "ACCEPTED_HELD",
-      attemptKey: reservation.attemptKey,
-      task,
-    };
-  } catch {
-    return {
-      state: "HELD_UNCERTAIN",
-      attemptKey: reservation.attemptKey,
-      reason: "PROVIDER_OUTCOME_UNCERTAIN",
-    };
-  }
+  // The current reservation adapter is REVIEW ONLY.
+  // Do not create a durable hold or invoke a paid provider.
+  // Activation requires verified billing ceilings, an authorized
+  // reservation protocol, and durable settlement/reconciliation.
+  return {
+    state: "BLOCKED",
+    reason: "DISPATCH_PROTOCOL_NOT_ACTIVE",
+  };
 }
