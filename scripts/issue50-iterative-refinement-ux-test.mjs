@@ -20,37 +20,51 @@ check("same workspace contains canonical script and the refinement prompt", () =
 });
 check("natural-language multiline prompt and bounded input", () => {
   assert.match(ui, /rows=\{3\} maxLength=\{2000\}/);
-  assert.match(ui, /value=\{refineInstruction\} onChange=\{\(event\) => setRefineInstruction\(event\.target\.value\)\}/);
+  assert.match(ui, /value=\{refineInstruction\} onChange=\{\(event\) => \{ setRefineInstruction\(event\.target\.value\); setRefinementActionNotice\(null\); \}\}/);
 });
 check("explicit next-turn iteration guidance", () => {
   assert.match(ui, /Each prompt uses the current saved script revision/);
   assert.match(ui, /then enter another instruction here/);
   assert.match(ui, /without returning to the original creative brief/);
 });
-check("selected text and opening use focused refinement", () => {
-  assert.match(ui, /scope: "selection", mode: "focused_edit"/);
-  assert.match(ui, /scope: "opening", mode: "focused_edit"/);
+check("selected passage and explicit opening remain focused edits", () => {
+  assert.match(ui, /scope: "selection" as const, mode: "focused_edit" as const/);
+  assert.match(ui, /scope: "opening" as const, mode: "focused_edit" as const/);
 });
-check("whole script is a separate explicit scope, not silent fallback", () => {
-  assert.match(ui, /scope: "whole_script", mode: refinementTarget/);
+check("whole script remains a separately checked scope with no opening fallback", () => {
+  assert.match(ui, /scope: "whole_script" as const, mode: refinementIntent.mode/);
+  assert.match(ui, /resolveCreatorScriptNaturalRefinementIntent/);
   assert.match(route, /CREATOR_SCRIPT_REFINEMENT_MODE_SCOPE_MISMATCH/);
 });
 check("whole-script UI remains fail-closed until admission", () => {
-  assert.match(ui, /option value="editorial_rewrite" disabled=\{!wholeScriptPreviewEnabled\}/);
-  assert.match(ui, /option value="research_backed_rewrite" disabled=\{!wholeScriptPreviewEnabled\}/);
+  assert.match(ui, /refinementIntent.scope !== "whole_script" \|\| wholeScriptPreviewEnabled/);
+  assert.match(ui, /!canPreviewRefinement/);
   assert.match(engine, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED = false/);
   assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
 });
 check("Preview UI requires both preview identity and an explicit public flag", () => {
   assert.match(ui, /NEXT_PUBLIC_VERCEL_ENV === "preview"/);
   assert.match(ui, /NEXT_PUBLIC_CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED === "true"/);
-  assert.match(ui, /refinementTarget !== "opening" && !wholeScriptPreviewEnabled/);
+  assert.match(ui, /refinementIntent.scope === "whole_script" && !wholeScriptPreviewEnabled/);
 });
 check("Server release gate requires separate private preview identity and flag", () => {
   assert.match(engine, /VERCEL_ENV === "preview"/);
   assert.match(engine, /NODE_ENV === "production"/);
   assert.match(engine, /CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED === "true"/);
   assert.match(route, /isCreatorScriptFullRefinementPreviewEnabled\(process\.env\)/);
+});
+check("single prompt has no manual scope dropdown", () => {
+  assert.doesNotMatch(ui, /Refinement target/);
+  assert.doesNotMatch(ui, /<select aria-label/);
+  assert.match(ui, /data-creator-refinement-prompt="iterative"/);
+});
+check("unselected explicit section uses existing focused-selection API, with a prominent CTA", () => {
+  assert.match(ui, /inferCreatorScriptFocusedSectionSelection/);
+  assert.match(ui, /inferredSectionSelection/);
+  assert.match(ui, /data-creator-refinement-action="preview"/);
+  assert.match(ui, /data-creator-refinement-action-feedback="true"/);
+  assert.match(ui, /bg-blue-600/);
+  assert.match(ui, /!canPreviewRefinement && !inferredSectionSelection/);
 });
 check("refinement is a proposal and never auto-overwrites", () => {
   assert.match(route, /pendingRefinement = createCreatorScriptProposal\(/);
