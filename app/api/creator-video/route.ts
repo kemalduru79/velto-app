@@ -40,6 +40,9 @@ import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/
 import { evaluateCreatorEconomicAdmission, getCreatorMarginEnforcementMode } from "@/lib/economics/economicAdmission";
 import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.server";
 
+import { checkBetaVideoBudgetDispatch } from "@/lib/economics/betaVideoBudgetGate";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -303,19 +306,35 @@ async function postHandler(req: NextRequest) {
     }
 
 
-    // P0 Beta USD budget boundary. No provider call is permitted while
-    // the atomic budget dispatch protocol remains unactivated.
+    // P0 Beta USD budget boundary.
+    // Verified cost ceiling and dispatch settlement are not yet active.
     if (body.productProfile === "creatorlab") {
+      const budgetGate = await checkBetaVideoBudgetDispatch(
+        {
+          ownerUserId: principal.id,
+          projectId: canonicalProjectId,
+          sceneId: body.sceneId == null ? null : String(body.sceneId),
+          provider: selection.provider.key,
+          model: (routedProfile || selection.provider.getRuntimeProfile()).model,
+          billedSeconds: durationPolicy.durationSec,
+          idempotencyKey: req.headers.get("x-idempotency-key")?.trim() || null,
+          verifiedCostUpperBoundUsd: null,
+        },
+        async (name, args) => {
+          const { data, error } =
+            await createServerSupabaseClient().rpc(name, args);
+          return { data, error };
+        },
+      );
+
       return NextResponse.json(
         {
           ok: false,
           code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
-          error: "Beta video budget enforcement is not yet activated.",
+          reason: budgetGate.reason,
+          error: "Beta video production is not yet available.",
         },
-        {
-          status: 503,
-          headers: { "Cache-Control": "no-store" },
-        },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
 
