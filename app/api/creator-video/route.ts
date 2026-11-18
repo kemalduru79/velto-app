@@ -43,6 +43,8 @@ import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.se
 import { checkBetaVideoBudgetDispatch } from "@/lib/economics/betaVideoBudgetGate";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+import { quoteBetaRunwayVideo } from "@/lib/economics/betaRunwayPriceQuote";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -332,6 +334,17 @@ async function postHandler(req: NextRequest) {
     // P0 Beta USD budget boundary.
     // Verified cost ceiling and dispatch settlement are not yet active.
     if (body.productProfile === "creatorlab") {
+      const priceProfile =
+        routedProfile || selection.provider.getRuntimeProfile();
+
+      const betaPriceQuote = quoteBetaRunwayVideo({
+        provider: selection.provider.key,
+        model: priceProfile.model,
+        billedSeconds: durationPolicy.durationSec,
+      });
+
+      // Public list price is informational, not an authorized
+      // billing ceiling. USD dispatch remains fail-closed.
       const budgetGate = await checkBetaVideoBudgetDispatch(
         {
           ownerUserId: principal.id,
@@ -355,6 +368,7 @@ async function postHandler(req: NextRequest) {
           ok: false,
           code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
           reason: budgetGate.reason,
+          priceQuoteStatus: betaPriceQuote.state,
           error: "Beta video production is not yet available.",
         },
         { status: 503, headers: { "Cache-Control": "no-store" } },
