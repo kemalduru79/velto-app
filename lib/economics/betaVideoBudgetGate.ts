@@ -1,8 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  requestBetaBudgetReservation,
-  type BetaBudgetRpc,
-} from "./betaBudgetReservationAdapter.ts";
+import type { BetaBudgetRpc } from "./betaBudgetReservationAdapter.ts";
 
 export type BetaVideoBudgetContext = Readonly<{
   ownerUserId: string;
@@ -19,29 +16,24 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function checkBetaVideoBudgetDispatch(
+export function prepareBetaVideoBudgetReservation(
   input: BetaVideoBudgetContext,
-  rpc: BetaBudgetRpc,
 ) {
-  const deny = (reason: string) => ({
-    dispatchAuthorized: false as const,
-    reason,
-  });
-
-  // Estimates are not an authoritative billing ceiling.
   if (input.verifiedCostUpperBoundUsd === null) {
-    return deny("COST_CEILING_UNVERIFIED");
+    return { ok: false as const, reason: "COST_CEILING_UNVERIFIED" };
   }
 
   if (
+    !Number.isFinite(input.verifiedCostUpperBoundUsd) ||
+    input.verifiedCostUpperBoundUsd <= 0 ||
     !input.idempotencyKey ||
-    input.idempotencyKey.length > 160 ||
+    !/^[A-Za-z0-9._:-]{1,160}$/.test(input.idempotencyKey) ||
     !input.provider ||
     !input.model ||
     !Number.isSafeInteger(input.billedSeconds) ||
     input.billedSeconds <= 0
   ) {
-    return deny("INVALID_DISPATCH_IDENTITY");
+    return { ok: false as const, reason: "INVALID_DISPATCH_IDENTITY" };
   }
 
   const requestIdentity = JSON.stringify({
@@ -54,19 +46,35 @@ export async function checkBetaVideoBudgetDispatch(
     idempotencyKey: input.idempotencyKey,
   });
 
-  const result = await requestBetaBudgetReservation(rpc, {
-    ownerUserId: input.ownerUserId,
-    attemptKey: "video:" + hash(
-      input.ownerUserId + ":" + input.idempotencyKey
-    ),
-    requestSha256: hash(requestIdentity),
-    upperBoundCostUsd: input.verifiedCostUpperBoundUsd,
-  });
+  return {
+    ok: true as const,
+    request: {
+      ownerUserId: input.ownerUserId,
+      attemptKey: "video:" + hash(
+        input.ownerUserId + ":" + input.idempotencyKey
+      ),
+      requestSha256: hash(requestIdentity),
+      upperBoundCostUsd: input.verifiedCostUpperBoundUsd,
+    },
+  };
+}
 
-  // Even a confirmed hold is not provider-dispatch authorization.
-  if (result.state !== "HELD_REVIEW_ONLY") {
-    return deny("RESERVATION_DENIED");
+// Review-mode API gate: must never create a budget hold.
+export async function checkBetaVideoBudgetDispatch(
+  input: BetaVideoBudgetContext,
+  _rpc: BetaBudgetRpc,
+) {
+  const prepared = prepareBetaVideoBudgetReservation(input);
+
+  if (!prepared.ok) {
+    return {
+      dispatchAuthorized: false as const,
+      reason: prepared.reason,
+    };
   }
 
-  return deny("RESERVED_BUT_DISPATCH_NOT_ACTIVATED");
+  return {
+    dispatchAuthorized: false as const,
+    reason: "DISPATCH_PROTOCOL_NOT_ACTIVE",
+  };
 }
