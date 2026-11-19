@@ -1,4 +1,18 @@
 # Sourced by p0-beta-postgres-race-test.sh inside its isolated DB.
+# P0_7D_DISPATCH_FIXTURE: synthetic provider acceptance.
+# No external provider call is performed.
+test "$(pg -c "
+SET ROLE service_role;
+SELECT public.velto_beta_budget_begin_dispatch_v1(
+  '00000000-0000-4000-8000-000000000002', 'p0:race:a', repeat('a',64), 'runway'
+);")" = DISPATCH_STARTED
+
+test "$(pg -c "
+SET ROLE service_role;
+SELECT public.velto_beta_budget_accept_dispatch_v1(
+  '00000000-0000-4000-8000-000000000002', 'p0:race:a', repeat('a',64), 'fixture-runway-task-7d-a'
+);")" = PROVIDER_ACCEPTED
+
 stage="SETTLEMENT"
 
 settle=$(pg -c "
@@ -113,6 +127,20 @@ SELECT public.velto_beta_budget_reserve_v1(
 'p0:finalrace',repeat('9',64),1000000);")
 
 test "$reserved" = RESERVED
+
+# P0_7D_DISPATCH_FIXTURE: synthetic provider acceptance.
+# No external provider call is performed.
+test "$(pg -c "
+SET ROLE service_role;
+SELECT public.velto_beta_budget_begin_dispatch_v1(
+  '00000000-0000-4000-8000-000000000003', 'p0:finalrace', repeat('9',64), 'runway'
+);")" = DISPATCH_STARTED
+
+test "$(pg -c "
+SET ROLE service_role;
+SELECT public.velto_beta_budget_accept_dispatch_v1(
+  '00000000-0000-4000-8000-000000000003', 'p0:finalrace', repeat('9',64), 'fixture-runway-task-7d-finalrace'
+);")" = PROVIDER_ACCEPTED
 
 stage="FINALIZATION_RACE_A"
 

@@ -138,6 +138,23 @@ begin
     return 'DENIED_PROVIDER_TASK_UNCONFIRMED';
   end if;
 
+  -- P0_STAGE_7D_SETTLE_REQUIRES_ACCEPTED_TASK
+  -- A positive settlement must belong to an accepted provider task.
+  -- This is necessary, but NOT sufficient, billing evidence.
+  if p_action = 'SETTLE'
+     and not exists (
+       select 1
+         from public.velto_beta_provider_dispatch_intents
+        where attempt_key = p_attempt_key
+          and owner_user_id = p_owner_user_id
+          and request_sha256 = p_request_sha256
+          and provider_key = 'runway'
+          and state = 'PROVIDER_ACCEPTED'
+          and native_task_id is not null
+     ) then
+    return 'DENIED_PROVIDER_ACCEPTANCE_REQUIRED';
+  end if;
+
   -- A claimed zero provider charge cannot release an uncertain
   -- dispatch. Provider acceptance is necessary but is not itself
   -- sufficient proof of a zero charge. Trusted billing verification

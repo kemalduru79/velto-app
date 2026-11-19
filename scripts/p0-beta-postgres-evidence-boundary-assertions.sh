@@ -73,6 +73,26 @@ BEGIN
       v_result;
   END IF;
 
+  -- A valid-looking billing hash without a provider task is insufficient.
+  v_result := public.velto_beta_budget_finalize_v1(
+    v_owner,
+    v_attempt,
+    v_request_sha,
+    'SETTLE',
+    50000,
+    v_evidence_sha,
+    'PROVIDER_BILLING_CONFIRMED'
+  );
+
+  IF v_result <> 'DENIED_PROVIDER_ACCEPTANCE_REQUIRED' THEN
+    RAISE EXCEPTION
+      'P0_SETTLEMENT_WITHOUT_DISPATCH_NOT_FENCED: %',
+      v_result;
+  END IF;
+
+  RAISE NOTICE
+    'PASS: SETTLEMENT_WITHOUT_DISPATCH_DENIED';
+
   v_result := public.velto_beta_budget_begin_dispatch_v1(
     v_owner,
     v_attempt,
