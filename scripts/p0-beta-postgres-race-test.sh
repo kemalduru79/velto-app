@@ -204,6 +204,7 @@ echo "PASS: UNCONFIGURED_BUDGET_DENIED"
 source scripts/p0-beta-postgres-finalization-assertions.sh
 source scripts/p0-beta-postgres-dispatch-intent-assertions.sh
 source scripts/p0-beta-postgres-video-e2e-assertions.sh
+source scripts/p0-beta-postgres-evidence-boundary-assertions.sh
 echo "P0_REAL_POSTGRES_ATOMIC_RESERVATION=PASS"
 echo "LIVE_SUPABASE=NOT_ACCESSED"
 echo "PROVIDER_CALLS=0"

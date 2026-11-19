@@ -126,6 +126,34 @@ begin
     return 'DENIED_BUDGET_INCONSISTENT';
   end if;
 
+  -- A started but unaccepted provider dispatch remains uncertain.
+  -- Never settle it merely because a billing evidence hash was supplied.
+  if p_action = 'SETTLE'
+     and exists (
+       select 1
+         from public.velto_beta_provider_dispatch_intents
+        where attempt_key = p_attempt_key
+          and state = 'DISPATCH_STARTED'
+     ) then
+    return 'DENIED_PROVIDER_TASK_UNCONFIRMED';
+  end if;
+
+  -- A claimed zero provider charge cannot release an uncertain
+  -- dispatch. Provider acceptance is necessary but is not itself
+  -- sufficient proof of a zero charge. Trusted billing verification
+  -- must still occur upstream before invoking this function.
+  if p_action = 'RELEASE'
+     and p_basis = 'PROVIDER_ZERO_CHARGE_CONFIRMED'
+     and not exists (
+       select 1
+         from public.velto_beta_provider_dispatch_intents
+        where attempt_key = p_attempt_key
+          and state = 'PROVIDER_ACCEPTED'
+          and native_task_id is not null
+     ) then
+    return 'DENIED_PROVIDER_ACCEPTANCE_REQUIRED';
+  end if;
+
   update public.velto_beta_provider_budget_limits
      set held_micro_usd =
            held_micro_usd - v_res.upper_bound_micro_usd,
