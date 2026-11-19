@@ -16,6 +16,20 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function deriveBetaVideoAttemptKey(
+  ownerUserId: string,
+  idempotencyKey: string | null,
+): string | null {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerUserId) ||
+    !idempotencyKey ||
+    !/^[A-Za-z0-9._:-]{1,160}$/.test(idempotencyKey)
+  ) {
+    return null;
+  }
+  return "video:" + hash(ownerUserId + ":" + idempotencyKey);
+}
+
 export function prepareBetaVideoBudgetReservation(
   input: BetaVideoBudgetContext,
 ) {
@@ -36,6 +50,14 @@ export function prepareBetaVideoBudgetReservation(
     return { ok: false as const, reason: "INVALID_DISPATCH_IDENTITY" };
   }
 
+  const attemptKey = deriveBetaVideoAttemptKey(
+    input.ownerUserId,
+    input.idempotencyKey,
+  );
+  if (!attemptKey) {
+    return { ok: false as const, reason: "INVALID_DISPATCH_IDENTITY" };
+  }
+
   const requestIdentity = JSON.stringify({
     ownerUserId: input.ownerUserId,
     projectId: input.projectId,
@@ -50,9 +72,7 @@ export function prepareBetaVideoBudgetReservation(
     ok: true as const,
     request: {
       ownerUserId: input.ownerUserId,
-      attemptKey: "video:" + hash(
-        input.ownerUserId + ":" + input.idempotencyKey
-      ),
+      attemptKey,
       requestSha256: hash(requestIdentity),
       upperBoundCostUsd: input.verifiedCostUpperBoundUsd,
     },

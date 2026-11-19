@@ -43,6 +43,8 @@ import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.se
 import { executeBetaVideoBudgetedStart } from "@/lib/economics/betaVideoBudgetDispatch";
 
 import { quoteBetaRunwayVideo } from "@/lib/economics/betaRunwayPriceQuote";
+import { deriveBetaVideoAttemptKey } from "@/lib/economics/betaVideoBudgetGate";
+import { betaRunwayUsageTagForAttempt } from "@/lib/economics/betaRunwayUsageTag";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -330,6 +332,16 @@ async function postHandler(req: NextRequest) {
     }
 
 
+    const betaRunwayUsageTag =
+      body.productProfile === "creatorlab"
+        ? betaRunwayUsageTagForAttempt(
+            deriveBetaVideoAttemptKey(
+              principal.id,
+              req.headers.get("x-idempotency-key")?.trim() || null,
+            ),
+          )
+        : undefined;
+
     // P0 Beta USD budget boundary.
     // Verified cost ceiling and dispatch settlement are not yet active.
     if (body.productProfile === "creatorlab") {
@@ -423,6 +435,7 @@ async function postHandler(req: NextRequest) {
         : buildCreatorVideoProviderPrompt(body),
       requestedRatio: requestedRatio(body),
       durationSec: durationPolicy.durationSec,
+      runwayUsageTag: betaRunwayUsageTag,
       runtimeProfile: routedProfile ? { model: routedProfile.model, resolution: routedProfile.resolution, audioMode: routedProfile.audioMode, profileKey: routedProfile.profileKey, pricingVersion: smartRoute.pricingVersion || undefined } : undefined,
     });
 
