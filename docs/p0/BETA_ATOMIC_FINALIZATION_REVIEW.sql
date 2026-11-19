@@ -42,6 +42,58 @@ alter table public.velto_beta_provider_budget_reservations
 grant update on public.velto_beta_provider_budget_reservations
   to service_role;
 
+-- P0_7E_BILLING_APPROVAL_LEDGER
+-- Review-only schema. No live migration is applied.
+-- Approval records require privileged, independently reviewed input.
+create table public.velto_beta_provider_billing_approvals (
+  attempt_key text primary key
+    references public.velto_beta_provider_budget_reservations(attempt_key)
+    on delete restrict,
+  owner_user_id uuid not null,
+  request_sha256 text not null
+    check (request_sha256 ~ '^[a-f0-9]{64}$'),
+  provider_key text not null
+    check (provider_key = 'runway'),
+  native_task_id text not null
+    check (length(native_task_id) between 1 and 512),
+  action text not null
+    check (action in ('SETTLE', 'RELEASE')),
+  actual_micro_usd bigint not null
+    check (actual_micro_usd >= 0),
+  evidence_sha256 text not null
+    check (evidence_sha256 ~ '^[a-f0-9]{64}$'),
+  basis text not null,
+  approved_by text not null
+    check (length(btrim(approved_by)) >= 3),
+  approved_at timestamptz not null default now(),
+  constraint velto_beta_billing_approval_consistent check (
+    (
+      action = 'SETTLE'
+      and actual_micro_usd > 0
+      and basis = 'PROVIDER_BILLING_CONFIRMED'
+    )
+    or
+    (
+      action = 'RELEASE'
+      and actual_micro_usd = 0
+      and basis = 'PROVIDER_ZERO_CHARGE_CONFIRMED'
+    )
+  )
+);
+
+alter table public.velto_beta_provider_billing_approvals
+  enable row level security;
+
+revoke all on public.velto_beta_provider_billing_approvals
+  from public, anon, authenticated, service_role;
+
+grant select on public.velto_beta_provider_billing_approvals
+  to service_role;
+
+create policy velto_beta_billing_approval_service_read
+  on public.velto_beta_provider_billing_approvals
+  for select to service_role using (true);
+
 create or replace function public.velto_beta_budget_finalize_v1(
   p_owner_user_id uuid,
   p_attempt_key text,
@@ -169,6 +221,37 @@ begin
           and native_task_id is not null
      ) then
     return 'DENIED_PROVIDER_ACCEPTANCE_REQUIRED';
+  end if;
+
+  -- Settlement requires a separately approved billing record.
+  -- A valid-looking hash by itself is not billing authority.
+  if (
+       p_action = 'SETTLE'
+       or (
+         p_action = 'RELEASE'
+         and p_basis = 'PROVIDER_ZERO_CHARGE_CONFIRMED'
+       )
+     )
+     and not exists (
+       select 1
+         from public.velto_beta_provider_billing_approvals a
+         join public.velto_beta_provider_dispatch_intents d
+           on d.attempt_key = a.attempt_key
+        where a.attempt_key = p_attempt_key
+          and a.owner_user_id = p_owner_user_id
+          and a.request_sha256 = p_request_sha256
+          and a.provider_key = 'runway'
+          and a.action = p_action
+          and a.actual_micro_usd = p_actual_micro_usd
+          and a.evidence_sha256 = p_evidence_sha256
+          and a.basis = p_basis
+          and d.owner_user_id = a.owner_user_id
+          and d.request_sha256 = a.request_sha256
+          and d.provider_key = a.provider_key
+          and d.native_task_id = a.native_task_id
+          and d.state = 'PROVIDER_ACCEPTED'
+     ) then
+    return 'DENIED_UNAPPROVED_BILLING_EVIDENCE';
   end if;
 
   update public.velto_beta_provider_budget_limits

@@ -13,6 +13,30 @@ SELECT public.velto_beta_budget_accept_dispatch_v1(
   '00000000-0000-4000-8000-000000000002', 'p0:race:a', repeat('a',64), 'fixture-runway-task-7d-a'
 );")" = PROVIDER_ACCEPTED
 
+# P0_7E_APPROVAL_FIXTURE: isolated synthetic evidence only.
+# Executed as PostgreSQL test administrator, never service_role.
+pg -c "
+INSERT INTO public.velto_beta_provider_billing_approvals (
+  attempt_key, owner_user_id, request_sha256,
+  provider_key, native_task_id, action,
+  actual_micro_usd, evidence_sha256, basis, approved_by
+)
+SELECT
+  d.attempt_key, d.owner_user_id, d.request_sha256,
+  d.provider_key, d.native_task_id, 'SETTLE',
+  1500000, repeat('f',64),
+  'PROVIDER_BILLING_CONFIRMED', 'P0_ISOLATED_TEST_ONLY'
+FROM public.velto_beta_provider_dispatch_intents d
+WHERE d.attempt_key = 'p0:race:a'
+  AND d.state = 'PROVIDER_ACCEPTED';
+" >/dev/null
+
+test "$(pg -c "
+SELECT count(*)
+FROM public.velto_beta_provider_billing_approvals
+WHERE attempt_key = 'p0:race:a';
+")" = 1
+
 stage="SETTLEMENT"
 
 settle=$(pg -c "
@@ -141,6 +165,30 @@ SET ROLE service_role;
 SELECT public.velto_beta_budget_accept_dispatch_v1(
   '00000000-0000-4000-8000-000000000003', 'p0:finalrace', repeat('9',64), 'fixture-runway-task-7d-finalrace'
 );")" = PROVIDER_ACCEPTED
+
+# P0_7E_APPROVAL_FIXTURE: isolated synthetic evidence only.
+# Executed as PostgreSQL test administrator, never service_role.
+pg -c "
+INSERT INTO public.velto_beta_provider_billing_approvals (
+  attempt_key, owner_user_id, request_sha256,
+  provider_key, native_task_id, action,
+  actual_micro_usd, evidence_sha256, basis, approved_by
+)
+SELECT
+  d.attempt_key, d.owner_user_id, d.request_sha256,
+  d.provider_key, d.native_task_id, 'SETTLE',
+  700000, repeat('8',64),
+  'PROVIDER_BILLING_CONFIRMED', 'P0_ISOLATED_TEST_ONLY'
+FROM public.velto_beta_provider_dispatch_intents d
+WHERE d.attempt_key = 'p0:finalrace'
+  AND d.state = 'PROVIDER_ACCEPTED';
+" >/dev/null
+
+test "$(pg -c "
+SELECT count(*)
+FROM public.velto_beta_provider_billing_approvals
+WHERE attempt_key = 'p0:finalrace';
+")" = 1
 
 stage="FINALIZATION_RACE_A"
 

@@ -35,6 +35,29 @@ select public.velto_beta_budget_accept_dispatch_v1(
   'fixture-runway-task-e0-1'
 );")" = PROVIDER_ACCEPTED
 
+# P0_7E_APPROVAL_FIXTURE: synthetic billing only.
+pg -c "
+INSERT INTO public.velto_beta_provider_billing_approvals (
+  attempt_key, owner_user_id, request_sha256,
+  provider_key, native_task_id, action,
+  actual_micro_usd, evidence_sha256, basis, approved_by
+)
+SELECT
+  d.attempt_key, d.owner_user_id, d.request_sha256,
+  d.provider_key, d.native_task_id, 'SETTLE',
+  1200000, $EVIDENCE,
+  'PROVIDER_BILLING_CONFIRMED', 'P0_ISOLATED_TEST_ONLY'
+FROM public.velto_beta_provider_dispatch_intents d
+WHERE d.attempt_key = 'p0.video.e2e.success'
+  AND d.state = 'PROVIDER_ACCEPTED';
+" >/dev/null
+
+test "$(pg -c "
+SELECT count(*)
+FROM public.velto_beta_provider_billing_approvals
+WHERE attempt_key = 'p0.video.e2e.success';
+")" = 1
+
 test "$(pg -c "
 select public.velto_beta_budget_finalize_v1(
   $OWNER, 'p0.video.e2e.success', $SHA,

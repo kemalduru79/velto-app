@@ -148,6 +148,48 @@ BEGIN
   RAISE NOTICE
     'PASS: UNACCEPTED_PROVIDER_TASK_SETTLEMENT_DENIED';
 
+  -- service_role cannot manufacture billing approval.
+  BEGIN
+    INSERT INTO public.velto_beta_provider_billing_approvals (
+      attempt_key, owner_user_id, request_sha256,
+      provider_key, native_task_id, action,
+      actual_micro_usd, evidence_sha256, basis, approved_by
+    ) VALUES (
+      v_attempt, v_owner, v_request_sha,
+      'runway', 'fixture-task-7e', 'SETTLE',
+      50000, v_evidence_sha,
+      'PROVIDER_BILLING_CONFIRMED', 'UNAUTHORIZED'
+    );
+
+    RAISE EXCEPTION 'P0_UNAUTHORIZED_APPROVAL_WRITE_SUCCEEDED';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS: SERVICE_ROLE_CANNOT_APPROVE_BILLING';
+  END;
+
+  -- Provider task acceptance alone is insufficient for settlement.
+  v_result := public.velto_beta_budget_accept_dispatch_v1(
+    v_owner, v_attempt, v_request_sha, 'fixture-task-7e'
+  );
+
+  IF v_result <> 'PROVIDER_ACCEPTED' THEN
+    RAISE EXCEPTION
+      'P0_7E_PROVIDER_ACCEPT_FIXTURE_FAILED: %', v_result;
+  END IF;
+
+  v_result := public.velto_beta_budget_finalize_v1(
+    v_owner, v_attempt, v_request_sha,
+    'SETTLE', 50000, v_evidence_sha,
+    'PROVIDER_BILLING_CONFIRMED'
+  );
+
+  IF v_result <> 'DENIED_UNAPPROVED_BILLING_EVIDENCE' THEN
+    RAISE EXCEPTION
+      'P0_7E_UNAPPROVED_SETTLEMENT_NOT_FENCED: %', v_result;
+  END IF;
+
+  RAISE NOTICE 'PASS: UNAPPROVED_BILLING_EVIDENCE_DENIED';
+
+
   SELECT state
     INTO v_reservation_state
     FROM public.velto_beta_provider_budget_reservations
