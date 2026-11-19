@@ -14,7 +14,7 @@ const required = [
   ["hard cap", /cap_micro_usd -\s*v_budget\.settled_micro_usd -\s*v_budget\.held_micro_usd/i],
   ["private role", /grant execute on function public\.velto_beta_budget_reserve_v1\(\s*uuid, text, text, bigint\s*\)\s*to service_role/i],
   ["revocation", /revoke all on function public\.velto_beta_budget_reserve_v1\(\s*uuid, text, text, bigint\s*\)\s*from public, anon, authenticated/i],
-  ["invoker", /security invoker\s+set search_path = ''/i],
+  ["definer", /security definer\s+set search_path = ''/i],
   ["missing budget denial", /DENIED_NO_AUTHORIZED_BUDGET/],
   ["duplicate denial", /DENIED_DUPLICATE_ATTEMPT/],
   ["review only", /REVIEW ONLY\. Do not apply/],
@@ -25,19 +25,18 @@ const inspect = source =>
     .map(([name]) => name);
 
 assert.deepEqual(inspect(sql), []);
-assert.doesNotMatch(sql, /security definer/i);
+assert.doesNotMatch(sql, /security invoker/i);
 
 const mutations = [
   sql.replace("for update;", ";"),
   sql.replace("on conflict (attempt_key) do nothing", ""),
-  sql.replace("security invoker", "security definer"),
+  sql.replace("security definer", "security invoker"),
   sql.replace(") to service_role;", ") to authenticated;"),
 ];
 
 for (const candidate of mutations) {
   assert.ok(
-    inspect(candidate).length > 0 ||
-      /security definer/i.test(candidate),
+    inspect(candidate).length > 0,
     "Negative mutation escaped"
   );
 }
