@@ -111,7 +111,7 @@ assert.match(repository, /payload = creatorProjectUpdatePayload\(input\)/);
 const createPage = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(createPage, /projectState: currentProjectId && creatorPersistenceCurrentRef\.current \? "saved" : "draft"/);
 assert.match(createPage, /creatorPersistenceCurrentRef\.current = false;\s+const sourceScenes = lifecycleOverrides\.sourceScenes/);
-assert.match(createPage, /await queuedSave;\s+if \(saveAttempt === projectSaveAttemptRef\.current && binding\.generation === projectGenerationRef\.current\) \{\s+creatorPersistenceCurrentRef\.current = true;/);
-assert.match(createPage, /catch \(saveError\) \{\s+if \(saveAttempt === projectSaveAttemptRef\.current\) creatorPersistenceCurrentRef\.current = false;/);
+assert.match(createPage, /const result = await queuedSave;\s+if \(result && saveAttempt === projectSaveAttemptRef\.current && binding\.generation === projectGenerationRef\.current\) \{\s+creatorPersistenceCurrentRef\.current = true;/);
+assert.match(createPage, /catch \(saveError\) \{\s+if \(\["cas_conflict", "repair_required"\]\.includes\(classifyCreatorProjectSaveError\(saveError\)\)\) \{\s+projectSaveConflictGenerationRef\.current = binding\.generation;\s+\}\s+if \(saveAttempt === projectSaveAttemptRef\.current\) creatorPersistenceCurrentRef\.current = false;\s+throw saveError;/);
 
 console.log("CREATORLAB_NEW_PROJECT_PERSISTENCE=PASS");

@@ -248,8 +248,9 @@ assert.doesNotMatch(runtimeSave, /forceInvalidateFinalVideo: true/);
 assert.match(runtimeSave, /hasOwnProperty\.call\(lifecycleOverrides, "audioTimeline"\)/);
 assert.match(page.slice(page.indexOf("const handleExportMovie"), page.indexOf("const applyCreatorProfessionalScriptPlan")), /await projectSaveQueueRef\.current/);
 assert.match(runtimeSave, /creatorAudioTimelineSnapshotFields\([\s\S]*lifecycleOverrides\.audioTimeline[\s\S]*creatorAudioTimeline/);
-assert.match(manualSave, /await persistProject\(true\)/);
-assert.match(autosave, /await persistProject\(false\)/);
+assert.match(manualSave, /await persistProject\(true,\s*\{\s*sourceScenes: durationReconciliation\.scenes/);
+assert.match(runtimeSave, /void persistProject\(false,\s*\{\s*audioTimeline: nextTimeline/);
+assert.match(page, /creatorAudioTimelineSnapshotFields\(creatorAudioTimeline\)/);
 
 let active = { projectId: "project-b", generation: 2, audioTimeline: null, message: "" };
 assert.equal(isCreatorProjectSaveBindingActive(manualBinding, active), false);

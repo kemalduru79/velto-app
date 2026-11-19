@@ -37,7 +37,8 @@ assert.match(controls, /Music continues naturally until you change or stop it\./
 const changeButton = controls.match(/<button type="button"[^>]*onClick=\{\(\) => setChoosing\(true\)\}[^>]*>/)?.[0] || "";
 assert.ok(changeButton);
 assert.doesNotMatch(changeButton, /aria-pressed/);
-assert.match(page, /onChange=\{applyCreatorAudioTimelineChange\}/);
+assert.match(page, /applyCreatorAudioTimelineChange=\{applyCreatorAudioTimelineChange\}/);
+assert.match(await (await import("node:fs/promises")).readFile(new URL("../components/create/CreatorProductionPanel.tsx", import.meta.url), "utf8"), /applyCreatorAudioTimelineChange\(nextTimeline\)/);
 assert.match(handler, /setCreatorAudioTimeline\(nextTimeline\)/);
 assert.match(handler, /persistProject\(false, \{[\s\S]*audioTimeline: nextTimeline/);
 assert.doesNotMatch(handler, /setExportedMovieUrl\(""\)|setExportSignature\(""\)|forceInvalidateFinalVideo/);
