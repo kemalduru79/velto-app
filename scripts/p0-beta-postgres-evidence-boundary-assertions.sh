@@ -37,6 +37,13 @@ BEGIN
 END;
 $fixture$;
 
+-- Synthetic budget fixture created by the test administrator.
+INSERT INTO public.velto_beta_provider_budget_limits (
+  owner_user_id, cap_micro_usd
+) VALUES (
+  'bf1c19e1-75cb-4cd9-8430-100000000007', 1000000
+);
+
 SET LOCAL ROLE service_role;
 
 DO $$
@@ -51,14 +58,7 @@ DECLARE
   v_reservation_state text;
   v_held bigint;
 BEGIN
-  INSERT INTO public.velto_beta_provider_budget_limits (
-    owner_user_id,
-    cap_micro_usd
-  )
-  VALUES (
-    v_owner,
-    1000000
-  );
+
 
   v_result := public.velto_beta_budget_reserve_v1(
     v_owner,
@@ -213,6 +213,78 @@ END;
 $$;
 
 ROLLBACK;
+SQL
+
+pg <<'SQL'
+DO $acl$
+DECLARE
+  v_relation text;
+  v_permission text;
+  v_signature text;
+BEGIN
+  FOREACH v_relation IN ARRAY ARRAY[
+    'public.velto_beta_provider_budget_limits',
+    'public.velto_beta_provider_budget_reservations',
+    'public.velto_beta_provider_dispatch_intents',
+    'public.velto_beta_provider_billing_approvals'
+  ]
+  LOOP
+    FOREACH v_permission IN ARRAY ARRAY[
+      'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'
+    ]
+    LOOP
+      IF has_table_privilege(
+        'service_role', v_relation, v_permission
+      ) THEN
+        RAISE EXCEPTION
+          'P0_DIRECT_FINANCIAL_DML_ALLOWED: %.%',
+          v_relation, v_permission;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  RAISE NOTICE
+    'PASS: SERVICE_ROLE_DIRECT_FINANCIAL_DML_DENIED';
+
+  FOREACH v_signature IN ARRAY ARRAY[
+    'public.velto_beta_budget_reserve_v1(uuid,text,text,bigint)',
+    'public.velto_beta_budget_begin_dispatch_v1(uuid,text,text,text)',
+    'public.velto_beta_budget_accept_dispatch_v1(uuid,text,text,text)',
+    'public.velto_beta_budget_finalize_v1(uuid,text,text,text,bigint,text,text)'
+  ]
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      WHERE p.oid = v_signature::regprocedure
+        AND p.prosecdef
+        AND EXISTS (
+          SELECT 1 FROM unnest(p.proconfig) AS setting
+          WHERE setting LIKE 'search_path=%'
+        )
+    ) THEN
+      RAISE EXCEPTION
+        'P0_FINANCIAL_RPC_NOT_PINNED_DEFINER: %',
+        v_signature;
+    END IF;
+
+    IF NOT has_function_privilege(
+      'service_role', v_signature, 'EXECUTE'
+    ) OR has_function_privilege(
+      'anon', v_signature, 'EXECUTE'
+    ) OR has_function_privilege(
+      'authenticated', v_signature, 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION
+        'P0_FINANCIAL_RPC_EXECUTION_ACL_INVALID: %',
+        v_signature;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE
+    'PASS: FINANCIAL_RPC_EXECUTION_PRIVILEGES_VERIFIED';
+END;
+$acl$;
 SQL
 
 echo "P0_REAL_POSTGRES_EVIDENCE_BOUNDARY=PASS"

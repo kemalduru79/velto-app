@@ -41,11 +41,9 @@ alter table public.velto_beta_provider_dispatch_intents
   enable row level security;
 
 revoke all on public.velto_beta_provider_dispatch_intents
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
 
-grant select, insert, update
-  on public.velto_beta_provider_dispatch_intents
-  to service_role;
+grant select on public.velto_beta_provider_dispatch_intents to service_role;
 
 -- Lock order: budget -> reservation -> dispatch intent.
 -- Matches the existing reservation/finalization lock order.
@@ -57,8 +55,8 @@ create function public.velto_beta_budget_begin_dispatch_v1(
 )
 returns text
 language plpgsql
-security invoker
-set search_path = pg_catalog, public
+security definer
+set search_path = ''
 as $function$
 declare
   v_budget uuid;
@@ -136,8 +134,8 @@ create function public.velto_beta_budget_accept_dispatch_v1(
 )
 returns text
 language plpgsql
-security invoker
-set search_path = pg_catalog, public
+security definer
+set search_path = ''
 as $function$
 declare
   v_budget uuid;

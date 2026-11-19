@@ -39,8 +39,7 @@ alter table public.velto_beta_provider_budget_reservations
     )
   );
 
-grant update on public.velto_beta_provider_budget_reservations
-  to service_role;
+-- Direct reservation UPDATE is prohibited for service_role.
 
 -- P0_7E_BILLING_APPROVAL_LEDGER
 -- Review-only schema. No live migration is applied.
@@ -104,7 +103,7 @@ create or replace function public.velto_beta_budget_finalize_v1(
   p_basis text
 ) returns text
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $function$
 declare

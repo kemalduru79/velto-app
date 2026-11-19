@@ -28,14 +28,12 @@ alter table public.velto_beta_provider_budget_limits enable row level security;
 alter table public.velto_beta_provider_budget_reservations enable row level security;
 
 revoke all on table public.velto_beta_provider_budget_limits
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
 revoke all on table public.velto_beta_provider_budget_reservations
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
 
-grant select, insert, update on table public.velto_beta_provider_budget_limits
-  to service_role;
-grant select, insert on table public.velto_beta_provider_budget_reservations
-  to service_role;
+grant select on public.velto_beta_provider_budget_limits to service_role;
+grant select on public.velto_beta_provider_budget_reservations to service_role;
 
 create or replace function public.velto_beta_budget_reserve_v1(
   p_owner_user_id uuid,
@@ -44,7 +42,7 @@ create or replace function public.velto_beta_budget_reserve_v1(
   p_cost_upper_bound_micro_usd bigint
 ) returns text
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $function$
 declare
