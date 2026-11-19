@@ -1,6 +1,5 @@
 import { createLogger } from "@/lib/observability";
 import {
-  isProviderConfigured,
   resolveProviderEnvironmentValue,
 } from "@/lib/runtime/providerEnvironment.mjs";
 import type {
@@ -240,6 +239,15 @@ async function buildGenerationInstance(input: VideoProviderCreateInput) {
   return instance;
 }
 
+// Gemini API shutdown: https://aistudio.google.com/docs/deprecations
+// A different model ID alone cannot migrate the API protocol.
+function assertGeminiVeoCreationDisabled(): void {
+  throw new Error(
+    "Gemini API Veo preview generation is retired; " +
+    "a verified replacement video adapter is required."
+  );
+}
+
 export class VeoVideoProvider implements VideoProvider {
   readonly key = "veo" as const;
   readonly tier = "premium" as const;
@@ -252,7 +260,8 @@ export class VeoVideoProvider implements VideoProvider {
   };
 
   isAvailable() {
-    return isProviderConfigured("veo");
+    // Gemini API Veo preview models retired on 2026-10-22.
+    return false;
   }
 
   getRuntimeProfile() { return { model: getModel(), resolution: getResolution(), audioMode: "generated_audio" }; }
@@ -266,6 +275,7 @@ export class VeoVideoProvider implements VideoProvider {
   }
 
   async createTask(input: VideoProviderCreateInput): Promise<VideoProviderTask> {
+    assertGeminiVeoCreationDisabled();
     const profile = input.runtimeProfile;
     const model = profile ? validatedCreatorModel(profile.model) : getModel();
     const resolution = profile?.resolution === "720p" || profile?.resolution === "1080p" || profile?.resolution === "4k" ? profile.resolution : getResolution();

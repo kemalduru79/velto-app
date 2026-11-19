@@ -40,6 +40,12 @@ import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/
 import { evaluateCreatorEconomicAdmission, getCreatorMarginEnforcementMode } from "@/lib/economics/economicAdmission";
 import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.server";
 
+import { executeBetaVideoBudgetedStart } from "@/lib/economics/betaVideoBudgetDispatch";
+
+import { quoteBetaRunwayVideo } from "@/lib/economics/betaRunwayPriceQuote";
+import { deriveBetaVideoAttemptKey } from "@/lib/economics/betaVideoBudgetGate";
+import { betaRunwayUsageTagForAttempt } from "@/lib/economics/betaRunwayUsageTag";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -119,6 +125,14 @@ function publicError(error: unknown) {
   return "The CreatorLab video service could not start this motion task.";
 }
 
+
+// Explicitly reject legacy video requests before paid dispatch.
+// A boolean helper avoids narrowing the rest of the route to an
+// unreachable TypeScript branch.
+function isLegacyPaidVideoRequest(productProfile: unknown): boolean {
+  return productProfile !== "creatorlab";
+}
+
 async function postHandler(req: NextRequest) {
   let reservation: MeteredOperationReservation | null = null;
   let providerTaskAccepted = false;
@@ -146,6 +160,21 @@ async function postHandler(req: NextRequest) {
       );
     }
     const { body, projectBinding } = boundary;
+
+    if (isLegacyPaidVideoRequest(body.productProfile)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
+          error: "Video production is blocked until budget enforcement is active.",
+        },
+        {
+          status: 503,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+
     const qualityMode = normalizeCreatorQualityMode(
       body.qualityMode,
       "standard",
@@ -302,6 +331,63 @@ async function postHandler(req: NextRequest) {
       if (!admission.allowed) return NextResponse.json({ ok: false, code: "CREATOR_PRODUCTION_ALLOWANCE_EXCEEDED", error: "Your current production allowance cannot cover this operation." }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
 
+
+    const betaRunwayUsageTag =
+      body.productProfile === "creatorlab"
+        ? betaRunwayUsageTagForAttempt(
+            deriveBetaVideoAttemptKey(
+              principal.id,
+              req.headers.get("x-idempotency-key")?.trim() || null,
+            ),
+          )
+        : undefined;
+
+    // P0 Beta USD budget boundary.
+    // Verified cost ceiling and dispatch settlement are not yet active.
+    if (body.productProfile === "creatorlab") {
+      const priceProfile =
+        routedProfile || selection.provider.getRuntimeProfile();
+
+      const betaPriceQuote = quoteBetaRunwayVideo({
+        provider: selection.provider.key,
+        model: priceProfile.model,
+        billedSeconds: durationPolicy.durationSec,
+      });
+
+      // Public list price is informational, not an authorized
+      // billing ceiling. USD dispatch remains fail-closed.
+      const budgetGate = await executeBetaVideoBudgetedStart(
+        {
+          ownerUserId: principal.id,
+          projectId: canonicalProjectId,
+          sceneId: body.sceneId == null ? null : String(body.sceneId),
+          provider: selection.provider.key,
+          model: (routedProfile || selection.provider.getRuntimeProfile()).model,
+          billedSeconds: durationPolicy.durationSec,
+          idempotencyKey: req.headers.get("x-idempotency-key")?.trim() || null,
+          verifiedCostUpperBoundUsd: null,
+        },
+        // Review-only: no live database or paid provider access.
+        async () => {
+          throw new Error("P0_DATABASE_DISPATCH_DISABLED");
+        },
+        async (): Promise<{ nativeTaskId: string }> => {
+          throw new Error("P0_PAID_VIDEO_DISPATCH_DISABLED");
+        },
+      );
+
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "BETA_VIDEO_BUDGET_DISPATCH_NOT_ACTIVATED",
+          reason: budgetGate.reason,
+          priceQuoteStatus: betaPriceQuote.state,
+          error: "Beta video production is not yet available.",
+        },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     reservation = await reserveMeteredOperation(req, {
       operationType: "creator_video",
       qualityMode,
@@ -349,6 +435,7 @@ async function postHandler(req: NextRequest) {
         : buildCreatorVideoProviderPrompt(body),
       requestedRatio: requestedRatio(body),
       durationSec: durationPolicy.durationSec,
+      runwayUsageTag: betaRunwayUsageTag,
       runtimeProfile: routedProfile ? { model: routedProfile.model, resolution: routedProfile.resolution, audioMode: routedProfile.audioMode, profileKey: routedProfile.profileKey, pricingVersion: smartRoute.pricingVersion || undefined } : undefined,
     });
 
