@@ -52,7 +52,7 @@ assert.match(route, /creator_script_holistic_candidate_plan/); assert.match(rout
 assert.doesNotMatch(route, /creator-refine-scenes/); assert.doesNotMatch(route, /createCreatorScriptSceneSegments/);
 assert.ok(route.indexOf("client.responses.create") < route.indexOf("pendingRefinement = createCreatorScriptProposal"));
 assert.ok(route.indexOf("pendingRefinement = createCreatorScriptProposal") < route.lastIndexOf("saveState(nextState)"));
-assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /scope: "opening"/); assert.match(component, /option value="editorial_rewrite"/); assert.match(component, /option value="research_backed_rewrite"/);
+assert.match(component, /Refine with AI/); assert.match(component, /Selected text/); assert.match(component, /scope: "opening"/); assert.match(component, /refinementIntent\.mode\s*===\s*"editorial_rewrite"/); assert.match(component, /mode:\s*refinementIntent\.mode/); assert.match(await readFile(new URL("../lib/creator/creatorScriptNaturalRefinementIntent.ts", import.meta.url), "utf8"), /mode:\s*requiresResearch\s*\?\s*"research_backed_rewrite"\s*:\s*"editorial_rewrite"/); assert.match(route, /refinementMode\s*===\s*"research_backed_rewrite"/);
 assert.doesNotMatch(component, /pendingRefinement\.scope !== "whole_script"/, "validated whole-script proposals use the same explicit Apply\/Discard lifecycle");
 assert.match(component, /aria-hidden="true"/); assert.match(component, /visibleHighlights/); assert.match(component, /setEditorScroll/);
 assert.match(component, /data-script-highlight=\{range\.kind\}/); assert.match(component, /creatorlab-script-highlight-selection/); assert.match(component, /creatorlab-script-highlight-refinement/);

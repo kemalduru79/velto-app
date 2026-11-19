@@ -236,7 +236,7 @@ const firstHandler = page.slice(page.indexOf("const handleCreatorProductionPacka
 assert.match(firstHandler, /operation: "generate_full_script"/);
 assert.doesNotMatch(firstHandler, /fetch\("\/api\/creator-production"/);
 assert.doesNotMatch(firstHandler, /creatorStageAfterSuccess/);
-assert.match(page, /Approve Strategy & Build Script/);
+assert.match(await readFile(new URL("../components/create/CreatorStrategyPanel.tsx", import.meta.url), "utf8"), /Approve Strategy & Build Script/);
 assert.match(component, /Approve Script & Build Scenes/);
 assert.match(component, /Strengthen opening/);
 assert.match(route, /generate_full_script/);
