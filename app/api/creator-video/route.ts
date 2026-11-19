@@ -40,8 +40,7 @@ import { getCreatorVideoRuntimeContext, selectCreatorVideoProfile } from "@/lib/
 import { evaluateCreatorEconomicAdmission, getCreatorMarginEnforcementMode } from "@/lib/economics/economicAdmission";
 import { getCreatorEconomicUsageSnapshot } from "@/lib/economics/usageService.server";
 
-import { checkBetaVideoBudgetDispatch } from "@/lib/economics/betaVideoBudgetGate";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { executeBetaVideoBudgetedStart } from "@/lib/economics/betaVideoBudgetDispatch";
 
 import { quoteBetaRunwayVideo } from "@/lib/economics/betaRunwayPriceQuote";
 
@@ -345,7 +344,7 @@ async function postHandler(req: NextRequest) {
 
       // Public list price is informational, not an authorized
       // billing ceiling. USD dispatch remains fail-closed.
-      const budgetGate = await checkBetaVideoBudgetDispatch(
+      const budgetGate = await executeBetaVideoBudgetedStart(
         {
           ownerUserId: principal.id,
           projectId: canonicalProjectId,
@@ -356,10 +355,12 @@ async function postHandler(req: NextRequest) {
           idempotencyKey: req.headers.get("x-idempotency-key")?.trim() || null,
           verifiedCostUpperBoundUsd: null,
         },
-        async (name, args) => {
-          const { data, error } =
-            await createServerSupabaseClient().rpc(name, args);
-          return { data, error };
+        // Review-only: no live database or paid provider access.
+        async () => {
+          throw new Error("P0_DATABASE_DISPATCH_DISABLED");
+        },
+        async (): Promise<{ nativeTaskId: string }> => {
+          throw new Error("P0_PAID_VIDEO_DISPATCH_DISABLED");
         },
       );
 

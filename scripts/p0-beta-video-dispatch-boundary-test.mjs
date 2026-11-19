@@ -48,7 +48,7 @@ const legacyGuard = source.indexOf(
   "if (isLegacyPaidVideoRequest(body.productProfile))"
 );
 const budgetGate = source.indexOf(
-  "checkBetaVideoBudgetDispatch("
+  "executeBetaVideoBudgetedStart("
 );
 const providerDispatch = source.indexOf(
   "selection.provider.createTask({"
