@@ -25,10 +25,8 @@ import {
   type ResearchClaim,
   type ResearchClaimEvidenceGraph,
 } from "@/lib/research/claimEvidenceGraph";
-import {
-  ClaimPropositionAuthorityDisagreementError,
-  reconcileClaimPropositionAuthorities,
-} from "@/lib/research/claimPropositionAuthority";
+import { ClaimPropositionAuthorityDisagreementError } from "@/lib/research/claimPropositionAuthority";
+import { reconcileEditorialClaimOriginsWithAdditiveRepairRollback } from "@/lib/research/editorialClaimOriginRepairRollback";
 import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
@@ -391,6 +389,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const originalEditorialGraph = graph;
     const selectionRepair = await repairCollapsedCanonicalEditorialSelection({
       candidateSpans,
       graph,
@@ -628,17 +627,22 @@ export async function POST(request: Request) {
         response: adjudicationResponse,
         userId: secured.context.user.id,
       });
-      const reconciledClaims = reconcileClaimPropositionAuthorities({
-        initialClaims: graph.claims,
+      const resolution = reconcileEditorialClaimOriginsWithAdditiveRepairRollback({
+        baseGraph: originalEditorialGraph,
+        selectedGraph: graph,
+        repairAccepted: selectionRepair.diagnostic.repairAccepted,
         adjudication: parseModelJson(adjudicationResponse.output_text || ""),
-        sourceContext: {sources: graph.sources, evidence: graph.evidence, links: graph.links},
-      }) as ResearchClaim[];
-      graph = createResearchClaimEvidenceGraph({
-        sources: graph.sources,
-        claims: reconciledClaims,
-        evidence: graph.evidence,
-        links: graph.links,
       });
+      graph = resolution.graph;
+      if (resolution.rolledBackAdditiveClaimId) {
+        console.warn("CREATOR_EDITORIAL_CLAIM_ORIGIN_ADDITIVE_REPAIR_ROLLED_BACK", {
+          claimId: resolution.rolledBackAdditiveClaimId,
+          reasonCode: "PRIMARY_OBLIGATION_DOWNGRADE_ON_ADDITIVE_CLAIM",
+          canonicalBaseClaimCount: originalEditorialGraph.claims.length,
+          returnedClaimCount: graph.claims.length,
+          providerRetried: false,
+        });
+      }
     } catch (error) {
       const diagnostic = error instanceof Error
         ? error.message
