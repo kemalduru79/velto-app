@@ -5,6 +5,10 @@ import {
   creatorScriptRefinementModelOptions,
   resolveCreatorScriptRefinementModel,
 } from "../lib/creator/creatorScriptRefinementRuntime.ts";
+import {
+  resolveCreatorScriptNaturalRefinementIntent,
+  inferCreatorScriptFocusedSectionSelection,
+} from "../lib/creator/creatorScriptNaturalRefinementIntent.ts";
 
 assert.equal(resolveCreatorScriptRefinementModel({}), "gpt-6.1-sol");
 assert.equal(resolveCreatorScriptRefinementModel({ OPENAI_SCRIPT_MODEL: "gpt-6.1-sol" }), "gpt-6.1-sol");
@@ -40,10 +44,48 @@ assert.match(route, /status: failure\.status/);
 assert.doesNotMatch(route, /model: process\.env\.OPENAI_MODEL \|\| "gpt-4\.1-mini"/);
 assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
 assert.match(policy, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED = false/);
+// Current CreatorLab has one instruction field, not the former scope/mode selects.
+// Verify actual routing and safety gates instead of retired UI copy.
 assert.match(component, /data-creator-refinement-scope-notice="true"/);
-assert.match(component, /Only the opening is edited/);
-assert.match(component, /scope: "opening"/);
-assert.match(component, /option value="editorial_rewrite"/);
-assert.match(component, /option value="research_backed_rewrite"/);
+assert.match(component, /resolveCreatorScriptNaturalRefinementIntent\(refineInstruction, Boolean\(lockedSelection\)\)/);
+assert.match(component, /refinementIntent\.scope === "opening"/);
+assert.match(component, /scope: "opening" as const, mode: "focused_edit" as const/);
+assert.match(component, /scope: "selection" as const, mode: "focused_edit" as const/);
+assert.match(component, /inferredSectionSelection\.start/);
+assert.match(component, /process\.env\.NEXT_PUBLIC_VERCEL_ENV === "preview"/);
+assert.match(component, /if \(!canPreviewRefinement && !inferredSectionSelection\)/);
+assert.match(component, /refinementIntent\.scope === "whole_script" && !wholeScriptPreviewEnabled/);
+assert.match(component, /Nothing will be sent or silently applied to the opening/);
+assert.match(component, /data-creator-refinement-action="preview"/);
+
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Strengthen the opening without changing verified facts", false),
+  { status: "ready", scope: "opening", mode: "focused_edit" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Reduce repetition throughout the whole script", false),
+  { status: "ready", scope: "whole_script", mode: "editorial_rewrite" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Improve the conclusion", false),
+  { status: "ready", scope: "whole_script", mode: "editorial_rewrite" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Improve the opening and the conclusion", false),
+  { status: "clarify", reason: "conflicting_targets" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Edit the selected passage", false),
+  { status: "clarify", reason: "selection_required" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Improve this passage", true),
+  { status: "ready", scope: "selection", mode: "focused_edit" });
+assert.deepEqual(resolveCreatorScriptNaturalRefinementIntent("Find new evidence for the conclusion", false),
+  { status: "ready", scope: "whole_script", mode: "research_backed_rewrite" });
+
+const sectionFixture = [
+  { kind: "opening", text: "Opening fact." },
+  { kind: "body", text: "Middle fact." },
+  { kind: "conclusion", text: "Conclusion fact." },
+];
+const canonicalFixture = sectionFixture.map((section) => section.text).join("\n\n");
+const focus = inferCreatorScriptFocusedSectionSelection("Improve the conclusion", sectionFixture, canonicalFixture);
+assert.equal(focus?.text, "Conclusion fact.");
+assert.equal(focus?.sectionIndex, 2);
+assert.equal(canonicalFixture.slice(focus.start, focus.end), sectionFixture[2].text);
+assert.equal(inferCreatorScriptFocusedSectionSelection("Improve the conclusion across the whole script", sectionFixture, canonicalFixture), null);
+assert.equal(inferCreatorScriptFocusedSectionSelection("Improve the conclusion and opening", sectionFixture, canonicalFixture), null);
+assert.equal(inferCreatorScriptFocusedSectionSelection("Add new sources to the conclusion", sectionFixture, canonicalFixture), null);
+assert.equal(inferCreatorScriptFocusedSectionSelection("Improve the conclusion", sectionFixture, "stale document"), null);
 
 console.log("CREATOR_SCRIPT_REFINEMENT_R1_FOUNDATION=PASS");
