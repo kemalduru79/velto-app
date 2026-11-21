@@ -1,8 +1,10 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
+const publish = readMountedWorkspacePanel("CreatorPublishPanel");
 const root = process.cwd();
 const modulePath = path.join(root, "lib/creator/publishReadyPackage.ts");
 const source = fs.readFileSync(modulePath, "utf8");
@@ -132,9 +134,12 @@ assert.match(
 assert.doesNotMatch(packageHandler, /evidenceGovernance|sourceAssessments|claimGraph|rightsMetadata/);
 assert.doesNotMatch(createPage, /syntheticDisclosure|attributionSatisfied|attributionApplied/);
 assert.match(
-  createPage,
+  fs.readFileSync(path.join(root, "components/create/createWorkspacePanelTypes.ts"), "utf8"),
   /type CreatorReleaseConfirmationKey =\s*\| "videoReviewed"\s*\| "claimsVerified"\s*\| "rightsConfirmed"\s*\| "thumbnailApproved";/,
 );
+
+assert.match(createPage, /import type \{[^}]*CreatorReleaseConfirmationKey[^}]*\} from "@\/components\/create\/createWorkspacePanelTypes"/);
+assert.match(publish, /creatorReleaseConfirmationItems\.map/);
 
 const exportRoute = fs.readFileSync(
   path.join(root, "app/api/export-creator-package/route.ts"),

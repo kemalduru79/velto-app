@@ -193,6 +193,11 @@ export function researchClaimRequiresPrimarySource(
   return claim.claimType === "PRIMARY_SOURCE_CLAIM";
 }
 
+/** Fiction has no empirical burden; factual/primary obligations are never waived. */
+export function researchClaimRequiresEvidence(claim: Pick<ResearchClaim,"claimType"|"propositionKind"|"origin">) {
+ return claim.claimType!=="THOUGHT_EXPERIMENT" || researchClaimRequiresPrimarySource(claim);
+}
+
 function assertUniqueIds(
   values: Array<{ id: string }>,
   label: string,

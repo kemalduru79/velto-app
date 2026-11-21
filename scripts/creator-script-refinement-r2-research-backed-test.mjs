@@ -13,6 +13,7 @@ import {
 } from "../lib/creator/creatorScriptEditorialRewrite.ts";
 import { applyCreatorScriptProposal, createCreatorScriptProposal, discardCreatorScriptProposal } from "../lib/creator/creatorScriptRevisions.ts";
 import { classifyCreatorScriptRefinementFailure } from "../lib/creator/creatorScriptRefinementRuntime.ts";
+import { isCreatorScriptFullRefinementPreviewEnabled } from "../lib/creator/creatorScriptRefinement.ts";
 
 const words = (prefix, count) => Array.from({ length: count }, (_, index) => `${prefix}${index}`).join(" ");
 const context = {
@@ -46,6 +47,14 @@ assert.equal(normalizeCreatorScriptRefinementMode("editorial_rewrite", "whole_sc
 assert.throws(() => normalizeCreatorScriptRefinementMode(undefined, "whole_script"), /MODE_REQUIRED/);
 assert.equal(isCreatorScriptFullRefinementRuntimeEnabled({ NODE_ENV: "production", CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED: "true" }), false);
 assert.equal(isCreatorScriptFullRefinementRuntimeEnabled({ NODE_ENV: "test", CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED: "true" }), true);
+assert.equal(isCreatorScriptFullRefinementPreviewEnabled({ VERCEL_ENV: "preview", NODE_ENV: "production", CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED: "true" }), true);
+for (const gateEnv of [
+  { VERCEL_ENV: "production", NODE_ENV: "production", CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED: "true" },
+  { VERCEL_ENV: "preview", NODE_ENV: "production", CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED: "false" },
+  { VERCEL_ENV: "preview", NODE_ENV: "development", CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED: "true" },
+  { VERCEL_ENV: "preview", NODE_ENV: "production" },
+]) assert.equal(isCreatorScriptFullRefinementPreviewEnabled(gateEnv), false);
+
 
 const instruction = "Replace weak references with documented AI-generated novel replies and the Stanford 1,052-agent behavior-prediction study. Add the identity-fission two-copies paradox; strengthen contrasting positions and the moral ending. Keep the English accessible at B1-B2 and stay below 10:00.";
 const goals = createCreatorScriptRewriteGoalPlan(instruction);
@@ -164,6 +173,206 @@ if (priorOfflineGate === undefined) delete process.env.CREATOR_SCRIPT_FULL_REFIN
 if (priorNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = priorNodeEnv;
 if (priorOpenAiKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = priorOpenAiKey;
 
+// Issue #50: two real HTTP-route refinement iterations against the SAME canonical
+// synthetic manuscript. Model and project repository are closed stubs, never live.
+// This verifies actual application lifecycle, not quality of AI-generated prose.
+const iterativeOriginal = protectedScript;
+let mutableProject = {
+  ...persistedProject,
+  id: "project-iterative-offline",
+  scenes: [],
+  exported_movie_result: attachCreatorProjectState({}, {
+    ...projectState,
+    createReview: { ...projectState.createReview, scenes: [] },
+    production: { ...projectState.production, refinedScenes: [], package: null },
+    strategy: { ...projectState.strategy, script: iterativeOriginal, pendingRefinement: null, revisionHistory: [] },
+  }),
+};
+const ownerId = "owner-r2";
+const nowEnv = {
+  node: process.env.NODE_ENV, gate: process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED,
+  key: process.env.OPENAI_API_KEY,
+  vercel: process.env.VERCEL_ENV,
+  preview: process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED,
+};
+process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED = "true";
+process.env.NODE_ENV = "test";
+process.env.OPENAI_API_KEY = "offline-no-network-transport";
+let iterativeWrites = 0;
+let iterativeProviderCalls = 0;
+let iterativeSnapshotCalls = 0;
+const providerInputs = [];
+const initialBodyText = iterativeOriginal.sections.find((section) => section.id === "body-1").text;
+const initialConclusionText = iterativeOriginal.sections.find((section) => section.id === "conclusion").text;
+const firstChange = "The unanswered question now follows the source-bound observation.";
+const secondChange = "What would make this choice respectful to everyone affected?";
+const deps = {
+  authenticate: async () => ({ id: ownerId, email: "closed-offline@test.invalid", providerUser: { id: ownerId } }),
+  persistence: () => ({ projectRepository: {
+    getForOwner: async (projectId, requester) => projectId === mutableProject.id && requester === ownerId ? structuredClone(mutableProject) : null,
+    saveForOwner: async (input) => {
+      assert.equal(input.projectId, mutableProject.id);
+      assert.equal(input.ownerUserId, ownerId);
+      assert.equal(input.expectedUpdatedAt, mutableProject.updated_at, "CAS must reject a stale persistence revision");
+      assert.ok(input.exportedMovieResult?.creatorProjectState?.strategy);
+      iterativeWrites += 1;
+      mutableProject = {
+        ...mutableProject,
+        exported_movie_result: structuredClone(input.exportedMovieResult),
+        scenes: input.scenes || mutableProject.scenes,
+        updated_at: new Date(Date.parse(mutableProject.updated_at) + 1000).toISOString(),
+      };
+      return { project: structuredClone(mutableProject) };
+    },
+  } }),
+  editorialProviders: () => ({
+    research: async () => { throw new Error("unexpected research call: editorial-only request"); },
+    rewrite: async ({ script: current, instruction: editorialInstruction }) => {
+      iterativeProviderCalls += 1;
+      const iteration = iterativeProviderCalls;
+      providerInputs.push({
+        revision: current.revision,
+        instruction: editorialInstruction,
+        opening: current.sections.find((section) => section.id === "opening").text,
+        body: current.sections.find((section) => section.id === "body-1").text,
+        conclusion: current.sections.find((section) => section.id === "conclusion").text,
+      });
+      const targetId = iteration === 1 ? "body-1" : iteration === 2 ? "conclusion" : "body-2";
+      const addition = iteration === 1 ? firstChange : iteration === 2 ? secondChange : "The ambiguity remains visible.";
+      return {
+        sections: current.sections.map((section) => ({
+          ...section,
+          text: section.id === targetId ? section.text + " " + addition : section.text,
+          lineage: { sourceSectionIds: [section.id] },
+        })),
+        addedClaims: [], addedEvidence: [], goalResults: [],
+      };
+    },
+    verifyClaims: async () => { throw new Error("unexpected claim verification request"); },
+    assess: async ({ before, after, goals: requestedGoals }) => requestedGoals.map((goal) => ({
+      goalId: goal.goalId, status: "satisfied",
+      sectionIds: [iterativeProviderCalls === 1 ? "body-1" : iterativeProviderCalls === 2 ? "conclusion" : "body-2"],
+      summary: "A closed-stub candidate contains a local material edit; no real narration-quality assessment.",
+    })),
+  }),
+  captureProductionSnapshot: async () => { iterativeSnapshotCalls += 1; throw new Error("unexpected production snapshot for a script-only project"); },
+};
+const request = (body) => new Request("http://localhost/api/creator-script/refine", {
+  method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ projectId: mutableProject.id, ...body }),
+});
+const dispatch = async (body) => {
+  const response = await handleRefinement(request(body), deps);
+  return { status: response.status, body: await response.json() };
+};
+const storedStrategy = () => mutableProject.exported_movie_result.creatorProjectState.strategy;
+try {
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision);
+  const r1 = await dispatch({
+    action: "generate", scope: "whole_script", mode: "editorial_rewrite",
+    revision: storedStrategy().script.revision,
+    instruction: "Improve narrative progression while preserving the established qualifications.",
+  });
+  assert.equal(r1.status, 200, JSON.stringify(r1.body));
+  assert.ok(r1.body.pendingRefinement?.proposalId);
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision, "preview must not mutate canonical script");
+  assert.equal(storedStrategy().script.sections.find((s) => s.id === "body-1").text, initialBodyText);
+  assert.equal(storedStrategy().pendingRefinement?.baseRevision, iterativeOriginal.revision);
+  assert.equal(storedStrategy().revisionHistory.length, 0);
+  // A stale request must fail instead of silently overwriting another revision.
+  const stale1 = await dispatch({
+    action: "generate", scope: "whole_script", mode: "editorial_rewrite",
+    revision: iterativeOriginal.revision + 1, instruction: "Wrong revision.",
+  });
+  assert.equal(stale1.status, 409);
+  assert.equal(stale1.body.code, "CREATOR_SCRIPT_REFINEMENT_STALE");
+  const a1 = await dispatch({ action: "apply", revision: iterativeOriginal.revision, proposalId: r1.body.pendingRefinement.proposalId });
+  assert.equal(a1.status, 200, JSON.stringify(a1.body));
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision + 1);
+  assert.equal(storedStrategy().pendingRefinement, null);
+  assert.ok(storedStrategy().script.sections.find((s) => s.id === "body-1").text.endsWith(firstChange));
+  assert.equal(storedStrategy().revisionHistory.length, 1);
+  assert.equal(storedStrategy().revisionHistory[0].origin, "ai_whole_script");
+  assert.equal(storedStrategy().revisionHistory[0].instruction, r1.body.pendingRefinement.instruction);
+  // A second prompt starts on the first ACCEPTED revision, never on the initial creative brief.
+  const r2 = await dispatch({
+    action: "generate", scope: "whole_script", mode: "editorial_rewrite",
+    revision: storedStrategy().script.revision,
+    instruction: "Strengthen the ending question without erasing the prior body edit.",
+  });
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(providerInputs[1].revision, iterativeOriginal.revision + 1);
+  assert.ok(providerInputs[1].body.endsWith(firstChange));
+  assert.equal(providerInputs[1].conclusion, initialConclusionText);
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision + 1);
+  const oldApply = await dispatch({ action: "apply", revision: iterativeOriginal.revision, proposalId: r1.body.pendingRefinement.proposalId });
+  assert.equal(oldApply.status, 409, "old proposal must be rejected");
+  const a2 = await dispatch({ action: "apply", revision: iterativeOriginal.revision + 1, proposalId: r2.body.pendingRefinement.proposalId });
+  assert.equal(a2.status, 200, JSON.stringify(a2.body));
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision + 2);
+  assert.ok(storedStrategy().script.sections.find((s) => s.id === "body-1").text.endsWith(firstChange), "previous accepted edit must survive");
+  assert.ok(storedStrategy().script.sections.find((s) => s.id === "conclusion").text.endsWith(secondChange));
+  assert.equal(storedStrategy().revisionHistory.length, 2);
+  assert.deepEqual(storedStrategy().revisionHistory.map((entry) => entry.fromRevision), [iterativeOriginal.revision + 1, iterativeOriginal.revision]);
+  assert.equal(storedStrategy().revisionHistory[0].instruction, r2.body.pendingRefinement.instruction);
+  assert.equal(storedStrategy().script.grounding.context.claims.length, iterativeOriginal.grounding.context.claims.length);
+  assert.equal(storedStrategy().script.grounding.context.evidence.length, iterativeOriginal.grounding.context.evidence.length);
+  assert.equal(storedStrategy().script.strategyFingerprint, iterativeOriginal.strategyFingerprint);
+  assert.equal(getCreatorScriptDurationContractForScript(storedStrategy().script, "en").status, "compliant");
+  const beforeDiscard = JSON.stringify(storedStrategy().script);
+  const beforeHistory = JSON.stringify(storedStrategy().revisionHistory);
+  const r3 = await dispatch({
+    action: "generate", scope: "whole_script", mode: "editorial_rewrite",
+    revision: storedStrategy().script.revision,
+    instruction: "Reduce needless repetition without altering the current meaning.",
+  });
+  assert.equal(r3.status, 200, JSON.stringify(r3.body));
+  const d3 = await dispatch({ action: "discard", revision: storedStrategy().script.revision, proposalId: r3.body.pendingRefinement.proposalId });
+  assert.equal(d3.status, 200, JSON.stringify(d3.body));
+  assert.equal(JSON.stringify(storedStrategy().script), beforeDiscard, "discard must preserve exact canonical bytes");
+  assert.equal(JSON.stringify(storedStrategy().revisionHistory), beforeHistory, "discard must preserve prior accepted revision history");
+  assert.equal(storedStrategy().pendingRefinement, null);
+  assert.equal(iterativeProviderCalls, 3, "only three closed rewrite stub calls occurred in offline-test mode");
+  assert.equal(iterativeWrites, 6, "two previews plus applies and one preview/discard = six persistence writes");
+  assert.equal(iterativeSnapshotCalls, 0);
+  assert.equal(mutableProject.scenes.length, 0);
+
+  // Preview is opt-in ONLY on the server. Production and missing flag must
+  // deny before accessing model/provider or writing the project.
+  process.env.NODE_ENV = "production";
+  process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED = "false";
+  process.env.VERCEL_ENV = "production";
+  process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED = "true";
+  const productionDenied = await dispatch({ action: "generate", scope: "whole_script", mode: "editorial_rewrite", revision: storedStrategy().script.revision, instruction: "Improve the current dilemma." });
+  assert.equal(productionDenied.status, 409);
+  assert.equal(productionDenied.body.code, "CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED");
+  process.env.VERCEL_ENV = "preview";
+  process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED = "false";
+  const missingFlagDenied = await dispatch({ action: "generate", scope: "whole_script", mode: "editorial_rewrite", revision: storedStrategy().script.revision, instruction: "Improve the current dilemma." });
+  assert.equal(missingFlagDenied.status, 409);
+  assert.equal(iterativeProviderCalls, 3);
+  assert.equal(iterativeWrites, 6);
+  process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED = "true";
+  const previewPass = await dispatch({ action: "generate", scope: "whole_script", mode: "editorial_rewrite", revision: storedStrategy().script.revision, instruction: "Make the body explanation easier to follow." });
+  assert.equal(previewPass.status, 200, JSON.stringify(previewPass.body));
+  assert.equal(storedStrategy().script.revision, iterativeOriginal.revision + 2, "preview never auto-applies");
+  const previewDiscard = await dispatch({ action: "discard", revision: storedStrategy().script.revision, proposalId: previewPass.body.pendingRefinement.proposalId });
+  assert.equal(previewDiscard.status, 200, JSON.stringify(previewDiscard.body));
+  assert.equal(JSON.stringify(storedStrategy().script), beforeDiscard);
+  assert.equal(JSON.stringify(storedStrategy().revisionHistory), beforeHistory);
+  assert.equal(iterativeProviderCalls, 4);
+  assert.equal(iterativeWrites, 8);
+  assert.equal(iterativeSnapshotCalls, 0);
+
+  console.log(JSON.stringify({ status: "ISSUE50_TWO_TURN_HTTP_REFINEMENT_OFFLINE_PASS_NOT_LIVE_OR_PRODUCTION", appliedTurns: 2, discardedPreviews: 2, canonicalRevision: storedStrategy().script.revision, rewriteStubCalls: iterativeProviderCalls, externalProviderCalls: 0, snapshotCalls: iterativeSnapshotCalls, previewGate: "PRODUCTION_DENIED_PREVIEW_EXPLICIT_FLAG_ONLY" }));
+} finally {
+  if (nowEnv.gate === undefined) delete process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED; else process.env.CREATOR_SCRIPT_FULL_REFINEMENT_OFFLINE_ENABLED = nowEnv.gate;
+  if (nowEnv.node === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = nowEnv.node;
+  if (nowEnv.key === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = nowEnv.key;
+  if (nowEnv.vercel === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = nowEnv.vercel;
+  if (nowEnv.preview === undefined) delete process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED; else process.env.CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED = nowEnv.preview;
+}
+
 for (const code of ["CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED", "CREATOR_SCRIPT_REFINEMENT_MISSING_SOURCES", "CREATOR_SCRIPT_REFINEMENT_UNSUPPORTED_NEW_CLAIM", "CREATOR_SCRIPT_REFINEMENT_GOAL_MISMATCH", "CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID"]) {
   assert.equal(classifyCreatorScriptRefinementFailure(new Error(code)).code, code);
 }
@@ -175,9 +384,13 @@ assert.match(route, /normalizeCreatorScriptRefinementMode/);
 assert.match(route, /executeCreatorScriptEditorialRewrite/);
 assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_PRODUCTION_ENABLED/);
 assert.match(route, /CREATOR_SCRIPT_REFINEMENT_STAGE/);
-assert.match(component, /option value="editorial_rewrite"/);
-assert.match(component, /option value="research_backed_rewrite"/);
-assert.match(component, /scope: "whole_script", mode: refinementTarget/);
+assert.doesNotMatch(component, /<select aria-label/);
+assert.match(component, /resolveCreatorScriptNaturalRefinementIntent/);
+assert.match(component, /data-creator-refinement-prompt="iterative"/);
+assert.match(component, /scope: "whole_script" as const, mode: refinementIntent.mode/);
+assert.match(component, /refinementIntent.scope !== "whole_script" \|\| wholeScriptPreviewEnabled/);
+assert.match(component, /!canPreviewRefinement/);
+assert.match(route, /CREATOR_SCRIPT_FULL_REFINEMENT_DEFERRED/);
 assert.doesNotMatch(component, /pendingRefinement\.scope !== "whole_script"/);
 assert.match(page, /mode: "focused_edit" \| "editorial_rewrite" \| "research_backed_rewrite"/);
 assert.doesNotMatch(page.slice(page.indexOf("const handleRefineCreatorScript"), page.indexOf("const handleOptimizeScenes")), /setCreatorSelectedWorkspaceStep|setCreatorProductionSubstep/);

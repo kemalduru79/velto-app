@@ -15,10 +15,14 @@ function statusClass(status: number) {
 }
 
 export function withObservedApiRoute<
-  T extends (...args: any[]) => Promise<Response> | Response,
->(route: string, handler: T): T {
-  return (async (...args: Parameters<T>) => {
-    const request = args[0] as Request;
+  Args extends [Request, ...unknown[]],
+  Result extends Response,
+>(
+  route: string,
+  handler: (...args: Args) => Promise<Result> | Result,
+): (...args: Args) => Promise<Result> {
+  return (async (...args: Args) => {
+    const request = args[0];
     const context = createRequestObservabilityContext(request, route);
 
     return runWithObservabilityContext(context, async () => {
@@ -58,5 +62,5 @@ export function withObservedApiRoute<
         throw error;
       }
     });
-  }) as T;
+  });
 }

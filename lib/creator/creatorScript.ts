@@ -1,8 +1,9 @@
+import { CREATOR_EDITORIAL_REVISION_CONTRACT } from "./creatorEditorialNarrativeReview.ts";
 import {
   normalizeScriptPlannerEditorialContext,
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
-import { researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
+import { researchClaimRequiresEvidence, researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
 import {
   assertCreatorNarrativePolicyConfiguration,
   type CreatorNarrativePolicy,
@@ -32,6 +33,7 @@ export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
 ] as const;
 
 export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
+  ...CREATOR_EDITORIAL_REVISION_CONTRACT,
   "Write as an intelligent, calm, precise, curious human documentary narrator: state substantive ideas directly instead of announcing, labeling, or explaining the paragraph's function.",
   "Treat established premises as known. Do not restate a thesis merely to transition, summarize prior sections, or give each section a self-contained introduction; each section must add new role-owned intellectual value.",
   "Let transitions emerge from unresolved logic. Never use meta transitions such as 'this brings us to', 'having established', 'we now turn to', 'the next question is', or 'this section examines'.",
@@ -181,8 +183,8 @@ export function createCreatorScriptNarrationControlPlan(plan: CreatorScriptSecti
                   owns.includes("uncertainty") ||
                   owns.includes("grounded_tension") ||
                   owns.includes("evidence_boundary")
-                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or final unresolved question."
-                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's highest-order synthesis or final unresolved question.";
+                ? "Introduce the strongest grounded challenge, boundary, or competing explanation and identify what survives it. Do not summarize the mechanism or evidence, and do not spend the conclusion by delivering the final paradox or closing question early."
+                : "Advance only the new substantive work identified by owns. Treat establishedPremises as known; do not define, summarize, or re-teach them. Do not spend the conclusion's final synthesis or closing question early.";
     const control = {
       sectionId: section.id,
       kind: section.kind,
@@ -460,7 +462,7 @@ export function normalizeCreatorScript(value: unknown, historicalReadOnly = fals
       evidenceReviewRequired: normalized.evidenceReviewRequired || normalized.claimIds.some(
         (claimId) => {
           const claim = claimById.get(claimId);
-          return (claim?.supportingEvidenceIds.length || 0) === 0 ||
+          return (claim && researchClaimRequiresEvidence(claim) && (claim.supportingEvidenceIds.length || 0) === 0) ||
             (primarySourceRequiredClaimIds.has(claimId) &&
               !primarySourceCoveredClaimIds.has(claimId));
         },
@@ -786,7 +788,10 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   language: "tr" | "en";
   hasMaterialCounterview?: boolean;
   narrativePolicy?: CreatorNarrativePolicy;
+  storyStructure?: "geopolitical_fiction_2055_2075_v1";
 }) {
+  if(input.storyStructure && (input.storyStructure!=="geopolitical_fiction_2055_2075_v1" || input.narrativePolicy))throw new Error("CREATOR_FICTION_STORY_CONFIGURATION_UNSUPPORTED");
+  validateCreatorScriptGenerationDuration(input.targetDurationSec);
   assertCreatorNarrativePolicyConfiguration({
     narrativePolicy: input.narrativePolicy,
     targetDurationSec: input.targetDurationSec,
@@ -796,7 +801,17 @@ export function createCreatorScriptSectionBudgetPlan(input: {
     language: input.language,
     actualWordCount: 0,
   });
-  const bodyCount = Math.max(1, Math.min(10, Math.round(duration.targetWordCount / 375)));
+  // An explicit five-chapter story owns its structure; duration owns word
+  // budgets. Preserve generic duration-based planning for other requests.
+  // A 3-minute (423-word) script should not place ~346 words in one body.
+  // Balance compact documentaries into two role-distinct body sections,
+  // preserving the same overall word budget and one-call generation mode.
+  const compactBalanced = !input.storyStructure &&
+    duration.targetWordCount >= 350 && duration.targetWordCount <= 550;
+  const bodyCount = input.storyStructure ? 3 : Math.max(
+    compactBalanced ? 2 : 1,
+    Math.min(10, Math.round(duration.targetWordCount / 375)),
+  );
   const weights = [0.08, ...Array.from({ length: bodyCount }, () => 0.82 / bodyCount), 0.1];
   const targets = weights.map((weight) => Math.floor(duration.targetWordCount * weight));
   targets[targets.length - 1] += duration.targetWordCount - targets.reduce((sum, value) => sum + value, 0);
@@ -825,6 +840,7 @@ export function createCreatorScriptSectionBudgetPlan(input: {
     }
   }
   const longForm = duration.targetWordCount > getCreatorScriptSafeSingleCallTargetWords();
+  const roleSpecificBody = longForm || compactBalanced;
   const bodyFunctions: Array<Pick<CreatorScriptSectionBudget, "role" | "centralQuestion" | "progression" | "ownershipBoundary">> = [
     {
       role: "Define and frame the phenomenon precisely",
@@ -931,6 +947,17 @@ export function createCreatorScriptSectionBudgetPlan(input: {
   ) {
     selectedBodyFunctions[selectedBodyFunctions.length - 1] = bodyFunctions[3];
   }
+  if(input.storyStructure){
+    const roles=[
+      ["Establish documented starting conditions, then explicitly enter a fictional 2055", "What real infrastructure constraints make this imagined world credible?", ["human_stakes","master_question"]],
+      ["Develop fictional 2055 infrastructure choices, ownership and human dependence", "Who controls energy, computation and production in this imagined economy, and who depends on them?", ["grounded_synthesis","evidence_interpretation","fictional_infrastructure_choices"]],
+      ["Trace fictional bloc decisions and resource-dependent alliances", "How do political choices turn dependence into alliances, and which alternatives remain open?", ["scope_conditions","uncertainty","fictional_alliance_choices"]],
+      ["Trace fictional 2075 escalation and the human consequences of nuclear conflict", "Which fictional decisions escalate competition, and what suffering follows without making war inevitable or desirable?", ["material_consequence","fictional_conflict_consequences"]],
+      ["Resolve the fictional autonomy turning point and the creator's closing question", "What happens to human agency when imagined AI systems become strategic participants?", ["highest_order_implication","unresolved_question","fictional_autonomy"]],
+    ] as const;
+    if(targets.length!==5)throw new Error("CREATOR_FICTION_STORY_SECTION_COUNT_INVALID");
+    return targets.map((targetWords,index):CreatorScriptSectionBudget=>({id:index===0?"opening":index===4?"conclusion":`section-${index}`,kind:index===0?"opening":index===4?"conclusion":"body",role:roles[index][0],centralQuestion:roles[index][1],progression:"Advance this explicitly fictional causal story; retain dated facts as starting conditions, never as proof of the future.",ownershipBoundary:{usage:"control_only_never_narrate",owns:[...roles[index][2],"geopolitical_fiction_policy"],excludes:["fiction_as_forecast","unsupported_factual_inference","war_glorification"]},targetWords,minimumWords:Math.floor(targetWords*CREATOR_SCRIPT_MIN_DURATION_RATIO),maximumWords:Math.ceil(targetWords*CREATOR_SCRIPT_MAX_DURATION_RATIO)}));
+  }
   return targets.map((targetWords, index): CreatorScriptSectionBudget => {
     const kind: CreatorScriptSectionKind = index === 0
       ? "opening"
@@ -949,21 +976,21 @@ export function createCreatorScriptSectionBudgetPlan(input: {
           ? scienceDocumentary
             ? "Derive the deeper supported implication and end on one intellectually earned unresolved question"
             : "Derive the highest-order implication for the master question, preserve uncertainty, and end on one unresolved question"
-          : longForm ? bodyFunction.role : `Develop grounded documentary argument ${index}`,
+          : roleSpecificBody ? bodyFunction.role : `Develop grounded documentary argument ${index}`,
       centralQuestion: kind === "opening"
         ? scienceDocumentary
           ? "Which grounded observation makes the human stakes concrete, and what central question does it create?"
           : "What question and stakes should make the audience need the answer?"
         : kind === "conclusion"
           ? "What highest-order implication does the established argument create for the master question, and what single unresolved question follows from that implication?"
-          : longForm ? bodyFunction.centralQuestion : `What distinct part of the argument belongs in section ${index}?`,
+          : roleSpecificBody ? bodyFunction.centralQuestion : `What distinct part of the argument belongs in section ${index}?`,
       progression: kind === "opening"
         ? scienceDocumentary
           ? "Creates a grounded unresolved tension before the explanation and empirical findings."
           : "Creates unresolved audience stakes before definition, mechanism, and evidence are introduced."
         : kind === "conclusion"
           ? "Moves forward from established consequences to their deepest implication for the master question rather than tracing backward through the section sequence."
-          : longForm ? bodyFunction.progression : "Advances the narrative beyond the previous section.",
+          : roleSpecificBody ? bodyFunction.progression : "Advances the narrative beyond the previous section.",
       ownershipBoundary: kind === "opening"
         ? scienceDocumentary
           ? { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_opening", "grounded_observation", "human_stakes", "master_question"], excludes: ["full_definition", "mechanism", "evidence_catalog", "scientific_tension", "conclusion_synthesis"] }
@@ -972,7 +999,7 @@ export function createCreatorScriptSectionBudgetPlan(input: {
           ? scienceDocumentary
             ? { usage: "control_only_never_narrate", owns: ["science_documentary_policy", "science_conclusion", "highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_recap", "tension_recap", "section_by_section_recap"] }
             : { usage: "control_only_never_narrate", owns: ["highest_order_implication", "synthesis_for_master_question", "unresolved_question"], excludes: ["definition", "mechanism", "evidence_demonstration", "limits_inventory", "social_formation", "consequence_inventory", "section_by_section_recap"] }
-          : longForm ? bodyFunction.ownershipBoundary : { usage: "control_only_never_narrate", owns: ["distinct_argument_step"], excludes: ["neighboring_section_repetition"] },
+          : roleSpecificBody ? bodyFunction.ownershipBoundary : { usage: "control_only_never_narrate", owns: ["distinct_argument_step"], excludes: ["neighboring_section_repetition"] },
       minimumWords: Math.floor(targetWords * CREATOR_SCRIPT_MIN_DURATION_RATIO),
       targetWords,
       maximumWords: Math.ceil(targetWords * CREATOR_SCRIPT_MAX_DURATION_RATIO),
@@ -1193,20 +1220,28 @@ export function createCreatorScriptRepairTargets(input: {
   sections: CreatorScriptSectionDiagnostic[];
   direction: "expand" | "compress" | "rebalance_sections" | "differentiate_sections";
 }) {
-  return input.sections.map((section) => ({
-    sectionId: section.id,
-    direction: input.direction,
-    beforeWords: section.actualWords,
-    requiredFinalMinWords: section.minimumWords,
-    requiredFinalTargetWords: section.targetWords,
-    requiredFinalMaxWords: section.maximumWords,
-    minimumRequiredGain: input.direction === "expand"
-      ? Math.max(0, section.minimumWords - section.actualWords)
-      : 0,
-    minimumRequiredReduction: input.direction === "compress"
-      ? Math.max(0, section.actualWords - section.maximumWords)
-      : 0,
-  }));
+  return input.sections.map((section) => {
+    // Global rebalancing requires individually directed local corrections.
+    const direction: typeof input.direction = input.direction === "rebalance_sections"
+      ? section.actualWords < section.minimumWords ? "expand"
+        : section.actualWords > section.maximumWords ? "compress"
+        : "rebalance_sections"
+      : input.direction;
+    return {
+      sectionId: section.id,
+      direction,
+      beforeWords: section.actualWords,
+      requiredFinalMinWords: section.minimumWords,
+      requiredFinalTargetWords: section.targetWords,
+      requiredFinalMaxWords: section.maximumWords,
+      minimumRequiredGain: direction === "expand"
+        ? Math.max(0, section.minimumWords - section.actualWords)
+        : 0,
+      minimumRequiredReduction: direction === "compress"
+        ? Math.max(0, section.actualWords - section.maximumWords)
+        : 0,
+    };
+  });
 }
 
 export function assertCreatorScriptHasHealthySectionStructure(

@@ -144,9 +144,16 @@ const image = read("lib/providers/image/openAIImageAdapter.ts");
 const music = read("lib/providers/music/epidemic.ts");
 const musicDownloadSecurity = read("lib/providers/music/downloadSecurity.ts");
 const health = read("app/api/creator-health/route.ts");
+
+// Veo's Gemini preview creation API was intentionally retired. A configured
+// secret is NOT permission to dispatch to the retired endpoint.
+assert.equal(isProviderConfigured("veo", { VEO_API_KEY: sentinel("veo-key") }), true);
+assert.match(veo, /function getApiKey\(\) \{[\s\S]*?resolveProviderEnvironmentValue\("veo", "apiKey"\)/);
+assert.match(veo, /function assertGeminiVeoCreationDisabled\(\): void \{[\s\S]*?throw new Error\(/);
+assert.match(veo, /isAvailable\(\) \{[\s\S]*?return false;\s*\}/);
+assert.match(veo, /async createTask\(input: VideoProviderCreateInput\): Promise<VideoProviderTask> \{\s*assertGeminiVeoCreationDisabled\(\);/);
 for (const [source, provider] of [
   [runway, "runway"],
-  [veo, "veo"],
   [voice, "elevenlabs"],
   [image, "openai"],
   [music, "epidemic"],

@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
@@ -11,6 +12,7 @@ import {
   resolveCreatorVisualGenerationScope,
 } from "../lib/creator/visualGenerationScope.ts";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 const sceneIds = Array.from({ length: 30 }, (_, index) => index + 1);
@@ -51,13 +53,16 @@ await executeCreatorRecommendedVisualBatch({
 });
 assert.deepEqual(calls, [3]);
 
-assert.match(page, /data-admitted-visual-scene-ids=\{activeVisualGenerationSceneIds\.join/);
-assert.match(page, /data-generating-visual-scene-ids=\{creatorGeneratingVisualSceneIds\.join/);
+assert.match(production, /data-admitted-visual-scene-ids=\{activeVisualGenerationSceneIds\.join/);
+assert.match(production, /data-generating-visual-scene-ids=\{creatorGeneratingVisualSceneIds\.join/);
 assert.match(page, /isCreatorSceneVisualGenerating\(\{/);
 assert.match(page, /setActiveVisualGenerationSceneIds\(\(current\) => Object\.freeze\(Array\.from/);
 assert.match(page, /current\.filter\(\(sceneId\) => !scopedTargetSceneIds\.includes\(sceneId\)\)/);
 assert.doesNotMatch(page, /isBatchRendering && creatorSelectedSceneIdSet\.has/);
+assert.doesNotMatch(production, /isBatchRendering && creatorSelectedSceneIdSet\.has/);
 assert.doesNotMatch(page, /imageDispatchCountdown\?\.scope === "scene" && imageDispatchCountdown\.sceneId === scene\.id/);
+assert.doesNotMatch(production, /imageDispatchCountdown\?\.scope === "scene" && imageDispatchCountdown\.sceneId === scene\.id/);
 assert.doesNotMatch(page, /videoDispatchCountdown\?\.scope === "scene" && videoDispatchCountdown\.sceneId === scene\.id/);
+assert.doesNotMatch(production, /videoDispatchCountdown\?\.scope === "scene" && videoDispatchCountdown\.sceneId === scene\.id/);
 
 console.log("Stage 0.10H live generation status/scope tests passed.");

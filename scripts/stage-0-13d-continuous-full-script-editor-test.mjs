@@ -178,7 +178,9 @@ const reviewHandler = page.slice(
 );
 assert.match(reviewHandler, /if \(confirm && data\.creatorScript\)/);
 assert.doesNotMatch(reviewHandler.slice(0, reviewHandler.indexOf("if (confirm && data.creatorScript)")), /setCreatorScript|setCreatorSelectedWorkspaceStep|setCreatorProductionSubstep|persistProject/);
-assert.equal((component.match(/<textarea/g) || []).length, 1);
+assert.equal((component.match(/<textarea/g) || []).length, 2);
+assert.match(component, /id="creatorlab-full-script-document"/);
+assert.match(component, /data-creator-refinement-prompt="iterative"/);
 assert.match(component, /onApproveAndBuildScenes\(draft\)/);
 assert.match(page, /documentText !== getCreatorScriptDocumentText\(creatorScript\)/);
 assert.match(page, /fetch\("\/api\/creator-script\/approve"/);
@@ -189,7 +191,8 @@ const approvalHandler = page.slice(
 assert.ok(approvalHandler.indexOf('fetch("/api/creator-script/approve"') < approvalHandler.indexOf('fetch("/api/creator-production"'));
 assert.match(production, /resolvePersistedCreatorScriptAuthority/);
 assert.doesNotMatch(component, /createCreatorScriptSceneSegments|\/api\/creator-production/);
-assert.match(page, /onSaveDocument=\{handleSaveCreatorScriptDocument\}/);
+assert.match(page, /handleSaveCreatorScriptDocument=\{handleSaveCreatorScriptDocument\}/);
+assert.match(await readFile(new URL("../components/create/CreatorStrategyPanel.tsx", import.meta.url), "utf8"), /onSaveDocument\s*=\s*\{handleSaveCreatorScriptDocument\}/);
 assert.match(page, /type: "manual_document_edit"[\s\S]*expectedRevision: sourceScript\.revision[\s\S]*documentText: text/);
 assert.match(page, /type: "section_regeneration"[\s\S]*expectedRevision: sourceRevision[\s\S]*targetSectionId: sectionId/);
 assert.match(page, /Your existing script is unchanged; please try again/);

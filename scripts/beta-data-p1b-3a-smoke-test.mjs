@@ -44,14 +44,15 @@ for (const forbidden of ["...source", "...project", "...character", "...scene"])
   assert.ok(!mapperSource.includes(forbidden), `mapper contains forbidden spread: ${forbidden}`);
 }
 assert.doesNotMatch(mapperSource, /return\s+(?:source|project)\s*;/);
-assert.equal(hash("package-lock.json"), "c806716b77f5d95279a65f7fdd62fdfaed454e3042989caa68f2fc09d0f287db");
+// Reviewed Sprint 19 patched dependency lock; historical ba55a5b provenance is checked separately.
+assert.equal(hash("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52");
 assert.equal(JSON.parse(read("package.json")).scripts["test:beta-data-p1b-3a"], "node scripts/beta-data-p1b-3a-smoke-test.mjs");
 
 const protectedHashes = {
-  "app/episode/public/[shareId]/page.tsx": "8571a245416e5b5b9f9f65197a988788c634b631941a3da817f29a2172630b55",
+  "app/episode/public/[shareId]/page.tsx": "c890688c06e40db2d0a2b66c387065842d10fc1864fa742b40945b37357b9a92",
   "app/episode/[projectId]/page.tsx": "5bdfd767400592e91bb09c7773935dd666f467cd0febf72d9be7d578ca273cf9",
   "app/api/load-project/[projectId]/route.ts": "2813a36706fb8de65d3e72795c070434b166a7fe044f4e04ab49572fe967dd58",
-  "app/api/save-project/route.ts": "3657da0da57fd5db56a5a783ea0729f47f01a6df1d0df897ea0413e4bd03d348",
+  "app/api/save-project/route.ts": "54b9431b2b518ad8ba6ea0c9adf0474385aec3a3373cf39baf2e38a57edaf87d",
   "app/api/projects/route.ts": "191fb4473a5316932cf6fb7c82b5ef8e3ba35a0053b4e674d49eb2bf55eb0f20",
   "app/api/jobs/route.ts": "848f262b3472e9a4bb83768b84daacb75f6302d9ebd04eaf5fd6c05eea924522",
   "lib/security/legacyMediaStorageBoundary.ts": "5647c6c5da4b9179a2b7ee6533d0f6d65f59aa646bf42273019dc433fc4d3cdd",
@@ -67,8 +68,16 @@ for (const [file, expected] of Object.entries(protectedHashes)) {
 
 for (const marker of [
   '.select(PROJECT_LIST_FIELDS)', '.eq("owner_user_id", ownerUserId)',
-  '.select("*")', '.eq("id", projectId)', '.update(payload)', '.insert([payload])',
+  '.select("*")', '.eq("id", projectId)', '.insert([payload])',
 ]) assert.ok(repository.includes(marker), `private repository behavior lost: ${marker}`);
+
+// The original payload-only update moved to the owner/flow/CAS guarded patch path.
+assert.match(repository, /payload = creatorProjectUpdatePayload\(input\)/);
+assert.match(repository, /\.update\(\{ \.\.\.payload, updated_at: new Date\(\)\.toISOString\(\) \}\)/);
+assert.match(repository, /\.eq\("id", input\.projectId\)[\s\S]*?\.eq\("owner_user_id", input\.ownerUserId\)[\s\S]*?\.eq\("flow_type", persistedFlowType\)/);
+assert.match(repository, /assertExistingProjectFlow\(persistedFlowType, input\.flowType, input\.expectedUpdatedAt\)/);
+assert.match(repository, /if \(input\.expectedUpdatedAt\) \{[\s\S]*?\.eq\("updated_at", input\.expectedUpdatedAt\)/);
+assert.match(repository, /assertProjectUpdateMatched\(data, input\.expectedUpdatedAt\)/);
 
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "velto-public-projection-"));
 try {

@@ -117,7 +117,7 @@ const primarySource = source({
   url: "https://academic.example/memory-paper",
   publisher: "Journal of Memory",
   author: "Ada Researcher",
-  summary: "In the original experiment, 120 participants recalled an event and later reported changed details.",
+  summary: "In the original experiment, 120 participants recalled an event and later reported changed details. The follow-up measured recall under a delayed prompt and did not establish effects outside that test setting.",
   sourceMetadata: {
     provenanceVerified: true,
     provenanceKind: "original_academic_paper",
@@ -164,6 +164,10 @@ function authorityFixture() {
       },
     ],
     evidence: [
+      // The old positive fixture had only three passages for four factual
+      // body sections and already failed at ba55a5b. Supply independent scoped
+      // source material; keep the sparse negative case and floor unchanged.
+      {evidenceId:"evidence-scope",sourceId:primarySource.sourceId,excerpt:"The follow-up measured recall under a delayed prompt and did not establish effects outside that test setting.",contextNote:"Synthetic study scope, not contradictory evidence.",locator:{section:"scope",page:5,timecodeStartSec:null,timecodeEndSec:null}},
       {
         evidenceId: "evidence-safe",
         sourceId: secondarySource.sourceId,
@@ -194,6 +198,7 @@ function authorityFixture() {
       },
     ],
     links: [
+      { claimId: "claim-primary", evidenceId: "evidence-scope", stance: "contextualizes" },
       { claimId: "claim-safe", evidenceId: "evidence-safe", stance: "supports" },
       { claimId: "claim-safe", evidenceId: "evidence-counter", stance: "contradicts" },
       { claimId: "claim-primary", evidenceId: "evidence-primary", stance: "supports" },
@@ -612,11 +617,11 @@ let successfulRepository;
   assert.equal(repository.requestedOperations.length, 0);
   assert.equal(repository.build.state, "FAILED");
   assert.equal(repository.build.failure.category, "GROUNDING");
-  // E6K/E6P adapt unsupported demonstration/uncertainty roles before readiness.
-  // The final plan remains blocked by four sections sharing one claim/evidence.
+  // The shared review/planning preparer must not adapt a collapsed factual
+  // foundation. Preserve all missing capabilities as well as the collapse.
   const diagnostics = repository.build.failure.diagnostics;
-  assert.equal(diagnostics.reasonCodes, "collapsed_body_authority");
-  assert.equal(diagnostics.reasonCount, 1);
+  assert.equal(diagnostics.reasonCodes, "missing_grounded_demonstration_capability,missing_uncertainty_capability,collapsed_body_authority,insufficient_factual_foundation");
+  assert.equal(diagnostics.reasonCount, 4);
   assert.equal(diagnostics.sectionNative, true);
   assert.equal(diagnostics.readinessApplicable, true);
   assert.equal(diagnostics.collapsedBodySectionCount, 4);

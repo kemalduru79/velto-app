@@ -59,3 +59,9 @@ assert.match(pkg.scripts["test:ci-scientific"],/stage-5e1g-b-scientific-computin
 assert.doesNotMatch(criticalSuite,/["']scripts\/stage-5e1g-b-scientific-computing-test\.mjs["']/);
 assert.doesNotMatch(scientificWorkflow,/continue-on-error|\|\|\s*true|\bexit\s+0\b/);
 assert.doesNotMatch(workflow,/continue-on-error|\|\|\s*true/);
+
+// The integrated workflow stays offline and retains all existing security gates.
+assert.match(pkg.scripts["test:creator-integrated-workflow"],/creator-integrated-workflow-test\.mjs/);
+assert.match(criticalSuite,/"scripts\/creator-integrated-workflow-test\.mjs"/);
+assert.match(pkg.scripts["test:creator-duration-scenes"],/creator-duration-scene-contract-test\.mjs/);
+assert.match(criticalSuite,/"scripts\/creator-duration-scene-contract-test\.mjs"/);

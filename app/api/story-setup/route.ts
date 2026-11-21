@@ -35,7 +35,30 @@ function normalizeName(value: unknown) {
     .trim();
 }
 
-function ensureDefaultGuideCharacter(characters: Character[]) {
+// These are raw forwarded fields, not validated Character strings. Only the
+// default guide has the stronger Character contract; legacy truthy values stay raw.
+type CharacterReadFields = Readonly<{ [Field in keyof Character]?: unknown }>;
+type StorySetupReadValue = CharacterReadFields & Readonly<{
+  title?: unknown;
+  storyPremise?: unknown;
+  characters?: unknown;
+  visualBible?: unknown;
+  style?: unknown;
+  palette?: unknown;
+  camera?: unknown;
+  consistencyRules?: unknown;
+}>;
+
+// A finite property-access view only: primitives retain JS boxing semantics.
+function hasStorySetupReadValue(value: unknown): value is StorySetupReadValue {
+  return value !== null && value !== undefined;
+}
+
+function readStorySetupValue(value: unknown) {
+  return hasStorySetupReadValue(value) ? value : undefined;
+}
+
+function ensureDefaultGuideCharacter(characters: CharacterReadFields[]) {
   const safeCharacters = Array.isArray(characters) ? characters : [];
   const hasJoe = safeCharacters.some(
     (character) => normalizeName(character?.name) === "joe"
@@ -127,18 +150,37 @@ function parseJsonSafely(rawText: string) {
   }
 }
 
-function extractTextFromResponse(response: any) {
+// A finite property-access view, not a validated provider-response schema.
+// Keep every field unknown until the existing runtime checks consume it.
+type StoryTextReadValue = Readonly<{
+  message?: unknown;
+  output_text?: unknown;
+  output?: unknown;
+  content?: unknown;
+  type?: unknown;
+  text?: unknown;
+}>;
+
+// Optional unknown fields grant no authority or field-kind guarantees.
+function hasStoryTextReadValue(value: unknown): value is StoryTextReadValue {
+  return value !== null && value !== undefined;
+}
+
+function extractTextFromResponse(value: unknown) {
+  const response = hasStoryTextReadValue(value) ? value : undefined;
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim();
   }
 
-  const output = Array.isArray(response?.output) ? response.output : [];
+  const output: unknown[] = Array.isArray(response?.output) ? response.output : [];
   const textParts: string[] = [];
 
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
+  for (const value of output) {
+    const item = hasStoryTextReadValue(value) ? value : undefined;
+    const content: unknown[] = Array.isArray(item?.content) ? item.content : [];
 
-    for (const part of content) {
+    for (const value of content) {
+      const part = hasStoryTextReadValue(value) ? value : undefined;
       if (part?.type === "output_text" && typeof part?.text === "string") {
         textParts.push(part.text);
       }
@@ -307,7 +349,7 @@ ${setupPrompt}`,
       );
     }
 
-    let parsed: any;
+    let parsed: unknown;
 
     try {
       parsed = parseJsonSafely(rawText);
@@ -324,6 +366,7 @@ ${setupPrompt}`,
     if (
       !parsed ||
       typeof parsed !== "object" ||
+      !hasStorySetupReadValue(parsed) ||
       !parsed.title ||
       !parsed.storyPremise ||
       !Array.isArray(parsed.characters) ||
@@ -339,22 +382,25 @@ ${setupPrompt}`,
     }
 
     const normalizedCharacters = ensureDefaultGuideCharacter(
-      parsed.characters.map((character: any) => ({
-        name: character?.name || "",
-        age: character?.age || "",
-        appearance: character?.appearance || "",
-        outfit: character?.outfit || "",
-        accessory: character?.accessory || "",
-        personality: character?.personality || "",
-        referenceImage: character?.referenceImage || "",
-      }))
+      parsed.characters.map((value: unknown) => {
+        const character = readStorySetupValue(value);
+        return {
+          name: character?.name || "",
+          age: character?.age || "",
+          appearance: character?.appearance || "",
+          outfit: character?.outfit || "",
+          accessory: character?.accessory || "",
+          personality: character?.personality || "",
+          referenceImage: character?.referenceImage || "",
+        };
+      })
     );
 
     const normalizedVisualBible = {
-      style: parsed.visualBible?.style || "",
-      palette: parsed.visualBible?.palette || "",
-      camera: parsed.visualBible?.camera || "",
-      consistencyRules: parsed.visualBible?.consistencyRules || "",
+      style: readStorySetupValue(parsed.visualBible)?.style || "",
+      palette: readStorySetupValue(parsed.visualBible)?.palette || "",
+      camera: readStorySetupValue(parsed.visualBible)?.camera || "",
+      consistencyRules: readStorySetupValue(parsed.visualBible)?.consistencyRules || "",
     };
 
     return NextResponse.json({
@@ -364,7 +410,7 @@ ${setupPrompt}`,
       visualBible: normalizedVisualBible,
       language,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("story-setup error:", error);
 
     const message =
@@ -377,7 +423,7 @@ ${setupPrompt}`,
         error: message || "Başlangıç tasarımı oluşturulurken hata oluştu.",
         details:
           process.env.NODE_ENV === "development"
-            ? error?.message || "Bilinmeyen hata"
+            ? (hasStoryTextReadValue(error) ? error : undefined)?.message || "Bilinmeyen hata"
             : undefined,
       },
       { status: 500 }

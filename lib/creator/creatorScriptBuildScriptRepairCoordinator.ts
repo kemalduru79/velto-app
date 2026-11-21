@@ -38,14 +38,11 @@ import {
   type CreatorScriptBuildSnapshot,
 } from "./creatorScriptBuild.ts";
 import {
-  createCreatorScriptBuildScriptGenerationInput,
+  generationInputFromCheckpoint,
   normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint,
   type CreatorScriptBuildScriptGenerationInput,
   type CreatorScriptBuildScriptGenerationStageResult,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
-import {
-  normalizeCreatorScriptBuildAuthorityResultFromCheckpoint,
-} from "./creatorScriptBuildAuthorityCoordinator.ts";
 import {
   CreatorScriptBuildCoordinatorBlockedError,
   CreatorScriptBuildStageExecutionError,
@@ -1146,13 +1143,7 @@ function loadGeneration(input: {
       "CREATOR_SCRIPT_BUILD_GENERATION_CHECKPOINT_REQUIRED",
     );
   }
-  const authority = normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(
-    authorityCheckpoint.outputReference,
-  );
-  const generationInput = createCreatorScriptBuildScriptGenerationInput({
-    snapshot: input.build.snapshot,
-    authority,
-  });
+  const generationInput = generationInputFromCheckpoint(input.build);
   const generation =
     normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint({
       buildId: input.build.buildId,

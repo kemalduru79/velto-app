@@ -1,3 +1,4 @@
+import { readWorkspaceChangePaths, unreviewedWorkspacePaths } from "./quality/p0-workspace-scope.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -113,7 +114,7 @@ check("dependency manifest preserves reviewed runtime dependencies", () => {
     "eslint", "eslint-config-next", "tailwindcss", "typescript",
   ].sort());
 });
-check("dependency lock is unchanged", () => assert.equal(sha256("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe"));
+check("dependency lock matches reviewed security candidate", () => assert.equal(sha256("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52"));
 check("worker runtime includes the reviewed durable final-export handler", () => assert.equal(sha256("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9"));
 check("export runtime preserves reviewed static output, real video trim, audio mixing and durable output provenance", () => {
   // The old whole-file checksum pinned an obsolete motion renderer and rejected
@@ -488,10 +489,9 @@ check("Stage 0.8 closure worktree scope permits only reviewed later-stage additi
     ".gitignore",
     "scripts/stage-0-13e-ai-script-refinement-test.mjs",
   ]);
-  const lines = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trimEnd().split("\n").filter(Boolean);
-  const paths = lines.map((line) => line.slice(3).split(" -> ").at(-1));
+  const paths = readWorkspaceChangePaths();
   const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/", "app/api/creator-final-export-jobs/", "app/api/creator-final-video-recovery/", "app/api/internal/jobs/[jobId]/creator-final-export/", "docs/creatorlab/receipts/"];
-  assert.deepEqual(paths.filter((path) => !allowed.has(path) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))), []);
+  assert.deepEqual(unreviewedWorkspacePaths(paths, allowed, allowedPrefixes), []);
 });
 
 console.log("\nSTAGE_0_8G_ARCHITECTURE_CLOSURE=PASS");

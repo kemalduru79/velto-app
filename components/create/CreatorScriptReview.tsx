@@ -13,6 +13,7 @@ import {
 } from "@/lib/creator/creatorScript";
 import type { CreatorScriptPendingRefinement, CreatorScriptRevisionHistoryEntry } from "@/lib/creator/creatorScriptRevisions";
 import type { CreatorScriptRefinementMode } from "@/lib/creator/creatorScriptEditorialRewrite";
+import { resolveCreatorScriptNaturalRefinementIntent, inferCreatorScriptFocusedSectionSelection } from "@/lib/creator/creatorScriptNaturalRefinementIntent";
 
 type Props = {
   script: CreatorScript;
@@ -57,6 +58,10 @@ export default function CreatorScriptReview({
   refinementHighlights,
   onApproveAndBuildScenes,
 }: Props) {
+  // Display-only gate: the server independently requires the private Preview identity and flag.
+  // Preview env flags default to undefined; production must never expose full-script controls.
+  const wholeScriptPreviewEnabled = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview" &&
+    process.env.NEXT_PUBLIC_CREATOR_SCRIPT_FULL_REFINEMENT_PREVIEW_ENABLED === "true";
   const canonicalDocument = useMemo(() => getCreatorScriptDocumentText(script), [script]);
   const [draft, setDraft] = useState(canonicalDocument);
   const [saving, setSaving] = useState(false);
@@ -65,7 +70,7 @@ export default function CreatorScriptReview({
   const [refining, setRefining] = useState(false);
   const [resolvingRefinement, setResolvingRefinement] = useState<"apply" | "discard" | null>(null);
   const [refineInstruction, setRefineInstruction] = useState("");
-  const [refinementTarget, setRefinementTarget] = useState<"opening" | "editorial_rewrite" | "research_backed_rewrite">("opening");
+  const [refinementActionNotice, setRefinementActionNotice] = useState<string | null>(null);
   const [lockedSelection, setLockedSelection] = useState<{ start: number; end: number; text: string } | null>(null);
   const [editorScroll, setEditorScroll] = useState({ top: 0, left: 0 });
   const [mirrorMetrics, setMirrorMetrics] = useState<CSSProperties>({});
@@ -96,6 +101,13 @@ export default function CreatorScriptReview({
     ? [{ start: lockedSelection.start, end: lockedSelection.end, kind: "selection" as const }]
     : showRefinementHighlights ? refinementHighlights.map((range) => ({ ...range, kind: "refinement" as const })) : [];
   const selectionExcerpt = lockedSelection?.text.replace(/\s+/g, " ").trim();
+  const refinementIntent = useMemo(() => resolveCreatorScriptNaturalRefinementIntent(refineInstruction, Boolean(lockedSelection)), [refineInstruction, lockedSelection]);
+  const canPreviewRefinement = refinementIntent.status === "ready" && (refinementIntent.scope !== "whole_script" || wholeScriptPreviewEnabled);
+  const inferredSectionSelection = useMemo(() => (
+    !lockedSelection && refinementIntent.status === "ready" && refinementIntent.scope === "whole_script" && refinementIntent.mode === "editorial_rewrite"
+      ? inferCreatorScriptFocusedSectionSelection(refineInstruction, script.sections, canonicalDocument)
+      : null
+  ), [lockedSelection, refinementIntent, refineInstruction, script.sections, canonicalDocument]);
   const measureMirror = useCallback(() => {
     const textarea = editorRef.current;
     if (!textarea) return;
@@ -203,8 +215,65 @@ export default function CreatorScriptReview({
           }}>{saving ? (language === "en" ? "Saving…" : "Kaydediliyor…") : (language === "en" ? "Save Script Changes" : "Metin Değişikliklerini Kaydet")}</button>
         </div>
         <div className="mt-5 border-t border-slate-200 pt-4" data-creator-script-ai-refinement="true">
-          <div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-sm text-slate-800">{language === "en" ? "Refine with AI" : "Yapay zekâ ile iyileştir"}</strong>{lockedSelection ? <span className="max-w-full truncate text-xs font-medium text-blue-700">{language === "en" ? "Selected text" : "Seçili metin"} · “{selectionExcerpt?.slice(0, 72)}{selectionExcerpt && selectionExcerpt.length > 72 ? "…" : ""}”</span> : <select aria-label={language === "en" ? "Refinement target" : "İyileştirme hedefi"} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700" value={refinementTarget} onChange={(event) => setRefinementTarget(event.target.value as typeof refinementTarget)} disabled={Boolean(pendingRefinement)}><option value="opening">{language === "en" ? "Opening" : "Açılış"}</option><option value="editorial_rewrite" disabled>{language === "en" ? "Whole script · Editorial rewrite (staged)" : "Tam metin · Editoryal yeniden yazım (aşamalı)"}</option><option value="research_backed_rewrite" disabled>{language === "en" ? "Whole script · Research-backed (staged)" : "Tam metin · Araştırma destekli (aşamalı)"}</option></select>}</div>
-          <p className="mt-2 text-xs leading-5 text-slate-500" data-creator-refinement-scope-notice="true">{lockedSelection ? (language === "en" ? "The selected passage is refined without changing unrelated material or adding evidence." : "Seçili bölüm, ilgisiz metin veya kanıt değiştirilmeden iyileştirilir.") : refinementTarget === "opening" ? (language === "en" ? "Only the opening is edited; the rest of the script stays unchanged. Whole-script modes are visible but unavailable during staged acceptance." : "Yalnızca açılış düzenlenir; metnin geri kalanı değişmez. Tam metin modları aşamalı kabul sırasında görünür ancak kullanılamaz.") : (language === "en" ? "Whole-script modes remain gated until staged acceptance; requests never fall back silently to the opening." : "Tam metin modları aşamalı kabul tamamlanana kadar kapalıdır; istekler sessizce açılışa yönlendirilmez.")}</p><div className="mt-3 flex gap-2"><input className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" value={refineInstruction} onChange={(event) => setRefineInstruction(event.target.value)} placeholder={language === "en" ? "Describe the editorial change…" : "Editoryal değişikliği tarif et…"} disabled={Boolean(pendingRefinement)} /><button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={refining || draftChanged || !refineInstruction.trim() || Boolean(pendingRefinement) || (!lockedSelection && refinementTarget !== "opening")} onClick={async () => { setRefining(true); try { const proposed = await onRefine(lockedSelection ? { scope: "selection", mode: "focused_edit", instruction: refineInstruction, selectionStart: lockedSelection.start, selectionEnd: lockedSelection.end, selectedText: lockedSelection.text } : refinementTarget === "opening" ? { scope: "opening", mode: "focused_edit", instruction: refineInstruction } : { scope: "whole_script", mode: refinementTarget, instruction: refineInstruction }); if (proposed) setRefineInstruction(""); } finally { setRefining(false); } }}>{refining ? (language === "en" ? "Preparing preview…" : "Önizleme hazırlanıyor…") : (language === "en" ? "Preview refinement" : "İyileştirmeyi önizle")}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <strong className="text-sm text-slate-800">{language === "en" ? "Refine with AI" : "Yapay zekâ ile iyileştir"}</strong>
+            {lockedSelection && <span className="max-w-full truncate text-xs font-medium text-blue-700">{language === "en" ? "Selected text" : "Seçili metin"} · “{selectionExcerpt?.slice(0, 72)}{selectionExcerpt && selectionExcerpt.length > 72 ? "…" : ""}”</span>}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {language === "en" ? "Describe what to change and where, in your own words. You can also select text in the script editor." : "Nerede ve neyi değiştirmek istediğini kendi kelimelerinle anlat. İstersen editörde bir metin seçebilirsin."}
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <textarea data-creator-refinement-prompt="iterative" aria-label={language === "en" ? "Refinement prompt for the current script" : "Mevcut metin için iyileştirme promptu"} className="min-h-24 min-w-0 flex-1 resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm" rows={3} maxLength={2000} value={refineInstruction} onChange={(event) => { setRefineInstruction(event.target.value); setRefinementActionNotice(null); }} placeholder={language === "en" ? "Describe what to improve and where. Example: Strengthen the opening without changing verified facts, or remove repetition throughout the script." : "Nerede ve neyi geliştirmek istediğini yaz. Örnek: Açılışı doğrulanmış bilgileri değiştirmeden güçlendir veya tüm metindeki tekrarları azalt."} disabled={Boolean(pendingRefinement)} />
+            <button type="button" data-creator-refinement-action="preview" aria-label={language === "en" ? "Preview refinement" : "İyileştirmeyi önizle"} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-blue-700 bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:border-blue-800 hover:bg-blue-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none" disabled={refining || draftChanged || !refineInstruction.trim() || Boolean(pendingRefinement)} onClick={async () => {
+              setRefinementActionNotice(null);
+              if (refinementIntent.status !== "ready") {
+                setRefinementActionNotice(language === "en" ? "Describe one clear target or select a passage in the script editor." : "Tek bir hedef tarif et veya senaryo editöründe bir pasaj seç.");
+                return;
+              }
+              // Do not silently route broad requests into a focused edit; make the
+              // unavailable whole-script gate explicit and keep the CTA clickable.
+              if (!canPreviewRefinement && !inferredSectionSelection) {
+                setRefinementActionNotice(language === "en" ? "Full-script refinement is not enabled yet. You can refine the opening or name one specific section (for example, the conclusion) without selecting text." : "Tam senaryo iyileştirme henüz etkin değil. Metin seçmeden açılışı veya sonuç gibi tek bir bölümü tarif ederek iyileştirebilirsin.");
+                return;
+              }
+              if (refinementIntent.scope === "selection" && !lockedSelection) {
+                setRefinementActionNotice(language === "en" ? "Please select the passage in the script editor." : "Lütfen senaryo editöründe ilgili pasajı seç.");
+                return;
+              }
+              setRefining(true);
+              try {
+                const request = refinementIntent.scope === "selection" && lockedSelection
+                  ? { scope: "selection" as const, mode: "focused_edit" as const, instruction: refineInstruction, selectionStart: lockedSelection.start, selectionEnd: lockedSelection.end, selectedText: lockedSelection.text }
+                  : inferredSectionSelection
+                    ? { scope: "selection" as const, mode: "focused_edit" as const, instruction: refineInstruction, selectionStart: inferredSectionSelection.start, selectionEnd: inferredSectionSelection.end, selectedText: inferredSectionSelection.text }
+                    : refinementIntent.scope === "opening"
+                      ? { scope: "opening" as const, mode: "focused_edit" as const, instruction: refineInstruction }
+                      : { scope: "whole_script" as const, mode: refinementIntent.mode, instruction: refineInstruction };
+                if (await onRefine(request)) setRefineInstruction("");
+              } finally { setRefining(false); }
+            }}><span aria-hidden="true" className="text-lg leading-none">✦</span><span>{refining ? (language === "en" ? "Preparing preview…" : "Önizleme hazırlanıyor…") : (language === "en" ? "Preview Refinement" : "İyileştirmeyi önizle")}</span></button>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500" role="status" data-creator-refinement-scope-notice="true">{
+            refinementIntent.status === "clarify"
+              ? refinementIntent.reason === "selection_required"
+                ? (language === "en" ? "Select a passage in the script editor, or describe the target directly in the instruction." : "Metin editöründe bir pasaj seç veya hedefini talimatta açıkça tarif et.")
+                : (language === "en" ? "Your instruction mentions conflicting targets. Clear the selection or describe one target before proceeding." : "Talimatın birbiriyle çelişen hedefler içeriyor. Seçimi temizle veya tek bir hedef tarif et.")
+              : inferredSectionSelection
+                ? (language === "en" ? `Velto will focus on section ${inferredSectionSelection.sectionIndex + 1} based on your instruction; other sections will remain unchanged.` : `Velto, talimatına göre ${inferredSectionSelection.sectionIndex + 1}. bölümü hedefleyecek; diğer bölümler değişmeden kalacak.`)
+              : refinementIntent.status === "ready" && refinementIntent.scope === "whole_script" && !wholeScriptPreviewEnabled
+                ? (language === "en" ? "This instruction requires whole-script refinement, which is not yet authorized. Nothing will be sent or silently applied to the opening." : "Bu talimat tam metin iyileştirmesi gerektiriyor; özellik henüz yetkilendirilmedi. İstek gönderilmeyecek veya sessizce açılışa uygulanmayacak.")
+                : (language === "en" ? "You will review the proposed changes before applying them. Original and historical revisions stay preserved." : "Değişiklikleri uygulamadan önce inceleyebilirsin. Orijinal metin ve geçmiş sürümler korunur.")
+          }</p>
+          {refinementActionNotice && <p role="alert" data-creator-refinement-action-feedback="true" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">{refinementActionNotice}</p>}
+          <p className="mt-2 text-xs leading-5 text-slate-500" data-creator-refinement-iteration-guidance="true">{
+            language === "en"
+              ? wholeScriptPreviewEnabled
+                ? "Each prompt uses the current saved script revision. Review the proposed difference, Apply or Discard it, then enter another instruction here—without returning to the original creative brief. This isolated preview is subject to owner acceptance."
+                : "Each prompt uses the current saved script revision. Review the proposed difference, Apply or Discard it, then enter another instruction here—without returning to the original creative brief. Whole-script refinement remains unavailable until its separate acceptance gate is approved."
+              : wholeScriptPreviewEnabled
+                ? "Her prompt, mevcut kayıtlı metin sürümünü esas alır. Değişiklik önizlemesini inceleyip Uygula veya Vazgeç seç; ardından ana yaratıcı brief'e dönmeden burada yeni bir talimat verebilirsin. Bu izole önizleme ayrıca kullanıcı kabulüne tabidir."
+                : "Her prompt, mevcut kayıtlı metin sürümünü esas alır. Değişiklik önizlemesini inceleyip Uygula veya Vazgeç seç; ardından ana yaratıcı brief'e dönmeden burada yeni bir talimat verebilirsin. Tam metin iyileştirmesi ayrı kabul onayı tamamlanana kadar kapalıdır."
+          }</p>
           {pendingRefinement && <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4" aria-label={language === "en" ? "Refinement preview" : "İyileştirme önizlemesi"} data-creator-script-refinement-preview="true">
             <div className="flex flex-wrap items-start justify-between gap-2"><div><strong className="text-sm text-slate-900">{pendingRefinementStale ? (language === "en" ? "Preview no longer current" : "Önizleme artık güncel değil") : (language === "en" ? "Review proposed changes" : "Önerilen değişiklikleri incele")}</strong><p className="mt-1 text-xs text-slate-500">{pendingRefinementStale ? (language === "en" ? "Save or finish the current script change, then generate a new refinement preview." : "Mevcut metin değişikliğini kaydet veya tamamla, ardından yeni bir iyileştirme önizlemesi oluştur.") : pendingRefinement.instruction}</p></div><span className="text-xs font-medium text-slate-500">{pendingRefinement.scope === "selection" ? (language === "en" ? "Selected text" : "Seçili metin") : pendingRefinement.scope === "opening" ? (language === "en" ? "Opening" : "Açılış") : (language === "en" ? "Full script" : "Tam metin")}</span></div>
             {pendingRefinement.editorialAdvisories && pendingRefinement.editorialAdvisories.length > 0 && <div className="mt-3 rounded-lg bg-amber-50/70 px-3 py-2" data-creator-script-editorial-advisories="true"><strong className="text-xs font-semibold text-amber-900">{language === "en" ? "Editorial notes for your review" : "İncelemeniz için editoryal notlar"}</strong><ul className="mt-1 space-y-1 text-xs text-amber-900/80">{pendingRefinement.editorialAdvisories.map((finding, index) => <li key={`${finding.code}-${index}`}>• {finding.summary}</li>)}</ul></div>}

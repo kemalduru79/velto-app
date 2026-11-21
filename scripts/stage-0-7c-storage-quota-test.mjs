@@ -1,3 +1,4 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
@@ -7,6 +8,7 @@ async function loadTs(file) {
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 }
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (file) => fs.readFileSync(file, "utf8");
 const quota = await loadTs("lib/persistence/media/quota.ts");
 const service = read("lib/persistence/media/storageQuota.server.ts");
@@ -99,8 +101,8 @@ assert.match(storageUi, /data-storage-quota-state/);
 assert.match(storageUi, /Storage is full\. New image and video generation is temporarily unavailable/);
 assert.match(storageUi, /Review media versions/);
 assert.match(storageUi, /in Trash still uses storage/);
-assert.match(page, /CreatorVisualStorageStatus/);
-assert.match(page, /data-visual-storage-status-mount="true"/);
+assert.match(production, /CreatorVisualStorageStatus/);
+assert.match(production, /data-visual-storage-status-mount="true"/);
 assert.doesNotMatch(projectAssetsUi, /data-storage-quota-state|Manage storage|Items in Trash still use storage/);
 assert.doesNotMatch(storageUi + service, /Buy storage|checkout|Stripe|subscription|payment/i);
 assert.doesNotMatch(service + image + creatorVideo + legacyVideo + character + thumbnail, /storage\.from\([^)]*\)\.(?:remove|delete)|lifecycle_state\s*[:=]\s*["']purged/i);

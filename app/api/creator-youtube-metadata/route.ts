@@ -5,6 +5,16 @@ import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
 
+// Read-only property access only; fields remain unknown until existing checks.
+// Non-null primitives retain their original JavaScript boxing/getter behavior.
+type MetadataReadValue = Readonly<{ id?: unknown; text?: unknown; narration?: unknown; dialogue?: unknown; message?: unknown; }>;
+function hasMetadataReadValue(value: unknown): value is MetadataReadValue {
+  return value !== null && value !== undefined;
+}
+function metadataReadValue(value: unknown): MetadataReadValue | undefined {
+  return hasMetadataReadValue(value) ? value : undefined;
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -69,12 +79,15 @@ export async function POST(req: Request) {
     );
 
     const scenes = Array.isArray(productionPackage?.scenes)
-      ? productionPackage.scenes.slice(0, 12).map((scene: any) => ({
-          id: scene?.id,
-          text: safeString(scene?.text),
-          narration: safeString(scene?.narration),
-          dialogue: safeString(scene?.dialogue),
-        }))
+      ? productionPackage.scenes.slice(0, 12).map((value: unknown) => {
+          const scene = metadataReadValue(value);
+          return {
+            id: scene?.id,
+            text: safeString(scene?.text),
+            narration: safeString(scene?.narration),
+            dialogue: safeString(scene?.dialogue),
+          };
+        })
       : [];
 
     const prompt = `
@@ -180,13 +193,13 @@ ${JSON.stringify(patternSummary, null, 2)}
     };
 
     return NextResponse.json({ ok: true, metadata });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("creator-youtube-metadata error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "YouTube metadata generation failed.",
+        error: metadataReadValue(error)?.message || "YouTube metadata generation failed.",
       },
       { status: 500 }
     );

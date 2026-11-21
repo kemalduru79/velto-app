@@ -133,7 +133,7 @@ await assert.rejects(
 
 const route = fs.readFileSync("app/api/creator-editorial-analysis/route.ts", "utf8");
 assert.match(route, /code: "EDITORIAL_ANALYSIS_GROUNDING_FAILED"/);
-assert.match(route, /Evidence validation could not be completed\. Please retry\./);
+assert.match(route, /Evidence validation could not be completed\. Review the source-bound evidence selections before rerunning editorial analysis\./);
 assert.match(route, /detailCode: diagnostic/);
 assert.match(route, /console\.error\("CREATOR_EDITORIAL_GROUNDING_FAILED"/);
 

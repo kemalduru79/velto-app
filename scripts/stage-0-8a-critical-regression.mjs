@@ -22,6 +22,8 @@ const tests = [
   "scripts/creator-longform-grounding-plan-integration-test.mjs",
   "scripts/creator-issue-42-evidence-lifecycle-test.mjs",
   "scripts/creator-issue-44-counter-review-test.mjs",
+  "scripts/creator-integrated-workflow-test.mjs",
+  "scripts/creator-duration-scene-contract-test.mjs",
   "scripts/creator-pr-45-release-readiness-test.mjs",
   "scripts/creator-pr45-historical-compat-test.mjs",
   "scripts/creator-pr45-legacy-audit-test.mjs",
@@ -140,6 +142,8 @@ for (const test of tests) {
       : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
           test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs" ||
           test === "scripts/creator-issue-44-counter-review-test.mjs" ||
+        test === "scripts/creator-integrated-workflow-test.mjs" ||
+        test === "scripts/creator-duration-scene-contract-test.mjs" ||
           test === "scripts/creator-pr-45-release-readiness-test.mjs" ||
           test === "scripts/creator-pr45-historical-compat-test.mjs"
         ? ["--experimental-transform-types"]

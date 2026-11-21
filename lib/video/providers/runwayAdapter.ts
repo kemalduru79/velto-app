@@ -1,4 +1,5 @@
 import RunwayML from "@runwayml/sdk";
+import { runwayTaggedRequestOptions } from "../../economics/betaRunwayUsageTag.ts";
 import { assertRunwayVideoPromptWithinLimit } from "../../creator/videoPromptPolicy.ts";
 import { createLogger } from "@/lib/observability";
 import {
@@ -143,7 +144,7 @@ async function createRunwayTask(
       promptText: input.promptText,
       ratio: getGen4Ratio(input.requestedRatio),
       duration: input.durationSec,
-    });
+    }, runwayTaggedRequestOptions(input.runwayUsageTag));
   }
 
   return client.imageToVideo.create({
@@ -152,7 +153,7 @@ async function createRunwayTask(
     promptText: input.promptText,
     ratio: getSeedance2Ratio(input.requestedRatio),
     duration: input.durationSec,
-  });
+  }, runwayTaggedRequestOptions(input.runwayUsageTag));
 }
 
 export class RunwayVideoProvider implements VideoProvider {

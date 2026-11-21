@@ -1118,5 +1118,10 @@ assert.match(route, /Rebalance only the supplied failing sections toward their i
 assert.doesNotMatch(route, /Exa|creator-research/);
 const createPage = await readFile(new URL("../app/create/page.tsx", import.meta.url), "utf8");
 assert.match(createPage, /const creatorScriptIsCurrent = isCreatorScriptCurrentForStrategy/);
-assert.match(createPage, /\{creatorScriptIsCurrent && creatorScript && \(/);
+const strategyPanel = await readFile(new URL("../components/create/CreatorStrategyPanel.tsx", import.meta.url), "utf8");
+const strategyPanelUsage = createPage.match(/<CreatorStrategyPanel\b[\s\S]*?\/>/)?.[0] || "";
+assert.match(createPage, /import CreatorStrategyPanel from "@\/components\/create\/CreatorStrategyPanel"/);
+assert.match(strategyPanelUsage, /creatorScriptIsCurrent=\{creatorScriptIsCurrent\}/);
+assert.match(strategyPanelUsage, /creatorScript=\{creatorScript\}/);
+assert.match(strategyPanel, /\{creatorScriptIsCurrent && creatorScript && \(/);
 console.log("LONG_FORM_GROUNDED_PRODUCTION_ACCEPTANCE=PASS");

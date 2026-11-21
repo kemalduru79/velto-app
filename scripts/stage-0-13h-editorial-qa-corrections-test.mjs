@@ -34,15 +34,18 @@ assert.doesNotMatch(review, /Regenerate to verify/);
 assert.match(review, /This edit cannot be confirmed from the available sources/);
 assert.match(review, /manuallyReviewableSectionIds\.has\(section\.id\)/, "human confirmation remains limited to server-reviewable sections");
 
-assert.match(page, /creatorScriptEditorialState !== "current"/);
-assert.match(page, /Your previous script is preserved, but it no longer matches the current direction/);
-assert.match(page, /Rebuild script/);
-assert.match(page, /creatorScriptEditorialState === "stale"/);
-assert.match(page, /creatorScriptIsCurrent && creatorScript/);
+const strategyPanel = await (await import("node:fs/promises")).readFile(new URL("../components/create/CreatorStrategyPanel.tsx", import.meta.url), "utf8");
+assert.match(page, /creatorScriptEditorialState=\{creatorScriptEditorialState\}/);
+assert.match(strategyPanel, /creatorScriptEditorialState !== "current"/);
+assert.match(strategyPanel, /Your previous script is preserved, but it no longer matches the current direction/);
+assert.match(strategyPanel, /Rebuild script/);
+assert.match(strategyPanel, /creatorScriptEditorialState === "stale"/);
+assert.match(strategyPanel, /creatorScriptIsCurrent && creatorScript/);
 assert.match(page, /creatorSceneBuildRecoveryMessage\(\{ code: approvalData\?\.code/);
 assert.match(page, /creatorSceneBuildRecoveryMessage\(\{ code: data\?\.code/);
 assert.doesNotMatch(page, /One quality decision controls the whole project\. Provider routing remains internal\./);
-assert.match(page, /Choose the finish and production quality that best fit this project\./);
+const productionQualityUi = await (await import("node:fs/promises")).readFile(new URL("../components/create/CreateBriefPanel.tsx", import.meta.url), "utf8");
+assert.match(productionQualityUi, /Choose the finish and production quality that best fit this project\./);
 
 assert.match(refineRoute, /script\.strategyFingerprint !== state\.strategy\.strategyFingerprint/);
 assert.match(refineRoute, /CREATOR_SCRIPT_REFINEMENT_STALE/);

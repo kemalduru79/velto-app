@@ -1,5 +1,8 @@
+import {reviewForBuild, applyBuildEditorialReview, type CreatorBuildEditorialReview, type CreatorEditorialReviewDecision} from "./creatorScriptBuildEditorialReview.ts";
+import {normalizeCreatorScriptBuildAuthorityResultFromCheckpoint} from "./creatorScriptBuildAuthorityCoordinator.ts";
 import {
   creatorScriptBuildIsTerminal,
+  canonicalCreatorScriptBuildJson,
   type CreatorScriptBuildRecord,
   type CreatorScriptBuildSnapshot,
 } from "./creatorScriptBuild.ts";
@@ -15,6 +18,7 @@ import {
 } from "./creatorScriptBuildAuthorityCoordinator.ts";
 import {
   runCreatorScriptBuildScriptGenerationCoordinator,
+  generationInputFromCheckpoint,
   type CreatorScriptBuildScriptGenerationExecutor,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
 import {
@@ -79,6 +83,7 @@ export type CreatorScriptBuildStatusProjection = Readonly<{
     retryability: string;
   }> | null;
   projectUpdatedAt?: string;
+  editorialReview?: CreatorBuildEditorialReview;
   creatorScript?: unknown;
   persistence?: Readonly<{ installedProjectRevision: string }>;
 }>;
@@ -140,6 +145,7 @@ export function createCreatorScriptBuildRuntime(
       disposition: input.disposition || null,
       failure: boundedFailure(build),
     };
+    if (build.state === "AUTHORITY_RESOLVED") return {...projection,editorialReview:reviewForBuild(build)};
     if (build.state !== "PERSISTED") return projection;
 
     const authority = normalizeCreatorScriptBuildAcceptedResultAuthority({
@@ -165,8 +171,9 @@ export function createCreatorScriptBuildRuntime(
   }): Promise<RequestCreatorScriptBuildResult> =>
     dependencies.buildRepository.request(input);
 
-  const advance = async (input: { ownerId: string; buildId: string }) => {
+  const advance = async (input: { ownerId: string; buildId: string; editorialReviewDecision?: CreatorEditorialReviewDecision; draftOnly?: boolean }) => {
     const initial = await getForOwner(input.ownerId, input.buildId);
+    if (input.draftOnly && initial.state==="PERSISTED")throw Error("CREATOR_EDITORIAL_DRAFT_ALREADY_INSTALLED");
     if (creatorScriptBuildIsTerminal(initial.state)) {
       return status({
         ...input,
@@ -174,6 +181,23 @@ export function createCreatorScriptBuildRuntime(
       });
     }
 
+    if (["AUTHORITY_RESOLVED","SCRIPT_GENERATED","REPAIRING","ACCEPTED"].includes(initial.state)) {
+      const revision=await getCurrentProjectRevision({ownerId:input.ownerId,projectId:initial.projectId});
+      if(revision!==initial.snapshot.expectedProjectRevision)throw Error("PROJECT_STALE");
+      const view=reviewForBuild(initial);
+      if(!input.editorialReviewDecision)return {...await status(input),disposition:"EDITORIAL_REVIEW_REQUIRED",editorialReview:view};
+      applyBuildEditorialReview({buildId:initial.buildId,snapshot:initial.snapshot,authority:normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(initial.checkpoints.authority?.outputReference||null),decision:input.editorialReviewDecision});
+      if(initial.state!=="AUTHORITY_RESOLVED"){
+        const generationInput=generationInputFromCheckpoint(initial);
+        if(canonicalCreatorScriptBuildJson(generationInput.editorialReviewDecision)!==canonicalCreatorScriptBuildJson(input.editorialReviewDecision))throw Error("CREATOR_EDITORIAL_REVIEW_INVALID_OR_STALE");
+      }
+      if(initial.state==="ACCEPTED"){
+        const accepted=normalizeCreatorScriptBuildAcceptedResultAuthority({value:initial.resultAuthority,snapshot:initial.snapshot});
+        // Editorial approval authorizes a draft, never project installation.
+        // Do not trust a request flag as permission to overwrite production.
+        return {...await status(input),terminal:true,disposition:"DRAFT_READY",creatorScript:accepted.acceptance.script};
+      }
+    }
     let result: { build: CreatorScriptBuildRecord };
     try {
       switch (initial.state) {

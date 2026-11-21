@@ -24,13 +24,10 @@ import {
   type CreatorScriptBuildSnapshot,
 } from "./creatorScriptBuild.ts";
 import {
-  createCreatorScriptBuildScriptGenerationInput,
+  generationInputFromCheckpoint,
   normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint,
   type CreatorScriptBuildScriptGenerationStageResult,
 } from "./creatorScriptBuildScriptGenerationCoordinator.ts";
-import {
-  normalizeCreatorScriptBuildAuthorityResultFromCheckpoint,
-} from "./creatorScriptBuildAuthorityCoordinator.ts";
 import {
   replayCreatorScriptBuildCompletedRepair,
   type CreatorScriptBuildScriptRepairStageResult,
@@ -403,13 +400,7 @@ function loadGeneration(build: CreatorScriptBuildRecord) {
     );
   }
   try {
-    const authority = normalizeCreatorScriptBuildAuthorityResultFromCheckpoint(
-      authorityCheckpoint.outputReference,
-    );
-    const generationInput = createCreatorScriptBuildScriptGenerationInput({
-      snapshot: build.snapshot,
-      authority,
-    });
+    const generationInput = generationInputFromCheckpoint(build);
     return normalizeCreatorScriptBuildScriptGenerationResultFromCheckpoint({
       buildId: build.buildId,
       value: generationCheckpoint.outputReference,

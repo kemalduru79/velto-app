@@ -1,3 +1,4 @@
+import {researchClaimRequiresEvidence} from "./claimEvidenceGraph.ts";
 import type {
   ClaimEvidenceStance,
   ResearchClaim,
@@ -140,17 +141,18 @@ export function createScriptEvidenceBindingMap(input: {
       "contextualizes",
     );
 
+    const requiredClaimIds=new Set(claimIds.filter(id=>researchClaimRequiresEvidence(claimById.get(id)!)));
     const supportedClaimIds = new Set(
       input.graph.links
         .filter(
-          (link) => claimIdSet.has(link.claimId) && link.stance === "supports",
+          (link) => requiredClaimIds.has(link.claimId) && link.stance === "supports",
         )
         .map((link) => link.claimId),
     );
     const traceabilityStatus: ScriptStatementTraceabilityStatus =
-      statement.evidenceMode === "not_required"
+      statement.evidenceMode === "not_required" || requiredClaimIds.size===0
         ? "not_required"
-        : supportedClaimIds.size === claimIds.length
+        : supportedClaimIds.size === requiredClaimIds.size
           ? "traceable"
           : supportedClaimIds.size > 0
             ? "partial"

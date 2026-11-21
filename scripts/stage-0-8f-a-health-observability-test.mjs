@@ -61,9 +61,9 @@ assert.equal(
     dependencies: packageJson.dependencies,
     devDependencies: packageJson.devDependencies,
   })).digest("hex"),
-  "87a1b454412809e953de32eadbc9c533deb1edafcbfed9d5548d90e55986a0b5",
+  "43b9d44d4d4fe241042490c2f57426aa49c186d51fb7b144db2ad436891a5a60",
 );
-assert.equal(hash("package-lock.json"), "1353ee06f284925a87ff1bcf3e7e22bcbd45ad853961dfdf285bdda96e852afe");
+assert.equal(hash("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52");
 assert.equal(hash("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9");
 
 const runtimeHealth = read("lib/runtime/runtimeHealth.ts");

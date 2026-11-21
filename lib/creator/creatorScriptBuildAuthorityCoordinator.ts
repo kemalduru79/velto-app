@@ -24,6 +24,7 @@ import {
   researchSourceQualifiesAsPrimaryForClaim,
   type ClaimAuthorityReport,
 } from "../research/claimAuthorityResolver.ts";
+import {researchClaimRequiresPrimarySource} from "../research/claimEvidenceGraph.ts";
 import type {
   ResearchClaim,
   ResearchClaimEvidenceGraph,
@@ -960,7 +961,7 @@ function createAuthorityResult(input: {
     ],
     permittedClaimIds: finalAuthority.claims
       .filter((claim) =>
-        claim.status === "SUPPORTED" || claim.status === "SUPPORTED_PRIMARY"
+        claim.status === "SUPPORTED" || claim.status === "SUPPORTED_PRIMARY" || (graph.claims.some(c=>c.claimId===claim.claimId && c.claimType==="THOUGHT_EXPERIMENT") && !researchClaimRequiresPrimarySource(graph.claims.find(c=>c.claimId===claim.claimId)!))
       )
       .map((claim) => claim.claimId),
     spanCatalogVersion: input.spanCatalogVersion,

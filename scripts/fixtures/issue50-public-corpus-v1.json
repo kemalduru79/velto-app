@@ -1,0 +1,78 @@
+{
+  "schema": "velto-public-corpus-candidate/v1",
+  "id": "ISSUE50-PUBLIC-DIGITAL-LEGACY-V1",
+  "state": "PUBLISHER_HTTPS_AND_BYTE_BINDINGS_VERIFIED_NOT_OWNER_ACCEPTED",
+  "sources": [
+    {
+      "sourceId": "public-1",
+      "publisher": "Apple Support",
+      "url": "https://support.apple.com/en-us/102631",
+      "retrievedAt": "2026-11-15T11:46:20.064833+00:00",
+      "documentSha256": "7795daad1d237d06b84f84c83ac245028c40b08bde0a1ffaf5a09f9a741d061d",
+      "documentBytes": 169295,
+      "authentication": "HTTPS publisher origin with system CA verification; not independent signed attestation",
+      "passages": [
+        {
+          "id": "public-1-1",
+          "documentByteStart": 761,
+          "documentByteEnd": 870,
+          "rawSha256": "011469759d3c8ffd76a420174a55f9dd504043e87a634acccc2c6df3e14166b8",
+          "excerpt": "A Legacy Contact is someone you choose to have access to certain data in your Apple Account after your death.",
+          "excerptSha256": "011469759d3c8ffd76a420174a55f9dd504043e87a634acccc2c6df3e14166b8"
+        },
+        {
+          "id": "public-1-2",
+          "documentByteStart": 145394,
+          "documentByteEnd": 145580,
+          "rawSha256": "7662c2b52c826a1d1dde8f5745a31626c514677736517a7155b13f560e3aa0c9",
+          "excerpt": "Documentation requirements might vary by country or region. For example, in Japan, you need a family certificate indicating the death of an account holder instead of a death certificate.",
+          "excerptSha256": "7662c2b52c826a1d1dde8f5745a31626c514677736517a7155b13f560e3aa0c9"
+        }
+      ]
+    },
+    {
+      "sourceId": "public-2",
+      "publisher": "Library of Congress",
+      "url": "https://www.digitalpreservation.gov/personalarchiving/photos.html",
+      "retrievedAt": "2026-11-15T11:46:20.999895+00:00",
+      "documentSha256": "4ba96f0f63354babf069bebdb46a537ee003ca21c657d670f5ddcf80ad3524c3",
+      "documentBytes": 12854,
+      "authentication": "HTTPS publisher origin with system CA verification; not independent signed attestation",
+      "passages": [
+        {
+          "id": "public-2-1",
+          "documentByteStart": 8871,
+          "documentByteEnd": 8945,
+          "rawSha256": "4ccd7ce5cc51d07897d93f6cdbd008caad634a6ce862407aaa016a86807cfd65",
+          "excerpt": "Make at least two copies of your selected photos—more copies are better.",
+          "excerptSha256": "4ccd7ce5cc51d07897d93f6cdbd008caad634a6ce862407aaa016a86807cfd65"
+        },
+        {
+          "id": "public-2-2",
+          "documentByteStart": 9435,
+          "documentByteEnd": 9505,
+          "rawSha256": "e3617a8ff0be17662c5d801ffe1e9b64c8fb4562fcc6277e7e6062679ef43fee",
+          "excerpt": "Check your photos at least once a year to make sure you can read them.",
+          "excerptSha256": "e3617a8ff0be17662c5d801ffe1e9b64c8fb4562fcc6277e7e6062679ef43fee"
+        },
+        {
+          "id": "public-2-3",
+          "documentByteStart": 9524,
+          "documentByteEnd": 9602,
+          "rawSha256": "3c13a4c69207129ed67f514bad6eb8da9b11dc8f73a378be3a59e62e5746661d",
+          "excerpt": "Create new media copies every five years or when necessary to avoid data loss.",
+          "excerptSha256": "3c13a4c69207129ed67f514bad6eb8da9b11dc8f73a378be3a59e62e5746661d"
+        }
+      ]
+    }
+  ],
+  "privacy": "Public publisher documents only; no customer records, personal accounts or credentials",
+  "supportedScope": "Narrow documentary: preserving files and granting access are distinct from permission to generate new speech. Last distinction is editorial inference, not an empirical result.",
+  "limitations": [
+    "HTTPS provenance is not independent cryptographic publisher attestation.",
+    "Publisher instructions are not empirical research findings. Do not invent seven research findings or mark existing science_documentary_v1 eligibility ready.",
+    "Owner source acceptance and canonical existing-agent evidence routing have not been recorded.",
+    "Dynamic request token ceiling and live transport/accounting qualification remain unverified."
+  ],
+  "providerCalls": 0
+}

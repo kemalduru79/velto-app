@@ -59,10 +59,20 @@ function getDefaultSettingsForRole(role: VoiceRole): ElevenLabsVoiceSettings {
   };
 }
 
+// Raw voice fields remain unknown until the existing typeof-number checks.
+// This view grants no provider, media or persistence authority.
+type VoiceSettingsReadValue = Readonly<{
+  [Key in keyof ElevenLabsVoiceSettings | "similarityBoost"]?: unknown;
+}>;
+function hasVoiceSettingsReadValue(value: unknown): value is VoiceSettingsReadValue {
+  return value !== null && value !== undefined;
+}
+
 function mergeVoiceSettings(
   role: VoiceRole,
-  bodySettings: any
+  value: unknown
 ): ElevenLabsVoiceSettings {
+  const bodySettings = hasVoiceSettingsReadValue(value) ? value : undefined;
   const defaults = getDefaultSettingsForRole(role);
 
   return {

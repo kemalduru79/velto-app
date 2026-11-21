@@ -16,10 +16,10 @@ const compiled = ts.transpileModule(source, {
     target: ts.ScriptTarget.ES2022,
   },
 }).outputText;
-const module = { exports: {} };
-new Function("module", "exports", compiled)(module, module.exports);
+const testModule = { exports: {} };
+new Function("module", "exports", compiled)(testModule, testModule.exports);
 
-const { createCreatorPublishReadyPackageReport } = module.exports;
+const { createCreatorPublishReadyPackageReport } = testModule.exports;
 
 const readyInput = {
   productionPackage: {

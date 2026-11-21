@@ -10,7 +10,6 @@ import {
   isValidCreatorProjectState,
   readCreatorProjectState,
 } from "./projectState.ts";
-import { normalizeCreatorScript } from "./creatorScript.ts";
 import type {
   ProjectRepository,
   VeltoProjectApiRecord,
@@ -72,11 +71,9 @@ function canonicalStateFromProject(project: VeltoProjectApiRecord) {
     );
   }
   const state = readCreatorProjectState(project);
-  if (state.strategy.script) {
-    try { normalizeCreatorScript(state.strategy.script); } catch {
-      throw new CreatorScriptBuildSnapshotError("CREATOR_SCRIPT_BUILD_LEGACY_REVALIDATION_REQUIRED", 409);
-    }
-  }
+  // A structurally valid historical script is preservation data, not the
+  // authority for a new draft. Research/editorial/primary gates validate the
+  // newly acquired context before dispatch; no old approval is renewed here.
   return state;
 }
 

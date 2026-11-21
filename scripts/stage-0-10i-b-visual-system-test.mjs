@@ -1,5 +1,5 @@
+import { readWorkspaceChangePaths, unreviewedWorkspacePaths } from "./quality/p0-workspace-scope.mjs";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
 const globals = fs.readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -56,11 +56,7 @@ assert.match(chrome, /:focus-visible[\s\S]*?outline:\s*2px solid var\(--cl-prima
 assert.doesNotMatch(chrome, /#[0-9a-f]{3,8}/i, "chrome consumes tokens without a decorative palette");
 assert.doesNotMatch(chrome, /storyverse/i, "new baseline is CreatorLab-scoped");
 
-const changed = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" })
-  .trimEnd()
-  .split("\n")
-  .filter(Boolean)
-  .map((line) => line.slice(3));
+const changed = readWorkspaceChangePaths();
 const allowed = new Set([
   "app/create/page.tsx",
   "app/creatorlab-ux-i-b.css",
@@ -320,6 +316,6 @@ const allowed = new Set([
     ".gitignore",
   "scripts/stage-0-13e-ai-script-refinement-test.mjs",
 ]);
-assert.deepEqual(changed.filter((file) => !allowed.has(file) && file !== "docs/creatorlab/receipts/"), []);
+assert.deepEqual(unreviewedWorkspacePaths(changed, allowed), []);
 
 console.log("STAGE_0_10I_B_VISUAL_SYSTEM=PASS");

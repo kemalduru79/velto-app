@@ -16,6 +16,7 @@ export type VideoProviderCreateInput = {
   promptText: string;
   requestedRatio: unknown;
   durationSec: number;
+  runwayUsageTag?: string;
   runtimeProfile?: VideoProviderRuntimeProfile;
 };
 

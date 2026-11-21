@@ -1,6 +1,8 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/create/page.tsx");
 const editor = read("components/create/CreatorEditor.tsx");
@@ -42,7 +44,8 @@ matches(page, /const updateSelectedCreatorSceneTrim[\s\S]*\.\.\.scene,[\s\S]*cli
 absent(editorState.slice(editorState.indexOf("normalizeCreatorSceneTrim"), editorState.indexOf("getCreatorSceneEffectiveDuration")), /videoJobId|videoQueueJobId|videoStatus/, "15 trim normalization cannot strip generation state");
 matches(editor, /sceneOperationsDisabled \|\| selectedIndex/ , "16 reorder disabled while active generation is linked");
 matches(editorState, /videoJobId: ""[\s\S]*videoQueueJobId: ""[\s\S]*videoStatus: source\.videoStatus === "processing" \|\| source\.videoStatus === "delayed"/, "17 duplicate clears active job identity");
-matches(page, /sceneOperationsDisabled=\{[\s\S]*scene\.videoStatus === "processing"[\s\S]*scene\.videoStatus === "delayed"/, "18 delete cannot transfer an active job through reordinalization");
+matches(production, /sceneOperationsDisabled=\{creatorSceneStructuralOperationsDisabled\}/, "18 editor consumes the parent structural-operation guard");
+matches(page, /const creatorSceneStructuralOperationsDisabled =[\s\S]*?scenes\.some\([\s\S]*?scene\.videoStatus === "processing"[\s\S]*?scene\.videoStatus === "delayed"/, "18 delete cannot transfer an active job through reordinalization");
 absent(poller + recovery, /POST[\s\S]*creator-video|handleGenerateVideo\(/, "19 recovery performs no automatic provider redispatch");
 check((dispatch.match(/fetch\(getVideoApiEndpoint\(\)/g) || []).length === 1, "20 one creator_video request/reservation path per action");
 matches(creatorRoute, /providerTaskAccepted[\s\S]*Do not release the reservation[\s\S]*settle/, "21 ambiguous dispatch never unsafely releases credit");
@@ -55,4 +58,4 @@ matches(worker, /\["SUCCEEDED", "COMPLETED", "READY"\][\s\S]*\["FAILED", "ERROR"
 matches(page, /delayedVideoPollKeysRef\.current\.add\(pollKey\)/, "current session does not immediately restart a delayed poll");
 matches(page, /delayedVideoPollKeysRef\.current\.clear\(\)[\s\S]*setScenes\(/, "project hydration permits a later recovery check");
 
-console.log(`CreatorLab video generation lifecycle regression smoke passed (${checks}/28).`);
+console.log(`CreatorLab video generation lifecycle regression smoke passed (${checks}/29).`);

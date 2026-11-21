@@ -74,7 +74,7 @@ export default function UserAccountMenu({
     accountLoaderRef.current = loadAccount;
     void loadAccount();
 
-    const handleFocus = () => void loadAccount();
+    const handleFocus = () => void loadAccount(true);
     window.addEventListener("focus", handleFocus);
 
     return () => {
@@ -85,7 +85,7 @@ export default function UserAccountMenu({
   }, [performAccountLoad]);
 
   useEffect(() => {
-    if (open) void accountLoaderRef.current?.();
+    if (open) void accountLoaderRef.current?.(true);
   }, [open]);
 
   useEffect(() => {

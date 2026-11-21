@@ -1,3 +1,4 @@
+import { CREATOR_EDITORIAL_REVISION_CONTRACT, reviewCreatorEditorialNarrative } from "./creatorEditorialNarrativeReview.ts";
 import OpenAI from "openai";
 import { recordOpenAITextEconomics } from "../economics/index.ts";
 import type { ResearchSource } from "../research/sourceContract.ts";
@@ -26,12 +27,13 @@ export function createCreatorScriptEditorialRewriteProviders(input: { ownerId: s
     rewrite: async ({ script, instruction, language, goals, sources, verifiedEvidence }) => {
       const result = await call("creator_script_editorial_rewrite", [
         "Produce a complete revised CreatorLab script as strict JSON.",
+        ...CREATOR_EDITORIAL_REVISION_CONTRACT,
         "Use only supplied canonical verifiedEvidence passages. Any new evidence excerpt and locator must be copied exactly from verifiedEvidence; discovery summaries are not evidence.",
         "Every new claim must reference at least one new evidence ID. Bind each factual section to its claim IDs.",
         "Preserve exactly one opening first, body sections in the middle, and exactly one conclusion last. Section IDs may be retained, reordered, split, or merged only with explicit lineage.sourceSectionIds referencing every original section.",
         "Do not self-report goal success here. Return sections, addedClaims, and addedEvidence only.",
         language === "en" ? "Write audience-facing English." : "Write audience-facing Turkish.",
-      ].join(" "), { instruction, goals, script, sources: sources.map(({ sourceId, title, url, publisher, author, publishedAt }) => ({ sourceId, title, url, publisher, author, publishedAt })), verifiedEvidence });
+      ].join(" "), { instruction, goals, script, editorialReview: reviewCreatorEditorialNarrative(script, language), sources: sources.map(({ sourceId, title, url, publisher, author, publishedAt }) => ({ sourceId, title, url, publisher, author, publishedAt })), verifiedEvidence });
       const raw = record(result);
       if (!raw || !Array.isArray(raw.sections) || !Array.isArray(raw.addedClaims) || !Array.isArray(raw.addedEvidence)) throw new Error("CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID");
       return { sections: raw.sections, addedClaims: raw.addedClaims, addedEvidence: raw.addedEvidence, goalResults: [] } as CreatorScriptRewriteProviderCandidate;
@@ -43,7 +45,7 @@ export function createCreatorScriptEditorialRewriteProviders(input: { ownerId: s
       return raw.claimAssessments as CreatorScriptClaimEvidenceAssessment[];
     },
     assess: async ({ before, after, goals }) => {
-      const result = await call("creator_script_editorial_rewrite_assessment", "Independently assess each requested editorial goal against before and after scripts. Return strict JSON {goalResults:[{goalId,status,sectionIds,summary}]}. Use status satisfied only for a material, observable change; otherwise blocked. Never infer evidence beyond canonical claim bindings.", { goals, before, after });
+      const result = await call("creator_script_editorial_rewrite_assessment", "Independently assess each requested editorial goal against before and after scripts. Return strict JSON {goalResults:[{goalId,status,sectionIds,summary}]}. Use status satisfied only for a material, observable change; otherwise blocked. Never infer evidence beyond canonical claim bindings. Compare specific passages for hook, progression, genuine counterview versus limitation, spoken clarity, repetition and earned ending. Report unresolved quality limitations; heuristic silence is not success.", { goals, before, after });
       const raw = record(result);
       if (!raw || !Array.isArray(raw.goalResults)) throw new Error("CREATOR_SCRIPT_REFINEMENT_PROVIDER_OUTPUT_INVALID");
       return raw.goalResults as CreatorScriptRewriteGoalResult[];
