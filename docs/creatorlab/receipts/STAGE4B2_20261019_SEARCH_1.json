@@ -1,0 +1,15 @@
+{
+  "version": "stage4b2-execution-receipt-v1",
+  "executionId": "stage4b2-20261019-search-1",
+  "approvedSourceUrl": "https://arxiv.org/abs/2304.03442",
+  "state": "blocked",
+  "startedAt": null,
+  "completedAt": null,
+  "providerUsage": {
+    "exaCalls": 1,
+    "openAiCalls": 0,
+    "reportedCostUsd": 0.007
+  },
+  "result": "APPROVED_SOURCE_NOT_RETURNED",
+  "elapsedMs": 2544
+}

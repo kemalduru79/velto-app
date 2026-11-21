@@ -1,0 +1,111 @@
+/* UX-P2A final polish — screenshot-driven refinements only.
+   CreatorLab scope only; no workflow, generation, credit or persistence behavior changes. */
+
+/* Give the compact progress meter enough context without restoring the old dense status block. */
+@media (min-width: 1440px) {
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block {
+    grid-template-columns: auto minmax(120px, 190px) auto;
+    width: min(100%, 310px);
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-copy {
+    display: block;
+    min-width: 0;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-copy > span {
+    display: none;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-copy > strong {
+    display: block;
+    overflow: hidden;
+    color: var(--cl-muted);
+    font-size: 0.68rem;
+    font-weight: 760;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-readiness-block .creatorlab-status-pill {
+    display: none;
+  }
+}
+
+/* An unavailable action should not cover useful Brief content. The persistent dock appears only when actionable. */
+.creatorlab-uxp2a-shell #creatorlab-brief-action:has(.creatorlab-primary-action:disabled) {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+  width: min(640px, calc(100vw - 430px));
+  bottom: 18px;
+  border-color: rgba(203, 211, 223, 0.84);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 34px rgba(25, 42, 68, 0.12);
+}
+
+.creatorlab-uxp2a-shell:has(#creatorlab-brief-action .creatorlab-primary-action:not(:disabled)) .creatorlab-main-column {
+  padding-bottom: 108px;
+}
+
+/* Keep Copilot visible but visually subordinate to the active workflow CTA. */
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher {
+  right: 18px;
+  bottom: 18px;
+  width: 58px;
+  height: 58px;
+  box-shadow:
+    0 12px 28px rgba(73, 54, 191, 0.25),
+    0 0 0 4px rgba(104, 78, 255, 0.09) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+  width: 49px;
+  height: 49px;
+  font-size: 0.9rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:hover,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:focus-visible {
+  box-shadow:
+    0 16px 34px rgba(73, 54, 191, 0.31),
+    0 0 0 5px rgba(104, 78, 255, 0.11) !important;
+}
+
+@media (max-width: 1439px) {
+  .creatorlab-uxp2a-shell .creatorlab-readiness-copy {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+    width: min(660px, calc(100vw - 28px));
+    bottom: 88px;
+  }
+
+  .creatorlab-uxp2a-shell:has(#creatorlab-brief-action .creatorlab-primary-action:not(:disabled)) .creatorlab-main-column {
+    padding-bottom: 158px;
+  }
+}
+
+@media (max-width: 639px) {
+  .creatorlab-uxp2a-shell #creatorlab-brief-action.creatorlab-brief-action-bar {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher {
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: 54px;
+    height: 54px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+    width: 46px;
+    height: 46px;
+  }
+}

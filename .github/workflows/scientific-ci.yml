@@ -1,0 +1,43 @@
+name: Velto Scientific Runtime CI
+
+# Separate gate: not waived, not optional, and intentionally RED on Ubuntu
+# until the Python/container runtime is independently qualified there.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - "agent/**"
+      - "codex/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scientific-runtime:
+    name: Pinned scientific calculation acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Scientific runtime acceptance (fail closed)
+        run: npm run test:ci-scientific

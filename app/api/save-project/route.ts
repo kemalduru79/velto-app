@@ -1,150 +1,502 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
+import { extractProjectMediaReferences, getPersistenceServices } from "@/lib/persistence";
+import {
+  attachCreatorProjectState,
+  inspectCreatorProjectStatePersistenceAuthority,
+  isValidCreatorProjectState,
+  preserveQuarantinedCreatorProjectState,
+  type CreatorProjectStateSnapshot,
+  readCreatorProjectState,
+} from "@/lib/creator/projectState";
+import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly, normalizeCreatorScript } from "@/lib/creator/creatorScript";
+import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
+import { assertCreatorScriptApprovalAuthority, creatorSceneOutputIsCurrent, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
+import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
+import { resolveCreatorScriptMutationAuthority } from "@/lib/creator/creatorScriptMutationAuthority";
+import {
+  createCreatorProductionInvalidationIdentity,
+  creatorProjectHasMeaningfulProduction,
+  requireCreatorProductionSnapshotBeforeInvalidation,
+} from "@/lib/creator/creatorProductionHistory";
+import { captureCreatorProductionSnapshotBeforeInvalidation } from "@/lib/persistence/projects/creatorProductionHistory.server";
+import {
+  reconcileSupersededFinalVideosForProject,
+} from "@/lib/persistence/media/supersededFinalVideo.server";
 
-export async function POST(req: Request) {
+export const runtime = "nodejs";
+
+type SaveProjectRouteDependencies = {
+  authenticate: typeof authenticateRequest;
+  persistence: typeof getPersistenceServices;
+};
+
+async function handleSaveProjectRequest(
+  req: Request,
+  dependencies: SaveProjectRouteDependencies = { authenticate: authenticateRequest, persistence: getPersistenceServices },
+) {
   try {
-    const supabase = createServerSupabaseClient();
+    const principal = await dependencies.authenticate(req);
+    const body = (await req.json()) as Record<string, unknown>;
 
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.replace("Bearer ", "").trim()
-      : "";
+    const projectId = typeof body.projectId === "string" && body.projectId.trim()
+      ? body.projectId.trim()
+      : null;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const hasTitle = Object.prototype.hasOwnProperty.call(body, "title");
+    const hasScenes = Object.prototype.hasOwnProperty.call(body, "scenes");
+    let scenes = Array.isArray(body.scenes) ? body.scenes : body.scenes === null ? null : undefined;
+    const hasRefinedCreatorScenes = Object.prototype.hasOwnProperty.call(body, "refinedCreatorScenes");
+    let refinedCreatorScenes = Array.isArray(body.refinedCreatorScenes)
+      ? body.refinedCreatorScenes
+      : body.refinedCreatorScenes === null
+        ? null
+        : undefined;
 
-    if (!token) {
-      return NextResponse.json({ error: "Yetkisiz istek." }, { status: 401 });
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(token);
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
-    }
-
-    const body = await req.json();
-
-    const {
-      projectId,
-      childId,
-      title,
-      inputPrompt,
-      storyPremise,
-      language,
-      characters,
-      visualBible,
-      scenes,
-      exportedMovieUrl,
-      exportedMovieResult,
-      exportSignature,
-      flowType,
-      flowKey,
-      creatorMentorResult,
-      creatorProductionPackage,
-      youtubeMetadataResult,
-      youtubeThumbnailResult,
-      sceneOptimizationResult,
-      sceneOptimizationSummary,
-      refinedCreatorScenes,
-    } = body;
-
-    if (!title || !scenes) {
-      return NextResponse.json({ error: "title ve scenes zorunlu" }, { status: 400 });
+    if ((!projectId && (!title || !Array.isArray(scenes))) || (hasTitle && !title) || (hasScenes && scenes === undefined)) {
+      return NextResponse.json(
+        { error: "title ve scenes zorunlu" },
+        { status: 400 },
+      );
     }
 
     const requestedFlowType =
-      typeof flowType === "string" && flowType.trim()
-        ? flowType.trim()
-        : typeof flowKey === "string" && flowKey.trim()
-          ? flowKey.trim()
+      typeof body.flowType === "string" && body.flowType.trim()
+        ? body.flowType.trim()
+        : typeof body.flowKey === "string" && body.flowKey.trim()
+          ? body.flowKey.trim()
           : "storyverse";
-
-    const normalizedFlowType =
+    const flowType =
       requestedFlowType === "creator_lab" ? "creator_lab" : "storyverse";
+    const childId =
+      flowType === "creator_lab"
+        ? null
+        : typeof body.childId === "string" && body.childId.trim()
+          ? body.childId.trim()
+          : null;
 
-    const normalizedChildId =
-      typeof childId === "string" && childId.trim()
-        ? childId.trim()
-        : normalizedFlowType === "creator_lab"
-          ? "creator_lab"
-          : "";
-
-    if (!normalizedChildId) {
+    if (flowType === "storyverse" && !childId) {
       return NextResponse.json({ error: "childId zorunlu" }, { status: 400 });
     }
 
-    if (projectId) {
-      const { data, error } = await supabase
-        .from("velto_projects")
-        .update({
-          owner_user_id: user.id,
-          child_id: normalizedChildId,
-          title,
-          input_prompt: inputPrompt || "",
-          story_premise: storyPremise || "",
-          language: language === "en" ? "en" : "tr",
-          visual_bible: visualBible || {},
-          characters: characters || [],
-          scenes: scenes || [],
-          exported_movie_url: exportedMovieUrl || null,
-          exported_movie_result: exportedMovieResult || null,
-          export_signature: exportSignature || null,
-          flow_type: normalizedFlowType,
-          creator_mentor_result: creatorMentorResult || null,
-          creator_production_package: creatorProductionPackage || null,
-          youtube_metadata: youtubeMetadataResult || null,
-          youtube_thumbnail: youtubeThumbnailResult || null,
-          scene_optimization: sceneOptimizationResult || null,
-          scene_optimization_summary: sceneOptimizationSummary || null,
-          refined_creator_scenes: refinedCreatorScenes || null,
-        })
-        .eq("id", projectId)
-        .eq("owner_user_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    const services = dependencies.persistence();
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
+    const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim()
+      ? body.expectedUpdatedAt.trim()
+      : null;
+    const exportedMovieUrl = typeof body.exportedMovieUrl === "string" && body.exportedMovieUrl.trim()
+      ? body.exportedMovieUrl.trim()
+      : body.exportedMovieUrl === null ? null : undefined;
+    if (exportedMovieUrl) {
+      const finalMovieAsset = await services.mediaAssetRepository.findByPublicUrl(principal.id, exportedMovieUrl);
+      const creatorProjectMismatch = flowType === "creator_lab" && projectId &&
+        finalMovieAsset?.metadata?.projectId !== projectId;
+      if (!finalMovieAsset || finalMovieAsset.mediaKind !== "final_video" || finalMovieAsset.lifecycleState !== "active" || creatorProjectMismatch) {
+        return NextResponse.json({ error: "Final video is not available for this project owner." }, { status: 400 });
       }
+    }
+    const persistedCreatorProject = flowType === "creator_lab" && projectId
+      ? await services.projectRepository.getForOwner(projectId, principal.id)
+      : null;
+    if (flowType === "creator_lab" && projectId && !persistedCreatorProject) {
+      return NextResponse.json({ error: "Project not found." }, { status: 404 });
+    }
+    const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    const persistedCreatorStateAuthority = persistedCreatorProject
+      ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
+      : null;
+    const historicalResearchLocked = Boolean(
+      persistedCreatorStateAuthority?.status === "valid" &&
+      persistedCreatorStateAuthority.script &&
+      isCreatorScriptHistoricalResearchOnly(persistedCreatorStateAuthority.script),
+    );
+    if (historicalResearchLocked && persistedCreatorProject) {
+      // An approved historical script remains readable, not writable scientific
+      // authority. Preserve its exact serialized snapshot, legacy columns and
+      // final media; no autosave may silently clear or reconstruct it.
+      const savedState = readCreatorProjectState(persistedCreatorProject);
+      const protectedFields: Array<[string, unknown]> = [
+        ["creatorProjectState", savedState],
+        ["scenes", persistedCreatorProject.scenes],
+        ["refinedCreatorScenes", persistedCreatorProject.refined_creator_scenes],
+        ["creatorProductionPackage", persistedCreatorProject.creator_production_package],
+        ["creatorMentorResult", persistedCreatorProject.creator_mentor_result],
+        ["youtubeMetadataResult", persistedCreatorProject.youtube_metadata],
+        ["youtubeThumbnailResult", persistedCreatorProject.youtube_thumbnail],
+        ["exportedMovieUrl", persistedCreatorProject.exported_movie_url],
+        ["exportSignature", persistedCreatorProject.export_signature],
+      ];
+      if (has("creatorScriptMutation") || protectedFields.some(([name, original]) =>
+        has(name) && JSON.stringify(body[name]) !== JSON.stringify(original)
+      )) {
+        return NextResponse.json({
+          error: "Historical script content remains accessible, but production or script changes require current source revalidation.",
+          code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED",
+        }, { status: 409 });
+      }
+    }
+    // Durable final export always starts with canonical Creator state. Its absence
+    // after installation must never be treated as permission to recreate it from an editor.
+    if (persistedCreatorStateAuthority?.status === "legacy_absent" &&
+        persistedCreatorStateAuthority.envelope.finalExportJobId) {
+      return NextResponse.json({ error: "Saved Creator project state requires repair. Keep the current editor open.",
+        code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" }, { status: 409 });
+    }
+    const quarantinedCreatorState = persistedCreatorStateAuthority?.status.startsWith("malformed_") === true;
+    if (persistedCreatorStateAuthority?.status === "malformed_invalid_script") {
+      return NextResponse.json(
+        { error: "Persisted Creator script authority is invalid and requires repair.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    const mutatesQuarantinedCreatorAuthority = hasCreatorProjectState || hasScenes || hasRefinedCreatorScenes ||
+      has("exportedMovieUrl") || has("exportSignature") || has("creatorProductionPackage") ||
+      has("creatorMentorResult") || has("youtubeMetadataResult") || has("youtubeThumbnailResult") ||
+      has("sceneOptimizationResult") || has("sceneOptimizationSummary");
+    if (quarantinedCreatorState && mutatesQuarantinedCreatorAuthority) {
+      return NextResponse.json(
+        { error: "Persisted Creator project authority requires repair before a full save.", code: "CREATOR_PROJECT_STATE_REPAIR_REQUIRED" },
+        { status: 409 },
+      );
+    }
+    let shouldInvalidateCreatorProduction = false;
+    let suppressStaleCreatorFinalProjection = false;
+    let authoritativeCreatorState: CreatorProjectStateSnapshot | null = hasCreatorProjectState ? body.creatorProjectState as CreatorProjectStateSnapshot : null;
+    let persistedCreatorStateForPartialSave: CreatorProjectStateSnapshot | null = null;
+    if (hasCreatorProjectState && !isValidCreatorProjectState(body.creatorProjectState)) {
+      return NextResponse.json(
+        { error: "Creator project authority snapshot is invalid.", code: "CREATOR_PROJECT_STATE_INVALID" },
+        { status: 400 },
+      );
+    }
+    if (hasCreatorProjectState && !projectId && authoritativeCreatorState) {
+      // Historical read compatibility is not authority to install an obsolete
+      // research classification into a new project.
+      try {
+        if (authoritativeCreatorState.strategy.script) normalizeCreatorScript(authoritativeCreatorState.strategy.script);
+      } catch {
+        return NextResponse.json({ error: "New script installation requires current research validation.", code: "CREATOR_LEGACY_RESEARCH_REVALIDATION_REQUIRED" }, { status: 409 });
+      }
+      authoritativeCreatorState = { ...authoritativeCreatorState, strategy: { ...authoritativeCreatorState.strategy, pendingRefinement: null, revisionHistory: [] } };
+    }
+    if (hasCreatorProjectState && projectId) {
+      const persistedProject = persistedCreatorProject!;
+      const persistedScript = readCreatorProjectState(persistedProject).strategy.script;
+      const persistedState = readCreatorProjectState(persistedProject);
+      suppressStaleCreatorFinalProjection = !historicalResearchLocked && Boolean(persistedScript) && !creatorSceneOutputIsCurrent({
+        script: persistedScript,
+        productionPackage: persistedState.production.package,
+        scenes: persistedState.createReview.scenes,
+      });
+      const candidateState = body.creatorProjectState as CreatorProjectStateSnapshot;
+      let authoritativeScript;
+      try {
+        authoritativeScript = resolveCreatorScriptMutationAuthority({
+          persistedScript,
+          candidateScript: candidateState.strategy.script ?? null,
+          commandValue: body.creatorScriptMutation,
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "CREATOR_SCRIPT_MUTATION_INVALID";
+        const conflict = code === "CREATOR_SCRIPT_MUTATION_STALE" || code === "CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED";
+        return NextResponse.json({
+          error: code === "CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED"
+            ? "Script changes require an explicit mutation operation."
+            : conflict ? "Script changed. Reload before saving this edit." : "Script mutation transition is invalid.",
+          code,
+        }, { status: conflict ? 409 : 400 });
+      }
+      const authoritativeCandidateState = {
+        ...candidateState,
+        strategy: { ...candidateState.strategy, script: authoritativeScript },
+      };
+      if (persistedScript && authoritativeScript) {
+        try {
+          assertCreatorScriptVerificationAuthority(persistedScript, authoritativeScript);
+          assertCreatorScriptApprovalAuthority(persistedScript, authoritativeScript);
+        } catch (error) {
+          const approvalForged = error instanceof Error && error.message === "CREATOR_SCRIPT_APPROVAL_FORGED";
+          return NextResponse.json({ error: approvalForged ? "Script approval must be updated through the approval action." : "Script verification state must be updated through source review.", code: approvalForged ? "CREATOR_SCRIPT_APPROVAL_FORGED" : "CREATOR_SCRIPT_VERIFICATION_FORGED" }, { status: 409 });
+        }
+      }
+      const textChanged = creatorScriptTextChanged(persistedScript, authoritativeScript);
+      shouldInvalidateCreatorProduction = textChanged;
+      const scriptRevisionChanged = Boolean(persistedScript && authoritativeScript && persistedScript.revision !== authoritativeScript.revision);
+      const revisionHistory = textChanged && persistedScript && authoritativeScript
+        ? appendCreatorScriptHistory(persistedState.strategy.revisionHistory || [], {
+            fromRevision: persistedScript.revision,
+            toRevision: authoritativeScript.revision,
+            origin: "manual",
+            changes: createCreatorScriptChanges(persistedScript, authoritativeScript),
+          })
+        : persistedState.strategy.revisionHistory || [];
+      authoritativeCreatorState = {
+        ...authoritativeCandidateState,
+        strategy: {
+          ...authoritativeCandidateState.strategy,
+          pendingRefinement: textChanged || scriptRevisionChanged ? null : persistedState.strategy.pendingRefinement || null,
+          revisionHistory,
+        },
+      };
+      if (textChanged) {
+        if (!expectedUpdatedAt) throw new Error("PROJECT_REVISION_REQUIRED");
+        const meaningfulProduction = persistedScript && authoritativeScript && creatorProjectHasMeaningfulProduction(persistedProject);
+        const capture = async () => {
+          if (!meaningfulProduction || !persistedScript || !authoritativeScript) return;
+          const mutationType = body.creatorScriptMutation && typeof body.creatorScriptMutation === "object"
+            ? String((body.creatorScriptMutation as Record<string, unknown>).type || "script_changed")
+            : "script_changed";
+          await captureCreatorProductionSnapshotBeforeInvalidation({
+            projectId,
+            ownerUserId: principal.id,
+            expectedUpdatedAt,
+            mutationId: createCreatorProductionInvalidationIdentity({
+              projectId,
+              reason: mutationType,
+              fromRevision: persistedScript.revision,
+              toRevision: authoritativeScript.revision,
+              nextScript: authoritativeScript,
+            }),
+            invalidationReason: mutationType,
+            sourceScriptRevision: persistedScript.revision,
+            scriptFingerprint: persistedScript.strategyFingerprint,
+            approvalFingerprint: JSON.stringify(persistedScript.approval || null),
+          });
+        };
+        authoritativeCreatorState = await requireCreatorProductionSnapshotBeforeInvalidation({
+          capture,
+          invalidate: () => invalidateCreatorSceneAuthorityForScriptChange(authoritativeCreatorState as CreatorProjectStateSnapshot),
+        });
+        if (hasScenes) scenes = [];
+      } else {
+        const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
+          ? persistedProject.scenes
+          : [];
+        const persistedScenes = persistedState.createReview.scenes.length > 0
+          ? persistedState.createReview.scenes
+          : persistedLegacyScenes;
+        const sceneSaveAuthority = resolveCreatorSceneSaveAuthority({
+          persistedScenes,
+          candidateScenes: candidateState.createReview.scenes,
+          incomingScenes: hasScenes ? scenes : undefined,
+          serverAuthorizedInvalidation: false,
+        });
+        scenes = sceneSaveAuthority.persistedColumnScenes;
+        if (sceneSaveAuthority.preserved) {
+          refinedCreatorScenes = hasRefinedCreatorScenes
+            ? persistedState.production.refinedScenes
+            : refinedCreatorScenes;
+          authoritativeCreatorState = {
+            ...authoritativeCreatorState,
+            production: {
+              ...authoritativeCreatorState.production,
+              refinedScenes: persistedState.production.refinedScenes,
+            },
+            createReview: {
+              ...authoritativeCreatorState.createReview,
+              scenes: sceneSaveAuthority.canonicalScenes,
+            },
+          };
+        } else {
+          authoritativeCreatorState = {
+            ...authoritativeCreatorState,
+            createReview: {
+              ...authoritativeCreatorState.createReview,
+              scenes: sceneSaveAuthority.canonicalScenes,
+            },
+          };
+        }
+      }
+    }
+    if (flowType === "creator_lab" && projectId && !hasCreatorProjectState && !quarantinedCreatorState) {
+      const persistedProject = persistedCreatorProject!;
+      const persistedState = readCreatorProjectState(persistedProject);
+      suppressStaleCreatorFinalProjection = !historicalResearchLocked && Boolean(persistedState.strategy.script) && !creatorSceneOutputIsCurrent({
+        script: persistedState.strategy.script,
+        productionPackage: persistedState.production.package,
+        scenes: persistedState.createReview.scenes,
+      });
+      persistedCreatorStateForPartialSave = persistedState;
+      const persistedLegacyScenes = Array.isArray(persistedProject.scenes)
+        ? persistedProject.scenes
+        : [];
+      const persistedScenes = persistedState.createReview.scenes.length > 0
+        ? persistedState.createReview.scenes
+        : persistedLegacyScenes;
+      const sceneSaveAuthority = resolveCreatorSceneSaveAuthority({
+        persistedScenes,
+        candidateScenes: persistedScenes,
+        incomingScenes: hasScenes ? scenes : undefined,
+        serverAuthorizedInvalidation: false,
+      });
+      scenes = sceneSaveAuthority.persistedColumnScenes;
+      if (sceneSaveAuthority.preserved && hasRefinedCreatorScenes) {
+        refinedCreatorScenes = persistedState.production.refinedScenes;
+      }
+    }
+    let creatorStateForAttachment = authoritativeCreatorState || persistedCreatorStateForPartialSave;
+    creatorStateForAttachment = suppressStaleCreatorFinalProjection && creatorStateForAttachment
+      ? {
+          ...creatorStateForAttachment,
+          publish: {
+            ...creatorStateForAttachment.publish,
+            packageDownloaded: false,
+            packageSignature: "",
+            finalVideoUrl: "",
+            finalVideoSignature: "",
+          },
+        }
+      : creatorStateForAttachment;
+    const candidateExportedMovieResult = flowType === "creator_lab" && has("exportedMovieResult") && creatorStateForAttachment
+      ? attachCreatorProjectState(
+          body.exportedMovieResult,
+          creatorStateForAttachment,
+        )
+      : body.exportedMovieResult;
+    const exportedMovieResult = historicalResearchLocked && persistedCreatorProject
+      ? persistedCreatorProject.exported_movie_result
+      : persistedCreatorStateAuthority
+        ? preserveQuarantinedCreatorProjectState({ authority: persistedCreatorStateAuthority, exportedMovieResult: candidateExportedMovieResult })
+        : candidateExportedMovieResult;
+    const result =
+      await services.projectRepository.saveForOwner({
+        projectId,
+        ownerUserId: principal.id,
+        childId,
+        ...(hasTitle ? { title } : {}),
+        flowType,
+        ...(has("inputPrompt") ? { inputPrompt: typeof body.inputPrompt === "string" ? body.inputPrompt : "" } : {}),
+        ...(has("storyPremise") ? { storyPremise: typeof body.storyPremise === "string" ? body.storyPremise : "" } : {}),
+        ...(has("language") ? { language: body.language === "en" ? "en" as const : "tr" as const } : {}),
+        ...(has("visualBible") ? { visualBible: body.visualBible } : {}),
+        ...(has("characters") ? { characters: body.characters as unknown[] | null } : {}),
+        ...(hasScenes ? { scenes } : {}),
+        ...(has("exportedMovieUrl") ? { exportedMovieUrl: suppressStaleCreatorFinalProjection ? null : exportedMovieUrl } : {}),
+        ...(has("exportedMovieResult") ? { exportedMovieResult } : {}),
+        ...(has("exportSignature") ? { exportSignature: suppressStaleCreatorFinalProjection ? null : typeof body.exportSignature === "string" && body.exportSignature ? body.exportSignature : null } : {}),
+        ...(has("creatorMentorResult") ? { creatorMentorResult: body.creatorMentorResult } : {}),
+        ...(has("creatorProductionPackage") ? { creatorProductionPackage: body.creatorProductionPackage } : {}),
+        ...(has("youtubeMetadataResult") ? { youtubeMetadataResult: body.youtubeMetadataResult } : {}),
+        ...(has("youtubeThumbnailResult") ? { youtubeThumbnailResult: body.youtubeThumbnailResult } : {}),
+        ...(has("sceneOptimizationResult") ? { sceneOptimizationResult: body.sceneOptimizationResult } : {}),
+        ...(has("sceneOptimizationSummary") ? { sceneOptimizationSummary: body.sceneOptimizationSummary } : {}),
+        ...(hasRefinedCreatorScenes
+          ? { refinedCreatorScenes }
+          : {}),
+        ...(shouldInvalidateCreatorProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}),
+        expectedUpdatedAt,
+      });
 
-      return NextResponse.json({ success: true, mode: "updated", project: data });
+    let mediaReferenceSync: "ok" | "deferred" = "ok";
+    try {
+      // A preservation-only save must not rewrite the historical reference
+      // index or initiate superseded-media cleanup.
+      if (!historicalResearchLocked) await services.mediaAssetRepository.replaceProjectReferences(
+        principal.id,
+        result.project.id,
+        extractProjectMediaReferences(result.project),
+      );
+    } catch (mediaReferenceError) {
+      mediaReferenceSync = "deferred";
+      console.warn("PROJECT_MEDIA_REFERENCE_SYNC_DEFERRED", {
+        projectId: result.project.id,
+        error:
+          mediaReferenceError instanceof Error
+            ? mediaReferenceError.message
+            : "unknown media reference sync error",
+      });
     }
 
-    const { data, error } = await supabase
-      .from("velto_projects")
-      .insert([{
-        owner_user_id: user.id,
-        child_id: normalizedChildId,
-        title,
-        input_prompt: inputPrompt || "",
-        story_premise: storyPremise || "",
-        language: language === "en" ? "en" : "tr",
-        visual_bible: visualBible || {},
-        characters: characters || [],
-        scenes: scenes || [],
-        exported_movie_url: exportedMovieUrl || null,
-        exported_movie_result: exportedMovieResult || null,
-        export_signature: exportSignature || null,
-        flow_type: normalizedFlowType,
-        creator_mentor_result: creatorMentorResult || null,
-        creator_production_package: creatorProductionPackage || null,
-        youtube_metadata: youtubeMetadataResult || null,
-        youtube_thumbnail: youtubeThumbnailResult || null,
-        scene_optimization: sceneOptimizationResult || null,
-        scene_optimization_summary: sceneOptimizationSummary || null,
-        refined_creator_scenes: refinedCreatorScenes || null,
-      }])
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const authoritativeExportedMovieUrl =
+      typeof result.project.exported_movie_url === "string"
+        ? result.project.exported_movie_url.trim()
+        : "";
+    if (
+      flowType === "creator_lab" && mediaReferenceSync === "ok" &&
+      authoritativeExportedMovieUrl && !historicalResearchLocked
+    ) {
+      try {
+        const reconciliation = await reconcileSupersededFinalVideosForProject({
+          ownerUserId: principal.id,
+          projectId: result.project.id,
+          authoritativePublicUrl: authoritativeExportedMovieUrl,
+          dependencies: services,
+        });
+        if (reconciliation.status !== "reconciled") {
+          console.warn("SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED", {
+            projectId: result.project.id,
+            assetId: null,
+            status: reconciliation.status,
+          });
+        } else {
+          for (const cleanup of reconciliation.results) {
+            const diagnostic = cleanup.status === "purged" ||
+                cleanup.status === "already_purged"
+              ? "SUPERSEDED_FINAL_VIDEO_PURGED"
+              : "SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED";
+            const details = {
+              projectId: result.project.id,
+              assetId: cleanup.assetId,
+              status: cleanup.status,
+            };
+            if (diagnostic === "SUPERSEDED_FINAL_VIDEO_PURGED") {
+              console.info(diagnostic, details);
+            } else {
+              console.warn(diagnostic, details);
+            }
+          }
+        }
+      } catch (cleanupError) {
+        console.warn("SUPERSEDED_FINAL_VIDEO_CLEANUP_DEFERRED", {
+          projectId: result.project.id,
+          assetId: null,
+          status: "unexpected_error",
+          error: cleanupError instanceof Error
+            ? cleanupError.message
+            : "unknown cleanup error",
+        });
+      }
     }
 
-    return NextResponse.json({ success: true, mode: "created", project: data });
+    return NextResponse.json({ success: true, ...result, mediaReferenceSync });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Geçersiz oturum." }, { status: 401 });
+    }
 
-  } catch {
-    return NextResponse.json({ error: "Kayıt sırasında hata oluştu" }, { status: 500 });
+    if (error instanceof Error && error.message === "PROJECT_SAVE_CONFLICT") {
+      return NextResponse.json(
+        { error: "Project changed after this editor snapshot was loaded.", code: "PROJECT_SAVE_CONFLICT" },
+        { status: 409 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "PROJECT_FLOW_TYPE_MISMATCH") {
+      return NextResponse.json(
+        { error: "Existing project flow type cannot be changed.", code: "PROJECT_FLOW_TYPE_MISMATCH" },
+        { status: 409 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "PROJECT_REVISION_REQUIRED") {
+      return NextResponse.json(
+        { error: "A current project revision is required.", code: "PROJECT_REVISION_REQUIRED" },
+        { status: 409 },
+      );
+    }
+
+    console.error("save-project error:", error);
+    return NextResponse.json(
+      { error: "Kayıt sırasında hata oluştu" },
+      { status: 500 },
+    );
   }
 }
+
+export const POST = Object.assign(
+  (req: Request) => handleSaveProjectRequest(req),
+  { handleForTest: handleSaveProjectRequest },
+);

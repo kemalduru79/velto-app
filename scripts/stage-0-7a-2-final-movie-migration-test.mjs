@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+
+const read = (file) => fs.readFileSync(file, "utf8");
+const hash = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const creatorRoute = read("app/api/creator-export/route.ts");
+const storyverseRoute = read("app/api/export-movie/route.ts");
+const saveRoute = read("app/api/save-project/route.ts");
+const exportService = read("export-service/src/server.js");
+const ownership = read("lib/creator/finalMovieOwnership.server.ts");
+const page = read("app/create/page.tsx");
+const registry = read("lib/persistence/media/registerStoredAsset.ts");
+
+// Authentication and owner-scoped project lookup precede export dispatch.
+for (const route of [creatorRoute, storyverseRoute]) {
+  assert.ok(route.indexOf("authenticateRequest(") >= 0);
+  assert.ok(route.indexOf("authenticateRequest(") < route.indexOf("projectRepository.getForOwner"));
+  assert.ok(route.indexOf("projectRepository.getForOwner") < route.indexOf("/export-movie"));
+  assert.match(route, /if \(!project\)[\s\S]*status: 404/);
+  assert.doesNotMatch(route, /body\.(?:ownerUserId|userId)\s+as/);
+  assert.match(route, /registerOwnedFinalMovieResponse/);
+}
+assert.match(page, /const exportAccessToken = await getAccessTokenOrThrow\(\)/);
+assert.match(page, /: "\/api\/export-movie"/);
+assert.doesNotMatch(page.slice(page.indexOf("const exportEndpoint"), page.indexOf("const exportRequestKey")), /exportApiBase/);
+
+// Railway accepts only the server-authenticated identity and never derives ownership from the body/path.
+assert.match(exportService, /internalExportIdentity\(req\)/);
+assert.match(exportService, /timingSafeEqual/);
+assert.match(exportService, /body\.projectId = ownership\.projectId/);
+assert.match(exportService, /creator\/\$\{ownership\.ownerUserId\}\/final\/\$\{projectId\}\/\$\{randomUUID\(\)\}\.mp4/);
+assert.match(exportService, /storageBucket: "movies"/);
+assert.match(exportService, /storagePath: moviePath/);
+assert.match(exportService, /upsert: false/);
+assert.doesNotMatch(exportService.slice(exportService.indexOf("const moviePath"), exportService.indexOf("return res.json", exportService.indexOf("const moviePath"))), /safeTitle.*moviePath|safeProjectId/);
+
+assert.match(ownership, /mediaKind: "final_video"/);
+assert.match(ownership, /mimeType: "video\/mp4"/);
+assert.match(ownership, /sizeBytes: Number\(sizeBytes\)/);
+assert.match(ownership, /expectedPrefix = `creator\/\$\{input\.ownerUserId\}\/final\/\$\{input\.projectId\}\//);
+assert.match(registry, /Stored object registration failed; object requires reconciliation/);
+assert.match(saveRoute, /findByPublicUrl\(principal\.id, exportedMovieUrl\)/);
+assert.match(saveRoute, /finalMovieAsset\.mediaKind !== "final_video"/);
+assert.match(saveRoute, /finalMovieAsset\.lifecycleState !== "active"/);
+
+// Migration history is append-only: the established baseline must remain
+// present and immutable, while newer migrations are allowed to extend it.
+const migrationFiles = fs.readdirSync("supabase/migrations").filter((file) => file.endsWith(".sql")).sort();
+
+const baselineMigrationFiles = [
+  "20260728090000_foundation_p1_auth_credit_ledger.sql",
+  "20260730100000_scale_p1_job_queue.sql",
+  "20260730110000_cancel_p1_job_cancellation.sql",
+  "20260730120000_fin_p1c_credit_reconciliation.sql",
+  "20260731090000_scale_p1_worker_hardening.sql",
+  "20260811100000_audio_p1_creator_music_entitlements.sql",
+  "20260811110000_audio_p2_creator_music_usage_outbox.sql",
+  "20260818100000_stage_0_7a_media_ownership_metering.sql",
+  "20260818160000_stage_0_7b_safe_media_trash.sql",
+  "20260818200000_stage_0_7d_1_safe_media_purge.sql",
+  "20260818203000_stage_0_7d_1_fix_purge_reference_ambiguity.sql",
+  "20260818220000_stage_0_7d_2_storage_entitlements_admissions.sql",
+  "20260818230000_stage_0_7d_3_add_final_movie_export_admission_purpose.sql",
+  "20260822100000_stage_0_10b_creator_economics.sql",
+  "20260822150000_stage_0_10c_pexels_safe_stock.sql",
+  "20260822170000_stage_0_10d_stock_import_claims.sql",
+  "20260822200000_stage_0_10f_usage_indexes.sql",
+];
+
+for (const file of baselineMigrationFiles) {
+  assert.ok(
+    migrationFiles.includes(file),
+    `${file} baseline migration disappeared`,
+  );
+}
+
+assert.ok(
+  migrationFiles.length >= baselineMigrationFiles.length,
+  "migration history must remain additive",
+);
+
+for (const file of migrationFiles) assert.match(file, /^\d{14}_[a-z0-9_]+\.sql$/);
+const versions = migrationFiles.map((file) => file.slice(0, 14));
+assert.equal(new Set(versions).size, versions.length);
+assert.deepEqual(migrationFiles, [...migrationFiles].sort());
+
+const expectedHashes = {
+  "20260728090000_foundation_p1_auth_credit_ledger.sql": "459cb55c26e55c60ce28435bb9bad4b3f7da35e1b1464daf600d08742f0fefc9",
+  "20260730100000_scale_p1_job_queue.sql": "99ef660fb49f40a06d19a753a38110db086dc64eca5f206c15b9021be9e8dac3",
+  "20260730110000_cancel_p1_job_cancellation.sql": "8f37b245577cdaec57049d2fd1db73ce5010a5079596d819b08e763943feb55f",
+  "20260730120000_fin_p1c_credit_reconciliation.sql": "50862a6f4150d28a9d456dbc675c78980eef3b2f8747039a87b562a67c8b7dff",
+  "20260731090000_scale_p1_worker_hardening.sql": "ee6ddff9756d1bc0ac7fcda86155078dc5c41aa354526ab37eb45ccfff230e73",
+  "20260811100000_audio_p1_creator_music_entitlements.sql": "4443276f2623ac02cc42192e2e8a3ab58af2d7ea6cb1e76ef5d18e3a54a6afac",
+  "20260811110000_audio_p2_creator_music_usage_outbox.sql": "297d7bc15fb550055fdd47b3cdd80941db67133be8ae5da7630a8823885149c3",
+  "20260818100000_stage_0_7a_media_ownership_metering.sql": "3e251bea8d0c98c0fea59b68bc0fcf8e4684b9ab9474f08cc51a4bdc670d68c4",
+  "20260818200000_stage_0_7d_1_safe_media_purge.sql": "bbc6bdd339625ebddc6ee90dd26a5eff660fce3c588cb436c44ec8d8818ecf0b",
+  "20260818203000_stage_0_7d_1_fix_purge_reference_ambiguity.sql": "a3e45b4d0c96331205372fb959e66429ac6281fc99c39ce25e7a05bf5257753e",
+  "20260818220000_stage_0_7d_2_storage_entitlements_admissions.sql": "be095e5692a331d37df93a648f87dbe729877edeb44dc604bff2f5fa0adf95ec",
+  "20260818230000_stage_0_7d_3_add_final_movie_export_admission_purpose.sql": "2d03584fa51d1c642fd715204d0805a9bc8f3c19d5c9cf14024f2b580dddc46a",
+  "20260822200000_stage_0_10f_usage_indexes.sql": "a1e360e925feff0d2100c9455ed01f7ef55cc7c23e6be296d462144b5c25e8ad",
+};
+for (const [file, expected] of Object.entries(expectedHashes)) assert.equal(hash(`supabase/migrations/${file}`), expected, `${file} SQL changed`);
+
+const implementation = creatorRoute + storyverseRoute + saveRoute + exportService + ownership + registry;
+assert.doesNotMatch(implementation, /\.storage\.from\([^)]*\)\.remove|hardDelete|checkout|payment|canCreateStorageIncreasingMedia/);
+assert.doesNotMatch(implementation, /supabase\s+db\s+(?:push|reset)|migration\s+repair/);
+
+console.log("stage-0.7a-2 final movie/migration baseline: all checks passed");

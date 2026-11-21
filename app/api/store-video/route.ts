@@ -1,98 +1,68 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { enforceLegacyMediaBoundary } from "@/lib/security/legacyMediaStorageBoundary";
+import { MAX_CREATOR_VIDEO_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
+import { safeRemoteMediaFetch, SafeMediaError } from "@/lib/security/safeRemoteMediaFetch";
+import { consumeStorageAdmissionForMedia, StorageAdmissionError, storageAdmissionErrorResponse } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
 
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-
+    const boundary = await enforceLegacyMediaBoundary<Record<string, unknown>>(req, "store-video");
+    if (!boundary.ok) return boundary.response;
+    const body = boundary.body;
     const videoUrl =
       typeof body?.videoUrl === "string" ? body.videoUrl.trim() : "";
-    const sceneId = body?.sceneId;
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp";
+    const storageAdmissionId = typeof body?.storageAdmissionId === "string" ? body.storageAdmissionId.trim() : "";
 
     if (!videoUrl) {
       return NextResponse.json(
         { ok: false, error: "videoUrl gerekli" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const videoRes = await fetch(videoUrl);
-
-    if (!videoRes.ok) {
-      const errorText = await videoRes.text().catch(() => "");
-      return NextResponse.json(
-        {
-          ok: false,
-          error: errorText || "Runway videosu indirilemedi",
-        },
-        { status: 500 }
-      );
-    }
-
-    const arrayBuffer = await videoRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const supabase = getSupabaseAdmin();
-
-    const safeProjectId = projectId.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const safeSceneId =
-      typeof sceneId === "number" || typeof sceneId === "string"
-        ? String(sceneId).replace(/[^a-zA-Z0-9-_]/g, "_")
-        : "unknown";
-
-    const filePath = `${safeProjectId}/scene-${safeSceneId}-${Date.now()}.mp4`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("videos")
-      .upload(filePath, buffer, {
-        contentType: "video/mp4",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("videos")
-      .getPublicUrl(filePath);
+    const storedVideo = await consumeStorageAdmissionForMedia({
+      ownerUserId: boundary.user.id,
+      storageAdmissionId,
+      mediaKind: "video",
+      purpose: "storyverse_generated_video",
+      operation: async (markDurableStorageStarted) => {
+        const media = await safeRemoteMediaFetch({
+          rawUrl: videoUrl, kind: "video", maxBytes: MAX_CREATOR_VIDEO_BYTES,
+        });
+        const filePath = `storyverse/${boundary.user.id}/video/${randomUUID()}.${media.extension}`;
+        const services = getPersistenceServices();
+        const uploaded = await services.objectStorage.uploadPublic({
+          bucket: "videos", path: filePath, body: media.buffer, contentType: media.mimeType, upsert: false,
+        });
+        markDurableStorageStarted();
+        await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.user.id,
+          bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: "video",
+          mimeType: media.mimeType, body: media.buffer, metadata: { product: "storyverse" } });
+        return uploaded;
+      },
+    });
 
     return NextResponse.json({
       ok: true,
-      videoUrl: publicData.publicUrl,
-      path: filePath,
+      videoUrl: storedVideo.publicUrl,
+      path: storedVideo.path,
     });
-  } catch (error: any) {
-    console.error("store-video error:", error);
-
+  } catch (error) {
+    if (error instanceof StorageAdmissionError) return storageAdmissionErrorResponse(error);
+    if (error instanceof SafeMediaError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    console.error("store-video failed");
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Video kaydedilemedi",
+        error: "Video could not be stored",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,28 +1,27 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import {
   getCreatorRoutedVoiceSettings,
   getCreatorVoiceRoute,
 } from "@/lib/creator/voiceRouting";
+import { getMediaProviderFacade, getProviderPublicMessage } from "@/lib/providers";
+import {
+  getCreatorVoiceProfileServerSelection,
+  resolveCreatorVoiceProfileVoiceId,
+} from "@/lib/providers/voice/voiceProfileResolver";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { authenticateRequest } from "@/lib/auth/server";
+import {
+  getCreditErrorResponse,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
+import { calculateElevenLabsCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
 
 function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
@@ -64,24 +63,6 @@ function cleanTextForTTS(value: string) {
     .trim();
 
   return text;
-}
-
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number
-) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function getNumericSetting(
@@ -127,8 +108,14 @@ function getNarratorVoiceSettings(
   };
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
+  let reservation: MeteredOperationReservation | null = null;
+  let providerAccepted = false;
+  let economicCost: EconomicCostResult | null = null;
+  let economicAttempt: EconomicOperationInput | null = null;
+
   try {
+    const principal = await authenticateRequest(req);
     const body = await req.json();
 
     const rawText = typeof body?.text === "string" ? body.text.trim() : "";
@@ -155,32 +142,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-
-    if (!apiKey) {
-      throw new Error("ELEVENLABS_API_KEY is missing");
-    }
-
-    const fallbackVoiceId =
-      language === "en"
-        ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
-        : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID;
-
-    const voiceId =
+    const voiceProvider = getMediaProviderFacade().voice();
+    const selectedVoiceProfile = getCreatorVoiceProfileServerSelection(
+      narratorSettings?.voiceProfileId,
+    );
+    const explicitVoiceId =
       typeof narratorSettings.voiceId === "string" &&
       narratorSettings.voiceId.trim()
         ? narratorSettings.voiceId.trim()
-        : fallbackVoiceId;
+        : "";
+    const voiceId =
+      explicitVoiceId ||
+      resolveCreatorVoiceProfileVoiceId({
+        profileId: selectedVoiceProfile.id,
+        language,
+        role: "narrator",
+      }) ||
+      voiceProvider.getDefaultVoiceId(language, "narrator");
 
     if (!voiceId) {
-      throw new Error("Narrator voiceId missing");
+      throw new Error("Narrator voice is not configured");
     }
 
     const modelId =
       typeof narratorSettings.modelId === "string" &&
       narratorSettings.modelId.trim()
         ? narratorSettings.modelId.trim()
-        : "eleven_multilingual_v2";
+        : voiceProvider.getDefaultModelId();
 
     const finalText = text;
     const creatorVoiceRoute = isCreatorLab
@@ -218,66 +206,83 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const voiceSettingsInput =
+      narratorSettings?.advancedTuning === true
+        ? { ...selectedVoiceProfile.settings, ...narratorSettings }
+        : selectedVoiceProfile.settings;
     const voiceSettings = creatorVoiceRoute
       ? getCreatorRoutedVoiceSettings({
           route: creatorVoiceRoute,
-          settings: narratorSettings,
+          settings: voiceSettingsInput,
+          allowExplicitSpeedOverride:
+            narratorSettings?.advancedTuning === true &&
+            typeof narratorSettings?.speed === "number",
         })
-      : getNarratorVoiceSettings(language, narratorSettings);
+      : getNarratorVoiceSettings(language, voiceSettingsInput);
 
-    const elevenRes = await fetchWithTimeout(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: finalText,
-          model_id: modelId,
-          voice_settings: {
-            stability: voiceSettings.stability,
-            similarity_boost: voiceSettings.similarityBoost,
-            style: voiceSettings.style,
-            speed: voiceSettings.speed,
-            use_speaker_boost: true,
-          },
-        }),
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_voice",
+      qualityMode: body?.qualityMode,
+      provider: voiceProvider.key,
+      referenceId: `${projectKey}:scene-${sceneId}:narration`,
+      metadata: {
+        productProfile: isCreatorLab ? "creatorlab" : "storyverse",
+        projectKey,
+        sceneId,
+        role: "narrator",
+        voiceProfileId: selectedVoiceProfile.id,
       },
-      30000
-    );
+      billable: isCreatorLab,
+      requireCostGuardConfirmation: isCreatorLab,
+      admissionMode: isCreatorLab ? "creator_accounting" : "balance_backed",
+      accounting: isCreatorLab ? {
+        attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:elevenlabs-voice:1`,
+        route: "/api/store-audio",
+        operationType: "creator_voice",
+        productTier: creatorVoiceRoute?.qualityMode || null,
+        providerTier: voiceProvider.tier,
+        model: modelId,
+        projectId: projectKey,
+        sceneId,
+      } : undefined,
+    });
 
-    if (!elevenRes.ok) {
-      const errorText = await elevenRes.text().catch(() => "");
-      console.error("voice provider narration error:", errorText);
-      throw new Error("Voice provider rejected narration generation");
-    }
+    const voiceResult = await voiceProvider.synthesize({
+      text: finalText,
+      voiceId,
+      modelId,
+      settings: voiceSettings,
+      outputFormat: "mp3_44100_128",
+      timeoutMs: 30_000,
+    });
+    providerAccepted = true;
+    const buffer = voiceResult.audio;
+    economicCost = calculateElevenLabsCost(modelId, finalText.length);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `voice:${voiceResult.requestId || crypto.randomUUID()}`;
+    economicAttempt = { attemptKey: `${logicalOperationId}:elevenlabs-voice:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
+      userId: principal.id, projectId: projectKey, sceneId, route: "/api/store-audio", operationType: "creator_voice", productTier: creatorVoiceRoute?.qualityMode || null,
+      provider: voiceProvider.key, providerTier: voiceProvider.tier, model: modelId, providerRequestId: voiceResult.requestId || null, state: "provider_billed", billingMoment: "provider_completed",
+      quantities: { characterCount: finalText.length, audioBytes: buffer.byteLength, requestCount: 1 }, cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
-    const arrayBuffer = await elevenRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const supabase = getSupabaseAdmin();
+    const services = getPersistenceServices();
 
     const safeProjectKey = safeName(projectKey);
     const safeSceneId = safeName(sceneId);
 
     const filePath = `${safeProjectKey}/scene-${safeSceneId}-narration-${Date.now()}.mp3`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("audio")
-      .upload(filePath, buffer, {
-        contentType: "audio/mpeg",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("audio")
-      .getPublicUrl(filePath);
+    const storedAudio = await services.objectStorage.uploadPublic({
+      bucket: "audio",
+      path: filePath,
+      body: buffer,
+      contentType: voiceResult.contentType,
+      upsert: false,
+    });
+    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: principal.id,
+      bucket: storedAudio.bucket, storagePath: storedAudio.path, publicUrl: storedAudio.publicUrl,
+      mediaKind: "narration_audio", mimeType: voiceResult.contentType, body: buffer,
+      metadata: { projectKey: safeProjectKey, sceneId: safeSceneId } });
     const clientSettingsKey =
       typeof body?.clientSettingsKey === "string" && body.clientSettingsKey.trim()
         ? body.clientSettingsKey.trim()
@@ -285,6 +290,7 @@ export async function POST(req: NextRequest) {
     const settingsKey =
       clientSettingsKey ||
       [
+        selectedVoiceProfile.id,
         voiceId,
         modelId,
         voiceSettings.stability,
@@ -295,17 +301,31 @@ export async function POST(req: NextRequest) {
         creatorVoiceRoute?.routeKey || "storyverse",
       ].join("-");
 
+    const chargedCredits = reservation?.reservedCredits || 0;
+    const creditResult = reservation
+      ? await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
+          providerRequestId: voiceResult.requestId,
+          metadata: { audioPath: storedAudio.path },
+        })
+      : null;
+    reservation = null;
+
     return NextResponse.json({
       ok: true,
-      audioUrl: publicData.publicUrl,
-      audioPath: filePath,
+      audioUrl: storedAudio.publicUrl,
+      audioPath: storedAudio.path,
       audioSourceText: finalText,
       cleanedText: finalText,
       originalText: rawText,
       language,
       voiceId,
+      voiceProfileId: selectedVoiceProfile.id,
       voiceSettings,
       settingsKey,
+      credits: creditResult
+        ? { chargedCredits, account: creditResult.account }
+        : { chargedCredits: 0 },
       voiceRoute: creatorVoiceRoute
         ? {
             strategy: creatorVoiceRoute.voiceStrategy,
@@ -320,14 +340,29 @@ export async function POST(req: NextRequest) {
         : null,
     });
   } catch (error: unknown) {
+    if (reservation) {
+      if (providerAccepted) {
+        await persistEconomicOperationBestEffort({ ...(economicAttempt || { attemptKey: `${reservation.reservationId}:elevenlabs-voice:1`, logicalOperationId: reservation.reservationId, userId: reservation.userId, route: "/api/store-audio", operationType: "creator_voice", state: "application_failed_after_provider_cost" }), state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "downstream_failure", failedAt: new Date().toISOString() });
+        try { await settleMeteredOperation(reservation, { providerCostUsd: economicCost?.providerCostUsd ?? undefined, metadata: { applicationFailedAfterProviderCost: true } }); } catch {}
+      } else await releaseMeteredOperation(reservation, "voice_generation_failed", { route: "store-audio" });
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("store-audio error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: "Ses üretimi tamamlanamadı.",
+        error: getProviderPublicMessage(
+          error,
+          "Ses üretimi tamamlanamadı.",
+        ),
       },
       { status: 500 }
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.store-audio", postHandler);

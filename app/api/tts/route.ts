@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { calculateElevenLabsCost, persistEconomicOperationBestEffort } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -58,10 +59,20 @@ function getDefaultSettingsForRole(role: VoiceRole): ElevenLabsVoiceSettings {
   };
 }
 
+// Raw voice fields remain unknown until the existing typeof-number checks.
+// This view grants no provider, media or persistence authority.
+type VoiceSettingsReadValue = Readonly<{
+  [Key in keyof ElevenLabsVoiceSettings | "similarityBoost"]?: unknown;
+}>;
+function hasVoiceSettingsReadValue(value: unknown): value is VoiceSettingsReadValue {
+  return value !== null && value !== undefined;
+}
+
 function mergeVoiceSettings(
   role: VoiceRole,
-  bodySettings: any
+  value: unknown
 ): ElevenLabsVoiceSettings {
+  const bodySettings = hasVoiceSettingsReadValue(value) ? value : undefined;
   const defaults = getDefaultSettingsForRole(role);
 
   return {
@@ -153,6 +164,9 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+    const requestId = elevenRes.headers.get("request-id") || elevenRes.headers.get("x-request-id");
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || `legacy-tts:${requestId || crypto.randomUUID()}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${logicalOperationId}:elevenlabs:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), route: "/api/tts", operationType: "legacy_tts", provider: "elevenlabs", providerTier: "primary", model: modelId, providerRequestId: requestId, state: "provider_billed", billingMoment: "provider_accepted", quantities: { characterCount: text.trim().length, requestCount: 1 }, cost: calculateElevenLabsCost(modelId, text.trim().length), dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString() });
 
     return new Response(elevenRes.body, {
       status: 200,

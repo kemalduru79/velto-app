@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const policySource = read("lib/creator/videoPromptPolicy.ts");
+const policyJs = ts.transpileModule(policySource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
+const policy = await import(`data:text/javascript;base64,${Buffer.from(policyJs).toString("base64")}`);
+const generation = read("lib/creator/videoGeneration.ts");
+const route = read("app/api/creator-video/route.ts");
+const runway = read("lib/video/providers/runwayAdapter.ts");
+const imageRoute = read("app/api/image/route.ts");
+const page = read("app/create/page.tsx");
+let checks = 0;
+const check = (value, label) => { assert.ok(value, label); checks += 1; };
+
+const zoom = policy.buildCreatorVideoProviderPrompt({ text: "A guitarist performs on stage", motionHint: "slow zoom in", cameraDirection: "dramatic push-in toward subject", emotion: "triumphant" });
+check(!/slow zoom in/i.test(zoom), "slow zoom-in command is neutralized");
+check(!/dramatic push-in toward subject/i.test(zoom), "dramatic push-in command is neutralized");
+const safe = policy.buildCreatorVideoProviderPrompt({ motionHint: "gentle lateral camera drift", cameraDirection: "static wide framing" });
+check(/gentle lateral camera drift/i.test(safe), "safe lateral motion remains meaningful");
+check(/static wide framing/i.test(safe), "safe wide framing remains intact");
+const textPrompt = policy.buildCreatorVideoProviderPrompt({ motionHint: "Smooth crossfade, bold text fade-in", cameraDirection: "ending on bold text takeaway" });
+check(!/bold text fade-in/i.test(textPrompt), "text fade-in instruction is removed");
+check(/strong visual takeaway featuring the subject/i.test(textPrompt), "text takeaway becomes a visual takeaway");
+check(/exact source-image framing/i.test(zoom) && /field of view/i.test(zoom) && /subject scale/i.test(zoom) && /edge detail/i.test(zoom), "prompt protects framing field of view subject scale and edges");
+check(/Do not zoom in, push in, crop in, digitally enlarge, progressively magnify/i.test(zoom), "prompt prohibits aggressive reframing");
+check(/Do not generate on-screen text, captions, subtitles, titles, logos, watermarks/i.test(zoom), "prompt prohibits generated typography");
+check(/Scene context: A guitarist performs on stage/.test(zoom), "scene context remains semantically preserved");
+check(/Emotional tone: triumphant/.test(zoom), "emotional tone remains preserved");
+check(/creatorFormat === "short_form" \? "720:1280" : "1280:720"/.test(route), "target ratio remains format-correct");
+check(/restrained cinematic movement/.test(zoom), "safe cinematic movement remains possible");
+check(/creator-video-v2/.test(generation) && /promptPolicy: CREATOR_VIDEO_PROMPT_POLICY_VERSION/.test(generation), "new provenance includes deterministic prompt policy");
+check(/buildLegacyCreatorVideoGenerationSignature/.test(generation) && /legacyCurrentSignature/.test(generation), "matching legacy media is not globally invalidated");
+check(/buildCreatorVideoProviderPrompt\(body\)/.test(route), "server dispatch uses shared prompt policy");
+check(/promptImage: input\.imageUrl[\s\S]*promptText: input\.promptText[\s\S]*ratio: getGen4Ratio/.test(runway), "Runway forwards selected image prompt and ratio without preprocessing");
+check(/vertical 9:16/.test(imageRoute) && /wide 16:9 YouTube video frame/.test(imageRoute), "upstream Creator images already target matching aspect ratios");
+check(!/assetHistory/.test(policySource), "media history semantics remain outside prompt policy");
+check(!/\bcredit\b|\breserve\b|\bsettle\b/i.test(policySource), "Cost Guard and pricing remain outside prompt policy");
+check(/productProfile === "creatorlab"/.test(route) && !/videoPromptPolicy/.test(read("app/api/video/route.ts")), "Storyverse video route remains unchanged");
+check(/getCreatorVideoGenerationSignature/.test(page), "Creator Editor currentness uses effective policy-aware provenance");
+
+console.log(`Composition-safe Creator video prompt smoke passed (${checks}/${checks}).`);

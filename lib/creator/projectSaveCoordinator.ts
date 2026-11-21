@@ -1,0 +1,119 @@
+import type { CreatorProjectStateSnapshot } from "./projectState";
+
+export type CreatorProjectSaveBinding = Readonly<{
+  originProjectId: string;
+  projectId: string;
+  expectedUpdatedAt: string;
+  generation: number;
+  creatorProjectState: CreatorProjectStateSnapshot | null;
+}>;
+
+export function createCreatorProjectSaveBinding(
+  binding: CreatorProjectSaveBinding,
+): CreatorProjectSaveBinding {
+  return Object.freeze({ ...binding });
+}
+
+export function isCreatorProjectSaveBindingActive(
+  binding: CreatorProjectSaveBinding,
+  active: { projectId: string; generation: number },
+) {
+  return binding.generation === active.generation && binding.originProjectId === active.projectId;
+}
+
+export function advanceCreatorProjectSaveBinding(
+  binding: CreatorProjectSaveBinding,
+  active: { projectId: string; expectedUpdatedAt: string; generation: number },
+): CreatorProjectSaveBinding | null {
+  if (binding.generation !== active.generation) return null;
+  const advancesProjectIdentity = binding.projectId === binding.originProjectId;
+  return createCreatorProjectSaveBinding({
+    ...binding,
+    originProjectId: advancesProjectIdentity ? active.projectId : binding.originProjectId,
+    projectId: advancesProjectIdentity ? active.projectId : binding.projectId,
+    expectedUpdatedAt: advancesProjectIdentity
+      ? active.expectedUpdatedAt
+      : binding.expectedUpdatedAt,
+  });
+}
+
+
+export function resolveCreatorProjectRevisionAdvance(input: {
+  responseProjectId: string;
+  responseUpdatedAt: string;
+  activeProjectId: string;
+  activeUpdatedAt: string;
+}) {
+  const responseProjectId = String(input.responseProjectId || "").trim();
+  const activeProjectId = String(input.activeProjectId || "").trim();
+  const responseUpdatedAt = String(input.responseUpdatedAt || "").trim();
+  const activeUpdatedAt = String(input.activeUpdatedAt || "").trim();
+
+  if (!responseProjectId || responseProjectId !== activeProjectId || !responseUpdatedAt) {
+    return null;
+  }
+
+  const responseTime = Date.parse(responseUpdatedAt);
+  if (!Number.isFinite(responseTime)) return null;
+
+  if (!activeUpdatedAt) return responseUpdatedAt;
+  const activeTime = Date.parse(activeUpdatedAt);
+  if (!Number.isFinite(activeTime)) return responseUpdatedAt;
+
+  return responseTime >= activeTime ? responseUpdatedAt : null;
+}
+
+export type CreatorProjectOperationOrigin = Readonly<{
+  projectId: string;
+  generation: number;
+}>;
+
+export function isCreatorProjectOperationActive(
+  origin: CreatorProjectOperationOrigin,
+  active: CreatorProjectOperationOrigin,
+) {
+  return origin.projectId === active.projectId && origin.generation === active.generation;
+}
+
+export function advanceCreatorProjectOperationOrigin(
+  origin: CreatorProjectOperationOrigin,
+  active: CreatorProjectOperationOrigin,
+): CreatorProjectOperationOrigin | null {
+  if (origin.generation !== active.generation) return null;
+  if (origin.projectId === active.projectId) return origin;
+  if (!origin.projectId && active.projectId) return Object.freeze({ ...active });
+  return null;
+}
+
+export function creatorProjectStateRequestFields(
+  flowType: "creator_lab" | "storyverse",
+  snapshot: CreatorProjectStateSnapshot | null,
+) {
+  return flowType === "creator_lab" ? { creatorProjectState: snapshot } : {};
+}
+
+export type CreatorProjectAutosaveTicket = Readonly<{
+  projectId: string;
+  expectedUpdatedAt: string;
+  generation: number;
+  semanticKey: string;
+}>;
+
+export function createCreatorProjectAutosaveTicket(
+  ticket: CreatorProjectAutosaveTicket,
+): CreatorProjectAutosaveTicket {
+  return Object.freeze({ ...ticket });
+}
+
+export function shouldDispatchCreatorProjectAutosave(
+  ticket: CreatorProjectAutosaveTicket,
+  active: CreatorProjectAutosaveTicket & { baselineKey: string | null; conflictGeneration: number | null },
+) {
+  return ticket.projectId === active.projectId &&
+    ticket.expectedUpdatedAt === active.expectedUpdatedAt &&
+    ticket.generation === active.generation &&
+    ticket.semanticKey === active.semanticKey &&
+    active.baselineKey !== null &&
+    active.baselineKey !== ticket.semanticKey &&
+    active.conflictGeneration !== ticket.generation;
+}

@@ -6,12 +6,17 @@ export type AudioDurationMatchStatus =
   | "split_recommended"
   | "unsafe";
 
+export type AudioDurationAuthority = "audio_compact" | "editorial_floor" | "measured_adaptive";
+
+export const CREATOR_NATURAL_TRANSITION_TAIL_SECONDS = 0.55;
+
 export type AudioDurationMatch = {
   status: AudioDurationMatchStatus;
   audioDurationSec: number;
   plannedDurationSec: number;
   targetDurationSec: number;
   tailBufferSec: number;
+  transitionTailSec: number;
   durationDeltaSec: number;
   unnecessaryExtensionRemovedSec: number;
   splitRecommended: boolean;
@@ -20,6 +25,16 @@ export type AudioDurationMatch = {
   fitsWithinHardLimit: boolean;
   reason: string;
 };
+
+export function resolveMeasuredAudioCurrentness(input: {
+  narrationRequired: boolean;
+  narrationCurrent?: boolean;
+  dialogueRequired: boolean;
+  dialogueCurrent?: boolean;
+}) {
+  return (!input.narrationRequired || input.narrationCurrent === true) &&
+    (!input.dialogueRequired || input.dialogueCurrent === true);
+}
 
 export type AudioDurationMatchInput = {
   audioDurationSec?: unknown;
@@ -30,6 +45,9 @@ export type AudioDurationMatchInput = {
   preferredMaxSceneDurationSec?: unknown;
   tailBufferSec?: unknown;
   toleranceSec?: unknown;
+  naturalTransitionTailSec?: unknown;
+  measuredAudioCurrent?: boolean;
+  durationAuthority?: AudioDurationAuthority;
 };
 
 function round(value: number) {
@@ -83,8 +101,21 @@ export function matchAudioDurationToScene(
       maxDurationSec,
     ),
   );
-  const audioDurationSec = round(
+  const durationAuthority = input.durationAuthority === "editorial_floor" ||
+    input.durationAuthority === "measured_adaptive"
+    ? input.durationAuthority
+    : "audio_compact";
+  const suppliedAudioDurationSec = round(
     Math.max(0, finiteNumber(input.audioDurationSec, 0)),
+  );
+  const audioDurationSec = durationAuthority === "measured_adaptive" &&
+    input.measuredAudioCurrent !== true
+    ? 0
+    : suppliedAudioDurationSec;
+  const naturalTransitionTailSec = clamp(
+    finiteNumber(input.naturalTransitionTailSec, CREATOR_NATURAL_TRANSITION_TAIL_SECONDS),
+    0.3,
+    0.8,
   );
 
   if (audioDurationSec <= 0) {
@@ -94,6 +125,7 @@ export function matchAudioDurationToScene(
       plannedDurationSec,
       targetDurationSec: plannedDurationSec,
       tailBufferSec,
+      transitionTailSec: naturalTransitionTailSec,
       durationDeltaSec: 0,
       unnecessaryExtensionRemovedSec: 0,
       splitRecommended: false,
@@ -106,9 +138,16 @@ export function matchAudioDurationToScene(
   }
 
   const audioSafeDurationSec = round(audioDurationSec + tailBufferSec);
+  const adaptiveVisibleDurationSec = round(audioDurationSec + naturalTransitionTailSec);
   const fitsWithinHardLimit = audioSafeDurationSec <= maxDurationSec;
   const targetDurationSec = round(
-    clamp(audioSafeDurationSec, minDurationSec, maxDurationSec),
+    durationAuthority === "editorial_floor"
+      ? Math.max(minDurationSec, plannedDurationSec, audioSafeDurationSec)
+      : durationAuthority === "measured_adaptive"
+        ? fitsWithinHardLimit
+          ? clamp(adaptiveVisibleDurationSec, minDurationSec, maxDurationSec)
+          : audioSafeDurationSec
+        : clamp(audioSafeDurationSec, minDurationSec, maxDurationSec),
   );
   const splitRecommended =
     audioSafeDurationSec > preferredMaxSceneDurationSec;
@@ -127,9 +166,9 @@ export function matchAudioDurationToScene(
     ),
   );
   const durationDeltaSec = round(targetDurationSec - plannedDurationSec);
-  const unnecessaryExtensionRemovedSec = round(
-    Math.max(0, plannedDurationSec - targetDurationSec),
-  );
+  const unnecessaryExtensionRemovedSec = durationAuthority === "editorial_floor"
+    ? 0
+    : round(Math.max(0, plannedDurationSec - targetDurationSec));
   let status: AudioDurationMatchStatus;
   let reason: string;
 
@@ -158,6 +197,9 @@ export function matchAudioDurationToScene(
     plannedDurationSec,
     targetDurationSec,
     tailBufferSec,
+    transitionTailSec: durationAuthority === "measured_adaptive"
+      ? naturalTransitionTailSec
+      : tailBufferSec,
     durationDeltaSec,
     unnecessaryExtensionRemovedSec,
     splitRecommended,

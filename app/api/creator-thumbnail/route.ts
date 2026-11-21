@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
+import { recordOpenAITextEconomics, persistEconomicOperationBestEffort, unknownCost } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -10,6 +13,23 @@ type ThumbnailPlan = {
   subHeadline: string;
   imagePrompt: string;
 };
+
+type JsonRecord = Record<string, unknown>;
+type ThumbnailRequest = JsonRecord & {
+  package?: JsonRecord;
+  metadata?: JsonRecord;
+  language?: unknown;
+  targetMarket?: unknown;
+  ageGroup?: unknown;
+  contentType?: unknown;
+  creatorFormat?: unknown;
+  targetPlatforms?: unknown;
+  videoDurationSec?: unknown;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
+}
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -81,31 +101,21 @@ function getFallbackHeadline({
   metadata,
   language,
 }: {
-  productionPackage: any;
-  metadata: any;
+  productionPackage: JsonRecord;
+  metadata: JsonRecord;
   language: SupportedLanguage;
 }) {
-  const hook = safeString(productionPackage?.hook);
-  const title = safeString(metadata?.recommendedTitle, safeString(productionPackage?.title));
-  const source = hook || title;
+  const source = safeString(
+    metadata?.recommendedTitle,
+    safeString(productionPackage?.title, safeString(productionPackage?.hook)),
+  )
+    .replace(/[“”"'!?.,:;()[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = source.split(" ").filter(Boolean).slice(0, 4);
+  const fallback = language === "tr" ? "NEDEN ÖNEMLİ" : "WHY IT MATTERS";
 
-  if (/octopus|octop/i.test(source)) {
-    return language === "tr" ? "3 KALP?!" : "THREE HEARTS?!";
-  }
-
-  if (/rocket|roket/i.test(source)) {
-    return language === "tr" ? "ROKET GÜCÜ?!" : "ROCKET POWER?!";
-  }
-
-  if (/gravity|yer çekimi|yerçekimi/i.test(source)) {
-    return language === "tr" ? "YER ÇEKİMİ YOK?!" : "NO GRAVITY?!";
-  }
-
-  if (/sun|güneş/i.test(source)) {
-    return language === "tr" ? "GÜNEŞ YOK?!" : "NO SUN?!";
-  }
-
-  return language === "tr" ? "BU NASIL?!" : "HOW?!";
+  return normalizeHeadline(words.join(" ") || fallback, language);
 }
 
 function buildFallbackPlan({
@@ -113,12 +123,15 @@ function buildFallbackPlan({
   metadata,
   language,
 }: {
-  productionPackage: any;
-  metadata: any;
+  productionPackage: JsonRecord;
+  metadata: JsonRecord;
   language: SupportedLanguage;
 }): ThumbnailPlan {
   const headline = getFallbackHeadline({ productionPackage, metadata, language });
-  const title = safeString(productionPackage?.title, safeString(metadata?.recommendedTitle, "kids science video"));
+  const title = safeString(
+    productionPackage?.title,
+    safeString(metadata?.recommendedTitle, "professional creator video"),
+  );
   const hook = safeString(productionPackage?.hook, safeString(metadata?.audiencePromise));
 
   return {
@@ -126,20 +139,21 @@ function buildFallbackPlan({
     subHeadline: "",
     imagePrompt: [
       `Topic: ${title}`,
-      hook ? `Core surprise: ${hook}` : "",
-      "Joe, the recurring 10-year-old guide character with a red baseball cap and blue rocket-logo t-shirt, reacts with a huge shocked expression.",
-      "One massive focal object related to the topic dominates the other side of the frame.",
-      "Use strong contrast, cinematic lighting, clean background, bold color separation, and emotional visual storytelling.",
+      hook ? `Core promise or tension: ${hook}` : "",
+      "Use a professional presenter, faceless creator visual, product-led composition, or bold symbolic subject according to the topic.",
+      "One dominant focal subject should control the composition.",
+      "Use strong contrast, cinematic lighting, clean background, bold color separation, and professional visual storytelling.",
     ]
       .filter(Boolean)
       .join(" "),
   };
 }
 
-function normalizePlan(plan: any, fallback: ThumbnailPlan, language: SupportedLanguage): ThumbnailPlan {
-  const headline = normalizeHeadline(safeString(plan?.headline, fallback.headline), language);
-  const subHeadline = clampText(safeString(plan?.subHeadline, fallback.subHeadline), 48);
-  const imagePrompt = clampText(safeString(plan?.imagePrompt, fallback.imagePrompt), 1400);
+function normalizePlan(plan: unknown, fallback: ThumbnailPlan, language: SupportedLanguage): ThumbnailPlan {
+  const record = asRecord(plan);
+  const headline = normalizeHeadline(safeString(record.headline, fallback.headline), language);
+  const subHeadline = clampText(safeString(record.subHeadline, fallback.subHeadline), 48);
+  const imagePrompt = clampText(safeString(record.imagePrompt, fallback.imagePrompt), 1400);
 
   return {
     headline,
@@ -150,21 +164,34 @@ function normalizePlan(plan: any, fallback: ThumbnailPlan, language: SupportedLa
 
 export async function POST(req: Request) {
   try {
+    const secured = await enforceCreatorApiBoundary<ThumbnailRequest>(req, "creator-thumbnail");
+    if (!secured.ok) return secured.response;
+    const body = secured.context.body;
+    const storageAllowance = await checkStorageGenerationAllowance(secured.context.user.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
     const client = getOpenAIClient();
-    const body = await req.json();
 
     const productionPackage = body?.package || {};
     const metadata = body?.metadata || {};
     const language: SupportedLanguage = body?.language === "tr" ? "tr" : "en";
     const targetMarket = safeString(body?.targetMarket, "global");
-    const ageGroup = safeString(body?.ageGroup, "8-12");
-    const contentType = safeString(body?.contentType, "educational");
+    const ageGroup = safeString(body?.ageGroup, "professional_18");
+    const contentType = safeString(body?.contentType, "educational_explainer");
+    const creatorFormat =
+      body?.creatorFormat === "short_form" ? "short_form" : "youtube_video";
+    const targetPlatforms = Array.isArray(body?.targetPlatforms)
+      ? body.targetPlatforms
+          .filter((item: unknown) => typeof item === "string")
+          .map((item: string) => item.trim())
+          .filter(Boolean)
+          .slice(0, 5)
+      : [];
     const videoDurationSec = Number(body?.videoDurationSec || productionPackage?.durationSec || 60);
 
     const fallbackPlan = buildFallbackPlan({ productionPackage, metadata, language });
 
     const planningPrompt = `
-You are a senior YouTube thumbnail strategist for child-safe curiosity, science, and story videos.
+You are a senior thumbnail strategist for professional 18+ creator content.
 
 Return STRICT JSON only:
 {
@@ -182,6 +209,8 @@ Audience:
 - Target market: ${targetMarket}
 - Content type: ${contentType}
 - Duration target: ${videoDurationSec} seconds
+- Primary format: ${creatorFormat === "short_form" ? "vertical short-form" : "landscape YouTube video"}
+- Selected platforms: ${targetPlatforms.join(", ") || "not specified"}
 
 Thumbnail psychology rules:
 - Headline must be extremely short: 1-4 words.
@@ -189,15 +218,16 @@ Thumbnail psychology rules:
 - Use surprise, mystery, or impossible curiosity.
 - Prefer question/exclamation energy.
 - The image must have ONE dominant focal object.
-- Joe must have a strong reaction: shocked, amazed, confused, or "no way" expression.
+- Use a professional presenter, faceless creator visual, product-led composition, or bold symbolic subject according to the topic.
+- Never insert a default recurring character that the user did not request.
 - Composition should feel like a clickable YouTube thumbnail, not a school worksheet, poster, infographic, or title card.
 - Avoid clutter, tiny details, small text blocks, labels, diagrams, educational panels, or multi-line poster text.
 - No brand logos, YouTube UI, copyrighted characters, or celebrity likenesses.
-- Child-safe, positive, colorful, and friendly.
+- Audience-appropriate, credible, visually compelling, and brand-safe.
 
 Composition formula:
-- Left or right side: Joe close-up with a huge expressive face.
-- Opposite side: one oversized topic object with dramatic lighting.
+- Left or right side: one dominant presenter, product, or symbolic subject.
+- Opposite side: one supporting focal object or clean negative space with dramatic lighting.
 - Background: simple, high contrast, clean, colorful.
 - Text space: leave clean empty space for a short headline; do not design a full poster.
 
@@ -228,6 +258,7 @@ Thumbnail text ideas: ${Array.isArray(metadata?.thumbnailTextIdeas) ? metadata.t
           },
         ],
       });
+      await recordOpenAITextEconomics({ route: "/api/creator-thumbnail", operationType: "creator_thumbnail_plan", model: "gpt-4.1-mini", response: planning });
 
       const parsed = extractJsonObject(planning.choices?.[0]?.message?.content || "{}");
       plan = normalizePlan(parsed, fallbackPlan, language);
@@ -237,7 +268,12 @@ Thumbnail text ideas: ${Array.isArray(metadata?.thumbnailTextIdeas) ? metadata.t
     }
 
     const finalImagePrompt = `
-Create a premium 16:9 YouTube thumbnail image for a child-safe curiosity video.
+Create premium thumbnail base art for professional creator content.
+
+PRIMARY DELIVERY:
+${creatorFormat === "short_form"
+  ? "Vertical short-form cover composition. Keep the central subject crop-safe for 9:16."
+  : "Landscape YouTube thumbnail composition. Keep the central subject crop-safe for 16:9."}
 
 THUMBNAIL HEADLINE CONCEPT:
 ${plan.headline}
@@ -249,28 +285,23 @@ SCENE DIRECTION:
 ${plan.imagePrompt}
 
 MANDATORY VISUAL RULES:
-- Make this look like a high-CTR YouTube thumbnail, not an educational poster.
-- Show Joe, the recurring 10-year-old guide character, close to camera with a huge expressive reaction.
-- Joe visual identity: short slightly messy brown hair, large green eyes, expressive friendly face, red baseball cap, blue t-shirt with a clear rocket logo, blue jeans, simple white sneakers.
-- Use one oversized focal object connected to the topic.
-- Use bold contrast, cinematic lighting, bright kid-friendly colors, and strong depth.
-- Keep the composition simple and readable on a phone screen.
+- Make this look platform-native and high-impact, not like a presentation slide, poster, or infographic.
+- Use one dominant presenter, product, or symbolic focal subject appropriate to the production package.
+- Do not insert a child presenter, recurring mascot, or default character unless explicitly requested by the production package.
+- Use bold contrast, cinematic lighting, strong depth, clean negative space, and mobile-readable visual hierarchy.
 - Leave clean space for a short headline overlay.
-- Prefer no rendered text inside the image. The app can overlay the headline separately.
-- If text appears despite the rule, it must be only the exact short headline: "${plan.headline}".
-- Keep Joe and the focal object large enough to remain readable as a small YouTube mobile thumbnail.
+- Prefer no rendered text inside the image. The app overlays typography separately.
+- No brand logos, platform UI, copyrighted characters, celebrity likenesses, misleading claims, graphic violence, or unsafe content.
 
 ANTI-POSTER RULES:
 - No multi-line subtitles.
-- No educational poster layout.
 - No infographic panels.
-- No labels or arrows unless absolutely necessary.
-- No tiny text.
-- No cluttered background.
-- No brand logos, YouTube UI, copyrighted characters, celebrity likenesses, scary violence, medical gore, politics, or adult themes.
+- No labels, arrows, tiny text, watermarks, or cluttered background.
+- No generic AI slideshow look.
+- No distorted anatomy or unreadable faces.
 
 STYLE:
-premium 3D animated kids science thumbnail, expressive animated feature film style, high visual impact, clean composition, strong emotional storytelling, highly clickable, safe and friendly. Avoid flat 2D, cheap vector art, low-detail cartoon look, generic AI slideshow look, distorted anatomy, unreadable faces, and clutter.
+premium professional creator thumbnail, cinematic editorial lighting, strong emotional or conceptual storytelling, clean composition, high visual impact, credible and audience-appropriate.
 `;
 
     const image = await client.images.generate({
@@ -280,6 +311,8 @@ premium 3D animated kids science thumbnail, expressive animated feature film sty
       n: 1,
       prompt: finalImagePrompt,
     });
+    const thumbnailLogicalId = `creator-thumbnail:${image._request_id || crypto.randomUUID()}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${thumbnailLogicalId}:gpt-image-1:1`, logicalOperationId: thumbnailLogicalId, route: "/api/creator-thumbnail", operationType: "creator_thumbnail_image", provider: "openai", providerTier: "primary", model: "gpt-image-1", providerRequestId: image._request_id || null, state: "provider_billed", billingMoment: "provider_completed", quantities: { imageCount: 1, quality: "high", dimensions: "1536x1024", requestCount: 1 }, cost: unknownCost("GPT Image 1 has no verified Stage 0.10B pricing entry."), dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() });
 
     const b64 = image.data?.[0]?.b64_json;
 
@@ -298,13 +331,14 @@ premium 3D animated kids science thumbnail, expressive animated feature film sty
         subHeadline: plan.subHeadline,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
     console.error("creator-thumbnail error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Thumbnail generation failed.",
+        error: error instanceof Error ? error.message : "Thumbnail generation failed.",
       },
       { status: 500 }
     );

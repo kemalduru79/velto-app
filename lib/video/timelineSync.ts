@@ -1,19 +1,21 @@
 import {
   matchAudioDurationToScene,
   type AudioDurationMatch,
+  type AudioDurationAuthority,
 } from "./audioDurationMatching";
 import {
   createVisualFillerPlan,
   type VisualFillerPlan,
 } from "./visualFiller";
+import {
+  normalizeVideoClipDuration,
+  type VideoQualityTier,
+} from "./videoDurationPolicy";
+
+export { normalizeVideoClipDuration } from "./videoDurationPolicy";
+export type { VideoQualityTier } from "./videoDurationPolicy";
 
 export type VideoProductProfile = "storyverse" | "creatorlab";
-export type VideoQualityTier =
-  | "lite"
-  | "draft"
-  | "standard"
-  | "pro"
-  | "cinematic";
 
 export type TimelineSceneInput = {
   id?: number;
@@ -25,6 +27,7 @@ export type TimelineSceneInput = {
   motionHint?: string;
   estimatedSpeechSeconds?: number;
   speechWordCount?: number;
+  targetDurationSec?: number;
 };
 
 export type TimelineVisualAction =
@@ -56,6 +59,7 @@ export type TimelineScenePlan = {
     durationSec: number;
     source: "ai_video" | "reference_image" | "b_roll" | "planning";
     motionPreset:
+      | "static"
       | "source_motion"
       | "slow_push_in"
       | "soft_pan"
@@ -86,6 +90,8 @@ export type TimelineSyncPlan = {
       | "image_motion"
       | "standard_clip"
       | "premium_clip";
+    aiVideoUsage: "none" | "limited" | "selective" | "premium";
+    /** @deprecated Use aiVideoUsage. Kept for persisted-plan compatibility. */
     runwayUsage: "none" | "limited" | "selective" | "premium";
     voiceStrategy: "none" | "economy_tts" | "professional_voice";
   };
@@ -133,54 +139,8 @@ export function normalizeVideoQualityTier(
   return fallback;
 }
 
-function normalizePositiveNumber(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return fallback;
-  }
-
-  return Math.min(max, Math.max(min, Math.round(numericValue)));
-}
-
-export function normalizeRunwayClipDuration(
-  requestedDuration: unknown,
-  qualityTier: VideoQualityTier = "standard",
-) {
-  const fallbackDuration = qualityTier === "cinematic" ? 10 : 5;
-  const requested = normalizePositiveNumber(
-    requestedDuration,
-    fallbackDuration,
-    3,
-    12,
-  );
-
-  if (requested <= 5) {
-    return {
-      durationSec: 5 as const,
-      reason: "Requested duration fits a compact 5-second visual block.",
-    };
-  }
-
-  if (requested <= 7 && qualityTier !== "cinematic") {
-    return {
-      durationSec: 7 as const,
-      reason:
-        "Requested duration fits the available mid-length visual block.",
-    };
-  }
-
-  return {
-    durationSec: 10 as const,
-    reason:
-      "Longer speech or premium mode should use a 10-second visual block when the selected video model supports it.",
-  };
-}
+/** @deprecated Use normalizeVideoClipDuration. */
+export const normalizeRunwayClipDuration = normalizeVideoClipDuration;
 
 function getRoutePolicy(
   product: VideoProductProfile,
@@ -192,6 +152,7 @@ function getRoutePolicy(
       creatorLabCreditProfile: "draft",
       defaultVisualStrategy:
         qualityTier === "lite" ? "image_motion" : "standard_clip",
+      aiVideoUsage: "limited",
       runwayUsage: "limited",
       voiceStrategy: "economy_tts",
     };
@@ -202,6 +163,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "draft",
       defaultVisualStrategy: "none",
+      aiVideoUsage: "none",
       runwayUsage: "none",
       voiceStrategy: "none",
     };
@@ -212,6 +174,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "cinematic",
       defaultVisualStrategy: "premium_clip",
+      aiVideoUsage: "premium",
       runwayUsage: "premium",
       voiceStrategy: "professional_voice",
     };
@@ -222,6 +185,7 @@ function getRoutePolicy(
       storyverseCostProfile: "balanced",
       creatorLabCreditProfile: "pro",
       defaultVisualStrategy: "premium_clip",
+      aiVideoUsage: "selective",
       runwayUsage: "selective",
       voiceStrategy: "professional_voice",
     };
@@ -232,6 +196,7 @@ function getRoutePolicy(
     creatorLabCreditProfile: qualityTier === "lite" ? "draft" : "standard",
     defaultVisualStrategy:
       qualityTier === "lite" ? "image_motion" : "standard_clip",
+    aiVideoUsage: qualityTier === "lite" ? "limited" : "selective",
     runwayUsage: qualityTier === "lite" ? "limited" : "selective",
     voiceStrategy:
       qualityTier === "lite" ? "economy_tts" : "professional_voice",
@@ -445,10 +410,10 @@ function createVisualBlocks({
         type: shouldUsePremiumBlocks ? "b_roll" : "image_motion",
         durationSec: tailSeconds,
         source: shouldUsePremiumBlocks ? "b_roll" : "reference_image",
-        motionPreset: shouldUsePremiumBlocks ? "cutaway" : "slow_push_in",
+        motionPreset: "static",
         reason: shouldUsePremiumBlocks
           ? "Fill the audio tail with a separate B-roll/cutaway visual beat instead of freezing the source clip."
-          : "Extend speech safely with motion over a still/reference image instead of freezing the final video frame.",
+          : "Hold the still/reference image with fixed framing for the remaining speech.",
       },
     ]);
   }
@@ -507,7 +472,7 @@ function createVisualBlocks({
           ? Math.max(recommendedClipSeconds, safeSpeechSeconds)
           : recommendedClipSeconds,
       source: "ai_video",
-      motionPreset: visualAction === "slow_clip" ? "soft_pan" : "source_motion",
+      motionPreset: "source_motion",
       reason:
         visualAction === "slow_clip"
           ? "Stretch clip timing slightly to follow audio without hard freeze."
@@ -522,12 +487,14 @@ export function createTimelineSyncPlan({
   durationSec,
   sceneCount,
   scenes,
+  durationAuthority = "audio_compact",
 }: {
   product: VideoProductProfile;
   qualityTier: VideoQualityTier;
   durationSec: number;
   sceneCount: number;
   scenes: TimelineSceneInput[];
+  durationAuthority?: AudioDurationAuthority;
 }): TimelineSyncPlan {
   const safeSceneCount = Math.max(
     1,
@@ -543,7 +510,7 @@ export function createTimelineSyncPlan({
   );
   const maxSpeechRatio = product === "creatorlab" ? 0.82 : 0.72;
   const routePolicy = getRoutePolicy(product, qualityTier);
-  const recommendedClipSeconds = normalizeRunwayClipDuration(
+  const recommendedClipSeconds = normalizeVideoClipDuration(
     plannedSceneDurationSeconds,
     qualityTier,
   ).durationSec;
@@ -558,21 +525,28 @@ export function createTimelineSyncPlan({
     const speechWordCount = Number.isFinite(scene.speechWordCount)
       ? Number(scene.speechWordCount)
       : countSpeechWords(speechText);
+    const scenePlannedDurationSeconds = Math.max(
+      product === "creatorlab" ? 3 : 5,
+      Number.isFinite(scene.targetDurationSec)
+        ? Math.round(Number(scene.targetDurationSec) * 10) / 10
+        : plannedSceneDurationSeconds,
+    );
     const durationMatch =
       product === "creatorlab"
         ? matchAudioDurationToScene({
             audioDurationSec: estimatedSpeechSeconds,
-            plannedDurationSec: plannedSceneDurationSeconds,
-            fallbackDurationSec: plannedSceneDurationSeconds,
+            plannedDurationSec: scenePlannedDurationSeconds,
+            fallbackDurationSec: scenePlannedDurationSeconds,
             minDurationSec: 3,
             maxDurationSec: 30,
             preferredMaxSceneDurationSec: 20,
             tailBufferSec: 0.75,
+            durationAuthority,
           })
         : null;
     const targetVisualSeconds =
       durationMatch?.targetDurationSec || plannedSceneDurationSeconds;
-    const sceneRecommendedClipSeconds = normalizeRunwayClipDuration(
+    const sceneRecommendedClipSeconds = normalizeVideoClipDuration(
       targetVisualSeconds,
       qualityTier,
     ).durationSec;
@@ -589,13 +563,15 @@ export function createTimelineSyncPlan({
         10,
     );
     const speechFit: TimelineScenePlan["speechFit"] =
-      durationMatch?.status === "unsafe" || durationMatch?.splitRecommended
+      durationMatch?.status === "unsafe"
         ? "too_long"
-        : estimatedSpeechSeconds <= availableSpeechWindow
-        ? "safe"
-        : estimatedSpeechSeconds <= sceneRecommendedClipSeconds
+        : durationMatch?.splitRecommended
           ? "tight"
-          : "too_long";
+          : estimatedSpeechSeconds <= availableSpeechWindow
+            ? "safe"
+            : estimatedSpeechSeconds <= sceneRecommendedClipSeconds
+              ? "tight"
+              : "too_long";
     const audioMismatch = getTimelineAudioMismatch({
       estimatedSpeechSeconds,
       recommendedClipSeconds: sceneRecommendedClipSeconds,

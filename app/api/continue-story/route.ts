@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -263,6 +264,7 @@ ${directionText}
       model: "gpt-4.1-mini",
       input: prompt,
     });
+    await recordOpenAITextEconomics({ route: "/api/continue-story", operationType: "legacy_continue_story", model: "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

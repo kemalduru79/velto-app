@@ -1,0 +1,38 @@
+name: PR45 Historical Read Compatibility (Focused)
+
+on:
+  push:
+    branches:
+      - agent/pr45-historical-compat-20261103
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit --incremental false
+      - name: Historical project and route compatibility
+        run: node --experimental-transform-types scripts/creator-pr45-historical-compat-test.mjs
+      - name: PR45 release regressions
+        run: node --experimental-transform-types scripts/creator-pr-45-release-readiness-test.mjs
+      - name: Existing quarantine regression
+        run: node --experimental-transform-types scripts/stage-r2-safety-creator-project-quarantine-test.mjs
+      - name: Existing counter-review regression
+        run: node --experimental-transform-types scripts/creator-issue-44-counter-review-test.mjs
+      - name: Offline audit scope and privacy
+        run: node scripts/creator-pr45-legacy-audit-test.mjs
+      - name: CI contract
+        run: npm run test:ci-contract

@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
+
+const read = (file) => fs.readFileSync(file, "utf8");
+const hash = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const reconcile = read("scripts/fin-p1c-reconcile.mjs");
+const runbook = read("docs/STAGE-0.8F-RECOVERY-OPERATOR.md");
+const packageJson = JSON.parse(read("package.json"));
+
+const applyGate = reconcile.indexOf("if (!apply)");
+const clientImport = reconcile.indexOf('await import("@supabase/supabase-js")');
+const clientCreation = reconcile.indexOf("createClient(supabaseUrl");
+const rpcCall = reconcile.indexOf('supabase.rpc("velto_fin_reconcile"');
+assert.ok(applyGate >= 0 && clientImport > applyGate && clientCreation > clientImport && rpcCall > clientCreation);
+assert.match(reconcile, /mode: "NO_MUTATION"/);
+assert.match(reconcile, /requiredFlag: "--apply"/);
+assert.match(reconcile, /p_source: "admin_script"/);
+
+const preview = spawnSync(process.execPath, ["scripts/fin-p1c-reconcile.mjs"], {
+  encoding: "utf8",
+  env: { PATH: process.env.PATH || "" },
+});
+assert.equal(preview.status, 0, preview.stderr);
+assert.deepEqual(JSON.parse(preview.stdout), {
+  mode: "NO_MUTATION",
+  mutation: "velto_fin_reconcile",
+  batchLimit: 200,
+  staleJobMinutes: 10,
+  requiredFlag: "--apply",
+});
+
+assert.equal(packageJson.scripts["fin:reconcile"], "node scripts/fin-p1c-reconcile.mjs");
+assert.equal(packageJson.scripts["fin:reconcile:apply"], "node --env-file=.env.local scripts/fin-p1c-reconcile.mjs --apply");
+
+for (const marker of [
+  "/api/runtime-health?mode=live", "/api/runtime-health?mode=ready",
+  "/api/observability/health", "/api/creator-health", "Export service: `/health`",
+  "VELTO_RELEASE", "durable in Postgres", "lease expiry", "must not manually edit queue rows",
+  "npm run fin:reconcile", "npm run fin:reconcile:apply", "performs no database operation",
+  "stage-0-7a-reconcile-media.mjs", "stage-0-7a-reconcile-media.mjs --apply",
+  "stage-0-7d-1-purge-recovery.mjs", "stage-0-7d-1-purge-recovery.mjs --apply",
+  "OBJECT_MISSING", "OBJECT_PRESENT", "UNKNOWN_ERROR", "synthetic disposable test only",
+  "disabled by default", "application rollback never implies database rollback", "Fail closed; do not guess",
+]) assert.ok(runbook.includes(marker), `runbook missing: ${marker}`);
+
+assert.equal(hash("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52");
+assert.equal(hash("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9");
+assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
+  "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
+  "geist", "hls.js", "next", "openai", "react", "react-dom",
+].sort());
+assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
+  "@tailwindcss/postcss", "@types/node", "@types/react", "@types/react-dom",
+  "eslint", "eslint-config-next", "tailwindcss", "typescript",
+].sort());
+
+const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
+  .trim().split(/\r?\n/).filter(Boolean);
+const inventoryHash = (files) => createHash("sha256").update(`${files.sort().join("\n")}\n`).digest("hex");
+// Reviewed through the Stage 2 final-export acceptance correction. The CreatorLab API surface and additive
+// migration history have expanded intentionally since the original 0.8F
+// baseline. Keep these inventory sentinels fail-closed so every later API or
+// migration surface change still requires explicit review.
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c");
+assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "20cfcfb02bc50dd699076cd7d20d0db14cb1b9df29a870278d3784d3c3ada6dd");
+assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
+
+console.log("Stage 0.8F-B recovery and operator regression passed.");

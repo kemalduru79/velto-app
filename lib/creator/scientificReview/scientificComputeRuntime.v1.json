@@ -1,0 +1,28 @@
+{
+  "version": "stage-5e1g-b-runtime-manifest-v1",
+  "profileId": "darwin-system-python-3.9.6-scipy-gated-v1",
+  "pythonExecutable": "/usr/bin/python3",
+  "pythonExecutableSha256": "b8763cf250e607a778bb4603cecb5b90338814d0a3dfcba0d57b1de242f610e9",
+  "pythonVersion": "3.9.6",
+  "scipyVersion": "1.13.1",
+  "workerPath": "scripts/scientific-review/scientific_compute_v1.py",
+  "workerSha256": "0ba42e3aa5b02a8639551518a3152a88d57a354fc26ba6d1c12e0f5bc00054ce",
+  "maximumInputBytes": 1000000,
+  "maximumOutputBytes": 1000000,
+  "defaultTimeoutMs": 2000,
+  "maximumTimeoutMs": 5000,
+  "operations": [
+    "descriptive_statistics_v1",
+    "cohens_d_independent_v1",
+    "normal_mean_ci_known_sigma_v1",
+    "mean_t_ci_scipy_v1",
+    "exponential_growth_doubling_v1",
+    "log_linear_model_fit_v1"
+  ],
+  "scipyRequiredOperations": [
+    "mean_t_ci_scipy_v1"
+  ],
+  "networkIsolation": "NOT_OS_ENFORCED",
+  "shellExecution": false,
+  "arbitraryCode": false
+}

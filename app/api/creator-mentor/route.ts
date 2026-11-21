@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
+import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -49,20 +51,57 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+// A finite property-access view, not a validated provider-response schema.
+// Keep every field unknown until the existing runtime checks consume it.
+type CreatorMentorReadValue = Readonly<{
+  message?: unknown;
+  output_text?: unknown;
+  output?: unknown;
+  content?: unknown;
+  type?: unknown;
+  text?: unknown;
+}> & Readonly<{
+  [Key in keyof YoutubeResearchVideo | keyof CreatorMentorAnalysis |
+    keyof CreatorMentorIdea | keyof CreatorMentorAnalysis["recommendedIdea"]]?: unknown;
+}>;
+
+// Optional unknown fields grant no authority or field-kind guarantees.
+function hasCreatorMentorReadValue(value: unknown): value is CreatorMentorReadValue {
+  return value !== null && value !== undefined;
+}
+
 function compactYoutubeData(videos: unknown): YoutubeResearchVideo[] {
   if (!Array.isArray(videos)) {
     return [];
   }
 
-  return videos.slice(0, 8).map((video: any) => ({
-    title: asString(video?.title),
-    channel: asString(video?.channel),
-    views: Number(video?.views || 0),
-    likes: Number(video?.likes || 0),
-    durationSec: Number(video?.durationSec || 0),
-    publishedAt: asString(video?.publishedAt),
-    url: asString(video?.url),
-  }));
+  return videos.slice(0, 8).map((value: unknown) => {
+    const video = hasCreatorMentorReadValue(value) ? value : undefined;
+    return {
+      title: asString(video?.title),
+      channel: asString(video?.channel),
+      views: Number(video?.views || 0),
+      likes: Number(video?.likes || 0),
+      durationSec: Number(video?.durationSec || 0),
+      publishedAt: asString(video?.publishedAt),
+      url: asString(video?.url),
+    };
+  });
+}
+
+function creatorProfileContext(value: unknown) {
+  const profile = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const fields = [
+    ["Creator / brand", asString(profile.brandName)],
+    ["Brand voice", asString(profile.brandVoice)],
+    ["Default audience", asString(profile.defaultAudience)],
+    ["Default visual style", asString(profile.defaultVisualStyle)],
+    ["Credit preference", asString(profile.defaultCreditPreference)],
+  ].filter(([, field]) => field);
+
+  return fields.length
+    ? fields.map(([label, field]) => `${label}: ${field}`).join("\n")
+    : "No saved creator profile was provided.";
 }
 
 function parseJsonSafely(rawText: string) {
@@ -87,18 +126,21 @@ function parseJsonSafely(rawText: string) {
   }
 }
 
-function extractTextFromResponse(response: any) {
+function extractTextFromResponse(value: unknown) {
+  const response = hasCreatorMentorReadValue(value) ? value : undefined;
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim();
   }
 
-  const output = Array.isArray(response?.output) ? response.output : [];
+  const output: unknown[] = Array.isArray(response?.output) ? response.output : [];
   const textParts: string[] = [];
 
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
+  for (const value of output) {
+    const item = hasCreatorMentorReadValue(value) ? value : undefined;
+    const content: unknown[] = Array.isArray(item?.content) ? item.content : [];
 
-    for (const part of content) {
+    for (const value of content) {
+      const part = hasCreatorMentorReadValue(value) ? value : undefined;
       if (part?.type === "output_text" && typeof part?.text === "string") {
         textParts.push(part.text);
       }
@@ -180,16 +222,25 @@ type CreatorMentorIdea = {
   concept: string;
 };
 
-function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
+// Preserve optional access at each read; do not cache volatile source fields.
+function asCreatorMentorReadValue(value: unknown): CreatorMentorReadValue | undefined {
+  return hasCreatorMentorReadValue(value) ? value : undefined;
+}
+
+function normalizeAnalysis(value: unknown, topic: string): CreatorMentorAnalysis {
+  const parsed = asCreatorMentorReadValue(value);
   const fallbackHook = `Wait… ${topic.replace(/[?.!]+$/g, "")}?!`;
 
   const videoIdeas: CreatorMentorIdea[] = Array.isArray(parsed?.videoIdeas)
     ? parsed.videoIdeas
-        .map((item: any) => ({
-          title: asString(item?.title),
-          concept: asString(item?.concept),
-        }))
-        .filter((item: any) => item.title && item.concept)
+        .map((value: unknown) => {
+          const item = asCreatorMentorReadValue(value);
+          return {
+            title: asString(item?.title),
+            concept: asString(item?.concept),
+          };
+        })
+        .filter((item) => item.title && item.concept)
         .slice(0, 5)
     : [];
 
@@ -204,7 +255,7 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
       ];
 
   const recommendedTitle =
-    asString(parsed?.recommendedIdea?.title) || safeIdeas[0]?.title || topic;
+    asString(asCreatorMentorReadValue(parsed?.recommendedIdea)?.title) || safeIdeas[0]?.title || topic;
 
   return {
     audienceInsight: sanitizeStringArray(
@@ -228,7 +279,7 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
     recommendedIdea: {
       title: sanitizeCreatorText(recommendedTitle),
       reason: sanitizeCreatorText(
-        asString(parsed?.recommendedIdea?.reason) ||
+        asString(asCreatorMentorReadValue(parsed?.recommendedIdea)?.reason) ||
           "This idea has a clear audience promise, strong hook potential, and fits a professional creator production workflow.",
       ),
     },
@@ -246,8 +297,10 @@ function normalizeAnalysis(parsed: any, topic: string): CreatorMentorAnalysis {
 
 export async function POST(req: Request) {
   try {
+    const secured = await enforceCreatorApiBoundary<any>(req, "creator-mentor");
+    if (!secured.ok) return secured.response;
+    const body = secured.context.body;
     const client = getOpenAIClient();
-    const body = await req.json().catch(() => null);
 
     const topic = asString(body?.topic);
     const country = asString(body?.country, "Global / International");
@@ -257,6 +310,7 @@ export async function POST(req: Request) {
     const format = asString(body?.format, "Shorts / 60 sec");
     const language = normalizeLanguage(body?.language);
     const youtubeData = compactYoutubeData(body?.youtubeData);
+    const profileContext = creatorProfileContext(body?.creatorProfile);
 
     if (!topic) {
       return NextResponse.json(
@@ -339,6 +393,9 @@ Creator format rules:
 - Prefer faceless documentary, professional narrator, brand voice, subject-matter host, product-led, or presenter-led concepts depending on the selected adult audience profile.
 - If the user explicitly names a character, preserve it; otherwise keep the recommendation character-neutral.
 
+Saved creator profile (use this for tone, audience framing and visual positioning when present; do not invent missing details):
+${profileContext}
+
 YouTube data sample:
 ${youtubeContext}
 
@@ -353,6 +410,7 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
       ],
       temperature: 0.4,
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-mentor", operationType: "creator_mentor", model: "gpt-4.1-mini", response });
 
     const rawText = extractTextFromResponse(response);
 
@@ -363,7 +421,7 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
       );
     }
 
-    let parsed: any;
+    let parsed: unknown;
 
     try {
       parsed = parseJsonSafely(rawText);
@@ -385,7 +443,7 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
       analysis,
       raw: process.env.NODE_ENV === "development" ? rawText : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("creator-mentor error:", error);
 
     return NextResponse.json(
@@ -397,7 +455,7 @@ Create a mentor analysis optimized for high CTR, strong first 5 seconds, retenti
             : "Creator mentor analizi oluşturulurken hata oluştu.",
         details:
           process.env.NODE_ENV === "development"
-            ? error?.message || "Bilinmeyen hata"
+            ? asCreatorMentorReadValue(error)?.message || "Bilinmeyen hata"
             : undefined,
       },
       { status: 500 }

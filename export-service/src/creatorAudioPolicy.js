@@ -1,0 +1,16 @@
+export const CREATOR_AUDIO_MIX_POLICY = Object.freeze({
+  fadeInMs: 350,
+  fadeOutMs: 350,
+  musicBedGain: 0.18,
+  duckingMode: "under_speech",
+  duckingGain: 0.24,
+  duckingAttackMs: 180,
+  duckingReleaseMs: 500,
+  sceneSpeechGain: 1,
+  sceneAmbientGain: 1,
+  sceneSfxGain: 1,
+  sceneLimiterCeiling: 0.95,
+  programIntegratedLufs: -16,
+  programTruePeakDb: -1.5,
+  programLraLu: 11,
+});

@@ -1,0 +1,471 @@
+import {
+  createValidatedEditorialAnalysis,
+  type EditorialAnalysisProposal,
+} from "./editorialAnalysisContract.ts";
+import type { ResearchSource } from "./sourceContract.ts";
+
+const UNGROUNDED_EXCERPT_PREFIX = "EDITORIAL_EVIDENCE_EXCERPT_NOT_GROUNDED:";
+const MAX_BASE_SPANS_PER_SOURCE = 12;
+export const MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE = 24;
+export const MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST = 120;
+
+export type EditorialGroundingCandidateSpan = {
+  spanId: string;
+  sourceId: string;
+  text: string;
+  evidenceSpecificity: "concrete_observation" | "abstract_or_conceptual";
+};
+
+export type EditorialGroundingRepairSelection = {
+  repairs: Array<{ evidenceId: string; spanId: string }>;
+};
+
+export type EditorialGroundingRepairInput = {
+  diagnosticCategory: string;
+  invalidEvidence: Array<{
+    evidenceId: string;
+    sourceId: string;
+    contextNote: string | null;
+    linkedClaims: Array<{
+      claimId: string;
+      claimType: string;
+      text: string;
+      stance: string;
+    }>;
+  }>;
+  candidateSpans: EditorialGroundingCandidateSpan[];
+  failingSourceId: string;
+};
+
+type TextRange = { start: number; end: number };
+
+export type EditorialGroundingPassage = TextRange & {
+  text: string;
+  evidenceSpecificity: EditorialGroundingCandidateSpan["evidenceSpecificity"];
+};
+
+function trimmedRange(text: string, start: number, end: number): TextRange | null {
+  while (start < end && /\s/u.test(text[start])) start += 1;
+  while (end > start && /\s/u.test(text[end - 1])) end -= 1;
+  return start < end ? { start, end } : null;
+}
+
+function sentenceRanges(text: string) {
+  const ranges: TextRange[] = [];
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!".!?。！？".includes(text[index])) continue;
+    let end = index + 1;
+    while (end < text.length && ".!?。！？".includes(text[end])) end += 1;
+    if (end < text.length && !/\s/u.test(text[end])) continue;
+    const range = trimmedRange(text, start, end);
+    if (range) ranges.push(range);
+    start = end;
+    index = end - 1;
+  }
+  const remainder = trimmedRange(text, start, text.length);
+  if (remainder) ranges.push(remainder);
+  return ranges;
+}
+
+function boundedPassageRanges(text: string) {
+  const sentences = sentenceRanges(text);
+  if (sentences.length === 0) return [];
+  const groupSize = Math.max(
+    1,
+    Math.ceil(sentences.length / MAX_BASE_SPANS_PER_SOURCE),
+  );
+  const passages: TextRange[] = [];
+  for (let index = 0; index < sentences.length; index += groupSize) {
+    const group = sentences.slice(index, index + groupSize);
+    passages.push({ start: group[0].start, end: group.at(-1)!.end });
+  }
+  for (let index = 0; index < passages.length; index += 1) {
+    if (passages.length === 1 || passages[index].end - passages[index].start >= 24) {
+      continue;
+    }
+    if (index + 1 < passages.length) {
+      passages[index + 1] = {
+        start: passages[index].start,
+        end: passages[index + 1].end,
+      };
+      passages.splice(index, 1);
+    } else {
+      passages[index - 1].end = passages[index].end;
+      passages.splice(index, 1);
+    }
+    index -= 1;
+  }
+  return passages;
+}
+
+const CONCRETE_SUBJECT_PATTERN = /\b(?:participants?|subjects?|respondents?|patients?|children|adults?|workers?|households?|firms?|occupations?|tasks?|systems?|models?|records?|cases?)\b/iu;
+const CONCRETE_ACTION_PATTERN = /\b(?:asked|assigned|compared|completed|exposed|found|identified|included|increased|decreased|measured|observed|performed|recorded|recalled|reported|showed|surveyed|tested|were\s+(?:asked|assigned|exposed|shown)|differed|changed)\b/iu;
+const CONCRETE_DESIGN_PATTERN = /\b(?:after|before|between|during|following|experiment|procedure|trial|survey|interview|comparison|compared\s+with|versus|control\s+group)\b/iu;
+const CONCRETE_RESULT_PATTERN = /(?:\b\d+(?:\.\d+)?\b|%|\b(?:higher|lower|more|less|greater|fewer|rate|ratio|difference|effect|result)\b)/iu;
+
+/**
+ * Marks exact grounded spans that contain an observable subject plus an action,
+ * or an explicit design/result combination. This is advisory extraction
+ * metadata only: it never adds facts or upgrades an epistemic claim type.
+ */
+export function classifyEditorialGroundingSpanSpecificity(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const subjectAndAction = CONCRETE_SUBJECT_PATTERN.test(normalized)
+    && CONCRETE_ACTION_PATTERN.test(normalized);
+  const designAndResult = CONCRETE_DESIGN_PATTERN.test(normalized)
+    && (CONCRETE_ACTION_PATTERN.test(normalized) || CONCRETE_RESULT_PATTERN.test(normalized));
+  return subjectAndAction || designAndResult
+    ? "concrete_observation" as const
+    : "abstract_or_conceptual" as const;
+}
+
+/**
+ * Shared V1/V2 segmentation authority. It preserves the existing sentence and
+ * adjacent-passage boundaries without assigning an identity to those ranges.
+ */
+export function createEditorialGroundingPassages(
+  text: string,
+): EditorialGroundingPassage[] {
+  const passages = boundedPassageRanges(text);
+  const ranges = [...passages];
+  for (
+    let index = 0;
+    index + 1 < passages.length &&
+    ranges.length < MAX_EDITORIAL_GROUNDING_SPANS_PER_SOURCE;
+    index += 1
+  ) ranges.push({ start: passages[index].start, end: passages[index + 1].end });
+  return ranges.map((range) => {
+    const passageText = text.slice(range.start, range.end);
+    return {
+      ...range,
+      text: passageText,
+      evidenceSpecificity: classifyEditorialGroundingSpanSpecificity(
+        passageText,
+      ),
+    };
+  });
+}
+
+export function createEditorialGroundingCandidateSpans(
+  sources: ResearchSource[],
+) {
+  const spans: EditorialGroundingCandidateSpan[] = [];
+  sources.forEach((source, sourceIndex) => {
+    const summary = source.summary || "";
+    createEditorialGroundingPassages(summary).forEach((passage, spanIndex) => {
+      spans.push({
+        spanId: `span-${sourceIndex + 1}-${spanIndex + 1}`,
+        sourceId: source.sourceId,
+        text: passage.text,
+        evidenceSpecificity: passage.evidenceSpecificity,
+      });
+    });
+  });
+  return spans.toSorted((left, right) => {
+    if (left.sourceId !== right.sourceId) return 0;
+    return Number(right.evidenceSpecificity === "concrete_observation")
+      - Number(left.evidenceSpecificity === "concrete_observation");
+  });
+}
+
+/**
+ * Applies the request-wide grounding budget without allowing verbose early
+ * sources to exclude later sources. Spans retain their existing per-source
+ * rank, while source groups retain first-encounter order.
+ */
+export function selectEditorialGroundingCandidateSpansForRequest(
+  candidateSpans: EditorialGroundingCandidateSpan[],
+  maxCount: number,
+) {
+  const limit = Math.max(0, Math.trunc(maxCount));
+  if (limit === 0 || candidateSpans.length === 0) return [];
+
+  const spansBySource = new Map<string, EditorialGroundingCandidateSpan[]>();
+  for (const span of candidateSpans) {
+    const sourceSpans = spansBySource.get(span.sourceId);
+    if (sourceSpans) sourceSpans.push(span);
+    else spansBySource.set(span.sourceId, [span]);
+  }
+
+  const selected: EditorialGroundingCandidateSpan[] = [];
+  for (let rank = 0; selected.length < limit; rank += 1) {
+    let added = false;
+    for (const sourceSpans of spansBySource.values()) {
+      const span = sourceSpans[rank];
+      if (!span) continue;
+      selected.push(span);
+      added = true;
+      if (selected.length === limit) break;
+    }
+    if (!added) break;
+  }
+  return selected;
+}
+
+function objectRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function discoverInvalidEvidence(input: {
+  proposal: EditorialAnalysisProposal;
+  sources: ResearchSource[];
+}) {
+  const sourceById = new Map(input.sources.map((source) => [source.sourceId, source]));
+  const claims = Array.isArray(input.proposal.claims) ? input.proposal.claims : [];
+  const links = Array.isArray(input.proposal.links) ? input.proposal.links : [];
+  const evidence = Array.isArray(input.proposal.evidence) ? input.proposal.evidence : [];
+  return evidence.flatMap((item) => {
+    const evidenceId = text(item.evidenceId);
+    const sourceId = text(item.sourceId);
+    const excerpt = text(item.excerpt);
+    const spanId = text(item.spanId);
+    const source = sourceById.get(sourceId);
+    if (!evidenceId || !source || (!spanId && excerpt && (source.summary || "").includes(excerpt))) {
+      return [];
+    }
+    const linkedClaims = links.flatMap((link) => {
+      if (text(link.evidenceId) !== evidenceId) return [];
+      const claim = claims.find((candidate) =>
+        text(candidate.claimId) === text(link.claimId)
+      );
+      return claim
+        ? [{
+          claimId: text(claim.claimId),
+          claimType: text(claim.claimType),
+          text: text(claim.text),
+          stance: text(link.stance),
+        }]
+        : [];
+    });
+    return [{
+      evidenceId,
+      sourceId,
+      contextNote: text(item.contextNote) || null,
+      linkedClaims,
+    }];
+  });
+}
+
+export function installCanonicalEditorialEvidenceSpans(input: {
+  proposal: EditorialAnalysisProposal;
+  candidateSpans: EditorialGroundingCandidateSpan[];
+}): EditorialAnalysisProposal {
+  if (new Set(input.candidateSpans.map((span) => span.spanId)).size !== input.candidateSpans.length) {
+    throw new Error("EDITORIAL_CANDIDATE_SPAN_ID_DUPLICATE");
+  }
+  const selectedIdentities = new Set<string>();
+  const spanBySourceAndId = new Map(
+    input.candidateSpans.map((span) => [`${span.sourceId}\0${span.spanId}`, span]),
+  );
+  const spanById = new Map(input.candidateSpans.map((span) => [span.spanId, span]));
+  return {
+    ...input.proposal,
+    evidence: (Array.isArray(input.proposal.evidence) ? input.proposal.evidence : []).map((item, index) => {
+      const evidenceId = text(item.evidenceId) || `evidence-${index + 1}`;
+      const sourceId = text(item.sourceId);
+      const spanId = text(item.spanId);
+      if (!spanId) throw new Error(`EDITORIAL_EVIDENCE_SPAN_REQUIRED:${evidenceId}`);
+      const span = spanBySourceAndId.get(`${sourceId}\0${spanId}`);
+      if (!span && spanById.has(spanId)) {
+        throw new Error(`EDITORIAL_EVIDENCE_SPAN_SOURCE_MISMATCH:${evidenceId}`);
+      }
+      if (!span) throw new Error(`EDITORIAL_EVIDENCE_SPAN_INVALID:${evidenceId}`);
+      const identity = `${sourceId}\0${spanId}`;
+      if (selectedIdentities.has(identity)) throw new Error(`EDITORIAL_EVIDENCE_SPAN_DUPLICATE:${evidenceId}`);
+      selectedIdentities.add(identity);
+      return {
+        evidenceId,
+        sourceId,
+        excerpt: span.text,
+        contextNote: item.contextNote,
+      };
+    }),
+  };
+}
+
+function parseRepairSelection(value: unknown): EditorialGroundingRepairSelection {
+  const selection = objectRecord(value);
+  if (!selection || Object.keys(selection).join(",") !== "repairs") {
+    throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_INVALID");
+  }
+  if (!Array.isArray(selection.repairs) || selection.repairs.length === 0) {
+    throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_EMPTY");
+  }
+  if (selection.repairs.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
+    throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_LIMIT_EXCEEDED");
+  }
+  return {
+    repairs: selection.repairs.map((value) => {
+      const repair = objectRecord(value);
+      const keys = repair ? Object.keys(repair).sort() : [];
+      if (
+        !repair ||
+        keys.join(",") !== "evidenceId,spanId" ||
+        !text(repair.evidenceId) ||
+        !text(repair.spanId)
+      ) throw new Error("EDITORIAL_GROUNDING_REPAIR_SELECTION_INVALID");
+      return { evidenceId: text(repair.evidenceId), spanId: text(repair.spanId) };
+    }),
+  };
+}
+
+function applyRepairSelection(input: {
+  original: EditorialAnalysisProposal;
+  selection: unknown;
+  candidateSpans: EditorialGroundingCandidateSpan[];
+}): EditorialAnalysisProposal {
+  const selection = parseRepairSelection(input.selection);
+  const originalEvidence = Array.isArray(input.original.evidence)
+    ? input.original.evidence
+    : [];
+  const evidenceById = new Map(
+    originalEvidence.map((item) => [text(item.evidenceId), item]),
+  );
+  const spanBySourceAndId = new Map(
+    input.candidateSpans.map((span) => [`${span.sourceId}\0${span.spanId}`, span]),
+  );
+  const selectedSpanByEvidenceId = new Map<string, string>();
+  const excerptsByEvidenceId = new Map<string, string>();
+  for (const repair of selection.repairs) {
+    const previousSpanId = selectedSpanByEvidenceId.get(repair.evidenceId);
+    if (previousSpanId === repair.spanId) {
+      continue;
+    }
+    if (previousSpanId) {
+      throw new Error(`EDITORIAL_GROUNDING_REPAIR_CONFLICTING_SPANS:${repair.evidenceId}`);
+    }
+    const original = evidenceById.get(repair.evidenceId);
+    if (!original) {
+      throw new Error(`EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING:${repair.evidenceId}`);
+    }
+    const span = spanBySourceAndId.get(
+      `${text(original.sourceId)}\0${repair.spanId}`,
+    );
+    if (!span) {
+      throw new Error(`EDITORIAL_GROUNDING_REPAIR_SPAN_MISSING:${repair.evidenceId}`);
+    }
+    selectedSpanByEvidenceId.set(repair.evidenceId, repair.spanId);
+    excerptsByEvidenceId.set(repair.evidenceId, span.text);
+  }
+  return {
+    ...input.original,
+    evidence: originalEvidence.map((item) => {
+      const evidenceId = text(item.evidenceId);
+      const excerpt = excerptsByEvidenceId.get(evidenceId);
+      const spanId = selectedSpanByEvidenceId.get(evidenceId);
+      return excerpt === undefined || spanId === undefined
+        ? item
+        : { ...item, excerpt, spanId };
+    }),
+  };
+}
+
+export async function createValidatedEditorialAnalysisWithOneRepair(input: {
+  sources: ResearchSource[];
+  proposal: EditorialAnalysisProposal;
+  repair: (repairInput: EditorialGroundingRepairInput) => Promise<unknown>;
+  requirePropositionAuthority?: boolean;
+  allowAmbiguousPropositionAuthority?: boolean;
+  provisionalPropositionAuthority?: boolean;
+  requireSpanSelections?: boolean;
+}) {
+  const proposalUsesSpanSelections = input.requireSpanSelections === true || (Array.isArray(input.proposal.evidence)
+    ? input.proposal.evidence
+    : []).some((item) => text(item.spanId));
+  const initialCandidateSpans = proposalUsesSpanSelections
+    ? createEditorialGroundingCandidateSpans(input.sources)
+    : [];
+  try {
+    if (proposalUsesSpanSelections) {
+      const knownSourceIds = new Set(input.sources.map((source) => source.sourceId));
+      const unknownEvidence = (input.proposal.evidence || []).find((item) =>
+        !knownSourceIds.has(text(item.sourceId))
+      );
+      if (unknownEvidence) {
+        throw new Error(`EDITORIAL_EVIDENCE_SOURCE_MISSING:${text(unknownEvidence.evidenceId)}`);
+      }
+    }
+    return createValidatedEditorialAnalysis({
+      sources: input.sources,
+      proposal: proposalUsesSpanSelections
+        ? installCanonicalEditorialEvidenceSpans({
+            proposal: input.proposal,
+            candidateSpans: initialCandidateSpans,
+          })
+        : input.proposal,
+      requirePropositionAuthority: input.requirePropositionAuthority,
+      allowAmbiguousPropositionAuthority: input.allowAmbiguousPropositionAuthority,
+      provisionalPropositionAuthority: input.provisionalPropositionAuthority,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const sourceMismatchPrefix = "EDITORIAL_EVIDENCE_SPAN_SOURCE_MISMATCH:";
+    const recoverable = message.startsWith(UNGROUNDED_EXCERPT_PREFIX)
+      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_REQUIRED:")
+      || message.startsWith("EDITORIAL_EVIDENCE_SPAN_INVALID:")
+      || message.startsWith(sourceMismatchPrefix);
+    if (!recoverable) throw error;
+
+    // Independent sourceId/spanId model selections can disagree. Repair only
+    // the offending evidence against spans owned by its unchanged sourceId.
+    // Never infer a new source from the mismatched span or relax grounding.
+    const discovered = discoverInvalidEvidence(input);
+    const invalidEvidence = message.startsWith(sourceMismatchPrefix)
+      ? discovered.filter((item) =>
+          item.evidenceId === message.slice(sourceMismatchPrefix.length)
+        )
+      : discovered;
+    if (invalidEvidence.length === 0) throw error;
+    const invalidSourceIds = new Set(invalidEvidence.map((item) => item.sourceId));
+    // Keep request-wide span IDs stable: rebuilding from the filtered
+    // source subset would renumber spans and can misattribute evidence.
+    const candidateSpans = createEditorialGroundingCandidateSpans(input.sources)
+      .filter((span) => invalidSourceIds.has(span.sourceId));
+    if (candidateSpans.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
+      throw new Error("EDITORIAL_GROUNDING_REPAIR_CANDIDATE_LIMIT_EXCEEDED");
+    }
+    if (candidateSpans.length === 0) throw new Error("EDITORIAL_GROUNDING_REPAIR_NO_SOURCE_SPANS");
+    const selection = await input.repair({
+      diagnosticCategory: message.split(":", 1)[0],
+      invalidEvidence,
+      candidateSpans,
+      failingSourceId: message.startsWith(UNGROUNDED_EXCERPT_PREFIX)
+        ? message.slice(UNGROUNDED_EXCERPT_PREFIX.length)
+        : invalidEvidence[0]?.sourceId || "",
+    });
+    const originalIds = new Set((input.proposal.evidence || []).map((item) => text(item.evidenceId)));
+    const parsedSelection = parseRepairSelection(selection);
+    const unknownRepair = parsedSelection.repairs.find((item) => !originalIds.has(item.evidenceId));
+    if (unknownRepair) throw new Error(`EDITORIAL_GROUNDING_REPAIR_EVIDENCE_MISSING:${unknownRepair.evidenceId}`);
+    const invalidIds = new Set(invalidEvidence.map((item) => item.evidenceId));
+    if (parsedSelection.repairs.some((item) => !invalidIds.has(item.evidenceId))) {
+      throw new Error("EDITORIAL_GROUNDING_REPAIR_UNEXPECTED_EVIDENCE");
+    }
+    const repairedProposal = applyRepairSelection({
+      original: input.proposal,
+      selection,
+      candidateSpans,
+    });
+    return createValidatedEditorialAnalysis({
+      sources: input.sources,
+      // Repair selects only invalid items. Materialize ALL still-valid original
+      // selections too: the legacy excerpt parser cannot interpret spanId.
+      proposal: proposalUsesSpanSelections
+        ? installCanonicalEditorialEvidenceSpans({
+            proposal: repairedProposal,
+            candidateSpans: initialCandidateSpans,
+          })
+        : repairedProposal,
+      requirePropositionAuthority: input.requirePropositionAuthority,
+      allowAmbiguousPropositionAuthority: input.allowAmbiguousPropositionAuthority,
+      provisionalPropositionAuthority: input.provisionalPropositionAuthority,
+    });
+  }
+}

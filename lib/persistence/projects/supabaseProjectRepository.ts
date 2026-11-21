@@ -1,0 +1,286 @@
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type {
+  ProjectRepository,
+  PublishVeltoProjectResult,
+  SaveVeltoProjectInput,
+  SaveVeltoProjectResult,
+  UnpublishVeltoProjectResult,
+  VeltoProjectApiRecord,
+} from "./types";
+import type { PublicStoryverseProjectSourceRecord } from "@/lib/security/publicStoryverseProjection";
+import { removeExactAssetHistoryUrl } from "./mediaHistoryCleanup";
+import {
+  assertExistingProjectFlow,
+  assertProjectUpdateMatched,
+  creatorProjectInsertPayload,
+  creatorProjectUpdatePayload,
+} from "./projectPatch";
+
+const PROJECT_LIST_FIELDS =
+  "id, title, child_id, created_at, updated_at, flow_type, scenes, exported_movie_url, exported_movie_result, export_signature";
+const PUBLIC_PROJECT_FIELDS =
+  "title, story_premise, language, flow_type, characters, scenes, published_at, exported_movie_url";
+
+function asProjectRecord(value: unknown): VeltoProjectApiRecord {
+  return value as VeltoProjectApiRecord;
+}
+
+function createShareId() {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+}
+
+// VELTO_PORT_P2 — all velto_projects table knowledge is isolated here.
+export class SupabaseProjectRepository implements ProjectRepository {
+  async listForOwner(ownerUserId: string): Promise<VeltoProjectApiRecord[]> {
+    const client = createServerSupabaseClient();
+    const { data, error } = await client
+      .from("velto_projects")
+      .select(PROJECT_LIST_FIELDS)
+      .eq("owner_user_id", ownerUserId)
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      throw new Error(`Projects could not be listed: ${error.message}`);
+    }
+
+    return (data || []).map(asProjectRecord);
+  }
+
+  async getForOwner(
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<VeltoProjectApiRecord | null> {
+    const client = createServerSupabaseClient();
+    const { data, error } = await client
+      .from("velto_projects")
+      .select("*")
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Project could not be read: ${error.message}`);
+    }
+
+    return data ? asProjectRecord(data) : null;
+  }
+
+  async getPublicByShareId(
+    shareId: string,
+  ): Promise<PublicStoryverseProjectSourceRecord | null> {
+    const client = createServerSupabaseClient();
+    const { data, error } = await client
+      .from("velto_projects")
+      .select(PUBLIC_PROJECT_FIELDS)
+      .eq("share_id", shareId)
+      .eq("is_public", true)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Public project could not be read: ${error.message}`);
+    }
+
+    return data ? (data as PublicStoryverseProjectSourceRecord) : null;
+  }
+
+  async saveForOwner(
+    input: SaveVeltoProjectInput,
+  ): Promise<SaveVeltoProjectResult> {
+    const client = createServerSupabaseClient();
+    let payload = creatorProjectInsertPayload(input);
+
+    if (input.projectId) {
+      const { data: existingProject, error: existingProjectError } = await client
+        .from("velto_projects")
+        .select("flow_type")
+        .eq("id", input.projectId)
+        .eq("owner_user_id", input.ownerUserId)
+        .maybeSingle();
+
+      if (existingProjectError) {
+        throw new Error(`Project flow could not be read: ${existingProjectError.message}`);
+      }
+      if (!existingProject) {
+        throw new Error("Project was not found or is not owned by this user.");
+      }
+      const persistedFlowType = existingProject.flow_type === "creator_lab"
+        ? "creator_lab"
+        : "storyverse";
+      assertExistingProjectFlow(persistedFlowType, input.flowType, input.expectedUpdatedAt);
+      payload = creatorProjectUpdatePayload(input);
+      let update = client
+        .from("velto_projects")
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq("id", input.projectId)
+        .eq("owner_user_id", input.ownerUserId)
+        .eq("flow_type", persistedFlowType);
+      if (input.expectedUpdatedAt) {
+        update = update.eq("updated_at", input.expectedUpdatedAt);
+      }
+      const { data, error } = await update.select().maybeSingle();
+
+      if (error) {
+        throw new Error(`Project could not be updated: ${error.message}`);
+      }
+
+      assertProjectUpdateMatched(data, input.expectedUpdatedAt);
+
+      return { mode: "updated", project: asProjectRecord(data) };
+    }
+
+    const { data, error } = await client
+      .from("velto_projects")
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new Error(
+        `Project could not be created: ${error?.message || "unknown error"}`,
+      );
+    }
+
+    return { mode: "created", project: asProjectRecord(data) };
+  }
+
+  async publishForOwner(
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<PublishVeltoProjectResult> {
+    const client = createServerSupabaseClient();
+    const { data: existingProject, error: existingProjectError } = await client
+      .from("velto_projects")
+      .select("id, owner_user_id, share_id, flow_type")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (existingProjectError) {
+      throw new Error(
+        `Project sharing state could not be read: ${existingProjectError.message}`,
+      );
+    }
+
+    if (!existingProject) return { status: "not_found" };
+    if (existingProject.owner_user_id !== ownerUserId) {
+      return { status: "forbidden" };
+    }
+    if (existingProject.flow_type !== "storyverse") {
+      return { status: "unsupported_flow" };
+    }
+
+    let shareId = String(existingProject.share_id || "").trim();
+
+    if (!shareId) {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const candidate = createShareId();
+        const { data: collision, error: collisionError } = await client
+          .from("velto_projects")
+          .select("id")
+          .eq("share_id", candidate)
+          .maybeSingle();
+
+        if (collisionError) {
+          throw new Error(
+            `Share identifier could not be checked: ${collisionError.message}`,
+          );
+        }
+
+        if (!collision) {
+          shareId = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!shareId) return { status: "share_id_exhausted" };
+
+    const { data, error } = await client
+      .from("velto_projects")
+      .update({
+        share_id: shareId,
+        is_public: true,
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .select("id, share_id, is_public, published_at")
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new Error(
+        `Project could not be published: ${error?.message || "unknown error"}`,
+      );
+    }
+
+    return {
+      status: "published",
+      shareId,
+      project: asProjectRecord(data),
+    };
+  }
+
+  async unpublishForOwner(
+    projectId: string,
+    ownerUserId: string,
+  ): Promise<UnpublishVeltoProjectResult> {
+    const client = createServerSupabaseClient();
+    const { data: existingProject, error: readError } = await client
+      .from("velto_projects")
+      .select("id, owner_user_id, flow_type")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(`Project sharing state could not be read: ${readError.message}`);
+    }
+    if (!existingProject) return { status: "not_found" };
+    if (existingProject.owner_user_id !== ownerUserId) return { status: "forbidden" };
+    if (existingProject.flow_type !== "storyverse") return { status: "unsupported_flow" };
+
+    const { data, error } = await client
+      .from("velto_projects")
+      .update({ is_public: false, updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .eq("flow_type", "storyverse")
+      .select("id, share_id, is_public, published_at")
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new Error(`Project could not be unpublished: ${error?.message || "unknown error"}`);
+    }
+    return { status: "unpublished", project: asProjectRecord(data) };
+  }
+
+  async removeAssetHistoryUrlForOwner(
+    projectId: string,
+    ownerUserId: string,
+    registeredPublicUrl: string,
+  ) {
+    const existing = await this.getForOwner(projectId, ownerUserId);
+    if (!existing) return { status: "not_found" as const };
+    const cleanup = removeExactAssetHistoryUrl(existing.scenes, registeredPublicUrl);
+    if (cleanup.removedCount === 0) return { status: "changed" as const };
+
+    const existingUpdatedAt = typeof existing.updated_at === "string" ? existing.updated_at.trim() : "";
+    if (!existingUpdatedAt) {
+      throw new Error("Project media history version is unavailable.");
+    }
+
+    // Use the compact update timestamp as the optimistic concurrency token.
+    // Filtering on the full scenes JSON serializes a potentially very large
+    // project payload into the PostgREST query string and can fail before the
+    // safe history cleanup reaches the database.
+    const { data, error } = await createServerSupabaseClient().from("velto_projects")
+      .update({ scenes: cleanup.scenes, updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .eq("owner_user_id", ownerUserId)
+      .eq("updated_at", existingUpdatedAt)
+      .select("*")
+      .maybeSingle();
+    if (error) throw new Error(`Project media history could not be updated: ${error.message}`);
+    if (!data) return { status: "changed" as const };
+    return { status: "updated" as const, project: asProjectRecord(data), removedCount: cleanup.removedCount };
+  }
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 import { createTimelineSyncPlan } from "../../../lib/video/timelineSync";
 
 export const runtime = "nodejs";
@@ -16,7 +17,16 @@ function getOpenAIClient() {
   });
 }
 
-function parseJsonSafely(rawText: string) {
+// Raw JSON property-read surface only. Fields remain unknown; the existing
+// array checks below are shallow and do not certify individual timeline rows.
+type RawStoryEnvelopeRead = Readonly<{
+  title?: unknown;
+  characters?: unknown;
+  visualBible?: unknown;
+  scenes?: unknown;
+}> | null | undefined;
+
+function parseJsonSafely(rawText: string): RawStoryEnvelopeRead {
   const cleaned = rawText
     .trim()
     .replace(/^```json\s*/i, "")
@@ -106,10 +116,11 @@ ${prompt.trim()}
       model: "gpt-4.1-mini",
       input: storyPrompt,
     });
+    await recordOpenAITextEconomics({ route: "/api/story", operationType: "legacy_story", model: "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 
-    let parsed: any;
+    let parsed: RawStoryEnvelopeRead;
     try {
       parsed = parseJsonSafely(rawText);
     } catch {

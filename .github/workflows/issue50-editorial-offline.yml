@@ -1,0 +1,73 @@
+name: Issue 50 candidate checks - not source admission
+on:
+  push:
+    branches: [codex/issue50-editorial-quality-review]
+permissions:
+  contents: read
+concurrency:
+  group: issue50-editorial-offline
+  cancel-in-progress: false
+jobs:
+  editorial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-public-placeholder
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - name: Identify native runner
+        run: |
+          test "$(uname -m)" = x86_64
+          test "$(node -p 'process.versions.node.split(".")[0]')" = 22
+          uname -sm
+          node --version
+          printf 'ImageVersion=%s\n' "$ImageVersion"
+      - name: Install unchanged locked application dependencies
+        run: npm ci
+      - name: Offline editorial proposal and denial tests
+        run: node --experimental-strip-types scripts/issue50-editorial-offline-test.mjs
+      - name: Existing provider adapter with closed stub transport
+        run: node --experimental-strip-types scripts/issue50-provider-contract-test.mjs
+      - name: Inactive exact-five-subject admission black-box controls
+        run: node scripts/issue50-admission-v2-test.mjs
+      - name: Public-only corpus pins - no network or owner acceptance
+        run: node scripts/issue50-public-corpus-test.mjs
+      - name: Substantive public research intake - no provider
+        run: node --experimental-strip-types scripts/issue50-research-intake-test.mjs
+      - name: Guarded transport and one-use accounting - local TLS only
+        run: node scripts/issue50-pilot-transport-test.mjs
+      - name: Prospective combined activation - disposable fixture only
+        run: node scripts/issue50-activation-candidate-test.mjs
+      - name: Existing editorial and lifecycle programs
+        run: |
+          node --experimental-strip-types scripts/creator-script-refinement-r2-research-backed-test.mjs
+          node --experimental-strip-types scripts/post-script-duration-workflow-authority-test.mjs
+          node --experimental-strip-types scripts/stage-5d2c-v2-section-evidence-test.mjs
+          node --experimental-strip-types scripts/stage-0-19e6j-section-native-generation-test.mjs
+          node --experimental-strip-types scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs
+          node --experimental-strip-types scripts/post-strategy-script-long-form-acceptance-test.mjs
+      # Diagnostic evidence only; original mandatory P0 admission stays separate.
+      - name: Candidate TypeScript
+        if: ${{ !cancelled() }}
+        run: npm run typecheck
+      - name: Candidate changed-line lint
+        if: ${{ !cancelled() }}
+        run: npm run lint:changed
+      - name: Complete critical offline regressions
+        if: ${{ !cancelled() }}
+        run: npm run test:ci-critical
+      - name: Candidate production build only - no deployment
+        if: ${{ !cancelled() }}
+        run: npm run build
+      - name: Existing CI contract
+        if: ${{ !cancelled() }}
+        run: npm run test:ci-contract

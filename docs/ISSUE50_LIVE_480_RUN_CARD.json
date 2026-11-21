@@ -1,0 +1,75 @@
+{
+  "schema": "velto-editorial-live-run-card/v1",
+  "id": "ISSUE50-ONE-480S-V1",
+  "state": "PREPARED_NOT_AUTHORIZED_NOT_READY_FOR_PROVIDER",
+  "logicalRuns": 1,
+  "targetDurationSeconds": 480,
+  "language": "en",
+  "agent": "EXISTING_VELTO_SECTION_NATIVE_EDITORIAL_GENERATION",
+  "model": "gpt-6.1-sol",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "serviceTier": "default",
+  "requests": {
+    "maximum": 5,
+    "sectionOrder": [
+      "opening",
+      "section-1",
+      "section-2",
+      "section-3",
+      "conclusion"
+    ],
+    "attemptsPerRequest": 1,
+    "sdkRetries": 0,
+    "parallelism": 1,
+    "repairCalls": 0,
+    "rewriteCalls": 0,
+    "searchMediaAudioCalls": 0
+  },
+  "limits": {
+    "inputTokensPerRequest": 20000,
+    "outputTokensPerRequestIncludingReasoning": 25000,
+    "providerCostUSD": 1.65,
+    "requestTimeoutSeconds": 300,
+    "wholeRunTimeoutSeconds": 900
+  },
+  "costReservation": "(5*20000*2.5 + 5*25000*10)/1e6*1.10 = 1.65 USD; confirm account/tier/tax fits before approval executable",
+  "implementationPins": {
+    "lib/creator/creatorScriptGenerationPilotHarness.ts": "3414419dd0f469488cade5f4d6d930d34c4780d717015fd6394a6e168504e7b9",
+    "lib/creator/creatorScriptGenerationPilotOfflineTransport.ts": "af0edd063f662df73303ab2c57d8917885893405e4fd7998ab2bc7e2f781660e",
+    "lib/creator/creatorScriptGenerationPilotReadiness.ts": "854a458f6ebc4ffb90d020b861e3e30bb1d3e71901d78a6c6b256834fd03c6c2"
+  },
+  "input": {
+    "topicProposed": "Digital afterlife: preserving statements versus authority to generate new words",
+    "syntheticReferencePath": "scripts/fixtures/issue50-editorial-offline.json",
+    "syntheticReferenceSha256": "89cac495f97a46a37be096752f4222701841e1cc32bf18dc75f890ae8c4d9bc2",
+    "referenceAuthority": "SYNTHETIC_EDITORIAL_TARGET_ONLY_NOT_AUTHENTICATED_PUBLIC_CORPUS",
+    "eligiblePublicCorpusManifestSha256": "MISSING",
+    "eligiblePublicPassageAndLocatorPins": "MISSING",
+    "customerDataPermitted": false
+  },
+  "preflight": {
+    "sourceAdmission": "PENDING_SEPARATE_VERSIONED_REVIEW",
+    "ownerProviderSpendAuthorization": "NOT_GRANTED",
+    "publisherVerifiedEligibleCorpus": "MISSING; do not mark example.test or synthetic flags verified",
+    "exactDynamicRequestTokenBound": "UNVERIFIED; offline checks are not calibrated authority",
+    "realProviderTransport": "UNAVAILABLE_UNQUALIFIED; do not flip offline-only guard",
+    "accountBillingCeilingAndRates": "NOT_VERIFIED; no credential/account interrogation performed",
+    "durableOneUseAttemptAndReservation": "NOT_QUALIFIED_FOR_LIVE; unknown commit or response consumes attempt, no replay",
+    "isolatedCredentialAndOSEgress": "NOT_VERIFIED; api.openai.com only, no live Supabase/economics writes"
+  },
+  "successEvidence": [
+    "One complete English script from five actual bounded requests, no repair/retry",
+    "Existing canonical parsing/section/claim/narration/duration validators PASS; otherwise report FAIL without another call",
+    "Private local script and exact claim/source/passage binding, request/usage/reservation receipts; never full prompt in public logs",
+    "Owner reads full script and records unsupported assertions, progression, clarity, repetition, conclusion and substantive edit count"
+  ],
+  "stop": [
+    "Any missing preflight, incompatible cost/token bound, unapproved input/model/request",
+    "Ambiguous dispatch/usage or timeout; no replacement attempt/key",
+    "Invalid grounded output, duration failure, need for extra call, budget breach or credential/egress violation"
+  ],
+  "nextOwnerDecision": "After independent source-admission review and technical intake/transport/accounting qualification, authorize exactly ONE <=480second target run under five requests/$1.65. No spending is authorized by this card.",
+  "providerCallsExecuted": 0,
+  "labProvisioningAuthorized": false,
+  "mergeDeployBetaAuthorized": false
+}

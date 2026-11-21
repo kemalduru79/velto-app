@@ -1,0 +1,101 @@
+import { readMountedWorkspacePanel } from "./fixtures/create-workspace-panel-authority.mjs";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import { createCreatorProductionSetupPresentation } from "../components/create/creatorProductionSetupPresentation.ts";
+
+const production = readMountedWorkspacePanel("CreatorProductionPanel");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const page = readFileSync(path.join(root, "app/create/page.tsx"), "utf8");
+const css = readFileSync(path.join(root, "app/creatorlab-ux-p2c.css"), "utf8");
+
+const validSetup = createCreatorProductionSetupPresentation({
+  language: "en",
+  presentation: "Narrator-led",
+  narrator: "Velto default",
+  music: "Off",
+  continuity: "Independent scenes",
+  visualStyle: "Clean documentary realism",
+  musicConfirmationRequired: false,
+});
+
+assert.equal(
+  validSetup.headline,
+  "Narrator-led · Velto default · Music Off · Independent scenes",
+  "recommended summary must be derived from the supplied canonical setup values",
+);
+assert.equal(validSetup.visualStyleSummary, "Clean documentary realism");
+assert.equal(validSetup.customizeInitiallyOpen, false);
+assert.equal(validSetup.actionRequired, false);
+
+const blockedSetup = createCreatorProductionSetupPresentation({
+  language: "en",
+  presentation: "Faceless",
+  narrator: "Velto default",
+  music: "Selected",
+  continuity: "Keep continuity",
+  visualStyle: "",
+  musicConfirmationRequired: true,
+});
+
+assert.equal(blockedSetup.customizeInitiallyOpen, true);
+assert.equal(blockedSetup.actionRequired, true);
+assert.equal(blockedSetup.customizeStatus, "Action required");
+assert.equal(blockedSetup.visualStyleSummary, "Velto recommended");
+
+for (const group of ["presentation-cast", "brand-visual", "voice", "music", "continuity"]) {
+  assert.match(production, new RegExp(`data-setup-group=["']${group}["']`), `${group} must remain reachable through Customize`);
+}
+
+assert.match(production, /<details[\s\S]*id="creatorlab-production-customize"/);
+assert.match(
+  page,
+  /\[creatorProductionCustomizeOpen, setCreatorProductionCustomizeOpen\][\s\S]*?useState\(true\)/,
+  "Customize Production must start expanded",
+);
+assert.match(production, /open=\{creatorProductionCustomizeOpen\}/);
+assert.match(
+  production,
+  /onToggle=\{\(event\) =>[\s\S]*?setCreatorProductionCustomizeOpen\(event\.currentTarget\.open\)/,
+  "the native disclosure state must preserve a manual collapse",
+);
+assert.match(production, /data-production-primary-continue="true"[\s\S]*selectCreatorProductionSubstep\("create_review"\)/);
+assert.equal((production.match(/data-production-primary-continue="true"/g) || []).length, 1, "Production Setup must have one dominant Continue CTA");
+
+// Existing handlers remain authoritative; the disclosure state is presentation-only.
+for (const handlerContract of [
+  /setCreatorNoCastMode\("faceless"\)/,
+  /clearAllSceneAudioData\(\)/,
+  /applyCreatorVoiceProfile\(/,
+  /setCreatorProjectContinuityMode\(option\.value\)/,
+  /saveCreatorProfile/,
+]) {
+  assert.match(production, handlerContract);
+}
+assert.match(page, /setCreatorAudioTimeline\(nextTimeline\)/);
+const customizeDisclosure = production.slice(
+  production.indexOf('id="creatorlab-production-customize"'),
+  production.indexOf('id="creatorlab-production-customize"') + 560,
+);
+assert.doesNotMatch(
+  customizeDisclosure,
+  /fetch\(|\/api\/|generate|research|saveCreator|setCreatorProductionPackage/i,
+  "opening or collapsing Customize Production must have no workflow side effects",
+);
+
+for (const responsiveContract of [
+  ".creatorlab-setup-recommendation",
+  ".creatorlab-setup-customize",
+  ".creatorlab-setup-summary-grid",
+  "@media (max-width: 760px)",
+]) {
+  assert.ok(css.includes(responsiveContract), `missing responsive setup contract: ${responsiveContract}`);
+}
+
+// The accepted Create & Review selected-scene workspace remains intact.
+assert.match(production, /creatorlab-p2c-production-workspace/);
+assert.match(production, /scenes\.filter\(\(scene\) => scene\.id === creatorFocusedSceneId\)/);
+
+console.log("Stage 0.10H Production Setup UX tests passed.");

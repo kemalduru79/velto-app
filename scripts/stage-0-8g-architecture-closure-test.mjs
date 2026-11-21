@@ -1,0 +1,497 @@
+import { readWorkspaceChangePaths, unreviewedWorkspacePaths } from "./quality/p0-workspace-scope.mjs";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(path, "utf8");
+const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+const trackedInventoryHash = (pathspec) => {
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", pathspec], { encoding: "utf8" });
+  return createHash("sha256").update(files).digest("hex");
+};
+const check = (name, assertion) => {
+  assertion();
+  console.log(`PASS ${name}`);
+};
+
+const status = read("docs/STAGE-0.8-STATUS.md");
+const closure = read("docs/STAGE-0.8-ARCHITECTURE-CLOSURE.md");
+const workflow = read(".github/workflows/ci.yml");
+const dockerfile = read("Dockerfile");
+const exportDockerfile = read("export-service/Dockerfile");
+const compose = read("compose.yaml");
+const packageJson = JSON.parse(read("package.json"));
+
+for (const stage of ["A", "B", "C", "D", "E", "F"]) {
+  check(`0.8${stage} is closed`, () => assert.match(status, new RegExp(`0\\.8${stage}: CLOSED/PASS`)));
+}
+check("0.8F-A is closed", () => assert.match(status, /0\.8F-A[^\n]*CLOSED\/PASS/));
+check("0.8F-B is closed", () => assert.match(status, /0\.8F-B[^\n]*CLOSED\/PASS/));
+check("0.8G is closed", () => assert.match(status, /0\.8G[^\n]*CLOSED\/PASS/));
+check("overall Stage 0.8 closure is recorded", () => assert.match(status, /Stage 0\.8 is globally CLOSED\/PASS/));
+
+for (const heading of [
+  "Objective", "Final runtime topology", "Architectural style", "Persistence",
+  "Runtime configuration and secrets", "Optional provider boundary", "CI and quality gates",
+  "Runtime safety", "Observability and recovery", "Cloud portability",
+  "Deferred work and non-goals", "Closure decision",
+]) {
+  check(`closure documents ${heading}`, () => assert.match(closure, new RegExp(`## ${heading}`)));
+}
+check("web, worker, and export topology is explicit", () => {
+  assert.match(closure, /### Web/);
+  assert.match(closure, /### Worker/);
+  assert.match(closure, /### Export/);
+});
+check("Node 22 and runtime ports are documented", () => {
+  assert.match(closure, /Node\.js 22/);
+  assert.match(closure, /port 3000/);
+  assert.match(closure, /port 3001/);
+});
+check("stateless and temporary filesystem contracts are documented", () => {
+  assert.match(closure, /stateless Next\.js web runtime/);
+  assert.match(closure, /\/tmp` as the only writable temporary area/);
+  assert.match(closure, /no durable state relies on a local container filesystem/);
+});
+check("Supabase persistence contract is documented", () => {
+  assert.match(closure, /Supabase Postgres, Supabase Auth, and Supabase Storage/);
+  assert.match(closure, /current implemented persistence driver remains Supabase/);
+});
+check("canonical release identity is documented", () => assert.match(closure, /`VELTO_RELEASE` is the canonical cloud-neutral release identity/));
+check("health and recovery contracts are documented", () => {
+  assert.match(closure, /live and ready health endpoints/);
+  assert.match(closure, /safe operator runbook/);
+  assert.match(closure, /preview-before-apply/);
+  assert.match(closure, /purge recovery procedures fail closed/);
+});
+check("architecture remains a modular monolith", () => assert.match(closure, /MODULAR MONOLITH/));
+check("architecture rejects a microservices claim", () => assert.match(closure, /not a microservices architecture/i));
+check("current production target is retained", () => assert.match(closure, /Vercel \+ Supabase \+ Railway/));
+check("Azure remains deferred at zero cost", () => {
+  assert.match(closure, /no Azure resources/);
+  assert.match(closure, /Azure cost at €0/);
+});
+for (const stage of ["0.9", "0.10", "0.11", "0.12"]) {
+  check(`${stage} is explicitly deferred`, () => assert.match(closure, new RegExp(`Stage ${stage.replace(".", "\\.")}`)));
+}
+check("closure evidence records committed CI and Vercel", () => {
+  assert.match(closure, /Stage 0\.8 is \*\*CLOSED \/ PASS\*\*/);
+  assert.match(closure, /2dd3548f7fe3fa0084cc27d045412cb6563775bf/);
+  assert.match(closure, /32522776885/);
+  assert.match(closure, /Vercel validation on the same SHA/);
+  assert.match(closure, /no unresolved P0\/P1 architecture blocker remained/);
+});
+
+check("CI uses Node 22", () => assert.match(workflow, /node-version:\s*["']?22/));
+check("CI runs locked installation", () => assert.match(workflow, /run:\s*npm ci/));
+check("CI has read-only contents permission", () => assert.match(workflow, /contents:\s*read/));
+check("web and worker images use Node 22", () => assert.match(dockerfile, /FROM node:22-/));
+check("worker image is non-root", () => assert.match(dockerfile, /FROM deps AS worker[\s\S]*?USER node/));
+check("web runner image is non-root", () => assert.match(dockerfile, /USER nextjs/));
+check("export image uses Node 22", () => assert.match(exportDockerfile, /FROM node:22-/));
+check("export image is non-root", () => assert.match(exportDockerfile, /USER node/));
+check("portable services use read-only filesystems", () => assert.equal((compose.match(/read_only:\s*true/g) ?? []).length, 2));
+check("portable services provide writable temp space", () => assert.equal((compose.match(/tmpfs:/g) ?? []).length, 2));
+
+check("no Azure SDK dependency exists", () => {
+  const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+  assert.equal(Object.keys(dependencies).some((name) => name.startsWith("@azure/")), false);
+});
+check("no Terraform, Bicep, or ARM template exists", () => {
+  const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
+  assert.equal(files.some((path) => /(?:\.tf|\.tfvars|\.bicep)$|(?:azuredeploy|mainTemplate)\.json$/i.test(path)), false);
+});
+check("API route inventory includes reviewed CreatorLab governance, recovery, and Stage 2A durable export surfaces", () => assert.equal(trackedInventoryHash("app/api/**/route.ts"), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c"));
+check("migration inventory includes reviewed Stage 1A, Stage 2A, pre-render recovery, and generation authority migrations", () => assert.equal(trackedInventoryHash("supabase/migrations/*"), "20cfcfb02bc50dd699076cd7d20d0db14cb1b9df29a870278d3784d3c3ada6dd"));
+check("dependency manifest preserves reviewed runtime dependencies", () => {
+  assert.deepEqual(Object.keys(packageJson.dependencies).sort(), [
+    "@runwayml/sdk", "@supabase/supabase-js", "ffmpeg-static", "ffprobe-static",
+    "geist", "hls.js", "next", "openai", "react", "react-dom",
+  ].sort());
+  assert.deepEqual(Object.keys(packageJson.devDependencies).sort(), [
+    "@tailwindcss/postcss", "@types/node", "@types/react", "@types/react-dom",
+    "eslint", "eslint-config-next", "tailwindcss", "typescript",
+  ].sort());
+});
+check("dependency lock matches reviewed security candidate", () => assert.equal(sha256("package-lock.json"), "0cc49f1066100518a98bdc5c78fdb05434858d8ef0046abb66f22c6009990b52"));
+check("worker runtime includes the reviewed durable final-export handler", () => assert.equal(sha256("lib/worker/runtime.mjs"), "159d8bd5d8ac6b12ede8b0e38f46a28f1c28c6505e9af4579b888088787ef2c9"));
+check("export runtime preserves reviewed static output, real video trim, audio mixing and durable output provenance", () => {
+  // The old whole-file checksum pinned an obsolete motion renderer and rejected
+  // the verified static-image replacement. Check the protected behaviors
+  // instead of silently updating that checksum to accept arbitrary code.
+  const server = read("export-service/src/server.js");
+  const still = read("export-service/src/staticImage.js");
+  assert.match(server, /import \{ buildStaticImageFilter \} from "\.\/staticImage\.js"/);
+  assert.match(server, /function normalizeCreatorVideoTrim\(/);
+  assert.match(server, /clipOutSec - clipInSec < CREATOR_MIN_VIDEO_CLIP_SECONDS/);
+  assert.match(server, /trim=start=\$\{clipInSec\.toFixed\(3\)\}/);
+  assert.match(server, /buildCreatorSceneAudioMixFilter\(/);
+  assert.match(server, /buildCreatorProgramLoudnessMasterFilter\(/);
+  assert.match(server, /function durableFinalExportIdentity\(/);
+  assert.match(server, /manifestSha256/);
+  assert.match(server, /renderPayloadSha256/);
+  assert.match(server, /timingSafeEqual\(/);
+  assert.match(still, /buildCreatorVisualFitFilters/);
+  assert.match(still, /trim=start=0:duration/);
+  assert.doesNotMatch(still, /zoompan=/);
+});
+check("container contracts are unchanged", () => {
+  assert.equal(sha256("Dockerfile"), "7086c635d4196bf3e38f4640edf63dcd2a44e6b8b1a485faa46411190460707d");
+  assert.equal(sha256("Dockerfile.worker"), "97b5c693969f1bec0e5e34c6720aab338f1077fff624af709b8f0c8d7637465b");
+  assert.equal(sha256("export-service/Dockerfile"), "95a5257335bc2730854e6b40b2bf3f5309734f1d01e4683d41c115b358d6f2cc");
+  assert.equal(sha256("compose.yaml"), "3cd87654ca1ff919a46f75302b7f527bdcadcd994d6ca236d83ba42dd3f0046b");
+});
+check("Stage 0.8 closure worktree scope permits only reviewed later-stage additions", () => {
+  const allowed = new Set([
+    "docs/STAGE-0.8-STATUS.md",
+    "docs/STAGE-0.8-ARCHITECTURE-CLOSURE.md",
+    "scripts/stage-0-8a-critical-regression.mjs",
+    "scripts/stage-0-8f-a-health-observability-test.mjs",
+    "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+    "scripts/stage-0-8g-architecture-closure-test.mjs",
+    "Dockerfile.worker",
+    "app/api/share-project/route.ts",
+    "app/api/creator-music/acquire/route.ts",
+    "app/create/page.tsx",
+    "app/globals.css",
+    "app/layout.tsx",
+    "app/creatorlab-ux-i-b.css",
+    "app/creatorlab-ux-i-c.css",
+    "app/creatorlab-ux-i-d.css",
+    "app/creatorlab-ux-i-e.css",
+    "lib/creator/creatorProductionJson.ts",
+    "lib/creator/stageNavigation.ts",
+    "lib/creator/services/creatorProduction.server.ts",
+    "app/signup/page.tsx",
+    "lib/auth/supabaseAuthAdapter.ts",
+    "lib/auth/types.ts",
+    "lib/persistence/projects/supabaseProjectRepository.ts",
+    "lib/persistence/projects/types.ts",
+    "next.config.ts",
+    "docs/STAGE-0.9-DATA-LIFECYCLE.md",
+    "docs/STAGE-0.9-STATUS.md",
+    "scripts/stage-0-9a-security-consent-baseline-test.mjs",
+    ".env.container.example",
+    "components/create/CreatorEditor.tsx",
+    "components/create/CreatorSceneProductionStatus.tsx",
+    "app/creatorlab-ux-p2c.css",
+    "scripts/ux-p2c-production-workspace-smoke-test.mjs",
+    "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
+    "scripts/beta-fin-p1-cost-guard-smoke-test.mjs",
+    "components/create/creatorProductionSetupPresentation.ts",
+    "scripts/stage-0-10h-production-setup-ux-test.mjs",
+    "components/create/CreatorStockPicker.tsx",
+    "components/create/CreatorBackgroundMusic.tsx",
+    "components/create/CreatorSceneMusicControls.tsx",
+    "components/create/CreatorMusicLibraryPicker.tsx",
+    "scripts/stage-0-13c-e-music-library-corrective-test.mjs",
+    "scripts/beta-audio-p1-premium-music-catalog-smoke-test.mjs",
+    "scripts/beta-audio-p1-premium-music-confirmation-ux-smoke-test.mjs",
+    "scripts/voice-p1-3m-smoke-test.mjs",
+    "scripts/voice-p1b-smoke-test.mjs",
+    "lib/creator/sceneMusic.ts",
+  "scripts/stage-0-13c-e-scene-aware-music-test.mjs",
+  "components/create/CreatorSceneProductionStatus.tsx",
+  "scripts/stage-0-13c-e-final-ux-corrective-test.mjs",
+    "scripts/stage-0-13c-e-spacious-create-review-layout-test.mjs",
+    "export-service/src/creatorAudioMixPlan.js",
+    "export-service/src/creatorAudioPolicy.js",
+    "components/create/useCreatorAudioPreviewPlayback.ts",
+    "lib/creator/audioPreviewPlan.ts",
+    "export-service/src/server.js",
+    "scripts/stage-0-13c-f-renderer-mixing-test.mjs",
+    "scripts/stage-0-13c-g-preview-parity-test.mjs",
+    "scripts/beta-audio-p1-premium-music-entitlement-storage-smoke-test.mjs",
+    "scripts/beta-audio-p1-premium-music-export-usage-outbox-smoke-test.mjs",
+  "scripts/beta-audio-p1-premium-music-export-entitlement-smoke-test.mjs",
+  "scripts/beta-edit-p1-creator-editor-foundation-smoke-test.mjs",
+  "scripts/beta-edit-p1b-creator-editor-scene-operations-smoke-test.mjs",
+  "scripts/beta-edit-p1c-creator-editor-trim-preview-smoke-test.mjs",
+  "scripts/beta-ux-p1-production-consolidation-smoke-test.mjs",
+  "scripts/ux-p2c-production-workspace-smoke-test.mjs",
+    "components/create/CreatorProjectAssets.tsx",
+    "scripts/ux-p2c-production-workspace-smoke-test.mjs",
+    "docs/STAGE-0.10C-PEXELS-SAFE-STOCK.md",
+    "docs/STAGE-0.10D-PRODUCTION-INTELLIGENCE.md",
+    "lib/persistence/media/registerStoredAsset.ts",
+    "package.json",
+    "scripts/stage-0-7a-2-final-movie-migration-test.mjs",
+    "scripts/stage-0-7a-media-ownership-metering-test.mjs",
+    "scripts/stage-0-19f-f2-final-export-timeout-contract-test.mjs",
+    "scripts/stage-0-7d-3a-final-export-admission-schema-test.mjs",
+    "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+    "scripts/stage-0-10c-pexels-safe-stock-test.mjs",
+    "supabase/migrations/20260822150000_stage_0_10c_pexels_safe_stock.sql",
+    "lib/creator/mediaRouting.ts",
+    "lib/creator/productionIntelligence.ts",
+    "lib/creator/services/creatorProduction.server.ts",
+    "scripts/beta-edit-p1e-final-video-lifecycle-smoke-test.mjs",
+    "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
+    "scripts/stage-0-10d-production-intelligence-test.mjs",
+    "supabase/migrations/20260822170000_stage_0_10d_stock_import_claims.sql",
+    "app/api/creator-production-intelligence/route.ts",
+    "app/api/creator-video/route.ts",
+    "app/api/internal/jobs/[jobId]/provider-status/route.ts",
+    "docs/stage-0-10e-smart-premium-routing.md",
+    "lib/economics/calculators.ts",
+    "lib/economics/pricingCatalog.ts",
+    "lib/security/creatorVideoTaskBindingBoundary.ts",
+    "lib/video/creatorProfiles.ts",
+    "lib/video/creatorSmartRouting.ts",
+    "lib/video/providers/runwayAdapter.ts",
+    "lib/video/providers/types.ts",
+    "lib/video/providers/veoAdapter.ts",
+    "scripts/beta-data-p1b-3b-2a-smoke-test.mjs",
+    "scripts/stage-0-10b-economics-test.mjs",
+    "scripts/stage-0-10e-smart-premium-routing-test.mjs",
+    "tsconfig.json",
+    "app/api/creator-usage/route.ts",
+    "app/api/export-creator-package/route.ts",
+    "app/api/creator-publish-readiness/route.ts",
+    "app/api/creator-publish-readiness/",
+    "lib/creator/audioRenderability.server.ts",
+    "lib/creator/finalSceneExportSelection.ts",
+    "lib/creator/musicAcquisitionEconomics.server.ts",
+    "lib/creator/publishReadiness.server.ts",
+    "scripts/stage-0-13c-h-final-signature-normalization-test.mjs",
+    "scripts/stage-0-13c-h-rights-publish-economics-test.mjs",
+    "scripts/stage-0-13c-h-stop-after-invalidation-test.mjs",
+    "docs/stage-0-10f-usage-margin-controls.md",
+    "lib/economics/economicAdmission.ts",
+    "lib/economics/entitlementSnapshot.ts",
+    "lib/economics/marginBenchmark.ts",
+    "lib/economics/usageAggregation.ts",
+    "lib/economics/usageService.server.ts",
+    "scripts/stage-0-10f-usage-margin-controls-test.mjs",
+    "supabase/migrations/20260822200000_stage_0_10f_usage_indexes.sql",
+    "docs/stage-0-10g-package-quality-closure.md",
+    "lib/economics/packageValidation.ts",
+    "scripts/stage-0-10g-package-quality-closure-test.mjs",
+    "scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
+    "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
+    "scripts/stage-0-10h-4j-documentary-pi-closure-test.mjs",
+    "scripts/stage-0-10h-5g-publish-release-governance-test.mjs",
+    "scripts/stage-0-10h-5h-evidence-governance-closure-test.mjs",
+    "lib/research/nativeRepurposing.ts",
+    "scripts/stage-0-10h-6-native-repurposing-test.mjs",
+    "lib/creator/contentReadyAcceptance.ts",
+    "lib/research/evidenceSnapshot.ts",
+    "scripts/stage-0-10h-7-content-ready-acceptance-test.mjs",
+    "lib/research/creatorEditorialPipeline.client.ts",
+    "app/api/creator-script-plan/route.ts",
+    "components/create/CreatorScriptReview.tsx",
+    "lib/creator/creatorScript.ts",
+    "lib/creator/creatorProductionAuthority.ts",
+    "lib/research/scriptPlannerEditorialContext.ts",
+    "scripts/stage-0-13b-full-script-review-test.mjs",
+    "scripts/stage-0-10h-ui-acceptance-fetch-fix-test.mjs",
+    "app/api/creator-editorial-analysis/route.ts",
+    "lib/research/editorialGroundingRepair.ts",
+    "scripts/stage-0-10h-ui-acceptance-editorial-grounding-repair-test.mjs",
+    "scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
+    "app/api/creator-scene-script-fit/route.ts",
+    "lib/creator/sceneScriptFit.ts",
+    "scripts/stage-0-10h-autofit-hardening-test.mjs",
+    "app/api/creator-upload/route.ts",
+    "docs/STAGE-0.11B-CAPACITY-BASELINE.md",
+    "lib/observability/capacity.ts",
+    "lib/observability/index.ts",
+    "lib/performance/loadHarness.ts",
+    "lib/performance/",
+    "lib/persistence/jobs/supabaseJobQueueRepository.ts",
+    "lib/providers/stock/service.server.ts",
+    "lib/worker/runtime.mjs",
+    "scripts/stage-0-11b-load-concurrency-test.mjs",
+    "scripts/stage-0-11b-load-harness.mjs",
+    "components/create/CreatorUploadPicker.tsx",
+    "lib/creator/directUpload.ts",
+    "lib/performance/reliabilityHarness.ts",
+    "lib/persistence/storage/supabaseObjectStorageRepository.ts",
+    "lib/persistence/storage/persistenceError.ts",
+    "lib/persistence/storage/types.ts",
+    "scripts/stage-0-10h-custom-upload-test.mjs",
+    "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
+    "docs/STAGE-0.11C-RELIABILITY.md",
+    "docs/STAGE-0.11D-SCALE-ECONOMICS.md",
+    "lib/economics/scaleEnvelope.ts",
+    "scripts/stage-0-11d-scale-economics-test.mjs",
+    "docs/STAGE-0.11E-AZURE-READINESS-GATE.md",
+    "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
+    "app/api/character-image/route.ts",
+    "app/api/creator-export/route.ts",
+    "app/api/image/route.ts",
+    "app/api/store-audio/route.ts",
+    "app/api/store-dialogue-audio/route.ts",
+    "components/auth/UserAccountMenu.tsx",
+    "lib/credits/serverMetering.ts",
+    "lib/credits/creatorAccountingAdmission.ts",
+    "lib/economics/repository.ts",
+    "scripts/beta-data-p1b-1-smoke-test.mjs",
+    "scripts/beta-fin-p1-character-reference-cost-guard-smoke-test.mjs",
+    "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+    "docs/STAGE-0.11F-CLOSURE-GO-NO-GO.md",
+    "scripts/stage-0-11f-closure-go-no-go-test.mjs",
+    "lib/creator/recommendedVisualExecution.ts",
+    "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
+    "lib/creator/visualSourceMethod.ts",
+    "scripts/stage-0-10h-visual-source-selector-test.mjs",
+    "lib/creator/preDispatchPolicy.ts",
+    "lib/creator/stageNavigation.ts",
+    "lib/security/safeRemoteMediaFetch.ts",
+    "lib/security/pinnedDnsLookup.ts",
+    "scripts/stage-0-10h-real-production-acceptance-test.mjs",
+    "scripts/stage-0-10h-countdown-bulk-ux-test.mjs",
+    "lib/creator/visualGenerationScope.ts",
+    "scripts/stage-0-10h-emergency-generation-scope-test.mjs",
+    "lib/creator/visualGenerationStatus.ts",
+    "scripts/stage-0-10h-live-generation-status-test.mjs",
+    "scripts/stage-0-10h-scene-visual-cta-status-test.mjs",
+    "scripts/stage-0-10h-selected-scenes-toolbar-ux-test.mjs",
+    "scripts/stage-0-10h-manual-project-save-test.mjs",
+    "scripts/stage-0-10h-market-evidence-strategy-ux-test.mjs",
+    "scripts/stage-0-10h-strategy-backward-navigation-persistence-test.mjs",
+    "app/api/save-project/route.ts",
+    "lib/creator/projectState.ts",
+    "lib/creator/projectSaveCoordinator.ts",
+    "lib/persistence/projects/projectPatch.ts",
+    "scripts/beta-project-p1-refresh-restoration-smoke-test.mjs",
+    "scripts/stage-0-13a-creator-project-state-persistence-test.mjs",
+    "app/api/creator-upload/route.ts",
+    "app/api/creator-upload/",
+    "components/create/CreatorUploadPicker.tsx",
+    "lib/creator/mediaOrigin.ts",
+    "lib/creator/uploadedMedia.ts",
+    "scripts/stage-0-10h-custom-upload-test.mjs",
+    "lib/creator/publishPreflight.ts",
+    "scripts/stage-0-10h-production-publish-navigation-test.mjs",
+    "scripts/stage-0-10h-publish-preflight-test.mjs",
+    "scripts/stage-0-10i-b-visual-system-test.mjs",
+    "scripts/stage-0-10i-c-stage-polish-test.mjs",
+    "scripts/stage-0-10i-c-creator-production-package-test.mjs",
+    "scripts/stage-0-10i-c-stage-isolation-test.mjs",
+    "scripts/stage-0-10i-d-create-review-visual-test.mjs",
+    "scripts/stage-0-10i-e-publish-responsive-accessibility-test.mjs",
+    "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
+    "app/creatorlab-ux-h0a.css",
+    "scripts/post-0-13b-duplicate-evidence-hotfix-test.mjs",
+    "scripts/post-0-13b-five-stage-workflow-hotfix-test.mjs",
+    "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+    "scripts/stage-0-10c-pexels-safe-stock-test.mjs",
+    "components/create/CreatorEditor.tsx",
+    "components/create/CreatorEditorTimeline.tsx",
+    "components/create/CreatorStockPicker.tsx",
+    "lib/creator/audioTimeline.ts",
+    "lib/creator/musicSetup.ts",
+    "scripts/stage-0-13c-a-audio-timeline-test.mjs",
+    "lib/creator/finalProductionSignature.ts",
+    "scripts/stage-0-13c-b-audio-timeline-persistence-test.mjs",
+    "app/api/creator-audio-assets/",
+    "lib/creator/audioAssetResolver.server.ts",
+    "lib/creator/audioAssets.ts",
+    "lib/creator/audioProbe.server.ts",
+    "scripts/stage-0-13c-c-secure-audio-assets-test.mjs",
+    "scripts/stage-0-13c-d-production-setup-music-ux-test.mjs",
+    "scripts/post-0-13c-c-script-duration-contract-test.mjs",
+    "lib/creator/creatorWorkflowAuthority.ts",
+    "scripts/post-script-duration-workflow-authority-test.mjs",
+    "scripts/post-strategy-script-long-form-acceptance-test.mjs",
+    "scripts/post-long-form-project-lifecycle-authority-test.mjs",
+    "scripts/post-creatorlab-new-project-persistence-test.mjs",
+    "scripts/stage-0-10h-ui-acceptance-fetch-fix-test.mjs",
+    "lib/research/editorialAnalysisContract.ts",
+    "scripts/stage-0-10h-2h-script-planner-editorial-context-test.mjs",
+    "lib/research/researchOrchestration.ts",
+    "lib/research/sourceAssessment.ts",
+    "scripts/stage-0-10h-1c-evidence-freeze-test.mjs",
+    "scripts/stage-0-10h-1f-counter-evidence-orchestration-test.mjs",
+    "lib/research/editorialScriptContext.ts",
+    "app/api/creator-research/route.ts",
+    "lib/research/orchestrationRequest.ts",
+    "scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
+    "lib/providers/research/exaAdapter.ts",
+    "lib/research/editorialAnalysisRequest.ts",
+    "scripts/stage-0-10h-1d-grounded-search-provider-test.mjs",
+    "scripts/stage-0-10h-1e-creator-research-api-test.mjs",
+    "lib/research/topicEvidenceReadiness.ts",
+    "scripts/stage-0-10h-2b-evidence-aware-topic-readiness-test.mjs",
+    "scripts/stage-0-10h-2e-editorial-script-context-test.mjs",
+    "lib/creator/controlledLongFormAcceptance.ts",
+    "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
+    "app/api/jobs/[jobId]/route.ts",
+    "lib/persistence/jobs/types.ts",
+    "lib/worker/jobHandlers.mjs",
+    "scripts/stage-0-7d-3b-final-export-admission-test.mjs",
+    "lib/creator/finalVideoRecovery.ts",
+    "lib/creator/finalVideoRecoveryProbe.server.ts",
+    "lib/creator/mediaFingerprint.server.ts",
+    "scripts/stage-1-creator-final-video-recovery-test.mjs",
+    "scripts/stage-2a-durable-creator-final-export-test.mjs",
+    "scripts/stage-2b-worker-lifecycle-test.mjs",
+    "scripts/fixtures/stage-2b-concurrent-enqueue.sql",
+    "scripts/fixtures/stage-2b-concurrent-setup.sql",
+    "scripts/fixtures/stage-2b-postgres-baseline.sql",
+    "scripts/fixtures/stage-2b-postgres-integration.sql",
+    "scripts/fixtures/stage-2b-render-heartbeat.sql",
+    "scripts/fixtures/stage-2-acceptance-pre-render-recovery.sql",
+    "scripts/fixtures/stage-2-historical-generation-integration.sql",
+    "scripts/fixtures/stage-2-incident-0e20-nonbillable-evidence.json",
+    "scripts/fixtures/stage-2-http-supabase-project-baseline.sql",
+    "scripts/fixtures/stage-2-http-failure-injection.sql",
+    "scripts/stage-2-http-concurrent-admission-test.mjs",
+    "lib/persistence/media/storageAdmission.server.ts",
+    "scripts/fixtures/stage-2c-concurrent-request.sql",
+    "scripts/fixtures/stage-2c-concurrent-setup.sql",
+    "scripts/fixtures/stage-2c-economic-integration.sql",
+    "scripts/fixtures/stage-2c-production-economic-baseline.sql",
+    "supabase/migrations/20261016073805_stage_1a_final_video_recovery_atomic_install.sql",
+    "supabase/migrations/20261016150000_stage_2a_durable_creator_final_exports.sql",
+    "supabase/migrations/20261017170333_stage_2_acceptance_final_export_pre_render_recovery.sql",
+    "supabase/migrations/20261017190000_stage_2_historical_final_export_generations.sql",
+    "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
+    "scripts/stage-r2-safety-autosave-cas-test.mjs",
+    "app/api/creator-script/refine/route.ts",
+    "lib/creator/creatorScriptRefinementRuntime.ts",
+    "lib/creator/creatorScriptEditorialRewrite.ts",
+    "lib/creator/creatorScriptEditorialRewriteProviders.server.ts",
+    "lib/creator/creatorScriptRefinementAcceptance.ts",
+    "lib/research/originalSourceEvidence.ts",
+    "lib/research/originalSourceAcquisition.server.ts",
+    "lib/creator/creatorScriptLiveAcceptanceBudget.ts",
+    "lib/creator/creatorScriptStage4B2Preflight.ts",
+    "lib/creator/stage4b2ProviderAcceptance.ts",
+    "lib/creator/stage4b2PdfEvidence.server.ts",
+    "lib/creator/stage4b2Verbatim.ts",
+    "lib/creator/creatorScriptCanonicalAcceptance.ts",
+    "lib/creator/stage4b2CanonicalAuthority.ts",
+    "lib/creator/creatorScriptLiveAcceptanceRunner.ts",
+    "lib/creator/creatorScriptRevisions.ts",
+    "scripts/creator-script-refinement-r1-foundation-test.mjs",
+    "scripts/creator-script-refinement-r2-research-backed-test.mjs",
+    "scripts/stage-4a-creator-refinement-acceptance-test.mjs",
+    "scripts/stage-4b1-controlled-live-acceptance-harness-test.mjs",
+    "scripts/stage-4b2-provider-acceptance-preflight-test.mjs",
+    "scripts/stage-4b2-local-live-probe.mjs",
+    "scripts/stage-4b2-local-live-probe-offline-test.mjs",
+    "scripts/stage-4b2-exact-source-recovery-test.mjs",
+    "scripts/stage-4b2-pdf-evidence-test.mjs",
+    "scripts/stage-4b2-real-pdf-offline-acceptance.mjs",
+    "scripts/stage-4b2-canonical-whole-script-acceptance-test.mjs",
+    "scripts/stage-4b2-canonical-whole-script-acceptance.mjs",
+    "scripts/stage-4b2e-owner-canonical-capture-test.mjs",
+    "scripts/stage-4b2e-owner-canonical-capture.mjs",
+    "lib/creator/stage4b2CanonicalCapture.ts",
+    "docs/creatorlab/R2_STAGE_4B2_LOCAL_EXECUTION.md",
+    "docs/creatorlab/R2_STAGE_4B2D_CANONICAL_READ_ONLY_ACCEPTANCE.md",
+    "docs/creatorlab/receipts/STAGE4B2_20261019_SEARCH_1.json",
+    "docs/creatorlab/receipts/STAGE4B2_20261019_CONTENTS_2.json",
+    "docs/creatorlab/receipts/STAGE4B2_20261020_PDFV2_3.json",
+    ".gitignore",
+    "scripts/stage-0-13e-ai-script-refinement-test.mjs",
+  ]);
+  const paths = readWorkspaceChangePaths();
+  const allowedPrefixes = ["app/privacy/", "app/terms/", "components/legal/", "lib/legal/", "app/api/creator-stock/", "app/api/creator-production-intelligence/", "app/api/creator-usage/", "lib/providers/stock/", "app/api/creator-final-export-jobs/", "app/api/creator-final-video-recovery/", "app/api/internal/jobs/[jobId]/creator-final-export/", "docs/creatorlab/receipts/"];
+  assert.deepEqual(unreviewedWorkspacePaths(paths, allowed, allowedPrefixes), []);
+});
+
+console.log("\nSTAGE_0_8G_ARCHITECTURE_CLOSURE=PASS");

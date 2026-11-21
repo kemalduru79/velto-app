@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { createResearchOrchestrationPlan } from "../lib/research/researchOrchestration.ts";
+
+const fact = createResearchOrchestrationPlan({
+  subject: "a public statement about the future of work",
+  claimType: "FACT",
+});
+assert.equal(fact.version, "0.10H-1F");
+assert.equal(fact.lanes[0].purpose, "baseline");
+assert.ok(fact.lanes.some((lane) => lane.purpose === "primary_source"));
+assert.ok(fact.lanes.some((lane) => lane.purpose === "counter_evidence"));
+assert.ok(fact.lanes.length <= 4);
+
+const primaryClaim = createResearchOrchestrationPlan({
+  subject: "a public statement about the future of work",
+  claimType: "PRIMARY_SOURCE_CLAIM",
+  maxResultsPerLane: 5,
+});
+assert.deepEqual(
+  primaryClaim.lanes.map((lane) => [lane.laneId, lane.purpose, lane.input.query]),
+  [
+    ["baseline", "baseline", "a public statement about the future of work"],
+    [
+      "primary-source",
+      "primary_source",
+      "a public statement about the future of work original source official transcript statement document",
+    ],
+    [
+      "primary-transcript-interview",
+      "primary_source",
+      "a public statement about the future of work transcript interview",
+    ],
+    [
+      "counter-evidence",
+      "counter_evidence",
+      "a public statement about the future of work limitations alternative explanations counter evidence criticism",
+    ],
+  ],
+);
+assert.equal(primaryClaim.lanes.length, 4);
+assert.ok(primaryClaim.lanes.every((lane) => lane.input.maxResults === 5));
+
+const unclassified = createResearchOrchestrationPlan({
+  subject: "the future of optional work",
+});
+assert.equal(unclassified.lanes.length, 2);
+assert.deepEqual(
+  unclassified.lanes.map((lane) => lane.purpose),
+  ["baseline", "counter_evidence"],
+);
+assert.equal(unclassified.lanes[0].input.category, "web");
+
+const researchFinding = createResearchOrchestrationPlan({
+  subject: "digital media use and parental stress",
+  claimType: "RESEARCH_FINDING",
+  maxResultsPerLane: 99,
+});
+const supporting = researchFinding.lanes.find((lane) => lane.purpose === "supporting_evidence");
+const counter = researchFinding.lanes.find((lane) => lane.purpose === "counter_evidence");
+assert.equal(supporting?.input.category, "academic");
+assert.equal(counter?.input.category, "academic");
+assert.equal(supporting?.input.maxResults, 6);
+
+const forecast = createResearchOrchestrationPlan({
+  subject: "automation and future employment",
+  claimType: "FORECAST",
+});
+assert.ok(forecast.lanes.some((lane) => lane.purpose === "recent_context"));
+assert.equal(
+  forecast.lanes.find((lane) => lane.purpose === "recent_context")?.required,
+  true,
+);
+
+const metaphysical = createResearchOrchestrationPlan({
+  subject: "a metaphysical claim about pre-birth purpose",
+  claimType: "METAPHYSICAL_CLAIM",
+});
+assert.ok(metaphysical.lanes.some((lane) => lane.purpose === "counter_evidence"));
+assert.equal(
+  metaphysical.lanes.find((lane) => lane.purpose === "counter_evidence")?.input.category,
+  "web",
+);
+
+const thoughtExperiment = createResearchOrchestrationPlan({
+  subject: "a society where paid work is unnecessary",
+  claimType: "THOUGHT_EXPERIMENT",
+});
+assert.equal(
+  thoughtExperiment.lanes.some((lane) => lane.purpose === "counter_evidence"),
+  false,
+);
+
+const serialized = JSON.stringify([
+  fact,
+  researchFinding,
+  forecast,
+  metaphysical,
+  thoughtExperiment,
+]).toLowerCase();
+for (const forbidden of ["truth score", "debunk", "is false", "is true"]) {
+  assert.equal(serialized.includes(forbidden), false, `forbidden editorial verdict: ${forbidden}`);
+}
+
+assert.throws(
+  () => createResearchOrchestrationPlan({ subject: "   " }),
+  /RESEARCH_SUBJECT_REQUIRED/,
+);
+
+console.log("Stage 0.10H-1F counter-evidence orchestration tests passed.");

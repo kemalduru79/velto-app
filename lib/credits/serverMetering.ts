@@ -1,0 +1,271 @@
+import { randomUUID } from "crypto";
+import { NextResponse } from "next/server";
+import {
+  authenticateRequest,
+  AuthenticationError,
+} from "@/lib/auth/server";
+import { CreditEngine, CreditEngineError } from "./engine";
+import { getPersistenceServices } from "@/lib/persistence";
+import {
+  getOperationCreditCost,
+  type MeteredOperationType,
+} from "./operationPolicy";
+import type { CreditAccount } from "./types";
+import { createLogger, observeCreditMutation } from "@/lib/observability";
+import {
+  claimEconomicOperation,
+  EconomicOperationClaimError,
+  releaseEconomicOperationClaim,
+  unknownCost,
+} from "@/lib/economics";
+import { createCreatorAccountingAdmission } from "./creatorAccountingAdmission";
+
+const creditEngine = new CreditEngine(
+  getPersistenceServices().creditRepository,
+);
+
+export type MeteredOperationReservation = {
+  mode: "balance_backed" | "creator_accounting";
+  userId: string;
+  reservationId: string;
+  operationType: MeteredOperationType;
+  reservedCredits: number;
+  accountAfterReserve: CreditAccount | null;
+  accountingAttemptKey?: string;
+};
+
+type ReserveMeteredOperationInput = {
+  operationType: MeteredOperationType;
+  qualityMode: unknown;
+  provider?: string;
+  referenceId?: string;
+  metadata?: Record<string, unknown>;
+  billable?: boolean;
+  requireCostGuardConfirmation?: boolean;
+  admissionMode?: "balance_backed" | "creator_accounting";
+  accounting?: {
+    attemptKey: string;
+    route: string;
+    operationType: string;
+    productTier?: string | null;
+    providerTier?: string | null;
+    model?: string | null;
+    projectId?: string | null;
+    sceneId?: string | number | null;
+  };
+};
+
+export const CREATOR_COST_GUARD_VERSION = "creator-cost-guard-v1";
+
+export async function reserveMeteredOperation(
+  request: Request,
+  input: ReserveMeteredOperationInput,
+): Promise<MeteredOperationReservation | null> {
+  const principal = await authenticateRequest(request);
+
+  if (input.billable === false) return null;
+
+  const credits = getOperationCreditCost(input.operationType, input.qualityMode);
+
+  if (credits <= 0) return null;
+
+  if (input.requireCostGuardConfirmation) {
+    const confirmation = request.headers.get("x-creator-cost-guard")?.trim();
+    const logicalOperationId = request.headers.get("x-idempotency-key")?.trim();
+    if (confirmation !== CREATOR_COST_GUARD_VERSION || !logicalOperationId) {
+      throw new CreditEngineError(
+        "CreatorLab paid operations require explicit Cost Guard confirmation.",
+        "INVALID_INPUT",
+      );
+    }
+  }
+
+  const idempotencyKey =
+    request.headers.get("x-idempotency-key")?.trim() ||
+    `${input.operationType}:${randomUUID()}`;
+
+  if (input.admissionMode === "creator_accounting") {
+    if (!input.accounting) {
+      throw new CreditEngineError("Creator accounting metadata is required.", "INVALID_INPUT");
+    }
+    const accounting = input.accounting;
+    try {
+      const accountingReservation = await createCreatorAccountingAdmission({
+        attemptKey: accounting.attemptKey,
+        logicalOperationId: idempotencyKey,
+        userId: principal.id,
+        route: accounting.route,
+        operationType: accounting.operationType,
+      }, async () => claimEconomicOperation({
+        attemptKey: accounting.attemptKey,
+        logicalOperationId: idempotencyKey,
+        idempotencyKey,
+        userId: principal.id,
+        projectId: accounting.projectId,
+        sceneId: accounting.sceneId,
+        route: accounting.route,
+        operationType: accounting.operationType,
+        productTier: accounting.productTier,
+        provider: input.provider,
+        providerTier: accounting.providerTier,
+        model: accounting.model,
+        state: "reserved",
+        cost: unknownCost("Provider cost is recorded after dispatch."),
+      }).then(() => undefined));
+      return { ...accountingReservation, operationType: input.operationType };
+    } catch (error) {
+      if (error instanceof EconomicOperationClaimError && error.code === "DUPLICATE_OPERATION") {
+        throw new CreditEngineError("This production request has already been claimed.", "IDEMPOTENCY_REQUEST_IN_PROGRESS");
+      }
+      throw new CreditEngineError("Creator accounting admission failed.", "CREDIT_OPERATION_FAILED");
+    }
+  }
+
+  const result = await observeCreditMutation(
+    "reserve",
+    input.operationType,
+    () => creditEngine.reserve({
+    userId: principal.id,
+    credits,
+    operationType: input.operationType,
+    idempotencyKey,
+    provider: input.provider,
+    referenceId: input.referenceId,
+    metadata: input.metadata,
+  }),
+  );
+
+  // FIN-P1C — an idempotency replay must never dispatch the provider again.
+  // The current API does not persist full response bodies, so a duplicate is
+  // rejected safely rather than risking a second provider charge.
+  if (result.idempotencyReplay) {
+    if (result.reservation.status === "reserved") {
+      throw new CreditEngineError(
+        "Aynı üretim isteği zaten işleniyor. Lütfen mevcut işlemin sonucunu bekleyin.",
+        "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+      );
+    }
+
+    throw new CreditEngineError(
+      "Bu üretim isteği daha önce işlendi. Yeni bir üretim için işlemi yeniden başlatın.",
+      "IDEMPOTENCY_REQUEST_REPLAYED",
+    );
+  }
+
+  return {
+    mode: "balance_backed",
+    userId: principal.id,
+    reservationId: result.reservation.id,
+    operationType: input.operationType,
+    reservedCredits: credits,
+    accountAfterReserve: result.account,
+  };
+}
+
+export async function markMeteredOperationProviderDispatch(
+  reservation: MeteredOperationReservation,
+  providerRequestId: string,
+  metadata?: Record<string, unknown>,
+) {
+  if (reservation.mode === "creator_accounting") return null;
+  return observeCreditMutation(
+    "dispatch",
+    reservation.operationType,
+    () =>
+      creditEngine.markProviderDispatch({
+        userId: reservation.userId,
+        reservationId: reservation.reservationId,
+        providerRequestId,
+        metadata,
+      }),
+  );
+}
+
+export async function settleMeteredOperation(
+  reservation: MeteredOperationReservation,
+  input?: {
+    providerCostUsd?: number;
+    providerRequestId?: string;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  if (reservation.mode === "creator_accounting") return null;
+  return observeCreditMutation(
+    "settle",
+    reservation.operationType,
+    () =>
+      creditEngine.settle({
+        userId: reservation.userId,
+        reservationId: reservation.reservationId,
+        finalCredits: reservation.reservedCredits,
+        providerCostUsd: input?.providerCostUsd,
+        providerRequestId: input?.providerRequestId,
+        metadata: input?.metadata,
+      }),
+  );
+}
+
+export async function releaseMeteredOperation(
+  reservation: MeteredOperationReservation,
+  reason: string,
+  metadata?: Record<string, unknown>,
+) {
+  try {
+    if (reservation.mode === "creator_accounting") {
+      if (reservation.accountingAttemptKey) {
+        await releaseEconomicOperationClaim(reservation.accountingAttemptKey, reason);
+      }
+      return null;
+    }
+    return await observeCreditMutation(
+      "release",
+      reservation.operationType,
+      () =>
+        creditEngine.release({
+          userId: reservation.userId,
+          reservationId: reservation.reservationId,
+          reason,
+          metadata,
+        }),
+    );
+  } catch (releaseError) {
+    createLogger({ operation: "credit.release" }).error(
+      "Credit reservation release failed.",
+      releaseError,
+      { operationType: reservation.operationType },
+    );
+    return null;
+  }
+}
+
+export function getCreditErrorResponse(error: unknown) {
+  if (error instanceof AuthenticationError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, code: "AUTHENTICATION_REQUIRED" },
+      { status: 401 },
+    );
+  }
+
+  if (error instanceof CreditEngineError) {
+    const status =
+      error.code === "INSUFFICIENT_CREDITS"
+        ? 402
+        : error.code === "RESERVATION_NOT_FOUND"
+          ? 404
+          : error.code === "INVALID_RESERVATION_STATE" ||
+              error.code === "IDEMPOTENCY_KEY_CONFLICT" ||
+              error.code === "IDEMPOTENCY_REQUEST_IN_PROGRESS" ||
+              error.code === "IDEMPOTENCY_REQUEST_REPLAYED"
+            ? 409
+            : error.code === "INVALID_INPUT"
+              ? 400
+              : 500;
+
+    return NextResponse.json(
+      { ok: false, error: error.message, code: error.code },
+      { status },
+    );
+  }
+
+  return null;
+}

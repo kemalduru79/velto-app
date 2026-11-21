@@ -1,185 +1,75 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { enforceLegacyMediaBoundary } from "@/lib/security/legacyMediaStorageBoundary";
+import { MAX_CREATOR_IMAGE_BYTES } from "@/lib/security/creatorMediaStoragePolicy";
+import {
+  decodeImageDataUrl,
+  safeRemoteMediaFetch,
+  SafeMediaError,
+} from "@/lib/security/safeRemoteMediaFetch";
+import { consumeStorageAdmissionForMedia, StorageAdmissionError, storageAdmissionErrorResponse } from "@/lib/persistence/media/storageAdmission.server";
 
 export const runtime = "nodejs";
 
-function buildEnvDebug() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  return {
-    SUPABASE_URL: {
-      exists: typeof supabaseUrl === "string",
-      nonEmpty: !!supabaseUrl?.trim(),
-      length: supabaseUrl?.length || 0,
-      preview: supabaseUrl ? `${supabaseUrl.slice(0, 18)}...` : "",
-    },
-    NEXT_PUBLIC_SUPABASE_URL: {
-      exists: typeof publicSupabaseUrl === "string",
-      nonEmpty: !!publicSupabaseUrl?.trim(),
-      length: publicSupabaseUrl?.length || 0,
-      preview: publicSupabaseUrl ? `${publicSupabaseUrl.slice(0, 18)}...` : "",
-    },
-    SUPABASE_SERVICE_ROLE_KEY: {
-      exists: typeof serviceRoleKey === "string",
-      nonEmpty: !!serviceRoleKey?.trim(),
-      length: serviceRoleKey?.length || 0,
-      preview: serviceRoleKey ? `${serviceRoleKey.slice(0, 10)}...` : "",
-    },
-  };
-}
-
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    const envDebug = buildEnvDebug();
-    throw new Error(
-      `SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing | debug=${JSON.stringify(
-        envDebug
-      )}`
-    );
-  }
-
-  if (!serviceRoleKey) {
-    const envDebug = buildEnvDebug();
-    throw new Error(
-      `SUPABASE_SERVICE_ROLE_KEY is missing | debug=${JSON.stringify(envDebug)}`
-    );
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
-
-function safeName(value: string) {
-  return value.replace(/[^a-zA-Z0-9-_]/g, "_");
-}
-
-function parseDataUri(dataUri: string) {
-  const match = dataUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-
-  if (!match) {
-    throw new Error("Invalid image data URI");
-  }
-
-  const mimeType = match[1];
-  const base64Data = match[2];
-  const buffer = Buffer.from(base64Data, "base64");
-
-  let extension = "png";
-  if (mimeType.includes("jpeg")) extension = "jpg";
-  if (mimeType.includes("jpg")) extension = "jpg";
-  if (mimeType.includes("webp")) extension = "webp";
-
-  return {
-    mimeType,
-    extension,
-    buffer,
-  };
-}
-
-async function downloadRemoteFile(url: string) {
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => "");
-    throw new Error(errorText || "Remote image download failed");
-  }
-
-  const contentType = res.headers.get("content-type") || "image/png";
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  let extension = "png";
-  if (contentType.includes("jpeg")) extension = "jpg";
-  if (contentType.includes("jpg")) extension = "jpg";
-  if (contentType.includes("webp")) extension = "webp";
-
-  return {
-    mimeType: contentType,
-    extension,
-    buffer,
-  };
-}
-
+// VELTO_PORT_P2 — media routes use ObjectStorageRepository only.
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-
-    const image =
-      typeof body?.image === "string" ? body.image.trim() : "";
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp-project";
-    const sceneId =
-      typeof body?.sceneId === "number" || typeof body?.sceneId === "string"
-        ? String(body.sceneId)
-        : "unknown";
+    const boundary = await enforceLegacyMediaBoundary<Record<string, unknown>>(req, "store-image");
+    if (!boundary.ok) return boundary.response;
+    const body = boundary.body;
+    const image = typeof body?.image === "string" ? body.image.trim() : "";
+    const storageAdmissionId = typeof body?.storageAdmissionId === "string" ? body.storageAdmissionId.trim() : "";
 
     if (!image) {
       return NextResponse.json(
         { ok: false, error: "image is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    let fileData:
-      | { mimeType: string; extension: string; buffer: Buffer }
-      | undefined;
-
-    if (image.startsWith("data:image/")) {
-      fileData = parseDataUri(image);
-    } else if (image.startsWith("https://")) {
-      fileData = await downloadRemoteFile(image);
-    } else {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "image must be a data URI or a public HTTPS URL",
-        },
-        { status: 400 }
-      );
-    }
-
-    const supabase = getSupabaseAdmin();
-
-    const safeProjectId = safeName(projectId);
-    const safeSceneId = safeName(sceneId);
-    const filePath = `${safeProjectId}/scene-${safeSceneId}-${Date.now()}.${fileData.extension}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(filePath, fileData.buffer, {
-        contentType: fileData.mimeType,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("images")
-      .getPublicUrl(filePath);
+    const storedImage = await consumeStorageAdmissionForMedia({
+      ownerUserId: boundary.user.id,
+      storageAdmissionId,
+      mediaKind: "image",
+      purpose: "storyverse_generated_image",
+      operation: async (markDurableStorageStarted) => {
+        const fileData = image.startsWith("data:")
+          ? decodeImageDataUrl(image, MAX_CREATOR_IMAGE_BYTES)
+          : image.startsWith("https://")
+            ? await safeRemoteMediaFetch({ rawUrl: image, kind: "image", maxBytes: MAX_CREATOR_IMAGE_BYTES })
+            : null;
+        if (!fileData) throw new SafeMediaError(400, "image must be a data URI or a public HTTPS URL");
+        const filePath = `storyverse/${boundary.user.id}/image/${randomUUID()}.${fileData.extension}`;
+        const services = getPersistenceServices();
+        const uploaded = await services.objectStorage.uploadPublic({
+          bucket: "images", path: filePath, body: fileData.buffer, contentType: fileData.mimeType, upsert: false,
+        });
+        markDurableStorageStarted();
+        await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: boundary.user.id,
+          bucket: uploaded.bucket, storagePath: uploaded.path, publicUrl: uploaded.publicUrl, mediaKind: "image",
+          mimeType: fileData.mimeType, body: fileData.buffer, metadata: { product: "storyverse" } });
+        return uploaded;
+      },
+    });
 
     return NextResponse.json({
       ok: true,
-      imageUrl: publicData.publicUrl,
-      path: filePath,
+      imageUrl: storedImage.publicUrl,
+      path: storedImage.path,
     });
-  } catch (error: any) {
-    console.error("store-image error:", error);
-
+  } catch (error) {
+    if (error instanceof StorageAdmissionError) return storageAdmissionErrorResponse(error);
+    if (error instanceof SafeMediaError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    console.error("store-image failed");
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Image could not be stored",
+        error: "Image could not be stored",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

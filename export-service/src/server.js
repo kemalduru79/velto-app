@@ -1,3 +1,4 @@
+import { buildStaticImageFilter } from "./staticImage.js";
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -6,6 +7,28 @@ import { spawn } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
+import { resolveRuntimeRelease } from "./runtimeIdentity.js";
+import { resolveCreatorAudioMixPlan } from "./creatorAudioMixPlan.js";
+import { buildCreatorSceneAudioMixFilter } from "./creatorSceneAudioMix.js";
+import {
+  buildCreatorProgramLoudnessAnalysisFilter,
+  buildCreatorProgramLoudnessMasterFilter,
+  CreatorProgramAudioMasterError,
+  parseCreatorProgramLoudnessMeasurements,
+} from "./creatorProgramAudioMaster.js";
+import {
+  assertStaticImageCoveragePolicy,
+  CreatorStaticImagePlanError,
+  getTransitionAwareDuration,
+  reconcileVisualCoveragePlan,
+  resolveAudioFirstSceneTargetDuration,
+  resolveCoverageBackedSceneTargetDuration,
+} from "./visualCoverage.js";
+import {
+  buildCreatorVisualFitFilters,
+  resolveCreatorVisualFitMode,
+} from "./creatorVisualFit.js";
 
 const app = express();
 
@@ -13,7 +36,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id", "x-velto-storage-admission-id"],
   })
 );
 
@@ -22,7 +45,7 @@ app.options(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-velto-internal-export-token", "x-velto-owner-user-id", "x-velto-project-id", "x-velto-storage-admission-id"],
   })
 );
 
@@ -34,9 +57,24 @@ const MIN_SCENE_DURATION = 8;
 const SCENE_TRANSITION_TRIM_SECONDS = 0.22;
 const MIN_AUDIO_TAIL_BUFFER_SECONDS = 0.08;
 const SPEECH_FREEZE_TAIL_BUFFER_SECONDS = 0.75;
+const CREATOR_MIN_VIDEO_CLIP_SECONDS = 0.25;
 const AMBIENT_ENGINE_ENABLED = true;
 const AMBIENT_DEFAULT_VOLUME = 0.055;
 const AMBIENT_MAX_VOLUME = 0.085;
+// 3N-4 PRODUCTION STITCH CONTINUITY
+const OUTPUT_WIDTH = 1280;
+const OUTPUT_HEIGHT = 720;
+const OUTPUT_FPS = 25;
+const OUTPUT_AUDIO_SAMPLE_RATE = 44100;
+const STITCH_DURATION_TOLERANCE_SECONDS = 0.25;
+const STITCH_AV_DRIFT_TOLERANCE_SECONDS = 0.15;
+const CREATOR_PREMIUM_MUSIC_LICENSE_POLICY_VERSION = "creator-premium-music-license-v1";
+const CREATOR_PREMIUM_MUSIC_PROVIDER_KEY = "premium_music_catalog";
+const MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES = 30 * 1024 * 1024;
+const MAX_CREATOR_AUDIO_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TRACK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,127}$/;
+const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -56,6 +94,81 @@ function getSupabaseAdmin() {
 
 function safeName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9-_]/g, "_");
+}
+
+function internalExportIdentity(req) {
+  const configuredToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim() || "";
+  const suppliedToken = req.get("x-velto-internal-export-token") || "";
+  const configuredBuffer = Buffer.from(configuredToken);
+  const suppliedBuffer = Buffer.from(suppliedToken);
+  const authenticated = configuredBuffer.length > 0 && configuredBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(configuredBuffer, suppliedBuffer);
+  const ownerUserId = req.get("x-velto-owner-user-id") || "";
+  const projectId = req.get("x-velto-project-id") || "";
+  const storageAdmissionId = req.get("x-velto-storage-admission-id") || "";
+  if (!authenticated || !UUID_PATTERN.test(ownerUserId) || !UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(storageAdmissionId)) return null;
+  return { ownerUserId, projectId, storageAdmissionId };
+}
+
+function durableFinalExportIdentity(req) {
+  const jobId = req.get("x-velto-final-export-job-id") || "";
+  const manifestSha256 = req.get("x-velto-manifest-sha256") || "";
+  const renderPayloadSha256 = req.get("x-velto-render-payload-sha256") || "";
+  if (!UUID_PATTERN.test(jobId) || !/^[0-9a-f]{64}$/.test(manifestSha256) || !/^[0-9a-f]{64}$/.test(renderPayloadSha256)) return null;
+  return { jobId, manifestSha256, renderPayloadSha256 };
+}
+
+class FinalMovieStorageAdmissionError extends Error {
+  constructor(message, status = 409) {
+    super(message);
+    this.name = "FinalMovieStorageAdmissionError";
+    this.status = status;
+  }
+}
+
+async function beginFinalMovieStorageAdmission(supabase, ownership) {
+  const { data: admission, error: lookupError } = await supabase
+    .from("velto_storage_admissions")
+    .select("id")
+    .eq("id", ownership.storageAdmissionId)
+    .eq("owner_user_id", ownership.ownerUserId)
+    .eq("media_kind", "video")
+    .eq("purpose", "final_movie_export")
+    .eq("project_reference", ownership.projectId)
+    .maybeSingle();
+  if (lookupError) throw new FinalMovieStorageAdmissionError("Final video storage admission is temporarily unavailable.", 503);
+  if (!admission) throw new FinalMovieStorageAdmissionError("Final video storage admission is invalid.");
+
+  const { data, error } = await supabase.rpc("velto_begin_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_media_kind: "video",
+    p_purpose: "final_movie_export",
+  });
+  if (error) throw new FinalMovieStorageAdmissionError("Final video storage admission is temporarily unavailable.", 503);
+  const result = Array.isArray(data) ? data[0] : null;
+  if (result?.status !== "ready" || !UUID_PATTERN.test(result?.consumption_token || "")) {
+    throw new FinalMovieStorageAdmissionError("Final video storage admission cannot be consumed.");
+  }
+  return result.consumption_token;
+}
+
+async function abortFinalMovieStorageAdmission(supabase, ownership, consumptionToken) {
+  const { data, error } = await supabase.rpc("velto_abort_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_consumption_token: consumptionToken,
+  });
+  if (error || data !== "aborted") throw new Error("Final movie storage admission abort failed.");
+}
+
+async function completeFinalMovieStorageAdmission(supabase, ownership, consumptionToken) {
+  const { data, error } = await supabase.rpc("velto_complete_storage_admission_consumption", {
+    p_owner_user_id: ownership.ownerUserId,
+    p_admission_id: ownership.storageAdmissionId,
+    p_consumption_token: consumptionToken,
+  });
+  if (error || data !== "consumed") throw new Error("Final movie storage admission completion failed.");
 }
 
 function resolveFfmpegBinary() {
@@ -88,6 +201,27 @@ async function runFfmpeg(args) {
         return;
       }
 
+      reject(new Error(stderr || `ffmpeg failed with exit code ${code}`));
+    });
+  });
+}
+
+async function runFfmpegCaptureStderr(args) {
+  const ffmpegBinary = resolveFfmpegBinary();
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegBinary, args);
+    let stderr = "";
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stderr);
+        return;
+      }
       reject(new Error(stderr || `ffmpeg failed with exit code ${code}`));
     });
   });
@@ -158,6 +292,167 @@ async function getMediaDuration(filePath) {
   return parsed;
 }
 
+function roundDuration(value) {
+  return Math.round(Number(value || 0) * 1000) / 1000;
+}
+
+function alignDurationToFrameGrid(value) {
+  const safeValue = Math.max(1 / OUTPUT_FPS, Number(value || 0));
+  return Math.max(
+    1 / OUTPUT_FPS,
+    Math.round(safeValue * OUTPUT_FPS) / OUTPUT_FPS
+  );
+}
+
+function finitePositiveDuration(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+async function probeMediaStreams(filePath) {
+  const output = await runFfprobe([
+    "-v",
+    "error",
+    "-show_entries",
+    "stream=codec_type,duration:format=duration",
+    "-of",
+    "json",
+    filePath,
+  ]);
+  const parsed = JSON.parse(output || "{}");
+  const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+  const videoStream = streams.find((stream) => stream.codec_type === "video");
+  const audioStream = streams.find((stream) => stream.codec_type === "audio");
+
+  return {
+    formatDurationSec: finitePositiveDuration(parsed?.format?.duration),
+    videoDurationSec: finitePositiveDuration(videoStream?.duration),
+    audioDurationSec: finitePositiveDuration(audioStream?.duration),
+    hasVideo: Boolean(videoStream),
+    hasAudio: Boolean(audioStream),
+  };
+}
+
+async function verifyRenderedContinuity(
+  filePath,
+  expectedDurationSec,
+  label
+) {
+  const media = await probeMediaStreams(filePath);
+  const actualDurationSec =
+    media.formatDurationSec ||
+    media.videoDurationSec ||
+    media.audioDurationSec ||
+    0;
+  const videoDurationSec = media.videoDurationSec || actualDurationSec;
+  const audioDurationSec = media.audioDurationSec || actualDurationSec;
+  const durationDeltaSec = Math.abs(actualDurationSec - expectedDurationSec);
+  const audioVideoDriftSec = Math.abs(videoDurationSec - audioDurationSec);
+
+  const issues = [];
+
+  if (!media.hasVideo) issues.push("video stream missing");
+  if (!media.hasAudio) issues.push("audio stream missing");
+
+  if (durationDeltaSec > STITCH_DURATION_TOLERANCE_SECONDS) {
+    issues.push(
+      `duration delta ${durationDeltaSec.toFixed(3)}s exceeds ` +
+        `${STITCH_DURATION_TOLERANCE_SECONDS.toFixed(3)}s`
+    );
+  }
+
+  if (audioVideoDriftSec > STITCH_AV_DRIFT_TOLERANCE_SECONDS) {
+    issues.push(
+      `audio/video drift ${audioVideoDriftSec.toFixed(3)}s exceeds ` +
+        `${STITCH_AV_DRIFT_TOLERANCE_SECONDS.toFixed(3)}s`
+    );
+  }
+
+  if (issues.length > 0) {
+    throw new Error(
+      `${label} failed 3N-4 continuity verification: ${issues.join(", ")}.`
+    );
+  }
+
+  return {
+    ok: true,
+    expectedDurationSec: roundDuration(expectedDurationSec),
+    actualDurationSec: roundDuration(actualDurationSec),
+    videoDurationSec: roundDuration(videoDurationSec),
+    audioDurationSec: roundDuration(audioDurationSec),
+    durationDeltaSec: roundDuration(durationDeltaSec),
+    audioVideoDriftSec: roundDuration(audioVideoDriftSec),
+  };
+}
+
+function createNormalizedVideoFilter(
+  durationSec,
+  visualFitMode = "contain",
+) {
+  return [
+    ...buildCreatorVisualFitFilters({
+      mode: visualFitMode,
+      outputWidth: OUTPUT_WIDTH,
+      outputHeight: OUTPUT_HEIGHT,
+    }),
+    "setsar=1",
+    `fps=${OUTPUT_FPS}`,
+    `trim=start=0:duration=${durationSec.toFixed(3)}`,
+    "settb=AVTB",
+    `setpts=N/(${OUTPUT_FPS}*TB)`,
+    "format=yuv420p",
+  ].join(",");
+}
+
+function createCreatorTrimmedVideoFilter({
+  clipInSec,
+  visualDurationSec,
+  effectiveDurationSec,
+  freezeTail = false,
+  visualFitMode = "contain",
+}) {
+  const filters = [
+    ...buildCreatorVisualFitFilters({
+      mode: visualFitMode,
+      outputWidth: OUTPUT_WIDTH,
+      outputHeight: OUTPUT_HEIGHT,
+    }),
+    "setsar=1",
+    `fps=${OUTPUT_FPS}`,
+    `trim=start=${clipInSec.toFixed(3)}:duration=${visualDurationSec.toFixed(3)}`,
+    "settb=AVTB",
+    `setpts=N/(${OUTPUT_FPS}*TB)`,
+  ];
+  if (freezeTail && effectiveDurationSec > visualDurationSec) {
+    filters.push(
+      `tpad=stop_mode=clone:stop_duration=${(effectiveDurationSec - visualDurationSec).toFixed(3)}`,
+    );
+  }
+  filters.push(
+    `trim=start=0:duration=${effectiveDurationSec.toFixed(3)}`,
+    "format=yuv420p",
+  );
+  return filters.join(",");
+}
+
+function createNormalizedAudioFilter(durationSec) {
+  return [
+    "asetpts=PTS-STARTPTS",
+    `aresample=${OUTPUT_AUDIO_SAMPLE_RATE}:async=1:first_pts=0`,
+    `aformat=sample_fmts=fltp:sample_rates=${OUTPUT_AUDIO_SAMPLE_RATE}:channel_layouts=stereo`,
+    "apad",
+    `atrim=start=0:duration=${durationSec.toFixed(3)}`,
+    "asetpts=N/SR/TB",
+  ].join(",");
+}
+
+function createStaticImageFilter(durationSec, visualFitMode = "contain") {
+  return buildStaticImageFilter({
+    durationSec, visualFitMode, outputWidth: OUTPUT_WIDTH,
+    outputHeight: OUTPUT_HEIGHT, fps: OUTPUT_FPS,
+  });
+}
+
 function getSceneAudioMixProfile(scene) {
   const target = Number(scene?.timing?.targetSceneDuration || 0);
   const hasDialogue = !!scene?.dialogueAudioUrl;
@@ -201,52 +496,50 @@ function getSceneAudioMixProfile(scene) {
   };
 }
 
-function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "image", sourceDuration = 0) {
+function getSceneTargetDuration(scene, fallbackAudioDuration, sourceType = "image", sourceDuration = 0, durationAuthority) {
   const requestedTarget = Number(scene?.timing?.targetSceneDuration || 0);
-  const safeAudioDuration = Number.isFinite(fallbackAudioDuration) ? fallbackAudioDuration : 0;
-  const safeSourceDuration = Number.isFinite(sourceDuration) ? sourceDuration : 0;
-  const audioDrivenDuration =
-    safeAudioDuration > 0
-      ? safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS
-      : 0;
-
-  if (sourceType === "video" && safeSourceDuration > 0) {
-    if (audioDrivenDuration > 0) {
-      return Math.max(safeSourceDuration, requestedTarget || 0, audioDrivenDuration);
-    }
-
-    return safeSourceDuration;
-  }
-
-  return Math.max(
-    MIN_SCENE_DURATION,
-    requestedTarget || TARGET_SCENE_DURATION,
-    audioDrivenDuration || TARGET_SCENE_DURATION
-  );
+  const coverageBackedTarget = resolveCoverageBackedSceneTargetDuration(scene);
+  return resolveAudioFirstSceneTargetDuration({
+    requestedTarget,
+    coverageBackedTarget,
+    audioDuration: fallbackAudioDuration,
+    sourceType,
+    sourceDuration,
+    durationAuthority,
+    measuredAudioCurrent: scene?.measuredAudioCurrent === true,
+    minimumDuration: MIN_SCENE_DURATION,
+    defaultDuration: TARGET_SCENE_DURATION,
+    tailBuffer: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
+  });
 }
 
-function getTransitionAwareDuration({ targetDuration, audioDuration = 0, sourceDuration = 0 }) {
-  const safeTargetDuration =
-    Number.isFinite(targetDuration) && targetDuration > 0
-      ? targetDuration
-      : TARGET_SCENE_DURATION;
-  const safeAudioDuration =
-    Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : 0;
+function normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport) {
   const safeSourceDuration =
     Number.isFinite(sourceDuration) && sourceDuration > 0 ? sourceDuration : 0;
+  const fullSource = {
+    clipInSec: 0,
+    clipOutSec: safeSourceDuration,
+    visualDurationSec: safeSourceDuration,
+    isTrimmed: false,
+  };
+  if (!isCreatorLabExport || safeSourceDuration <= 0) return fullSource;
+  if (scene?.clipInSec === undefined && scene?.clipOutSec === undefined) return fullSource;
 
-  const trimmedDuration = Math.max(0.1, safeTargetDuration - SCENE_TRANSITION_TRIM_SECONDS);
+  const requestedStart = Number(scene?.clipInSec);
+  const requestedEnd = Number(scene?.clipOutSec);
+  if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd)) return fullSource;
 
-  if (safeAudioDuration > 0) {
-    const audioSafeDuration = safeAudioDuration + SPEECH_FREEZE_TAIL_BUFFER_SECONDS;
-    return Math.max(trimmedDuration, audioSafeDuration, safeSourceDuration);
-  }
+  const clipInSec = Math.max(0, Math.min(requestedStart, safeSourceDuration));
+  const clipOutSec = Math.max(0, Math.min(requestedEnd, safeSourceDuration));
+  if (clipOutSec - clipInSec < CREATOR_MIN_VIDEO_CLIP_SECONDS) return fullSource;
+  if (clipInSec <= 0 && Math.abs(clipOutSec - safeSourceDuration) < 0.001) return fullSource;
 
-  if (safeSourceDuration > 0) {
-    return Math.min(safeSourceDuration, trimmedDuration);
-  }
-
-  return trimmedDuration;
+  return {
+    clipInSec,
+    clipOutSec,
+    visualDurationSec: clipOutSec - clipInSec,
+    isTrimmed: true,
+  };
 }
 
 function getSpeechDurationLimit(scene, targetDuration) {
@@ -320,6 +613,56 @@ async function createSilentAudio(outputPath, durationSeconds) {
     "2",
     outputPath,
   ]);
+}
+
+async function createSpeechDuckingControl({
+  speechAudioPath,
+  outputPath,
+  durationSeconds,
+}) {
+  const safeDuration = Math.max(0.01, Number(durationSeconds) || 0.01);
+
+  if (!speechAudioPath) {
+    await createSilentAudio(outputPath, safeDuration);
+    return outputPath;
+  }
+
+  await runFfmpeg([
+    "-y",
+    "-i",
+    speechAudioPath,
+    "-af",
+    `aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${safeDuration.toFixed(3)},asetpts=PTS-STARTPTS`,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    outputPath,
+  ]);
+
+  return outputPath;
+}
+
+async function concatSpeechDuckingControls(controlPaths, tempDir) {
+  if (controlPaths.length === 0) return undefined;
+
+  const outputPath = path.join(tempDir, "speech-ducking-control.m4a");
+  if (controlPaths.length === 1) {
+    await fs.promises.copyFile(controlPaths[0], outputPath);
+    return outputPath;
+  }
+
+  const listPath = path.join(tempDir, "speech-ducking-control-list.txt");
+  const listContent = controlPaths
+    .map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`)
+    .join("\n");
+  await fs.promises.writeFile(listPath, listContent, "utf8");
+  await concatAudioFiles(listPath, outputPath);
+  return outputPath;
 }
 
 async function polishSceneAudio({
@@ -444,6 +787,9 @@ async function createImageClipWithAudio({
   audioPath,
   outputPath,
   targetDuration,
+  visualFitMode = "contain",
+  durationAuthority,
+  measuredAudioCurrent = false,
 }) {
   const resolvedTargetDuration =
     typeof targetDuration === "number" &&
@@ -455,80 +801,45 @@ async function createImageClipWithAudio({
   const audioDuration = audioPath
     ? await getMediaDuration(audioPath).catch(() => 0)
     : 0;
-
-  const effectiveDuration = getTransitionAwareDuration({
-    targetDuration: resolvedTargetDuration,
-    audioDuration,
-  });
-
-  const durationText = effectiveDuration.toFixed(3);
-
-  const videoMotionFilter =
-    "scale=1280:720:force_original_aspect_ratio=decrease," +
-    "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
-    "setsar=1," +
-    "fps=25," +
-    `trim=duration=${durationText},` +
-    "setpts=PTS-STARTPTS," +
-    "format=yuv420p";
+  const effectiveDuration = alignDurationToFrameGrid(
+    getTransitionAwareDuration({
+      targetDuration: resolvedTargetDuration,
+      audioDuration,
+      durationAuthority,
+      measuredAudioCurrent,
+      defaultDuration: TARGET_SCENE_DURATION,
+      transitionTrim: SCENE_TRANSITION_TRIM_SECONDS,
+      speechSafetyTail: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
+    })
+  );
+  const inputs = [
+    "-loop",
+    "1",
+    "-framerate",
+    String(OUTPUT_FPS),
+    "-i",
+    imagePath,
+  ];
 
   if (audioPath) {
-    await runFfmpeg([
-      "-y",
-      "-loop",
-      "1",
-      "-framerate",
-      "25",
+    inputs.push("-i", audioPath);
+  } else {
+    inputs.push(
+      "-f",
+      "lavfi",
       "-i",
-      imagePath,
-      "-i",
-      audioPath,
-      "-filter_complex",
-      `[0:v]${videoMotionFilter}[v];` +
-        `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
-        `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
-      "-map",
-      "[v]",
-      "-map",
-      "[a]",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "22",
-      "-pix_fmt",
-      "yuv420p",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-ar",
-      "44100",
-      "-ac",
-      "2",
-      "-movflags",
-      "+faststart",
-      outputPath,
-    ]);
-    return;
+      `anullsrc=channel_layout=stereo:sample_rate=${OUTPUT_AUDIO_SAMPLE_RATE}`
+    );
   }
 
   await runFfmpeg([
     "-y",
-    "-loop",
-    "1",
-    "-framerate",
-    "25",
-    "-i",
-    imagePath,
-    "-f",
-    "lavfi",
-    "-i",
-    "anullsrc=r=44100:cl=stereo",
+    ...inputs,
     "-filter_complex",
-    `[0:v]${videoMotionFilter}[v];` +
-      `[1:a]atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
+    [
+      `[0:v]${createStaticImageFilter(effectiveDuration, visualFitMode)}[v]`,
+      `[1:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`,
+    ].join(";"),
     "-map",
     "[v]",
     "-map",
@@ -546,21 +857,33 @@ async function createImageClipWithAudio({
     "-b:a",
     "192k",
     "-ar",
-    "44100",
+    String(OUTPUT_AUDIO_SAMPLE_RATE),
     "-ac",
     "2",
+    "-video_track_timescale",
+    "90000",
     "-movflags",
     "+faststart",
     outputPath,
   ]);
-}
 
+  return {
+    durationSec: effectiveDuration,
+    fillerStrategy: "static_image",
+    fillerDurationSec: effectiveDuration,
+  };
+}
 
 async function createSceneClipWithAudio({
   videoPath,
+  referenceImagePath,
   audioPath,
   outputPath,
   targetDuration,
+  creatorTrim,
+  visualFitMode = "contain",
+  durationAuthority,
+  measuredAudioCurrent = false,
 }) {
   const requestedTargetDuration =
     typeof targetDuration === "number" &&
@@ -569,81 +892,114 @@ async function createSceneClipWithAudio({
       ? targetDuration
       : TARGET_SCENE_DURATION;
 
-  const videoDuration = await getMediaDuration(videoPath);
-  const audioDuration = audioPath ? await getMediaDuration(audioPath).catch(() => 0) : 0;
-  const effectiveDuration = getTransitionAwareDuration({
-    targetDuration: requestedTargetDuration,
-    audioDuration,
-    sourceDuration: videoDuration,
-  });
-  const durationText = effectiveDuration.toFixed(3);
+  const fullVideoDuration = await getMediaDuration(videoPath);
+  const videoDuration = creatorTrim?.isTrimmed
+    ? creatorTrim.visualDurationSec
+    : fullVideoDuration;
+  const audioDuration = audioPath
+    ? await getMediaDuration(audioPath).catch(() => 0)
+    : 0;
+  const effectiveDuration = alignDurationToFrameGrid(
+    getTransitionAwareDuration({
+      targetDuration: requestedTargetDuration,
+      audioDuration,
+      sourceDuration: videoDuration,
+      durationAuthority,
+      measuredAudioCurrent,
+      defaultDuration: TARGET_SCENE_DURATION,
+      transitionTrim: SCENE_TRANSITION_TRIM_SECONDS,
+      speechSafetyTail: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
+    })
+  );
+  const needsFiller =
+    videoDuration <= 0 || effectiveDuration - videoDuration > 0.05;
+  let inputs = [];
+  let visualFilter = "";
+  let audioInputIndex = 1;
+  let fillerStrategy = "none";
+  let fillerDurationSec = 0;
 
-  const freezeExtensionSeconds = Math.max(0, effectiveDuration - videoDuration);
-  const baseTrimDuration = Math.min(videoDuration, effectiveDuration).toFixed(3);
-  const freezeExtensionFilter =
-    freezeExtensionSeconds > 0.05
-      ? `tpad=stop_mode=clone:stop_duration=${freezeExtensionSeconds.toFixed(3)},trim=duration=${durationText},`
-      : "";
+  if (!needsFiller) {
+    inputs = ["-i", videoPath];
+    visualFilter = creatorTrim?.isTrimmed
+      ? `[0:v]${createCreatorTrimmedVideoFilter({
+          clipInSec: creatorTrim.clipInSec,
+          visualDurationSec: videoDuration,
+          effectiveDurationSec: effectiveDuration,
+          visualFitMode,
+        })}[v]`
+      : `[0:v]${createNormalizedVideoFilter(effectiveDuration, visualFitMode)}[v]`;
+  } else if (referenceImagePath && videoDuration > 0) {
+    const primaryDuration = alignDurationToFrameGrid(
+      Math.min(videoDuration, effectiveDuration)
+    );
+    const tailDuration = alignDurationToFrameGrid(
+      Math.max(1 / OUTPUT_FPS, effectiveDuration - primaryDuration)
+    );
 
-  const videoBaseFilter =
-    "scale=1280:720:force_original_aspect_ratio=decrease," +
-    "pad=1280:720:(ow-iw)/2:(oh-ih)/2," +
-    "setsar=1," +
-    "fps=25," +
-    `trim=duration=${baseTrimDuration},` +
-    "setpts=PTS-STARTPTS," +
-    freezeExtensionFilter +
-    "format=yuv420p";
-
-  if (audioPath) {
-    await runFfmpeg([
-      "-y",
+    inputs = [
       "-i",
       videoPath,
+      "-loop",
+      "1",
+      "-framerate",
+      String(OUTPUT_FPS),
       "-i",
-      audioPath,
-      "-filter_complex",
-      `[0:v]${videoBaseFilter}[v];` +
-        `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
-        `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
-      "-map",
-      "[v]",
-      "-map",
-      "[a]",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "23",
-      "-pix_fmt",
-      "yuv420p",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-ar",
-      "44100",
-      "-ac",
-      "2",
-      "-movflags",
-      "+faststart",
-      outputPath,
-    ]);
-    return;
+      referenceImagePath,
+    ];
+    audioInputIndex = 2;
+    fillerStrategy = "static_image_tail";
+    fillerDurationSec = tailDuration;
+    visualFilter = [
+      `[0:v]${creatorTrim?.isTrimmed
+        ? createCreatorTrimmedVideoFilter({
+            clipInSec: creatorTrim.clipInSec,
+            visualDurationSec: primaryDuration,
+            effectiveDurationSec: primaryDuration,
+            visualFitMode,
+          })
+        : createNormalizedVideoFilter(primaryDuration, visualFitMode)}[v0]`,
+      `[1:v]${createStaticImageFilter(tailDuration, visualFitMode)}[v1]`,
+      `[v0][v1]concat=n=2:v=1:a=0[v]`,
+    ].join(";");
+  } else if (creatorTrim?.isTrimmed) {
+    inputs = ["-i", videoPath];
+    fillerStrategy = "freeze_frame_tail";
+    fillerDurationSec = Math.max(0, effectiveDuration - videoDuration);
+    visualFilter = `[0:v]${createCreatorTrimmedVideoFilter({
+      clipInSec: creatorTrim.clipInSec,
+      visualDurationSec: videoDuration,
+      effectiveDurationSec: effectiveDuration,
+      freezeTail: true,
+      visualFitMode,
+    })}[v]`;
+  } else {
+    inputs = ["-stream_loop", "-1", "-i", videoPath];
+    fillerStrategy = "motion_loop";
+    fillerDurationSec = Math.max(0, effectiveDuration - videoDuration);
+    visualFilter =
+      `[0:v]${createNormalizedVideoFilter(effectiveDuration, visualFitMode)}[v]`;
+  }
+
+  if (audioPath) {
+    inputs.push("-i", audioPath);
+  } else {
+    inputs.push(
+      "-f",
+      "lavfi",
+      "-i",
+      `anullsrc=channel_layout=stereo:sample_rate=${OUTPUT_AUDIO_SAMPLE_RATE}`
+    );
   }
 
   await runFfmpeg([
     "-y",
-    "-i",
-    videoPath,
-    "-f",
-    "lavfi",
-    "-i",
-    "anullsrc=r=44100:cl=stereo",
+    ...inputs,
     "-filter_complex",
-    `[0:v]${videoBaseFilter}[v];` +
-      `[1:a]atrim=duration=${durationText},asetpts=PTS-STARTPTS[a]`,
+    [
+      visualFilter,
+      `[${audioInputIndex}:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`,
+    ].join(";"),
     "-map",
     "[v]",
     "-map",
@@ -661,24 +1017,108 @@ async function createSceneClipWithAudio({
     "-b:a",
     "192k",
     "-ar",
-    "44100",
+    String(OUTPUT_AUDIO_SAMPLE_RATE),
     "-ac",
     "2",
+    "-video_track_timescale",
+    "90000",
     "-movflags",
     "+faststart",
     outputPath,
   ]);
+
+  return {
+    durationSec: effectiveDuration,
+    fillerStrategy,
+    fillerDurationSec: roundDuration(fillerDurationSec),
+  };
 }
 
-async function concatSceneClips(listFilePath, outputFilePath) {
+async function createVisualCoverageClipWithAudio({
+  scene,
+  audioPath,
+  outputPath,
+  targetDuration,
+  tempDir,
+  sceneIndex,
+  visualFitMode = "contain",
+}) {
+  const effectiveDuration = alignDurationToFrameGrid(targetDuration);
+  const beats = reconcileVisualCoveragePlan(scene, targetDuration);
+  if (beats.length === 0) throw new Error(`Scene ${scene.creatorSceneId || sceneIndex} visual coverage is invalid.`);
+
+  const inputs = [];
+  for (let index = 0; index < beats.length; index += 1) {
+    const beat = beats[index];
+    const sourcePath = path.join(tempDir, `scene-${sceneIndex}-coverage-${index}.${beat.kind === "video" ? "mp4" : "image"}`);
+    await downloadFile(beat.sourceUrl, sourcePath);
+    if (beat.kind === "image") inputs.push("-loop", "1", "-framerate", String(OUTPUT_FPS));
+    inputs.push("-i", sourcePath);
+  }
+  const audioInputIndex = beats.length;
+  if (audioPath) inputs.push("-i", audioPath);
+  else inputs.push("-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=${OUTPUT_AUDIO_SAMPLE_RATE}`);
+
+  const visualFilters = beats.map((beat, index) =>
+    `[${index}:v]${beat.kind === "image"
+      ? createStaticImageFilter(beat.durationSec, visualFitMode)
+      : Number(beat.sourceStartSec) > 0
+        ? createCreatorTrimmedVideoFilter({
+            clipInSec: Number(beat.sourceStartSec),
+            visualDurationSec: beat.durationSec,
+            effectiveDurationSec: beat.durationSec,
+            visualFitMode,
+          })
+        : createNormalizedVideoFilter(beat.durationSec, visualFitMode)}[v${index}]`);
+  const labels = beats.map((_, index) => `[v${index}]`).join("");
+  await runFfmpeg([
+    "-y", ...inputs,
+    "-filter_complex",
+    [...visualFilters, `${labels}concat=n=${beats.length}:v=1:a=0[v]`,
+      `[${audioInputIndex}:a]${createNormalizedAudioFilter(effectiveDuration)}[a]`].join(";"),
+    "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", String(OUTPUT_AUDIO_SAMPLE_RATE),
+    "-ac", "2", "-video_track_timescale", "90000", "-movflags", "+faststart", outputPath,
+  ]);
+  return { durationSec: effectiveDuration, fillerStrategy: "visual_coverage_plan", fillerDurationSec: 0 };
+}
+
+async function concatSceneClips(
+  scenePaths,
+  sceneDurationsSec,
+  outputFilePath
+) {
+  if (scenePaths.length === 1) {
+    await fs.promises.copyFile(scenePaths[0], outputFilePath);
+    return;
+  }
+
+  const inputs = scenePaths.flatMap((scenePath) => ["-i", scenePath]);
+  const normalizedStreams = scenePaths.flatMap((_, sceneIndex) => {
+    const durationSec = sceneDurationsSec[sceneIndex];
+
+    return [
+      `[${sceneIndex}:v]${createNormalizedVideoFilter(durationSec)}[v${sceneIndex}]`,
+      `[${sceneIndex}:a]${createNormalizedAudioFilter(durationSec)}[a${sceneIndex}]`,
+    ];
+  });
+  const concatInputs = scenePaths
+    .map((_, sceneIndex) => `[v${sceneIndex}][a${sceneIndex}]`)
+    .join("");
+  const filter = [
+    ...normalizedStreams,
+    `${concatInputs}concat=n=${scenePaths.length}:v=1:a=1[outv][outa]`,
+  ].join(";");
+
   await runFfmpeg([
     "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listFilePath,
+    ...inputs,
+    "-filter_complex",
+    filter,
+    "-map",
+    "[outv]",
+    "-map",
+    "[outa]",
     "-c:v",
     "libx264",
     "-preset",
@@ -692,15 +1132,16 @@ async function concatSceneClips(listFilePath, outputFilePath) {
     "-b:a",
     "192k",
     "-ar",
-    "44100",
+    String(OUTPUT_AUDIO_SAMPLE_RATE),
     "-ac",
     "2",
+    "-video_track_timescale",
+    "90000",
     "-movflags",
     "+faststart",
     outputFilePath,
   ]);
 }
-
 
 function getSceneAmbienceText(scene) {
   return [
@@ -942,52 +1383,29 @@ async function createProceduralAmbientAudio({ outputPath, durationSeconds, profi
   return outputPath;
 }
 
-async function mixSceneAudioWithAmbient({
+async function mixCreatorSceneAudioLayers({
   speechAudioPath,
   ambientAudioPath,
+  sfxAudioPath,
   outputPath,
   targetDuration,
 }) {
-  const durationText = Math.max(0.2, targetDuration || TARGET_SCENE_DURATION).toFixed(3);
-
-  if (!ambientAudioPath) {
-    return speechAudioPath;
-  }
-
-  if (!speechAudioPath) {
-    await runFfmpeg([
-      "-y",
-      "-i",
-      ambientAudioPath,
-      "-af",
-      `apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS`,
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-ar",
-      "44100",
-      "-ac",
-      "2",
-      outputPath,
-    ]);
-
-    return outputPath;
-  }
+  const inputs = [speechAudioPath, ambientAudioPath, sfxAudioPath].filter(Boolean);
+  if (inputs.length === 0) return undefined;
+  if (inputs.length === 1) return inputs[0];
 
   await runFfmpeg([
     "-y",
-    "-i",
-    speechAudioPath,
-    "-i",
-    ambientAudioPath,
+    ...inputs.flatMap((inputPath) => ["-i", inputPath]),
     "-filter_complex",
-    `[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[speech];` +
-      `[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad,atrim=duration=${durationText},asetpts=PTS-STARTPTS[amb];` +
-      `[speech][amb]amix=inputs=2:duration=first:dropout_transition=0,` +
-      `alimiter=limit=0.95[a]`,
+    buildCreatorSceneAudioMixFilter({
+      durationSeconds: targetDuration || TARGET_SCENE_DURATION,
+      hasSpeech: Boolean(speechAudioPath),
+      hasAmbient: Boolean(ambientAudioPath),
+      hasSfx: Boolean(sfxAudioPath),
+    }),
     "-map",
-    "[a]",
+    "[creator_scene_audio]",
     "-c:a",
     "aac",
     "-b:a",
@@ -1049,7 +1467,36 @@ async function mixFinalVideoWithBackgroundMusic({
   bgmPath,
   outputVideoPath,
   bgmVolume = 0.16,
+  autoDucking = true,
+  fadeInSec = 1.5,
+  fadeOutSec = 2,
+  speechControlPath,
+  preserveProgramLevel = false,
 }) {
+  const durationSec = await getMediaDuration(inputVideoPath);
+  const safeDuration = Math.max(0.1, durationSec);
+  const safeVolume = Math.min(0.3, Math.max(0.04, Number(bgmVolume) || 0.16));
+  const safeFadeIn = Math.min(5, Math.max(0, Number(fadeInSec) || 0));
+  const safeFadeOut = Math.min(8, Math.max(0, Number(fadeOutSec) || 0));
+  const fadeOutStart = Math.max(0, safeDuration - safeFadeOut);
+  const fadeInFilter = safeFadeIn > 0
+    ? `,afade=t=in:st=0:d=${Math.min(safeFadeIn, safeDuration).toFixed(3)}`
+    : "";
+  const fadeOutFilter = safeFadeOut > 0
+    ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${Math.min(safeFadeOut, safeDuration).toFixed(3)}`
+    : "";
+  const musicFilter =
+    `[1:a]atrim=duration=${safeDuration.toFixed(3)},asetpts=PTS-STARTPTS,` +
+    `volume=${safeVolume.toFixed(3)}${fadeInFilter}${fadeOutFilter}[music];`;
+  const useSpeechDucking = autoDucking && Boolean(speechControlPath);
+  const finalMixOptions =
+    `amix=inputs=2:duration=first:dropout_transition=0` +
+    (preserveProgramLevel ? ":normalize=0" : "");
+  const mixFilter = useSpeechDucking
+    ? `[music][2:a]sidechaincompress=threshold=0.035:ratio=6:attack=25:release=450:makeup=1[bed];` +
+      `[0:a][bed]${finalMixOptions},alimiter=limit=0.95[a]`
+    : `[0:a][music]${finalMixOptions},alimiter=limit=0.95[a]`;
+
   await runFfmpeg([
     "-y",
     "-i",
@@ -1058,9 +1505,9 @@ async function mixFinalVideoWithBackgroundMusic({
     "-1",
     "-i",
     bgmPath,
+    ...(useSpeechDucking ? ["-i", speechControlPath] : []),
     "-filter_complex",
-    `[1:a]volume=${bgmVolume.toFixed(3)}[bgm];` +
-      `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+    musicFilter + mixFilter,
     "-map",
     "0:v",
     "-map",
@@ -1082,23 +1529,372 @@ async function mixFinalVideoWithBackgroundMusic({
   ]);
 }
 
+async function mixFinalVideoWithCreatorAudioPlan({ inputVideoPath, outputVideoPath, plan }) {
+  if (plan.music.length === 0) return false;
+  const inputs = [];
+  const filters = [];
+  const musicLabels = [];
+  plan.music.forEach((segment, index) => {
+    inputs.push("-stream_loop", "-1", "-i", segment.localPath);
+    const inputIndex = index + 1;
+    const durationSec = (segment.endMs - segment.startMs) / 1000;
+    const sourceInSec = segment.sourceInMs / 1000;
+    const fadeInSec = segment.fadeInMs / 1000;
+    const fadeOutSec = segment.fadeOutMs / 1000;
+    const chain = [
+      `atrim=start=${sourceInSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`,
+      "asetpts=PTS-STARTPTS",
+      `volume=${segment.gain.toFixed(6)}`,
+    ];
+    if (segment.duckingMode === "under_speech") {
+      for (const window of plan.duckingWindows) {
+        const localStart = Math.max(0, window.startMs - segment.startMs);
+        const localEnd = Math.min(segment.endMs - segment.startMs, window.endMs - segment.startMs);
+        if (localEnd > localStart) {
+          const attackStart = Math.max(0, localStart - window.attackMs);
+          const releaseEnd = Math.min(segment.endMs - segment.startMs, localEnd + window.releaseMs);
+          const attackStartSec = attackStart / 1000;
+          const localStartSec = localStart / 1000;
+          const localEndSec = localEnd / 1000;
+          const releaseEndSec = releaseEnd / 1000;
+          const gain = window.gain.toFixed(6);
+          const attack = localStart > attackStart
+            ? `1-(1-${gain})*(t-${attackStartSec.toFixed(3)})/${((localStart - attackStart) / 1000).toFixed(3)}`
+            : gain;
+          const release = releaseEnd > localEnd
+            ? `${gain}+(1-${gain})*(t-${localEndSec.toFixed(3)})/${((releaseEnd - localEnd) / 1000).toFixed(3)}`
+            : gain;
+          chain.push(
+            `volume='if(lt(t,${attackStartSec.toFixed(3)}),1,if(lt(t,${localStartSec.toFixed(3)}),${attack},if(lte(t,${localEndSec.toFixed(3)}),${gain},if(lt(t,${releaseEndSec.toFixed(3)}),${release},1))))':eval=frame`,
+          );
+        }
+      }
+    }
+    if (fadeInSec > 0) chain.push(`afade=t=in:st=0:d=${fadeInSec.toFixed(3)}`);
+    if (fadeOutSec > 0) chain.push(`afade=t=out:st=${Math.max(0, durationSec - fadeOutSec).toFixed(3)}:d=${fadeOutSec.toFixed(3)}`);
+    chain.push(`adelay=${Math.round(segment.startMs)}|${Math.round(segment.startMs)}`);
+    const label = `creator_music_${index}`;
+    filters.push(`[${inputIndex}:a]${chain.join(",")}[${label}]`);
+    musicLabels.push(`[${label}]`);
+  });
+  const limiter = plan.master?.limiter?.enabled === true
+    ? `,alimiter=limit=${Math.min(1, Math.max(0.1, Number(plan.master.limiter.ceiling) || 0.95)).toFixed(3)}`
+    : "";
+  filters.push(`[0:a]volume=${Number(plan.master?.narrationGain || 1).toFixed(6)}[creator_program]`);
+  filters.push(`[creator_program]${musicLabels.join("")}amix=inputs=${musicLabels.length + 1}:duration=first:dropout_transition=0:normalize=0${limiter}[creator_final_audio]`);
+  await runFfmpeg([
+    "-y", "-i", inputVideoPath, ...inputs, "-filter_complex", filters.join(";"),
+    "-map", "0:v", "-map", "[creator_final_audio]", "-c:v", "copy", "-c:a", "aac",
+    "-b:a", "192k", "-ar", "44100", "-ac", "2", "-movflags", "+faststart", "-shortest", outputVideoPath,
+  ]);
+  return true;
+}
+
+async function masterCreatorProgramAudio({ inputVideoPath, outputVideoPath }) {
+  try {
+    const analysisStderr = await runFfmpegCaptureStderr([
+      "-hide_banner", "-nostats", "-i", inputVideoPath,
+      "-map", "0:a:0", "-vn", "-af", buildCreatorProgramLoudnessAnalysisFilter(),
+      "-f", "null", "-",
+    ]);
+    const measurements = parseCreatorProgramLoudnessMeasurements(analysisStderr);
+    await runFfmpeg([
+      "-y", "-i", inputVideoPath,
+      "-map", "0:v:0", "-map", "0:a:0",
+      "-c:v", "copy",
+      "-af", buildCreatorProgramLoudnessMasterFilter(measurements),
+      "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+      "-movflags", "+faststart",
+      outputVideoPath,
+    ]);
+  } catch (cause) {
+    if (cause instanceof CreatorProgramAudioMasterError) throw cause;
+    throw new CreatorProgramAudioMasterError(
+      "CreatorLab final program loudness mastering failed.",
+      { cause }
+    );
+  }
+}
+
+function normalizeCreatorBackgroundMusic(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  const requestedTrackId = typeof source.selectedTrackId === "string"
+    ? source.selectedTrackId.trim()
+    : "";
+  const mode = source.mode === "selected" && TRACK_ID_PATTERN.test(requestedTrackId) ? "selected" : "none";
+
+  return {
+    mode,
+    selectedTrackId: mode === "selected" ? requestedTrackId : undefined,
+    volume: Math.min(0.3, Math.max(0.04, Number(source.volume) || 0.16)),
+    autoDucking: source.autoDucking !== false,
+    fadeInSec: Math.min(5, Math.max(0, Number(source.fadeInSec) || 0)),
+    fadeOutSec: Math.min(8, Math.max(0, Number(source.fadeOutSec) || 0)),
+  };
+}
+
+function isMp3(buffer) {
+  return buffer.length >= 4 && (
+    (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+    (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)
+  );
+}
+
+async function resolvePrivateCreatorMusicAsset({ req, body, tempDir }) {
+  const contract = body?.musicEntitlement;
+  if (!contract) return "";
+  const configuredToken = process.env.VELTO_INTERNAL_EXPORT_TOKEN?.trim();
+  const suppliedToken = req.get("x-velto-internal-export-token") || "";
+  if (!configuredToken || suppliedToken !== configuredToken) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const entitlementId = typeof contract.entitlementId === "string" ? contract.entitlementId : "";
+  const trackId = typeof contract.trackId === "string" ? contract.trackId : "";
+  const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
+  const contractKeys = contract && typeof contract === "object" && !Array.isArray(contract)
+    ? Object.keys(contract).sort()
+    : [];
+  if (
+    body.productProfile !== "creatorlab" || contractKeys.join(",") !== "entitlementId,trackId" ||
+    !UUID_PATTERN.test(entitlementId) || !TRACK_ID_PATTERN.test(trackId) ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(projectId)
+  ) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const configuredBucket = process.env.CREATOR_PREMIUM_MUSIC_BUCKET?.trim();
+  if (!configuredBucket || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/.test(configuredBucket)) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const supabase = getSupabaseAdmin();
+  const { data: row, error } = await supabase.from("creator_music_entitlements")
+    .select("id,user_id,project_id,provider_key,track_id,license_policy_version,status,storage_bucket,storage_path,content_type,size_bytes,checksum")
+    .eq("id", entitlementId).maybeSingle();
+  const sizeBytes = Number(row?.size_bytes);
+  if (
+    error || !row || row.status !== "acquired" || row.track_id !== trackId ||
+    row.project_id !== projectId || row.provider_key !== CREATOR_PREMIUM_MUSIC_PROVIDER_KEY ||
+    row.license_policy_version !== CREATOR_PREMIUM_MUSIC_LICENSE_POLICY_VERSION ||
+    row.storage_bucket !== configuredBucket || row.content_type !== "audio/mpeg" ||
+    !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES ||
+    !CHECKSUM_PATTERN.test(row.checksum || "") || !UUID_PATTERN.test(row.user_id || "")
+  ) throw new Error("Premium music entitlement is unavailable.");
+  const storagePath = typeof row.storage_path === "string" ? row.storage_path : "";
+  const canonicalPath = `creator/${row.user_id}/music/${row.id}/${row.checksum}.mp3`;
+  if (storagePath !== canonicalPath || storagePath.includes("..") || storagePath.includes("\\") || /[\u0000-\u001f\u007f]/.test(storagePath)) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const { data: privateObject, error: downloadError } = await supabase.storage.from(configuredBucket).download(storagePath);
+  if (downloadError || !privateObject || privateObject.size < 1 || privateObject.size > MAX_PREMIUM_MUSIC_DOWNLOAD_BYTES || privateObject.size !== sizeBytes) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const buffer = Buffer.from(await privateObject.arrayBuffer());
+  if (!isMp3(buffer) || createHash("sha256").update(buffer).digest("hex") !== row.checksum) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  const localPath = path.join(tempDir, `creator-music-${row.id}.mp3`);
+  await fs.promises.writeFile(localPath, buffer);
+  const media = await probeMediaStreams(localPath);
+  if (!media.hasAudio || media.hasVideo) {
+    throw new Error("Premium music entitlement is unavailable.");
+  }
+  return localPath;
+}
+
+async function resolveCanonicalCreatorAudioAssets({ req, body, tempDir, ownership }) {
+  const contracts = Array.isArray(body?.creatorAudioAssets) ? body.creatorAudioAssets : [];
+  const resolved = [];
+  const seen = new Set();
+  for (const contract of contracts) {
+    const assetId = typeof contract?.assetId === "string" ? contract.assetId.trim() : "";
+    if (!assetId || seen.has(assetId) || contract?.previewOnly === true) throw new Error("Canonical audio asset is unavailable.");
+    seen.add(assetId);
+    if (contract.kind === "licensed") {
+      const localPath = await resolvePrivateCreatorMusicAsset({
+        req,
+        body: { productProfile: "creatorlab", projectId: ownership.projectId, musicEntitlement: { entitlementId: contract.entitlementId, trackId: contract.trackId } },
+        tempDir,
+      });
+      resolved.push({ assetId, localPath });
+      continue;
+    }
+    const keys = Object.keys(contract || {}).sort().join(",");
+    if (contract.kind !== "uploaded" || keys !== "assetId,bucket,channels,checksumSha256,codec,durationMs,kind,mediaKind,mimeType,origin,ownerUserId,projectId,rights,sampleRateHz,sizeBytes,storagePath" ||
+        contract.ownerUserId !== ownership.ownerUserId || contract.projectId !== ownership.projectId || contract.origin !== "uploaded" || contract.mediaKind !== "music" ||
+        !["verified", "creator_attested"].includes(contract.rights?.status) || !CHECKSUM_PATTERN.test(contract.checksumSha256 || "") ||
+        !Number.isSafeInteger(contract.sizeBytes) || contract.sizeBytes < 1 || contract.sizeBytes > MAX_CREATOR_AUDIO_DOWNLOAD_BYTES ||
+        typeof contract.bucket !== "string" || !contract.bucket || typeof contract.storagePath !== "string" || !contract.storagePath ||
+        contract.storagePath.includes("..") || contract.storagePath.includes("\\") || /[\u0000-\u001f\u007f]/.test(contract.storagePath)) {
+      throw new Error("Canonical audio asset is unavailable.");
+    }
+    const expectedPrefix = `creator/${ownership.ownerUserId}/audio/${ownership.projectId}/`;
+    if (!contract.storagePath.startsWith(expectedPrefix)) throw new Error("Canonical audio asset is unavailable.");
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.storage.from(contract.bucket).download(contract.storagePath);
+    if (error || !data || data.size !== contract.sizeBytes) throw new Error("Canonical audio asset is unavailable.");
+    const buffer = Buffer.from(await data.arrayBuffer());
+    if (createHash("sha256").update(buffer).digest("hex") !== contract.checksumSha256) throw new Error("Canonical audio asset is unavailable.");
+    const extension = contract.mimeType === "audio/wav" ? "wav" : contract.mimeType === "audio/mpeg" ? "mp3" : "m4a";
+    const localPath = path.join(tempDir, `creator-audio-${safeName(assetId)}.${extension}`);
+    await fs.promises.writeFile(localPath, buffer);
+    const media = await probeMediaStreams(localPath);
+    if (!media.hasAudio || media.hasVideo) throw new Error("Canonical audio asset is unavailable.");
+    resolved.push({ assetId, localPath });
+  }
+  return resolved;
+}
+
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "velto-export-service" });
+  res.json({
+    ok: true,
+    service: "velto-export-service",
+    stitchContinuityVersion: "3N-4",
+    finalProductionGateCompatible: true,
+    freezeFrameFallbackDisabled: true,
+    release: resolveRuntimeRelease(),
+    checkedAt: new Date().toISOString(),
+    runtime: {
+      node: process.version,
+      uptimeSeconds: Math.round(process.uptime()),
+      stateless: true,
+      tempDirectory: os.tmpdir(),
+    },
+  });
 });
 
+function resolveCreatorExportSequence(scenes) {
+  const seen = new Set();
+  return scenes.map((scene) => {
+    const creatorSceneId = typeof scene?.creatorSceneId === "string"
+      ? scene.creatorSceneId.trim()
+      : "";
+    if (!creatorSceneId || seen.has(creatorSceneId)) {
+      throw new Error("creator_export_scene_identity_invalid");
+    }
+    seen.add(creatorSceneId);
+    const { assetHistory, compareAssetId, compareSelection, selectedHistoryAssetId, ...canonical } = scene;
+    const exportSource = scene.exportSource === "video" ? "video" : "image";
+    const coverage = Array.isArray(scene.visualCoveragePlan) ? scene.visualCoveragePlan : [];
+    // The authenticated CreatorLab route has already rebuilt this plan from
+    // persisted scene assets. This boundary validates shape/renderability;
+    // it does not need assetHistory (which is intentionally stripped).
+    const validCoverage = coverage.length > 0 && coverage.every((beat) =>
+      typeof beat?.sourceUrl === "string" && beat.sourceUrl.trim() &&
+      (beat.kind === "video" || beat.kind === "image"));
+    assertStaticImageCoveragePolicy(coverage);
+    const selectedMedia = exportSource === "video" ? scene.videoUrl : scene.image;
+    if (typeof selectedMedia !== "string" || !selectedMedia.trim()) {
+      throw new Error("creator_export_scene_media_missing");
+    }
+    return {
+      ...canonical,
+      creatorSceneId,
+      exportSource,
+      image: (exportSource === "image" || validCoverage) && typeof scene.image === "string" ? scene.image : "",
+      videoUrl: (exportSource === "video" || validCoverage) && typeof scene.videoUrl === "string" ? scene.videoUrl : "",
+      visualCoveragePlan: validCoverage ? coverage : [],
+    };
+  });
+}
+
+function normalizeCreatorMediaIdentity(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value.trim());
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value.trim().split(/[?#]/, 1)[0];
+  }
+}
+
+function fingerprintCreatorMedia(value) {
+  const normalized = normalizeCreatorMediaIdentity(value);
+  return normalized
+    ? createHash("sha256").update(normalized).digest("hex").slice(0, 12)
+    : "";
+}
+
 app.post("/export-movie", async (req, res) => {
+  const renderStartedAt = new Date().toISOString();
+  const renderStartedMs = Date.now();
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "velto-export-")
   );
 
+  let ownership = null;
+  let supabase = null;
+  let consumptionToken = null;
+  let durableStorageStarted = false;
+  let moviePath = "";
+  let durableExport = null;
+  let durableRenderHeartbeat = null;
+
   try {
     const body = req.body || {};
+    ownership = internalExportIdentity(req);
+    if (!ownership) {
+      return res.status(401).json({ ok: false, error: "Final video request is unauthorized." });
+    }
+    body.projectId = ownership.projectId;
+    durableExport = durableFinalExportIdentity(req);
+    if (body.musicEntitlement || (body.productProfile === "creatorlab" && body.backgroundMusic)) {
+      return res.status(403).json({
+        ok: false, error: "Legacy CreatorLab music authority is not accepted.",
+      });
+    }
+    const exportFlowValidation = body?.exportFlowValidation;
+    const creatorDurationAuthority = body.productProfile === "creatorlab"
+      ? body.creatorFormat === "youtube_video"
+        ? "measured_adaptive"
+        : "audio_compact"
+      : undefined;
+    const creatorVisualFitMode = resolveCreatorVisualFitMode({
+      productProfile: body.productProfile,
+      creatorFormat: body.creatorFormat,
+    });
 
-    const scenes = Array.isArray(body?.scenes) ? body.scenes : [];
-    const projectId =
-      typeof body?.projectId === "string" && body.projectId.trim()
-        ? body.projectId.trim()
-        : "temp-project";
+    if (exportFlowValidation?.version === "3N-5") {
+      if (!exportFlowValidation.canExport) {
+        return res.status(409).json({
+          ok: false,
+          error:
+            "Export blocked by continuity preflight for scene(s): " +
+            (exportFlowValidation.blockingSceneIds || []).join(", "),
+          exportFlowValidation,
+        });
+      }
+
+      if (
+        exportFlowValidation.requiresManualConfirmation &&
+        body?.manualConfirmationGranted !== true
+      ) {
+        return res.status(409).json({
+          ok: false,
+          error: "Export requires manual confirmation before rendering.",
+          exportFlowValidation,
+        });
+      }
+    }
+
+    const isCreatorLabExport = body?.productProfile === "creatorlab";
+    let scenes = Array.isArray(body?.scenes) ? body.scenes : [];
+    if (isCreatorLabExport) {
+      try {
+        scenes = resolveCreatorExportSequence(scenes);
+      } catch {
+        return res.status(409).json({
+          ok: false,
+          error: "Final video scene sequence is invalid.",
+        });
+      }
+    }
+    if (isCreatorLabExport && (!body.audioTimeline || !Array.isArray(body.creatorAudioAssets))) {
+      return res.status(409).json({ ok: false, error: "Canonical project audio is not ready for final rendering." });
+    }
+    const projectId = ownership.projectId;
     const title =
       typeof body?.title === "string" && body.title.trim()
         ? body.title.trim()
@@ -1118,7 +1914,101 @@ app.post("/export-movie", async (req, res) => {
       });
     }
 
+    if (isCreatorLabExport) {
+      const invalidMediaIdentity = usableScenes.some((scene) => {
+        const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+        const actualMediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+        return !actualMediaIdentity || scene.mediaIdentity !== actualMediaIdentity;
+      });
+      if (invalidMediaIdentity) {
+        return res.status(409).json({
+          ok: false,
+          error: "Final video scene media identity is invalid.",
+          failureStage: "pre_render_validation",
+          renderAccepted: false,
+        });
+      }
+    }
+
+    supabase = getSupabaseAdmin();
+    if (durableExport) {
+      const { data: claimData, error: claimError } = await supabase.rpc("velto_claim_creator_final_export_render", {
+        p_job_id: durableExport.jobId,
+        p_owner_user_id: ownership.ownerUserId,
+        p_manifest_sha256: durableExport.manifestSha256,
+        p_render_payload_sha256: durableExport.renderPayloadSha256,
+        p_storage_admission_id: ownership.storageAdmissionId,
+      });
+      if (claimError) throw new FinalMovieStorageAdmissionError("Durable final export provenance is invalid.", 409);
+      if (claimData?.status === "rendering") return res.status(202).json({ ok: true, status: "rendering" });
+      if (claimData?.status === "uploaded" || claimData?.status === "installed" || claimData?.status === "stale") {
+        const { data: completed } = await supabase.from("velto_creator_final_export_runs").select("output").eq("job_id", durableExport.jobId).single();
+        return res.status(200).send(completed?.output || { ok: false, error: "Durable export output is unavailable." });
+      }
+      durableRenderHeartbeat = setInterval(() => {
+        void supabase.rpc("velto_heartbeat_creator_final_export_render", {
+          p_job_id: durableExport.jobId,
+          p_owner_user_id: ownership.ownerUserId,
+          p_manifest_sha256: durableExport.manifestSha256,
+          p_render_payload_sha256: durableExport.renderPayloadSha256,
+        }).then(({ error }) => {
+          if (error) console.error("CREATOR_FINAL_EXPORT_RENDER_HEARTBEAT_FAILED", { jobId: durableExport.jobId });
+        });
+      }, 60_000);
+      durableRenderHeartbeat.unref?.();
+      moviePath = `creator/${ownership.ownerUserId}/final/${projectId}/jobs/${durableExport.jobId}.mp4`;
+      const { data: existingInfo } = await supabase.storage.from(`movies`).info(moviePath);
+      if (existingInfo?.size > 0) {
+        const { data: existingBlob, error: existingError } = await supabase.storage.from(`movies`).download(moviePath);
+        if (existingError || !existingBlob) throw new FinalMovieStorageAdmissionError("Durable export object could not be reconciled.", 503);
+        const existingBuffer = Buffer.from(await existingBlob.arrayBuffer());
+        if (existingBuffer.length !== existingInfo.size) throw new FinalMovieStorageAdmissionError("Durable export object is truncated.", 409);
+        const existingPath = path.join(tempDir, "existing-final-export.mp4");
+        await fs.promises.writeFile(existingPath, existingBuffer);
+        const durationSeconds = await getMediaDuration(existingPath);
+        const outputSha256 = createHash("sha256").update(existingBuffer).digest("hex");
+        const { data: publicData } = supabase.storage.from(`movies`).getPublicUrl(moviePath);
+        const recoveredOutput = {
+          ok: true, movieUrl: publicData.publicUrl, downloadUrl: publicData.publicUrl,
+          storageBucket: "movies", storagePath: moviePath, fileName: `velto-${safeName(title)}.mp4`,
+          sizeBytes: existingBuffer.length, durationSeconds, sceneCount: usableScenes.length,
+          finalExportJobId: durableExport.jobId, manifestSha256: durableExport.manifestSha256,
+          renderPayloadSha256: durableExport.renderPayloadSha256, outputSha256,
+          lateCompletionReconciled: true,
+        };
+        const { error: admissionRecoveryError } = await supabase.rpc("velto_finalize_creator_final_export_admission", {
+          p_job_id: durableExport.jobId, p_owner_user_id: ownership.ownerUserId,
+          p_manifest_sha256: durableExport.manifestSha256,
+        });
+        if (admissionRecoveryError) throw new FinalMovieStorageAdmissionError("Durable export admission reconciliation failed.", 503);
+        const { error: recoveredError } = await supabase.rpc("velto_record_creator_final_export_upload", {
+          p_job_id: durableExport.jobId, p_manifest_sha256: durableExport.manifestSha256,
+          p_render_payload_sha256: durableExport.renderPayloadSha256, p_storage_bucket: "movies",
+          p_storage_path: moviePath, p_public_url: publicData.publicUrl, p_size_bytes: existingBuffer.length,
+          p_output_sha256: outputSha256, p_output: recoveredOutput,
+        });
+        if (recoveredError) throw new FinalMovieStorageAdmissionError("Durable export object reconciliation failed.", 503);
+        return res.status(200).send(recoveredOutput);
+      }
+    }
+    consumptionToken = await beginFinalMovieStorageAdmission(supabase, ownership);
+
+    let canonicalCreatorAudioAssets = [];
+    if (isCreatorLabExport) {
+      try {
+        canonicalCreatorAudioAssets = await resolveCanonicalCreatorAudioAssets({ req, body, tempDir, ownership });
+      } catch {
+        throw new FinalMovieStorageAdmissionError("Canonical project audio asset is unavailable.", 403);
+      }
+    }
+
     const sceneClipPaths = [];
+    const sceneDurationsSec = [];
+    const sceneContinuityChecks = [];
+    const finalizedAudioScenes = [];
+    let visualFillerSceneCount = 0;
+    let visualFillerDurationSec = 0;
+    const visualFillerStrategyCount = {};
 
     for (let i = 0; i < usableScenes.length; i += 1) {
       const scene = usableScenes[i];
@@ -1129,7 +2019,6 @@ app.post("/export-movie", async (req, res) => {
       const dialoguePath = path.join(tempDir, `dialogue-${i + 1}.mp3`);
       const sceneAudioPath = path.join(tempDir, `scene-audio-${i + 1}.m4a`);
       const sceneAmbientPath = path.join(tempDir, `scene-ambient-${i + 1}.m4a`);
-      const sceneAudioWithAmbientPath = path.join(tempDir, `scene-audio-ambient-${i + 1}.m4a`);
       const sceneMicroSfxPath = path.join(tempDir, `scene-micro-sfx-${i + 1}.m4a`);
       const sceneAudioWithSfxPath = path.join(tempDir, `scene-audio-sfx-${i + 1}.m4a`);
       const clipOutputPath = path.join(tempDir, `clip-scene-${i + 1}.mp4`);
@@ -1138,6 +2027,18 @@ app.post("/export-movie", async (req, res) => {
         typeof scene.videoUrl === "string" && scene.videoUrl.trim();
       const hasImageSource =
         typeof scene.image === "string" && scene.image.trim();
+
+      if (isCreatorLabExport) {
+        const selectedMediaUrl = scene.exportSource === "video" ? scene.videoUrl : scene.image;
+        const actualMediaIdentity = fingerprintCreatorMedia(selectedMediaUrl);
+        if (process.env.NODE_ENV !== "production") {
+          console.info("Export service scene", {
+            scene: scene.creatorSceneId.slice(0, 12),
+            mode: scene.exportSource,
+            media: actualMediaIdentity,
+          });
+        }
+      }
 
       let sourcePath = "";
       let sourceType = "";
@@ -1155,14 +2056,34 @@ app.post("/export-movie", async (req, res) => {
         continue;
       }
 
+      let referenceImagePath = sourceType === "image" ? sourcePath : "";
+
+      if (sourceType === "video" && hasImageSource) {
+        try {
+          await downloadFile(scene.image, rawImagePath);
+          referenceImagePath = rawImagePath;
+        } catch (referenceImageError) {
+          console.warn(
+            `Scene ${scene.id || i + 1} reference image skipped:`,
+            referenceImageError
+          );
+        }
+      }
+
       let hasNarration = false;
       let hasDialogue = false;
+
+      if (isCreatorLabExport && typeof scene.narration === "string" && scene.narration.trim() &&
+          !(typeof scene.audioUrl === "string" && scene.audioUrl.trim())) {
+        return res.status(409).json({ ok: false, error: "A required narration asset is missing." });
+      }
 
       if (typeof scene.audioUrl === "string" && scene.audioUrl.trim()) {
         try {
           await downloadFile(scene.audioUrl, narrationPath);
           hasNarration = true;
         } catch (error) {
+          if (isCreatorLabExport) throw new Error(`Required narration asset failed for scene ${scene.creatorSceneId}.`);
           console.warn(`Scene ${scene.id} narration download skipped:`, error);
         }
       }
@@ -1175,6 +2096,7 @@ app.post("/export-movie", async (req, res) => {
           await downloadFile(scene.dialogueAudioUrl, dialoguePath);
           hasDialogue = true;
         } catch (error) {
+          if (isCreatorLabExport) throw new Error(`Required dialogue asset failed for scene ${scene.creatorSceneId}.`);
           console.warn(`Scene ${scene.id} dialogue download skipped:`, error);
         }
       }
@@ -1206,11 +2128,19 @@ app.post("/export-movie", async (req, res) => {
         console.warn(`Scene ${scene.id || i + 1} source duration probe skipped:`, durationError);
       }
 
+      const creatorTrim = sourceType === "video"
+        ? normalizeCreatorVideoTrim(scene, sourceDuration, isCreatorLabExport)
+        : null;
+      const effectiveVisualSourceDuration = creatorTrim?.isTrimmed
+        ? creatorTrim.visualDurationSec
+        : sourceDuration;
+
       const targetDuration = getSceneTargetDuration(
         scene,
         fallbackAudioDuration,
         sourceType,
-        sourceDuration
+        effectiveVisualSourceDuration,
+        creatorDurationAuthority,
       );
 
       console.log(
@@ -1237,22 +2167,16 @@ app.post("/export-movie", async (req, res) => {
             profile: ambientProfile,
           });
 
-          audioForClip = await mixSceneAudioWithAmbient({
-            speechAudioPath: finalAudioPath,
-            ambientAudioPath: sceneAmbientPath,
-            outputPath: sceneAudioWithAmbientPath,
-            targetDuration,
-          });
-
           await createMicroSfxTrack({
             outputPath: sceneMicroSfxPath,
             durationSeconds: targetDuration,
             profileId: ambientProfile.id,
           });
 
-          audioForClip = await mixSceneAudioWithAmbient({
-            speechAudioPath: audioForClip,
-            ambientAudioPath: sceneMicroSfxPath,
+          audioForClip = await mixCreatorSceneAudioLayers({
+            speechAudioPath: finalAudioPath,
+            ambientAudioPath: sceneAmbientPath,
+            sfxAudioPath: sceneMicroSfxPath,
             outputPath: sceneAudioWithSfxPath,
             targetDuration,
           });
@@ -1268,40 +2192,94 @@ app.post("/export-movie", async (req, res) => {
 
 
 
-      if (sourceType === "video") {
-        await createSceneClipWithAudio({
-          videoPath: sourcePath,
-          audioPath: audioForClip,
-          outputPath: clipOutputPath,
-          targetDuration,
-        });
-      } else {
-        await createImageClipWithAudio({
-          imagePath: sourcePath,
-          audioPath: audioForClip,
-          outputPath: clipOutputPath,
-          targetDuration,
-        });
-      }
+      const clipResult =
+        Array.isArray(scene.visualCoveragePlan) && scene.visualCoveragePlan.length > 0
+          ? await createVisualCoverageClipWithAudio({
+              scene,
+              audioPath: audioForClip,
+              outputPath: clipOutputPath,
+              targetDuration,
+              tempDir,
+              sceneIndex: i + 1,
+              visualFitMode: creatorVisualFitMode,
+            })
+          : sourceType === "video"
+          ? await createSceneClipWithAudio({
+              videoPath: sourcePath,
+              referenceImagePath,
+              audioPath: audioForClip,
+              outputPath: clipOutputPath,
+              targetDuration,
+              creatorTrim,
+              visualFitMode: creatorVisualFitMode,
+              durationAuthority: creatorDurationAuthority,
+              measuredAudioCurrent: scene?.measuredAudioCurrent === true,
+            })
+          : await createImageClipWithAudio({
+              imagePath: sourcePath,
+              audioPath: audioForClip,
+              outputPath: clipOutputPath,
+              targetDuration,
+              visualFitMode: creatorVisualFitMode,
+              durationAuthority: creatorDurationAuthority,
+              measuredAudioCurrent: scene?.measuredAudioCurrent === true,
+            });
+
+      const sceneContinuityCheck = await verifyRenderedContinuity(
+        clipOutputPath,
+        clipResult.durationSec,
+        `Scene ${scene.id || i + 1}`
+      );
 
       sceneClipPaths.push(clipOutputPath);
+      sceneDurationsSec.push(clipResult.durationSec);
+      sceneContinuityChecks.push(sceneContinuityCheck);
+      if (isCreatorLabExport) {
+        const speech = [];
+        let speechCursorMs = 0;
+        if (hasNarration) {
+          const durationMs = (await getMediaDuration(narrationPath)) * 1000;
+          speech.push({ kind: "narration", startOffsetMs: 0, durationMs: Math.min(durationMs, clipResult.durationSec * 1000) });
+          speechCursorMs = durationMs;
+        }
+        if (hasDialogue) {
+          if (hasNarration) speechCursorMs += getSceneAudioMixProfile(scene).pauseMs;
+          const durationMs = (await getMediaDuration(dialoguePath)) * 1000;
+          speech.push({ kind: "dialogue", startOffsetMs: speechCursorMs, durationMs: Math.min(durationMs, Math.max(0, clipResult.durationSec * 1000 - speechCursorMs)) });
+        }
+        finalizedAudioScenes.push({ creatorSceneId: scene.creatorSceneId, durationMs: clipResult.durationSec * 1000, speech: speech.filter((segment) => segment.durationMs > 0) });
+      }
+
+      if (clipResult.fillerStrategy !== "none") {
+        visualFillerSceneCount += 1;
+        visualFillerDurationSec += clipResult.fillerDurationSec;
+      }
+
+      visualFillerStrategyCount[clipResult.fillerStrategy] =
+        (visualFillerStrategyCount[clipResult.fillerStrategy] || 0) + 1;
     }
 
-    const listFilePath = path.join(tempDir, "concat-list.txt");
-    const listFileContent = sceneClipPaths
-      .map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`)
-      .join("\n");
-
-    await fs.promises.writeFile(listFilePath, listFileContent, "utf8");
-
     const outputFilePath = path.join(tempDir, "output-with-audio.mp4");
-    await concatSceneClips(listFilePath, outputFilePath);
+    await concatSceneClips(
+      sceneClipPaths,
+      sceneDurationsSec,
+      outputFilePath
+    );
 
-    const bgmPath = path.join(process.cwd(), "assets", "bgm.mp3");
+    const bgmPath = isCreatorLabExport ? "" : path.join(process.cwd(), "assets", "bgm.mp3");
     let finalOutputFilePath = outputFilePath;
     let backgroundMusicEmbedded = false;
 
-    if (fs.existsSync(bgmPath)) {
+    if (isCreatorLabExport) {
+      const resolvedAudioPlan = resolveCreatorAudioMixPlan({ timeline: body.audioTimeline, finalizedScenes: finalizedAudioScenes, assets: canonicalCreatorAudioAssets });
+      if (resolvedAudioPlan.music.length > 0) {
+        const outputWithCanonicalAudio = path.join(tempDir, "output-with-canonical-audio.mp4");
+        backgroundMusicEmbedded = await mixFinalVideoWithCreatorAudioPlan({ inputVideoPath: outputFilePath, outputVideoPath: outputWithCanonicalAudio, plan: resolvedAudioPlan });
+        finalOutputFilePath = outputWithCanonicalAudio;
+      }
+    }
+
+    if (!isCreatorLabExport && bgmPath && fs.existsSync(bgmPath)) {
       const outputWithBgmPath = path.join(tempDir, "output-with-continuous-bgm.mp4");
 
       try {
@@ -1310,6 +2288,10 @@ app.post("/export-movie", async (req, res) => {
           bgmPath,
           outputVideoPath: outputWithBgmPath,
           bgmVolume: 0.16,
+          autoDucking: false,
+          fadeInSec: 0,
+          fadeOutSec: 0,
+          preserveProgramLevel: false,
         });
 
         finalOutputFilePath = outputWithBgmPath;
@@ -1318,17 +2300,45 @@ app.post("/export-movie", async (req, res) => {
       } catch (bgmError) {
         console.warn("Background music mix skipped:", bgmError);
       }
-    } else {
-      console.log("No bgm.mp3 found under assets. Export continues without background music.");
+    } else if (!isCreatorLabExport) {
+      console.log(
+        "No bgm.mp3 found under assets. Export continues without background music."
+      );
+    } else if (!backgroundMusicEmbedded) {
+      console.log("Canonical CreatorLab mix contains no music placements.");
     }
+
+    if (isCreatorLabExport) {
+      const masteredOutputPath = path.join(tempDir, "output-mastered.mp4");
+      await masterCreatorProgramAudio({
+        inputVideoPath: finalOutputFilePath,
+        outputVideoPath: masteredOutputPath,
+      });
+      finalOutputFilePath = masteredOutputPath;
+    }
+
+    const expectedFinalDurationSec = roundDuration(
+      sceneDurationsSec.reduce((sum, duration) => sum + duration, 0)
+    );
+    const finalContinuityCheck = await verifyRenderedContinuity(
+      finalOutputFilePath,
+      expectedFinalDurationSec,
+      "Final video"
+    );
+    const maxSceneAudioVideoDriftSec = Math.max(
+      0,
+      ...sceneContinuityChecks.map((check) => check.audioVideoDriftSec)
+    );
 
     const outputBuffer = await fs.promises.readFile(finalOutputFilePath);
 
-    const supabase = getSupabaseAdmin();
-
-    const safeProjectId = safeName(projectId);
     const safeTitle = safeName(title);
-    const moviePath = `${safeProjectId}/${safeTitle}-with-audio-${Date.now()}.mp4`;
+    moviePath = durableExport
+      ? `creator/${ownership.ownerUserId}/final/${projectId}/jobs/${durableExport.jobId}.mp4`
+      : `creator/${ownership.ownerUserId}/final/${projectId}/${randomUUID()}.mp4`;
+    const stats = await fs.promises.stat(finalOutputFilePath);
+    const duration = await getMediaDuration(finalOutputFilePath);
+    const fileName = `velto-${safeTitle}.mp4`;
 
     const { error: uploadError } = await supabase.storage
       .from("movies")
@@ -1340,23 +2350,54 @@ app.post("/export-movie", async (req, res) => {
     if (uploadError) {
       throw uploadError;
     }
+    durableStorageStarted = true;
 
     const { data: publicData } = supabase.storage
       .from("movies")
       .getPublicUrl(moviePath);
 
-    const stats = await fs.promises.stat(finalOutputFilePath);
-    const duration = await getMediaDuration(finalOutputFilePath);
-    const fileName = `velto-${safeTitle}.mp4`;
+    try {
+      await completeFinalMovieStorageAdmission(supabase, ownership, consumptionToken);
+    } catch {
+      console.error("FINAL_MOVIE_STORAGE_ADMISSION_RECOVERY_REQUIRED", {
+        admissionId: ownership.storageAdmissionId,
+        ownerUserId: ownership.ownerUserId,
+        projectId: ownership.projectId,
+        storagePath: moviePath,
+      });
+      throw new FinalMovieStorageAdmissionError("Final video storage admission could not be finalized.", 503);
+    }
 
-    return res.json({
+    const outputSha256 = createHash("sha256").update(outputBuffer).digest("hex");
+    const responseBody = {
       ok: true,
       movieUrl: publicData.publicUrl,
       downloadUrl: publicData.publicUrl,
+      storageBucket: "movies",
+      storagePath: moviePath,
       fileName,
       sizeBytes: stats.size,
       durationSeconds: duration,
-      sceneCount: usableScenes.length,
+      sceneCount: sceneClipPaths.length,
+      economicExportId: typeof body.economicExportId === "string" ? body.economicExportId.slice(0, 240) : null,
+      renderStartedAt,
+      renderCompletedAt: new Date().toISOString(),
+      elapsedRuntimeMs: Date.now() - renderStartedMs,
+      stitchContinuityVersion: "3N-4",
+      stitchContinuityVerified: true,
+      freezeFrameFallbackDisabled: true,
+      exportPreflightStatus:
+        exportFlowValidation?.status || "not-provided",
+      expectedDurationSeconds: expectedFinalDurationSec,
+      verifiedDurationSeconds: finalContinuityCheck.actualDurationSec,
+      finalAudioVideoDriftSeconds:
+        finalContinuityCheck.audioVideoDriftSec,
+      maxSceneAudioVideoDriftSeconds:
+        maxSceneAudioVideoDriftSec,
+      visualFillerSceneCount,
+      visualFillerDurationSeconds:
+        roundDuration(visualFillerDurationSec),
+      visualFillerStrategies: visualFillerStrategyCount,
       audioEmbedded: true,
       dialogueEmbedded: true,
       backgroundMusicEmbedded,
@@ -1372,7 +2413,7 @@ app.post("/export-movie", async (req, res) => {
       minAudioTailBufferSeconds: MIN_AUDIO_TAIL_BUFFER_SECONDS,
       speechFreezeTailBufferSeconds: SPEECH_FREEZE_TAIL_BUFFER_SECONDS,
       sceneAudioPaddedAware: true,
-      simpleSpeechFreezeAware: true,
+      simpleSpeechFreezeAware: false,
       cinematicMotionEngineAware: true,
       imageSceneMotionAware: true,
       cinematicMotionType: "subtle-zoom-pan",
@@ -1380,15 +2421,55 @@ app.post("/export-movie", async (req, res) => {
       proceduralAmbientAware: true,
       ambientDefaultVolume: AMBIENT_DEFAULT_VOLUME,
       ambientMaxVolume: AMBIENT_MAX_VOLUME,
-    });
+      ...(durableExport ? {
+        finalExportJobId: durableExport.jobId,
+        manifestSha256: durableExport.manifestSha256,
+        renderPayloadSha256: durableExport.renderPayloadSha256,
+        outputSha256,
+      } : {}),
+    };
+    if (durableExport) {
+      const { error: recordError } = await supabase.rpc("velto_record_creator_final_export_upload", {
+        p_job_id: durableExport.jobId,
+        p_manifest_sha256: durableExport.manifestSha256,
+        p_render_payload_sha256: durableExport.renderPayloadSha256,
+        p_storage_bucket: "movies",
+        p_storage_path: moviePath,
+        p_public_url: publicData.publicUrl,
+        p_size_bytes: stats.size,
+        p_output_sha256: outputSha256,
+        p_output: responseBody,
+      });
+      if (recordError) throw new FinalMovieStorageAdmissionError("Durable final export completion could not be recorded.", 503);
+    }
+    return res.status(200).send(responseBody);
   } catch (error) {
+    if (consumptionToken && !durableStorageStarted && supabase && ownership) {
+      try {
+        await abortFinalMovieStorageAdmission(supabase, ownership, consumptionToken);
+      } catch {
+        console.error("FINAL_MOVIE_STORAGE_ADMISSION_ABORT_FAILED", {
+          admissionId: ownership.storageAdmissionId,
+          ownerUserId: ownership.ownerUserId,
+          projectId: ownership.projectId,
+        });
+      }
+    }
     console.error("export-movie error:", error);
 
-    return res.status(500).json({
+    return res.status(error instanceof CreatorStaticImagePlanError ? 409 : error instanceof FinalMovieStorageAdmissionError ? error.status : 500).json({
       ok: false,
-      error: error?.message || "Film export işlemi başarısız oldu.",
+      ...(error instanceof CreatorStaticImagePlanError ? { code: error.code } : {}),
+      error: error instanceof CreatorStaticImagePlanError
+        ? error.message
+        : error instanceof FinalMovieStorageAdmissionError
+        ? error.message
+        : error instanceof CreatorProgramAudioMasterError
+          ? "CreatorLab final audio mastering failed."
+        : "Film export işlemi başarısız oldu.",
     });
   } finally {
+    if (durableRenderHeartbeat) clearInterval(durableRenderHeartbeat);
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     } catch {}
@@ -1397,6 +2478,16 @@ app.post("/export-movie", async (req, res) => {
 
 const port = Number(process.env.PORT || 3001);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`velto-export-service running on port ${port}`);
 });
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => process.exit(0));
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

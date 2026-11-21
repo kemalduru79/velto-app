@@ -1,0 +1,682 @@
+import type { CreatorScriptSectionBudget } from "../creator/creatorScript.ts";
+import {
+  classifyEditorialGroundingSpanSpecificity,
+  type EditorialGroundingCandidateSpan,
+} from "./editorialGroundingRepair.ts";
+import type { ScriptPlannerEditorialContext } from "./scriptPlannerEditorialContext.ts";
+
+export type CreatorScriptSectionClaimRouting = {
+  sectionId: string;
+  sectionKind: CreatorScriptSectionBudget["kind"];
+  claimIds: string[];
+  evidenceIds?: string[];
+  semanticRole?: "opening" | "explanation" | "empirical_evidence" | "scientific_tension" | "conclusion";
+  usedFallback: boolean;
+};
+
+export type CreatorLongFormEvidenceReadinessReason =
+  | "missing_grounded_demonstration_capability"
+  | "missing_counterview_capability"
+  | "missing_uncertainty_capability"
+  | "missing_scientific_tension_capability"
+  | "collapsed_body_authority"
+  | "insufficient_factual_foundation";
+
+export type CreatorLongFormEvidenceReadiness = {
+  applicable: boolean;
+  eligible: boolean;
+  reasonCodes: CreatorLongFormEvidenceReadinessReason[];
+  fallbackBodySectionIds: string[];
+  collapsedBodySectionIds: string[];
+  evidenceDependentBodySectionIds: string[];
+  factualFoundation?: { requiredPassageCount: number; availablePassageCount: number };
+};
+
+export type CreatorLongFormEvidenceCapabilityItem = {
+  claimId: string;
+  claimType: ScriptPlannerEditorialContext["claims"][number]["claimType"];
+  evidenceId: string;
+  stance: "supports" | "contextualizes" | "contradicts";
+  sourceId: string;
+  specificityClassification: "concrete_observation" | "abstract_or_conceptual";
+  hasConcreteDemonstrationCapability: boolean;
+  hasUncertaintyCapability: boolean;
+  routedSectionIds: string[];
+  usedViaFallback: boolean;
+};
+
+export type CreatorLongFormEvidenceCapabilityEvaluation = {
+  routing: CreatorScriptSectionClaimRouting[];
+  inventory: CreatorLongFormEvidenceCapabilityItem[];
+  demonstrationSectionId: string | null;
+  limitsSectionId: string | null;
+  counterviewSectionId: string | null;
+  hasGroundedDemonstrationCapability: boolean;
+  hasUncertaintyCapability: boolean;
+  hasCounterviewCapability: boolean;
+};
+
+const MAX_DIAGNOSTIC_CANDIDATES = 10;
+
+export function createCreatorEditorialCandidateCapabilityDiagnostics(
+  candidateSpans: EditorialGroundingCandidateSpan[],
+) {
+  const concreteCandidates = candidateSpans.filter(
+    (span) => span.evidenceSpecificity === "concrete_observation",
+  );
+  return {
+    candidateSpanCount: candidateSpans.length,
+    concreteCandidateSpanCount: concreteCandidates.length,
+    concreteCandidates: concreteCandidates.slice(0, MAX_DIAGNOSTIC_CANDIDATES).map((span) => ({
+      sourceId: span.sourceId,
+      spanId: span.spanId,
+      specificityClassification: span.evidenceSpecificity,
+    })),
+    truncatedConcreteCandidateCount: Math.max(
+      0,
+      concreteCandidates.length - MAX_DIAGNOSTIC_CANDIDATES,
+    ),
+  };
+}
+
+const EMPIRICAL_CLAIM_TYPES = new Set([
+  "FACT",
+  "PRIMARY_SOURCE_CLAIM",
+  "RESEARCH_FINDING",
+]);
+
+const UNCERTAINTY_BEARING_CLAIM_TYPES = new Set([
+  "THEORY",
+  "FORECAST",
+  "HYPOTHESIS",
+  "METAPHYSICAL_CLAIM",
+  "EDITORIAL_INFERENCE",
+]);
+
+function unique(values: string[]) {
+  return [...new Set(values)];
+}
+
+function concreteDemonstrationClaimId(context: ScriptPlannerEditorialContext) {
+  const evidenceById = new Map(context.evidence.map((item) => [item.evidenceId, item]));
+  const typePriority = new Map([
+    ["RESEARCH_FINDING", 0],
+    ["PRIMARY_SOURCE_CLAIM", 1],
+    ["FACT", 2],
+  ]);
+  return context.claims
+    .filter((claim) => EMPIRICAL_CLAIM_TYPES.has(claim.claimType))
+    .flatMap((claim, claimIndex) => claim.supportingEvidenceIds.flatMap((evidenceId) => {
+      const evidence = evidenceById.get(evidenceId);
+      return evidence?.excerpt &&
+          classifyEditorialGroundingSpanSpecificity(evidence.excerpt) === "concrete_observation"
+        ? [{ claimId: claim.claimId, claimIndex, priority: typePriority.get(claim.claimType) ?? 3 }]
+        : [];
+    }))
+    .toSorted((left, right) => left.priority - right.priority || left.claimIndex - right.claimIndex)[0]
+    ?.claimId || null;
+}
+
+function hasExcerpt(context: ScriptPlannerEditorialContext, id: string) {
+  return context.evidence.some((item) => item.evidenceId === id && Boolean(item.excerpt?.trim()) && Boolean(item.sourceId));
+}
+
+function uncertaintyClaimId(context: ScriptPlannerEditorialContext) {
+  return context.claims.find((claim) => claim.contextualEvidenceIds.some((id) => hasExcerpt(context, id)))?.claimId ||
+    context.claims.find((claim) =>
+      UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) &&
+      claim.supportingEvidenceIds.some((id) => hasExcerpt(context, id))
+    )?.claimId ||
+    null;
+}
+
+function counterviewClaimId(context: ScriptPlannerEditorialContext) {
+  return context.claims.find((claim) => claim.counterEvidenceIds.some((id) => hasExcerpt(context, id)))?.claimId ||
+    null;
+}
+
+function usesScienceDocumentaryPolicy(plan: CreatorScriptSectionBudget[]) {
+  return plan.length === 5 && plan.every((section) =>
+    roleOwns(section, "science_documentary_policy")
+  );
+}
+
+function linkedEvidenceIds(
+  claim: ScriptPlannerEditorialContext["claims"][number],
+) {
+  return unique([
+    ...claim.supportingEvidenceIds,
+    ...claim.contextualEvidenceIds,
+    ...claim.counterEvidenceIds,
+  ]).toSorted();
+}
+
+function createScienceDocumentaryClaimRouting(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}): CreatorScriptSectionClaimRouting[] {
+  const evidenceById = new Map(input.context.evidence.map((item) => [item.evidenceId, item]));
+  const claims = [...input.context.claims].toSorted((left, right) =>
+    left.claimId.localeCompare(right.claimId)
+  );
+  const hasExistingEvidence = (evidenceId: string) => {
+    const evidence = evidenceById.get(evidenceId);
+    return Boolean(evidence?.excerpt && evidence.sourceId);
+  };
+  const supported = claims.filter((claim) =>
+    linkedEvidenceIds(claim).some(hasExistingEvidence)
+  );
+  const empirical = supported.filter((claim) =>
+    EMPIRICAL_CLAIM_TYPES.has(claim.claimType) &&
+    claim.supportingEvidenceIds.some((evidenceId) => {
+      const excerpt = evidenceById.get(evidenceId)?.excerpt || "";
+      return Boolean(excerpt) &&
+        classifyEditorialGroundingSpanSpecificity(excerpt) === "concrete_observation";
+    })
+  );
+  const openingObservation = empirical.find((claim) =>
+    claim.claimType === "FACT" || claim.claimType === "PRIMARY_SOURCE_CLAIM"
+  ) || null;
+  const theories = supported.filter((claim) =>
+    claim.claimType === "THEORY" || claim.claimType === "HYPOTHESIS"
+  ).toSorted((left, right) =>
+    Number(right.claimType === "THEORY") - Number(left.claimType === "THEORY") ||
+    left.claimId.localeCompare(right.claimId)
+  );
+  const primaryTheory = theories[0] || null;
+  const primaryTheoryEvidenceIds = new Set(primaryTheory?.supportingEvidenceIds || []);
+  const alternativeModels = theories.slice(primaryTheory ? 1 : 0).filter((claim) =>
+    claim.supportingEvidenceIds.some((evidenceId) => primaryTheoryEvidenceIds.has(evidenceId)) ||
+    claim.counterEvidenceIds.some((evidenceId) => primaryTheoryEvidenceIds.has(evidenceId))
+  );
+  const scientificTension = supported.filter((claim) =>
+    claim.counterEvidenceIds.some(hasExistingEvidence) ||
+    claim.contextualEvidenceIds.some(hasExistingEvidence) ||
+    alternativeModels.some((candidate) => candidate.claimId === claim.claimId)
+  );
+  const assigned = new Set<string>();
+  const take = (
+    candidates: typeof supported,
+    predicate: (claim: typeof supported[number]) => boolean = () => true,
+  ) => candidates.filter((claim) => predicate(claim) && !assigned.has(claim.claimId)).map((claim) => {
+    assigned.add(claim.claimId);
+    return claim;
+  });
+  const openingClaims = openingObservation ? take([openingObservation]) : [];
+  const explanationClaims = take(supported, (claim) =>
+    claim.claimId === primaryTheory?.claimId ||
+    (["EXPERT_OPINION", "THOUGHT_EXPERIMENT"] as string[]).includes(claim.claimType)
+  );
+  const empiricalClaims = take(empirical);
+  const tensionClaims = take(scientificTension);
+  const conclusionClaims = take(supported, (claim) =>
+    (["EDITORIAL_INFERENCE", "METAPHYSICAL_CLAIM", "FORECAST"] as string[])
+      .includes(claim.claimType)
+  );
+  const claimsByRole = new Map<CreatorScriptSectionClaimRouting["semanticRole"], typeof supported>([
+    ["opening", openingClaims],
+    ["explanation", explanationClaims],
+    ["empirical_evidence", empiricalClaims],
+    ["scientific_tension", tensionClaims],
+    ["conclusion", conclusionClaims],
+  ]);
+
+  return input.plan.map((section) => {
+    const semanticRole = section.kind === "opening"
+      ? "opening"
+      : section.kind === "conclusion"
+        ? "conclusion"
+        : roleOwns(section, "science_explanation")
+          ? "explanation"
+          : roleOwns(section, "science_empirical_evidence")
+            ? "empirical_evidence"
+            : "scientific_tension";
+    const routedClaims = claimsByRole.get(semanticRole) || [];
+    return {
+      sectionId: section.id,
+      sectionKind: section.kind,
+      semanticRole,
+      claimIds: routedClaims.map((claim) => claim.claimId),
+      evidenceIds: unique(routedClaims.flatMap(linkedEvidenceIds))
+        .filter(hasExistingEvidence)
+        .toSorted(),
+      usedFallback: section.kind === "body" && routedClaims.length === 0,
+    };
+  });
+}
+
+/**
+ * Returns the exact claim routing used by section-native generation. Keeping
+ * this in one pure helper prevents readiness and provider context from drifting.
+ */
+export function createCreatorScriptSectionClaimRouting(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}): CreatorScriptSectionClaimRouting[] {
+  if (usesScienceDocumentaryPolicy(input.plan)) {
+    return createScienceDocumentaryClaimRouting(input);
+  }
+  const bodySections = input.plan.filter((section) => section.kind === "body");
+  const demonstrationClaimId = concreteDemonstrationClaimId(input.context);
+  const limitsClaimId = uncertaintyClaimId(input.context);
+  const counterClaimId = counterviewClaimId(input.context);
+  return input.plan.map((section) => {
+    const bodyIndex = section.kind === "body"
+      ? bodySections.findIndex((item) => item.id === section.id)
+      : -1;
+    const relevantClaims = section.kind === "conclusion"
+      ? input.context.claims
+      : section.kind === "opening"
+        ? input.context.claims.slice(0, Math.min(4, input.context.claims.length))
+        : input.context.claims.filter((_, claimIndex) =>
+            bodySections.length === 0 || claimIndex % bodySections.length === bodyIndex
+          );
+    const roleClaimId = roleOwns(section, "grounded_demonstration") || roleOwns(section, "concrete_case")
+      ? demonstrationClaimId
+      : roleOwns(section, "counterview") || roleOwns(section, "thesis_stress_test")
+        ? counterClaimId
+        : roleOwns(section, "limits") || roleOwns(section, "uncertainty") || roleOwns(section, "scope_conditions")
+          ? limitsClaimId
+          : null;
+    const usedFallback = section.kind === "body" && relevantClaims.length === 0 && !roleClaimId;
+    const claims = relevantClaims.length > 0
+      ? relevantClaims
+      : input.context.claims.slice(0, Math.min(2, input.context.claims.length));
+    return {
+      sectionId: section.id,
+      sectionKind: section.kind,
+      claimIds: unique([
+        ...(roleClaimId ? [roleClaimId] : []),
+        ...claims.map((claim) => claim.claimId),
+      ]),
+      usedFallback,
+    };
+  });
+}
+
+function roleOwns(section: CreatorScriptSectionBudget, capability: string) {
+  return section.ownershipBoundary.owns.includes(capability);
+}
+
+function isEvidenceDependentBodyRole(section: CreatorScriptSectionBudget) {
+  if (section.kind !== "body") return false;
+  return section.ownershipBoundary.owns.some((capability) => [
+    "definition",
+    "framing",
+    "mechanism",
+    "causal_process",
+    "grounded_demonstration",
+    "concrete_case",
+    "grounded_synthesis",
+    "evidence_interpretation",
+    "grounded_tension",
+    "evidence_boundary",
+    "counterview",
+    "thesis_stress_test",
+    "limits",
+    "uncertainty",
+    "scope_conditions",
+    "social_formation",
+    "relational_influence",
+    "systemic_interaction",
+    "material_consequence",
+    "downstream_effect",
+    "second_order_impact",
+  ].includes(capability));
+}
+
+export function createCreatorLongFormEvidenceCapabilityEvaluation(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}): CreatorLongFormEvidenceCapabilityEvaluation {
+  const claimById = new Map(input.context.claims.map((claim) => [claim.claimId, claim]));
+  const evidenceById = new Map(input.context.evidence.map((evidence) => [evidence.evidenceId, evidence]));
+  const routing = createCreatorScriptSectionClaimRouting(input);
+  const routingBySectionId = new Map(routing.map((route) => [route.sectionId, route]));
+  const routedSectionsByClaimId = new Map<string, CreatorScriptSectionClaimRouting[]>();
+  routing.forEach((route) => route.claimIds.forEach((claimId) => {
+    routedSectionsByClaimId.set(
+      claimId,
+      [...(routedSectionsByClaimId.get(claimId) || []), route],
+    );
+  }));
+
+  const evidenceDependentBodySections = input.plan.filter(isEvidenceDependentBodyRole);
+  const demonstrationSection = evidenceDependentBodySections.find((section) =>
+    roleOwns(section, "grounded_demonstration") || roleOwns(section, "concrete_case")
+  );
+  const limitsSection = evidenceDependentBodySections.find((section) =>
+    roleOwns(section, "limits") || roleOwns(section, "uncertainty") || roleOwns(section, "scope_conditions")
+  );
+  const counterviewSection = evidenceDependentBodySections.find((section) =>
+    roleOwns(section, "counterview") || roleOwns(section, "thesis_stress_test")
+  );
+
+  const demonstrationClaimIds = demonstrationSection
+    ? routingBySectionId.get(demonstrationSection.id)?.claimIds || []
+    : [];
+  const demonstrationClaims = demonstrationClaimIds
+    .map((claimId) => claimById.get(claimId))
+    .filter((claim): claim is NonNullable<typeof claim> => Boolean(claim));
+  const demonstrationRouteHasEmpiricalClaim = demonstrationClaims.some((claim) =>
+    EMPIRICAL_CLAIM_TYPES.has(claim.claimType)
+  );
+  const limitsClaimIds = new Set(
+    limitsSection ? routingBySectionId.get(limitsSection.id)?.claimIds || [] : [],
+  );
+
+  const inventory = input.context.claims.flatMap((claim) => {
+    const routedSections = routedSectionsByClaimId.get(claim.claimId) || [];
+    const routedSectionIds = routedSections.map((route) => route.sectionId);
+    const usedViaFallback = routedSections.some((route) => route.usedFallback);
+    const relations = [
+      ...claim.supportingEvidenceIds.map((evidenceId) => ({ evidenceId, stance: "supports" as const })),
+      ...claim.contextualEvidenceIds.map((evidenceId) => ({ evidenceId, stance: "contextualizes" as const })),
+      ...claim.counterEvidenceIds.map((evidenceId) => ({ evidenceId, stance: "contradicts" as const })),
+    ];
+    return relations.flatMap(({ evidenceId, stance }) => {
+      const evidence = evidenceById.get(evidenceId);
+      if (!evidence?.excerpt?.trim()) return [];
+      const specificityClassification = classifyEditorialGroundingSpanSpecificity(
+        evidence.excerpt || "",
+      );
+      const isDemonstrationAuthority = Boolean(demonstrationSection) &&
+        routedSectionIds.includes(demonstrationSection!.id) &&
+        stance === "supports" &&
+        Boolean(evidence.excerpt) &&
+        (!demonstrationRouteHasEmpiricalClaim || specificityClassification === "concrete_observation");
+      const isUncertaintyAuthority = limitsClaimIds.has(claim.claimId) && (
+        stance === "contextualizes" ||
+        (stance === "supports" && UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType))
+      );
+      return [{
+        claimId: claim.claimId,
+        claimType: claim.claimType,
+        evidenceId,
+        stance,
+        sourceId: evidence.sourceId,
+        specificityClassification,
+        hasConcreteDemonstrationCapability: isDemonstrationAuthority,
+        hasUncertaintyCapability: isUncertaintyAuthority,
+        routedSectionIds,
+        usedViaFallback,
+      }];
+    });
+  });
+
+  const hasGroundedDemonstrationCapability = demonstrationSection
+    ? demonstrationClaims.flatMap((claim) => claim.supportingEvidenceIds)
+        .map((evidenceId) => evidenceById.get(evidenceId))
+        .filter((evidence): evidence is NonNullable<typeof evidence> => Boolean(evidence))
+        .some((evidence) => Boolean(evidence.excerpt) && (
+          !demonstrationRouteHasEmpiricalClaim ||
+          classifyEditorialGroundingSpanSpecificity(evidence.excerpt || "") === "concrete_observation"
+        ))
+    : false;
+  const hasUncertaintyCapability = limitsSection
+    ? [...limitsClaimIds].some((claimId) => {
+        const claim = claimById.get(claimId);
+        if (!claim) return false;
+        return claim.contextualEvidenceIds.some((id) => hasExcerpt(input.context, id)) ||
+          (UNCERTAINTY_BEARING_CLAIM_TYPES.has(claim.claimType) && claim.supportingEvidenceIds.some((id) => hasExcerpt(input.context, id)));
+      })
+    : false;
+  const hasCounterviewCapability = counterviewSection
+    ? (routingBySectionId.get(counterviewSection.id)?.claimIds || []).some((claimId) =>
+        (claimById.get(claimId)?.counterEvidenceIds || []).some((id) => hasExcerpt(input.context, id))
+      )
+    : false;
+
+  return {
+    routing,
+    inventory,
+    demonstrationSectionId: demonstrationSection?.id || null,
+    limitsSectionId: limitsSection?.id || null,
+    counterviewSectionId: counterviewSection?.id || null,
+    hasGroundedDemonstrationCapability,
+    hasUncertaintyCapability,
+    hasCounterviewCapability,
+  };
+}
+
+/**
+ * Keeps long-form structure honest when the canonical evidence is substantial
+ * but does not contain a concrete observational case. The demonstration slot
+ * remains evidence-dependent and keeps its id/kind/word budget, but its
+ * intellectual role is downgraded from "demonstrate a concrete case" to
+ * "synthesize supported findings". No factual authority is added or upgraded.
+ *
+ * Other readiness blockers remain untouched and are re-evaluated against the
+ * adapted plan by the caller.
+ */
+export function adaptCreatorLongFormSectionPlanToEvidenceCapability(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}): CreatorScriptSectionBudget[] {
+  const evaluation = createCreatorLongFormEvidenceCapabilityEvaluation(input);
+  if (
+    !evaluation.demonstrationSectionId ||
+    evaluation.hasGroundedDemonstrationCapability
+  ) {
+    return input.plan;
+  }
+
+  return input.plan.map((section) => {
+    if (section.id !== evaluation.demonstrationSectionId) return section;
+    return {
+      ...section,
+      role: "Synthesize the strongest grounded findings without inventing a concrete case",
+      centralQuestion:
+        "What do the strongest supported findings establish, and what remains interpretation rather than direct observation?",
+      progression:
+        "Moves from causal explanation to grounded evidence synthesis while preserving the specificity actually available in the evidence.",
+      ownershipBoundary: {
+        usage: "control_only_never_narrate" as const,
+        owns: ["grounded_synthesis", "evidence_interpretation"],
+        excludes: [
+          "mechanism_reteaching",
+          "invented_case",
+          "unsupported_specificity",
+          "limits",
+          "social_formation",
+          "material_consequence",
+        ],
+      },
+    };
+  });
+}
+
+/**
+ * Answers whether a valid canonical graph can responsibly serve the actual
+ * section-native long-form plan. It does not score research or promote sources.
+ */
+export function adaptCreatorLongFormSectionPlanToUncertaintyCapability(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+}) {
+  const capabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation(input);
+  const limitsSectionId = capabilityEvaluation.limitsSectionId;
+  if (!limitsSectionId || capabilityEvaluation.hasUncertaintyCapability) {
+    return input.plan;
+  }
+  return input.plan.map((section) =>
+    section.id !== limitsSectionId
+      ? section
+      : {
+          ...section,
+          role: "Develop the strongest grounded tension and evidence boundary without inventing uncertainty",
+          centralQuestion: "What tension do the supported findings establish, and what can we responsibly conclude without adding unsupported uncertainty?",
+          progression: "Moves from the established evidence to a grounded tension between supported findings while preserving the boundary of what the evidence actually establishes.",
+          ownershipBoundary: {
+            usage: "control_only_never_narrate" as const,
+            owns: ["grounded_tension", "evidence_boundary"],
+            excludes: [
+              "invented_uncertainty",
+              "unsupported_scope_condition",
+              "mechanism_summary",
+              "evidence_summary",
+              "social_formation",
+              "material_consequence",
+            ],
+          },
+        }
+  );
+}
+
+
+/**
+ * Adapt only roles that demand evidence the *already-grounded* project does
+ * not possess. Never synthesize missing sources, claim types, counter-evidence
+ * or limitations, and never suppress independent readiness blockers.
+ * The exact resulting plan is used for both the gate and generation.
+ */
+export function prepareCreatorLongFormSectionPlanForAvailableEvidence(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+  sectionNative: boolean;
+}) {
+  const originalReadiness = createCreatorLongFormEvidenceReadiness(input);
+  const adaptable = new Set<CreatorLongFormEvidenceReadinessReason>([
+    "missing_grounded_demonstration_capability",
+    "missing_uncertainty_capability",
+  ]);
+  const linkedEvidenceIds = new Set(
+    input.context.evidence
+      .filter((evidence) => Boolean(evidence.excerpt?.trim()) && Boolean(evidence.sourceId))
+      .map((evidence) => evidence.evidenceId),
+  );
+  const hasRealGroundedSupport = input.context.claims.some((claim) =>
+    claim.supportingEvidenceIds.some((id) => linkedEvidenceIds.has(id)) ||
+    claim.contextualEvidenceIds.some((id) => linkedEvidenceIds.has(id))
+  );
+  // No adaptation for an entirely ungrounded graph, a missing counterview,
+  // collapsed body authority, scientific tension, or any unknown failure.
+  if (
+    !input.sectionNative ||
+    input.context.readiness.status !== "ready" ||
+    input.context.readiness.reviewReasons.length > 0 ||
+    originalReadiness.eligible ||
+    !hasRealGroundedSupport ||
+    !originalReadiness.reasonCodes.every((reason) => adaptable.has(reason))
+  ) {
+    return { plan: input.plan, originalReadiness, finalReadiness: originalReadiness, adaptedSectionIds: [] as string[] };
+  }
+
+  let plan = input.plan;
+  if (originalReadiness.reasonCodes.includes("missing_grounded_demonstration_capability")) {
+    plan = adaptCreatorLongFormSectionPlanToEvidenceCapability({context: input.context, plan});
+  }
+  if (originalReadiness.reasonCodes.includes("missing_uncertainty_capability")) {
+    plan = adaptCreatorLongFormSectionPlanToUncertaintyCapability({context: input.context, plan});
+  }
+  const finalReadiness = createCreatorLongFormEvidenceReadiness({
+    context: input.context, plan, sectionNative: input.sectionNative,
+  });
+  return {
+    plan, originalReadiness, finalReadiness,
+    adaptedSectionIds: plan.filter((section, index) =>
+      section !== input.plan[index]
+    ).map((section) => section.id),
+  };
+}
+
+export function createCreatorLongFormEvidenceReadiness(input: {
+  context: ScriptPlannerEditorialContext;
+  plan: CreatorScriptSectionBudget[];
+  sectionNative: boolean;
+}): CreatorLongFormEvidenceReadiness {
+  const evidenceDependentBodySections = input.plan.filter(isEvidenceDependentBodyRole);
+  const applicable = input.sectionNative && evidenceDependentBodySections.length > 0;
+  if (!applicable) {
+    return {
+      applicable: false,
+      eligible: true,
+      reasonCodes: [],
+      fallbackBodySectionIds: [],
+      collapsedBodySectionIds: [],
+      evidenceDependentBodySectionIds: evidenceDependentBodySections.map((section) => section.id),
+    };
+  }
+
+  const reasonCodes = new Set<CreatorLongFormEvidenceReadinessReason>();
+  const claimById = new Map(input.context.claims.map((claim) => [claim.claimId, claim]));
+  const capabilityEvaluation = createCreatorLongFormEvidenceCapabilityEvaluation(input);
+  const scienceDocumentary = usesScienceDocumentaryPolicy(input.plan);
+  const routing = capabilityEvaluation.routing;
+  const routingBySectionId = new Map(routing.map((route) => [route.sectionId, route]));
+  const bodyRouting = evidenceDependentBodySections
+    .map((section) => routingBySectionId.get(section.id))
+    .filter((route): route is CreatorScriptSectionClaimRouting => Boolean(route));
+
+  const linkedEvidenceIdsForClaims = (claimIds: string[]) => unique(claimIds.flatMap((claimId) => {
+    const claim = claimById.get(claimId);
+    return claim ? [
+      ...claim.supportingEvidenceIds,
+      ...claim.counterEvidenceIds,
+      ...claim.contextualEvidenceIds,
+    ] : [];
+  }));
+
+  if (capabilityEvaluation.demonstrationSectionId &&
+      !capabilityEvaluation.hasGroundedDemonstrationCapability) {
+    reasonCodes.add("missing_grounded_demonstration_capability");
+  }
+  if (!scienceDocumentary && capabilityEvaluation.counterviewSectionId && !capabilityEvaluation.hasCounterviewCapability) {
+    reasonCodes.add("missing_counterview_capability");
+  }
+  if (!scienceDocumentary && capabilityEvaluation.limitsSectionId && !capabilityEvaluation.hasUncertaintyCapability) {
+    reasonCodes.add("missing_uncertainty_capability");
+  }
+  if (scienceDocumentary && capabilityEvaluation.limitsSectionId &&
+      !capabilityEvaluation.hasCounterviewCapability &&
+      !capabilityEvaluation.hasUncertaintyCapability) {
+    reasonCodes.add("missing_scientific_tension_capability");
+  }
+
+  const authorityFingerprints = bodyRouting.map((route) => {
+    const claimIds = unique(route.claimIds).toSorted();
+    const evidenceIds = linkedEvidenceIdsForClaims(claimIds).toSorted();
+    return `${claimIds.join(",")}|${evidenceIds.join(",")}`;
+  });
+  const collapsed = bodyRouting.length > 1 && new Set(authorityFingerprints).size === 1;
+  const soleAuthorityEvidenceCount = collapsed
+    ? linkedEvidenceIdsForClaims(bodyRouting[0]?.claimIds || []).length
+    : 0;
+  const collapsedBodySectionIds = collapsed && soleAuthorityEvidenceCount <= 1
+    ? bodyRouting.map((route) => route.sectionId)
+    : [];
+  if (collapsedBodySectionIds.length > 0) reasonCodes.add("collapsed_body_authority");
+
+  // A scope review can leave different claim-id combinations that evade the
+  // all-identical-routing check above. Require at least one distinct grounded
+  // passage per evidence-dependent body section before spending on long form.
+  // This is a necessary floor, not a scientific/completeness attestation. Role,
+  // primary, counter-evidence and final prose checks remain independent.
+  const evidenceById = new Map(input.context.evidence.map((item) => [item.evidenceId, item]));
+  const routedClaimIds = new Set(bodyRouting.flatMap((route) => route.claimIds));
+  const factualPassages = new Set(input.context.claims
+    .filter((claim) => routedClaimIds.has(claim.claimId) &&
+      claim.claimType !== "THOUGHT_EXPERIMENT" &&
+      claim.supportingEvidenceIds.some((id) => hasExcerpt(input.context, id)))
+    .flatMap((claim) => linkedEvidenceIdsForClaims([claim.claimId]))
+    .map((id) => evidenceById.get(id))
+    .filter((item) => item?.sourceId && item.excerpt?.trim())
+    .map((item) => item!.excerpt!.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("en-US")));
+  const factualFoundation = {
+    requiredPassageCount: evidenceDependentBodySections.length,
+    availablePassageCount: factualPassages.size,
+  };
+  if (factualFoundation.availablePassageCount < factualFoundation.requiredPassageCount) {
+    reasonCodes.add("insufficient_factual_foundation");
+  }
+
+  return {
+    applicable: true,
+    eligible: reasonCodes.size === 0,
+    reasonCodes: [...reasonCodes],
+    fallbackBodySectionIds: bodyRouting.filter((route) => route.usedFallback).map((route) => route.sectionId),
+    collapsedBodySectionIds,
+    evidenceDependentBodySectionIds: evidenceDependentBodySections.map((section) => section.id),
+    factualFoundation,
+  };
+}

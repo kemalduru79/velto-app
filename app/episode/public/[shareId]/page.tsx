@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import type { PublicStoryverseEpisodeDto } from "@/lib/security/publicStoryverseProjection";
 
 type PublicProject = {
   id: string;
   title: string;
   language: "tr" | "en";
   story_premise?: string;
-  characters?: any[];
-  scenes?: any[];
+  characters?: PublicStoryverseEpisodeDto["characters"];
+  scenes?: PublicStoryverseEpisodeDto["scenes"];
   published_at?: string;
   exported_movie_url?: string;
 };

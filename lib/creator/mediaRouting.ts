@@ -6,6 +6,59 @@ export type CreatorQualityMode =
   | "pro"
   | "cinematic";
 
+export type CreatorQualityModeOption = {
+  value: CreatorQualityMode;
+  labelEn: string;
+  labelTr: string;
+  guidanceEn: string;
+  guidanceTr: string;
+  creditTierEn: string;
+  creditTierTr: string;
+};
+
+/**
+ * Public quality choices. These are intentionally outcome-based; provider and
+ * model identities remain internal to the routing layer.
+ */
+export const CREATOR_QUALITY_MODE_OPTIONS: readonly CreatorQualityModeOption[] = [
+  {
+    value: "draft",
+    labelEn: "Draft",
+    labelTr: "Taslak",
+    guidanceEn: "Strategy, hook, script outline and metadata planning only. No media generation.",
+    guidanceTr: "Strateji, hook, script taslağı ve metadata planlama. Medya üretimi yok.",
+    creditTierEn: "Lowest credit use",
+    creditTierTr: "En düşük kredi kullanımı",
+  },
+  {
+    value: "standard",
+    labelEn: "Standard",
+    labelTr: "Standart",
+    guidanceEn: "Next-generation medium-quality visuals and balanced voice production for efficient social packages.",
+    guidanceTr: "Verimli sosyal medya paketleri için yeni nesil orta kalite görseller ve dengeli ses üretimi.",
+    creditTierEn: "Balanced credit use",
+    creditTierTr: "Dengeli kredi kullanımı",
+  },
+  {
+    value: "pro",
+    labelEn: "Pro",
+    labelTr: "Pro",
+    guidanceEn: "High-fidelity professional visuals, realistic adult human rendering and reference-aware character consistency.",
+    guidanceTr: "Yüksek doğrulukta profesyonel görseller, gerçekçi yetişkin insan üretimi ve referans destekli karakter tutarlılığı.",
+    creditTierEn: "Higher credit use",
+    creditTierTr: "Daha yüksek kredi kullanımı",
+  },
+  {
+    value: "cinematic",
+    labelEn: "Cinematic",
+    labelTr: "Sinematik",
+    guidanceEn: "Maximum-fidelity visual masters, stronger multi-reference continuity and premium production routing.",
+    guidanceTr: "Maksimum doğrulukta ana görseller, daha güçlü çoklu referans sürekliliği ve premium üretim yönlendirmesi.",
+    creditTierEn: "Maximum credit use",
+    creditTierTr: "Maksimum kredi kullanımı",
+  },
+] as const;
+
 export type CreatorMediaAction =
   | "paid_media"
   | "visuals"
@@ -25,6 +78,7 @@ export type CreatorMediaRoute = {
     | "premium_ai_blocks";
   providerTarget: "none" | "current_primary" | "premium_primary";
   fallbackStrategy: "none" | "image_motion" | "primary_then_image_motion";
+  /** @deprecated Persisted-plan compatibility only. Runtime routing uses Production Intelligence. */
   videoBlockRatio: number;
   actions: Record<CreatorMediaAction, boolean>;
 };
@@ -130,6 +184,16 @@ export function isCreatorMediaActionAllowed(
   return route.actions[action];
 }
 
+function normalizeSceneIds(sceneIds: number[]) {
+  return Array.from(
+    new Set(
+      sceneIds
+        .map((sceneId) => Number(sceneId))
+        .filter((sceneId) => Number.isFinite(sceneId) && sceneId > 0),
+    ),
+  );
+}
+
 function getDistributedSceneIds(sceneIds: number[], targetCount: number) {
   if (targetCount <= 0 || sceneIds.length === 0) {
     return [];
@@ -151,31 +215,56 @@ function getDistributedSceneIds(sceneIds: number[], targetCount: number) {
   return Array.from(new Set(distributedIds));
 }
 
+/**
+ * @deprecated Stage 0.10D runtime uses planCreatorProjectProduction. This is
+ * retained only for historical plan/test compatibility.
+ * Selects the scenes that should receive paid AI motion while preserving the
+ * simple Production Quality UX. Explicit Image/Video choices are treated as
+ * advanced overrides; every remaining scene is routed automatically.
+ */
 export function getCreatorVideoBlockSceneIds({
   route,
   sceneIds,
   timelinePlan,
+  forceVideoSceneIds = [],
+  forceImageSceneIds = [],
 }: {
   route: CreatorMediaRoute;
   sceneIds: number[];
   timelinePlan?: TimelineSyncPlan | null;
+  forceVideoSceneIds?: number[];
+  forceImageSceneIds?: number[];
 }) {
-  const normalizedSceneIds = Array.from(
-    new Set(
-      sceneIds
-        .map((sceneId) => Number(sceneId))
-        .filter((sceneId) => Number.isFinite(sceneId) && sceneId > 0),
-    ),
-  );
+  const normalizedSceneIds = normalizeSceneIds(sceneIds);
 
   if (!route.actions.ai_video_blocks || normalizedSceneIds.length === 0) {
     return [];
   }
 
-  const targetCount = Math.min(
-    normalizedSceneIds.length,
-    Math.max(1, Math.round(normalizedSceneIds.length * route.videoBlockRatio)),
+  const sceneIdSet = new Set(normalizedSceneIds);
+  const forcedImageSet = new Set(
+    normalizeSceneIds(forceImageSceneIds).filter((sceneId) => sceneIdSet.has(sceneId)),
   );
+  const forcedVideoIds = normalizeSceneIds(forceVideoSceneIds).filter(
+    (sceneId) => sceneIdSet.has(sceneId) && !forcedImageSet.has(sceneId),
+  );
+  const candidateSceneIds = normalizedSceneIds.filter(
+    (sceneId) => !forcedImageSet.has(sceneId),
+  );
+
+  if (candidateSceneIds.length === 0) {
+    return [];
+  }
+
+  const ratioTargetCount = Math.max(
+    1,
+    Math.round(normalizedSceneIds.length * route.videoBlockRatio),
+  );
+  const targetCount = Math.min(
+    candidateSceneIds.length,
+    Math.max(forcedVideoIds.length, ratioTargetCount),
+  );
+
   const timelinePriorityIds = (timelinePlan?.scenes || [])
     .filter(
       (scene) =>
@@ -183,13 +272,23 @@ export function getCreatorVideoBlockSceneIds({
         scene.visualAction === "split_scene",
     )
     .map((scene) => Number(scene.id))
-    .filter((sceneId) => normalizedSceneIds.includes(sceneId));
+    .filter(
+      (sceneId) =>
+        candidateSceneIds.includes(sceneId) && !forcedImageSet.has(sceneId),
+    );
+
+  const firstCandidateSceneId = candidateSceneIds[0];
+  const distributedIds = getDistributedSceneIds(
+    candidateSceneIds,
+    targetCount,
+  );
   const prioritizedIds = Array.from(
     new Set([
-      normalizedSceneIds[0],
+      ...forcedVideoIds,
+      firstCandidateSceneId,
       ...timelinePriorityIds,
-      ...getDistributedSceneIds(normalizedSceneIds, targetCount),
-      ...normalizedSceneIds,
+      ...distributedIds,
+      ...candidateSceneIds,
     ]),
   );
 

@@ -1,0 +1,600 @@
+/* UX-P2D-1 — CreatorLab Publish Workspace.
+   Presentation only: existing readiness, export, credit and persistence paths remain authoritative. */
+
+.creatorlab-uxp2a-shell .creatorlab-publish-experience {
+  display: grid;
+  gap: 14px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-heading {
+  align-items: flex-start;
+  padding: 2px 2px 12px;
+  border-bottom: 1px solid var(--cl-divider);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-heading h1 {
+  max-width: 760px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--cl-text-strong);
+  font-family: var(--cl-font-display);
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  font-weight: 560;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-publish-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 0;
+  margin-top: 8px;
+  color: var(--cl-muted);
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-publish-meta span {
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-publish-meta span + span::before {
+  margin: 0 8px;
+  color: var(--cl-border-strong);
+  content: "·";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-stage-badge {
+  color: var(--cl-muted);
+  background: var(--cl-surface-muted);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-stage-badge[data-readiness-state="outdated"] {
+  color: var(--cl-warning);
+  background: var(--cl-warning-soft);
+  border-color: color-mix(in srgb, var(--cl-warning) 24%, var(--cl-border));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px 22px;
+  padding: 13px 15px;
+  background: color-mix(in srgb, var(--cl-surface-muted) 68%, white);
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-summary > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness[data-publish-readiness="ready"] .creatorlab-p2d-readiness-summary > span {
+  color: var(--cl-success);
+  background: var(--cl-success-soft);
+  border-color: color-mix(in srgb, var(--cl-success) 26%, var(--cl-border));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness[data-publish-readiness="outdated"] .creatorlab-p2d-readiness-summary > span {
+  color: var(--cl-warning);
+  background: var(--cl-warning-soft);
+  border-color: color-mix(in srgb, var(--cl-warning) 26%, var(--cl-border));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-summary small {
+  display: block;
+  color: var(--cl-soft);
+  font-size: 0.58rem;
+  font-weight: 740;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-summary h2 {
+  margin: 3px 0 0;
+  color: var(--cl-text-strong);
+  font-size: 0.92rem;
+  font-weight: 720;
+  line-height: 1.3;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px 14px;
+  margin: 0;
+  padding: 0;
+  color: var(--cl-muted);
+  font-size: 0.65rem;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-readiness-actions li::before {
+  margin-right: 6px;
+  color: var(--cl-warning);
+  content: "•";
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-package-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 12px 2px 0;
+  border-top: 1px solid var(--cl-divider);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-package-heading span {
+  color: var(--cl-accent);
+  font-size: 0.59rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-package-heading h2 {
+  margin: 3px 0 0;
+  color: var(--cl-text-strong);
+  font-family: var(--cl-font-display);
+  font-size: 1.08rem;
+  font-weight: 560;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-package-heading small {
+  color: var(--cl-muted);
+  font-size: 0.66rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-package-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.creatorlab-uxp2a-shell :where(
+  .creatorlab-publish-video-card,
+  .creatorlab-publish-thumbnail-card,
+  .creatorlab-publish-metadata-card,
+  .creatorlab-publish-platform-card,
+  .creatorlab-publish-checklist-card,
+  .creatorlab-publish-package-card
+) {
+  border-color: var(--cl-border);
+  background: var(--cl-surface-elevated);
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-media-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 12px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-content-grid {
+  gap: 12px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-thumbnail-studio-summary {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-summary-preview {
+  display: grid;
+  place-items: center;
+  width: 104px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  color: var(--cl-muted);
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+  border-radius: 8px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-summary-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-summary-copy {
+  min-width: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-summary-copy small {
+  display: block;
+  margin-top: 3px;
+  color: var(--cl-muted);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-edit-action {
+  min-height: 38px;
+  padding: 9px 12px;
+  color: var(--cl-accent);
+  background: var(--cl-surface-elevated);
+  border: 1px solid var(--cl-accent-border);
+  border-radius: 9px;
+  font-size: 0.7rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-thumbnail-studio-details[open] .creatorlab-p2d-thumbnail-edit-action {
+  color: var(--cl-muted);
+  border-color: var(--cl-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-package-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--cl-border);
+  border-radius: 10px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-package-item {
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 var(--cl-divider);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-action-bar {
+  position: sticky;
+  z-index: 12;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 4px;
+  padding: 14px 15px;
+  background: color-mix(in srgb, var(--cl-surface-muted) 60%, white);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-primary-action {
+  flex: 0 0 auto;
+  min-height: 44px;
+  box-shadow: 0 7px 16px rgba(23, 105, 224, 0.14);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-publish-secondary-button,
+.creatorlab-uxp2a-shell .creatorlab-publish-essential-action,
+.creatorlab-uxp2a-shell .creatorlab-publish-copy-button {
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .creatorlab-uxp2a-shell .creatorlab-p2d-readiness,
+  .creatorlab-uxp2a-shell .creatorlab-publish-media-grid,
+  .creatorlab-uxp2a-shell .creatorlab-publish-content-grid,
+  .creatorlab-uxp2a-shell .creatorlab-release-validation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-p2d-readiness-actions {
+    justify-content: flex-start;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-publish-action-bar {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .creatorlab-uxp2a-shell .creatorlab-publish-heading,
+  .creatorlab-uxp2a-shell .creatorlab-p2d-package-heading,
+  .creatorlab-uxp2a-shell .creatorlab-publish-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-publish-heading h1 {
+    white-space: normal;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-publish-stage-badge,
+  .creatorlab-uxp2a-shell .creatorlab-publish-primary-action {
+    align-self: stretch;
+    width: 100%;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-p2d-package-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-thumbnail-studio-summary {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-summary-preview {
+    width: 88px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-p2d-thumbnail-edit-action {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creatorlab-uxp2a-shell .creatorlab-publish-primary-action,
+  .creatorlab-uxp2a-shell .creatorlab-publish-secondary-button,
+  .creatorlab-uxp2a-shell .creatorlab-publish-copy-button {
+    transition: none !important;
+  }
+}
+
+/* UX-P2D-3 — Velto Copilot cohesion. */
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher {
+  right: 20px;
+  bottom: 20px;
+  width: 52px;
+  height: 52px;
+  padding: 3px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--cl-border-strong) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 22px rgba(14, 32, 58, 0.14) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:hover,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher:focus-visible,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-open {
+  transform: translateY(-2px);
+  border-color: var(--cl-accent-border) !important;
+  box-shadow: 0 10px 26px rgba(14, 32, 58, 0.17) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-header-brand,
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+  color: #ffffff;
+  background: var(--cl-accent);
+  border-radius: 10px;
+  letter-spacing: -0.04em;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher-brand {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  font-size: 0.78rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-header-brand {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  box-shadow: none;
+  font-size: 0.7rem;
+}
+
+.creatorlab-uxp2a-shell :is(.creatorlab-copilot-header-brand, .creatorlab-copilot-launcher-brand) i {
+  display: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher small {
+  top: -5px;
+  right: -5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--cl-warning);
+  border-width: 2px;
+  font-size: 0.56rem;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer {
+  right: 20px;
+  bottom: 82px;
+  width: min(410px, calc(100vw - 32px));
+}
+
+.creatorlab-uxp2a-shell .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+  max-height: calc(100dvh - 110px);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.99);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(14, 32, 58, 0.18) !important;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-ai-heading {
+  top: -16px;
+  padding: 7px 0 11px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-context-bar {
+  margin: 10px 0;
+  padding: 9px 11px;
+  background: var(--cl-surface-muted);
+  border-radius: 9px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-mode-tabs {
+  margin-bottom: 10px;
+  background: var(--cl-surface-muted);
+  border: 1px solid var(--cl-border);
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-chat {
+  max-height: min(42dvh, 410px);
+  background: #f7f9fc;
+  border-radius: 11px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-message p {
+  border-radius: 10px 10px 10px 3px;
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-message.is-user p {
+  color: #174c91 !important;
+  background: var(--cl-accent-soft);
+  border-color: var(--cl-accent-border);
+  border-radius: 10px 10px 3px 10px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-action-card {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button,
+.creatorlab-uxp2a-shell .creatorlab-copilot-followups button {
+  border-radius: 9px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-composer {
+  bottom: -16px;
+  margin-top: 9px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+  bottom: 104px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+  bottom: 166px;
+}
+
+@media (max-width: 900px) {
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+    bottom: 16px;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+    bottom: 78px;
+  }
+}
+
+@media (max-width: 599px) {
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer,
+  .creatorlab-uxp2a-shell .creatorlab-copilot-floating-layer.is-publish-context {
+    right: 8px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: calc(100vw - 16px);
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-ai-workspace.creatorlab-drawer-panel.creatorlab-copilot-panel {
+    max-height: min(80dvh, 760px);
+    padding: 13px 11px calc(11px + env(safe-area-inset-bottom));
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher,
+  .creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-publish-context {
+    right: 10px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
+/* UX-P2D-4 — Copilot final visual polish. */
+.creatorlab-uxp2a-shell .creatorlab-copilot-launcher.is-open {
+  visibility: hidden;
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-context-bar {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-chat.is-empty {
+  min-height: 0;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-chat.is-empty .creatorlab-director-empty {
+  min-height: 104px;
+  padding: 16px 14px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-panel .creatorlab-director-empty {
+  gap: 5px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+  padding-bottom: 0;
+  overflow: visible;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button {
+  width: 100%;
+  max-width: none;
+  min-height: 38px;
+  padding: 7px 9px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-copilot-followups button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-composer textarea {
+  min-height: 76px;
+}
+
+.creatorlab-uxp2a-shell .creatorlab-director-safety-note {
+  margin-top: 7px;
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 360px) {
+  .creatorlab-uxp2a-shell .creatorlab-director-prompt-chips {
+    grid-template-columns: 1fr;
+  }
+
+  .creatorlab-uxp2a-shell .creatorlab-director-prompt-chips button:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+}

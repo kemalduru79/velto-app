@@ -1,0 +1,13 @@
+{
+  "historicalBuildId": "9aa56545-ee78-4fec-80cd-0511aeeb3358",
+  "provenance": "User-supplied live section-1 counts; prose and other authority are synthetic. No historical build is accessed.",
+  "sectionId": "section-1",
+  "direction": "expand",
+  "beforeWords": 260,
+  "minimumWords": 285,
+  "targetWords": 317,
+  "maximumWords": 349,
+  "minimumRequiredGain": 25,
+  "rejectedCandidates": [221, 219],
+  "recoveryCandidate": 317
+}

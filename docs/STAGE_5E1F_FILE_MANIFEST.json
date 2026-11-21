@@ -1,0 +1,64 @@
+{
+  "stage": "5E1F",
+  "status": "OFFLINE_MOCK_CORE_INTEGRATED",
+  "commit": "RECORDED_IN_LOCAL_CLOSURE_REPORT",
+  "push": "none",
+  "mode": "offline_mock",
+  "artifacts": [
+    {
+      "path": "docs/STAGE_5E1F_ACCEPTANCE_REPORT.md",
+      "bytes": 2416,
+      "sha256": "acaf8b68fc8a5ccf6bf97f312e3a7bfd80a96b95b88d6bc4d049b5da38b2b096"
+    },
+    {
+      "path": "docs/STAGE_5E1F_README.md",
+      "bytes": 5205,
+      "sha256": "f801d9e5dbfad5bcd2b76abe16eda6bb95ed9b7a2a91ad84c6d90e7de2e3919d"
+    },
+    {
+      "path": "lib/creator/scientificReview/contracts.ts",
+      "bytes": 6423,
+      "sha256": "f03f96745d9ea3fe7d7c5b273fae7f9ccb57c8e615a34bbf81c51e4f2e8f6c02"
+    },
+    {
+      "path": "lib/creator/scientificReview/evidence.ts",
+      "bytes": 5077,
+      "sha256": "df1bb3279115ea5614b67b214bbf101112e4a49a7a328eba0a151dd7d9cf4446"
+    },
+    {
+      "path": "lib/creator/scientificReview/index.ts",
+      "bytes": 184,
+      "sha256": "21050bdbcedd3de2a83902c6edf0fc3b3fd54ec605c09e2f942252f237c674a8"
+    },
+    {
+      "path": "lib/creator/scientificReview/ledger.ts",
+      "bytes": 6121,
+      "sha256": "e4d8938c1c086a099e8c4b889e4222d8aed43bb60d0b676eb1c2c4b5db3a0fc1"
+    },
+    {
+      "path": "lib/creator/scientificReview/mock.ts",
+      "bytes": 781,
+      "sha256": "9279ffd12e9987b99cdaf3e074857541098f3058d1fa7a214996f711b7b879d0"
+    },
+    {
+      "path": "lib/creator/scientificReview/orchestrator.ts",
+      "bytes": 5513,
+      "sha256": "fb2f2552aca29973bb253dacc09c4cc0ed3a1facf09585a403ba23bd775731da"
+    },
+    {
+      "path": "lib/creator/scientificReview/reports.ts",
+      "bytes": 1383,
+      "sha256": "63e076e19ba778a268e31bafac4736132ef841ee88bdb1f93dab4fc7b0c5c16d"
+    },
+    {
+      "path": "scripts/stage-5e1f-agentic-scientific-review-test.mjs",
+      "bytes": 11519,
+      "sha256": "eba370629d100e95e0c7d0ba00411be4b26f7a39439c0c46d866bbe19fe7f045"
+    },
+    {
+      "path": "scripts/stage-0-8a-critical-regression.mjs",
+      "bytes": 7345,
+      "sha256": "033e5cde8b995773072a32b60718e7dd9b12332aab096e8baf08d13f77f794d9"
+    }
+  ]
+}

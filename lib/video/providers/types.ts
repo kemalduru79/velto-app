@@ -1,0 +1,70 @@
+export type VideoProviderKey = "runway" | "veo";
+export type VideoProviderTier = "primary" | "premium";
+
+export type VideoProviderCapabilities = {
+  imageToVideo: boolean;
+  firstFrame: boolean;
+  lastFrame: boolean;
+  referenceImage: boolean;
+  supportedRatios: readonly string[];
+};
+
+export type VideoProviderCreateInput = {
+  imageUrl: string;
+  lastFrameUrl?: string;
+  referenceImageUrls?: string[];
+  promptText: string;
+  requestedRatio: unknown;
+  durationSec: number;
+  runwayUsageTag?: string;
+  runtimeProfile?: VideoProviderRuntimeProfile;
+};
+
+export type VideoProviderDurationPolicy = {
+  durationSec: number;
+  reason: string;
+};
+export type VideoProviderRuntimeProfile = { model: string; resolution: string; audioMode: string; profileKey?: string; pricingVersion?: string };
+
+export type VideoProviderTask = {
+  nativeTaskId: string;
+  status: string;
+  videoUrl: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+};
+
+export type VideoProviderCancelResult = {
+  supported: boolean;
+  accepted: boolean;
+  status: string;
+  terminal: boolean;
+  message?: string;
+};
+
+export interface VideoProvider {
+  readonly key: VideoProviderKey;
+  readonly tier: VideoProviderTier;
+  readonly capabilities: VideoProviderCapabilities;
+  isAvailable(): boolean;
+  getRuntimeProfile(): VideoProviderRuntimeProfile;
+  normalizeDuration(
+    requestedDuration: unknown,
+    qualityMode: unknown,
+  ): VideoProviderDurationPolicy;
+  createTask(input: VideoProviderCreateInput): Promise<VideoProviderTask>;
+  retrieveTask(nativeTaskId: string): Promise<VideoProviderTask>;
+  cancelTask(nativeTaskId: string): Promise<VideoProviderCancelResult>;
+  downloadOutput(outputUrl: string): Promise<Response>;
+}
+
+export type VideoProviderFallbackReason = "premium_unavailable" | null;
+
+export type VideoProviderSelection = {
+  provider: VideoProvider;
+  requestedTier: VideoProviderTier;
+  selectedTier: VideoProviderTier;
+  usedFallback: boolean;
+  available: boolean;
+  fallbackReason: VideoProviderFallbackReason;
+};

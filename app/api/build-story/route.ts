@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -191,7 +192,7 @@ function normalizeSceneIntelligence(
       ? intelligence.pacing_level
       : "medium";
 
-  const validSceneTypes = [
+  const validSceneTypes: readonly (SceneIntelligence["scene_type"] | undefined)[] = [
     "hook",
     "discovery",
     "dialogue",
@@ -204,7 +205,7 @@ function normalizeSceneIntelligence(
   ] as const;
 
   const safeSceneType = validSceneTypes.includes(
-    intelligence?.scene_type as any
+    intelligence?.scene_type
   )
     ? (intelligence?.scene_type as SceneIntelligence["scene_type"])
     : "discovery";
@@ -459,6 +460,7 @@ Tutarlılık kuralları: ${visualBible.consistencyRules}
 
 ${prompt}`,
     });
+    await recordOpenAITextEconomics({ route: "/api/build-story", operationType: "legacy_build_story", model: "gpt-4.1-mini", response });
 
     const rawText = response.output_text || "";
 

@@ -1,0 +1,14 @@
+{
+  "historicalBuildId": "e270980e-8f85-4ab2-89c2-639c457037db",
+  "historicalFailure": "CREATOR_SCRIPT_BUILD_REPAIR_WRONG_DIRECTION",
+  "provenance": "User-supplied historical geometry; narration, evidence and candidates are synthetic deterministic fixtures, not recovered provider responses.",
+  "durationSeconds": 660,
+  "sections": [
+    { "id": "opening", "actual": 124, "min": 111, "target": 124, "max": 137 },
+    { "id": "section-1", "actual": 213, "min": 285, "target": 317, "max": 349 },
+    { "id": "section-2", "actual": 237, "min": 285, "target": 317, "max": 349 },
+    { "id": "section-3", "actual": 199, "min": 285, "target": 317, "max": 349 },
+    { "id": "section-4", "actual": 286, "min": 285, "target": 317, "max": 349 },
+    { "id": "conclusion", "actual": 204, "min": 143, "target": 159, "max": 175 }
+  ]
+}

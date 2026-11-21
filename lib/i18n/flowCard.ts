@@ -40,13 +40,13 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         ctaLabel: "Storyverse ile başla",
       },
       creator_lab: {
-        title: "CreatorLab",
-        shortTitle: "CreatorLab",
+        title: "Velto Studio",
+        shortTitle: "Velto Studio",
         subtitle: "AI destekli sosyal içerik işletim sistemi",
         description:
           "18+ creator’lar için fikirden yayına uzanan profesyonel üretim motoru. Script, hook, thumbnail, voice-over, imaj/video sahneleri ve publish-ready paket üretir.",
         outputs: ["Long-form", "Shorts/Reels", "Thumbnail", "Metadata"],
-        ctaLabel: "CreatorLab’i aç",
+        ctaLabel: "Velto Studio’yu aç",
       },
     },
   },
@@ -73,13 +73,13 @@ export const flowCardMessages: Record<"tr" | "en", FlowCardMessages> = {
         ctaLabel: "Start Storyverse",
       },
       creator_lab: {
-        title: "CreatorLab",
-        shortTitle: "CreatorLab",
+        title: "Velto Studio",
+        shortTitle: "Velto Studio",
         subtitle: "AI-powered social content operating system",
         description:
           "A professional production engine for 18+ creators, built for scripts, hooks, thumbnails, voice-over, image/video scenes and publish-ready packages.",
         outputs: ["Long-form", "Shorts/Reels", "Thumbnail", "Metadata"],
-        ctaLabel: "Open CreatorLab",
+        ctaLabel: "Open Velto Studio",
       },
     },
   },

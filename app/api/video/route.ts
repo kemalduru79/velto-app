@@ -1,107 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import RunwayML from "@runwayml/sdk";
 import {
   getCreatorMediaRoute,
   isCreatorMediaActionAllowed,
   normalizeCreatorQualityMode,
 } from "../../../lib/creator/mediaRouting";
-import { normalizeRunwayClipDuration, normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
+import { getMediaProviderFacade } from "../../../lib/providers";
+import { authenticateRequest, AuthenticationError } from "@/lib/auth/server";
+import { checkStorageGenerationAllowance, StorageQuotaOperationalError, storageQuotaFullResponse, storageQuotaOperationalErrorResponse } from "@/lib/persistence/media/storageQuota.server";
+import { issueStorageAdmissionForOwner } from "@/lib/persistence/media/storageAdmission.server";
+import { normalizeVideoQualityTier } from "../../../lib/video/timelineSync";
+import { calculateRunwayCost, calculateVeoCost, persistEconomicOperationBestEffort } from "@/lib/economics";
+import {
+  createVideoJobToken,
+  parseVideoJobToken,
+} from "../../../lib/video/providers";
 
 export const runtime = "nodejs";
-
-type RunwayVideoModel = "gen4_turbo" | "gen4.5" | "seedance2";
-
-type Gen4Ratio =
-  | "1280:720"
-  | "720:1280"
-  | "1104:832"
-  | "960:960"
-  | "832:1104"
-  | "1584:672";
-
-type Seedance2Ratio =
-  | "1280:720"
-  | "720:1280"
-  | "960:960"
-  | "992:432"
-  | "864:496"
-  | "752:560"
-  | "640:640"
-  | "560:752"
-  | "496:864"
-  | "1470:630"
-  | "1112:834"
-  | "834:1112";
-
-function getClient() {
-  const apiKey = process.env.RUNWAY_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("RUNWAY_API_KEY is missing");
-  }
-
-  return new RunwayML({
-    apiKey,
-  });
-}
-
-function getModel(): RunwayVideoModel {
-  const model = process.env.RUNWAY_VIDEO_MODEL?.trim();
-
-  if (model === "gen4_turbo" || model === "gen4.5" || model === "seedance2") {
-    return model;
-  }
-
-  return "gen4_turbo";
-}
-
-function getGen4Ratio(value: unknown): Gen4Ratio {
-  if (value === "720:1280") return "720:1280";
-  if (value === "1104:832") return "1104:832";
-  if (value === "960:960") return "960:960";
-  if (value === "832:1104") return "832:1104";
-  if (value === "1584:672") return "1584:672";
-
-  return "1280:720";
-}
-
-function getSeedance2Ratio(value: unknown): Seedance2Ratio {
-  if (value === "720:1280") return "720:1280";
-  if (value === "960:960") return "960:960";
-  if (value === "992:432") return "992:432";
-  if (value === "864:496") return "864:496";
-  if (value === "752:560") return "752:560";
-  if (value === "640:640") return "640:640";
-  if (value === "560:752") return "560:752";
-  if (value === "496:864") return "496:864";
-  if (value === "1470:630") return "1470:630";
-  if (value === "1112:834") return "1112:834";
-  if (value === "834:1112") return "834:1112";
-
-  return "1280:720";
-}
 
 function buildPrompt({
   text,
   motionHint,
   cameraDirection,
   emotion,
+  productProfile,
 }: {
   text?: string;
   motionHint?: string;
   cameraDirection?: string;
   emotion?: string;
+  productProfile: "storyverse" | "creatorlab";
 }) {
-  const parts = [
+  return [
     "Create a short cinematic animated video from the provided image.",
     text ? `Scene description: ${text}` : "",
     motionHint ? `Motion: ${motionHint}` : "",
     cameraDirection ? `Camera: ${cameraDirection}` : "",
     emotion ? `Emotion: ${emotion}` : "",
-    "Keep the scene coherent, child-friendly, and visually smooth.",
-  ].filter(Boolean);
-
-  return parts.join(" ");
+    productProfile === "storyverse"
+      ? "Keep the scene coherent, child-friendly, safe, and visually smooth."
+      : "Keep the scene coherent, polished, audience-appropriate, and visually smooth for a professional creator video.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function isHttpsAssetUrl(value: string) {
@@ -112,116 +52,69 @@ function isImageDataUri(value: string) {
   return /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(value);
 }
 
-async function checkUrlAccessible(url: string) {
-  try {
-    const res = await fetch(url, { method: "HEAD" });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 function validateImageInput(imageUrl: unknown) {
   if (!imageUrl || typeof imageUrl !== "string") {
     return "imageUrl is required";
   }
-
-  if (isHttpsAssetUrl(imageUrl)) {
+  if (isHttpsAssetUrl(imageUrl) || isImageDataUri(imageUrl)) {
     return null;
   }
-
-  if (isImageDataUri(imageUrl)) {
-    return null;
-  }
-
   return "imageUrl must be either a public HTTPS URL or a supported base64 data:image URI";
 }
 
-async function createVideoTask({
-  client,
-  model,
-  imageUrl,
-  promptText,
-  requestedRatio,
-  duration,
-}: {
-  client: RunwayML;
-  model: RunwayVideoModel;
-  imageUrl: string;
-  promptText: string;
-  requestedRatio: unknown;
-  duration: number;
-}) {
-  if (model === "gen4_turbo") {
-    const ratio = getGen4Ratio(requestedRatio);
-
-    return client.imageToVideo.create({
-      model: "gen4_turbo",
-      promptImage: imageUrl,
-      promptText,
-      ratio,
-      duration,
-    });
+function getRequestedRatio(
+  body: Record<string, unknown>,
+  isCreatorLabRequest: boolean,
+) {
+  const explicitRatio = body.ratio || body.requestedRatio;
+  if (explicitRatio) return explicitRatio;
+  if (isCreatorLabRequest) {
+    return body.creatorFormat === "short_form" ? "720:1280" : "1280:720";
   }
-
-  if (model === "gen4.5") {
-    const ratio = getGen4Ratio(requestedRatio);
-
-    return client.imageToVideo.create({
-      model: "gen4.5",
-      promptImage: imageUrl,
-      promptText,
-      ratio,
-      duration,
-    });
-  }
-
-  const ratio = getSeedance2Ratio(requestedRatio);
-
-  return client.imageToVideo.create({
-    model: "seedance2",
-    promptImage: imageUrl,
-    promptText,
-    ratio,
-    duration,
-  });
+  return "960:960";
 }
 
-function normalizeTask(task: any) {
-  const status = typeof task?.status === "string" ? task.status.toUpperCase() : "UNKNOWN";
-  const output = Array.isArray(task?.output) ? task.output : [];
+function optionalImageUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return value.trim();
+}
 
-  let videoUrl: string | null = null;
+function referenceImageUrls(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map(optionalImageUrl)
+        .filter((url): url is string => Boolean(url)),
+    ),
+  ).slice(0, 3);
+}
 
-  if (typeof output[0] === "string") {
-    videoUrl = output[0];
-  } else if (output[0] && typeof output[0]?.url === "string") {
-    videoUrl = output[0].url;
+function publicVideoError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (/not configured|api key|authentication|unauthorized/.test(normalized)) {
+    return "The video production service is not configured for this environment.";
   }
-
-  return {
-    id: task?.id ?? null,
-    status,
-    failureCode: task?.failureCode ?? null,
-    failureMessage: task?.failureMessage ?? null,
-    videoUrl,
-  };
+  if (/402|payment|billing|credit|quota|insufficient/.test(normalized)) {
+    return "The video production service has insufficient capacity for this request.";
+  }
+  if (/timeout|timed out|network|connection/.test(normalized)) {
+    return "The video production service did not respond in time. Retry this scene.";
+  }
+  return fallback;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-
-    const imageUrl = body?.imageUrl;
-    const text = body?.text ?? "";
-    const motionHint = body?.motionHint ?? "";
-    const cameraDirection = body?.cameraDirection ?? "";
-    const emotion = body?.emotion ?? "";
-
-    const isCreatorLabRequest = body?.productProfile === "creatorlab";
+    const principal = await authenticateRequest(req);
+    const body = (await req.json()) as Record<string, unknown>;
+    const imageUrl = body.imageUrl;
+    const isCreatorLabRequest = body.productProfile === "creatorlab";
     const qualityTier = isCreatorLabRequest
-      ? normalizeCreatorQualityMode(body?.qualityMode, "standard")
-      : normalizeVideoQualityTier(body?.qualityMode, "standard");
+      ? normalizeCreatorQualityMode(body.qualityMode, "standard")
+      : normalizeVideoQualityTier(body.qualityMode, "standard");
     const creatorMediaRoute = isCreatorLabRequest
       ? getCreatorMediaRoute(qualityTier)
       : null;
@@ -242,66 +135,115 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const model = getModel();
-    const durationPolicy = normalizeRunwayClipDuration(body?.duration, qualityTier);
-    const duration = durationPolicy.durationSec;
-    const requestedRatio = body?.ratio || body?.requestedRatio || "960:960";
-
     const imageValidationError = validateImageInput(imageUrl);
-    if (!imageValidationError && typeof imageUrl === "string" && imageUrl.startsWith("https://")) {
-      const ok = await checkUrlAccessible(imageUrl);
-      if (!ok) {
-        return NextResponse.json(
-          { ok: false, error: "imageUrl is not accessible to the video service", imageUrl },
-          { status: 400 }
-        );
-      }
-    }
     if (imageValidationError) {
       return NextResponse.json(
         { ok: false, error: imageValidationError },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const promptText = buildPrompt({
-      text,
-      motionHint,
-      cameraDirection,
-      emotion,
+    const storageAllowance = await checkStorageGenerationAllowance(principal.id);
+    if (!storageAllowance.allowed) return storageQuotaFullResponse(storageAllowance.storage);
+
+    const facade = getMediaProviderFacade();
+    const selection =
+      isCreatorLabRequest && creatorMediaRoute
+        ? facade.selectCreatorVideo(creatorMediaRoute)
+        : facade.selectPrimaryVideo();
+
+    if (!selection.available) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "The video production service is not configured for this environment.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const durationPolicy = selection.provider.normalizeDuration(
+      body.duration,
+      qualityTier,
+    );
+    const useCinematicContinuity =
+      isCreatorLabRequest && qualityTier === "cinematic";
+    const lastFrameUrl = useCinematicContinuity
+      ? optionalImageUrl(body.lastFrameUrl)
+      : undefined;
+    const references = useCinematicContinuity
+      ? referenceImageUrls(body.referenceImageUrls)
+      : [];
+
+    for (const url of [lastFrameUrl, ...references]) {
+      if (!url) continue;
+      const error = validateImageInput(url);
+      if (error) {
+        return NextResponse.json({ ok: false, error }, { status: 400 });
+      }
+    }
+
+    const requestedRatio = getRequestedRatio(body, isCreatorLabRequest);
+    const { storageAdmissionId } = await issueStorageAdmissionForOwner({
+      ownerUserId: principal.id,
+      mediaKind: "video",
+      purpose: "storyverse_generated_video",
+      projectReference: typeof body.projectId === "string" ? body.projectId : null,
+      metadata: { sceneId: body.sceneId ?? null },
     });
-
-    const client = getClient();
-
-    const task = await createVideoTask({
-      client,
-      model,
-      imageUrl,
-      promptText,
+    const task = await selection.provider.createTask({
+      imageUrl: imageUrl as string,
+      lastFrameUrl,
+      referenceImageUrls: references,
+      promptText: buildPrompt({
+        text: typeof body.text === "string" ? body.text : undefined,
+        motionHint:
+          typeof body.motionHint === "string" ? body.motionHint : undefined,
+        cameraDirection:
+          typeof body.cameraDirection === "string"
+            ? body.cameraDirection
+            : undefined,
+        emotion: typeof body.emotion === "string" ? body.emotion : undefined,
+        productProfile: isCreatorLabRequest ? "creatorlab" : "storyverse",
+      }),
       requestedRatio,
-      duration,
+      durationSec: durationPolicy.durationSec,
     });
+
+    if (!task.nativeTaskId) {
+      throw new Error("Video service did not return a task identifier.");
+    }
+    const profile = selection.provider.getRuntimeProfile();
+    const cost = selection.provider.key === "runway" ? calculateRunwayCost(profile.model, durationPolicy.durationSec) : calculateVeoCost(profile.model);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || `legacy-video:${task.nativeTaskId}`;
+    await persistEconomicOperationBestEffort({ attemptKey: `${logicalOperationId}:${selection.provider.key}:generation:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), userId: principal.id, projectId: typeof body.projectId === "string" ? body.projectId : null, sceneId: body.sceneId == null ? null : String(body.sceneId), route: "/api/video", operationType: "legacy_video", productTier: String(qualityTier), provider: selection.provider.key, providerTier: selection.selectedTier, model: profile.model, fallbackProvider: selection.usedFallback ? selection.provider.key : null, providerRequestId: task.nativeTaskId, state: "provider_billed", billingMoment: "provider_dispatch", fallbackAttempt: selection.usedFallback, quantities: { requestedSeconds: Number(body.duration) || 0, providerBilledSeconds: durationPolicy.durationSec, resolution: profile.resolution, audioMode: profile.audioMode, referenceCount: references.length + (lastFrameUrl ? 1 : 0), requestCount: 1 }, cost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString() });
 
     return NextResponse.json({
       ok: true,
-      taskId: task.id,
-      status: "PENDING",
-      model,
-      duration,
+      taskId: createVideoJobToken(selection.provider.key, task.nativeTaskId),
+      status: task.status || "PENDING",
+      duration: durationPolicy.durationSec,
       durationPolicy,
       requestedRatio,
-      promptText,
-      debug: { imageUrl }
+      engineTier: selection.selectedTier,
+      premiumFallbackUsed: selection.usedFallback,
+      storageAdmissionId,
     });
-  } catch (error: any) {
-    console.error("Runway video create error:", error);
-
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ ok: false, error: "A valid session is required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
+    if (error instanceof StorageQuotaOperationalError) return storageQuotaOperationalErrorResponse(error);
+    console.error("Video create error:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Failed to create AI video task",
+        error: publicVideoError(
+          error,
+          "The video production service could not start this task.",
+        ),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -314,35 +256,72 @@ export async function GET(req: NextRequest) {
     if (!taskId) {
       return NextResponse.json(
         { ok: false, error: "taskId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const client = getClient();
-    const task = await client.tasks.retrieve(taskId);
-    const normalized = normalizeTask(task);
-    const debugTask = task as any;
+    const facade = getMediaProviderFacade();
+    const providerJob = parseVideoJobToken(taskId);
+    const provider = providerJob
+      ? facade.getVideoByKey(providerJob.providerKey)
+      : facade.selectPrimaryVideo().provider;
+    const nativeTaskId = providerJob?.nativeTaskId || taskId;
+    const task = await provider.retrieveTask(nativeTaskId);
+
+    if (searchParams.get("download") === "1") {
+      if (task.status !== "SUCCEEDED" || !task.videoUrl) {
+        return NextResponse.json(
+          { ok: false, error: "Video output is not ready for download." },
+          { status: 409 },
+        );
+      }
+
+      const output = await provider.downloadOutput(task.videoUrl);
+      if (!output.ok || !output.body) {
+        return NextResponse.json(
+          { ok: false, error: "Video output could not be downloaded." },
+          { status: 502 },
+        );
+      }
+
+      const headers = new Headers({
+        "Cache-Control": "private, no-store, max-age=0",
+        "Content-Type": output.headers.get("content-type") || "video/mp4",
+      });
+      const contentLength = output.headers.get("content-length");
+      if (contentLength) headers.set("Content-Length", contentLength);
+      return new NextResponse(output.body, { status: 200, headers });
+    }
+
+    const publicTaskId = providerJob
+      ? taskId
+      : createVideoJobToken(provider.key, nativeTaskId);
+    const videoUrl = task.videoUrl
+      ? new URL(
+          `/api/video?taskId=${encodeURIComponent(publicTaskId)}&download=1`,
+          req.url,
+        ).toString()
+      : null;
 
     return NextResponse.json({
       ok: true,
-      ...normalized,
-      debug: {
-        rawStatus: debugTask?.status ?? null,
-        createdAt: debugTask?.createdAt ?? null,
-        failureCode: debugTask?.failureCode ?? null,
-        failureMessage: debugTask?.failureMessage ?? null,
-        rawTask: debugTask,
-      },
+      taskId: publicTaskId,
+      status: task.status,
+      failureCode: task.failureCode,
+      failureMessage: task.failureMessage,
+      videoUrl,
     });
-  } catch (error: any) {
-    console.error("Runway video status error:", error);
-
+  } catch (error: unknown) {
+    console.error("Video status error:", error);
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "Failed to retrieve AI video task",
+        error: publicVideoError(
+          error,
+          "The video production task status could not be retrieved.",
+        ),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

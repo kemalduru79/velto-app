@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "sourcePolicy": "Original offline synthetic fixtures; not customer data, public-study claims, verified research or model-generated outputs. Before and after are engineering-authored controlled samples.",
+  "targetFullNarrativeSeconds": [
+    480,
+    600
+  ],
+  "sampleScope": "Short multi-section editorial excerpts, not duration-qualified full scripts.",
+  "fixtures": [
+    {
+      "id": "digital-afterlife",
+      "topic": "A familiar voice and a new answer",
+      "nature": "SYNTHETIC_THOUGHT_EXPERIMENT_NOT_EMPIRICAL_EVIDENCE",
+      "facts": [
+        "In the hypothetical archive, a recorded answer repeats an earlier statement; a generated answer has not been spoken by the person.",
+        "No evidence of consciousness or consent to new statements is supplied."
+      ],
+      "before": [
+        "In today's world, technology is changing how people understand identity. Digital afterlives raise important questions about memory, authenticity, and the future. Consider a hypothetical archive with recorded answers and generated answers. A recorded answer repeats an earlier statement. A generated answer has not been spoken by the person. This is a complex topic with profound implications for society.",
+        "It is important to note that a familiar voice is not proof of a continuing person. A familiar voice is not proof of a continuing person. The archive offers a useful way to consider the relationship between preservation and invention. Some people may see comfort here, while others may see risk. No evidence of consciousness or consent to new statements is supplied. This brings us to the importance of ethical considerations. These issues require careful consideration because technology and identity are interconnected.",
+        "Ultimately, the future of digital afterlives is uncertain. We should consider both opportunities and challenges. Memory and identity are important, and responsible decisions will matter as technology develops. What does the future hold?"
+      ],
+      "after": [
+        "Suppose a familiar voice answers a question the person never heard. The voice may feel familiar; the answer is new. In this hypothetical archive, a recording repeats an earlier statement. A generated reply has not been spoken by that person. The difference is small to the ear and large to anyone deciding whose words they are hearing.",
+        "A recording preserves an act of speech. A generated reply creates one. That does not tell us whether the reply is faithful to the person's views, much less whether anyone is still there. No evidence of consciousness or consent to new statements is supplied. Familiarity cannot fill those gaps. The imagined comfort and the possible objection concern different things: access to a recognizable voice, and authority to put new words in it. Neither preference proves a fact about consciousness. A reply could sound convincing while leaving the question of permission completely unanswered.",
+        "The choice is therefore about more than keeping a voice available. It is also about who may speak through it, and how a listener would recognize the difference. If an archive can preserve someone's words and also invent new ones, who should have the right to decide where preservation ends?"
+      ]
+    },
+    {
+      "id": "hiring-audit",
+      "topic": "A changed ranking with an unknown cause",
+      "nature": "SYNTHETIC_AUDIT_SCENARIO_NOT_A_REAL_STUDY",
+      "facts": [
+        "In the hypothetical audit, the recorded qualifications stay the same, the name field changes, and the ranking changes.",
+        "The scenario supplies no hiring outcomes and does not establish the cause of the ranking change."
+      ],
+      "before": [
+        "Imagine a world where algorithms make decisions about work. Hiring technology is a complex and important topic in modern society. In a hypothetical audit, the recorded qualifications stay the same, the name field changes, and the ranking changes. There are many issues to consider about fairness, efficiency, and accountability. These issues affect how we think about the role of technology.",
+        "This highlights the importance of responsible innovation. A changed ranking needs an explanation before it can be treated as a fair decision. A changed ranking needs an explanation before it can be treated as a fair decision. The scenario supplies no hiring outcomes and does not establish the cause of the ranking change. Supporters and critics may have different perspectives. Having established this, we must consider the complex relationship between human judgment and automated systems. It is a relationship with profound implications.",
+        "Ultimately, organizations need to balance opportunities and risks. Fairness is important, and so is efficiency. These questions will continue to evolve as technology develops and society responds. Are we ready for the future of work?"
+      ],
+      "after": [
+        "The qualifications stay the same. A name changes. The ranking changes too. In this hypothetical hiring audit, those are the observations; the explanation is still missing. For an applicant, the practical question would be direct: why did an unchanged record receive a different position?",
+        "The comparison gives an investigator something specific to examine. It does not yet identify the cause. The scenario supplies no hiring outcomes and does not establish why the ranking changed. A name-based effect would be one possible explanation to test, not a finding we can announce. Nor can a claim about faster processing answer the question: speed and consistent treatment measure different things. A useful investigation would have to separate those questions instead of treating one as a defense against the other. Nothing here proves that a human reviewer would do better. That comparison would need its own evidence.",
+        "The unresolved issue is who must explain a consequential change when the system offers only a ranking. Asking for that explanation is narrower than declaring every automated decision unfair, and more demanding than accepting a score on trust. Before an applicant loses an opportunity, what explanation should the decision maker be required to provide?"
+      ]
+    },
+    {
+      "id": "flood-forecast",
+      "topic": "A forecast is not an observed flood",
+      "nature": "SYNTHETIC_TECHNICAL_SCENARIO_NOT_A_REAL_FORECAST",
+      "facts": [
+        "The hypothetical forecast depends on assumed rainfall and a model; no observed flood outcome is supplied.",
+        "The scenario supplies neither calibrated probabilities nor evidence comparing missed warnings with false alarms."
+      ],
+      "before": [
+        "In a rapidly changing world, prediction is becoming increasingly important. Flood forecasting combines technical systems and human decisions in a complex interplay. The hypothetical forecast depends on assumed rainfall and a model; no observed flood outcome is supplied. This is an important subject because models can help people think about possible futures and the challenges they may present.",
+        "It is important to note that a forecast is not an observed outcome. A forecast is not an observed outcome. The scenario supplies neither calibrated probabilities nor evidence comparing missed warnings with false alarms. Understanding the implications of predictive systems requires careful consideration of the relationship between assumptions, outputs, decisions, and uncertainty, which together influence how people interpret possible future events and how institutions respond when knowledge remains incomplete. We now turn to the importance of responsible decision making.",
+        "Ultimately, prediction raises both opportunities and challenges. Scientific progress and human judgment must work together. We should remain thoughtful about uncertainty while considering the importance of preparedness and the future. Only time will tell."
+      ],
+      "after": [
+        "Suppose a flood warning arrives before the rain. Acting could disrupt a day that turns out to be safe; waiting could leave too little time. That is an illustrative choice, not a report of an actual flood. The hypothetical forecast depends on assumed rainfall and a model. No observed flood outcome is supplied.",
+        "A model describes what follows from its inputs and assumptions. It does not turn an assumed rainfall into an observation. If the rainfall changes, the forecast may change without either version becoming a record of what happened. A decision threshold is a separate choice: it determines when a warning is issued. Testing the forecast would require observed outcomes; judging the threshold would also require examining the consequences of missed warnings and false alarms. The scenario supplies neither calibrated probabilities nor that comparison. Uncertainty is therefore part of the decision, not a defect we can remove by speaking with more confidence.",
+        "A more detailed forecast would still leave a responsibility outside the model: deciding which risks justify action. That choice should be visible rather than hidden behind a technical output. When a warning cannot promise certainty, who should decide which consequences make precaution worthwhile?"
+      ]
+    }
+  ]
+}

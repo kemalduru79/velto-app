@@ -1,0 +1,157 @@
+import { spawnSync } from "node:child_process";
+
+const tests = [
+  "scripts/stage-r2-safety-autosave-cas-test.mjs",
+  "scripts/stage-r2-safety-creator-project-quarantine-test.mjs",
+  "scripts/creator-script-refinement-r1-foundation-test.mjs",
+  "scripts/creator-script-refinement-r2-research-backed-test.mjs",
+  "scripts/stage-4a-creator-refinement-acceptance-test.mjs",
+  "scripts/stage-4b1-controlled-live-acceptance-harness-test.mjs",
+  "scripts/stage-4b2-provider-acceptance-preflight-test.mjs",
+  "scripts/stage-4b2-local-live-probe-offline-test.mjs",
+  "scripts/stage-4b2-exact-source-recovery-test.mjs",
+  "scripts/stage-4b2-pdf-evidence-test.mjs",
+  "scripts/stage-4b2-canonical-whole-script-acceptance-test.mjs",
+  "scripts/stage-0-19f-f2-2-final-asset-supersession-test.mjs",
+  "scripts/stage-0-18a6g1-reload-hydration-autosave-test.mjs",
+  "scripts/stage-0-18a6g2-post-hydration-scene-state-test.mjs",
+  "scripts/stage-0-18a6h-audio-topology-guard-test.mjs",
+  "scripts/stage-0-19-editorial-adjudication-recovery-test.mjs",
+  "scripts/creator-editorial-cross-source-span-repair-test.mjs",
+  "scripts/creator-editorial-same-source-origin-test.mjs",
+  "scripts/creator-longform-grounding-plan-integration-test.mjs",
+  "scripts/creator-issue-42-evidence-lifecycle-test.mjs",
+  "scripts/creator-issue-44-counter-review-test.mjs",
+  "scripts/creator-integrated-workflow-test.mjs",
+  "scripts/creator-duration-scene-contract-test.mjs",
+  "scripts/creator-pr-45-release-readiness-test.mjs",
+  "scripts/creator-pr45-historical-compat-test.mjs",
+  "scripts/creator-pr45-legacy-audit-test.mjs",
+  "scripts/creator-pr45-scientific-boundary-test.mjs",
+  "scripts/stage-0-19-proposition-kind-refinement-test.mjs",
+  "scripts/stage-0-19e5b-creator-script-build-client-cutover-test.mjs",
+  "scripts/stage-0-19e4-creator-script-build-persistence-test.mjs",
+  "scripts/stage-0-19f-d4-primary-selection-duplicate-alignment-test.mjs",
+  "scripts/stage-0-19f-f2-semantic-progression-binding-test.mjs",
+  "scripts/stage-0-6-smart-asset-reuse-smoke-test.mjs",
+  "scripts/stage-0-7a-media-ownership-metering-test.mjs",
+  "scripts/stage-0-7a-2-final-movie-migration-test.mjs",
+  "scripts/stage-0-7b-trash-restore-test.mjs",
+  "scripts/stage-0-7c-storage-quota-test.mjs",
+  "scripts/stage-0-7d-1-safe-purge-test.mjs",
+  "scripts/stage-0-7d-2-storage-entitlement-admission-test.mjs",
+  "scripts/stage-0-7d-3-storage-activation-test.mjs",
+  "scripts/stage-0-7d-3a-final-export-admission-schema-test.mjs",
+  "scripts/stage-0-7d-3b-final-export-admission-test.mjs",
+  "scripts/beta-edit-regression-creator-video-generation-lifecycle-smoke-test.mjs",
+  "scripts/beta-edit-p1e-final-video-lifecycle-smoke-test.mjs",
+  "scripts/beta-fin-p1-cost-guard-smoke-test.mjs",
+  "scripts/stage-0-8c-slice-a-modularization-test.mjs",
+  "scripts/stage-0-8c-slice-b-stitch-modularization-test.mjs",
+  "scripts/stage-0-8d-a-runtime-config-test.mjs",
+  "scripts/stage-0-8d-b-provider-environment-test.mjs",
+  "scripts/stage-0-8e-a-export-runtime-test.mjs",
+  "scripts/stage-0-8e-b-cloud-portability-test.mjs",
+  "scripts/stage-0-8f-a-health-observability-test.mjs",
+  "scripts/stage-0-8f-b-recovery-operator-test.mjs",
+  "scripts/stage-0-8g-architecture-closure-test.mjs",
+  "scripts/stage-0-9a-security-consent-baseline-test.mjs",
+  "scripts/stage-0-10h-2g-editorial-analysis-api-test.mjs",
+  "scripts/stage-0-10h-2h-script-planner-editorial-context-test.mjs",
+  "scripts/stage-0-10h-2i-creator-editorial-orchestration-test.mjs",
+  "scripts/stage-0-10h-3a-source-media-rights-contract-test.mjs",
+  "scripts/stage-0-10h-3b-source-metadata-read-surface-test.mjs",
+  "scripts/stage-0-10h-3c-stock-source-media-canonicalization-test.mjs",
+  "scripts/stage-0-10h-3d-research-source-media-reference-test.mjs",
+  "scripts/stage-0-10h-3e-source-media-trim-bridge-test.mjs",
+  "scripts/stage-0-10h-3f-source-media-rights-closure-test.mjs",
+  "scripts/stage-0-10h-4a-documentary-treatment-taxonomy-test.mjs",
+  "scripts/stage-0-10h-4b-documentary-source-context-test.mjs",
+  "scripts/stage-0-10h-4c-authentic-source-first-routing-test.mjs",
+  "scripts/stage-0-10h-4d-evidence-visual-context-test.mjs",
+  "scripts/stage-0-10h-4e-evidence-visual-routing-test.mjs",
+  "scripts/stage-0-10h-4f-production-intelligence-context-api-test.mjs",
+  "scripts/stage-0-10h-4g-scene-documentary-context-test.mjs",
+  "scripts/stage-0-10h-4h-editorial-pi-context-handoff-test.mjs",
+  "scripts/stage-0-10h-4i-creator-pi-documentary-wiring-test.mjs",
+  "scripts/stage-0-10h-4j-documentary-pi-closure-test.mjs",
+  "scripts/stage-0-10h-5a-evidence-governance-contract-test.mjs",
+  "scripts/stage-0-10h-5b-final-production-governance-gate-test.mjs",
+  "scripts/stage-0-10h-5c-project-evidence-governance-test.mjs",
+  "scripts/stage-0-10h-5d-media-origin-governance-test.mjs",
+  "scripts/stage-0-10h-5e-used-media-governance-test.mjs",
+  "scripts/stage-0-10h-5f-export-governance-enforcement-test.mjs",
+  "scripts/stage-0-10h-5g-publish-release-governance-test.mjs",
+  "scripts/stage-0-10h-5h-evidence-governance-closure-test.mjs",
+  "scripts/stage-0-10h-6-native-repurposing-test.mjs",
+  "scripts/stage-0-10h-7-content-ready-acceptance-test.mjs",
+  "scripts/stage-0-10h-ui-acceptance-fetch-fix-test.mjs",
+  "scripts/stage-0-10h-ui-acceptance-editorial-grounding-repair-test.mjs",
+  "scripts/stage-0-10h-production-setup-ux-test.mjs",
+  "scripts/stage-0-10h-autofit-hardening-test.mjs",
+  "scripts/stage-0-10h-velto-recommended-routing-test.mjs",
+  "scripts/stage-0-10h-visual-source-selector-test.mjs",
+  "scripts/stage-0-10h-real-production-acceptance-test.mjs",
+  "scripts/stage-0-10h-countdown-bulk-ux-test.mjs",
+  "scripts/stage-0-10h-emergency-generation-scope-test.mjs",
+  "scripts/stage-0-10h-live-generation-status-test.mjs",
+  "scripts/stage-0-10h-scene-visual-cta-status-test.mjs",
+  "scripts/stage-0-10h-selected-scenes-toolbar-ux-test.mjs",
+  "scripts/stage-0-10h-custom-upload-test.mjs",
+  "scripts/stage-0-10h-production-publish-navigation-test.mjs",
+  "scripts/stage-0-10h-publish-preflight-test.mjs",
+  "scripts/stage-0-10i-b-visual-system-test.mjs",
+  "scripts/stage-0-10i-c-stage-polish-test.mjs",
+  "scripts/stage-0-10i-c-creator-production-package-test.mjs",
+  "scripts/stage-0-10i-c-stage-isolation-test.mjs",
+  "scripts/stage-0-10i-d-create-review-visual-test.mjs",
+  "scripts/stage-0-10i-e-publish-responsive-accessibility-test.mjs",
+  "scripts/stage-0-10i-f-visual-consolidation-test.mjs",
+  "scripts/stage-0-11b-load-concurrency-test.mjs",
+  "scripts/stage-0-11c-bottleneck-reliability-recovery-test.mjs",
+  "scripts/stage-0-11d-scale-economics-test.mjs",
+  "scripts/stage-0-11e-azure-readiness-gate-test.mjs",
+  "scripts/stage-0-11e-creatorlab-zero-credit-gating-test.mjs",
+  "scripts/stage-0-11f-closure-go-no-go-test.mjs",
+  "scripts/stage-5d2b-science-documentary-routing-test.mjs",
+  "scripts/stage-5d2c-v2-section-evidence-test.mjs",
+  "scripts/stage-5e0-capped-generation-pilot-test.mjs",
+  "scripts/stage-5e1a-offline-transport-enforcement-test.mjs",
+  "scripts/stage-5e1b-pilot-readiness-test.mjs",
+  "scripts/stage-5e1f-agentic-scientific-review-test.mjs",
+  "scripts/stage-5e1g-a-metadata-importer-test.mjs",
+  "scripts/creator-pr45-scientific-runtime-integrity-test.mjs",
+  "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs",
+];
+
+for (const test of tests) {
+  console.log(`\n[offline regression] ${test}`);
+  const result = spawnSync(process.execPath, [
+    ...(test === "scripts/creator-editorial-cross-source-span-repair-test.mjs" ||
+        test === "scripts/creator-longform-grounding-plan-integration-test.mjs" ||
+        test === "scripts/creator-editorial-same-source-origin-test.mjs" ||
+        test === "scripts/stage-5d2b-science-documentary-routing-test.mjs" ||
+        test === "scripts/stage-5d2c-v2-section-evidence-test.mjs" ||
+        test === "scripts/stage-5e0-capped-generation-pilot-test.mjs" ||
+        test === "scripts/stage-5e1a-offline-transport-enforcement-test.mjs" ||
+        test === "scripts/stage-5e1b-pilot-readiness-test.mjs" ||
+        test === "scripts/stage-5e1f-agentic-scientific-review-test.mjs" ||
+        test === "scripts/stage-5e1g-a-metadata-importer-test.mjs" ||
+        test === "scripts/creator-pr45-scientific-runtime-integrity-test.mjs"
+      ? ["--experimental-strip-types"]
+      : test === "scripts/stage-0-20g-controlled-long-form-acceptance-test.mjs" ||
+          test === "scripts/creator-issue-42-evidence-lifecycle-test.mjs" ||
+          test === "scripts/creator-issue-44-counter-review-test.mjs" ||
+        test === "scripts/creator-integrated-workflow-test.mjs" ||
+        test === "scripts/creator-duration-scene-contract-test.mjs" ||
+          test === "scripts/creator-pr-45-release-readiness-test.mjs" ||
+          test === "scripts/creator-pr45-historical-compat-test.mjs"
+        ? ["--experimental-transform-types"]
+        : []),
+    test,
+  ], { stdio: "inherit" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+console.log(`\nSTAGE_0_8A_CRITICAL_REGRESSION=PASS (${tests.length} tests)`);

@@ -1,9 +1,24 @@
+import { withObservedApiRoute } from "@/lib/observability";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import {
   getCreatorRoutedVoiceSettings,
   getCreatorVoiceRoute,
 } from "@/lib/creator/voiceRouting";
+import { getMediaProviderFacade, getProviderPublicMessage } from "@/lib/providers";
+import {
+  getCreatorVoiceProfileServerSelection,
+  resolveCreatorVoiceProfileVoiceId,
+} from "@/lib/providers/voice/voiceProfileResolver";
+import { getPersistenceServices, registerStoredAssetOrThrow } from "@/lib/persistence";
+import { authenticateRequest } from "@/lib/auth/server";
+import {
+  getCreditErrorResponse,
+  releaseMeteredOperation,
+  reserveMeteredOperation,
+  settleMeteredOperation,
+  type MeteredOperationReservation,
+} from "@/lib/credits/serverMetering";
+import { calculateElevenLabsCost, persistEconomicOperationBestEffort, type EconomicCostResult, type EconomicOperationInput } from "@/lib/economics";
 
 export const runtime = "nodejs";
 
@@ -12,22 +27,6 @@ type DialogueLine = {
   text: string;
   voiceId?: string;
 };
-
-function getSupabaseAdmin() {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is missing");
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing");
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
 
 function safeName(value: string) {
   return value.replace(/[^a-zA-Z0-9-_]/g, "_");
@@ -79,24 +78,6 @@ function buildDialogueText(lines: DialogueLine[]) {
     .join("\n");
 }
 
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number
-) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function getNumericSetting(
   value: unknown,
   fallback: number,
@@ -137,8 +118,14 @@ function getCharacterVoiceSettings(
   };
 }
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
+  let reservation: MeteredOperationReservation | null = null;
+  let providerAccepted = false;
+  let economicCost: EconomicCostResult | null = null;
+  let economicAttempt: EconomicOperationInput | null = null;
+
   try {
+    const principal = await authenticateRequest(req);
     const body = await req.json();
 
     const lines: DialogueLine[] = Array.isArray(body?.lines) ? body.lines : [];
@@ -158,11 +145,12 @@ export async function POST(req: NextRequest) {
 
     const language = body?.language === "en" ? "en" : "tr";
     const isCreatorLab = body?.productProfile === "creatorlab";
+    const voiceProvider = getMediaProviderFacade().voice();
 
     const modelId =
       typeof body?.modelId === "string" && body.modelId.trim()
         ? body.modelId.trim()
-        : "eleven_multilingual_v2";
+        : voiceProvider.getDefaultModelId();
 
     if (!lines.length) {
       return NextResponse.json(
@@ -180,37 +168,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const selectedVoiceProfile = getCreatorVoiceProfileServerSelection(
+      body?.voiceProfileId,
+    );
+    const defaultCharacterVoiceId = voiceProvider.getDefaultVoiceId(
+      language,
+      "character",
+    );
+    const narratorVoiceId = voiceProvider.getDefaultVoiceId(
+      language,
+      "narrator",
+    );
 
-    if (!apiKey) {
-      throw new Error("ELEVENLABS_API_KEY is missing");
-    }
-
-    const defaultCharacterVoiceId =
-      language === "en"
-        ? process.env.ELEVENLABS_EN_CHARACTER_VOICE_ID
-        : process.env.ELEVENLABS_TR_CHARACTER_VOICE_ID;
-
-    const narratorVoiceId =
-      language === "en"
-        ? process.env.ELEVENLABS_EN_NARRATOR_VOICE_ID
-        : process.env.ELEVENLABS_TR_NARRATOR_VOICE_ID;
-
-    const legacyFallbackVoiceId = process.env.ELEVENLABS_VOICE_ID;
-
+    const explicitBodyVoiceId =
+      typeof body?.voiceId === "string" ? body.voiceId.trim() : "";
     const firstLineVoiceId =
       lines.find((line) => line?.voiceId?.trim())?.voiceId?.trim() || "";
 
     const finalVoiceId =
-      firstLineVoiceId?.trim() &&
+      explicitBodyVoiceId ||
+      (firstLineVoiceId?.trim() &&
       firstLineVoiceId?.trim() !== narratorVoiceId?.trim()
         ? firstLineVoiceId.trim()
-        : defaultCharacterVoiceId?.trim() ||
-          legacyFallbackVoiceId?.trim();
+        : "") ||
+      resolveCreatorVoiceProfileVoiceId({
+        profileId: selectedVoiceProfile.id,
+        language,
+        role: "character",
+      }) ||
+      defaultCharacterVoiceId?.trim();
 
     if (!finalVoiceId) {
       throw new Error(
-        "No character voiceId provided. Set character voiceId or ELEVENLABS_TR_CHARACTER_VOICE_ID / ELEVENLABS_EN_CHARACTER_VOICE_ID."
+        "No character voice is configured for the selected Velto voice profile."
       );
     }
 
@@ -226,7 +216,7 @@ export async function POST(req: NextRequest) {
           sceneIndex: body?.sceneIndex,
           sceneCount: body?.sceneCount,
           voiceProfile: body?.voiceProfile,
-          hasExplicitVoiceId: Boolean(firstLineVoiceId),
+          hasExplicitVoiceId: Boolean(explicitBodyVoiceId || firstLineVoiceId),
         })
       : null;
 
@@ -249,65 +239,81 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const voiceSettingsInput =
+      body?.advancedVoiceTuning === true
+        ? { ...selectedVoiceProfile.settings, ...body }
+        : selectedVoiceProfile.settings;
     const voiceSettings = creatorVoiceRoute
       ? getCreatorRoutedVoiceSettings({
           route: creatorVoiceRoute,
-          settings: body,
+          settings: voiceSettingsInput,
+          allowExplicitSpeedOverride:
+            body?.advancedVoiceTuning === true && typeof body?.speed === "number",
         })
-      : getCharacterVoiceSettings(language, body);
+      : getCharacterVoiceSettings(language, voiceSettingsInput);
 
-    const elevenRes = await fetchWithTimeout(
-      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: fullText,
-          model_id: modelId,
-          voice_settings: {
-            stability: voiceSettings.stability,
-            similarity_boost: voiceSettings.similarityBoost,
-            style: voiceSettings.style,
-            speed: voiceSettings.speed,
-            use_speaker_boost: true,
-          },
-        }),
+    reservation = await reserveMeteredOperation(req, {
+      operationType: "creator_dialogue_voice",
+      qualityMode: body?.qualityMode,
+      provider: voiceProvider.key,
+      referenceId: `${projectKey}:scene-${sceneId}:dialogue`,
+      metadata: {
+        productProfile: isCreatorLab ? "creatorlab" : "storyverse",
+        projectKey,
+        sceneId,
+        role: "dialogue",
+        voiceProfileId: selectedVoiceProfile.id,
       },
-      30000
-    );
+      billable: isCreatorLab,
+      requireCostGuardConfirmation: isCreatorLab,
+      admissionMode: isCreatorLab ? "creator_accounting" : "balance_backed",
+      accounting: isCreatorLab ? {
+        attemptKey: `${req.headers.get("x-idempotency-key")!.trim()}:elevenlabs-dialogue:1`,
+        route: "/api/store-dialogue-audio",
+        operationType: "creator_dialogue_voice",
+        productTier: creatorVoiceRoute?.qualityMode || null,
+        providerTier: voiceProvider.tier,
+        model: modelId,
+        projectId: projectKey,
+        sceneId,
+      } : undefined,
+    });
 
-    if (!elevenRes.ok) {
-      const errorText = await elevenRes.text().catch(() => "");
-      console.error("voice provider dialogue error:", errorText);
-      throw new Error("Voice provider rejected dialogue generation");
-    }
+    const voiceResult = await voiceProvider.synthesize({
+      text: fullText,
+      voiceId: finalVoiceId,
+      modelId,
+      settings: voiceSettings,
+      outputFormat: "mp3_44100_128",
+      timeoutMs: 30_000,
+    });
+    providerAccepted = true;
+    const outputBuffer = voiceResult.audio;
+    economicCost = calculateElevenLabsCost(modelId, fullText.length);
+    const logicalOperationId = req.headers.get("x-idempotency-key")?.trim() || reservation?.reservationId || `dialogue:${voiceResult.requestId || crypto.randomUUID()}`;
+    economicAttempt = { attemptKey: `${logicalOperationId}:elevenlabs-dialogue:1`, logicalOperationId, idempotencyKey: req.headers.get("x-idempotency-key"), creditReservationId: reservation?.reservationId,
+      userId: principal.id, projectId: projectKey, sceneId, route: "/api/store-dialogue-audio", operationType: "creator_dialogue_voice", productTier: creatorVoiceRoute?.qualityMode || null,
+      provider: voiceProvider.key, providerTier: voiceProvider.tier, model: modelId, providerRequestId: voiceResult.requestId || null, state: "provider_billed", billingMoment: "provider_completed",
+      quantities: { characterCount: fullText.length, audioBytes: outputBuffer.byteLength, requestCount: 1 }, cost: economicCost, dispatchedAt: new Date().toISOString(), providerAcceptedAt: new Date().toISOString(), completedAt: new Date().toISOString() };
+    await persistEconomicOperationBestEffort(economicAttempt);
 
-    const arrayBuffer = await elevenRes.arrayBuffer();
-    const outputBuffer = Buffer.from(arrayBuffer);
-
-    const supabase = getSupabaseAdmin();
+    const services = getPersistenceServices();
 
     const safeProjectKey = safeName(projectKey);
     const safeSceneId = safeName(sceneId);
     const filePath = `${safeProjectKey}/scene-${safeSceneId}-dialogue-${Date.now()}.mp3`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("dialogue-audio")
-      .upload(filePath, outputBuffer, {
-        contentType: "audio/mpeg",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from("dialogue-audio")
-      .getPublicUrl(filePath);
+    const storedAudio = await services.objectStorage.uploadPublic({
+      bucket: "dialogue-audio",
+      path: filePath,
+      body: outputBuffer,
+      contentType: voiceResult.contentType,
+      upsert: false,
+    });
+    await registerStoredAssetOrThrow({ repository: services.mediaAssetRepository, ownerUserId: principal.id,
+      bucket: storedAudio.bucket, storagePath: storedAudio.path, publicUrl: storedAudio.publicUrl,
+      mediaKind: "dialogue_audio", mimeType: voiceResult.contentType, body: outputBuffer,
+      metadata: { projectKey: safeProjectKey, sceneId: safeSceneId } });
 
     const clientSettingsKey =
       typeof body?.clientSettingsKey === "string" && body.clientSettingsKey.trim()
@@ -316,6 +322,7 @@ export async function POST(req: NextRequest) {
     const settingsKey =
       clientSettingsKey ||
       [
+        selectedVoiceProfile.id,
         finalVoiceId,
         modelId,
         voiceSettings.stability,
@@ -326,16 +333,30 @@ export async function POST(req: NextRequest) {
         creatorVoiceRoute?.routeKey || "storyverse",
       ].join("-");
 
+    const chargedCredits = reservation?.reservedCredits || 0;
+    const creditResult = reservation
+      ? await settleMeteredOperation(reservation, {
+          providerCostUsd: economicCost.providerCostUsd ?? undefined,
+          providerRequestId: voiceResult.requestId,
+          metadata: { audioPath: storedAudio.path },
+        })
+      : null;
+    reservation = null;
+
     return NextResponse.json({
       ok: true,
-      audioUrl: publicData.publicUrl,
-      audioPath: filePath,
+      audioUrl: storedAudio.publicUrl,
+      audioPath: storedAudio.path,
       sourceText,
       cleanedText: fullText,
       language,
       voiceId: finalVoiceId,
+      voiceProfileId: selectedVoiceProfile.id,
       voiceSettings,
       settingsKey,
+      credits: creditResult
+        ? { chargedCredits, account: creditResult.account }
+        : { chargedCredits: 0 },
       voiceRoute: creatorVoiceRoute
         ? {
             strategy: creatorVoiceRoute.voiceStrategy,
@@ -350,14 +371,29 @@ export async function POST(req: NextRequest) {
         : null,
     });
   } catch (error: unknown) {
+    if (reservation) {
+      if (providerAccepted) {
+        await persistEconomicOperationBestEffort({ ...(economicAttempt || { attemptKey: `${reservation.reservationId}:elevenlabs-dialogue:1`, logicalOperationId: reservation.reservationId, userId: reservation.userId, route: "/api/store-dialogue-audio", operationType: "creator_dialogue_voice", state: "application_failed_after_provider_cost" }), state: "application_failed_after_provider_cost", ambiguityReason: error instanceof Error ? error.message : "downstream_failure", failedAt: new Date().toISOString() });
+        try { await settleMeteredOperation(reservation, { providerCostUsd: economicCost?.providerCostUsd ?? undefined, metadata: { applicationFailedAfterProviderCost: true } }); } catch {}
+      } else await releaseMeteredOperation(reservation, "dialogue_voice_generation_failed", { route: "store-dialogue-audio" });
+    }
+
+    const creditErrorResponse = getCreditErrorResponse(error);
+    if (creditErrorResponse) return creditErrorResponse;
+
     console.error("store-dialogue-audio error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: "Diyalog sesi üretimi tamamlanamadı.",
+        error: getProviderPublicMessage(
+          error,
+          "Diyalog sesi üretimi tamamlanamadı.",
+        ),
       },
       { status: 500 }
     );
   }
 }
+
+export const POST = withObservedApiRoute("api.store-dialogue-audio", postHandler);

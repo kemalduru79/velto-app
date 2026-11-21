@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import "./creatorlab-ux-p2a.css";
+import "./creatorlab-ux-p2a-compat.css";
+import "./creatorlab-ux-p2a-final.css";
+import "./creatorlab-ux-p2b.css";
+import "./creatorlab-ux-p2c.css";
+import "./creatorlab-ux-p2d.css";
+import "./creatorlab-ux-h0a.css";
+import "./creatorlab-ux-i-b.css";
+import "./creatorlab-ux-i-c.css";
+import "./creatorlab-ux-i-d.css";
+import "./creatorlab-ux-i-e.css";
+import "./creatorlab-reports.css";
 
 export const metadata: Metadata = {
   title: "Velto",
@@ -25,7 +28,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

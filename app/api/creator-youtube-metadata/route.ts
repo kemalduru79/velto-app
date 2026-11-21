@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { recordOpenAITextEconomics } from "@/lib/economics";
+import { enforceCreatorApiBoundary } from "@/lib/security/creatorApiBoundary";
 
 export const runtime = "nodejs";
+
+// Read-only property access only; fields remain unknown until existing checks.
+// Non-null primitives retain their original JavaScript boxing/getter behavior.
+type MetadataReadValue = Readonly<{ id?: unknown; text?: unknown; narration?: unknown; dialogue?: unknown; message?: unknown; }>;
+function hasMetadataReadValue(value: unknown): value is MetadataReadValue {
+  return value !== null && value !== undefined;
+}
+function metadataReadValue(value: unknown): MetadataReadValue | undefined {
+  return hasMetadataReadValue(value) ? value : undefined;
+}
 
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -41,28 +53,45 @@ function parseJsonObject(text: string) {
 
 export async function POST(req: Request) {
   try {
+    const secured = await enforceCreatorApiBoundary<any>(
+      req,
+      "creator-youtube-metadata",
+    );
+    if (!secured.ok) return secured.response;
+    const body = secured.context.body;
     const client = getOpenAIClient();
-    const body = await req.json();
 
     const productionPackage = body?.package || {};
     const language = body?.language === "tr" ? "tr" : "en";
     const targetMarket = safeString(body?.targetMarket, "global");
-    const ageGroup = safeString(body?.ageGroup, "8-12");
+    const ageGroup = safeString(body?.ageGroup, "professional_18");
     const contentType = safeString(body?.contentType, "educational");
+    const creatorFormat = body?.creatorFormat === "short_form"
+      ? "short_form"
+      : "youtube_video";
     const videoDurationSec = Number(body?.videoDurationSec || productionPackage?.durationSec || 60);
     const patternSummary = body?.patternSummary || null;
+    const targetPlatforms = normalizeStringArray(
+      body?.targetPlatforms,
+      creatorFormat === "short_form"
+        ? ["youtube_shorts", "instagram_reels", "tiktok"]
+        : ["youtube"],
+    );
 
     const scenes = Array.isArray(productionPackage?.scenes)
-      ? productionPackage.scenes.slice(0, 12).map((scene: any) => ({
-          id: scene?.id,
-          text: safeString(scene?.text),
-          narration: safeString(scene?.narration),
-          dialogue: safeString(scene?.dialogue),
-        }))
+      ? productionPackage.scenes.slice(0, 12).map((value: unknown) => {
+          const scene = metadataReadValue(value);
+          return {
+            id: scene?.id,
+            text: safeString(scene?.text),
+            narration: safeString(scene?.narration),
+            dialogue: safeString(scene?.dialogue),
+          };
+        })
       : [];
 
     const prompt = `
-You are a YouTube packaging strategist for child-safe educational / story-based videos.
+You are a senior publishing strategist for professional 18+ creators.
 
 Generate metadata for a YouTube video.
 
@@ -76,28 +105,36 @@ Return STRICT JSON only with this schema:
   "thumbnailTextIdeas": ["2-4 word thumbnail text", "another option", "another option"],
   "seoKeywords": ["keyword 1", "keyword 2"],
   "audiencePromise": "One-sentence promise for the target audience",
-  "shortCaption": "1-2 sentence short-form caption for YouTube Shorts / social reuse",
+  "hookAlternatives": ["alternative first line 1", "alternative first line 2", "alternative first line 3"],
+  "chapters": ["00:00 Opening hook", "00:20 First section"],
+  "shortCaption": "1-2 sentence Shorts / Reels / TikTok caption",
+  "linkedInCaption": "Professional LinkedIn caption with a clear insight and soft call-to-action",
   "uploadChecklist": ["upload checklist item 1", "upload checklist item 2"],
   "publishingNotes": ["practical publishing note 1", "practical publishing note 2"]
 }
 
 Rules:
 - Output language: ${language === "tr" ? "Turkish" : "English"}.
-- Audience age group: ${ageGroup}.
+- Creator audience profile: ${ageGroup}.
 - Target market: ${targetMarket}.
 - Content type: ${contentType}.
+- Target format: ${creatorFormat === "short_form" ? "Shorts / Reels / TikTok" : "YouTube video"}.
+- Selected publishing platforms: ${targetPlatforms.join(", ") || "not specified"}.
 - Video duration target: ${videoDurationSec} seconds.
-- Child-safe, positive, curiosity-driven.
+- Professional, audience-appropriate, clear and publish-ready.
+- Do not assume a child audience, recurring child character, kids-science framing, or educational-story tone unless the production package explicitly requires it.
+- Tailor the copy to the selected platforms while keeping one coherent core message.
 - Avoid clickbait that overpromises.
 - Titles should be YouTube-friendly, curiosity-led, and under 65 characters when possible.
 - Generate one recommended title that is the safest publish-ready option, not merely the most dramatic option.
-- Description must include: a short hook, a clear child-safe value promise, and a soft call-to-action for parents/families.
+- Description must include: a short hook, a clear value promise, and a soft call-to-action appropriate for the selected audience.
 - Hashtags should be relevant, not spammy, max 8.
-- First comment should invite safe engagement, e.g. a question or prompt.
+- First comment should invite thoughtful engagement, e.g. a question or prompt.
 - Thumbnail text ideas must be 1-4 words each and readable on a phone.
-- Avoid manipulative child-directed engagement language such as "kids, subscribe now" or pressure-based calls-to-action.
-- Avoid medical, political, adult, violent, frightening, or unsafe claims.
-- Upload checklist must be practical and short: title, description, thumbnail, hashtags, audience/safety, final video check.
+- Hook alternatives must be concise first spoken lines and meaningfully different from each other.
+- Chapters should use timestamp-like labels, be concise, and fit the selected duration. For short-form, return a compact beat list instead of fabricated timestamps.
+- The LinkedIn caption should translate the core insight into a professional post, not simply repeat the video description.
+- Upload checklist must be practical and short: title, description, thumbnail, hashtags, audience fit, final video check.
 - Publishing notes must help the creator decide how to post the video without overpromising performance.
 
 Production package:
@@ -129,6 +166,7 @@ ${JSON.stringify(patternSummary, null, 2)}
         },
       ],
     });
+    await recordOpenAITextEconomics({ route: "/api/creator-youtube-metadata", operationType: "creator_youtube_metadata", model: "gpt-4.1-mini", response: completion });
 
     const raw = completion.choices?.[0]?.message?.content || "";
     const parsed = parseJsonObject(raw);
@@ -146,19 +184,22 @@ ${JSON.stringify(patternSummary, null, 2)}
       thumbnailTextIdeas: normalizeStringArray(parsed.thumbnailTextIdeas).slice(0, 5),
       seoKeywords: normalizeStringArray(parsed.seoKeywords).slice(0, 12),
       audiencePromise: safeString(parsed.audiencePromise),
+      hookAlternatives: normalizeStringArray(parsed.hookAlternatives).slice(0, 3),
+      chapters: normalizeStringArray(parsed.chapters).slice(0, 12),
       shortCaption: safeString(parsed.shortCaption),
+      linkedInCaption: safeString(parsed.linkedInCaption),
       uploadChecklist: normalizeStringArray(parsed.uploadChecklist).slice(0, 8),
       publishingNotes: normalizeStringArray(parsed.publishingNotes).slice(0, 8),
     };
 
     return NextResponse.json({ ok: true, metadata });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("creator-youtube-metadata error:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || "YouTube metadata generation failed.",
+        error: metadataReadValue(error)?.message || "YouTube metadata generation failed.",
       },
       { status: 500 }
     );
