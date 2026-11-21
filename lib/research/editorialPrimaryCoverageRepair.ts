@@ -8,6 +8,7 @@ import { researchSourceQualifiesAsPrimaryForClaim } from "./claimAuthorityResolv
 import { createValidatedEditorialAnalysis } from "./editorialAnalysisContract.ts";
 import {
   MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+  selectEditorialGroundingCandidateSpansForRequest,
   type EditorialGroundingCandidateSpan,
 } from "./editorialGroundingRepair.ts";
 import { createEditorialEvidenceSpanCatalog } from "./editorialEvidenceSpanCatalog.ts";
@@ -246,15 +247,27 @@ export function createEditorialPrimaryCoverageRepairContext(
     candidateSources,
     targetClaims,
   });
-  const candidateSpans = createEditorialEvidenceSpanCatalog(
+  // Verify every candidate in the immutable canonical catalog BEFORE applying
+  // the request budget. Canonical span IDs/provenance must never be rebuilt from
+  // a smaller source subset or inferred by the provider.
+  const canonicalSpans = createEditorialEvidenceSpanCatalog(
     candidatePrimarySources,
   ).spans;
-  // Zero candidate spans is a legitimate acquisition result. The route
-  // will skip provider selection and invoke the server-owned safe-exclusion
-  // path with an empty repair selection.
-  if (candidateSpans.length > MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST) {
-    throw new Error("EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_LIMIT_EXCEEDED");
-  }
+  // The catalog is span-ID ordered, so prioritize concrete observations within
+  // each source before the existing fair round-robin source budget. This caps
+  // the model request without admitting unverified evidence or losing all spans
+  // from later sources when research returns many primary documents.
+  const rankedCanonicalSpans = canonicalSpans.toSorted((left, right) =>
+    Number(right.evidenceSpecificity === "concrete_observation") -
+      Number(left.evidenceSpecificity === "concrete_observation") ||
+    left.spanId.localeCompare(right.spanId)
+  );
+  const candidateSpans = selectEditorialGroundingCandidateSpansForRequest(
+    rankedCanonicalSpans,
+    MAX_EDITORIAL_GROUNDING_SPANS_PER_REQUEST,
+  );
+  // Zero candidate spans is a legitimate acquisition result. The route skips
+  // provider selection and excludes still-unverified mandatory claims safely.
 
   return {
     frozenGraph,

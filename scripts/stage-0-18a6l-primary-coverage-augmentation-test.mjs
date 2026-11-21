@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createEditorialEvidenceSpanCatalog } from "../lib/research/editorialEvidenceSpanCatalog.ts";
 import {
   applyEditorialPrimaryCoverageRepair,
   createEditorialPrimaryCoverageRepairContext,
@@ -353,21 +354,49 @@ const verbosePrimarySummary = Array.from(
   { length: 12 },
   (_, index) => `Researchers reported bounded observation number ${index + 1} from the original study.`,
 ).join(" ");
-assert.throws(
-  () => createEditorialPrimaryCoverageRepairContext({
-    ...request,
-    candidateSources: Array.from({ length: 6 }, (_, index) => ({
-      ...academicSource,
-      sourceId: `academic:verbose-${index + 1}`,
-      externalId: `doi:10.1/verbose-${index + 1}`,
-      url: `https://doi.org/10.1/verbose-${index + 1}`,
-      title: `Verbose primary study ${index + 1}`,
-      summary: verbosePrimarySummary,
-    })),
-  }),
-  /EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_LIMIT_EXCEEDED/,
-  "more than 120 canonical candidate spans must remain fail-closed",
+// Regression for a real 15-source primary acquisition that previously threw
+// EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_LIMIT_EXCEEDED before provider selection.
+const oversubscribedPrimarySources = Array.from({ length: 15 }, (_, index) => ({
+  ...academicSource,
+  sourceId: `academic:verbose-${index + 1}`,
+  externalId: `doi:10.1/verbose-${index + 1}`,
+  url: `https://doi.org/10.1/verbose-${index + 1}`,
+  title: `Verbose primary study ${index + 1}`,
+  summary: verbosePrimarySummary,
+}));
+const unboundedCatalog = createEditorialEvidenceSpanCatalog(oversubscribedPrimarySources);
+assert.ok(unboundedCatalog.spans.length > 120, "fixture must exceed the original safety limit");
+const boundedCoverage = createEditorialPrimaryCoverageRepairContext({
+  ...request,
+  candidateSources: oversubscribedPrimarySources,
+});
+assert.equal(boundedCoverage.candidateSpans.length, 120);
+assert.equal(new Set(boundedCoverage.candidateSpans.map((span) => span.spanId)).size, 120);
+assert.deepEqual(
+  [...new Set(boundedCoverage.candidateSpans.map((span) => span.sourceId))].sort(),
+  oversubscribedPrimarySources.map((source) => source.sourceId).sort(),
+  "every available primary source retains a bounded chance to support a target",
 );
+const canonicalBySpanId = new Map(unboundedCatalog.spans.map((span) => [span.spanId, span]));
+for (const selected of boundedCoverage.candidateSpans) {
+  assert.deepEqual(selected, canonicalBySpanId.get(selected.spanId),
+    "selected span identity, text and provenance must match the original catalog");
+}
+const reorderedCoverage = createEditorialPrimaryCoverageRepairContext({
+  ...request, candidateSources: [...oversubscribedPrimarySources].reverse(),
+});
+assert.deepEqual(
+  boundedCoverage.candidateSpans.map((span) => span.spanId).toSorted(),
+  reorderedCoverage.candidateSpans.map((span) => span.spanId).toSorted(),
+  "candidate request budgeting must be independent of source arrival order",
+);
+const boundedSafeExclusion = applyEditorialPrimaryCoverageRepair({
+  context: boundedCoverage,
+  selection: { repairs: [] },
+});
+assert.deepEqual(boundedSafeExclusion.excludedPrimaryClaimIds, [
+  "claim-research", "claim-statement",
+], "unverified mandatory claims remain excluded when selections are empty");
 
 assert.throws(
   () => createEditorialPrimaryCoverageRepairContext({
