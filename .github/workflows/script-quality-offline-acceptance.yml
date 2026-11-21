@@ -62,4 +62,61 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Run full critical offline regression suite
+        id: regression
         run: npm run test:ci-critical
+
+      # Diagnostic only: never masks the original failing gate or scientific CI.
+      # Enumerates the remaining scripts instead of stopping on the next legacy mismatch.
+      - name: Diagnose remaining offline regressions after first failure
+        if: ${{ failure() && steps.regression.outcome == 'failure' }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          const code = fs.readFileSync('scripts/stage-0-8a-critical-regression.mjs', 'utf8');
+          const match = code.match(/const tests = \[([\s\S]*?)\];/);
+          if (!match) throw new Error('TEST_REGISTRY_PARSE_FAILED');
+          const tests = [...match[1].matchAll(/^\s*"([^"]+\.mjs)",\s*$/gm)].map(v => v[1]);
+          if (tests.length !== 121 || new Set(tests).size !== tests.length) throw new Error('TEST_REGISTRY_COUNT_OR_IDENTITY_DRIFT');
+          const parts = code.split('? ["--experimental-strip-types"]');
+          if (parts.length !== 2) throw new Error('TEST_FLAG_REGISTRY_DRIFT');
+          const strip = new Set([...parts[0].matchAll(/test === "([^"]+)"/g)].map(v => v[1]));
+          const transformPart = parts[1].split('? ["--experimental-transform-types"]');
+          if (transformPart.length !== 2) throw new Error('TEST_FLAG_REGISTRY_DRIFT');
+          const transform = new Set([...transformPart[0].matchAll(/test === "([^"]+)"/g)].map(v => v[1]));
+          if ([...strip, ...transform].some(p => !tests.includes(p))) throw new Error('UNKNOWN_TEST_FLAG_SOURCE');
+          const first = tests.indexOf('scripts/stage-0-8d-b-provider-environment-test.mjs');
+          if (first < 0) throw new Error('DIAGNOSTIC_START_FILE_MISSING');
+          const failures = [];
+          for (const [i, file] of tests.entries()) {
+            if (i < first) continue;
+            const flags = strip.has(file) ? ['--experimental-strip-types'] : transform.has(file) ? ['--experimental-transform-types'] : [];
+            const result = spawnSync(process.execPath, [...flags, file], {
+              encoding: 'utf8', timeout: 150000, killSignal: 'SIGKILL',
+              maxBuffer: 4 * 1024 * 1024,
+            });
+            const ok = result.status === 0 && result.error == null && result.signal == null;
+            console.log('OFFLINE_CASE ' + (i + 1) + '/' + tests.length + ' ' + (ok ? 'PASS ' : 'FAIL ') + file);
+            if (!ok) {
+              failures.push({ index: i + 1, file, status: result.status, signal: result.signal,
+                error: result.error?.code || null });
+              const output = String(result.stderr || result.stdout || '');
+              console.log('FAILURE_TAIL ' + file + '\n' + output.split(/\r?\n/).slice(-15).map(line => line.slice(0, 300)).join('\n'));
+            }
+          }
+          const summary = { sourceSha: process.env.GITHUB_SHA, registryCount: tests.length,
+            diagnosticFrom: first + 1, diagnosed: tests.length - first, failures };
+          fs.writeFileSync('script-quality-offline-diagnostic.json', JSON.stringify(summary, null, 2) + '\n');
+          console.log('CRITICAL_OFFLINE_DIAGNOSTIC_SUMMARY=' + JSON.stringify(summary));
+          if (failures.length) process.exitCode = 1;
+          NODE
+
+      - name: Upload non-secret regression diagnostics
+        if: ${{ always() && steps.regression.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: velto-critical-regression-diagnostics
+          path: script-quality-offline-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 7
