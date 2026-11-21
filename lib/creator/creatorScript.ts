@@ -1222,7 +1222,7 @@ export function createCreatorScriptRepairTargets(input: {
 }) {
   return input.sections.map((section) => {
     // Global rebalancing requires individually directed local corrections.
-    const direction = input.direction === "rebalance_sections"
+    const direction: typeof input.direction = input.direction === "rebalance_sections"
       ? section.actualWords < section.minimumWords ? "expand"
         : section.actualWords > section.maximumWords ? "compress"
         : "rebalance_sections"
