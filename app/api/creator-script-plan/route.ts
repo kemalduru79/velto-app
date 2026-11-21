@@ -1496,11 +1496,13 @@ async function executeCreatorScriptOperation(input: {
                 distinctivenessRepairContext,
                 repairTargets: repairTargets.map((target) => ({
                   sectionId: target.sectionId,
+                  requiredDirection: target.direction,
                   beforeWords: target.beforeWords,
                   requiredFinalMinWords: target.requiredFinalMinWords,
                   requiredFinalTargetWords: target.requiredFinalTargetWords,
                   requiredFinalMaxWords: target.requiredFinalMaxWords,
                   minimumRequiredGain: target.minimumRequiredGain,
+                  minimumRequiredReduction: target.minimumRequiredReduction,
                 })),
                 requiredJsonShape: {
                   sections: sectionsToRepair.map((section) => ({
@@ -1511,7 +1513,8 @@ async function executeCreatorScriptOperation(input: {
                 },
                 rules: [
                   "Return one corrected authored section object for every supplied sectionsToRepair item, in order; do not return unrelated sections. The server attaches canonical identity, kind, role, order, ownership metadata, and budgets.",
-                  "For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
+                  "For a mixed rebalance, obey EACH repairTargets.requiredDirection independently: expand short sections, compress overlong sections, and achieve the stated local word bounds.",
+                   "For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
                   "For requiredDirection=expand, each replacement must be longer than beforeWords and must add at least minimumRequiredGain words to reach requiredFinalMinWords. A shorter replacement or one still below the hard minimum is not a successful expansion. Use grounded, role-owned explanation, causal reasoning, supported implications or comparison, uncertainty, synthesis, and useful transitions only.",
                   "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
                   "Any section listed in distinctivenessFailureSectionIds must be rewritten to perform its sectionControlPlan owns work so its heading and primary claim no longer duplicate another section.",
@@ -1547,7 +1550,8 @@ async function executeCreatorScriptOperation(input: {
             script: currentScript,
             plan: sectionBudgetPlan,
             replacements: validatedReplacements,
-          });
+          targets: repairTargets,
+           });
           console.info("CREATOR_SCRIPT_DURATION_REPAIR_REPLACEMENT_DIAGNOSTICS", {
             attempt: repairCallCount,
             replacements: replacementDiagnostics.map(({ sectionId, beforeWords, candidateWords, accepted, reason }) => ({ sectionId, beforeWords, candidateWords, accepted, reason })),
