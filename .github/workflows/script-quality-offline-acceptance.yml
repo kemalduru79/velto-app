@@ -1,0 +1,65 @@
+name: Velto Script Quality Offline Acceptance
+
+# Isolated acceptance for the already-reviewed source. This does not replace,
+# skip, disable, or claim success for the separate scientific runtime CI gate.
+on:
+  push:
+    branches:
+      - codex/p0-sprint20-controlled-integration
+
+permissions:
+  contents: read
+
+concurrency:
+  group: velto-script-quality-offline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-regressions:
+    name: Full critical offline regression (Ubuntu Compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-public-placeholder"
+    steps:
+      - name: Check out reviewed source without credentials
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact post-integration change scope and Vercel branch guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=428286d32dfe0ecc3013f0e2b478acf75a77c98b
+          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+          expected="$(printf '%s\n' \
+            '.github/workflows/script-quality-offline-acceptance.yml' \
+            'scripts/creator-script-refinement-r1-foundation-test.mjs' | LC_ALL=C sort)"
+          actual="$(git diff --name-only "$BASE" HEAD -- | LC_ALL=C sort)"
+          test "$actual" = "$expected" || {
+            echo "STOP: source change scope deviated from the reviewed two-file patch" >&2
+            exit 1
+          }
+          node -e 'const v=require("./vercel.json");if(v.git?.deploymentEnabled?.["codex/p0-sprint20-controlled-integration"]!==false)process.exit(1)'
+          echo "SOURCE_SCOPE_TWO_FILES=PASS; VERCEL_BRANCH_AUTODEPLOY=DISABLED"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Confirm Docker Compose CLI availability (no daemon required)
+        run: docker compose version
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run full critical offline regression suite
+        run: npm run test:ci-critical
