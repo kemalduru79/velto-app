@@ -39,14 +39,15 @@ jobs:
           test "$(git merge-base "$BASE" HEAD)" = "$BASE"
           expected="$(printf '%s\n' \
             '.github/workflows/script-quality-offline-acceptance.yml' \
-            'scripts/creator-script-refinement-r1-foundation-test.mjs' | LC_ALL=C sort)"
+            'scripts/creator-script-refinement-r1-foundation-test.mjs' \
+            'scripts/stage-0-8d-b-provider-environment-test.mjs' | LC_ALL=C sort)"
           actual="$(git diff --name-only "$BASE" HEAD -- | LC_ALL=C sort)"
           test "$actual" = "$expected" || {
-            echo "STOP: source change scope deviated from the reviewed two-file patch" >&2
+            echo "STOP: source change scope deviated from the reviewed three-file patch" >&2
             exit 1
           }
           node -e 'const v=require("./vercel.json");if(v.git?.deploymentEnabled?.["codex/p0-sprint20-controlled-integration"]!==false)process.exit(1)'
-          echo "SOURCE_SCOPE_TWO_FILES=PASS; VERCEL_BRANCH_AUTODEPLOY=DISABLED"
+          echo "SOURCE_SCOPE_THREE_FILES=PASS; VERCEL_BRANCH_AUTODEPLOY=DISABLED"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
