@@ -45,14 +45,17 @@ jobs:
             'scripts/stage-0-18a6l-primary-coverage-augmentation-test.mjs' \
             'app/api/creator-editorial-analysis/route.ts' \
             'lib/research/editorialClaimOriginRepairRollback.ts' \
-            'scripts/creator-editorial-claim-origin-repair-rollback-test.mjs' | LC_ALL=C sort)"
+            'scripts/creator-editorial-claim-origin-repair-rollback-test.mjs' \
+            'lib/creator/creatorScript.ts' \
+            'app/api/creator-script-plan/route.ts' \
+            'scripts/creator-compact-duration-repair-regression-test.mjs' | LC_ALL=C sort)"
           actual="$(git diff --name-only "$BASE" HEAD -- | LC_ALL=C sort)"
           test "$actual" = "$expected" || {
-            echo "STOP: source change scope deviated from the reviewed eight-file patch" >&2
+            echo "STOP: source change scope deviated from the reviewed eleven-file patch" >&2
             exit 1
           }
           node -e 'const v=require("./vercel.json");if(v.git?.deploymentEnabled?.["codex/p0-sprint20-controlled-integration"]!==false)process.exit(1)'
-          echo "SOURCE_SCOPE_EIGHT_FILES=PASS; VERCEL_BRANCH_AUTODEPLOY=DISABLED"
+          echo "SOURCE_SCOPE_ELEVEN_FILES=PASS; VERCEL_BRANCH_AUTODEPLOY=DISABLED"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -72,6 +75,9 @@ jobs:
 
       - name: Regression - additive claim-origin disagreement cannot downgrade primary authority
         run: node --experimental-strip-types scripts/creator-editorial-claim-origin-repair-rollback-test.mjs
+
+      - name: Regression - compact three-minute duration geometry and local repair
+        run: node --experimental-strip-types scripts/creator-compact-duration-repair-regression-test.mjs
 
       - name: Run full critical offline regression suite
         id: regression
@@ -163,7 +169,10 @@ jobs:
             'scripts/stage-0-18a6l-primary-coverage-augmentation-test.mjs' \
             'app/api/creator-editorial-analysis/route.ts' \
             'lib/research/editorialClaimOriginRepairRollback.ts' \
-            'scripts/creator-editorial-claim-origin-repair-rollback-test.mjs' | LC_ALL=C sort)"
+            'scripts/creator-editorial-claim-origin-repair-rollback-test.mjs' \
+            'lib/creator/creatorScript.ts' \
+            'app/api/creator-script-plan/route.ts' \
+            'scripts/creator-compact-duration-repair-regression-test.mjs' | LC_ALL=C sort)"
           actual="$(git diff --name-only "$BASE" HEAD -- | LC_ALL=C sort)"
           test "$actual" = "$expected"
           node -e 'const v=require("./vercel.json"); if(v.git?.deploymentEnabled?.["codex/p0-sprint20-controlled-integration"]!==false)process.exit(1)'
