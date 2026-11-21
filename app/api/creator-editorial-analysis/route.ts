@@ -21,8 +21,6 @@ import { createCreatorEditorialCandidateCapabilityDiagnostics } from "@/lib/rese
 import { repairCollapsedCanonicalEditorialSelection } from "@/lib/research/editorialCanonicalSelectionRepair";
 import {
   RESEARCH_PROPOSITION_KINDS,
-  createResearchClaimEvidenceGraph,
-  type ResearchClaim,
   type ResearchClaimEvidenceGraph,
 } from "@/lib/research/claimEvidenceGraph";
 import { ClaimPropositionAuthorityDisagreementError } from "@/lib/research/claimPropositionAuthority";
