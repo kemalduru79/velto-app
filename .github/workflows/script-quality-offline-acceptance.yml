@@ -64,6 +64,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Regression - 15-source canonical primary coverage budget
+        run: node --experimental-strip-types scripts/stage-0-18a6l-primary-coverage-augmentation-test.mjs
+
       - name: Run full critical offline regression suite
         id: regression
         run: npm run test:ci-critical
