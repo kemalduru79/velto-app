@@ -37,6 +37,22 @@ export type CreatorEvidenceUnit = {
 };
 
 const MAX_PACK_UNITS = 40;
+
+/** Restore only backstage identity for sources already permitted by narration scope. */
+export function createSourceAwareEvidencePackContext(input: {
+  narrationContext: ScriptPlannerEditorialContext;
+  originalContext: ScriptPlannerEditorialContext;
+}): ScriptPlannerEditorialContext {
+  const sourceById = new Map(input.originalContext.sources.map((source) => [source.sourceId, source]));
+  return {
+    ...input.narrationContext,
+    sources: input.narrationContext.sources.map((source) => ({
+      ...source,
+      title: sourceById.get(source.sourceId)?.title || source.title,
+      publishedAt: sourceById.get(source.sourceId)?.publishedAt || null,
+    })),
+  };
+}
 const MAX_PROMPT_PACK_UNITS = 5;
 const MAX_PROMPT_BINDINGS_PER_STANCE = 1;
 export const CREATOR_EVIDENCE_PROMPT_PACK_MAX_CHARACTERS = 12_000;

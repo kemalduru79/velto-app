@@ -1,4 +1,5 @@
 import type { ResearchClaimType } from "./claimEvidenceGraph.ts";
+import type { ScriptPlannerEditorialContext } from "./scriptPlannerEditorialContext.ts";
 import type {
   ScriptEvidenceBindingMap,
   ScriptStatementEvidenceBinding,
@@ -157,4 +158,31 @@ export function createScriptQaReport(
     reviewIssueCount,
     issues,
   };
+}
+
+/** Advisory only: section-level claim bindings cannot prove sentence-level attribution. */
+export function reviewScriptResearchFidelity(input: {
+  sections: Array<{ id: string; text: string; claimIds: string[] }>;
+  context: ScriptPlannerEditorialContext;
+}) {
+  const issues: Array<{ sectionId: string; code: string; detail: string }> = [];
+  for (const section of input.sections) {
+    const claims = input.context.claims.filter((claim) => section.claimIds.includes(claim.claimId));
+    const evidenceIds = new Set(claims.flatMap((claim) => [
+      ...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds,
+    ]));
+    const evidence = input.context.evidence.filter((item) => evidenceIds.has(item.evidenceId));
+    const sourceIds = new Set(evidence.map((item) => item.sourceId));
+    const sources = input.context.sources.filter((source) => sourceIds.has(source.sourceId));
+    const authority = [...claims.map((claim) => claim.text), ...evidence.flatMap((item) => [item.excerpt || "", item.contextNote || ""])].join(" ");
+    const numbers = (text: string) => text.match(/\b\d+(?:[.,]\d+)*%?/g) || [];
+    const supported = new Set(numbers(authority).map((value) => value.replace(/,$/, "")));
+    for (const value of new Set(numbers(section.text))) {
+      if (!supported.has(value)) issues.push({ sectionId: section.id, code: "NUMERIC_ATTRIBUTION_REVIEW", detail: `Verify ${value} against the linked evidence and its population and study period.` });
+    }
+    if (sources.length > 1) issues.push({ sectionId: section.id, code: "MULTIPLE_SOURCE_ATTRIBUTION_REVIEW", detail: "Verify each finding, date and limitation belongs to the correct study; publication dates do not establish study dates." });
+    if (/\b(?:because|caused by|resulted from|due to)\b/i.test(section.text)) issues.push({ sectionId: section.id, code: "CAUSAL_ATTRIBUTION_REVIEW", detail: "Verify any causal explanation against the linked passages and study context." });
+    if (claims.length && evidence.length === 0) issues.push({ sectionId: section.id, code: "RESEARCH_IDENTITY_REVIEW", detail: "No source-bound passage was found for this section's claims." });
+  }
+  return { status: issues.length ? "review" as const : "no_flags" as const, issues };
 }

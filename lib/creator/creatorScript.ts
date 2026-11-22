@@ -36,6 +36,8 @@ export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
   ...CREATOR_EDITORIAL_REVISION_CONTRACT,
   "Develop the strongest grounded narrative the available evidence supports. Before finishing, consider missing causal explanations, evidence, counterarguments, uncertainty, implications, and transitions; include them only where they add substantive supported work.",
   "Use the requested duration as a production target, not a reason to repeat material, add filler, invent claims, or weaken evidence and uncertainty. If the evidence cannot support more narration, preserve the strongest grounded account.",
+  "Keep each finding, number, population, methodology and limitation attached to the evidence and study that supports it. Do not transfer a later study's limitations or selection effects to an earlier study, or describe them as causes without evidence.",
+  "Source titles and publication dates are backstage provenance. Publication date is not necessarily the study period. Explain the supported meaning naturally; never infer missing dates, methods, populations, causal links or numerical results.",
   "Write as an intelligent, calm, precise, curious human documentary narrator: state substantive ideas directly instead of announcing, labeling, or explaining the paragraph's function.",
   "Treat established premises as known. Do not restate a thesis merely to transition, summarize prior sections, or give each section a self-contained introduction; each section must add new role-owned intellectual value.",
   "Let transitions emerge from unresolved logic. Never use meta transitions such as 'this brings us to', 'having established', 'we now turn to', 'the next question is', or 'this section examines'.",

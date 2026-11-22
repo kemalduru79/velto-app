@@ -1095,8 +1095,8 @@ assert.doesNotMatch(route, /repairedSectionIds = Array\.from\(new Set\(\[[\s\S]{
 assert.match(route, /requiredFinalMinWords/);
 assert.match(route, /Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence/);
 assert.match(route, /generationPriorityHierarchy/); assert.match(route, /audienceFacingNarratorContract/); assert.match(route, /internalEditorialGuidance/);
-assert.match(route, /const evidenceMomentPack = sectionNative[\s\S]*buildCreatorEvidencePromptPack\(\{[\s\S]*context: narrationEditorialContext,[\s\S]*maxUnits: 5/);
-assert.match(route, /const sectionEvidenceSelection = sectionNative[\s\S]*buildCreatorSectionEvidencePromptPack\(\{[\s\S]*context: narrationEditorialContext,[\s\S]*section: requestedSections\[0\],[\s\S]*eligibleClaimIds: createSectionNativeEditorialContext/);
+assert.match(route, /const evidenceMomentPack = sectionNative[\s\S]*buildCreatorEvidencePromptPack\(\{[\s\S]*context: evidencePackContext,[\s\S]*maxUnits: 5/);
+assert.match(route, /const sectionEvidenceSelection = sectionNative[\s\S]*buildCreatorSectionEvidencePromptPack\(\{[\s\S]*context: evidencePackContext,[\s\S]*section: requestedSections\[0\],[\s\S]*eligibleClaimIds: createSectionNativeEditorialContext/);
 assert.match(route, /CREATOR_SECTION_EVIDENCE_PROMPT_DIAGNOSTICS[\s\S]*sectionEvidenceSelection\.metrics/);
 assert.match(route, /evidenceMomentContext:[\s\S]*Control-only source-bound evidence[\s\S]*sectionEvidenceSelection!\.units/);
 assert.doesNotMatch(route, /selectCreatorEvidencePromptPackForClaims\(\{[\s\S]*pack: evidenceMomentPack/);

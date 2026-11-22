@@ -38,7 +38,7 @@ import {
   type ScriptPlannerEditorialContext,
 } from "../../../lib/research/scriptPlannerEditorialContext";
 import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvidenceBinding";
-import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
+import { createScriptQaReport, reviewScriptResearchFidelity } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorLongFormEvidenceCapabilityEvaluation,
   createCreatorScriptSectionClaimRouting,
@@ -47,6 +47,7 @@ import {
 import {
   buildCreatorEvidencePromptPack,
   buildCreatorSectionEvidencePromptPack,
+  createSourceAwareEvidencePackContext,
 } from "../../../lib/research/creatorEvidencePack";
 import {
   acceptCreatorScriptWithAcceptanceRepair,
@@ -756,6 +757,10 @@ async function executeCreatorScriptOperation(input: {
       actualWordCount: 0,
     });
     const narrationEditorialContext = createCreatorScriptNarrationEditorialContext(input.editorialContext);
+    const evidencePackContext = createSourceAwareEvidencePackContext({
+      narrationContext: narrationEditorialContext,
+      originalContext: input.editorialContext,
+    });
     const hasMaterialCounterview = narrationEditorialContext.claims.some(
       (claim) => claim.counterEvidenceIds.length > 0,
     );
@@ -830,7 +835,7 @@ async function executeCreatorScriptOperation(input: {
     const evidenceMomentPack = sectionNative
       ? null
       : buildCreatorEvidencePromptPack({
-          context: narrationEditorialContext,
+          context: evidencePackContext,
           maxUnits: 5,
         });
     const createInitialResponse = (
@@ -840,7 +845,7 @@ async function executeCreatorScriptOperation(input: {
     ) => {
       const sectionEvidenceSelection = sectionNative
         ? buildCreatorSectionEvidencePromptPack({
-            context: narrationEditorialContext,
+            context: evidencePackContext,
             section: requestedSections[0],
             eligibleClaimIds: createSectionNativeEditorialContext({
               context: narrationEditorialContext,
@@ -1602,7 +1607,11 @@ async function executeCreatorScriptOperation(input: {
         finalDurationStatus: finalDuration.status,
       });
       logSectionBudgetDiagnostics("accepted", null, accepted.creatorScript);
-      return NextResponse.json({ success: true, creatorScript: accepted.creatorScript });
+      const researchFidelityReview = reviewScriptResearchFidelity({
+        sections: accepted.creatorScript.sections,
+        context: narrationEditorialContext,
+      });
+      return NextResponse.json({ success: true, creatorScript: accepted.creatorScript, researchFidelityReview });
     } catch (error) {
       logSectionBudgetDiagnostics(
         "rejected",
