@@ -41,7 +41,6 @@ import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvid
 import { createScriptQaReport } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorLongFormEvidenceCapabilityEvaluation,
-  createCreatorLongFormEvidenceReadiness,
   createCreatorScriptSectionClaimRouting,
   prepareCreatorLongFormSectionPlanForAvailableEvidence,
 } from "../../../lib/research/creatorLongFormEvidenceReadiness";
@@ -88,6 +87,7 @@ import {
   creatorScriptAcceptanceMateriallyImproved,
   evaluateCreatorScriptAcceptance,
   getCreatorScriptAcceptanceExpansionTargets,
+  getCreatorScriptDurationReviewOnlyDraft,
   getCreatorScriptAcceptanceFailure,
   type CreatorScriptAcceptanceReport,
 } from "../../../lib/creator/creatorScriptAcceptance";
@@ -1095,7 +1095,10 @@ async function executeCreatorScriptOperation(input: {
         sectionPlan: sectionBudgetPlan,
         language,
         narrationAuthority,
+        // New creator generations only; checkpoint replay remains on canonical defaults.
+        qualityFirstDurationRepair: true,
       });
+    const durationReviewCandidateRef: { current: ReturnType<typeof createCreatorScript> | null } = { current: null };
     try {
       const accepted = await acceptCreatorScriptWithAcceptanceRepair({
         allowRepair: true,
@@ -1203,6 +1206,7 @@ async function executeCreatorScriptOperation(input: {
               })
             : await generateUnit(sectionBudgetPlan, 0, null);
           const script = createFromSections(generatedSections);
+          durationReviewCandidateRef.current = script;
           const initialDiagnostics = getCreatorScriptDurationContractForScript(script, language);
           firstActualWords = initialDiagnostics.actualWordCount;
           firstDurationStatus = initialDiagnostics.status;
@@ -1572,6 +1576,7 @@ async function executeCreatorScriptOperation(input: {
             replacements: directionallyValidReplacements,
             plan: sectionBudgetPlan,
           });
+          durationReviewCandidateRef.current = repairedScript;
           logDistinctivenessDiagnostics(`post_repair_${repairCallCount}`, evaluateAcceptance(repairedScript));
           postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(repairedScript, sectionBudgetPlan);
           return repairedScript;
@@ -1606,6 +1611,14 @@ async function executeCreatorScriptOperation(input: {
       if (error instanceof CreatorScriptPolicyUnsatisfiedError) {
         const report = error.report as CreatorScriptAcceptanceReport;
         const failure = getCreatorScriptAcceptanceFailure(report);
+        // Evaluate the actual candidate, not merely the final error report.
+        const candidate = durationReviewCandidateRef.current;
+        const reviewOnly = failure.code === "CREATOR_SCRIPT_DURATION_UNSATISFIED" && candidate
+          ? getCreatorScriptDurationReviewOnlyDraft({
+              script: candidate,
+              report: evaluateAcceptance(candidate),
+            })
+          : null;
         console.error("CREATOR_SCRIPT_ACCEPTANCE_REJECTED", {
           version: report.version,
           category: failure.category,
@@ -1622,6 +1635,11 @@ async function executeCreatorScriptOperation(input: {
             code: failure.code,
             category: failure.category,
             diagnostics: report,
+            ...(reviewOnly ? {
+              reviewOnly: true,
+              reviewDraft: reviewOnly.script,
+              reviewDuration: reviewOnly.duration,
+            } : {}),
           },
           { status: 422 },
         );

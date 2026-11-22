@@ -28,6 +28,8 @@ export class CreatorEditorialPipelineError extends Error {
   stage: CreatorEditorialPipelineStage;
   status: number | null;
   code: string | null;
+  // Ephemeral review-only payload; not an accepted script.
+  reviewOnlyDraft: unknown | null = null;
 
   constructor(input: {
     stage: CreatorEditorialPipelineStage;
@@ -240,12 +242,19 @@ async function postJson(input: {
   });
   const payload = await parseJsonResponse(response);
   if (!response.ok || payload.success !== true) {
-    throw new CreatorEditorialPipelineError({
+    const failure = new CreatorEditorialPipelineError({
       stage: input.stage,
       status: response.status,
       code: clean(payload.code, 120) || null,
       message: responseMessage(payload, `Creator editorial ${input.stage} failed.`),
     });
+    if (input.stage === "script_plan" &&
+        failure.code === "CREATOR_SCRIPT_DURATION_UNSATISFIED" &&
+        payload.reviewOnly === true &&
+        payload.reviewDraft && typeof payload.reviewDraft === "object") {
+      failure.reviewOnlyDraft = payload.reviewDraft;
+    }
+    throw failure;
   }
   return payload;
 }

@@ -16,8 +16,8 @@ export const CREATOR_SCRIPT_GENERATION_PRIORITY_HIERARCHY = [
   "Grounding, source, and evidence authority",
   "Audience-facing narration contract",
   "Section role and narrative progression",
-  "Content richness and global duration",
-  "Editorial writing quality",
+  "Editorial quality, analytical depth, and subject completeness",
+  "Global duration",
   "Stylistic polish",
 ] as const;
 
@@ -34,6 +34,8 @@ export const CREATOR_SCRIPT_AUDIENCE_NARRATOR_CONTRACT = [
 
 export const CREATOR_SCRIPT_DOCUMENTARY_WRITING_CONTRACT = [
   ...CREATOR_EDITORIAL_REVISION_CONTRACT,
+  "Develop the strongest grounded narrative the available evidence supports. Before finishing, consider missing causal explanations, evidence, counterarguments, uncertainty, implications, and transitions; include them only where they add substantive supported work.",
+  "Use the requested duration as a production target, not a reason to repeat material, add filler, invent claims, or weaken evidence and uncertainty. If the evidence cannot support more narration, preserve the strongest grounded account.",
   "Write as an intelligent, calm, precise, curious human documentary narrator: state substantive ideas directly instead of announcing, labeling, or explaining the paragraph's function.",
   "Treat established premises as known. Do not restate a thesis merely to transition, summarize prior sections, or give each section a self-contained introduction; each section must add new role-owned intellectual value.",
   "Let transitions emerge from unresolved logic. Never use meta transitions such as 'this brings us to', 'having established', 'we now turn to', 'the next question is', or 'this section examines'.",

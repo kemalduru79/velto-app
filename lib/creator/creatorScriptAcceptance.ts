@@ -96,6 +96,8 @@ export function evaluateCreatorScriptAcceptance(input: {
   sectionPlan: CreatorScriptSectionBudget[];
   language: "tr" | "en";
   narrationAuthority: string;
+  // Opt-in for new live generation. Historical acceptance replays keep legacy behavior.
+  qualityFirstDurationRepair?: boolean;
 }): CreatorScriptAcceptanceReport {
   const { script, sectionPlan } = input;
   const duration = getCreatorScriptDurationContractForScript(script, input.language);
@@ -108,7 +110,15 @@ export function evaluateCreatorScriptAcceptance(input: {
   const residualRepairEligible = duration.status === "compliant"
     ? false
     : isCreatorScriptResidualRepairEligible(duration);
-  const globalDurationRepairable = residualRepairEligible
+  // Allow a bounded corrective pass for new live drafts that need no more
+  // than 50% additional narration to reach the minimum envelope. This is a
+  // *repair attempt* limit, never an acceptance relaxation or quality score.
+  // Grounding and narration-safety hard violations still veto repair below.
+  const boundedLiveExpansionEligible = input.qualityFirstDurationRepair === true
+    && duration.status === "too_short"
+    && duration.actualWordCount > 0
+    && duration.minimumAcceptableWordCount <= Math.ceil(duration.actualWordCount * 1.5);
+  const globalDurationRepairable = (residualRepairEligible || boundedLiveExpansionEligible)
     && durationRepairSections.length > 0;
 
   if (script.sections.length !== sectionPlan.length) {
@@ -393,6 +403,30 @@ export function getCreatorScriptAcceptanceFailure(
     code: "CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED",
     message: "The generated script did not satisfy section safety policy.",
   };
+}
+
+/**
+ * An incomplete but grounded script may be shown as a temporary editorial
+ * preview, never as acceptance or production authorization. This is NOT an
+ * editorial quality score; the user judges the narrative's actual value.
+ * Use the existing live bounded-repair magnitude for moderate vs extreme gaps.
+ */
+export function getCreatorScriptDurationReviewOnlyDraft(input: {
+  script: CreatorScript;
+  report: CreatorScriptAcceptanceReport;
+}): { script: CreatorScript; duration: CreatorScriptDurationContract } | null {
+  const { script, report } = input;
+  const duration = report.duration;
+  if (report.accepted || duration.status !== "too_short") return null;
+  if (duration.actualWordCount <= 0 ||
+      duration.minimumAcceptableWordCount > Math.ceil(duration.actualWordCount * 1.5)) return null;
+  if (!report.violations.some((violation) => violation.code === "GLOBAL_DURATION_TOO_SHORT")) return null;
+  if (report.violations.some((violation) =>
+    violation.severity === "hard" &&
+    violation.code !== "GLOBAL_DURATION_TOO_SHORT" &&
+    violation.code !== "SECTION_OVER_MAX"
+  )) return null;
+  return { script, duration };
 }
 
 export function getCreatorScriptAcceptanceExpansionTargets(input: {

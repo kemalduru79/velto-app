@@ -3996,6 +3996,10 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
     useState<CreatorMentorResult | null>(null);
   const [creatorMentorLoading, setCreatorMentorLoading] = useState(false);
   const [creatorScript, setCreatorScript] = useState<CreatorScript | null>(null);
+  // A transient result; never overwrites the canonical persisted script.
+  const [creatorDurationReview, setCreatorDurationReview] = useState<{
+    script: CreatorScript; projectId: string; strategyFingerprint: string;
+  } | null>(null);
   const [creatorScriptRefinementHighlights, setCreatorScriptRefinementHighlights] = useState<Array<{ start: number; end: number }>>([]);
   const [creatorScriptPendingRefinement, setCreatorScriptPendingRefinement] = useState<CreatorScriptPendingRefinement | null>(null);
   const [creatorScriptRevisionHistory, setCreatorScriptRevisionHistory] = useState<CreatorScriptRevisionHistoryEntry[]>([]);
@@ -14903,6 +14907,7 @@ const generateSceneImage = async (
   useEffect(() => {
     counterReviewStrategyRef.current = creatorStrategyFingerprint;
     setCreatorScriptDraftPreview(null);
+    setCreatorDurationReview(null);
     return () => {
       editorialResearchResolver.current?.(null);
       editorialResearchResolver.current=null;
@@ -15713,6 +15718,7 @@ const generateSceneImage = async (
         isActive: operationIsActive,
       });
       if (!replacement) return;
+      setCreatorDurationReview(null);
       setCreatorMentorResult(persistedStrategyResult);
       creatorScriptRef.current = replacement.script;
       setCreatorScript(replacement.script);
@@ -15732,6 +15738,28 @@ const generateSceneImage = async (
       setSaveMessage(uiLanguage === "en" ? "Full script ready for review." : "Tam metin incelemeye hazır.");
     } catch (error) {
       if (!operationIsActive()) return;
+      if (error instanceof CreatorEditorialPipelineError &&
+          error.code === "CREATOR_SCRIPT_DURATION_UNSATISFIED" && error.reviewOnlyDraft) {
+        try {
+          const draft = normalizeCreatorScript(error.reviewOnlyDraft);
+          const duration = getCreatorScriptDurationContractForScript(draft, language);
+          if (draft.strategyFingerprint !== creatorStrategyFingerprint ||
+              draft.targetDurationSec !== creatorVideoDurationSec ||
+              duration.status !== "too_short") {
+            throw new Error("CREATOR_SCRIPT_REVIEW_AUTHORITY_MISMATCH");
+          }
+          setCreatorDurationReview({
+            script: draft, projectId: operationOrigin.projectId,
+            strategyFingerprint: creatorStrategyFingerprint,
+          });
+          setError("");
+          setSaveMessage("");
+          // No save, approval, canonical script swap, or scene build.
+          return;
+        } catch {
+          // Invalid or stale draft falls through to the existing error path.
+        }
+      }
       if (error instanceof CreatorScriptBuildClientError) {
         setError(
           creatorScriptBuildV2RecoveryMessage({
@@ -31250,6 +31278,35 @@ const generateSceneImage = async (
             creatorScriptRefinementHighlights={creatorScriptRefinementHighlights}
             handleApproveCreatorScriptAndBuildScenes={handleApproveCreatorScriptAndBuildScenes}
           />
+        )}
+
+        {isCreatorLabFlow && creatorStageVisibility.strategy && creatorDurationReview &&
+          creatorDurationReview.projectId === currentProjectId &&
+          creatorDurationReview.strategyFingerprint === creatorStrategyFingerprint && (
+          <section data-creator-duration-review-only="true"
+            className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-slate-900">
+            <h2 className="text-lg font-semibold">
+              {uiLanguage === "en" ? "Draft available for editorial review — duration mismatch" :
+                "Taslak editoryal incelemeye açık — süre uyumsuzluğu"}
+            </h2>
+            <p className="mt-2 text-sm">
+              {uiLanguage === "en"
+                ? "This preview is not saved or approved. It cannot be used to build scenes, and your existing project script is unchanged. Review its substance and copy the text before leaving this page."
+                : "Bu önizleme kaydedilmedi veya onaylanmadı. Sahneler oluşturulamaz; mevcut proje metni değişmedi. İçeriği inceleyin ve sayfadan ayrılmadan metni kopyalayın."}
+            </p>
+            <p className="mt-2 text-sm font-medium">
+              {uiLanguage === "en" ? "Estimated narration" : "Tahmini seslendirme"}: {
+                Math.round(getCreatorScriptDurationContractForScript(creatorDurationReview.script, language).estimatedDurationSec)
+              }s · {uiLanguage === "en" ? "Requested" : "Hedef"}: {creatorDurationReview.script.targetDurationSec}s
+            </p>
+            <textarea aria-label={uiLanguage === "en" ? "Review-only narration draft" : "İncelemelik anlatı taslağı"}
+              readOnly rows={16}
+              className="mt-3 w-full resize-y rounded-lg border border-amber-300 bg-white p-3 text-sm"
+              value={creatorDurationReview.script.sections.map((section) =>
+                `${section.heading || section.id}\n\n${section.text}`
+              ).join("\n\n")}
+            />
+          </section>
         )}
 
         {isCreatorLabFlow && (creatorStageVisibility.production_setup || creatorStageVisibility.create_review) && creatorProductionPackage && (
