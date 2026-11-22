@@ -14,6 +14,7 @@ import {
   normalizeCreatorTopicAuthority,
 } from "@/lib/creator/creatorWorkflowAuthority";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
+import { sourceAuthoritySnapshotDigest, validateOwnedSourceSnapshot, validateSourceAuthorityRecords, type SourceAuthorityRecord } from "../../../lib/research/sourceAuthorityBoundary";
 import {
   createTimelineSyncPlan,
   normalizeVideoQualityTier,
@@ -1888,6 +1889,46 @@ export async function POST(req: Request) {
         },
         { status: 400 },
       );
+    }
+    if (editorialContext && body?.operation !== "generate_full_script" && body?.operation !== "regenerate_section") {
+      const groundingGate = createScriptPlannerGenerationGroundingGate(editorialContext);
+      if (!groundingGate.eligible) {
+        return NextResponse.json({ success: false, error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, nextActions: groundingGate.nextActions, unresolvedClaimIds: groundingGate.unresolvedCounterClaimIds }, { status: 422 });
+      }
+    }
+    if (editorialContext) {
+      // Project ownership and the exact normalized snapshot must both match a
+      // server-owned verification record; client readiness is not authority.
+      const projectId = asString(body?.projectId);
+      const project = projectId ? await getPersistenceServices().projectRepository.getForOwner(projectId, user.id) : null;
+      if (!project || project.flow_type !== "creator_lab") {
+        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_PROJECT_INVALID" }, { status: 403 });
+      }
+      const snapshotDigest = sourceAuthoritySnapshotDigest(editorialContext);
+      const { data: ownedSnapshot, error: snapshotError } = await supabase
+        .from("creator_source_authority_snapshots")
+        .select("owner_user_id,project_id,snapshot_digest,editorial_context")
+        .eq("owner_user_id", user.id)
+        .eq("project_id", projectId)
+        .eq("snapshot_digest", snapshotDigest)
+        .maybeSingle();
+      if (snapshotError) return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNAVAILABLE" }, { status: 503 });
+      if (!validateOwnedSourceSnapshot({ ownerUserId: user.id, projectId, context: editorialContext, snapshot: ownedSnapshot })) {
+        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_SNAPSHOT_UNVERIFIED" }, { status: 422 });
+      }
+      const { data: authorityRecords, error: authorityError } = await supabase
+        .from("creator_source_authority_verifications")
+        .select("owner_user_id,project_id,snapshot_digest,source_id,claim_id,evidence_id,source_digest,passage_digest,passage_verification,authority_classification,expires_at")
+        .eq("owner_user_id", user.id)
+        .eq("project_id", projectId)
+        .eq("snapshot_digest", snapshotDigest);
+      if (authorityError) {
+        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNAVAILABLE", error: "Source verification is unavailable; script generation is blocked." }, { status: 503 });
+      }
+      const verification = validateSourceAuthorityRecords({ ownerUserId: user.id, projectId, context: editorialContext, records: (authorityRecords ?? []) as SourceAuthorityRecord[] });
+      if (!verification.ok) {
+        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED", reason: verification.reason, error: "Verified source passages and authority are required before script generation." }, { status: 422 });
+      }
     }
     if (body?.operation === "generate_full_script" || body?.operation === "regenerate_section") {
       if (!editorialContext) {

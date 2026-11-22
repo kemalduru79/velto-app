@@ -1,0 +1,56 @@
+name: Source Authority PostgreSQL Acceptance
+on:
+  push:
+    branches: [codex/velto-canonical-consolidation]
+    paths:
+      - '.github/workflows/source-authority-postgres-acceptance.yml'
+      - 'docs/creator-source-authority-migration.draft.sql'
+      - 'lib/research/sourceAuthority*.ts'
+      - 'scripts/source-authority-ci-*'
+      - 'scripts/creator-source-authority-boundary-offline-test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_ci_only_password
+          POSTGRES_DB: source_authority_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d source_authority_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic_ci_only_password
+      PGDATABASE: source_authority_ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Confirm disposable database identity
+        run: test "$(psql -X -Atqc 'select current_database()')" = source_authority_ci
+      - name: Create synthetic roles and apply draft
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-setup.sql
+          psql -X -v ON_ERROR_STOP=1 -f docs/creator-source-authority-migration.draft.sql
+      - name: Check actual PostgreSQL grants and RLS flags
+        run: psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-permissions.sql
+      - name: Run database-backed authority chain
+        run: node --experimental-transform-types scripts/source-authority-ci-end-to-end.mjs
+      - name: Run existing offline security regressions
+        run: node --experimental-transform-types scripts/creator-source-authority-boundary-offline-test.mjs

@@ -28,9 +28,12 @@ const check = (text, claimIds) => reviewScriptResearchFidelity({ sections: [{ id
 assert.equal(check("16 developers completed 246 tasks, taking 19% longer.", ["c1"]).issues.length, 0);
 assert(check("The 2025 result was slower because of later selection effects.", ["c1", "c2"]).issues.some((issue) => issue.code === "CAUSAL_ATTRIBUTION_REVIEW"));
 assert(check("The 2025 result was slower because of later selection effects.", ["c1", "c2"]).issues.some((issue) => issue.code === "MULTIPLE_SOURCE_ATTRIBUTION_REVIEW"));
+assert(check("Verification overhead caused the slowdown.", ["c1"]).issues.some((issue) => issue.code === "CAUSAL_ATTRIBUTION_REVIEW"));
+assert(check("The study compared experienced developers with novices.", ["c1"]).issues.some((issue) => issue.code === "COMPARISON_ATTRIBUTION_REVIEW"));
 assert(check("The trial involved 999 developers.", ["c1"]).issues.some((issue) => issue.code === "NUMERIC_ATTRIBUTION_REVIEW"));
 const unrelated = { ...projected, sources: [source("a", "Ocean sampling", "2018-01-01"), source("b", "Ocean sampling follow-up", "2022-01-01")], evidence: [evidence("ea", "a", "In 2017, 42 samples were measured."), evidence("eb", "b", "The later survey had missing measurements.")], claims: [claim("a1", "42 samples were measured in 2017.", "ea"), claim("b1", "The later survey had missing measurements.", "eb")] };
 assert(reviewScriptResearchFidelity({ context: unrelated, sections: [{ id: "ocean", claimIds: ["a1", "b1"], text: "The 2017 survey measured 42 samples because of missing measurements." }] }).issues.some((issue) => issue.code === "MULTIPLE_SOURCE_ATTRIBUTION_REVIEW"));
+assert(reviewScriptResearchFidelity({ context: unrelated, sections: [{ id: "ocean", claimIds: ["a1"], text: "The sampling method caused the observed outcome." }] }).issues.some((issue) => issue.code === "CAUSAL_ATTRIBUTION_REVIEW"));
 const basePlan = createCreatorScriptSectionBudgetPlan({ targetDurationSec: 180, language: "en" });
 const compactContext = { ...context, evidence: [evidence("e1", "s1", "Researchers randomly assigned tasks: 16 experienced developers completed 246 tasks and took 19% longer with AI. Developers initially expected a 24% speedup and reported their implementation time."), evidence("e2", "s2", "The February 2026 discussion described a separate August 2025 experiment and its recruitment and measurement difficulties.")], claims: context.claims };
 const compactPlan = prepareCompactEmpiricalDocumentaryPlan({ plan: basePlan, context: compactContext, format: "analytical documentary" });

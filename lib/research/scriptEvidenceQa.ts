@@ -182,7 +182,8 @@ export function reviewScriptResearchFidelity(input: {
       if (!supported.has(value)) issues.push({ sectionId: section.id, code: "NUMERIC_ATTRIBUTION_REVIEW", detail: `Verify ${value} against the linked evidence and its population and study period.` });
     }
     if (sources.length > 1) issues.push({ sectionId: section.id, code: "MULTIPLE_SOURCE_ATTRIBUTION_REVIEW", detail: "Verify each finding, date and limitation belongs to the correct study; publication dates do not establish study dates." });
-    if (/\b(?:because|caused by|resulted from|due to)\b/i.test(section.text)) issues.push({ sectionId: section.id, code: "CAUSAL_ATTRIBUTION_REVIEW", detail: "Verify any causal explanation against the linked passages and study context." });
+    if (/\b(?:because|caused by|causes?|caused|resulted from|due to|solely|the reason|explains? why)\b/i.test(section.text)) issues.push({ sectionId: section.id, code: "CAUSAL_ATTRIBUTION_REVIEW", detail: "Verify any causal explanation against the linked passages and study context; a plausible mechanism is not necessarily an established cause." });
+    if (/\b(?:compared (?:with|to)|compared|comparison|versus|\bvs\.?|more than|less than)\b/i.test(section.text)) issues.push({ sectionId: section.id, code: "COMPARISON_ATTRIBUTION_REVIEW", detail: "Verify that the linked evidence actually compares these populations or conditions." });
     if (claims.length && evidence.length === 0) issues.push({ sectionId: section.id, code: "RESEARCH_IDENTITY_REVIEW", detail: "No source-bound passage was found for this section's claims." });
   }
   return { status: issues.length ? "review" as const : "no_flags" as const, issues };
