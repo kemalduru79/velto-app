@@ -86,6 +86,7 @@ import {
 } from "../../../lib/creator/creatorScript";
 import {
   creatorScriptAcceptanceMateriallyImproved,
+  shouldRetryCreatorScriptAcceptanceRepair,
   evaluateCreatorScriptAcceptance,
   getCreatorScriptAcceptanceExpansionTargets,
   getCreatorScriptDurationReviewOnlyDraft,
@@ -1109,9 +1110,7 @@ async function executeCreatorScriptOperation(input: {
         allowRepair: true,
         maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
-          sectionNative
-          && !mixedRepairDispatched
-          && creatorScriptAcceptanceMateriallyImproved({ previous, current }),
+          shouldRetryCreatorScriptAcceptanceRepair({ previous, current, sectionNative, mixedRepairDispatched }),
         evaluate: evaluateAcceptance,
         firstScript: await (async () => {
           const generateUnit = async (

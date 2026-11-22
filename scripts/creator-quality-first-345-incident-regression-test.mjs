@@ -8,10 +8,12 @@ import {
   createCreatorScriptSectionBudgetPlan,
   getCreatorScriptRepairReplacementDiagnostics,
   getCreatorScriptSectionDiagnostics,
+  mergeCreatorScriptReplacementSections,
 } from "../lib/creator/creatorScript.ts";
 import {
   evaluateCreatorScriptAcceptance,
   getCreatorScriptDurationReviewOnlyDraft,
+  shouldRetryCreatorScriptAcceptanceRepair,
 } from "../lib/creator/creatorScriptAcceptance.ts";
 
 const duration = 180;
@@ -106,6 +108,54 @@ await assert.rejects(
   error => error?.code === "CREATOR_SCRIPT_POLICY_UNSATISFIED",
 );
 assert.equal(attempts, 1, "failed repair must not trigger uncontrolled provider retries");
+
+// The 319-word mixed repair retains both valid body replacements and retries
+// only the overlong conclusion, without dispatching any real provider call.
+const incident = make([33, 119, 111, 56]);
+const firstReport = evaluate(incident);
+assert.equal(firstReport.duration.actualWordCount, 319);
+const firstTargets = createCreatorScriptRepairTargets({ sections: getCreatorScriptSectionDiagnostics(incident, plan).filter(s => firstReport.repairSectionIds.includes(s.id)), direction: "rebalance_sections" });
+const firstReplacements = [
+  { id: "section-1", kind: "body", heading: "Defining the Boundary", text: words(162, "newBody1"), claimIds: [] },
+  { id: "section-2", kind: "body", heading: "The Causal Mechanism", text: words(158, "newBody2"), claimIds: [] },
+  { id: "conclusion", kind: "conclusion", heading: "What Remains Open", text: words(65, "badEnding"), claimIds: [] },
+];
+const firstChecks = getCreatorScriptRepairReplacementDiagnostics({ script: incident, plan, replacements: firstReplacements, targets: firstTargets });
+assert.deepEqual(firstChecks.map(x => [x.sectionId, x.accepted]), [["section-1", true], ["section-2", true], ["conclusion", false]]);
+assert.equal(firstChecks[2].reason, "wrong_direction_compress");
+const firstCandidate = mergeCreatorScriptReplacementSections({ script: incident, plan, replacements: firstChecks.filter(x => x.accepted).map(x => x.replacement) });
+const residual = evaluate(firstCandidate);
+assert.equal(residual.duration.actualWordCount, 409);
+assert.deepEqual(residual.repairSectionIds, ["conclusion"]);
+assert.equal(shouldRetryCreatorScriptAcceptanceRepair({ previous: firstReport, current: residual, sectionNative: false, mixedRepairDispatched: true }), true);
+const residualTargets = createCreatorScriptRepairTargets({ sections: residual.sections.filter(s => residual.repairSectionIds.includes(s.id)), direction: "rebalance_sections" });
+assert.deepEqual(residualTargets.map(t => [t.sectionId, t.direction, t.requiredFinalMinWords, t.requiredFinalTargetWords, t.requiredFinalMaxWords]), [["conclusion", "compress", 39, 44, 49]]);
+const runIncident = async endingWords => {
+  const calls = [];
+  const result = acceptCreatorScriptWithAcceptanceRepair({
+    firstScript: incident, evaluate, maxRepairAttempts: 2,
+    shouldRetryRepair: ({ previous, current }) => shouldRetryCreatorScriptAcceptanceRepair({ previous, current, sectionNative: false, mixedRepairDispatched: true }),
+    repair: async (currentReport, currentScript, attempt) => {
+      calls.push([...currentReport.repairSectionIds]);
+      if (attempt === 1) return firstCandidate;
+      const candidate = { id: "conclusion", kind: "conclusion", heading: "What Remains Open", text: words(endingWords, "finalEnding"), claimIds: [] };
+      const checks = getCreatorScriptRepairReplacementDiagnostics({ script: currentScript, plan, replacements: [candidate], targets: residualTargets });
+      const replacements = checks.filter(x => x.accepted).map(x => x.replacement);
+      return replacements.length ? mergeCreatorScriptReplacementSections({ script: currentScript, plan, replacements }) : currentScript;
+    },
+  });
+  return { result, calls };
+};
+const successful = await runIncident(44);
+const accepted319 = await successful.result;
+assert.equal(accepted319.report.accepted, true);
+assert.deepEqual(successful.calls, [["section-1", "section-2", "conclusion"], ["conclusion"]]);
+assert.deepEqual(accepted319.creatorScript.sections.slice(0, 3), firstCandidate.sections.slice(0, 3));
+for (const endingWords of [65, 50, 38]) {
+  const invalid = await runIncident(endingWords);
+  await assert.rejects(invalid.result, error => error?.code === "CREATOR_SCRIPT_POLICY_UNSATISFIED");
+  assert.equal(invalid.calls.length, 2);
+}
 
 const preview = getCreatorScriptDurationReviewOnlyDraft({ script: failed, report });
 assert.ok(preview, "grounded moderate mismatch remains available for review");

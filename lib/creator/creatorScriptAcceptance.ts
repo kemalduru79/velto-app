@@ -358,6 +358,24 @@ export function creatorScriptAcceptanceMateriallyImproved(input: {
   return currentDistance < previousDistance;
 }
 
+/** Keep the existing two-attempt budget; mixed repairs may retry only a local overflow. */
+export function shouldRetryCreatorScriptAcceptanceRepair(input: {
+  previous: CreatorScriptAcceptanceReport;
+  current: CreatorScriptAcceptanceReport;
+  sectionNative: boolean;
+  mixedRepairDispatched: boolean;
+}) {
+  if (!creatorScriptAcceptanceMateriallyImproved(input)) return false;
+  if (input.sectionNative && !input.mixedRepairDispatched) return true;
+  return input.mixedRepairDispatched
+    && input.current.duration.status === "compliant"
+    && input.current.blockingViolations.length === 0
+    && input.current.repairableViolations.length > 0
+    && input.current.repairableViolations.every((violation) =>
+      violation.code === "SECTION_OVER_MAX" && violation.sectionId !== null
+    );
+}
+
 export function getCreatorScriptAcceptanceFailure(
   report: CreatorScriptAcceptanceReport,
 ): CreatorScriptAcceptanceFailure {
