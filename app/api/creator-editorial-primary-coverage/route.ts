@@ -5,6 +5,7 @@ import { recordOpenAITextEconomics } from "@/lib/economics";
 import {
   applyEditorialPrimaryCoverageRepair,
   createEditorialPrimaryCoverageRepairContext,
+  sanitizePrimaryCoverageProviderSelection,
   type EditorialPrimaryCoverageRepairContext,
 } from "@/lib/research/editorialPrimaryCoverageRepair";
 import {
@@ -281,8 +282,8 @@ export async function POST(request: Request) {
             "Do not create, rewrite, reinterpret, add, or remove claims, claim types, proposition kinds, origins, sources, evidence prose, or links.",
             "Every selected span must directly support its target claim, not merely discuss a related topic.",
             "Use only the supplied claimId and spanId values. Do not infer source authority from query wording or acquisition lane.",
-            "If no supplied span directly supports a target claim, omit that target rather than selecting irrelevant evidence.",
-            "Return strict JSON only with exactly the repairs array. Each item contains exactly claimId and spanId.",
+            "If no supplied span directly supports a target claim, use null for that claim rather than selecting irrelevant evidence.",
+            "Return one selection slot per supplied claim ID, containing one supplied span ID or null.",
           ].join(" "),
         },
         {
@@ -326,28 +327,17 @@ export async function POST(request: Request) {
             type: "object",
             additionalProperties: false,
             properties: {
-              repairs: {
-                type: "array",
-                minItems: 0,
-                maxItems: context.targetClaimIds.length,
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    claimId: {
-                      type: "string",
-                      enum: context.targetClaimIds,
-                    },
-                    spanId: {
-                      type: "string",
-                      enum: context.candidateSpans.map((span) => span.spanId),
-                    },
-                  },
-                  required: ["claimId", "spanId"],
-                },
+              selections: {
+                type: "object",
+                additionalProperties: false,
+                properties: Object.fromEntries(context.targetClaimIds.map((claimId) => [claimId, {
+                  type: ["string", "null"],
+                  enum: [...context.candidateSpans.map((span) => span.spanId), null],
+                }])),
+                required: context.targetClaimIds,
               },
             },
-            required: ["repairs"],
+            required: ["selections"],
           },
         },
       },
@@ -376,7 +366,7 @@ export async function POST(request: Request) {
       try {
         result = applyEditorialPrimaryCoverageRepair({
           context,
-          selection,
+          selection: sanitizePrimaryCoverageProviderSelection({ value: selection, context }),
         });
       } catch (selectionError) {
         if (

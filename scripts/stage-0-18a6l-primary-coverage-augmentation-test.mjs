@@ -6,6 +6,7 @@ import { classifyResearchSourceDirectness, researchSourceIsPrimaryForClaim } fro
 import {
   applyEditorialPrimaryCoverageRepair,
   createEditorialPrimaryCoverageRepairContext,
+  sanitizePrimaryCoverageProviderSelection,
 } from "../lib/research/editorialPrimaryCoverageRepair.ts";
 
 const secondarySource = {
@@ -172,6 +173,36 @@ const statementSpan = context.candidateSpans.find(
 );
 assert.ok(researchSpan);
 assert.ok(statementSpan);
+
+// Six independently addressable targets; one conflicting duplicate and one
+// invalid span must not discard four unrelated, allowlisted primary selections.
+const sixClaims = Array.from({ length: 6 }, (_, i) => ({ ...baseClaims[0], claimId: `claim-six-${i + 1}` }));
+const sixContext = createEditorialPrimaryCoverageRepairContext({
+  ...request,
+  frozenGraph: { ...frozenGraph, claims: [...sixClaims, baseClaims[2]] },
+  originalPrimaryRequiredClaimIds: sixClaims.map(c => c.claimId),
+});
+const sixSpan = sixContext.candidateSpans.find(s => s.sourceId === academicSource.sourceId);
+const otherSpan = sixContext.candidateSpans.find(s => s.sourceId === transcriptSource.sourceId);
+const sixLegacy = { repairs: [
+  { claimId: "claim-six-1", spanId: sixSpan.spanId },
+  { claimId: "claim-six-1", spanId: otherSpan.spanId },
+  { claimId: "claim-six-2", spanId: "fabricated" },
+  ...sixClaims.slice(2).map(c => ({ claimId: c.claimId, spanId: sixSpan.spanId })),
+  { claimId: "unknown", spanId: sixSpan.spanId },
+] };
+const exactDuplicate = { repairs: [sixLegacy.repairs[0], sixLegacy.repairs[1], ...sixLegacy.repairs.slice(3, 7)] };
+assert.throws(() => applyEditorialPrimaryCoverageRepair({ context: sixContext, selection: exactDuplicate }), /EDITORIAL_PRIMARY_COVERAGE_TARGET_DUPLICATE:claim-six-1/);
+assert.deepEqual(sanitizePrimaryCoverageProviderSelection({ context: sixContext, value: exactDuplicate }).repairs.map(r => r.claimId), sixClaims.slice(2).map(c => c.claimId));
+assert.throws(() => applyEditorialPrimaryCoverageRepair({ context: sixContext, selection: sixLegacy }), /SELECTION_LIMIT_EXCEEDED/);
+const safeSix = sanitizePrimaryCoverageProviderSelection({ context: sixContext, value: sixLegacy });
+assert.deepEqual(safeSix.repairs.map(r => r.claimId), sixClaims.slice(2).map(c => c.claimId));
+const sixResult = applyEditorialPrimaryCoverageRepair({ context: sixContext, selection: safeSix });
+assert.deepEqual(sixResult.repairedClaimIds, sixClaims.slice(2).map(c => c.claimId));
+assert.deepEqual(sixResult.excludedPrimaryClaimIds, ["claim-six-1", "claim-six-2"]);
+const slots = Object.fromEntries(sixClaims.map((c, i) => [c.claimId, i === 0 ? null : sixSpan.spanId]));
+assert.equal(sanitizePrimaryCoverageProviderSelection({ context: sixContext, value: { selections: slots } }).repairs.length, 5);
+assert.deepEqual(sanitizePrimaryCoverageProviderSelection({ context: sixContext, value: { repairs: [{ claimId: "claim-six-1", spanId: "missing" }] } }).repairs, []);
 
 const repaired = applyEditorialPrimaryCoverageRepair({
   context,
@@ -485,7 +516,8 @@ const route = fs.readFileSync(
 );
 assert.match(route, /creator_editorial_primary_coverage_repair/);
 assert.match(route, /additionalProperties:\s*false/);
-assert.match(route, /required:\s*\["claimId",\s*"spanId"\]/);
+assert.match(route, /required:\s*context\.targetClaimIds/);
+assert.match(route, /sanitizePrimaryCoverageProviderSelection/);
 assert.doesNotMatch(
   route.match(/name:\s*"creator_editorial_primary_coverage_repair"[\s\S]*?temperature:\s*0/)?.[0] || "",
   /canonicalGraph|claims:\s*\{|claimType:\s*\{|propositionKind:\s*\{|origin:\s*\{/,

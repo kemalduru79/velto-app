@@ -49,6 +49,46 @@ export type EditorialPrimaryCoverageRepairResult = {
   excludedPrimaryClaimIds: string[];
 };
 
+/** Salvage independent selections only; ambiguity for one claim never selects a winner. */
+export function sanitizePrimaryCoverageProviderSelection(input: {
+  value: unknown;
+  context: EditorialPrimaryCoverageRepairContext;
+}): EditorialPrimaryCoverageRepairSelection {
+  const value = record(input.value);
+  const slots = record(value?.selections);
+  const legacy = Array.isArray(value?.repairs) ? value.repairs : [];
+  const entries: unknown[] = slots
+    ? Object.entries(slots).map(([claimId, spanId]) => ({ claimId, spanId }))
+    : legacy;
+  const targets = new Set(input.context.targetClaimIds);
+  const grouped = new Map<string, unknown[]>();
+  for (const entry of entries) {
+    const item = record(entry);
+    const claimId = clean(item?.claimId, 120);
+    if (!targets.has(claimId)) continue;
+    const group = grouped.get(claimId) || [];
+    group.push(entry); grouped.set(claimId, group);
+  }
+  const spans = new Map(input.context.candidateSpans.map((span) => [span.spanId, span]));
+  const sources = new Map(input.context.candidatePrimarySources.map((source) => [source.sourceId, source]));
+  const claims = new Map(input.context.frozenGraph.claims.map((claim) => [claim.claimId, claim]));
+  const repairs: EditorialPrimaryCoverageRepairSelection["repairs"] = [];
+  for (const [claimId, group] of grouped) {
+    if (group.length !== 1) continue;
+    const item = record(group[0]);
+    if (!item || Object.keys(item).sort().join(",") !== "claimId,spanId") continue;
+    const spanId = clean(item.spanId, 300);
+    const span = spans.get(spanId);
+    const source = span && sources.get(span.sourceId);
+    const claim = claims.get(claimId);
+    if (!span || !source || !claim || !researchSourceQualifiesAsPrimaryForClaim({ source, claim })) continue;
+    const existingEvidence = input.context.frozenGraph.evidence.find((e) => e.sourceId === span.sourceId && e.excerpt === span.text);
+    if (existingEvidence && input.context.frozenGraph.links.some((link) => link.claimId === claimId && link.evidenceId === existingEvidence.evidenceId && link.stance !== "supports")) continue;
+    repairs.push({ claimId, spanId });
+  }
+  return { repairs };
+}
+
 function record(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
