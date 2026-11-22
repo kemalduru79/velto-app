@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/p0-sprint20-controlled-integration": false,
-      "codex/issue50-controlled-integration-review-v1": false
+      "codex/issue50-controlled-integration-review-v1": false,
+      "codex/velto-canonical-consolidation": false
     }
   }
 }
