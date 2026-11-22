@@ -98,6 +98,32 @@ function asArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+/** Exclude ambiguous identities rather than merging independently retrieved documents. */
+export function selectUnambiguousPrimaryCandidates(values: JsonRecord[]) {
+  const byId = new Map<string, Set<string>>();
+  const byUrl = new Map<string, Set<string>>();
+  const recordsById = new Map<string, Set<string>>();
+  for (const value of values) {
+    const id = clean(value.sourceId, 300);
+    const url = canonicalResearchUrl(clean(value.url, 2_000));
+    if (!id || !url) continue;
+    const identities = byId.get(id) || new Set<string>();
+    identities.add(url); byId.set(id, identities);
+    const ids = byUrl.get(url) || new Set<string>();
+    ids.add(id); byUrl.set(url, ids);
+    const records = recordsById.get(id) || new Set<string>();
+    records.add(JSON.stringify(value)); recordsById.set(id, records);
+  }
+  const selected = new Map<string, JsonRecord>();
+  for (const value of values) {
+    const id = clean(value.sourceId, 300);
+    const url = canonicalResearchUrl(clean(value.url, 2_000));
+    if (!id || !url || byId.get(id)?.size !== 1 || byUrl.get(url)?.size !== 1 || recordsById.get(id)?.size !== 1) continue;
+    if (!selected.has(id)) selected.set(id, value);
+  }
+  return [...selected.values()];
+}
+
 export function editorialReadinessRequiresPrimaryAcquisition(value: unknown) {
   const readiness = asRecord(value);
   return asArray(readiness?.reviewReasons)
@@ -423,7 +449,7 @@ export async function runCreatorEditorialScriptPipeline(
       });
     }
 
-    const candidatePrimarySources = new Map<string, JsonRecord>();
+    const primarySourceCandidates: JsonRecord[] = [];
 
     const acquisitionDiagnostics: Array<{
       claimId: string;
@@ -474,10 +500,8 @@ export async function runCreatorEditorialScriptPipeline(
             claim: target.claim,
           })
         ) continue;
-        const key = canonicalResearchUrl(url) || sourceId;
-        if (!key) continue;
-
-        candidatePrimarySources.set(key, source);
+        if (!canonicalResearchUrl(url)) continue;
+        primarySourceCandidates.push(source);
       }
 
       const verifiedPrimarySourceIds =
@@ -511,7 +535,8 @@ export async function runCreatorEditorialScriptPipeline(
 
     }
 
-    if (candidatePrimarySources.size === 0) {
+    const candidatePrimarySources = selectUnambiguousPrimaryCandidates(primarySourceCandidates);
+    if (candidatePrimarySources.length === 0) {
       console.info("CREATOR_EDITORIAL_PRIMARY_ACQUISITION", {
         targets: acquisitionDiagnostics,
         verifiedPrimarySourceIds: [],
@@ -526,7 +551,7 @@ export async function runCreatorEditorialScriptPipeline(
 
     console.info("CREATOR_EDITORIAL_PRIMARY_ACQUISITION", {
       targets: acquisitionDiagnostics,
-      verifiedPrimarySourceIds: [...candidatePrimarySources.values()]
+      verifiedPrimarySourceIds: candidatePrimarySources
         .map((source) => clean(source.sourceId, 300))
         .filter(Boolean),
       result: acquisitionDiagnostics.some(
@@ -544,7 +569,7 @@ export async function runCreatorEditorialScriptPipeline(
       body: {
         frozenGraph: editorial.graph,
         originalPrimaryRequiredClaimIds: firstPrimaryRequiredClaimIds,
-        candidateSources: [...candidatePrimarySources.values()],
+        candidateSources: candidatePrimarySources,
         creatorProfile: input.creatorProfile ?? {},
       },
     });

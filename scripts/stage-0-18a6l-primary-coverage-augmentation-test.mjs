@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createEditorialEvidenceSpanCatalog } from "../lib/research/editorialEvidenceSpanCatalog.ts";
+import { selectUnambiguousPrimaryCandidates } from "../lib/research/creatorEditorialPipeline.client.ts";
+import { classifyResearchSourceDirectness, researchSourceIsPrimaryForClaim } from "../lib/research/sourceAssessment.ts";
 import {
   applyEditorialPrimaryCoverageRepair,
   createEditorialPrimaryCoverageRepairContext,
@@ -133,6 +135,29 @@ const request = {
   candidateSources: [academicSource, transcriptSource],
   creatorProfile: {},
 };
+
+// Reproduce the production shape: 24 distinct URLs, but one repeated source ID.
+const candidates24 = Array.from({ length: 24 }, (_, index) => ({
+  ...academicSource,
+  sourceId: index === 1 ? "academic:collision" : index === 0 ? "academic:collision" : `academic:valid-${index}`,
+  url: `https://example.test/paper-${index}`,
+  title: `Original study ${index}`,
+}));
+assert.throws(() => createEditorialPrimaryCoverageRepairContext({ ...request, candidateSources: candidates24 }), /EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_EDITORIAL_SOURCE_ID_DUPLICATE/);
+const filtered24 = selectUnambiguousPrimaryCandidates(candidates24);
+assert.equal(filtered24.length, 22);
+assert(!filtered24.some((source) => source.sourceId === "academic:collision"));
+assert.equal(createEditorialPrimaryCoverageRepairContext({ ...request, candidateSources: filtered24 }).candidatePrimarySources.length, 22);
+const duplicateUrl = { ...academicSource, sourceId: "academic:other-id", url: `${academicSource.url}?utm_source=test` };
+assert.deepEqual(selectUnambiguousPrimaryCandidates([academicSource, duplicateUrl, transcriptSource]), [transcriptSource]);
+assert.throws(() => createEditorialPrimaryCoverageRepairContext({ ...request, candidateSources: [academicSource, duplicateUrl] }), /CANDIDATE_URL_DUPLICATE/);
+assert.deepEqual(selectUnambiguousPrimaryCandidates([academicSource, { ...academicSource }]), [academicSource]);
+assert.deepEqual(selectUnambiguousPrimaryCandidates([academicSource, { ...academicSource, summary: "Different account." }, transcriptSource]), [transcriptSource]);
+// A first-party-looking host or search lane cannot itself establish original research authority.
+const metrLike = { ...academicSource, sourceId: "web:metr-study", adapterId: "primary", mediaKind: "webpage", url: "https://metr.org/blog/synthetic-study", sourceMetadata: {} };
+assert.equal(classifyResearchSourceDirectness(metrLike).directness, "secondary");
+assert.equal(researchSourceIsPrimaryForClaim(metrLike, baseClaims[0]), false);
+assert.equal(researchSourceIsPrimaryForClaim({ ...metrLike, sourceMetadata: { provenanceVerified: true, provenanceKind: "original_academic_paper" } }, baseClaims[0]), true);
 
 const context = createEditorialPrimaryCoverageRepairContext(request);
 assert.deepEqual(context.targetClaimIds, ["claim-research", "claim-statement"]);

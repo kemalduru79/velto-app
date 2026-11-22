@@ -161,9 +161,10 @@ function deduplicateCandidateSources(input: {
 
     const canonicalUrl = canonicalResearchUrl(candidate.url);
     const key = canonicalUrl || candidate.sourceId;
-    if (!selectedByCanonicalUrl.has(key)) {
-      selectedByCanonicalUrl.set(key, frozen || candidate);
+    if (selectedByCanonicalUrl.has(key)) {
+      throw new Error("EDITORIAL_PRIMARY_COVERAGE_CANDIDATE_URL_DUPLICATE");
     }
+    selectedByCanonicalUrl.set(key, frozen || candidate);
   }
 
   return [...selectedByCanonicalUrl.values()];
