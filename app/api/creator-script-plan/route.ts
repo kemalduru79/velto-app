@@ -87,6 +87,7 @@ import {
 import {
   creatorScriptAcceptanceMateriallyImproved,
   shouldRetryCreatorScriptAcceptanceRepair,
+  planCreatorScriptSectionRebalance,
   evaluateCreatorScriptAcceptance,
   getCreatorScriptAcceptanceExpansionTargets,
   getCreatorScriptDurationReviewOnlyDraft,
@@ -987,7 +988,7 @@ async function executeCreatorScriptOperation(input: {
               : "Do not invent a counterview. Use the supplied limits-and-uncertainty role to test the thesis only within grounded support.",
             sectionNative
               ? `Write this complete section between ${requestedSections[0].minimumWords} and ${requestedSections[0].maximumWords} spoken words, aiming near ${requestedSections[0].targetWords}. Count the section text before returning JSON. Local ranges guide first-pass completeness; the server's canonical whole-script counter remains duration authority.`
-              : "Each section must substantially satisfy its own minimum, target, and maximum word budget.",
+              : "Independently count each section's spoken text against its requestedSectionBudgets: stay within that section's minWords and maxWords and aim for its targetWords. Do not let global length override a section maximum.",
             sectionNative
               ? "This call returns one section only. Do not try to fit the complete script's global word count into this section; the server assembles all sections sequentially."
               : "The complete spoken script must satisfy the total word envelope.",
@@ -995,6 +996,7 @@ async function executeCreatorScriptOperation(input: {
               ? "Develop the section fully enough to reach its assigned local target without repetition, filler, or unsupported claims."
               : "Write the complete long-form narrative and keep its spoken text inside the supplied minimumAcceptableWordCount and maximumAcceptableWordCount envelope.",
             "Use structure and pacing appropriate to the supplied target duration and targetWordCount.",
+            "For the conclusion, reserve space for one concise supported synthesis and one final open question within its own supplied word range. Count the conclusion separately; avoid repeating earlier findings, filler or unsupported claims.",
             "Deepen explanation, analysis, causal reasoning, comparisons, supported examples, counterarguments, transitions, synthesis, and implications only when supported by the supplied strategy and editorial context.",
             "Never invent evidence or unsupported factual claims to reach the word budget. Rhetorical and structural connective writing is allowed only when it adds editorial value.",
             "Preserve the master question, strategy authority, source authority, and all evidence uncertainty.",
@@ -1027,6 +1029,8 @@ async function executeCreatorScriptOperation(input: {
     let firstDurationStatus: string | null = null;
     let repairCallCount = 0;
     let mixedRepairDispatched = false;
+    let incompleteCompressionSectionIds: string[] = [];
+    let failedAutomaticCompression = false;
     const sectionActualWordCounts: Array<{ sectionId: string; targetWords: number; actualWords: number }> = [];
     const providerStatuses: Array<{ sectionId: string; status: string; incompleteReason: string | null }> = [];
     let initialSectionDiagnostics: ReturnType<typeof getCreatorScriptSectionDiagnostics> = [];
@@ -1110,7 +1114,7 @@ async function executeCreatorScriptOperation(input: {
         allowRepair: true,
         maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
-          shouldRetryCreatorScriptAcceptanceRepair({ previous, current, sectionNative, mixedRepairDispatched }),
+          shouldRetryCreatorScriptAcceptanceRepair({ previous, current, sectionNative, mixedRepairDispatched, incompleteCompressionSectionIds }),
         evaluate: evaluateAcceptance,
         firstScript: await (async () => {
           const generateUnit = async (
@@ -1233,6 +1237,7 @@ async function executeCreatorScriptOperation(input: {
           return script;
         })(),
         repair: async (currentReport, currentScript) => {
+          incompleteCompressionSectionIds = [];
           const currentDuration = currentReport.duration;
           const distinctivenessRepairContext = createCreatorScriptDistinctivenessRepairContext(
             currentScript,
@@ -1253,6 +1258,9 @@ async function executeCreatorScriptOperation(input: {
           repairCallCount += 1;
           const sectionDiagnostics = currentReport.sections;
           const repairIds = new Set(currentReport.repairSectionIds);
+          const rebalance = planCreatorScriptSectionRebalance(currentReport);
+          if (!rebalance.feasible) throw new Error("CREATOR_SCRIPT_REBALANCE_CAPACITY_UNAVAILABLE");
+          for (const sectionId of rebalance.compensationSectionIds) repairIds.add(sectionId);
           const sectionsToRepair = sectionDiagnostics.filter((section) => repairIds.has(section.id));
           if (sectionsToRepair.length === 0) {
             throw new Error("CREATOR_SCRIPT_ACCEPTANCE_REPAIR_TARGETS_REQUIRED");
@@ -1260,7 +1268,7 @@ async function executeCreatorScriptOperation(input: {
           const repairStrategies = new Set(
             currentReport.repairableViolations.map((violation) => violation.repairStrategy),
           );
-          const hasMixedRepairStrategies = repairStrategies.size > 1;
+          const hasMixedRepairStrategies = repairStrategies.size > 1 || rebalance.compensationSectionIds.length > 0;
           const requiredDirection = hasMixedRepairStrategies
             ? "rebalance_sections"
             : currentDuration.status === "compliant"
@@ -1479,6 +1487,7 @@ async function executeCreatorScriptOperation(input: {
                 maximumAcceptableWordCount: currentDuration.maximumAcceptableWordCount,
                 totalDeficitWords: Math.max(0, currentDuration.minimumAcceptableWordCount - currentDuration.actualWordCount),
                 totalExcessWords: Math.max(0, currentDuration.actualWordCount - currentDuration.maximumAcceptableWordCount),
+                minimumCompensatingExpansionWords: rebalance.shortfallWords,
                 sectionControlPlan: narrationControlPlan,
                 sectionDiagnostics: sectionDiagnostics.map((section) => ({
                   sectionId: section.id,
@@ -1525,6 +1534,7 @@ async function executeCreatorScriptOperation(input: {
                    "For every replacement, measure the final spoken words and keep them between requiredFinalMinWords and requiredFinalMaxWords, aiming near requiredFinalTargetWords.",
                   "For requiredDirection=expand, each replacement must be longer than beforeWords and must add at least minimumRequiredGain words to reach requiredFinalMinWords. A shorter replacement or one still below the hard minimum is not a successful expansion. Use grounded, role-owned explanation, causal reasoning, supported implications or comparison, uncertainty, synthesis, and useful transitions only.",
                   "Do not pad with repetition, filler, invented examples, unsupported claims, or fabricated evidence. If grounded material is limited, deepen supported reasoning, uncertainty, transitions, and synthesis instead.",
+                  "Expand only where the supplied evidence supports meaningful new section-owned material. If that is not possible, retain the existing section instead of inventing or padding; the server will reject an insufficient repair.",
                   "Any section listed in distinctivenessFailureSectionIds must be rewritten to perform its sectionControlPlan owns work so its heading and primary claim no longer duplicate another section.",
                   "For every distinctivenessRepairContext item, the replacement heading MUST be materially different from the conflicting heading while preserving the failing section's canonical role. Rewriting or expanding only the body is insufficient.",
                   "For heading_token_overlap, avoid reproducing the meaningful overlapping heading vocabulary where semantically possible. Do not alter unrelated sections or place section ids, failure labels, ratios, or repair diagnostics in headings or narration.",
@@ -1560,6 +1570,12 @@ async function executeCreatorScriptOperation(input: {
             replacements: validatedReplacements,
           targets: repairTargets,
            });
+          incompleteCompressionSectionIds = replacementDiagnostics
+            .filter((diagnostic) => diagnostic.reason === "insufficient_minimum_reduction"
+              && diagnostic.beforeWords !== null && diagnostic.candidateWords !== null
+              && diagnostic.candidateWords < diagnostic.beforeWords)
+            .map((diagnostic) => diagnostic.sectionId);
+          if (incompleteCompressionSectionIds.length) failedAutomaticCompression = true;
           console.info("CREATOR_SCRIPT_DURATION_REPAIR_REPLACEMENT_DIAGNOSTICS", {
             attempt: repairCallCount,
             replacements: replacementDiagnostics.map(({ sectionId, beforeWords, candidateWords, accepted, reason }) => ({ sectionId, beforeWords, candidateWords, accepted, reason })),
@@ -1639,7 +1655,9 @@ async function executeCreatorScriptOperation(input: {
         });
         return NextResponse.json(
           {
-            error: failure.message,
+            error: failure.code === "CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED" && failedAutomaticCompression
+              ? "Automatic compression did not bring the section within its required word limits."
+              : failure.message,
             code: failure.code,
             category: failure.category,
             diagnostics: report,
@@ -1685,15 +1703,16 @@ async function executeCreatorScriptOperation(input: {
           "CREATOR_SCRIPT_NARRATION_EDITORIAL_LEAKAGE",
           "CREATOR_SCRIPT_NARRATION_UNSUPPORTED_NAMED_AUTHORITY",
         ].includes(error.message);
+      const rebalanceCapacityFailure = error instanceof Error && error.message === "CREATOR_SCRIPT_REBALANCE_CAPACITY_UNAVAILABLE";
       return NextResponse.json(
         {
-          error: error instanceof Error ? error.message : "Creator script output is invalid.",
-          code: internalFailure
+          error: rebalanceCapacityFailure ? "The available section budgets cannot preserve the requested duration while correcting the overlong section." : error instanceof Error ? error.message : "Creator script output is invalid.",
+          code: rebalanceCapacityFailure ? "CREATOR_SCRIPT_REBALANCE_CAPACITY_UNAVAILABLE" : internalFailure
             ? "CREATOR_SCRIPT_INTERNAL_ERROR"
             : narrationSafetyFailure
               ? (error as Error).message
               : "CREATOR_SCRIPT_MODEL_INVALID",
-          category: internalFailure
+          category: rebalanceCapacityFailure ? "SCRIPT_POLICY" : internalFailure
             ? "INTERNAL"
             : narrationSafetyFailure
               ? "SCRIPT_POLICY"

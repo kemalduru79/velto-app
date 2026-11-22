@@ -14,6 +14,7 @@ import {
   evaluateCreatorScriptAcceptance,
   getCreatorScriptDurationReviewOnlyDraft,
   shouldRetryCreatorScriptAcceptanceRepair,
+  planCreatorScriptSectionRebalance,
 } from "../lib/creator/creatorScriptAcceptance.ts";
 
 const duration = 180;
@@ -156,6 +157,78 @@ for (const endingWords of [65, 50, 38]) {
   await assert.rejects(invalid.result, error => error?.code === "CREATOR_SCRIPT_POLICY_UNSATISFIED");
   assert.equal(invalid.calls.length, 2);
 }
+
+// Case B: plan compensation before compression, preserving the opening.
+const incident384 = make([36, 152, 124, 72]);
+const report384 = evaluate(incident384);
+assert.equal(report384.duration.actualWordCount, 384);
+assert.deepEqual(report384.repairSectionIds, ["conclusion"]);
+const rebalance384 = planCreatorScriptSectionRebalance(report384);
+assert.deepEqual(rebalance384, { compensationSectionIds: ["section-2"], shortfallWords: 25, feasible: true });
+const ids384 = new Set([...report384.repairSectionIds, ...rebalance384.compensationSectionIds]);
+const targets384 = createCreatorScriptRepairTargets({ sections: report384.sections.filter(s => ids384.has(s.id)), direction: "rebalance_sections" });
+assert.deepEqual(targets384.map(t => [t.sectionId, t.direction]), [["section-2", "expand"], ["conclusion", "compress"]]);
+assert.deepEqual(targets384.filter(t => t.sectionId === "conclusion").map(t => [t.requiredFinalMinWords, t.requiredFinalTargetWords, t.requiredFinalMaxWords]), [[39, 44, 49]]);
+const compress = n => ({ id: "conclusion", kind: "conclusion", heading: "What Remains Open", text: words(n, "compact"), claimIds: [] });
+const partial = getCreatorScriptRepairReplacementDiagnostics({ script: incident384, plan, replacements: [compress(62)], targets: targets384 });
+assert.equal(partial[0].reason, "insufficient_minimum_reduction");
+assert.equal(partial[0].accepted, false);
+assert.equal(shouldRetryCreatorScriptAcceptanceRepair({ previous: report384, current: report384, sectionNative: false, mixedRepairDispatched: false, incompleteCompressionSectionIds: ["conclusion"] }), true);
+assert.equal(shouldRetryCreatorScriptAcceptanceRepair({ previous: report384, current: report384, sectionNative: false, mixedRepairDispatched: false }), false);
+const expand384 = { id: "section-2", kind: "body", heading: "The Causal Mechanism", text: words(155, "groundedExpansion"), claimIds: [] };
+const coordinated = getCreatorScriptRepairReplacementDiagnostics({ script: incident384, plan, replacements: [expand384, compress(44)], targets: targets384 });
+assert(coordinated.every(x => x.accepted));
+const balanced = mergeCreatorScriptReplacementSections({ script: incident384, plan, replacements: coordinated.map(x => x.replacement) });
+assert.equal(evaluate(balanced).duration.actualWordCount, 387);
+assert.equal(evaluate(balanced).accepted, true);
+assert.deepEqual(balanced.sections.slice(0, 2), incident384.sections.slice(0, 2));
+const shortCandidate = mergeCreatorScriptReplacementSections({ script: incident384, plan, replacements: [compress(44)] });
+assert.equal(evaluate(shortCandidate).accepted, false);
+assert.equal(evaluate(shortCandidate).duration.status, "too_short");
+const test384 = async (endingWords, expansionAllowed = true) => {
+  const calls = [];
+  let evaluations = 0;
+  let incompleteCompressionSectionIds = [];
+  const promise = acceptCreatorScriptWithAcceptanceRepair({
+    firstScript: incident384, maxRepairAttempts: 2,
+    evaluate: script => { evaluations++; return evaluate(script); },
+    shouldRetryRepair: ({ previous, current }) => shouldRetryCreatorScriptAcceptanceRepair({ previous, current, sectionNative: false, mixedRepairDispatched: false, incompleteCompressionSectionIds }),
+    repair: async (report, current, attempt) => {
+      const reservation = planCreatorScriptSectionRebalance(report);
+      const selectedIds = new Set([...report.repairSectionIds, ...reservation.compensationSectionIds]);
+      calls.push(plan.filter(s => selectedIds.has(s.id)).map(s => s.id));
+      assert.equal(current.sections[3].text, incident384.sections[3].text, "unaccepted conclusion must never replace canonical text");
+      const activeTargets = createCreatorScriptRepairTargets({ sections: report.sections.filter(s => selectedIds.has(s.id)), direction: "rebalance_sections" });
+      const proposed = attempt === 1 && expansionAllowed ? [expand384, compress(62)] : [compress(attempt === 1 ? 62 : endingWords)];
+      const checks = getCreatorScriptRepairReplacementDiagnostics({ script: current, plan, replacements: proposed, targets: activeTargets });
+      incompleteCompressionSectionIds = checks.filter(x => x.reason === "insufficient_minimum_reduction" && x.candidateWords < x.beforeWords).map(x => x.sectionId);
+      const valid = checks.filter(x => x.accepted).map(x => x.replacement);
+      return valid.length ? mergeCreatorScriptReplacementSections({ script: current, plan, replacements: valid }) : current;
+    },
+  });
+  return { promise, calls, evaluationCount: () => evaluations };
+};
+const fixed384 = await test384(44);
+const result384 = await fixed384.promise;
+assert.equal(result384.report.accepted, true);
+assert.equal(result384.report.duration.actualWordCount, 387);
+assert.deepEqual(fixed384.calls, [["section-2", "conclusion"], ["conclusion"]]);
+assert.equal(fixed384.evaluationCount(), 3);
+const failed384 = await test384(55);
+await assert.rejects(failed384.promise, error => error?.code === "CREATOR_SCRIPT_POLICY_UNSATISFIED");
+assert.equal(failed384.calls.length, 2);
+const insufficient = await test384(44, false);
+await assert.rejects(insufficient.promise, error => error?.code === "CREATOR_SCRIPT_POLICY_UNSATISFIED");
+assert.equal(insufficient.calls.length, 2);
+const noBodyCapacity = planCreatorScriptSectionRebalance(evaluate(make([21, 155, 155, 72])));
+assert.equal(noBodyCapacity.feasible, false);
+assert.equal(noBodyCapacity.shortfallWords, 6);
+const unsafe384 = evaluate(make([36, 152, 124, 72], true));
+assert.equal(unsafe384.repairRequired, false, "grounding blockers must still veto repair");
+let compliantRepairCalls = 0;
+const firstPassCompliant = await acceptCreatorScriptWithAcceptanceRepair({ firstScript: make(plan.map(s => s.targetWords)), evaluate, maxRepairAttempts: 2, repair: async (_report, current) => { compliantRepairCalls++; return current; } });
+assert.equal(firstPassCompliant.report.accepted, true);
+assert.equal(compliantRepairCalls, 0);
 
 const preview = getCreatorScriptDurationReviewOnlyDraft({ script: failed, report });
 assert.ok(preview, "grounded moderate mismatch remains available for review");

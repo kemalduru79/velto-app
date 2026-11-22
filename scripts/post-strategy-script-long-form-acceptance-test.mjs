@@ -1076,7 +1076,7 @@ assert.match(route, /creatorScriptAcceptanceMateriallyImproved/);
 assert.match(route, /repairTargets/);
 assert.match(route, /additiveExpansionEligible = requiredDirection === "expand"[\s\S]*currentReport\.repairableViolations\.every[\s\S]*CREATOR_SCRIPT_DURATION_EXPANSION_PLAN/);
 assert.match(route, /repairStrategies = new Set\([\s\S]*currentReport\.repairableViolations[\s\S]*mixedRepairDispatched = hasMixedRepairStrategies/);
-assert.match(route, /shouldRetryRepair:[\s\S]*shouldRetryCreatorScriptAcceptanceRepair\(\{ previous, current, sectionNative, mixedRepairDispatched \}\)/);
+assert.match(route, /shouldRetryRepair:[\s\S]*shouldRetryCreatorScriptAcceptanceRepair\(\{ previous, current, sectionNative, mixedRepairDispatched, incompleteCompressionSectionIds \}\)/);
 assert.match(route, /distinctivenessFailureSectionIds:[\s\S]*repairTargets:[\s\S]*creator_full_script_duration_repair/);
 assert.match(route, /distinctivenessRepairContext,[\s\S]*replacement heading MUST be materially different from the conflicting heading/);
 assert.match(route, /For heading_token_overlap,[\s\S]*Rewriting or expanding only the body is insufficient|Rewriting or expanding only the body is insufficient[\s\S]*For heading_token_overlap/);

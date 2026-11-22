@@ -324,6 +324,28 @@ function violationIdentity(violation: CreatorScriptViolation) {
   return `${violation.code}:${violation.sectionId ?? "global"}`;
 }
 
+/** Reserve enough body expansion before compressing an overlong section. */
+export function planCreatorScriptSectionRebalance(report: CreatorScriptAcceptanceReport) {
+  if (report.duration.status !== "compliant" || report.blockingViolations.length > 0) {
+    return { compensationSectionIds: [] as string[], shortfallWords: 0, feasible: true };
+  }
+  const overflowIds = new Set(report.repairableViolations.filter((v) => v.code === "SECTION_OVER_MAX" && v.sectionId).map((v) => v.sectionId));
+  const projectedWords = report.duration.actualWordCount - report.sections
+    .filter((section) => overflowIds.has(section.id))
+    .reduce((sum, section) => sum + Math.max(0, section.actualWords - section.targetWords), 0);
+  const shortfallWords = Math.max(0, report.duration.minimumAcceptableWordCount - projectedWords);
+  let remaining = shortfallWords;
+  const compensationSectionIds: string[] = [];
+  const candidates = report.sections.filter((section) => section.kind === "body" && !overflowIds.has(section.id) && section.actualWords < section.minimumWords)
+    .sort((a, b) => b.deficitWords - a.deficitWords);
+  for (const section of candidates) {
+    if (remaining <= 0) break;
+    compensationSectionIds.push(section.id);
+    remaining -= section.minimumWords - section.actualWords;
+  }
+  return { compensationSectionIds, shortfallWords, feasible: remaining <= 0 };
+}
+
 function measurableViolationDistance(violation: CreatorScriptViolation) {
   if (violation.code === "GLOBAL_DURATION_TOO_SHORT" || violation.code === "GLOBAL_DURATION_TOO_LONG") {
     return Number(violation.diagnostics.distanceWords) || 0;
@@ -364,16 +386,26 @@ export function shouldRetryCreatorScriptAcceptanceRepair(input: {
   current: CreatorScriptAcceptanceReport;
   sectionNative: boolean;
   mixedRepairDispatched: boolean;
+  incompleteCompressionSectionIds?: readonly string[];
 }) {
-  if (!creatorScriptAcceptanceMateriallyImproved(input)) return false;
-  if (input.sectionNative && !input.mixedRepairDispatched) return true;
-  return input.mixedRepairDispatched
-    && input.current.duration.status === "compliant"
+  const remainingLocalOverflows = input.current.duration.status === "compliant"
     && input.current.blockingViolations.length === 0
     && input.current.repairableViolations.length > 0
     && input.current.repairableViolations.every((violation) =>
       violation.code === "SECTION_OVER_MAX" && violation.sectionId !== null
     );
+  if (!creatorScriptAcceptanceMateriallyImproved(input)) {
+    const ids = new Set(input.incompleteCompressionSectionIds || []);
+    const previousHard = input.previous.violations.filter((v) => v.severity === "hard");
+    const currentHard = input.current.violations.filter((v) => v.severity === "hard");
+    return remainingLocalOverflows && currentHard.length === previousHard.length
+      && currentHard.every((v) => v.sectionId !== null && ids.has(v.sectionId)
+        && previousHard.some((p) => violationIdentity(p) === violationIdentity(v)
+          && measurableViolationDistance(p) === measurableViolationDistance(v)));
+  }
+  if (input.sectionNative && !input.mixedRepairDispatched) return true;
+  return input.mixedRepairDispatched
+    && remainingLocalOverflows;
 }
 
 export function getCreatorScriptAcceptanceFailure(
@@ -419,7 +451,7 @@ export function getCreatorScriptAcceptanceFailure(
   return {
     category: "SCRIPT_POLICY",
     code: "CREATOR_SCRIPT_SECTION_BUDGET_UNSATISFIED",
-    message: "The generated script did not satisfy section safety policy.",
+    message: "The generated script did not fit the required section word limits.",
   };
 }
 
