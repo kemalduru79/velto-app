@@ -1102,7 +1102,7 @@ assert.match(route, /evidenceMomentContext:[\s\S]*Control-only source-bound evid
 assert.doesNotMatch(route, /selectCreatorEvidencePromptPackForClaims\(\{[\s\S]*pack: evidenceMomentPack/);
 assert.match(route, /requestedSections\[0\]\.id === "section-3"[\s\S]*strongest_relevant_evidence_moments/);
 assert.match(route, /requestedSections\[0\]\.id === "section-4"[\s\S]*relevant_counter_or_context_evidence_when_available/);
-assert.match(route, /concreteEvidenceMomentGuidance: sectionNative &&[\s\S]*requestedSections\[0\]\.id === "section-3"[\s\S]*specificityClassification === "concrete_observation"/);
+assert.match(route, /concreteEvidenceMomentGuidance: compactEmpirical \|\| \(sectionNative &&[\s\S]*requestedSections\[0\]\.id === "section-3"[\s\S]*specificityClassification === "concrete_observation"/);
 assert.match(route, /Realize one strongest supplied concrete evidence moment; do not substitute a generic research summary/);
 assert.match(route, /supplied setup, procedure, or observed situation[\s\S]*supplied observed result[\s\S]*what that result demonstrates about this section's mechanism[\s\S]*why it matters to the episode's master question/);
 assert.match(route, /research shows, studies suggest, or experiments demonstrate may introduce evidence but cannot replace the concrete evidence moment/);

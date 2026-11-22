@@ -38,7 +38,7 @@ import {
   type ScriptPlannerEditorialContext,
 } from "../../../lib/research/scriptPlannerEditorialContext";
 import { createScriptEvidenceBindingMap } from "../../../lib/research/scriptEvidenceBinding";
-import { createScriptQaReport, reviewScriptResearchFidelity } from "../../../lib/research/scriptEvidenceQa";
+import { createScriptQaReport, reviewCompactDocumentaryDraft, reviewScriptResearchFidelity } from "../../../lib/research/scriptEvidenceQa";
 import {
   createCreatorLongFormEvidenceCapabilityEvaluation,
   createCreatorScriptSectionClaimRouting,
@@ -48,6 +48,7 @@ import {
   buildCreatorEvidencePromptPack,
   buildCreatorSectionEvidencePromptPack,
   createSourceAwareEvidencePackContext,
+  prepareCompactEmpiricalDocumentaryPlan,
 } from "../../../lib/research/creatorEvidencePack";
 import {
   acceptCreatorScriptWithAcceptanceRepair,
@@ -766,11 +767,17 @@ async function executeCreatorScriptOperation(input: {
     const hasMaterialCounterview = narrationEditorialContext.claims.some(
       (claim) => claim.counterEvidenceIds.length > 0,
     );
-    const originalSectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
+    const baseSectionBudgetPlan = createCreatorScriptSectionBudgetPlan({
       targetDurationSec: durationSec,
       language,
       hasMaterialCounterview,
     });
+    const originalSectionBudgetPlan = prepareCompactEmpiricalDocumentaryPlan({
+      plan: baseSectionBudgetPlan,
+      context: narrationEditorialContext,
+      format: `${asString(input.body.format)} ${asString(input.body.contentType)}`,
+    });
+    const compactEmpirical = originalSectionBudgetPlan !== baseSectionBudgetPlan;
     const sectionNative = shouldUseCreatorScriptSectionNativeGeneration(
       durationBudget.targetWordCount,
     );
@@ -836,7 +843,12 @@ async function executeCreatorScriptOperation(input: {
     const narrationAllowedClaimIds = narrationEditorialContext.claims.map((claim) => claim.claimId);
     const evidenceMomentPack = sectionNative
       ? null
-      : buildCreatorEvidencePromptPack({
+      : compactEmpirical ? buildCreatorSectionEvidencePromptPack({
+          context: evidencePackContext,
+          section: sectionBudgetPlan[1],
+          eligibleClaimIds: narrationAllowedClaimIds,
+          maxUnits: 5,
+        }).units : buildCreatorEvidencePromptPack({
           context: evidencePackContext,
           maxUnits: 5,
         });
@@ -914,13 +926,13 @@ async function executeCreatorScriptOperation(input: {
               ? sectionEvidenceSelection!.units
               : evidenceMomentPack,
           },
-          concreteEvidenceMomentGuidance: sectionNative &&
+          concreteEvidenceMomentGuidance: compactEmpirical || (sectionNative &&
             requestedSections[0].id === "section-3" &&
             evidenceCapabilityEvaluation.inventory.some((item) =>
               item.routedSectionIds.includes(requestedSections[0].id) &&
               item.stance === "supports" &&
               item.specificityClassification === "concrete_observation"
-            )
+            ))
             ? {
                 usage: "Control-only narration guidance for the grounded demonstration section.",
                 objective: "Realize one strongest supplied concrete evidence moment; do not substitute a generic research summary.",
@@ -936,6 +948,8 @@ async function executeCreatorScriptOperation(input: {
                   "Test or demonstrate the mechanism; do not restate Section 2's mechanism explanation.",
                   "Use only details present in evidenceMomentContext. Never invent researchers, study titles, sample sizes, dates, institutions, procedures, results, limitations, or attribution.",
                   "Keep the grounded finding distinct from the editorial implication and do not imply more than the evidence supports.",
+                  "In a compact documentary, place the documented study design, population, comparison and measured result in the first body section; use the second body section to examine supported limitations or explanations without recapping. Keep later studies and their limitations distinct from earlier results.",
+                  "If a specific study fact is absent from the supplied evidence, do not infer or invent it. Clearly signal the evidence boundary instead.",
                 ],
               }
             : null,
@@ -1626,7 +1640,10 @@ async function executeCreatorScriptOperation(input: {
         sections: accepted.creatorScript.sections,
         context: narrationEditorialContext,
       });
-      return NextResponse.json({ success: true, creatorScript: accepted.creatorScript, researchFidelityReview });
+      const compactEditorialReview = compactEmpirical
+        ? reviewCompactDocumentaryDraft({ sections: accepted.creatorScript.sections, plan: sectionBudgetPlan })
+        : null;
+      return NextResponse.json({ success: true, creatorScript: accepted.creatorScript, researchFidelityReview, compactEditorialReview });
     } catch (error) {
       logSectionBudgetDiagnostics(
         "rejected",

@@ -1,5 +1,6 @@
 import type { ResearchClaimType } from "./claimEvidenceGraph.ts";
 import type { ScriptPlannerEditorialContext } from "./scriptPlannerEditorialContext.ts";
+import type { CreatorScriptSectionBudget } from "../creator/creatorScript.ts";
 import type {
   ScriptEvidenceBindingMap,
   ScriptStatementEvidenceBinding,
@@ -183,6 +184,30 @@ export function reviewScriptResearchFidelity(input: {
     if (sources.length > 1) issues.push({ sectionId: section.id, code: "MULTIPLE_SOURCE_ATTRIBUTION_REVIEW", detail: "Verify each finding, date and limitation belongs to the correct study; publication dates do not establish study dates." });
     if (/\b(?:because|caused by|resulted from|due to)\b/i.test(section.text)) issues.push({ sectionId: section.id, code: "CAUSAL_ATTRIBUTION_REVIEW", detail: "Verify any causal explanation against the linked passages and study context." });
     if (claims.length && evidence.length === 0) issues.push({ sectionId: section.id, code: "RESEARCH_IDENTITY_REVIEW", detail: "No source-bound passage was found for this section's claims." });
+  }
+  return { status: issues.length ? "review" as const : "no_flags" as const, issues };
+}
+
+/** Heuristic editorial prompts for human review, never scientific validation. */
+export function reviewCompactDocumentaryDraft(input: {
+  sections: Array<{ id: string; kind: string; text: string; claimIds: string[] }>;
+  plan: CreatorScriptSectionBudget[];
+}) {
+  const issues: Array<{ sectionId: string; code: string }> = [];
+  const sentences = new Map<string, string>();
+  for (const section of input.sections) {
+    const budget = input.plan.find((item) => item.id === section.id);
+    const wordCount = section.text.trim().split(/\s+/u).filter(Boolean).length;
+    if (budget && (wordCount < budget.minimumWords || wordCount > budget.maximumWords)) issues.push({ sectionId: section.id, code: "SECTION_WORD_BUDGET_REVIEW" });
+    if (CERTAINTY_PATTERN.test(section.text)) issues.push({ sectionId: section.id, code: "CERTAINTY_REVIEW" });
+    if (section.kind === "body" && section.claimIds.length === 0) issues.push({ sectionId: section.id, code: "EVIDENCE_USE_REVIEW" });
+    if (section.kind === "conclusion" && (section.text.match(/\?/g) || []).length !== 1) issues.push({ sectionId: section.id, code: "CONCLUSION_QUESTION_REVIEW" });
+    for (const sentence of section.text.split(/[.!?]+/u)) {
+      const normalized = sentence.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").trim().replace(/\s+/gu, " ");
+      if (normalized.split(" ").length < 8) continue;
+      if (sentences.has(normalized) && sentences.get(normalized) !== section.id) issues.push({ sectionId: section.id, code: "REPEATED_SENTENCE_REVIEW" });
+      else sentences.set(normalized, section.id);
+    }
   }
   return { status: issues.length ? "review" as const : "no_flags" as const, issues };
 }

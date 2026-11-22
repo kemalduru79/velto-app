@@ -82,6 +82,16 @@ function compactText(value: string | null, maxLength: number) {
     : null;
 }
 
+function empiricalDetailScore(text: string) {
+  const quantities = [...text.matchAll(/\b\d+(?:\.\d+)?\b/g)].filter((match) => {
+    const value = Number(match[0]);
+    return value < 1900 || value > 2100;
+  }).length;
+  const design = /\b(randomi[sz]ed|assigned|participants|developers|patients|sample|control|measured)\b/i.test(text) ? 1 : 0;
+  const result = /%|\b(percent|higher|lower|longer|shorter|increased|decreased|slower|faster)\b/i.test(text) ? 1 : 0;
+  return Math.min(quantities, 3) + design + result;
+}
+
 function uniqueStable(values: string[]) {
   return [...new Set(values)];
 }
@@ -155,6 +165,37 @@ export function createCreatorEvidenceUnits(
   });
 }
 
+/** Compact empirical documentaries only; other structures retain their plan. */
+export function prepareCompactEmpiricalDocumentaryPlan(input: {
+  plan: CreatorScriptSectionBudget[];
+  context: ScriptPlannerEditorialContext;
+  format: string;
+}) {
+  const units = createCreatorEvidenceUnits(input.context);
+  const concrete = units.some((unit) => unit.supportingEvidence.some((binding) =>
+    classifyEditorialGroundingSpanSpecificity(binding.excerpt || "") === "concrete_observation"));
+  if (input.plan.length !== 4 || !/documentary|belgesel/i.test(input.format)
+      || /fiction|fictional|kurgu/i.test(input.format) || !concrete
+      || input.plan.some((section) => section.ownershipBoundary.owns.includes("geopolitical_fiction_policy") || section.ownershipBoundary.owns.includes("science_documentary_policy"))) return input.plan;
+  return input.plan.map((section, index) => index === 0 ? {
+    ...section,
+    role: "Open with a grounded contradiction and central question",
+    ownershipBoundary: { usage: "control_only_never_narrate" as const, owns: ["grounded_observation", "human_stakes", "master_question"], excludes: ["full_definition", "mechanism", "evidence_catalog", "conclusion_synthesis"] },
+  } : index === 1 ? {
+    ...section,
+    role: "Explain the study design and strongest grounded observation",
+    centralQuestion: "What was studied, how was it measured, and what was actually observed?",
+    progression: "Explain the design and finding, separating observation from interpretation.",
+    ownershipBoundary: { usage: "control_only_never_narrate" as const, owns: ["compact_empirical_documentary", "grounded_demonstration", "concrete_case", "evidence_interpretation"], excludes: ["unsupported_causation", "later_study_attribution", "conclusion_synthesis"] },
+  } : index === 2 ? {
+    ...section,
+    role: "Examine supported explanations and methodological limits",
+    centralQuestion: "What supported explanations or limitations affect interpretation, and what remains unknown?",
+    progression: "Advance the argument without repeating the observed result or treating speculation as established cause.",
+    ownershipBoundary: { usage: "control_only_never_narrate" as const, owns: ["limits", "uncertainty", "scope_conditions"], excludes: ["evidence_summary", "invented_opposition", "unsupported_causation", "conclusion_synthesis"] },
+  } : section);
+}
+
 /** Stable input-order packing. It never fills a requested maximum. */
 export function buildCreatorEvidencePack(input: {
   context: ScriptPlannerEditorialContext;
@@ -192,7 +233,9 @@ function projectCreatorEvidencePromptUnits(
     const compactBindings = (bindings: CreatorEvidenceBinding[]) => [...bindings]
       .sort((left, right) => demonstration
         ? Number(classifyEditorialGroundingSpanSpecificity(right.excerpt || "") === "concrete_observation") -
-          Number(classifyEditorialGroundingSpanSpecificity(left.excerpt || "") === "concrete_observation")
+          Number(classifyEditorialGroundingSpanSpecificity(left.excerpt || "") === "concrete_observation") ||
+          (section?.ownershipBoundary.owns.includes("compact_empirical_documentary")
+            ? empiricalDetailScore(right.excerpt || "") - empiricalDetailScore(left.excerpt || "") : 0)
         : 0)
       .slice(0, MAX_PROMPT_BINDINGS_PER_STANCE)
       .map((binding) => ({
@@ -248,7 +291,11 @@ function sectionRolePriority(
     unit.supportingEvidence.some((binding) =>
       classifyEditorialGroundingSpanSpecificity(binding.excerpt || "") === "concrete_observation"
     )
-  ) return 0;
+  ) {
+    const text = unit.supportingEvidence.map((item) => item.excerpt || "").join(" ");
+    // Ranking only; never upgrades the claim, infers missing facts, or verifies causality.
+    return roles.has("compact_empirical_documentary") ? -(empiricalDetailScore(text) + 1) : 0;
+  }
   if (
     (roles.has("counterview") || roles.has("thesis_stress_test")) &&
     unit.counterEvidence.length > 0
