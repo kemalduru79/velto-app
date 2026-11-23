@@ -5,7 +5,7 @@ import type { OriginalSourceDocument } from './originalSourceEvidence.ts';
 import type { ResearchSource } from './sourceContract.ts';
 
 type Snapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown };
-type Decision = { publisherAuthoredDocument: boolean; classification: 'original_research' | 'primary_document' | 'secondary' | 'unknown'; basis: string; documentDigest: string };
+type Decision = { publisherAuthoredDocument: boolean; classification: 'original_research' | 'primary_document' | 'secondary' | 'unknown'; basis: string; documentDigest: string; disposition?: import('./sourceAuthorityIssuance.ts').ClaimEvidenceDisposition; dispositionRationale?: string };
 type Dependencies = {
   enabled: boolean;
   authenticateReviewer: (token: string) => Promise<string | null>;

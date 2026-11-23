@@ -3,6 +3,8 @@ import { sourceAuthorityPassageDigest, sourceAuthoritySnapshotDigest, sourceAuth
 import type { ScriptPlannerEditorialContext } from "./scriptPlannerEditorialContext.ts";
 import type { ResearchSource } from "./sourceContract.ts";
 
+export type ClaimEvidenceDisposition = "documented_methodological_limitation" | "independent_editorial_inference" | "insufficient_or_ambiguous_support";
+
 // The production workflow supplies trusted server-side dependencies. Never
 // pass these callbacks through an HTTP boundary.
 export async function prepareReviewedSourceAuthorityRecord(input: {
@@ -17,7 +19,7 @@ export async function prepareReviewedSourceAuthorityRecord(input: {
   dependencies: {
     authorizeReview: (scope: { ownerUserId: string; projectId: string; reviewerUserId: string; snapshotDigest: string }) => Promise<{ authorized: boolean; basis: string }>;
     acquire: (source: ResearchSource) => Promise<OriginalSourceDocument>;
-    review: (details: { reviewerUserId: string; snapshotDigest: string; claimId: string; evidenceId: string; documentDigest: string; sourceUrl: string; documentContent: string; passage: string; claimText: string }) => Promise<{ publisherAuthoredDocument: boolean; classification: "original_research" | "primary_document" | "secondary" | "unknown"; basis: string }>;
+    review: (details: { reviewerUserId: string; snapshotDigest: string; claimId: string; evidenceId: string; documentDigest: string; sourceUrl: string; documentContent: string; passage: string; claimText: string }) => Promise<{ publisherAuthoredDocument: boolean; classification: "original_research" | "primary_document" | "secondary" | "unknown"; basis: string; disposition?: ClaimEvidenceDisposition; dispositionRationale?: string }>;
   };
 }) {
   const snapshot = sourceAuthoritySnapshotDigest(input.context);
@@ -38,5 +40,9 @@ export async function prepareReviewedSourceAuthorityRecord(input: {
   const review = await input.dependencies.review({ reviewerUserId: input.reviewerUserId, snapshotDigest: snapshot, claimId: claim.claimId, evidenceId: evidence.evidenceId, documentDigest: result.sourceDocumentFingerprint, sourceUrl: source.url, documentContent: document.content, passage: result.passage, claimText: claim.text });
   if (!review.basis.trim() || !["original_research", "primary_document", "secondary", "unknown"].includes(review.classification)) throw new Error("REVIEW_DECISION_INVALID");
   if (typeof review.publisherAuthoredDocument !== "boolean" || (["original_research", "primary_document"].includes(review.classification) && review.publisherAuthoredDocument !== true)) throw new Error("PUBLISHER_AUTHORSHIP_UNCONFIRMED");
-  return { owner_user_id: input.ownerUserId, project_id: input.projectId, reviewer_user_id: input.reviewerUserId, reviewer_authorization: authorization.basis, review_basis: review.basis, publisher_authorship_confirmed: review.publisherAuthoredDocument, snapshot_digest: snapshot, source_id: source.sourceId, claim_id: claim.claimId, evidence_id: evidence.evidenceId, source_digest: sourceAuthoritySourceDigest(source), passage_digest: sourceAuthorityPassageDigest(evidence), passage_verification: "exact_source_match", authority_classification: review.classification, document_digest: result.sourceDocumentFingerprint, qualification_method: "authorized_human_claim_review", qualified_at: input.now, expires_at: input.expiresAt };
+  const disposition = review.disposition ?? "insufficient_or_ambiguous_support";
+  if (!["documented_methodological_limitation", "independent_editorial_inference", "insufficient_or_ambiguous_support"].includes(disposition)) throw new Error("CLAIM_EVIDENCE_DISPOSITION_INVALID");
+  const dispositionRationale = review.dispositionRationale?.trim() || "";
+  if (disposition !== "insufficient_or_ambiguous_support" && dispositionRationale.length < 12) throw new Error("CLAIM_EVIDENCE_RATIONALE_REQUIRED");
+  return { owner_user_id: input.ownerUserId, project_id: input.projectId, reviewer_user_id: input.reviewerUserId, reviewer_authorization: authorization.basis, review_basis: review.basis, publisher_authorship_confirmed: review.publisherAuthoredDocument, snapshot_digest: snapshot, source_id: source.sourceId, claim_id: claim.claimId, evidence_id: evidence.evidenceId, source_digest: sourceAuthoritySourceDigest(source), passage_digest: sourceAuthorityPassageDigest(evidence), passage_verification: "exact_source_match", authority_classification: review.classification, document_digest: result.sourceDocumentFingerprint, qualification_method: "authorized_human_claim_review", claim_evidence_disposition: disposition, disposition_rationale: dispositionRationale, qualified_at: input.now, expires_at: input.expiresAt };
 }

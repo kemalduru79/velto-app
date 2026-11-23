@@ -94,3 +94,45 @@ rows.get(frozen.snapshotDigest).editorial_context.claims[0].text = 'altered';
 await assert.rejects(() => wf.issue({ ...selection, decision, expiresAt: '2026-01-02T00:00:00Z' }), /SNAPSHOT_INVALID/);
 assert.equal(written.length, 1);
 console.log('SOURCE_AUTHORITY_MOCK_END_TO_END=PASS');
+
+// A disposition is separate from source authority and must be backed by the
+// authenticated, scoped, current record for the exact supporting passage.
+const { validatedDocumentedLimitations } = await import('../lib/research/sourceAuthorityBoundary.ts');
+const limitation = structuredClone(context);
+limitation.claims[0].claimType = 'EDITORIAL_INFERENCE';
+limitation.claims[0].text = 'The study was limited to experienced open-source developers.';
+limitation.readiness.primarySourceRequiredClaimIds = [];
+limitation.readiness.primarySourceCoveredClaimIds = [];
+const limitationRecord = { ...record, snapshot_digest: sourceAuthoritySnapshotDigest(limitation), claim_evidence_disposition: 'documented_methodological_limitation', disposition_rationale: 'The cited passage directly states the population limit.', reviewer_user_id: 'reviewer1', reviewer_authorization: 'server_verified_reviewer_allowlist', qualification_method: 'authorized_human_claim_review', document_digest: 'a'.repeat(64) };
+const reviewInput = { ownerUserId:'user1', projectId:'project1', context:limitation, records:[limitationRecord], now:Date.parse('2026-01-01T00:00:00Z') };
+assert.deepEqual(validatedDocumentedLimitations(reviewInput), ['c1']);
+assert.deepEqual(validatedDocumentedLimitations({ ...reviewInput, ownerUserId:'other' }), []);
+assert.deepEqual(validatedDocumentedLimitations({ ...reviewInput, now:Date.parse('2031-01-01T00:00:00Z') }), []);
+assert.deepEqual(validatedDocumentedLimitations({ ...reviewInput, context:{...limitation, claims:[{...limitation.claims[0], text:'The slowdown was caused solely by verification.'}]} }), []);
+assert.deepEqual(validatedDocumentedLimitations({ ...reviewInput, records:[{...limitationRecord, claim_evidence_disposition:'independent_editorial_inference'}] }), []);
+console.log('CLAIM_DISPOSITION_AUTHORITY_OFFLINE=PASS');
+
+const { resolveTrustedDisposition } = await import('../lib/research/trustedDispositionResolver.ts');
+const { createCounterEvidenceReview } = await import('../lib/research/scriptPlannerEditorialContext.ts');
+const originalRaw = structuredClone(limitation);
+originalRaw.claims.push({claimId:'causal',claimType:'EDITORIAL_INFERENCE',text:'Verification caused the entire slowdown.',supportingEvidenceIds:['e2'],counterEvidenceIds:[],contextualEvidenceIds:[]});
+originalRaw.evidence.push({...originalRaw.evidence[0],evidenceId:'e2',excerpt:'Developers speculated that verification might require extra time.'});
+const originalContext = normalizeScriptPlannerEditorialContext(originalRaw);
+const digestOriginal = sourceAuthoritySnapshotDigest(originalContext);
+const owned = {owner_user_id:'user1',project_id:'project1',snapshot_digest:digestOriginal,editorial_context:originalContext};
+const limitRow = {...limitationRecord,snapshot_digest:digestOriginal,source_digest:sourceAuthoritySourceDigest(originalContext.sources[0]),passage_digest:sourceAuthorityPassageDigest(originalContext.evidence[0])};
+const causalRow = {...limitRow,claim_id:'causal',evidence_id:'e2',passage_digest:sourceAuthorityPassageDigest(originalContext.evidence[1]),claim_evidence_disposition:'independent_editorial_inference'};
+const resolveArgs = {ownerUserId:'user1',projectId:'project1',originalSnapshot:owned,records:[limitRow,causalRow],now:Date.parse('2026-01-01T00:00:00Z')};
+const baseIds = resolveTrustedDisposition(resolveArgs);
+assert.deepEqual([...baseIds],['c1']); assert.equal(typeof baseIds.add,'undefined');
+const reviewScope = {snapshotFingerprint:createCounterEvidenceReview(originalContext).snapshotFingerprint,excludedClaimIds:['causal'],rationale:'Exclude unsupported causal interpretation.',confirmed:true};
+const projection = normalizeScriptPlannerEditorialContext({...originalContext,claims:originalContext.claims.filter(c=>c.claimId !== 'causal')});
+assert.deepEqual([...resolveTrustedDisposition({...resolveArgs,scopeDecision:reviewScope,projectedContext:projection})],['c1']);
+assert.deepEqual([...resolveTrustedDisposition({...resolveArgs,records:[{...limitRow,reviewer_authorization:'forged'},causalRow]})],[]);
+assert.deepEqual([...resolveTrustedDisposition({...resolveArgs,records:[{...limitRow,expires_at:'2025-01-01T00:00:00Z'},causalRow]})],[]);
+assert.deepEqual([...resolveTrustedDisposition({...resolveArgs,records:[{...limitRow,passage_digest:'0'.repeat(64)},causalRow]})],[]);
+assert.throws(()=>resolveTrustedDisposition({...resolveArgs,scopeDecision:reviewScope,projectedContext:{...projection,claims:[{...projection.claims[0],text:'Altered claim'}]}}),/PROJECTION_MISMATCH/);
+assert.throws(()=>resolveTrustedDisposition({...resolveArgs,scopeDecision:reviewScope,projectedContext:{...projection,claims:[{...projection.claims[0],supportingEvidenceIds:['e2']}]}}),/PROJECTION_MISMATCH/);
+assert.throws(()=>resolveTrustedDisposition({...resolveArgs,scopeDecision:{...reviewScope,excludedClaimIds:['c1']}}),/UNAUTHORIZED/);
+assert.throws(()=>resolveTrustedDisposition({...resolveArgs,originalSnapshot:{...owned,project_id:'other'}}),/SNAPSHOT_INVALID/);
+console.log('TRUSTED_DISPOSITION_SCOPE_OFFLINE=PASS');

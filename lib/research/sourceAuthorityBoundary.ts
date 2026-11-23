@@ -37,6 +37,12 @@ export type SourceAuthorityRecord = {
   passage_verification: string;
   authority_classification: string;
   expires_at: string;
+  claim_evidence_disposition?: string;
+  disposition_rationale?: string;
+  reviewer_user_id?: string;
+  document_digest?: string;
+  reviewer_authorization?: string;
+  qualification_method?: string;
 };
 
 export function validateSourceAuthorityRecords(input: {
@@ -72,4 +78,18 @@ export function validateSourceAuthorityRecords(input: {
     if (!claim.supportingEvidenceIds.some((id) => permitted.includes(recordsByEvidence.get(JSON.stringify([claim.claimId, id]))?.authority_classification ?? ""))) return fail("PRIMARY_SOURCE_AUTHORITY_UNVERIFIED");
   }
   return { ok: true as const };
+}
+
+/** Call only with rows loaded by the server, never client-supplied records. */
+export function validatedDocumentedLimitations(input: Parameters<typeof validateSourceAuthorityRecords>[0]): string[] {
+  if (!validateSourceAuthorityRecords(input).ok) return [];
+  return input.context.claims.filter((claim) => claim.claimType === "EDITORIAL_INFERENCE" && claim.supportingEvidenceIds.some((evidenceId) => input.records.some((record) =>
+    record.claim_id === claim.claimId && record.evidence_id === evidenceId &&
+    record.claim_evidence_disposition === "documented_methodological_limitation" &&
+    typeof record.disposition_rationale === "string" && record.disposition_rationale.trim().length >= 12 &&
+    typeof record.reviewer_user_id === "string" && record.reviewer_user_id.length > 0 &&
+    record.reviewer_authorization === "server_verified_reviewer_allowlist" &&
+    record.qualification_method === "authorized_human_claim_review" &&
+    typeof record.document_digest === "string" && /^[0-9a-f]{64}$/.test(record.document_digest)
+  ))).map((claim) => claim.claimId);
 }
