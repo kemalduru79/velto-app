@@ -141,6 +141,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const projectId = diagnosticText(secured.context.body.projectId, 200);
+    let researchRevision: number | null = null;
+    if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED === "true" && projectId) {
+      try {
+        const { reserveServerResearchRevision } = await import("@/lib/research/editorialGraphCapture.server");
+        researchRevision = await reserveServerResearchRevision(secured.context.user.id, projectId);
+      } catch {
+        return NextResponse.json({ success:false, code:"CREATOR_RESEARCH_REVISION_UNAVAILABLE", error:"Research authority could not be reserved." }, { status:409 });
+      }
+    }
     const profile = parseCreatorProfile(normalized.creatorProfile);
     const sourceMaterial = normalized.sources.map((source) => {
       const classification = classifyResearchSourceDirectness(source);
@@ -721,11 +731,10 @@ export async function POST(request: Request) {
     // is a distinct graph and requires its own server-side capture.
     let sourceAuthorityCaptured = false;
     let sourceAuthoritySnapshotDigest: string | null = null;
-    const projectId = diagnosticText(secured.context.body.projectId, 200);
-    if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED === "true" && projectId) {
+    if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED === "true" && projectId && researchRevision !== null) {
       try {
         const { captureServerEditorialAnalysis } = await import("@/lib/research/editorialGraphCapture.server");
-        const result = await captureServerEditorialAnalysis({ ownerUserId: secured.context.user.id, projectId, context: scriptContext, originalGraph: graph, initialGraph: graph });
+        const result = await captureServerEditorialAnalysis({ ownerUserId: secured.context.user.id, projectId, researchRevision, context: scriptContext, originalGraph: graph, initialGraph: graph });
         sourceAuthorityCaptured = result.captured;
         if (result.captured) sourceAuthoritySnapshotDigest = result.snapshotDigest;
       } catch {

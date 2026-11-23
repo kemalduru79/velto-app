@@ -55,3 +55,69 @@ grant select, insert, update, delete on public.creator_source_authority_verifica
 -- append-only inserts and reads for these records.
 revoke update, delete, truncate on public.creator_source_authority_snapshots from service_role;
 revoke update, delete, truncate on public.creator_source_authority_verifications from service_role;
+
+-- Draft only. Both operations are SECURITY INVOKER and service-role-only.
+alter table public.velto_projects add column research_revision bigint not null default 0;
+alter table public.velto_projects add column active_research_snapshot_digest text;
+alter table public.creator_source_authority_snapshots add column research_revision bigint;
+
+create function public.creator_begin_research_revision(p_owner uuid, p_project text)
+returns bigint language plpgsql security invoker set search_path = '' as $$
+declare v_revision bigint;
+begin
+  update public.velto_projects set research_revision = research_revision + 1,
+    active_research_snapshot_digest = null
+    where id::text = p_project and owner_user_id = p_owner and flow_type = 'creator_lab'
+    returning research_revision into v_revision;
+  if not found then raise exception 'RESEARCH_PROJECT_UNAUTHORIZED'; end if;
+  return v_revision;
+end $$;
+revoke all on function public.creator_begin_research_revision(uuid,text) from public, anon, authenticated;
+grant execute on function public.creator_begin_research_revision(uuid,text) to service_role;
+
+create function public.creator_activate_research_snapshot(p_owner uuid, p_project text, p_revision bigint, p_parent text, p_snapshot jsonb)
+returns text language plpgsql security invoker set search_path = '' as $$
+declare v_revision bigint; v_active text; v_digest text;
+begin
+  select research_revision, active_research_snapshot_digest into v_revision, v_active
+    from public.velto_projects where id::text = p_project and owner_user_id = p_owner and flow_type = 'creator_lab' for update;
+  if not found then raise exception 'RESEARCH_PROJECT_UNAUTHORIZED'; end if;
+  if v_revision <> p_revision then raise exception 'RESEARCH_REVISION_STALE'; end if;
+  if v_active is distinct from p_parent then raise exception 'RESEARCH_PARENT_STALE'; end if;
+  v_digest := p_snapshot->>'snapshot_digest';
+  if p_snapshot->>'owner_user_id' is distinct from p_owner::text or p_snapshot->>'project_id' is distinct from p_project or v_digest !~ '^[0-9a-f]{64}$' or p_snapshot->>'parent_snapshot_digest' is distinct from p_parent then raise exception 'RESEARCH_SNAPSHOT_INVALID'; end if;
+  insert into public.creator_source_authority_snapshots (owner_user_id,project_id,snapshot_digest,editorial_context,parent_snapshot_digest,original_research_graph,initial_research_graph,research_graph_digest,research_revision)
+  values (p_owner,p_project,v_digest,p_snapshot->'editorial_context',p_parent,p_snapshot->'original_research_graph',p_snapshot->'initial_research_graph',p_snapshot->>'research_graph_digest',p_revision);
+  update public.velto_projects set active_research_snapshot_digest = v_digest
+    where id::text = p_project and owner_user_id = p_owner;
+  return v_digest;
+end $$;
+revoke all on function public.creator_activate_research_snapshot(uuid,text,bigint,text,jsonb) from public, anon, authenticated;
+grant execute on function public.creator_activate_research_snapshot(uuid,text,bigint,text,jsonb) to service_role;
+
+-- Protect server-owned fields and invalidate on changes to persisted research
+-- brief identity. Duration, audio, scenes and other unrelated saves are excluded.
+create function public.creator_guard_research_identity()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare old_brief jsonb; new_brief jsonb; old_identity jsonb; new_identity jsonb;
+begin
+  if current_user not in ('service_role', 'postgres', 'supabase_admin') then
+    if (tg_op = 'INSERT' and (new.research_revision <> 0 or new.active_research_snapshot_digest is not null)) or
+       (tg_op = 'UPDATE' and (new.research_revision is distinct from old.research_revision or new.active_research_snapshot_digest is distinct from old.active_research_snapshot_digest)) then
+      raise exception 'RESEARCH_AUTHORITY_SERVER_ONLY';
+    end if;
+  end if;
+  if tg_op = 'UPDATE' and old.flow_type = 'creator_lab' then
+    old_brief := coalesce(old.exported_movie_result->'creatorProjectState'->'brief', '{}'::jsonb);
+    new_brief := coalesce(new.exported_movie_result->'creatorProjectState'->'brief', '{}'::jsonb);
+    old_identity := jsonb_build_array(old_brief->'topic',old_brief->'language',old_brief->'country',old_brief->'ageGroup',old_brief->'contentType',old_brief->'narrativePolicy',old_brief->'outcome',old_brief->'format');
+    new_identity := jsonb_build_array(new_brief->'topic',new_brief->'language',new_brief->'country',new_brief->'ageGroup',new_brief->'contentType',new_brief->'narrativePolicy',new_brief->'outcome',new_brief->'format');
+    if old_identity is distinct from new_identity or old.owner_user_id is distinct from new.owner_user_id or old.flow_type is distinct from new.flow_type then
+      new.research_revision := greatest(old.research_revision + 1, new.research_revision);
+      new.active_research_snapshot_digest := null;
+    end if;
+  end if;
+  return new;
+end $$;
+revoke all on function public.creator_guard_research_identity() from public, anon, authenticated;
+create trigger creator_project_research_identity_guard before insert or update on public.velto_projects for each row execute function public.creator_guard_research_identity();

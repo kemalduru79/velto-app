@@ -1905,15 +1905,18 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_PROJECT_INVALID" }, { status: 403 });
       }
       const snapshotDigest = sourceAuthoritySnapshotDigest(editorialContext);
+      if (project.active_research_snapshot_digest !== snapshotDigest || !Number.isSafeInteger(Number(project.research_revision)) || Number(project.research_revision) < 1) {
+        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_RESEARCH_NOT_ACTIVE" }, { status: 422 });
+      }
       const { data: ownedSnapshot, error: snapshotError } = await supabase
         .from("creator_source_authority_snapshots")
-        .select("owner_user_id,project_id,snapshot_digest,editorial_context")
+        .select("owner_user_id,project_id,snapshot_digest,editorial_context,research_revision")
         .eq("owner_user_id", user.id)
         .eq("project_id", projectId)
         .eq("snapshot_digest", snapshotDigest)
         .maybeSingle();
       if (snapshotError) return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNAVAILABLE" }, { status: 503 });
-      if (!validateOwnedSourceSnapshot({ ownerUserId: user.id, projectId, context: editorialContext, snapshot: ownedSnapshot })) {
+      if (!validateOwnedSourceSnapshot({ ownerUserId: user.id, projectId, context: editorialContext, snapshot: ownedSnapshot }) || Number(ownedSnapshot?.research_revision) !== Number(project.research_revision)) {
         return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_SNAPSHOT_UNVERIFIED" }, { status: 422 });
       }
       const { data: authorityRecords, error: authorityError } = await supabase

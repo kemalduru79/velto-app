@@ -48,6 +48,8 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-setup.sql
           psql -X -v ON_ERROR_STOP=1 -f docs/creator-source-authority-migration.draft.sql
+      - name: Check atomic research revision and activation
+        run: psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-active-research.sql
       - name: Check actual PostgreSQL grants and RLS flags
         run: psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-permissions.sql
       - name: Run database-backed authority chain
