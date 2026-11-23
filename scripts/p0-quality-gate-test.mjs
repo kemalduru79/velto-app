@@ -97,7 +97,7 @@ try {
   check("reviewed staged and working content admitted", () => assert.deepEqual(inspect([file]), []));
   const largeFile = "app/create/page.tsx";
   fs.mkdirSync(path.dirname(path.join(root, largeFile)), { recursive: true });
-  fs.writeFileSync(path.join(root, largeFile), fs.readFileSync(largeFile));
+  fs.writeFileSync(path.join(root, largeFile), execFileSync("git", ["show", "bc30a72440cfbeaafa5c3aac283bdaa5efd70656:" + largeFile], { maxBuffer: 16 * 1024 * 1024 }));
   fixtureGit(["add", "--", largeFile]);
   check("exact reviewed large page can be verified after staging", () => assert.deepEqual(inspect([largeFile]), []));
   for (const approved of Object.keys(P0_FILE_HASHES)) {
@@ -185,15 +185,22 @@ check("legacy membership is exactly the seven reviewed files", () => assert.deep
   "app/api/youtube-research/route.ts", "app/create/page.tsx", "app/episode/public/[shareId]/page.tsx",
 ]));
 for (const file of legacyFiles) {
-  const actual = spawnSync(process.execPath, ["--max-old-space-size=1536", "node_modules/eslint/bin/eslint.js", "--format", "json", "--", file],
-    { encoding: "utf8", timeout: LINT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, killSignal: "SIGKILL" });
+  const historical = file === "app/create/page.tsx" ? execFileSync("git", ["show", "bc30a72440cfbeaafa5c3aac283bdaa5efd70656:" + file], { maxBuffer: 16 * 1024 * 1024 }) : null;
+  const fixtureFs = historical ? { ...fs, readFileSync: (name, ...args) => name === file ? historical : fs.readFileSync(name, ...args) } : fs;
+  if (historical) {
+    check("historical page fixture matches the unchanged approved source hash", () => assert.equal(createHash("sha256").update(historical).digest("hex"), loadGate(success).records[file].sha256));
+  }
+  const eslintArgs = historical ? ["--stdin", "--stdin-filename", file] : ["--", file];
+  const actual = spawnSync(process.execPath, ["--max-old-space-size=1536", "node_modules/eslint/bin/eslint.js", "--format", "json", ...eslintArgs],
+    { ...(historical ? { input: historical } : {}), encoding: "utf8", timeout: LINT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, killSignal: "SIGKILL" });
   check("real exact legacy report accepted: " + file, () => {
-    assert.equal(actual.status, 1); assert.equal(loadGate(actual).accept(file, actual), true);
-    assert.equal(loadGate(actual).lint(file, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]), true);
+    assert.equal(actual.status, 1); assert.equal(loadGate(actual, fixtureFs).accept(file, actual), true);
+    assert.equal(loadGate(actual, fixtureFs).lint(file, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]), true);
   });
+  if (historical && !historical.equals(fs.readFileSync(file))) check("current page cannot inherit historical approval", () => assert.equal(loadGate(actual).accept(file, actual), false));
   const parsed = JSON.parse(actual.stdout);
   const altered = (change) => { const copy = structuredClone(parsed); change(copy[0]); return { ...actual, stdout: JSON.stringify(copy) }; };
-  const negative = (name, result, filesystem = fs, source = gateSource) => check(name + ": " + file, () => {
+  const negative = (name, result, filesystem = fixtureFs, source = gateSource) => check(name + ": " + file, () => {
     const gate = loadGate(result, filesystem, source);
     assert.equal(gate.accept(file, result), false);
     assert.equal(gate.lint(file, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]), false);
@@ -224,13 +231,13 @@ for (const file of legacyFiles) {
   negative("modified protected source / wrong SHA", actual, tamperedFs);
   negative("symlink source", actual, { ...fs, lstatSync: () => ({ isFile: () => false }) });
   const approved = loadGate(actual).records[file];
-  negative("altered embedded source baseline", actual, fs, gateSource.replace(approved.sha256, "0".repeat(64)));
-  negative("altered embedded diagnostic baseline", actual, fs, gateSource.replace(approved.diagnosticSha256, "0".repeat(64)));
-  negative("missing embedded baseline record", actual, fs, gateSource.replace(JSON.stringify(file) + ": {", JSON.stringify(file + ".missing") + ": {"));
+  negative("altered embedded source baseline", actual, fixtureFs, gateSource.replace(approved.sha256, "0".repeat(64)));
+  negative("altered embedded diagnostic baseline", actual, fixtureFs, gateSource.replace(approved.diagnosticSha256, "0".repeat(64)));
+  negative("missing embedded baseline record", actual, fixtureFs, gateSource.replace(JSON.stringify(file) + ": {", JSON.stringify(file + ".missing") + ": {"));
   check("external baseline absent or altered has no authority: " + file, () => {
     const noBaselineFs = { ...fs, readFileSync: (name, ...args) => {
       assert.equal(name, file, "runtime may only read the expected source; never an external baseline");
-      return fs.readFileSync(name, ...args);
+      return fixtureFs.readFileSync(name, ...args);
     } };
     assert.equal(loadGate(actual, noBaselineFs).lint(file, [{ start: 1, end: 1 }]), true);
   });
@@ -240,7 +247,7 @@ for (const file of legacyFiles) {
     const relocated = altered(r => { r.filePath = relocatedPath; for (const m of r.messages)
       m.message = m.message.replaceAll("\n\n" + path.resolve(file) + ":", "\n\n" + relocatedPath + ":"); });
     relocated.stderr = (relocated.stderr || "").replaceAll(path.resolve(file), relocatedPath);
-    const context = loadGate(relocated);
+    const context = loadGate(relocated, fixtureFs);
     context.path = { ...path, resolve: () => relocatedPath };
     assert.equal(context.accept(file, relocated), true);
   });
