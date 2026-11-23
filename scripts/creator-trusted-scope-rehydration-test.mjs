@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { issue44EvidenceFixture } from './fixtures/creator-issue-44-evidence.mjs';
+import { createResearchClaimEvidenceGraph } from '../lib/research/claimEvidenceGraph.ts';
+import { createEditorialScriptContext } from '../lib/research/editorialScriptContext.ts';
+import { parseCreatorProfile } from '../lib/creator/creatorProfile.ts';
+import { normalizeScriptPlannerEditorialContext, createCounterEvidenceReview } from '../lib/research/scriptPlannerEditorialContext.ts';
+import { sourceAuthoritySnapshotDigest, sourceAuthoritySourceDigest, sourceAuthorityPassageDigest } from '../lib/research/sourceAuthorityBoundary.ts';
+import { createTrustedScopeReviewedContext, rehydrateTrustedScopeReviewedContext } from '../lib/research/trustedDispositionResolver.ts';
+const f = issue44EvidenceFixture();
+f.sources = f.sources.filter(s => ['source-3','source-4'].includes(s.sourceId));
+f.sources[0].summary = 'The study was limited to experienced open-source developers.';
+f.sources[1].summary = 'Additional verification effort was suggested as a possible explanation.';
+f.claims = f.claims.filter(c => ['claim-2','claim-3'].includes(c.claimId)).map(c => ({...c,claimType:'EDITORIAL_INFERENCE',text:c.claimId === 'claim-2' ? 'The study was limited to experienced open-source developers.' : 'Verification effort caused the entire slowdown.'}));
+f.evidence = f.evidence.filter(e => ['evidence-3','evidence-4'].includes(e.evidenceId)).map(e => ({...e,excerpt:f.sources.find(s=>s.sourceId===e.sourceId).summary}));
+f.links = f.links.filter(l => ['evidence-3','evidence-4'].includes(l.evidenceId));
+f.assessments = f.assessments.filter(a => ['source-3','source-4'].includes(a.sourceId));
+const graph = createResearchClaimEvidenceGraph(f);
+const original = normalizeScriptPlannerEditorialContext(createEditorialScriptContext({profile:parseCreatorProfile(null),graph,sourceAssessments:f.assessments}));
+const snapshot = {owner_user_id:'owner',project_id:'project',snapshot_digest:sourceAuthoritySnapshotDigest(original),editorial_context:original};
+const records = original.claims.map((claim,i)=>({owner_user_id:'owner',project_id:'project',snapshot_digest:snapshot.snapshot_digest,claim_id:claim.claimId,source_id:original.evidence[i].sourceId,evidence_id:original.evidence[i].evidenceId,source_digest:sourceAuthoritySourceDigest(original.sources.find(s=>s.sourceId===original.evidence[i].sourceId)),passage_digest:sourceAuthorityPassageDigest(original.evidence[i]),passage_verification:'exact_source_match',authority_classification:'secondary',expires_at:'2030-01-01T00:00:00Z',reviewer_user_id:'reviewer',reviewer_authorization:'server_verified_reviewer_allowlist',qualification_method:'authorized_human_claim_review',document_digest:'a'.repeat(64),disposition_rationale:'Reviewer checked the cited passage.',claim_evidence_disposition:i===0?'documented_methodological_limitation':'independent_editorial_inference'}));
+const decision = {snapshotFingerprint:createCounterEvidenceReview(original).snapshotFingerprint,excludedClaimIds:['claim-3'],rationale:'Exclude unsupported causal interpretation.',confirmed:true};
+const args = {ownerUserId:'owner',projectId:'project',originalSnapshot:snapshot,records,decision,originalResearchSnapshot:graph,initialResearchSnapshot:graph,now:Date.parse('2026-01-01T00:00:00Z')};
+const saved = createTrustedScopeReviewedContext(args);
+const persisted = JSON.parse(JSON.stringify(saved));
+assert.throws(()=>normalizeScriptPlannerEditorialContext(persisted),/UNRESOLVED/);
+const restored = rehydrateTrustedScopeReviewedContext({...args,persistedContext:persisted});
+assert.deepEqual(restored,saved); assert.deepEqual(restored.claims.map(c=>c.claimId),['claim-2']);
+assert.deepEqual(restored.evidence,original.evidence); assert.deepEqual(restored.counterEvidenceReview.originalResearchSnapshot,graph);
+assert.deepEqual(restored.counterEvidenceReview.originalContext,original); assert.deepEqual(restored.counterEvidenceReview.decision,decision);
+for (const mutate of [x=>{x.claims[0].text+=' changed';}, x=>{x.claims[0].supportingEvidenceIds=[];}, x=>{x.counterEvidenceReview.decision.rationale+=' changed';}, x=>{x.counterEvidenceReview.originalResearchSnapshot.evidence[0].excerpt+=' changed';}, x=>{x.counterEvidenceReview.originalContext.claims[0].text+=' changed';}, x=>{x.evidence[0].excerpt+=' changed';}, x=>{x.readiness.status='ready';}]) {
+ const changed=structuredClone(persisted); mutate(changed); assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,persistedContext:changed}),/MISMATCH|AUTHORITY/);
+}
+assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,records:records.map(r=>({...r,expires_at:'2025-01-01T00:00:00Z'})),persistedContext:persisted}),/UNRESOLVED/);
+assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,records:records.map(r=>({...r,reviewer_authorization:'forged'})),persistedContext:persisted}),/UNRESOLVED/);
+assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,decision:{...decision,excludedClaimIds:['claim-2']},persistedContext:persisted}),/UNAUTHORIZED/);
+assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,projectId:'other',persistedContext:persisted}),/SNAPSHOT_INVALID/);
+console.log('TRUSTED_SCOPE_PERSISTED_REHYDRATION=PASS');
