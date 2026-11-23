@@ -604,7 +604,7 @@ export function createScriptPlannerEvidenceGraph(
 
 /** Fail closed on legacy/null excerpts and outstanding editorial review. Never
  * promote client readiness, primary classification or counter-evidence stance. */
-export function createScriptPlannerGenerationGroundingGate(context: ScriptPlannerEditorialContext) {
+export function createScriptPlannerGenerationGroundingGate(context: ScriptPlannerEditorialContext, verifiedLimitationClaimIds: ReadonlySet<string> = new Set()) {
   const linkedIds = new Set(context.claims.flatMap((claim) => [
     ...claim.supportingEvidenceIds, ...claim.counterEvidenceIds, ...claim.contextualEvidenceIds,
   ]));
@@ -613,21 +613,22 @@ export function createScriptPlannerGenerationGroundingGate(context: ScriptPlanne
     .map((item) => item.evidenceId);
   const recomputed = createResearchTopicReadiness({
     graph: createScriptPlannerAuthorityGraph(context),
+    verifiedLimitationClaimIds,
     sourceAssessments: context.sources.map((source) => ({
       sourceId: source.sourceId, directness: source.directness,
       provenanceStatus: "unknown", reviewStatus: source.reviewStatus, reviewReasons: [],
     })),
   });
-  const reasons = new Set([...context.readiness.reviewReasons, ...recomputed.reviewReasons]);
+  const reasons = new Set([...context.readiness.reviewReasons.filter(reason => reason !== "MATERIAL_COUNTER_EVIDENCE_REVIEW" || verifiedLimitationClaimIds.size === 0 || recomputed.reviewReasons.includes(reason)), ...recomputed.reviewReasons]);
   if (missingExcerptEvidenceIds.length) reasons.add("EVIDENCE_EXCERPTS_REQUIRED");
-  if (context.readiness.status !== "ready" && reasons.size === 0) reasons.add("EDITORIAL_REVIEW_REQUIRED");
+  if (context.readiness.status !== "ready" && reasons.size === 0 && !(verifiedLimitationClaimIds.size > 0 && context.readiness.reviewReasons.includes("MATERIAL_COUNTER_EVIDENCE_REVIEW"))) reasons.add("EDITORIAL_REVIEW_REQUIRED");
   const nextActions = [
     ...(missingExcerptEvidenceIds.length ? ["rerun_editorial_analysis_from_existing_sources"] : []),
     ...(reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? ["review_material_counter_evidence"] : []),
     ...(reasons.has("PRIMARY_SOURCE_COVERAGE_REQUIRED") ? ["retrieve_qualifying_primary_sources"] : []),
     ...(reasons.has("SOURCE_PROVENANCE_REVIEW") ? ["review_source_provenance"] : []),
   ];
-  const counterReview = createCounterEvidenceReview(context);
+  const counterReview = createCounterEvidenceReview(context, verifiedLimitationClaimIds);
   const message = [
     missingExcerptEvidenceIds.length ? "Evidence excerpts are missing. Re-run editorial analysis from the existing sources to restore source-owned passages." : "",
     reasons.has("MATERIAL_COUNTER_EVIDENCE_REVIEW") ? `Material counter-evidence requires editorial review. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}. Inspect real opposing passages, explicitly omit unresolved assertions, or stop and obtain qualifying sources.` : "",
@@ -665,7 +666,7 @@ function counterReviewFingerprint(context: ScriptPlannerEditorialContext) {
 /** Reassess each material claim against the unchanged corpus, once per review.
  * A limitation is informative context, never a synthetic contradicts relation.
  * This does not attest scientific truth or upgrade a source's primary status. */
-export function createCounterEvidenceReview(context: ScriptPlannerEditorialContext) {
+export function createCounterEvidenceReview(context: ScriptPlannerEditorialContext, verifiedLimitationClaimIds: ReadonlySet<string> = new Set()) {
   const required = new Set(["THEORY", "FORECAST", "HYPOTHESIS", "METAPHYSICAL_CLAIM", "EDITORIAL_INFERENCE"]);
   const authority = resolveScriptPlannerClaimAuthority(context);
   const passages = (ids: string[]) => ids.flatMap((id) => {
@@ -673,7 +674,7 @@ export function createCounterEvidenceReview(context: ScriptPlannerEditorialConte
     const source = context.sources.find((item) => item.sourceId === evidence?.sourceId);
     return evidence?.excerpt?.trim() && source ? [{ ...evidence, source }] : [];
   });
-  const claims = context.claims.filter((claim) => required.has(claim.claimType)).map((claim) => {
+  const claims = context.claims.filter((claim) => required.has(claim.claimType) && !(claim.claimType === "EDITORIAL_INFERENCE" && verifiedLimitationClaimIds.has(claim.claimId))).map((claim) => {
     const counter = passages(claim.counterEvidenceIds);
     const contextual = passages(claim.contextualEvidenceIds);
     return {

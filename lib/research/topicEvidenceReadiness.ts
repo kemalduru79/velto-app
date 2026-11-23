@@ -58,6 +58,8 @@ function boundedScore(value: number) {
 export function createResearchTopicReadiness(input: {
   graph: ResearchClaimEvidenceGraph;
   sourceAssessments: ResearchSourceAssessment[];
+  /** Only server-resolved IDs may be supplied by a trusted caller. */
+  verifiedLimitationClaimIds?: ReadonlySet<string>;
 }): ResearchTopicReadinessReport {
   const { graph } = input;
   const authority = resolveClaimAuthority({
@@ -106,7 +108,7 @@ export function createResearchTopicReadiness(input: {
     .map((resolution) => resolution.claimId);
 
   const counterEvidenceRecommendedClaimIds = graph.claims
-    .filter((claim) => COUNTER_EVIDENCE_RECOMMENDED_TYPES.has(claim.claimType))
+    .filter((claim) => COUNTER_EVIDENCE_RECOMMENDED_TYPES.has(claim.claimType) && !(claim.claimType === "EDITORIAL_INFERENCE" && input.verifiedLimitationClaimIds?.has(claim.claimId)))
     .map((claim) => claim.claimId);
   const counterEvidenceCoveredClaimIds = counterEvidenceRecommendedClaimIds.filter(
     (claimId) => (contradictionEvidenceIdsByClaim.get(claimId) || []).length > 0,
