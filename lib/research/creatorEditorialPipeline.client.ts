@@ -569,6 +569,8 @@ export async function runCreatorEditorialScriptPipeline(
       fetchImpl,
       body: {
         frozenGraph: editorial.graph,
+        projectId: input.scriptPlanRequest.projectId,
+        parentSnapshotDigest: editorial.sourceAuthoritySnapshotDigest,
         originalPrimaryRequiredClaimIds: firstPrimaryRequiredClaimIds,
         candidateSources: candidatePrimarySources,
         creatorProfile: input.creatorProfile ?? {},

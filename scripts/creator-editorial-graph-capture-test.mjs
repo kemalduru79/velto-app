@@ -37,3 +37,43 @@ await assert.rejects(()=>capture({originalGraph:forgedProvenance}),/PROVENANCE_M
 const altered=structuredClone(context);altered.claims[0].text+=' changed';await assert.rejects(()=>capture({context:altered}),/SNAPSHOT_MISMATCH/);
 const old=structuredClone(stored);stored.original_research_graph=null;await assert.rejects(load,/GRAPHS_UNAVAILABLE/);stored=old;
 console.log('EDITORIAL_GRAPH_CAPTURE_OFFLINE=PASS');
+
+const { capturePrimaryCoverageGraph } = await import('../lib/research/primaryCoverageGraphCapture.ts');
+const { sourceAuthorityGraphDigest } = await import('../lib/research/sourceAuthorityBoundary.ts');
+const { createTrustedScopeReviewedContext, rehydrateTrustedScopeReviewedContext } = await import('../lib/research/trustedDispositionResolver.ts');
+const { createCounterEvidenceReview } = await import('../lib/research/scriptPlannerEditorialContext.ts');
+// Two synthetic immutable rows in the same repository; verification records
+// are separately issued for each snapshot, never copied by capture.
+const snapshots=new Map([[stored.snapshot_digest,structuredClone(stored)]]);
+const recordsBySnapshot=new Map([[stored.snapshot_digest,structuredClone(records)]]);
+const repository={ownsProject:repo.ownsProject,loadSnapshot:async(_o,_p,d)=>snapshots.get(d)??null,loadRecords:async(_o,_p,d)=>recordsBySnapshot.get(d)??[]};
+const loadParent=async(ownerUserId,projectId,snapshotDigest)=>loadAuthoritativeResearchGraph({ownerUserId,projectId,snapshotDigest,repository,now:Date.parse('2026-01-01T00:00:00Z')});
+const insertSnapshot=async row=>{assert(!snapshots.has(row.snapshot_digest));snapshots.set(row.snapshot_digest,structuredClone(row));};
+const parentDigest=stored.snapshot_digest;
+const changed=structuredClone(graph);
+changed.evidence.push({...changed.evidence[0],evidenceId:'e-added'});
+changed.links.push({claimId:changed.claims[0].claimId,evidenceId:'e-added',stance:'supports'});
+const changedContext=createEditorialScriptContext({profile:parseCreatorProfile(null),graph:changed,sourceAssessments:f.assessments});
+const parentArgs={enabled:true,ownerUserId:'owner',projectId:'project',parentSnapshotDigest:parentDigest,submittedFrozenGraph:graph,resultGraph:changed,resultContext:changedContext,repository:{loadParent,insertSnapshot}};
+const child=await capturePrimaryCoverageGraph(parentArgs);
+assert.equal(child.captured,true); assert.notEqual(child.snapshotDigest,parentDigest);
+assert.equal(snapshots.get(child.snapshotDigest).parent_snapshot_digest,parentDigest);
+assert.deepEqual(snapshots.get(child.snapshotDigest).initial_research_graph,initial);
+assert.equal(recordsBySnapshot.has(child.snapshotDigest),false);
+await assert.rejects(()=>loadParent('owner','project',child.snapshotDigest),/RECORDS_INVALID/);
+const childContext=normalizeScriptPlannerEditorialContext(changedContext);
+const childRecords=childContext.claims.flatMap(c=>c.supportingEvidenceIds.map((id)=>{const e=childContext.evidence.find(x=>x.evidenceId===id),s=childContext.sources.find(x=>x.sourceId===e.sourceId);return {owner_user_id:'owner',project_id:'project',snapshot_digest:child.snapshotDigest,source_id:s.sourceId,claim_id:c.claimId,evidence_id:id,source_digest:sourceAuthoritySourceDigest(s),passage_digest:sourceAuthorityPassageDigest(e),passage_verification:'exact_source_match',authority_classification:'secondary',expires_at:'2030-01-01T00:00:00Z',reviewer_user_id:'reviewer',reviewer_authorization:'server_verified_reviewer_allowlist',qualification_method:'authorized_human_claim_review',document_digest:'a'.repeat(64),disposition_rationale:'Reviewer checked the exact limitation.',claim_evidence_disposition:c.claimId===childContext.claims[0].claimId?'documented_methodological_limitation':'independent_editorial_inference'};}));
+recordsBySnapshot.set(child.snapshotDigest,childRecords);
+const loadedChild=await loadParent('owner','project',child.snapshotDigest);
+const review=createCounterEvidenceReview(loadedChild.editorialContext);
+const decision={snapshotFingerprint:review.snapshotFingerprint,excludedClaimIds:[childContext.claims[1].claimId],rationale:'Omit unsupported independent causal claim.',confirmed:true};
+const args={ownerUserId:'owner',projectId:'project',originalSnapshot:loadedChild.originalSnapshot,records:loadedChild.records,decision,originalResearchSnapshot:loadedChild.originalResearchSnapshot,initialResearchSnapshot:loadedChild.initialResearchSnapshot,now:Date.parse('2026-01-01T00:00:00Z')};
+const saved=createTrustedScopeReviewedContext(args);assert.deepEqual(rehydrateTrustedScopeReviewedContext({...args,persistedContext:JSON.parse(JSON.stringify(saved))}),saved);
+assert.equal((await capturePrimaryCoverageGraph({...parentArgs,resultGraph:graph,resultContext:context})).unchanged,true); // no-candidate/fallback unchanged
+const tampered=structuredClone(graph);tampered.claims[0].text+=' altered';await assert.rejects(()=>capturePrimaryCoverageGraph({...parentArgs,submittedFrozenGraph:tampered}),/FROZEN_GRAPH_MISMATCH/);
+const changedPassage=structuredClone(graph);changedPassage.evidence[0].excerpt+=' altered';await assert.rejects(()=>capturePrimaryCoverageGraph({...parentArgs,submittedFrozenGraph:changedPassage}),/FROZEN_GRAPH_MISMATCH/);
+await assert.rejects(()=>capturePrimaryCoverageGraph({...parentArgs,projectId:'other'}),/PROJECT_INVALID/);
+await assert.rejects(()=>capturePrimaryCoverageGraph({...parentArgs,parentSnapshotDigest:'0'.repeat(64)}),/SNAPSHOT_INVALID/);
+const tamperedParent=structuredClone(snapshots.get(parentDigest));tamperedParent.original_research_graph=null;snapshots.set(parentDigest,tamperedParent);await assert.rejects(()=>capturePrimaryCoverageGraph(parentArgs),/GRAPHS_UNAVAILABLE/);
+assert.notEqual(sourceAuthorityGraphDigest(graph,initial),sourceAuthorityGraphDigest(changed,initial));
+console.log('PRIMARY_COVERAGE_SNAPSHOT_LINEAGE_OFFLINE=PASS');

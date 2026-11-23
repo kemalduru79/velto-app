@@ -2,7 +2,7 @@ import { sourceAuthorityGraphDigest, sourceAuthoritySnapshotDigest, validateSour
 import { validateResearchGraphsForSnapshot } from './trustedDispositionResolver.ts';
 import type { ResearchClaimEvidenceGraph } from './claimEvidenceGraph.ts';
 
-export type StoredResearchSnapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown; original_research_graph?: ResearchClaimEvidenceGraph | null; initial_research_graph?: ResearchClaimEvidenceGraph | null; research_graph_digest?: string | null };
+export type StoredResearchSnapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown; original_research_graph?: ResearchClaimEvidenceGraph | null; initial_research_graph?: ResearchClaimEvidenceGraph | null; research_graph_digest?: string | null; parent_snapshot_digest?: string | null };
 
 /** The repository is a trusted server adapter; no client graph is accepted. */
 export async function loadAuthoritativeResearchGraph(input: {
@@ -14,6 +14,12 @@ export async function loadAuthoritativeResearchGraph(input: {
   if (!row || row.owner_user_id !== input.ownerUserId || row.project_id !== input.projectId || row.snapshot_digest !== input.snapshotDigest) throw new Error('RESEARCH_AUTHORITY_SNAPSHOT_INVALID');
   if (!row.original_research_graph || !row.initial_research_graph || !row.research_graph_digest) throw new Error('RESEARCH_AUTHORITY_GRAPHS_UNAVAILABLE');
   if (sourceAuthorityGraphDigest(row.original_research_graph, row.initial_research_graph) !== row.research_graph_digest) throw new Error('RESEARCH_AUTHORITY_GRAPH_DIGEST_MISMATCH');
+  if (row.parent_snapshot_digest) {
+    if (!/^[0-9a-f]{64}$/.test(row.parent_snapshot_digest) || row.parent_snapshot_digest === row.snapshot_digest) throw new Error('RESEARCH_AUTHORITY_PARENT_INVALID');
+    const parent = await input.repository.loadSnapshot(input.ownerUserId, input.projectId, row.parent_snapshot_digest);
+    if (!parent || parent.owner_user_id !== input.ownerUserId || parent.project_id !== input.projectId || parent.snapshot_digest !== row.parent_snapshot_digest || !parent.original_research_graph || !parent.initial_research_graph || !parent.research_graph_digest || sourceAuthorityGraphDigest(parent.original_research_graph, parent.initial_research_graph) !== parent.research_graph_digest || sourceAuthorityGraphDigest(parent.initial_research_graph, parent.initial_research_graph) !== sourceAuthorityGraphDigest(row.initial_research_graph, row.initial_research_graph)) throw new Error('RESEARCH_AUTHORITY_PARENT_INVALID');
+    validateResearchGraphsForSnapshot({ ownerUserId: input.ownerUserId, projectId: input.projectId, originalSnapshot: parent, originalResearchSnapshot: parent.original_research_graph, initialResearchSnapshot: parent.initial_research_graph });
+  }
   const { original, graph, initial } = validateResearchGraphsForSnapshot({ ownerUserId: input.ownerUserId, projectId: input.projectId, originalSnapshot: row, originalResearchSnapshot: row.original_research_graph, initialResearchSnapshot: row.initial_research_graph });
   if (sourceAuthoritySnapshotDigest(original) !== input.snapshotDigest) throw new Error('RESEARCH_AUTHORITY_SNAPSHOT_INVALID');
   const records = await input.repository.loadRecords(input.ownerUserId, input.projectId, input.snapshotDigest);

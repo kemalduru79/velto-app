@@ -39,7 +39,7 @@ export async function loadServerAuthoritativeResearchGraph(ownerUserId: string, 
   return loadAuthoritativeResearchGraph({ ownerUserId, projectId, snapshotDigest, repository: {
     ownsProject: async (owner, projectId) => (await getPersistenceServices().projectRepository.getForOwner(projectId, owner))?.flow_type === 'creator_lab',
     loadSnapshot: async (owner, projectId, digest) => {
-      const { data, error } = await supabase.from('creator_source_authority_snapshots').select('owner_user_id,project_id,snapshot_digest,editorial_context,original_research_graph,initial_research_graph,research_graph_digest').eq('owner_user_id', owner).eq('project_id', projectId).eq('snapshot_digest', digest).maybeSingle();
+      const { data, error } = await supabase.from('creator_source_authority_snapshots').select('owner_user_id,project_id,snapshot_digest,editorial_context,original_research_graph,initial_research_graph,research_graph_digest,parent_snapshot_digest').eq('owner_user_id', owner).eq('project_id', projectId).eq('snapshot_digest', digest).maybeSingle();
       if (error) throw new Error('RESEARCH_AUTHORITY_SNAPSHOT_READ_FAILED');
       return data;
     },

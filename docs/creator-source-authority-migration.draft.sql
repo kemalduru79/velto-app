@@ -6,12 +6,15 @@ create table public.creator_source_authority_snapshots (
   project_id text not null,
   snapshot_digest text not null check (snapshot_digest ~ '^[0-9a-f]{64}$'),
   editorial_context jsonb not null,
+  parent_snapshot_digest text,
   original_research_graph jsonb,
   initial_research_graph jsonb,
   research_graph_digest text check (research_graph_digest is null or research_graph_digest ~ '^[0-9a-f]{64}$'),
   check ((original_research_graph is null and initial_research_graph is null and research_graph_digest is null) or (original_research_graph is not null and initial_research_graph is not null and research_graph_digest is not null)),
   created_at timestamptz not null default now(),
-  primary key (owner_user_id, project_id, snapshot_digest)
+  primary key (owner_user_id, project_id, snapshot_digest),
+  foreign key (owner_user_id, project_id, parent_snapshot_digest) references public.creator_source_authority_snapshots (owner_user_id, project_id, snapshot_digest),
+  check (parent_snapshot_digest is null or parent_snapshot_digest <> snapshot_digest)
 );
 alter table public.creator_source_authority_snapshots enable row level security;
 revoke all on public.creator_source_authority_snapshots from public, anon, authenticated;

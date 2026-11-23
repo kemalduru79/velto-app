@@ -186,6 +186,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const captureResult = async (resultGraph: typeof context.frozenGraph, resultContext: unknown) => {
+      const projectId = diagnosticText(secured.context.body.projectId, 200);
+      const parentSnapshotDigest = diagnosticText(secured.context.body.parentSnapshotDigest, 64);
+      if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED !== 'true' || !projectId || !parentSnapshotDigest) return null;
+      try {
+        const { captureServerPrimaryCoverage } = await import('@/lib/research/primaryCoverageGraphCapture.server');
+        const result = await captureServerPrimaryCoverage({ ownerUserId: secured.context.user.id, projectId, parentSnapshotDigest, submittedFrozenGraph: context.frozenGraph, resultGraph, resultContext });
+        return result.captured ? result.snapshotDigest : null;
+      } catch {
+        console.warn('CREATOR_PRIMARY_COVERAGE_CAPTURE_UNAVAILABLE');
+        return null;
+      }
+    };
+
     if (context.candidateSpans.length === 0) {
       try {
         const result = applyEditorialPrimaryCoverageRepair({
@@ -198,6 +212,7 @@ export async function POST(request: Request) {
           graph: result.graph,
           sourceAssessments: result.sourceAssessments,
         });
+        const sourceAuthoritySnapshotDigest = await captureResult(result.graph, scriptContext);
 
         console.info(
           "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
@@ -215,6 +230,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
           success: true,
+          sourceAuthoritySnapshotDigest,
           graph: result.graph,
           sourceAssessments: result.sourceAssessments,
           readiness: result.readiness,
@@ -396,6 +412,7 @@ export async function POST(request: Request) {
         graph: result.graph,
         sourceAssessments: result.sourceAssessments,
       });
+      const sourceAuthoritySnapshotDigest = await captureResult(result.graph, scriptContext);
 
       console.info(
         "CREATOR_EDITORIAL_PRIMARY_COVERAGE_REPAIR",
@@ -413,6 +430,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
+        sourceAuthoritySnapshotDigest,
         graph: result.graph,
         sourceAssessments: result.sourceAssessments,
         readiness: result.readiness,
