@@ -35,3 +35,33 @@ assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,records:records.
 assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,decision:{...decision,excludedClaimIds:['claim-2']},persistedContext:persisted}),/UNAUTHORIZED/);
 assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,projectId:'other',persistedContext:persisted}),/SNAPSHOT_INVALID/);
 console.log('TRUSTED_SCOPE_PERSISTED_REHYDRATION=PASS');
+
+// Exercise authorized freeze and the loader against persisted row-shaped data;
+// this is an in-memory repository, not a live Supabase/PostgreSQL test.
+const { createSourceAuthorityWorkflow } = await import('../lib/research/sourceAuthorityWorkflow.ts');
+const { loadAuthoritativeResearchGraph } = await import('../lib/research/authoritativeResearchGraph.ts');
+let stored = null;
+const workflow = createSourceAuthorityWorkflow({enabled:true,authenticateReviewer:async t=>t==='reviewer-token'?'reviewer':null,ownsProject:async(o,p)=>o==='owner'&&p==='project',insertSnapshot:async row=>{stored=JSON.parse(JSON.stringify(row));},loadSnapshot:async()=>stored,acquire:async()=>{throw Error('unused');},insertRecord:async()=>{throw Error('unused');},now:()=> '2026-01-01T00:00:00Z'});
+const forgedGraph = structuredClone(graph); forgedGraph.claims[0].text += ' invented';
+await assert.rejects(()=>workflow.freeze({token:'reviewer-token',ownerId:'owner',projectId:'project',context:original,originalGraph:forgedGraph,initialGraph:graph}),/CLAIM_CHANGED|SNAPSHOT_MISMATCH/);
+await assert.rejects(()=>workflow.freeze({token:'not-authorized',ownerId:'owner',projectId:'project',context:original,originalGraph:graph,initialGraph:graph}),/UNAUTHORIZED/);
+await workflow.freeze({token:'reviewer-token',ownerId:'owner',projectId:'project',context:original,originalGraph:graph,initialGraph:graph});
+const repository = {ownsProject:async(o,p)=>o==='owner'&&p==='project',loadSnapshot:async()=>stored,loadRecords:async()=>JSON.parse(JSON.stringify(records))};
+const load = (overrides={}) => loadAuthoritativeResearchGraph({ownerUserId:'owner',projectId:'project',snapshotDigest:snapshot.snapshot_digest,now:args.now,repository,...overrides});
+const loaded = await load();
+assert.deepEqual(loaded.originalResearchSnapshot,graph); assert.deepEqual(loaded.initialResearchSnapshot,graph);
+assert.deepEqual(rehydrateTrustedScopeReviewedContext({...args,originalSnapshot:loaded.originalSnapshot,originalResearchSnapshot:loaded.originalResearchSnapshot,initialResearchSnapshot:loaded.initialResearchSnapshot,records:loaded.records,persistedContext:persisted}),saved);
+await assert.rejects(()=>load({ownerUserId:'other'}),/PROJECT_INVALID/);
+await assert.rejects(()=>load({projectId:'other'}),/PROJECT_INVALID/);
+await assert.rejects(()=>load({snapshotDigest:'0'.repeat(64)}),/SNAPSHOT_INVALID/);
+await assert.rejects(()=>load({now:Date.parse('2031-01-01T00:00:00Z')}),/RECORDS_INVALID/);
+const originalStored=structuredClone(stored);
+stored.original_research_graph.claims[0].text+=' forged';
+await assert.rejects(()=>load(),/GRAPH_DIGEST_MISMATCH/);
+stored=structuredClone(originalStored); stored.original_research_graph=null;
+await assert.rejects(()=>load(),/GRAPHS_UNAVAILABLE/);
+stored=structuredClone(originalStored);
+const forgedMetadata=structuredClone(persisted); forgedMetadata.counterEvidenceReview.originalResearchSnapshot.claims[0].text+=' forged';
+assert.throws(()=>rehydrateTrustedScopeReviewedContext({...args,originalSnapshot:loaded.originalSnapshot,originalResearchSnapshot:loaded.originalResearchSnapshot,initialResearchSnapshot:loaded.initialResearchSnapshot,records:loaded.records,persistedContext:forgedMetadata}),/MISMATCH/);
+assert.deepEqual(stored,originalStored); assert.deepEqual(graph,args.originalResearchSnapshot);
+console.log('SERVER_RESEARCH_GRAPH_CAPTURE_LOAD_OFFLINE=PASS');

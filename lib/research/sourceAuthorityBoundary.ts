@@ -13,6 +13,7 @@ const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(ca
 export const sourceAuthoritySnapshotDigest = (context: ScriptPlannerEditorialContext) => digest(context);
 export const sourceAuthoritySourceDigest = (source: ScriptPlannerEditorialContext["sources"][number]) => digest(source);
 export const sourceAuthorityPassageDigest = (evidence: ScriptPlannerEditorialContext["evidence"][number]) => digest(evidence);
+export const sourceAuthorityGraphDigest = (original: unknown, initial: unknown) => digest([original, initial]);
 
 export function validateOwnedSourceSnapshot(input: {
   ownerUserId: string;

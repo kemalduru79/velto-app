@@ -1,10 +1,12 @@
 import { normalizeScriptPlannerEditorialContext } from './scriptPlannerEditorialContext.ts';
-import { sourceAuthoritySnapshotDigest, validateOwnedSourceSnapshot } from './sourceAuthorityBoundary.ts';
+import { sourceAuthoritySnapshotDigest, sourceAuthorityGraphDigest, validateOwnedSourceSnapshot } from './sourceAuthorityBoundary.ts';
+import { validateResearchGraphsForSnapshot } from './trustedDispositionResolver.ts';
+import type { ResearchClaimEvidenceGraph } from './claimEvidenceGraph.ts';
 import { prepareReviewedSourceAuthorityRecord } from './sourceAuthorityIssuance.ts';
 import type { OriginalSourceDocument } from './originalSourceEvidence.ts';
 import type { ResearchSource } from './sourceContract.ts';
 
-type Snapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown };
+type Snapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown; original_research_graph?: ResearchClaimEvidenceGraph; initial_research_graph?: ResearchClaimEvidenceGraph; research_graph_digest?: string };
 type Decision = { publisherAuthoredDocument: boolean; classification: 'original_research' | 'primary_document' | 'secondary' | 'unknown'; basis: string; documentDigest: string; disposition?: import('./sourceAuthorityIssuance.ts').ClaimEvidenceDisposition; dispositionRationale?: string };
 type Dependencies = {
   enabled: boolean;
@@ -33,12 +35,20 @@ export function createSourceAuthorityWorkflow(deps: Dependencies) {
     if (!context || !validateOwnedSourceSnapshot({ ownerUserId: ownerId, projectId, context, snapshot: row }) || sourceAuthoritySnapshotDigest(context) !== digest) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
     return context;
   }
-  async function freeze(input: { token: string; ownerId: string; projectId: string; context: unknown }) {
+  async function freeze(input: { token: string; ownerId: string; projectId: string; context: unknown; originalGraph?: ResearchClaimEvidenceGraph; initialGraph?: ResearchClaimEvidenceGraph }) {
     await authorize(input.token, input.ownerId, input.projectId);
-    const context = normalizeScriptPlannerEditorialContext(input.context);
+    const context = normalizeScriptPlannerEditorialContext(input.context, false);
     if (!context) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
     const snapshot_digest = sourceAuthoritySnapshotDigest(context);
-    await deps.insertSnapshot({ owner_user_id: input.ownerId, project_id: input.projectId, snapshot_digest, editorial_context: context });
+    const row: Snapshot = { owner_user_id: input.ownerId, project_id: input.projectId, snapshot_digest, editorial_context: context };
+    if (input.originalGraph || input.initialGraph) {
+      if (!input.originalGraph || !input.initialGraph) throw new Error('RESEARCH_AUTHORITY_GRAPHS_INCOMPLETE');
+      const checked = validateResearchGraphsForSnapshot({ ownerUserId: input.ownerId, projectId: input.projectId, originalSnapshot: row, originalResearchSnapshot: input.originalGraph, initialResearchSnapshot: input.initialGraph });
+      row.original_research_graph = checked.graph;
+      row.initial_research_graph = checked.initial;
+      row.research_graph_digest = sourceAuthorityGraphDigest(checked.graph, checked.initial);
+    }
+    await deps.insertSnapshot(row);
     return { snapshotDigest: snapshot_digest };
   }
   async function inspect(input: { token: string; ownerId: string; projectId: string; snapshotDigest: string; claimId: string; evidenceId: string }) {

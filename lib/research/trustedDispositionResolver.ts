@@ -70,6 +70,24 @@ export function createTrustedScopeReviewedContext(input: {
   decision: CounterEvidenceScopeDecision; originalResearchSnapshot: ResearchClaimEvidenceGraph;
   initialResearchSnapshot: ResearchClaimEvidenceGraph; now?: number;
 }): ScriptPlannerEditorialContext {
+  const { original, graph, initial } = validateResearchGraphsForSnapshot(input);
+  const verified = resolveTrustedDisposition({ ...input, scopeDecision: input.decision });
+  const excluded = new Set(input.decision.excludedClaimIds);
+  const unresolved = createCounterEvidenceReview(original).unresolvedClaimIds.filter(id => !excluded.has(id));
+  if (unresolved.some(id => !verified.has(id))) throw new Error('DISPOSITION_UNRESOLVED_RETAINED');
+  const result: ScriptPlannerEditorialContext = {
+    ...original,
+    claims: original.claims.filter(claim => !excluded.has(claim.claimId)),
+    counterEvidenceReview: { originalContext: structuredClone(original), originalResearchSnapshot: structuredClone(graph), initialResearchSnapshot: structuredClone(initial), decision: structuredClone(input.decision) },
+  };
+  if (new TextEncoder().encode(JSON.stringify(result)).byteLength > 2_000_000) throw new Error('COUNTER_REVIEW_SNAPSHOT_TOO_LARGE');
+  return result;
+}
+
+export function validateResearchGraphsForSnapshot(input: {
+  ownerUserId: string; projectId: string; originalSnapshot: OwnedSnapshot;
+  originalResearchSnapshot: ResearchClaimEvidenceGraph; initialResearchSnapshot: ResearchClaimEvidenceGraph;
+}) {
   const original = normalizeScriptPlannerEditorialContext(input.originalSnapshot.editorial_context, false);
   if (!original || !validateOwnedSourceSnapshot({ ownerUserId: input.ownerUserId, projectId: input.projectId, context: original, snapshot: input.originalSnapshot })) throw new Error('DISPOSITION_SNAPSHOT_INVALID');
   const graph = createResearchClaimEvidenceGraph(input.originalResearchSnapshot);
@@ -92,17 +110,7 @@ export function createTrustedScopeReviewedContext(input: {
     const material = graph.sources.find(source => source.sourceId === evidence.sourceId)?.summary?.replace(/\s+/g, ' ').trim();
     if (passage && !material?.includes(passage)) throw new Error('COUNTER_REVIEW_EXCERPT_OWNERSHIP_UNVERIFIED');
   }
-  const verified = resolveTrustedDisposition({ ...input, scopeDecision: input.decision });
-  const excluded = new Set(input.decision.excludedClaimIds);
-  const unresolved = createCounterEvidenceReview(original).unresolvedClaimIds.filter(id => !excluded.has(id));
-  if (unresolved.some(id => !verified.has(id))) throw new Error('DISPOSITION_UNRESOLVED_RETAINED');
-  const result: ScriptPlannerEditorialContext = {
-    ...original,
-    claims: original.claims.filter(claim => !excluded.has(claim.claimId)),
-    counterEvidenceReview: { originalContext: structuredClone(original), originalResearchSnapshot: structuredClone(graph), initialResearchSnapshot: structuredClone(initial), decision: structuredClone(input.decision) },
-  };
-  if (new TextEncoder().encode(JSON.stringify(result)).byteLength > 2_000_000) throw new Error('COUNTER_REVIEW_SNAPSHOT_TOO_LARGE');
-  return result;
+  return { original, graph, initial };
 }
 
 /** Parse the stored projection using the ordinary normalizer without its audit
