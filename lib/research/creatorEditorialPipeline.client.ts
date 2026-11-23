@@ -376,6 +376,7 @@ export async function runCreatorEditorialScriptPipeline(
       topic,
       sources,
       sourceResearchPurposes,
+      projectId: input.scriptPlanRequest.projectId,
       creatorProfile: input.creatorProfile ?? {},
     },
   });

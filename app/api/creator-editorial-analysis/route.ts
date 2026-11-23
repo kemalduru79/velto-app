@@ -716,8 +716,25 @@ export async function POST(request: Request) {
       sourceAssessments,
     });
 
+    // The pipeline's initial snapshot is the final graph returned by this
+    // route, after its internal repairs. Later primary-coverage augmentation
+    // is a distinct graph and requires its own server-side capture.
+    let sourceAuthorityCaptured = false;
+    const projectId = diagnosticText(secured.context.body.projectId, 200);
+    if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED === "true" && projectId) {
+      try {
+        const { captureServerEditorialAnalysis } = await import("@/lib/research/editorialGraphCapture.server");
+        const result = await captureServerEditorialAnalysis({ ownerUserId: secured.context.user.id, projectId, context: scriptContext, originalGraph: graph, initialGraph: graph });
+        sourceAuthorityCaptured = result.captured;
+      } catch {
+        // Analysis remains available, but no capture means no new authority.
+        console.warn("CREATOR_EDITORIAL_CAPTURE_UNAVAILABLE");
+      }
+    }
+
     return NextResponse.json({
       success: true,
+      sourceAuthorityCaptured,
       graph,
       sourceAssessments,
       readiness,
