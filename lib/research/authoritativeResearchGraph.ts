@@ -5,7 +5,7 @@ import type { ResearchClaimEvidenceGraph } from './claimEvidenceGraph.ts';
 export type StoredResearchSnapshot = { owner_user_id: string; project_id: string; snapshot_digest: string; editorial_context: unknown; original_research_graph?: ResearchClaimEvidenceGraph | null; initial_research_graph?: ResearchClaimEvidenceGraph | null; research_graph_digest?: string | null; parent_snapshot_digest?: string | null; research_revision?: number | null };
 
 /** The repository is a trusted server adapter; no client graph is accepted. */
-export async function loadAuthoritativeResearchGraph(input: {
+export async function loadPendingReviewResearchGraph(input: {
   ownerUserId: string; projectId: string; snapshotDigest: string; now?: number;
   repository: { ownsProject: (owner: string, project: string) => Promise<boolean>; activeResearch: (owner: string, project: string) => Promise<{ revision:number; digest:string | null } | null>; loadSnapshot: (owner: string, project: string, digest: string) => Promise<StoredResearchSnapshot | null>; loadRecords: (owner: string, project: string, digest: string) => Promise<SourceAuthorityRecord[]> };
 }) {
@@ -26,8 +26,15 @@ export async function loadAuthoritativeResearchGraph(input: {
   const { original, graph, initial } = validateResearchGraphsForSnapshot({ ownerUserId: input.ownerUserId, projectId: input.projectId, originalSnapshot: row, originalResearchSnapshot: row.original_research_graph, initialResearchSnapshot: row.initial_research_graph });
   if (sourceAuthoritySnapshotDigest(original) !== input.snapshotDigest) throw new Error('RESEARCH_AUTHORITY_SNAPSHOT_INVALID');
   const records = await input.repository.loadRecords(input.ownerUserId, input.projectId, input.snapshotDigest);
-  if (!validateSourceAuthorityRecords({ ownerUserId: input.ownerUserId, projectId: input.projectId, context: original, records, now: input.now }).ok) throw new Error('RESEARCH_AUTHORITY_RECORDS_INVALID');
+  const validation = validateSourceAuthorityRecords({ ownerUserId: input.ownerUserId, projectId: input.projectId, context: original, records, now: input.now });
   const finalActive = await input.repository.activeResearch(input.ownerUserId, input.projectId);
   if (!finalActive || finalActive.digest !== active.digest || finalActive.revision !== active.revision) throw new Error('RESEARCH_AUTHORITY_NOT_ACTIVE');
-  return { ownerUserId: input.ownerUserId, projectId: input.projectId, originalResearchSnapshot: structuredClone(graph), initialResearchSnapshot: structuredClone(initial), originalSnapshot: structuredClone(row), editorialContext: structuredClone(original), snapshotDigest: input.snapshotDigest, records: structuredClone(records) };
+  return { ownerUserId: input.ownerUserId, projectId: input.projectId, originalResearchSnapshot: structuredClone(graph), initialResearchSnapshot: structuredClone(initial), originalSnapshot: structuredClone(row), editorialContext: structuredClone(original), snapshotDigest: input.snapshotDigest, records: structuredClone(records), validation };
+}
+
+/** Pending review is never itself an authority to generate. */
+export async function loadAuthoritativeResearchGraph(input: Parameters<typeof loadPendingReviewResearchGraph>[0]) {
+  const result = await loadPendingReviewResearchGraph(input);
+  if (!result.validation.ok) throw new Error('RESEARCH_AUTHORITY_RECORDS_INVALID');
+  return result;
 }

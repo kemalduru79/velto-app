@@ -3,6 +3,7 @@
 -- enforced by application checks, not by PostgreSQL policies in this draft.
 do $$ begin
   if (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('creator_source_authority_snapshots','creator_source_authority_verifications') and c.relrowsecurity) <> 2 then raise exception 'RLS_NOT_ENABLED'; end if;
+  if has_function_privilege('anon','public.creator_issue_source_authority_record(uuid,text,bigint,text,jsonb)','EXECUTE') or has_function_privilege('authenticated','public.creator_issue_source_authority_record(uuid,text,bigint,text,jsonb)','EXECUTE') or not has_function_privilege('service_role','public.creator_issue_source_authority_record(uuid,text,bigint,text,jsonb)','EXECUTE') then raise exception 'REVIEW_ISSUANCE_PRIVILEGES_INVALID'; end if;
 end $$;
 create function public.ci_expect_denied(statement text) returns void language plpgsql as $$
 begin

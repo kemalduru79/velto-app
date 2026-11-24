@@ -6,7 +6,7 @@ import { parseCreatorProfile } from '../lib/creator/creatorProfile.ts';
 import { normalizeScriptPlannerEditorialContext } from '../lib/research/scriptPlannerEditorialContext.ts';
 import { sourceAuthoritySourceDigest, sourceAuthorityPassageDigest } from '../lib/research/sourceAuthorityBoundary.ts';
 import { captureEditorialAnalysisGraph } from '../lib/research/editorialGraphCapture.ts';
-import { loadAuthoritativeResearchGraph } from '../lib/research/authoritativeResearchGraph.ts';
+import { loadAuthoritativeResearchGraph, loadPendingReviewResearchGraph } from '../lib/research/authoritativeResearchGraph.ts';
 const f=issue44EvidenceFixture();
 f.sources=f.sources.filter(s=>['source-3','source-4'].includes(s.sourceId));
 f.claims=f.claims.filter(c=>['claim-2','claim-3'].includes(c.claimId)).map(c=>({...c,claimType:'EDITORIAL_INFERENCE'}));
@@ -27,6 +27,9 @@ assert.deepEqual(stored.original_research_graph,graph);assert.deepEqual(stored.i
 const load=()=>loadAuthoritativeResearchGraph({ownerUserId:'owner',projectId:'project',snapshotDigest:stored.snapshot_digest,repository:repo,now:Date.parse('2026-01-01T00:00:00Z')});
 // Capturing client-provided source flags creates no verification records or authority.
 await assert.rejects(load,/RECORDS_INVALID/);
+const pending=await loadPendingReviewResearchGraph({ownerUserId:'owner',projectId:'project',snapshotDigest:stored.snapshot_digest,repository:repo,now:Date.parse('2026-01-01T00:00:00Z')});
+assert.equal(pending.validation.ok,false);assert.equal(pending.snapshotDigest,stored.snapshot_digest);
+await assert.rejects(()=>loadPendingReviewResearchGraph({ownerUserId:'owner',projectId:'other',snapshotDigest:stored.snapshot_digest,repository:repo}),/PROJECT_INVALID/);
 records=context.claims.map(c=>{const e=context.evidence.find(x=>x.evidenceId===c.supportingEvidenceIds[0]);const s=context.sources.find(x=>x.sourceId===e.sourceId);return {owner_user_id:'owner',project_id:'project',snapshot_digest:stored.snapshot_digest,source_id:s.sourceId,claim_id:c.claimId,evidence_id:e.evidenceId,source_digest:sourceAuthoritySourceDigest(s),passage_digest:sourceAuthorityPassageDigest(e),passage_verification:'exact_source_match',authority_classification:'secondary',expires_at:'2030-01-01T00:00:00Z'};});
 const loaded=await load();assert.deepEqual(loaded.originalResearchSnapshot,graph);assert.deepEqual(loaded.initialResearchSnapshot,initial);
 assert.deepEqual(loaded.records,records);assert.equal(loaded.records.some(r=>r.claim_evidence_disposition),false);
@@ -65,6 +68,9 @@ assert.equal(snapshots.get(child.snapshotDigest).parent_snapshot_digest,parentDi
 assert.deepEqual(snapshots.get(child.snapshotDigest).initial_research_graph,initial);
 assert.equal(recordsBySnapshot.has(child.snapshotDigest),false);
 await assert.rejects(()=>loadParent('owner','project',child.snapshotDigest),/RECORDS_INVALID/);
+const pendingChild=await loadPendingReviewResearchGraph({ownerUserId:'owner',projectId:'project',snapshotDigest:child.snapshotDigest,repository,now:Date.parse('2026-01-01T00:00:00Z')});
+assert.equal(pendingChild.validation.ok,false);assert.equal(pendingChild.originalSnapshot.parent_snapshot_digest,parentDigest);
+await assert.rejects(()=>loadPendingReviewResearchGraph({ownerUserId:'owner',projectId:'project',snapshotDigest:parentDigest,repository}),/NOT_ACTIVE/);
 const childContext=normalizeScriptPlannerEditorialContext(changedContext);
 const childRecords=childContext.claims.flatMap(c=>c.supportingEvidenceIds.map((id)=>{const e=childContext.evidence.find(x=>x.evidenceId===id),s=childContext.sources.find(x=>x.sourceId===e.sourceId);return {owner_user_id:'owner',project_id:'project',snapshot_digest:child.snapshotDigest,source_id:s.sourceId,claim_id:c.claimId,evidence_id:id,source_digest:sourceAuthoritySourceDigest(s),passage_digest:sourceAuthorityPassageDigest(e),passage_verification:'exact_source_match',authority_classification:'secondary',expires_at:'2030-01-01T00:00:00Z',reviewer_user_id:'reviewer',reviewer_authorization:'server_verified_reviewer_allowlist',qualification_method:'authorized_human_claim_review',document_digest:'a'.repeat(64),disposition_rationale:'Reviewer checked the exact limitation.',claim_evidence_disposition:c.claimId===childContext.claims[0].claimId?'documented_methodological_limitation':'independent_editorial_inference'};}));
 recordsBySnapshot.set(child.snapshotDigest,childRecords);

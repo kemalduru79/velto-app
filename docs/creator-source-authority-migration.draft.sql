@@ -95,6 +95,26 @@ end $$;
 revoke all on function public.creator_activate_research_snapshot(uuid,text,bigint,text,jsonb) from public, anon, authenticated;
 grant execute on function public.creator_activate_research_snapshot(uuid,text,bigint,text,jsonb) to service_role;
 
+-- Server-generated review records only. The project lock serializes issuance
+-- with both revision changes and child-snapshot activation.
+create function public.creator_issue_source_authority_record(p_owner uuid, p_project text, p_revision bigint, p_digest text, p_record jsonb)
+returns void language plpgsql security invoker set search_path = '' as $$
+declare v_revision bigint; v_active text; v_record public.creator_source_authority_verifications;
+begin
+  select research_revision, active_research_snapshot_digest into v_revision, v_active
+    from public.velto_projects where id::text = p_project and owner_user_id = p_owner and flow_type = 'creator_lab' for update;
+  if not found then raise exception 'RESEARCH_PROJECT_UNAUTHORIZED'; end if;
+  if v_revision is distinct from p_revision or v_active is distinct from p_digest or p_revision < 1 then raise exception 'RESEARCH_REVISION_STALE'; end if;
+  if not exists (select 1 from public.creator_source_authority_snapshots where owner_user_id = p_owner and project_id = p_project and snapshot_digest = p_digest and research_revision = p_revision) then raise exception 'RESEARCH_SNAPSHOT_INVALID'; end if;
+  if p_record->>'owner_user_id' is distinct from p_owner::text or p_record->>'project_id' is distinct from p_project or p_record->>'snapshot_digest' is distinct from p_digest then raise exception 'RESEARCH_RECORD_SCOPE_INVALID'; end if;
+  v_record := pg_catalog.jsonb_populate_record(null::public.creator_source_authority_verifications, p_record);
+  insert into public.creator_source_authority_verifications
+    (owner_user_id,project_id,snapshot_digest,source_id,claim_id,evidence_id,source_digest,passage_digest,passage_verification,authority_classification,document_digest,qualification_method,claim_evidence_disposition,disposition_rationale,reviewer_user_id,reviewer_authorization,review_basis,publisher_authorship_confirmed,qualified_at,expires_at)
+  values (v_record.owner_user_id,v_record.project_id,v_record.snapshot_digest,v_record.source_id,v_record.claim_id,v_record.evidence_id,v_record.source_digest,v_record.passage_digest,v_record.passage_verification,v_record.authority_classification,v_record.document_digest,v_record.qualification_method,v_record.claim_evidence_disposition,v_record.disposition_rationale,v_record.reviewer_user_id,v_record.reviewer_authorization,v_record.review_basis,v_record.publisher_authorship_confirmed,v_record.qualified_at,v_record.expires_at);
+end $$;
+revoke all on function public.creator_issue_source_authority_record(uuid,text,bigint,text,jsonb) from public, anon, authenticated;
+grant execute on function public.creator_issue_source_authority_record(uuid,text,bigint,text,jsonb) to service_role;
+
 -- Protect server-owned fields and invalidate on changes to persisted research
 -- brief identity. Duration, audio, scenes and other unrelated saves are excluded.
 create function public.creator_guard_research_identity()

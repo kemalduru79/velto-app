@@ -25,18 +25,25 @@ export function createServerSourceAuthorityWorkflow() {
       if (error) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_READ_FAILED');
       return data;
     },
+    loadActiveSnapshot: async (ownerId, projectId, digest) => {
+      const active = await loadServerPendingReviewResearchGraph(ownerId, projectId, digest);
+      const revision = active.originalSnapshot.research_revision;
+      if (typeof revision !== 'number' || !Number.isSafeInteger(revision)) throw new Error('SOURCE_AUTHORITY_REVISION_INVALID');
+      return { editorialContext: active.editorialContext, researchRevision: revision };
+    },
     acquire: async (source) => (await acquireOriginalSourceDocument({ source, authority: 'unknown' })).document,
-    insertRecord: async (record) => { const { error } = await supabase.from('creator_source_authority_verifications').insert(record); if (error) throw new Error('SOURCE_AUTHORITY_RECORD_WRITE_FAILED'); },
+    insertRecord: async (record, revision) => { const { error } = await supabase.rpc('creator_issue_source_authority_record', { p_owner: record.owner_user_id, p_project: record.project_id, p_revision: revision, p_digest: record.snapshot_digest, p_record: record }); if (error) throw new Error('SOURCE_AUTHORITY_RECORD_WRITE_FAILED'); },
     now: () => new Date().toISOString(),
   });
 }
 
 /** Call only after the caller's Supabase Auth identity has been verified. */
-export async function loadServerAuthoritativeResearchGraph(ownerUserId: string, projectId: string, snapshotDigest: string) {
+async function loadServerResearchGraph(ownerUserId: string, projectId: string, snapshotDigest: string, pending: boolean) {
   if (process.env.VELTO_SOURCE_AUTHORITY_ENABLED !== 'true') throw new Error('SOURCE_AUTHORITY_DISABLED');
   const supabase = createServerSupabaseClient();
-  const { loadAuthoritativeResearchGraph } = await import('./authoritativeResearchGraph');
-  return loadAuthoritativeResearchGraph({ ownerUserId, projectId, snapshotDigest, repository: {
+  const { loadAuthoritativeResearchGraph, loadPendingReviewResearchGraph } = await import('./authoritativeResearchGraph');
+  const load = pending ? loadPendingReviewResearchGraph : loadAuthoritativeResearchGraph;
+  return load({ ownerUserId, projectId, snapshotDigest, repository: {
     ownsProject: async (owner, projectId) => (await getPersistenceServices().projectRepository.getForOwner(projectId, owner))?.flow_type === 'creator_lab',
     activeResearch: async (owner, projectId) => {
       const p = await getPersistenceServices().projectRepository.getForOwner(projectId, owner);
@@ -54,4 +61,13 @@ export async function loadServerAuthoritativeResearchGraph(ownerUserId: string, 
       return data ?? [];
     },
   } });
+}
+
+export async function loadServerAuthoritativeResearchGraph(ownerUserId: string, projectId: string, snapshotDigest: string) {
+  return loadServerResearchGraph(ownerUserId, projectId, snapshotDigest, false);
+}
+
+/** Server-only: this result must never be treated as generation authority. */
+export async function loadServerPendingReviewResearchGraph(ownerUserId: string, projectId: string, snapshotDigest: string) {
+  return loadServerResearchGraph(ownerUserId, projectId, snapshotDigest, true);
 }

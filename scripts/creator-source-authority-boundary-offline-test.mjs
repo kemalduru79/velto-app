@@ -66,19 +66,27 @@ console.log('SOURCE_AUTHORITY_MOCK_REVIEW_CHAIN=PASS');
 
 const { createSourceAuthorityWorkflow } = await import('../lib/research/sourceAuthorityWorkflow.ts');
 const rows = new Map(), written = [];
+let activeDigest = '', activeRevision = 1;
 const workflowDeps = {
   enabled: true,
   authenticateReviewer: async token => token === 'verified-reviewer-token' ? 'reviewer1' : null,
   ownsProject: async (owner, project) => owner === 'user1' && project === 'project1',
   insertSnapshot: async row => { if (rows.has(row.snapshot_digest)) throw Error('duplicate'); rows.set(row.snapshot_digest, structuredClone(row)); },
   loadSnapshot: async (_owner, _project, hash) => rows.get(hash) ?? null,
+  loadActiveSnapshot: async (_owner, _project, hash) => {
+    if (hash !== activeDigest) throw Error('RESEARCH_AUTHORITY_NOT_ACTIVE');
+    const row = rows.get(hash);
+    if (!row || sourceAuthoritySnapshotDigest(row.editorial_context) !== hash) throw Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
+    return { editorialContext: row.editorial_context, researchRevision: activeRevision };
+  },
   acquire: deps.acquire,
-  insertRecord: async row => { written.push(structuredClone(row)); },
+  insertRecord: async (row, revision) => { if (revision !== activeRevision || row.snapshot_digest !== activeDigest) throw Error('RESEARCH_REVISION_STALE'); written.push(structuredClone(row)); },
   now: () => '2026-01-01T00:00:00Z',
 };
 const wf = createSourceAuthorityWorkflow(workflowDeps);
 const common = { token: 'verified-reviewer-token', ownerId: 'user1', projectId: 'project1' };
 const frozen = await wf.freeze({ ...common, context: raw });
+activeDigest = frozen.snapshotDigest;
 const selection = { ...common, snapshotDigest: frozen.snapshotDigest, claimId: 'c1', evidenceId: 'e1' };
 const examined = await wf.inspect(selection);
 const decision = { publisherAuthoredDocument: true, classification: 'original_research', basis: 'Human verified the original study for this claim.', documentDigest: examined.documentDigest };
@@ -89,6 +97,16 @@ await assert.rejects(() => wf.issue({ ...selection, token: 'forged', decision, e
 await assert.rejects(() => wf.issue({ ...selection, projectId: 'other', decision, expiresAt: '2026-01-02T00:00:00Z' }), /UNAUTHORIZED/);
 await assert.rejects(() => wf.issue({ ...selection, decision: { ...decision, documentDigest: 'forged' }, expiresAt: '2026-01-02T00:00:00Z' }), /DOCUMENT_CHANGED/);
 await assert.rejects(() => wf.issue({ ...selection, decision, expiresAt: '2025-01-01T00:00:00Z' }), /EXPIRY/);
+activeDigest = 'b'.repeat(64);
+await assert.rejects(() => wf.inspect(selection), /NOT_ACTIVE/);
+await assert.rejects(() => wf.issue({ ...selection, decision, expiresAt: '2026-01-02T00:00:00Z' }), /NOT_ACTIVE/);
+activeDigest = frozen.snapshotDigest;
+const racing = createSourceAuthorityWorkflow({ ...workflowDeps, acquire: async source => { const doc = await deps.acquire(source); activeRevision++; return doc; } });
+await assert.rejects(() => racing.issue({ ...selection, decision, expiresAt: '2026-01-02T00:00:00Z' }), /REVISION_STALE/);
+await assert.rejects(() => racing.inspect(selection), /REVISION_STALE/);
+const changedDocument = createSourceAuthorityWorkflow({ ...workflowDeps, acquire: async source => ({ ...await deps.acquire(source), content: 'A different document without the cited passage.' }) });
+await assert.rejects(() => changedDocument.issue({ ...selection, decision, expiresAt: '2026-01-02T00:00:00Z' }), /PASSAGE_NOT_IN_SERVER_ACQUIRED_DOCUMENT/);
+assert.equal(written.length, 1);
 await assert.rejects(() => createSourceAuthorityWorkflow({ ...workflowDeps, enabled: false }).freeze({ ...common, context: raw }), /DISABLED/);
 rows.get(frozen.snapshotDigest).editorial_context.claims[0].text = 'altered';
 await assert.rejects(() => wf.issue({ ...selection, decision, expiresAt: '2026-01-02T00:00:00Z' }), /SNAPSHOT_INVALID/);

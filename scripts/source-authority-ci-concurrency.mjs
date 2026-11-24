@@ -49,4 +49,20 @@ const [won, lost] = await Promise.all([winner.done, competing.done]);
 assert.equal(won.code, 0, won.error); assert.notEqual(lost.code, 0); assert.match(lost.error, /RESEARCH_PARENT_STALE/);
 assert.equal(psql(`select active_research_snapshot_digest from public.velto_projects where id='${project}'`), c);
 assert.equal(psql(`select count(*) from public.creator_source_authority_snapshots where snapshot_digest='${d}'`), '0');
+// A child activation holds the same project lock required by issuance. The
+// old parent's reviewer write must wait, then fail without inserting a row.
+const e = '3'.repeat(64);
+const activation = start('velto-authority-activation-ci', `set role service_role; begin; ${activate(second,e,c)}; select pg_sleep(3); commit`);
+await awaitSleep('velto-authority-activation-ci');
+const issue = start('velto-authority-issuance-ci', `set role service_role; select public.creator_issue_source_authority_record('${owner}','${project}',${second},'${c}',jsonb_build_object('owner_user_id','${owner}','project_id','${project}','snapshot_digest','${c}'))`);
+let issueBlocked = false;
+for (let attempt = 0; attempt < 60; attempt++) {
+  if (psql("select count(*) from pg_stat_activity where application_name='velto-authority-issuance-ci' and wait_event_type='Lock'") === '1') { issueBlocked = true; break; }
+  await delay(30);
+}
+assert.equal(issueBlocked, true, 'issuance must wait for snapshot activation');
+const [activated, rejected] = await Promise.all([activation.done, issue.done]);
+assert.equal(activated.code, 0, activated.error); assert.notEqual(rejected.code, 0); assert.match(rejected.error, /RESEARCH_REVISION_STALE/);
+assert.equal(psql(`select count(*) from public.creator_source_authority_verifications where project_id='${project}' and snapshot_digest='${c}'`), '0');
+console.log('POSTGRES_REVIEW_ISSUANCE_ACTIVATION_RACE=PASS');
 console.log('POSTGRES_TWO_SESSION_STALE_AND_COMPETING_AUGMENTATION=PASS');

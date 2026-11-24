@@ -1,5 +1,5 @@
 import { normalizeScriptPlannerEditorialContext } from './scriptPlannerEditorialContext.ts';
-import { sourceAuthoritySnapshotDigest, sourceAuthorityGraphDigest, validateOwnedSourceSnapshot } from './sourceAuthorityBoundary.ts';
+import { sourceAuthoritySnapshotDigest, sourceAuthorityGraphDigest } from './sourceAuthorityBoundary.ts';
 import { validateResearchGraphsForSnapshot } from './trustedDispositionResolver.ts';
 import type { ResearchClaimEvidenceGraph } from './claimEvidenceGraph.ts';
 import { prepareReviewedSourceAuthorityRecord } from './sourceAuthorityIssuance.ts';
@@ -14,8 +14,9 @@ type Dependencies = {
   ownsProject: (ownerId: string, projectId: string) => Promise<boolean>;
   insertSnapshot: (snapshot: Snapshot) => Promise<void>;
   loadSnapshot: (ownerId: string, projectId: string, digest: string) => Promise<Snapshot | null>;
+  loadActiveSnapshot: (ownerId: string, projectId: string, digest: string) => Promise<{ editorialContext: unknown; researchRevision: number }>;
   acquire: (source: ResearchSource) => Promise<OriginalSourceDocument>;
-  insertRecord: (record: Awaited<ReturnType<typeof prepareReviewedSourceAuthorityRecord>>) => Promise<void>;
+  insertRecord: (record: Awaited<ReturnType<typeof prepareReviewedSourceAuthorityRecord>>, revision: number) => Promise<void>;
   now: () => string;
 };
 
@@ -30,10 +31,10 @@ export function createSourceAuthorityWorkflow(deps: Dependencies) {
   }
   async function load(ownerId: string, projectId: string, digest: string) {
     if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
-    const row = await deps.loadSnapshot(ownerId, projectId, digest);
-    const context = row ? normalizeScriptPlannerEditorialContext(row.editorial_context) : null;
-    if (!context || !validateOwnedSourceSnapshot({ ownerUserId: ownerId, projectId, context, snapshot: row }) || sourceAuthoritySnapshotDigest(context) !== digest) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
-    return context;
+    const active = await deps.loadActiveSnapshot(ownerId, projectId, digest);
+    const context = normalizeScriptPlannerEditorialContext(active.editorialContext);
+    if (!context || sourceAuthoritySnapshotDigest(context) !== digest || !Number.isSafeInteger(active.researchRevision) || active.researchRevision < 1) throw new Error('SOURCE_AUTHORITY_SNAPSHOT_INVALID');
+    return { context, revision: active.researchRevision };
   }
   async function freeze(input: { token: string; ownerId: string; projectId: string; context: unknown; originalGraph?: ResearchClaimEvidenceGraph; initialGraph?: ResearchClaimEvidenceGraph }) {
     await authorize(input.token, input.ownerId, input.projectId);
@@ -53,7 +54,7 @@ export function createSourceAuthorityWorkflow(deps: Dependencies) {
   }
   async function inspect(input: { token: string; ownerId: string; projectId: string; snapshotDigest: string; claimId: string; evidenceId: string }) {
     const reviewerId = await authorize(input.token, input.ownerId, input.projectId);
-    const context = await load(input.ownerId, input.projectId, input.snapshotDigest);
+    const { context, revision } = await load(input.ownerId, input.projectId, input.snapshotDigest);
     const now = deps.now();
     let inspected: { documentDigest: string; sourceUrl: string; documentContent: string; passage: string; claimText: string } | null = null;
     await prepareReviewedSourceAuthorityRecord({ ownerUserId: input.ownerId, projectId: input.projectId, reviewerUserId: reviewerId, context, claimId: input.claimId, evidenceId: input.evidenceId, now, expiresAt: new Date(Date.parse(now) + 86400_000).toISOString(), dependencies: {
@@ -61,11 +62,12 @@ export function createSourceAuthorityWorkflow(deps: Dependencies) {
       review: async (details) => { inspected = details; return { publisherAuthoredDocument: false, classification: 'unknown', basis: 'inspection only; no authority issued' }; },
     } });
     if (!inspected) throw new Error('SOURCE_AUTHORITY_INSPECTION_FAILED');
+    if ((await load(input.ownerId, input.projectId, input.snapshotDigest)).revision !== revision) throw new Error('SOURCE_AUTHORITY_REVISION_STALE');
     return inspected;
   }
   async function issue(input: { token: string; ownerId: string; projectId: string; snapshotDigest: string; claimId: string; evidenceId: string; expiresAt: string; decision: Decision }) {
     const reviewerId = await authorize(input.token, input.ownerId, input.projectId);
-    const context = await load(input.ownerId, input.projectId, input.snapshotDigest);
+    const { context, revision } = await load(input.ownerId, input.projectId, input.snapshotDigest);
     const record = await prepareReviewedSourceAuthorityRecord({ ownerUserId: input.ownerId, projectId: input.projectId, reviewerUserId: reviewerId, context, claimId: input.claimId, evidenceId: input.evidenceId, expiresAt: input.expiresAt, now: deps.now(), dependencies: {
       authorizeReview: async () => ({ authorized: true, basis: 'server_verified_reviewer_allowlist' }),
       acquire: deps.acquire,
@@ -74,7 +76,7 @@ export function createSourceAuthorityWorkflow(deps: Dependencies) {
         return input.decision;
       },
     } });
-    await deps.insertRecord(record);
+    await deps.insertRecord(record, revision);
     return { snapshotDigest: record.snapshot_digest, claimId: record.claim_id, evidenceId: record.evidence_id };
   }
   return { freeze, inspect, issue };
