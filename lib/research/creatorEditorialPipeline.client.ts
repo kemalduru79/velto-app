@@ -387,27 +387,31 @@ export async function runCreatorEditorialScriptPipeline(
   const parentCurrent = () => Boolean(input.operationIsCurrent?.()) && clean(input.scriptPlanRequest.projectId, 200) === parentProjectId && clean(input.accessToken, 8_000) === accessToken;
   const parentFailure = (code: string, message: string) => new CreatorEditorialPipelineError({ stage: 'editorial_analysis', code, message });
   if (!parentProjectId || !/^[0-9a-f]{64}$/.test(parentSnapshotDigest) || !parentCurrent()) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
-  const parentStatus = async (expectedRevision?: number) => {
+  const parentStatus = async (snapshot: string, expectedRevision?: number) => {
     if (!parentCurrent()) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
-    const response = await fetchImpl('/api/creator-evidence-evaluation', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${accessToken}` }, body:JSON.stringify({ operation:'review_status', projectId:parentProjectId, snapshotDigest:parentSnapshotDigest }) });
+    if (!/^[0-9a-f]{64}$/.test(snapshot)) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+    const response = await fetchImpl('/api/creator-evidence-evaluation', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${accessToken}` }, body:JSON.stringify({ operation:'review_status', projectId:parentProjectId, snapshotDigest:snapshot }) });
     const payload = await parseJsonResponse(response);
     if (!parentCurrent() || payload.status === 'STALE_RESEARCH') throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
     if (!response.ok || payload.success !== true || payload.status === 'AUTHORITY_INVALID') throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
     const revision = asPositiveInteger(payload.researchRevision);
-    if (payload.projectId !== parentProjectId || payload.snapshotDigest !== parentSnapshotDigest || revision === null || (expectedRevision !== undefined && revision !== expectedRevision)) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+    if (payload.projectId !== parentProjectId || payload.snapshotDigest !== snapshot || revision === null || (expectedRevision !== undefined && revision !== expectedRevision)) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
     if (payload.status !== 'REVIEW_REQUIRED' && payload.status !== 'REVIEW_COMPLETE') throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
     return { payload, revision };
   };
-  const initialParent = await parentStatus();
-  if (initialParent.payload.status === 'REVIEW_REQUIRED') {
-    const requirements = asArray(initialParent.payload.requirements).map(asRecord);
+  const ensureReview = async (snapshot: string, expectedRevision?: number) => {
+    const initial = await parentStatus(snapshot, expectedRevision);
+    if (initial.payload.status === 'REVIEW_COMPLETE') return initial.revision;
+    const requirements = asArray(initial.payload.requirements).map(asRecord);
     if (requirements.some(item => !item || typeof item.claimId !== 'string' || typeof item.evidenceId !== 'string' || typeof item.sourceId !== 'string')) throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
-    const pending: ParentSourceReview = { projectId:parentProjectId, snapshotDigest:parentSnapshotDigest, researchRevision:initialParent.revision, requirements:requirements as ParentSourceReview['requirements'] };
+    const pending: ParentSourceReview = { projectId:parentProjectId, snapshotDigest:snapshot, researchRevision:initial.revision, requirements:requirements as ParentSourceReview['requirements'] };
     if (!input.onParentSourceReview) { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is required before continuing.'); error.parentReview = pending; throw error; }
     await input.onParentSourceReview(pending);
-    const confirmed = await parentStatus(initialParent.revision);
+    const confirmed = await parentStatus(snapshot, initial.revision);
     if (confirmed.payload.status !== 'REVIEW_COMPLETE') { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is still required.'); error.parentReview = pending; throw error; }
-  }
+    return confirmed.revision;
+  };
+  const parentRevision = await ensureReview(parentSnapshotDigest);
 
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(
@@ -657,6 +661,8 @@ export async function runCreatorEditorialScriptPipeline(
       });
     }
 
+    const childSnapshotDigest = typeof augmentedEditorial.sourceAuthoritySnapshotDigest === 'string' ? augmentedEditorial.sourceAuthoritySnapshotDigest : '';
+    await ensureReview(childSnapshotDigest, parentRevision);
     editorial = augmentedEditorial;
     const augmentedGraph = asRecord(editorial.graph);
     if (Array.isArray(augmentedGraph?.sources)) {
@@ -678,7 +684,7 @@ export async function runCreatorEditorialScriptPipeline(
   const isCurrent = () => Boolean(input.operationIsCurrent?.()) && clean(input.scriptPlanRequest.projectId, 200) === projectId && clean(input.accessToken, 8_000) === accessToken;
   const stale = () => new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project or research changed. Refresh the evidence review." });
   if (!projectId || !/^[0-9a-f]{64}$/.test(snapshotDigest) || !isCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_EVALUATION_UNAVAILABLE", message: "Verified evidence evaluation is unavailable. Save or reload the project and retry." });
-  let revision: number | null = null;
+  let revision: number | null = parentRevision;
   const evaluate = async (scopeDecision?: CounterEvidenceScopeDecision) => {
     if (!isCurrent()) throw stale();
     let result: JsonRecord;
