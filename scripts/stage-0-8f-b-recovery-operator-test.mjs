@@ -63,7 +63,13 @@ const inventoryHash = (files) => createHash("sha256").update(`${files.sort().joi
 // migration history have expanded intentionally since the original 0.8F
 // baseline. Keep these inventory sentinels fail-closed so every later API or
 // migration surface change still requires explicit review.
-assert.equal(inventoryHash(trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file))), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c");
+const apiRoutes = trackedFiles.filter((file) => /^app\/api\/.+\/route\.ts$/.test(file));
+const reviewedAdditions = ["app/api/creator-source-authority/route.ts", "app/api/creator-evidence-evaluation/route.ts"];
+assert.ok(reviewedAdditions.every((file) => apiRoutes.includes(file)), "both reviewed authority endpoints must exist");
+assert.equal(inventoryHash(apiRoutes.filter((file) => !reviewedAdditions.includes(file))), "791e017482f4c945dc2b9d0247458643101d784fe40b29d84c06f9da1aacdc2c");
+const reviewedApiInventory = "13548d513a30ff6fce50cad8f18b75c3913bdcaf3a31167049ac3f641054066c";
+assert.equal(inventoryHash(apiRoutes), reviewedApiInventory);
+assert.notEqual(inventoryHash([...apiRoutes, "app/api/unexpected-synthetic-route/route.ts"]), reviewedApiInventory, "an additional route must invalidate the sentinel");
 assert.equal(inventoryHash(trackedFiles.filter((file) => /^supabase\/migrations\//.test(file))), "20cfcfb02bc50dd699076cd7d20d0db14cb1b9df29a870278d3784d3c3ada6dd");
 assert.equal(trackedFiles.some((file) => /\.(?:tf|tfvars|bicep)$/i.test(file) || /(?:^|\/)(?:azuredeploy|mainTemplate)\.json$/i.test(file)), false);
 

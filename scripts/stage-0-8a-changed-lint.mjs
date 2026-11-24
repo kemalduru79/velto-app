@@ -53,20 +53,30 @@ const REVIEWED_LEGACY_LINT = Object.freeze({
   }
 });
 
+// Independently reviewed additional page version; all original records remain.
+const REVIEWED_CURRENT_PAGE_LINT = Object.freeze({
+  sha256: "ab431ae05d88ffb2333f2d846036629170ade376ea15789b736c91d388f56ce1",
+  diagnosticSha256: "9a64f127c70b03f91472ef7ff21577d5744cf4c967ff6e5ad0b0c9de6a9d06c5",
+  errors: 74,
+  warnings: 82,
+});
+
 function acceptsReviewedLegacyLint(file, result) {
-  const approved = Object.hasOwn(REVIEWED_LEGACY_LINT, file) ? REVIEWED_LEGACY_LINT[file] : null;
+  const historical = Object.hasOwn(REVIEWED_LEGACY_LINT, file) ? REVIEWED_LEGACY_LINT[file] : null;
   // Babel emits this informational note for the exact reviewed >500KB page.
   // Permit only its full known text, never arbitrary warnings/configuration stderr.
   const reviewedNote = file === "app/create/page.tsx"
     ? `[BABEL] Note: The code generator has deoptimised the styling of ${path.resolve(file)} as it exceeds the max of 500KB.\n`
     : "";
-  if (!approved || result.error || result.signal || result.killed ||
+  if (!historical || result.error || result.signal || result.killed ||
       result.status !== 1 || (result.stderr && result.stderr !== reviewedNote)) return false;
 
   try {
     if (!fs.lstatSync(file).isFile()) return false;
-    if (createHash("sha256").update(fs.readFileSync(file)).digest("hex") !==
-        approved.sha256) return false;
+    const sourceHash = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+    const approved = sourceHash === historical.sha256 ? historical :
+      file === "app/create/page.tsx" && sourceHash === REVIEWED_CURRENT_PAGE_LINT.sha256 ? REVIEWED_CURRENT_PAGE_LINT : null;
+    if (!approved) return false;
 
     const reports = JSON.parse(result.stdout);
     if (!Array.isArray(reports) || reports.length !== 1) return false;

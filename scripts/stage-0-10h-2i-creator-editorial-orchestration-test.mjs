@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   CreatorEditorialPipelineError,
-  runCreatorEditorialScriptPipeline,
+  runCreatorEditorialScriptPipeline as runPipeline,
 } from "../lib/research/creatorEditorialPipeline.client.ts";
 import { getCreatorTopicAuthorityIdentity } from "../lib/creator/creatorWorkflowAuthority.ts";
 import { createResearchOrchestrationPlan } from "../lib/research/researchOrchestration.ts";
@@ -12,6 +12,49 @@ function jsonResponse(body, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// The original scenarios predate server-owned snapshots. Preserve their
+// research/provider stubs while adding the real evaluation API contract.
+const fixtureDigest = "a".repeat(64);
+const fixtureTrace = [];
+const fixtureReadiness = { version: "0.10H-2B", status: "ready", editorialReadinessScore: 88, claimCount: 0,
+  evidenceRequiredClaimCount: 0, supportedClaimCount: 0, unsupportedClaimIds: [], primarySourceRequiredClaimIds: [],
+  primarySourceCoveredClaimIds: [], counterEvidenceRecommendedClaimIds: [], counterEvidenceCoveredClaimIds: [],
+  dimensions: { evidenceCoveragePct: 100, sourceUsabilityPct: 100, primarySourceCoveragePct: 100, counterEvidenceCoveragePct: 100, sourceDiversityCount: 0 }, reviewReasons: [] };
+const fixtureReview = { snapshotFingerprint: "synthetic-review", claims: [], unresolvedClaimIds: [], nextActions: ["inspect_claim_passages", "explicitly_omit_unresolved_assertions_or_stop", "obtain_qualifying_sources_before_retrying_retained_claims"] };
+async function runCreatorEditorialScriptPipeline(input) {
+  const projectId = input.scriptPlanRequest.projectId || "synthetic-project";
+  const fetchImpl = input.fetchImpl;
+  const trace = [];
+  fixtureTrace.push(trace);
+  const result = await runPipeline({
+    ...input,
+    scriptPlanRequest: { ...input.scriptPlanRequest, projectId },
+    operationIsCurrent: input.operationIsCurrent || (() => true),
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      trace.push({ url, body });
+      if (url === "/api/creator-evidence-evaluation") {
+        assert.equal(body.projectId, projectId);
+        assert.equal(body.snapshotDigest, fixtureDigest);
+        return jsonResponse({ success: true, projectId, snapshotDigest: fixtureDigest, researchRevision: 1,
+          readiness: fixtureReadiness,
+          verifiedLimitationClaimIds: [], review: fixtureReview,
+          blockingReasons: [], generationEligible: true });
+      }
+      const response = await fetchImpl(url, init);
+      if (response.ok && (url === "/api/creator-editorial-analysis" || url === "/api/creator-editorial-primary-coverage")) {
+        const value = await response.clone().json();
+        return jsonResponse({ ...value, sourceAuthoritySnapshotDigest: fixtureDigest }, response.status);
+      }
+      return response;
+    },
+  });
+  const evaluation = trace.findIndex((call) => call.url === "/api/creator-evidence-evaluation");
+  const generation = trace.findLastIndex((call) => call.url === "/api/creator-script-plan");
+  assert(evaluation > 0 && generation > evaluation, "server evaluation precedes script dispatch");
+  return result;
 }
 
 const calls = [];
@@ -68,6 +111,7 @@ const result = await runCreatorEditorialScriptPipeline({
 });
 
 assert.equal(calls.length, 4);
+assert.deepEqual(fixtureTrace[0].map((call) => call.url), ["/api/creator-script-plan", "/api/creator-research", "/api/creator-editorial-analysis", "/api/creator-evidence-evaluation", "/api/creator-script-plan"]);
 assert.deepEqual(calls.map((call) => call.url), [
   "/api/creator-script-plan",
   "/api/creator-research",
@@ -94,6 +138,42 @@ assert.deepEqual(result.productionPackage, { title: "Grounded package" });
 assert.equal(result.editorialSummary.researchSourceCount, 2);
 assert.equal(result.editorialSummary.readinessStatus, "ready");
 assert.equal(result.editorialSummary.editorialReadinessScore, 88);
+
+// Fail closed against missing or mismatched server decisions. These use the
+// actual client pipeline directly, without the happy-path fixture wrapper.
+for (const mode of ["missing_snapshot", "missing_evaluation", "project_mismatch", "snapshot_mismatch", "unauthorized", "expired_authority", "client_exemption", "stale_revision"]) {
+  let evaluationCount = 0, generationCount = 0;
+  const request = { projectId: "security-project", verifiedLimitationClaimIds: ["claim-unresolved"], readiness: { status: "ready" } };
+  await assert.rejects(() => runPipeline({ accessToken: "synthetic", topic: "Synthetic research", scriptPlanRequest: request,
+    operationIsCurrent: () => true,
+    onCounterEvidenceReview: async () => ({ snapshotFingerprint: "synthetic-review", excludedClaimIds: ["claim-unresolved"], rationale: "Exclude unsupported assertion.", confirmed: true }),
+    fetchImpl: async (url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (url === "/api/creator-script-plan") {
+        if (body.operation === "validate_generation_authority") return jsonResponse({ success: true });
+        generationCount++; return jsonResponse({ success: true });
+      }
+      if (url === "/api/creator-research") return jsonResponse({ success: true, sources: [{ sourceId: "synthetic-source" }] });
+      if (url === "/api/creator-editorial-analysis") return jsonResponse({ success: true, scriptContext, readiness: fixtureReadiness, ...(mode === "missing_snapshot" ? {} : { sourceAuthoritySnapshotDigest: fixtureDigest }) });
+      if (url === "/api/creator-evidence-evaluation") {
+        evaluationCount++;
+        assert.equal(body.projectId, "security-project"); assert.equal(body.snapshotDigest, fixtureDigest);
+        assert.equal(body.verifiedLimitationClaimIds, undefined); assert.equal(body.readiness, undefined);
+        if (mode === "missing_evaluation") return jsonResponse({ error: "not found" }, 404);
+        if (mode === "unauthorized") return jsonResponse({ success: false, code: "UNAUTHORIZED" }, 401);
+        if (mode === "expired_authority") return jsonResponse({ success: false, code: "EVIDENCE_AUTHORITY_UNAVAILABLE" }, 422);
+        const unresolved = mode === "stale_revision" || mode === "client_exemption";
+        return jsonResponse({ success: true, projectId: mode === "project_mismatch" ? "other-project" : "security-project",
+          snapshotDigest: mode === "snapshot_mismatch" ? "b".repeat(64) : fixtureDigest,
+          researchRevision: mode === "stale_revision" && evaluationCount > 1 ? 2 : 1,
+          readiness: fixtureReadiness, verifiedLimitationClaimIds: [],
+          review: unresolved ? { ...fixtureReview, claims: [{ claimId: "claim-unresolved", counter: [], contextual: [], support: [], outcome: "no_counterevidence_in_snapshot", canExclude: true }], unresolvedClaimIds: ["claim-unresolved"] } : fixtureReview,
+          blockingReasons: unresolved ? ["MATERIAL_COUNTER_EVIDENCE_REVIEW"] : [], generationEligible: !unresolved });
+      }
+      throw Error("UNEXPECTED_ENDPOINT");
+    } }), (error) => error instanceof CreatorEditorialPipelineError && ["EDITORIAL_EVALUATION_UNAVAILABLE", "EDITORIAL_REVIEW_STALE", "EDITORIAL_REVIEW_UNRESOLVED"].includes(error.code), mode);
+  assert.equal(generationCount, 0, `${mode} never dispatches generation`);
+}
 
 const longTopic = `${"PROJECT THYNEL premium faceless documentary for YouTube. ".repeat(420)}Memory & Identity`;
 const longTopicCalls = [];

@@ -16119,7 +16119,7 @@ const generateSceneImage = async (
     const data = await response.json().catch(() => null);
     if (!response.ok) throw new Error(data?.error || "Source verification could not be completed.");
     if (confirm && data.creatorScript) {
-      const nextScript = normalizeCreatorScript(data.creatorScript);
+      const nextScript = normalizeHistoricalCreatorScript(data.creatorScript);
       creatorScriptRef.current = nextScript;
       setCreatorScript(nextScript);
       setCreatorScriptPendingRefinement(null);

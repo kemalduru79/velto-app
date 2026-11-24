@@ -4,10 +4,25 @@ import {resolveCreatorSourceSceneConfiguration as resolve,reconcileCreatorSceneD
 import {createOfflineScriptPlanHarness} from './fixtures/creator-script-plan-offline-harness.mjs';
 import {createIntegratedFixture,ownerId} from './fixtures/creator-integrated-workflow.mjs';
 import {createCreatorScript,normalizeCreatorScript} from '../lib/creator/creatorScript.ts';
+import {issue44EvidenceFixture} from './fixtures/creator-issue-44-evidence.mjs';
+import {createResearchClaimEvidenceGraph} from '../lib/research/claimEvidenceGraph.ts';
+import {createEditorialScriptContext} from '../lib/research/editorialScriptContext.ts';
+import {parseCreatorProfile} from '../lib/creator/creatorProfile.ts';
+import {normalizeScriptPlannerEditorialContext} from '../lib/research/scriptPlannerEditorialContext.ts';
+import {sourceAuthoritySnapshotDigest,sourceAuthoritySourceDigest,sourceAuthorityPassageDigest,sourceAuthorityGraphDigest} from '../lib/research/sourceAuthorityBoundary.ts';
+import {loadAuthoritativeResearchGraph} from '../lib/research/authoritativeResearchGraph.ts';
 const scenes=n=>Array.from({length:n},(_,i)=>({id:i+1,text:'Synthetic source '+i,narration:'Synthetic source narration only.',dialogue:''}));
 const request=b=>new Request('http://synthetic.local/api/creator-script-plan',{method:'POST',headers:{authorization:'Bearer synthetic','content-type':'application/json'},body:JSON.stringify(b)});
 const responder=body=>({status:'completed',output_text:JSON.stringify({scenes:body.sourceScenes.map((s,i)=>({...s,narration:Array.from({length:body.sceneBudgets[i].targetWords},(_,n)=>n===0?'Synthetic':'fixture').join(' '),dialogue:''}))})});
-const options={includePost:true,authenticatedUserId:'synthetic-owner',sceneResponder:responder};
+// Exercise the route with an independently loaded, server-owned synthetic
+// snapshot; the old fixture omitted the now-required research authority.
+const f=issue44EvidenceFixture();f.sources=f.sources.filter(s=>s.sourceId==='source-1');f.claims=f.claims.filter(c=>c.claimId==='claim-1');f.evidence=f.evidence.filter(e=>e.evidenceId==='evidence-1');f.links=f.links.filter(l=>l.claimId==='claim-1'&&l.evidenceId==='evidence-1');f.assessments=f.assessments.filter(a=>a.sourceId==='source-1');
+const graph=createResearchClaimEvidenceGraph(f);const context=normalizeScriptPlannerEditorialContext(createEditorialScriptContext({profile:parseCreatorProfile(null),graph,sourceAssessments:f.assessments}));
+const digest=sourceAuthoritySnapshotDigest(context);const snapshot={owner_user_id:'synthetic-owner',project_id:'synthetic-project',snapshot_digest:digest,editorial_context:context,original_research_graph:graph,initial_research_graph:graph,research_graph_digest:sourceAuthorityGraphDigest(graph,graph),research_revision:1};
+const record={owner_user_id:'synthetic-owner',project_id:'synthetic-project',snapshot_digest:digest,claim_id:'claim-1',source_id:context.evidence[0].sourceId,evidence_id:context.evidence[0].evidenceId,source_digest:sourceAuthoritySourceDigest(context.sources[0]),passage_digest:sourceAuthorityPassageDigest(context.evidence[0]),passage_verification:'exact_source_match',authority_classification:'secondary',expires_at:'2099-01-01T00:00:00Z'};
+const repository={ownsProject:async(o,p)=>o==='synthetic-owner'&&p==='synthetic-project',activeResearch:async()=>({revision:1,digest}),loadSnapshot:async()=>snapshot,loadRecords:async()=>[record]};
+const options={includePost:true,authenticatedUserId:'synthetic-owner',sceneResponder:responder,loadAuthority:(ownerUserId,projectId,snapshotDigest)=>loadAuthoritativeResearchGraph({ownerUserId,projectId,snapshotDigest,repository})};
+const withAuthority=body=>({...body,projectId:'synthetic-project',scriptContext:context});
 // Optional before-image reproduction requires local Git history. The normal
 // regression does not depend on history being included in a CI checkout.
 if(process.env.VELTO_VERIFY_SCENE_BASELINE==='1'){
@@ -26,11 +41,11 @@ for(const body of [
  {durationSec:2400,sceneCount:36,productionPackage:{scenes:scenes(36)}},
  {durationSec:100,sceneCount:36,productionPackage:{scenes:scenes(36)}},
 ]){
- const h=await createOfflineScriptPlanHarness(options),before=JSON.stringify(body),r=await h.post(request({...body,format:'youtube_video'}));assert.equal(r.status,422);assert.equal((await r.json()).providerDispatched,false);assert.equal(h.calls.length,0);assert.equal(JSON.stringify(body),before);
+ const h=await createOfflineScriptPlanHarness(options),before=JSON.stringify(body),r=await h.post(request(withAuthority({...body,format:'youtube_video'})));assert.equal(r.status,422);assert.equal((await r.json()).providerDispatched,false);assert.equal(h.calls.length,0);assert.equal(JSON.stringify(body),before);
 }
 for(const [durationSec,count] of [[600,36],[720,36],[900,36],[600,30]]){
  const h=await createOfflineScriptPlanHarness(options),body={durationSec,sceneCount:count,format:'youtube_video',productionPackage:{scenes:scenes(count),preservedMetadata:'synthetic'}};
- const r=await h.post(request(body));assert.equal(r.status,200);const out=await r.json();assert.equal(out.productionPackage.durationSec,durationSec);assert.equal(out.productionPackage.scenes.length,count);assert.equal(out.productionPackage.preservedMetadata,'synthetic');assert(Math.abs(h.calls[0].body.sceneBudgets.reduce((n,s)=>n+s.targetDurationSec,0)-durationSec)<1e-7);
+ const r=await h.post(request(withAuthority(body)));assert.equal(r.status,200);const out=await r.json();assert.equal(out.productionPackage.durationSec,durationSec);assert.equal(out.productionPackage.scenes.length,count);assert.equal(out.productionPackage.preservedMetadata,'synthetic');assert(Math.abs(h.calls[0].body.sceneBudgets.reduce((n,s)=>n+s.targetDurationSec,0)-durationSec)<1e-7);
 }
 const denied=await createOfflineScriptPlanHarness(options);assert.equal((await denied.post(new Request('http://synthetic.local',{method:'POST',body:'{}'}))).status,401);assert.equal(denied.calls.length,0);
 assert.equal(resolve({requestedDurationSec:undefined,packageDurationSec:600,requestedSceneCount:undefined,sourceSceneCount:36,format:'youtube_video'}).durationSec,600);
@@ -41,10 +56,10 @@ assert.throws(()=>reconcileCreatorSceneDurations([30,30],100,7,30),/allocator ca
 const historicalFixture=await createIntegratedFixture();
 const advance={ownerId,buildId:historicalFixture.repository.build.buildId};
 await historicalFixture.runtime.advance(advance);
-const view=await historicalFixture.runtime.advance(advance),context=view.editorialReview.context;
-const historical=createCreatorScript({title:'Synthetic historical duration',targetDurationSec:4000,strategyFingerprint:historicalFixture.snapshot.strategyFingerprint,generatedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',grounding:{context},sections:['opening','body','conclusion'].map((kind,index)=>({id:'section-'+index,kind,text:'Synthetic retained narration.',claimIds:[context.claims.find(c=>c.supportingEvidenceIds.length>0).claimId],evidenceReviewRequired:false}))});
+const view=await historicalFixture.runtime.advance(advance),historicalContext=view.editorialReview.context;
+const historical=createCreatorScript({title:'Synthetic historical duration',targetDurationSec:4000,strategyFingerprint:historicalFixture.snapshot.strategyFingerprint,generatedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',grounding:{context:historicalContext},sections:['opening','body','conclusion'].map((kind,index)=>({id:'section-'+index,kind,text:'Synthetic retained narration.',claimIds:[historicalContext.claims.find(c=>c.supportingEvidenceIds.length>0).claimId],evidenceReviewRequired:false}))});
 const beforeHistorical=JSON.stringify(historical);assert.equal(normalizeCreatorScript(historical).targetDurationSec,4000);
 const regeneration=await createOfflineScriptPlanHarness();
-const blocked=await regeneration.execute({body:{operation:'regenerate_section',creatorScript:historical,targetSectionId:'section-1',strategyFingerprint:historical.strategyFingerprint},editorialContext:context});
+const blocked=await regeneration.execute({body:{operation:'regenerate_section',creatorScript:historical,targetSectionId:'section-1',strategyFingerprint:historical.strategyFingerprint},editorialContext:historicalContext});
 assert.equal(blocked.status,400);assert.equal((await blocked.json()).code,'CREATOR_SCRIPT_DURATION_INVALID');assert.equal(regeneration.calls.length,0);assert.equal(JSON.stringify(historical),beforeHistorical);historicalFixture.preservation();
 console.log('SOURCE_SCENE_API_CONTRACT=PASS; explicit resource errors, complete source sequence, unchanged requested duration, exact allocation total, unauthorized dispatch blocked; synthetic Auth/providers only');

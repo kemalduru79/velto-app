@@ -90,7 +90,15 @@ const binding = {
   ],
 };
 
-const mockFetch = async (url) => {
+const fixtureDigest = "a".repeat(64);
+const fixtureEvaluation = { success: true, projectId: "fixture-project", snapshotDigest: fixtureDigest, researchRevision: 1,
+  readiness: { version: "0.10H-2B", status: "ready", editorialReadinessScore: 90, claimCount: 1, evidenceRequiredClaimCount: 1,
+    supportedClaimCount: 1, unsupportedClaimIds: [], primarySourceRequiredClaimIds: [], primarySourceCoveredClaimIds: [],
+    counterEvidenceRecommendedClaimIds: [], counterEvidenceCoveredClaimIds: [], dimensions: { evidenceCoveragePct: 100,
+      sourceUsabilityPct: 100, primarySourceCoveragePct: 100, counterEvidenceCoveragePct: 100, sourceDiversityCount: 1 }, reviewReasons: [] },
+  verifiedLimitationClaimIds: [], review: { snapshotFingerprint: "fixture", claims: [], unresolvedClaimIds: [], nextActions: [] },
+  blockingReasons: [], generationEligible: true };
+const mockFetch = async (url, init) => {
   if (url === "/api/creator-research") {
     return jsonResponse({ success: true, sources: [source] });
   }
@@ -100,8 +108,14 @@ const mockFetch = async (url) => {
       graph,
       sourceAssessments,
       readiness: { status: "ready", editorialReadinessScore: 90 },
+      sourceAuthoritySnapshotDigest: fixtureDigest,
       scriptContext,
     });
+  }
+  if (url === "/api/creator-evidence-evaluation") {
+    const body = JSON.parse(String(init.body));
+    assert.equal(body.projectId, "fixture-project"); assert.equal(body.snapshotDigest, fixtureDigest);
+    return jsonResponse(fixtureEvaluation);
   }
   if (url === "/api/creator-script-plan") {
     return jsonResponse({
@@ -121,9 +135,11 @@ const result = await runCreatorEditorialScriptPipeline({
   accessToken: "token",
   topic: "Adoption",
   scriptPlanRequest: {
+    projectId: "fixture-project",
     productionPackage: { scenes: [{ id: 1, narration: "Draft" }] },
   },
   fetchImpl: mockFetch,
+  operationIsCurrent: () => true,
 });
 
 assert.equal(result.productionIntelligenceContexts.length, 1);
@@ -144,14 +160,16 @@ await assert.rejects(
   () => runCreatorEditorialScriptPipeline({
     accessToken: "token",
     topic: "Adoption",
-    scriptPlanRequest: {},
+    scriptPlanRequest: { projectId: "fixture-project" },
+    operationIsCurrent: () => true,
     fetchImpl: async (url) => {
       if (url === "/api/creator-research") {
         return jsonResponse({ success: true, sources: [source] });
       }
       if (url === "/api/creator-editorial-analysis") {
-        return jsonResponse({ success: true, scriptContext });
+        return jsonResponse({ success: true, scriptContext, sourceAuthoritySnapshotDigest: fixtureDigest });
       }
+      if (url === "/api/creator-evidence-evaluation") return jsonResponse(fixtureEvaluation);
       if (url === "/api/creator-script-plan") {
         return jsonResponse({
           success: true,

@@ -50,9 +50,17 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f docs/creator-source-authority-migration.draft.sql
       - name: Check atomic research revision and activation
         run: psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-active-research.sql
+      - name: Check concurrent stale and competing activations
+        run: node scripts/source-authority-ci-concurrency.mjs
       - name: Check actual PostgreSQL grants and RLS flags
         run: psql -X -v ON_ERROR_STOP=1 -f scripts/source-authority-ci-permissions.sql
       - name: Run database-backed authority chain
         run: node --experimental-transform-types scripts/source-authority-ci-end-to-end.mjs
       - name: Run existing offline security regressions
         run: node --experimental-transform-types scripts/creator-source-authority-boundary-offline-test.mjs
+      - name: Run trusted generation and persistence acceptance
+        run: |
+          node --experimental-transform-types scripts/creator-evidence-evaluation-api-test.mjs
+          node --experimental-transform-types scripts/creator-evidence-evaluation-pipeline-test.mjs
+          node --experimental-transform-types scripts/creator-trusted-generation-route-test.mjs
+          node --experimental-transform-types scripts/creator-trusted-script-lifecycle-test.mjs

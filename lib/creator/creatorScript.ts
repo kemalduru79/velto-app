@@ -1850,16 +1850,17 @@ export function getCreatorScriptSectionSourceReview(script: CreatorScript, secti
   return items.length === section.claimIds.length && items.length > 0 ? { sectionId, items } : null;
 }
 
-export function verifyCreatorScriptSectionSources(script: CreatorScript, sectionId: string, verifiedAt = new Date().toISOString()) {
+export function verifyCreatorScriptSectionSources(script: CreatorScript, sectionId: string, verifiedAt = new Date().toISOString(), trustedContext?: ScriptPlannerEditorialContext) {
   if (!getCreatorScriptSectionSourceReview(script, sectionId)) throw new Error("CREATOR_SCRIPT_MANUAL_VERIFICATION_UNAVAILABLE");
-  return normalizeCreatorScript({
+  const value = {
     ...script,
     sections: script.sections.map((section) => section.id === sectionId ? {
       ...section,
       evidenceReviewRequired: false,
       humanVerification: { scriptRevision: script.revision, verifiedAt },
     } : section),
-  });
+  };
+  return trustedContext ? normalizeCreatorScriptWithTrustedContext(value, trustedContext) : normalizeCreatorScript(value);
 }
 
 export function creatorScriptHasGroundingBlocker(script: CreatorScript) {

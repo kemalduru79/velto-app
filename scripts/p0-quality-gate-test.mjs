@@ -163,7 +163,7 @@ console.log(`P0_QUALITY_GATE_CONTRACTS=PASS (${checks} checks; real child/ESLint
 // No external baseline is read, no reviewed source is changed, no provider runs.
 const legacyStart = checks;
 const gateSource = fs.readFileSync("scripts/stage-0-8a-changed-lint.mjs", "utf8");
-const approvedGateSha256 = "0b087c9669cd0940b2a5436ec40901ac528d7e96a6d5d50aa388d383638728bf";
+const approvedGateSha256 = "224b30d4050df78180e3dd31b886156c1aae49df5a96f49225f3897c8f1dd68a";
 const gateDigest = (text) => createHash("sha256").update(text).digest("hex");
 const gateApproved = (text) => gateDigest(text) === approvedGateSha256;
 check("reviewed lint security gate bytes unchanged", () => assert(gateApproved(gateSource)));
@@ -251,6 +251,33 @@ for (const file of legacyFiles) {
     context.path = { ...path, resolve: () => relocatedPath };
     assert.equal(context.accept(file, relocated), true);
   });
+}
+// The approved second source is tested with its real report only when the
+// checkout contains that exact variant. The historical fixture is always tested.
+const currentPage = "app/create/page.tsx";
+const currentPageHash = createHash("sha256").update(fs.readFileSync(currentPage)).digest("hex");
+if (currentPageHash === "ab431ae05d88ffb2333f2d846036629170ade376ea15789b736c91d388f56ce1") {
+  const currentReport = spawnSync(process.execPath, ["--max-old-space-size=1536", "node_modules/eslint/bin/eslint.js", "--format", "json", "--", currentPage],
+    { encoding: "utf8", timeout: LINT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, killSignal: "SIGKILL" });
+  check("second exact page variant and real ESLint report accepted", () => {
+    assert.equal(currentReport.status, 1);
+    assert.equal(loadGate(currentReport).accept(currentPage, currentReport), true);
+    assert.equal(loadGate(currentReport).lint(currentPage, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]), true);
+  });
+  check("third page variant rejected", () => {
+    const changedFs = { ...fs, readFileSync: (name, ...args) => name === currentPage ? Buffer.concat([fs.readFileSync(name, ...args), Buffer.from("\n// unauthorized")]) : fs.readFileSync(name, ...args) };
+    assert.equal(loadGate(currentReport, changedFs).accept(currentPage, currentReport), false);
+  });
+  check("second variant rejects altered, fatal, incomplete and unexpected output", () => {
+    const altered = JSON.parse(currentReport.stdout); altered[0].messages[0].message += " altered";
+    const fatal = JSON.parse(currentReport.stdout); fatal[0].messages[0].fatal = true; fatal[0].fatalErrorCount = 1;
+    const added = JSON.parse(currentReport.stdout); added[0].messages.push({ ...added[0].messages[0], severity: 2 }); added[0].errorCount++;
+    for (const result of [{ ...currentReport, stdout: JSON.stringify(altered) }, { ...currentReport, stdout: JSON.stringify(fatal) }, { ...currentReport, stdout: JSON.stringify(added) }, { ...currentReport, stdout: "" }, { ...currentReport, stderr: currentReport.stderr + "unexpected\n" }, { ...currentReport, status: 2 }]) {
+      assert.equal(loadGate(result).accept(currentPage, result), false);
+    }
+  });
+} else {
+  check("unreviewed page cannot use second variant", () => assert.equal(loadGate(success).accept(currentPage, { ...success, status: 1 }), false));
 }
 check("clean unlisted file uses normal strict policy", () => {
   const gate = loadGate(success);

@@ -39,6 +39,7 @@ const services={projectRepository:{getForOwner:async(id,owner)=>id==='project'&&
 const jiti=createJiti(import.meta.url,{interopDefault:true,alias:{'@':new URL('..',import.meta.url).pathname.replace(/\/$/,''),'server-only':new URL('../lib/creator/projectState.ts',import.meta.url).pathname}});
 const save=(await jiti.import('../app/api/save-project/route.ts')).POST.handleForTest;
 const load=(await jiti.import('../app/api/load-project/[projectId]/route.ts')).GET.handleForTest;
+const verify=(await jiti.import('../app/api/creator-script/verify-section/route.ts')).POST.handleForTest;
 const dependencies={authenticate:async()=>({id:'owner'}),persistence:()=>services,loadAuthority};
 const candidate=structuredClone(saved);candidate.strategy.script=client.script;
 const saveRequest=body=>new Request('http://localhost/api/save-project',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
@@ -55,6 +56,16 @@ assert.equal(readCreatorProjectState(stored).strategy.script.sections[1].evidenc
 assert.deepEqual(readCreatorProjectState(stored).strategy.script.sections[0].humanVerification,{scriptRevision:2,verifiedAt:'2026-01-01T00:00:00Z'});
 assert.equal(readCreatorProjectState(stored).strategy.script.approval,null);
 assert.deepEqual(readCreatorProjectState(stored).production.voicePreferences,{narratorProfileId:'synthetic-preserved'});
+const verifyRequest=(confirm)=>new Request('http://localhost/api/creator-script/verify-section',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:'project',sectionId:updated.sections[1].id,revision:updated.revision,confirm})});
+response=await verify(verifyRequest(false),dependencies);assert.equal(response.status,200);assert((await response.json()).review.items.length>0);
+const verifyWrites=writes;currentRecords=records.map(record=>({...record,expires_at:'2020-01-01T00:00:00Z'}));response=await verify(verifyRequest(true),dependencies);assert.equal(response.status,409);assert.equal(writes,verifyWrites);currentRecords=structuredClone(records);
+active='b'.repeat(64);response=await verify(verifyRequest(true),dependencies);assert.equal(response.status,409);assert.equal(writes,verifyWrites);active=hash;
+response=await verify(verifyRequest(true),{...dependencies,authenticate:async()=>({id:'other-owner'})});assert.equal(response.status,404);assert.equal(writes,verifyWrites);
+changeActiveBeforeWrite=true;response=await verify(verifyRequest(true),dependencies);assert.equal(response.status,409);assert.equal(writes,verifyWrites);changeActiveBeforeWrite=false;active=hash;
+response=await verify(verifyRequest(true),dependencies);payload=await response.json();assert.equal(response.status,200,JSON.stringify(payload));
+const verified=readCreatorProjectState(stored).strategy.script;assert.equal(verified.sections[1].evidenceReviewRequired,false);assert.equal(verified.sections[1].humanVerification.scriptRevision,verified.revision);assert.deepEqual(verified.grounding.context,scope);
+const secondRegeneration=await call({operation:'regenerate_section',scriptContext:scope,creatorScript:verified,targetSectionId:verified.sections[1].id});assert.equal(secondRegeneration.status,200,await secondRegeneration.clone().text());const secondScript=(await secondRegeneration.json()).creatorScript;assert.deepEqual(secondScript.grounding.context,scope);assert.equal(JSON.stringify(secondScript.sections[2]),JSON.stringify(verified.sections[2]));
+revisedState.strategy.script=verified;
 const rejectedState=structuredClone(revisedState);rejectedState.strategy.script.grounding.context.claims[0].text+=' changed';const before=writes;response=await save(saveRequest({...baseSave,expectedUpdatedAt:stored.updated_at,creatorProjectState:rejectedState}),dependencies);assert(response.status>=400);assert.equal(writes,before);
 response=await save(saveRequest({...baseSave,expectedUpdatedAt:'stale'}),dependencies);assert.equal(response.status,409);assert.equal(writes,before);
 const alteredPassage=structuredClone(revisedState);alteredPassage.strategy.script.grounding.context.evidence[0].excerpt+=' fabricated';response=await save(saveRequest({...baseSave,expectedUpdatedAt:stored.updated_at,creatorProjectState:alteredPassage}),dependencies);assert.equal(response.status,422);assert.equal(writes,before);

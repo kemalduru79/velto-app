@@ -219,7 +219,9 @@ assert.ok(qa.issues.some((issue) => issue.code === "CLAIM_CERTAINTY_MISMATCH"));
 assert.ok(qa.issues.some((issue) => issue.code === "COUNTER_EVIDENCE_NOT_REFLECTED"));
 
 assert.match(route, /scriptContext\?: unknown/);
-assert.match(route, /normalizeScriptPlannerEditorialContext\(body\?\.scriptContext\)/);
+assert.match(route, /normalizeScriptPlannerEditorialContext\(audit \? audit\.originalContext : rawRecord, false\)/);
+assert.match(route, /loadServerAuthoritativeResearchGraph\(user\.id, projectId, sourceAuthoritySnapshotDigest\(selector\)\)/);
+assert.match(route, /evaluateTrustedEvidence\(audit/);
 assert.match(route, /editorialContext,/);
 assert.match(route, /editorialClaimIds/);
 assert.match(route, /createScriptEvidenceBindingMap\(/);

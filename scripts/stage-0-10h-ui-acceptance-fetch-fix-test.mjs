@@ -6,6 +6,7 @@ import {
 
 const originalFetch = globalThis.fetch;
 const calls = [];
+const fixtureDigest = "a".repeat(64);
 
 function response(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -30,7 +31,18 @@ globalThis.fetch = function contextSensitiveBrowserFetch(url, init) {
       success: true,
       scriptContext: { editorialBrief: "Grounded brief" },
       readiness: { status: "ready", editorialReadinessScore: 100 },
+      sourceAuthoritySnapshotDigest: fixtureDigest,
     }));
+  }
+  if (url === "/api/creator-evidence-evaluation") {
+    const body = JSON.parse(init.body);
+    assert.equal(body.projectId, "fixture-project"); assert.equal(body.snapshotDigest, fixtureDigest);
+    return Promise.resolve(response({ success: true, projectId: "fixture-project", snapshotDigest: fixtureDigest, researchRevision: 1,
+      readiness: { version: "0.10H-2B", status: "ready", editorialReadinessScore: 100, claimCount: 0, evidenceRequiredClaimCount: 0,
+        supportedClaimCount: 0, unsupportedClaimIds: [], primarySourceRequiredClaimIds: [], primarySourceCoveredClaimIds: [],
+        counterEvidenceRecommendedClaimIds: [], counterEvidenceCoveredClaimIds: [], dimensions: { evidenceCoveragePct: 100,
+          sourceUsabilityPct: 100, primarySourceCoveragePct: 100, counterEvidenceCoveragePct: 100, sourceDiversityCount: 0 }, reviewReasons: [] },
+      verifiedLimitationClaimIds: [], review: { snapshotFingerprint: "fixture", claims: [], unresolvedClaimIds: [], nextActions: [] }, blockingReasons: [], generationEligible: true }));
   }
   if (url === "/api/creator-script-plan") {
     return Promise.resolve(response({
@@ -51,20 +63,23 @@ try {
     topic: "Approved strategy",
     creatorProfile: { channelName: "Creator" },
     scriptPlanRequest: {
+      projectId: "fixture-project",
       qualityMode: "pro",
       sceneCount: 1,
       productionPackage: { title: "Initial package", scenes: [] },
     },
+    operationIsCurrent: () => true,
   });
 
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   assert.deepEqual(calls.map((call) => call.url), [
     "/api/creator-script-plan",
     "/api/creator-research",
     "/api/creator-editorial-analysis",
+    "/api/creator-evidence-evaluation",
     "/api/creator-script-plan",
   ]);
-  const scriptPlanBody = JSON.parse(calls[3].init.body);
+  const scriptPlanBody = JSON.parse(calls[4].init.body);
   assert.equal(scriptPlanBody.qualityMode, "pro");
   assert.equal(scriptPlanBody.topic, "Approved strategy");
   assert.deepEqual(result.productionPackage, {
