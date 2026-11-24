@@ -1,9 +1,11 @@
 import {
   editCreatorScriptDocument,
   normalizeCreatorScript,
+  normalizeCreatorScriptWithTrustedContext,
   regenerateCreatorScriptSection,
   type CreatorScript,
 } from "./creatorScript.ts";
+import type { ScriptPlannerEditorialContext } from "../research/scriptPlannerEditorialContext.ts";
 
 export type CreatorScriptMutationCommand =
   | { type: "manual_document_edit"; expectedRevision: number; documentText: string }
@@ -14,7 +16,7 @@ const record = (value: unknown) => value && typeof value === "object"
   ? value as Record<string, unknown>
   : null;
 
-export function parseCreatorScriptMutationCommand(value: unknown): CreatorScriptMutationCommand | null {
+export function parseCreatorScriptMutationCommand(value: unknown, trustedContext?: ScriptPlannerEditorialContext): CreatorScriptMutationCommand | null {
   if (value === undefined) return null;
   const input = record(value);
   if (!input || typeof input.type !== "string") throw new Error("CREATOR_SCRIPT_MUTATION_INVALID");
@@ -32,7 +34,7 @@ export function parseCreatorScriptMutationCommand(value: unknown): CreatorScript
       type: input.type,
       expectedRevision: Number(input.expectedRevision),
       targetSectionId: input.targetSectionId.trim(),
-      script: normalizeCreatorScript(input.script),
+      script: trustedContext ? normalizeCreatorScriptWithTrustedContext(input.script, trustedContext) : normalizeCreatorScript(input.script),
     };
   }
   if (input.type === "generated_script_replacement") {
@@ -42,7 +44,7 @@ export function parseCreatorScriptMutationCommand(value: unknown): CreatorScript
     return {
       type: input.type,
       expectedRevision: input.expectedRevision === null ? null : Number(input.expectedRevision),
-      script: normalizeCreatorScript(input.script),
+      script: trustedContext ? normalizeCreatorScriptWithTrustedContext(input.script, trustedContext) : normalizeCreatorScript(input.script),
     };
   }
   throw new Error("CREATOR_SCRIPT_MUTATION_INVALID");
@@ -52,6 +54,7 @@ export function applyCreatorScriptMutationCommand(input: {
   persistedScript: CreatorScript | null;
   command: CreatorScriptMutationCommand;
   updatedAt?: string;
+  trustedContext?: ScriptPlannerEditorialContext;
 }) {
   const { persistedScript, command } = input;
   const persistedRevision = persistedScript?.revision ?? null;
@@ -70,22 +73,26 @@ export function applyCreatorScriptMutationCommand(input: {
     if (!persistedScript) throw new Error("CREATOR_SCRIPT_MUTATION_STALE");
     const replacement = command.script.sections.find((section) => section.id === command.targetSectionId);
     if (!replacement) throw new Error("CREATOR_SCRIPT_MUTATION_INVALID_TRANSITION");
+    const previous = persistedScript.sections.find((section) => section.id === command.targetSectionId);
+    const requiresReview = Boolean(previous && replacement.text !== previous.text && replacement.claimIds.length > 0);
     const script = regenerateCreatorScriptSection(
       persistedScript,
       command.targetSectionId,
-      replacement,
+      requiresReview ? { ...replacement, evidenceReviewRequired: true, humanVerification: undefined } : replacement,
       input.updatedAt,
+      input.trustedContext,
     );
     if (script.revision !== persistedScript.revision + 1) throw new Error("CREATOR_SCRIPT_MUTATION_INVALID_TRANSITION");
     return script;
   }
 
-  return normalizeCreatorScript({
+  const result = {
     ...command.script,
     revision: (persistedScript?.revision ?? 0) + 1,
     updatedAt: input.updatedAt ?? new Date().toISOString(),
     approval: null,
-  });
+  };
+  return input.trustedContext ? normalizeCreatorScriptWithTrustedContext(result, input.trustedContext) : normalizeCreatorScript(result);
 }
 
 export function resolveCreatorScriptMutationAuthority(input: {
@@ -93,8 +100,10 @@ export function resolveCreatorScriptMutationAuthority(input: {
   candidateScript: CreatorScript | null;
   commandValue: unknown;
   updatedAt?: string;
+  trustedContext?: ScriptPlannerEditorialContext;
 }) {
-  const command = parseCreatorScriptMutationCommand(input.commandValue);
+  const command = parseCreatorScriptMutationCommand(input.commandValue, input.trustedContext);
+  if (input.trustedContext && input.candidateScript) normalizeCreatorScriptWithTrustedContext(input.candidateScript, input.trustedContext);
   const candidateDiffers = JSON.stringify(input.persistedScript) !== JSON.stringify(input.candidateScript);
   if (candidateDiffers && !command) throw new Error("CREATOR_SCRIPT_MUTATION_AUTHORITY_REQUIRED");
   if (!command) return input.candidateScript;
@@ -102,5 +111,6 @@ export function resolveCreatorScriptMutationAuthority(input: {
     persistedScript: input.persistedScript,
     command,
     updatedAt: input.updatedAt,
+    trustedContext: input.trustedContext,
   });
 }

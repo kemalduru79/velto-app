@@ -212,6 +212,7 @@ import {
   getCreatorScriptStatus,
   isCreatorScriptCurrentForStrategy,
   normalizeCreatorScript,
+  normalizeHistoricalCreatorScript,
   shouldSurfaceCreatorScriptOperationFailure,
   type CreatorScript,
 } from "@/lib/creator/creatorScript";
@@ -16055,6 +16056,7 @@ const generateSceneImage = async (
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           operation: "regenerate_section",
+          projectId: operationOrigin.projectId,
           creatorScript: sourceScript,
           targetSectionId: sectionId,
           strategyFingerprint: creatorStrategyFingerprint,
@@ -16065,7 +16067,7 @@ const generateSceneImage = async (
       const data = await response.json().catch(() => null);
       if (!operationIsActive() || !sourceRevisionIsActive()) return;
       if (!response.ok || !data?.creatorScript) throw new Error(data?.error || "Script section regeneration failed.");
-      const nextScript = normalizeCreatorScript(data.creatorScript);
+      const nextScript = normalizeHistoricalCreatorScript(data.creatorScript);
       const saved = await persistProject(false, {
         creatorScript: nextScript,
         creatorScriptMutation: {

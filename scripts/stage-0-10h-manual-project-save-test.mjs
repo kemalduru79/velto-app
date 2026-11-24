@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const page = readFileSync(new URL("../app/create/page.tsx", import.meta.url), "utf8");
+const saveErrors = readFileSync(new URL("../lib/creator/projectSaveErrors.ts", import.meta.url), "utf8");
 const persistStart = page.indexOf("const executePersistProject = async");
 const saveStart = page.indexOf("const saveProject = async", persistStart);
 const loadStart = page.indexOf("const loadProject = async", saveStart);
@@ -19,8 +20,8 @@ assert.match(saveProject, /await persistProject\(true, \{/);
 assert.match(saveProject, /persistScenes: shouldPersistCreatorSceneProjection/);
 assert.match(saveProject, /clearTimeout\(autosaveTimerRef\.current\)/);
 assert.match(saveProject, /setIsSavingProject\(true\)/);
-assert.match(saveProject, /setSaveMessage\(""\)[\s\S]*e\?\.message/);
-assert.match(saveProject, /Reload before retrying; your local work is still here/);
+assert.match(saveProject, /setSaveMessage\(""\)[\s\S]*creatorProjectSaveRecoveryMessage\(saveError/);
+assert.match(saveErrors, /saved project revision changed[\s\S]*local work has not been overwritten/);
 assert.doesNotMatch(saveProject, /setCreatorSelectedWorkspaceStep|navigateCreator|fetch\(|generate|export/i);
 
 assert.match(persistProject, /fetch\("\/api\/save-project"/);

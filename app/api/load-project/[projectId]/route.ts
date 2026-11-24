@@ -7,9 +7,10 @@ import { getPersistenceServices } from "@/lib/persistence";
 
 export const runtime = "nodejs";
 
-export async function GET(
+async function handleLoadProject(
   req: Request,
   context: { params: Promise<{ projectId: string }> },
+  dependencies: { authenticate: typeof authenticateRequest; persistence: typeof getPersistenceServices } = { authenticate: authenticateRequest, persistence: getPersistenceServices },
 ) {
   try {
     const { projectId } = await context.params;
@@ -18,8 +19,8 @@ export async function GET(
       return NextResponse.json({ error: "projectId zorunlu" }, { status: 400 });
     }
 
-    const principal = await authenticateRequest(req);
-    const project = await getPersistenceServices().projectRepository.getForOwner(
+    const principal = await dependencies.authenticate(req);
+    const project = await dependencies.persistence().projectRepository.getForOwner(
       projectId,
       principal.id,
     );
@@ -44,3 +45,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = Object.assign((req: Request, context: { params: Promise<{ projectId: string }> }) => handleLoadProject(req, context), { handleForTest: handleLoadProject });

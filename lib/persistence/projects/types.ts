@@ -34,6 +34,7 @@ export type SaveVeltoProjectInput = {
   sceneOptimizationSummary?: unknown;
   refinedCreatorScenes?: unknown;
   expectedUpdatedAt?: string | null;
+  expectedResearchAuthority?: { revision: number; digest: string };
 };
 
 export type SaveVeltoProjectResult = {

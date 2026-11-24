@@ -12,7 +12,11 @@ import {
   type CreatorProjectStateSnapshot,
   readCreatorProjectState,
 } from "@/lib/creator/projectState";
-import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly, normalizeCreatorScript } from "@/lib/creator/creatorScript";
+import { assertCreatorScriptVerificationAuthority, isCreatorScriptHistoricalResearchOnly, normalizeCreatorScript, normalizeCreatorScriptWithTrustedContext } from "@/lib/creator/creatorScript";
+import { normalizeScriptPlannerEditorialContext, type CounterEvidenceScopeDecision, type ScriptPlannerEditorialContext } from "@/lib/research/scriptPlannerEditorialContext";
+import { sourceAuthoritySnapshotDigest } from "@/lib/research/sourceAuthorityBoundary";
+import { loadServerAuthoritativeResearchGraph } from "@/lib/research/sourceAuthorityWorkflow.server";
+import { evaluateTrustedEvidence } from "@/lib/research/trustedEvidenceEvaluation";
 import { appendCreatorScriptHistory, createCreatorScriptChanges, creatorScriptTextChanged } from "@/lib/creator/creatorScriptRevisions";
 import { assertCreatorScriptApprovalAuthority, creatorSceneOutputIsCurrent, invalidateCreatorSceneAuthorityForScriptChange } from "@/lib/creator/creatorScriptApproval";
 import { resolveCreatorSceneSaveAuthority } from "@/lib/creator/creatorScenePersistence";
@@ -32,6 +36,7 @@ export const runtime = "nodejs";
 type SaveProjectRouteDependencies = {
   authenticate: typeof authenticateRequest;
   persistence: typeof getPersistenceServices;
+  loadAuthority?: typeof loadServerAuthoritativeResearchGraph;
 };
 
 async function handleSaveProjectRequest(
@@ -105,13 +110,44 @@ async function handleSaveProjectRequest(
       return NextResponse.json({ error: "Project not found." }, { status: 404 });
     }
     const hasCreatorProjectState = flowType === "creator_lab" && has("creatorProjectState");
+    let trustedContext: ScriptPlannerEditorialContext | undefined;
+    let expectedResearchAuthority: { revision: number; digest: string } | undefined;
+    const candidateState = hasCreatorProjectState && body.creatorProjectState && typeof body.creatorProjectState === "object" ? body.creatorProjectState as Record<string, unknown> : null;
+    const candidateStrategy = candidateState?.strategy && typeof candidateState.strategy === "object" ? candidateState.strategy as Record<string, unknown> : null;
+    const candidateScript = candidateStrategy?.script && typeof candidateStrategy.script === "object" ? candidateStrategy.script as Record<string, unknown> : null;
+    const grounding = candidateScript?.grounding && typeof candidateScript.grounding === "object" ? candidateScript.grounding as Record<string, unknown> : null;
+    const submittedContext = grounding?.context && typeof grounding.context === "object" ? grounding.context as Record<string, unknown> : null;
+    const review = submittedContext?.counterEvidenceReview && typeof submittedContext.counterEvidenceReview === "object" ? submittedContext.counterEvidenceReview as Record<string, unknown> : null;
+    if (review) {
+      if (!projectId || !persistedCreatorProject || !expectedUpdatedAt || persistedCreatorProject.updated_at !== expectedUpdatedAt) {
+        return NextResponse.json({ error: "Project revision is stale or missing.", code: "PROJECT_REVISION_CONFLICT" }, { status: 409 });
+      }
+      try {
+        const persistedBrief = readCreatorProjectState(persistedCreatorProject).brief as unknown as Record<string, unknown>;
+        const candidateBrief = candidateState?.brief && typeof candidateState.brief === "object" ? candidateState.brief as Record<string, unknown> : {};
+        const researchIdentity = ["topic", "language", "country", "ageGroup", "contentType", "narrativePolicy", "outcome", "format"];
+        if (JSON.stringify(researchIdentity.map((key) => candidateBrief[key] ?? null)) !== JSON.stringify(researchIdentity.map((key) => persistedBrief[key] ?? null))) throw new Error("SOURCE_AUTHORITY_RESEARCH_CHANGED");
+        const original = normalizeScriptPlannerEditorialContext(review.originalContext, false);
+        if (!original) throw new Error("SOURCE_AUTHORITY_UNAVAILABLE");
+        const authority = await (dependencies.loadAuthority ?? loadServerAuthoritativeResearchGraph)(principal.id, projectId, sourceAuthoritySnapshotDigest(original));
+        const evaluated = evaluateTrustedEvidence({ authority, decision: review.decision as CounterEvidenceScopeDecision, persistedContext: submittedContext });
+        if (!evaluated.generation.eligible) throw new Error("SOURCE_AUTHORITY_UNAVAILABLE");
+        normalizeCreatorScriptWithTrustedContext(candidateScript, evaluated.context);
+        trustedContext = evaluated.context;
+        const revision = authority.originalSnapshot.research_revision;
+        if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1) throw new Error("SOURCE_AUTHORITY_REVISION_INVALID");
+        expectedResearchAuthority = { revision, digest: authority.snapshotDigest };
+      } catch {
+        return NextResponse.json({ error: "Current verified research could not be validated.", code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED" }, { status: 422 });
+      }
+    }
     const persistedCreatorStateAuthority = persistedCreatorProject
       ? inspectCreatorProjectStatePersistenceAuthority(persistedCreatorProject)
       : null;
     const historicalResearchLocked = Boolean(
       persistedCreatorStateAuthority?.status === "valid" &&
       persistedCreatorStateAuthority.script &&
-      isCreatorScriptHistoricalResearchOnly(persistedCreatorStateAuthority.script),
+      isCreatorScriptHistoricalResearchOnly(persistedCreatorStateAuthority.script) && !trustedContext,
     );
     if (historicalResearchLocked && persistedCreatorProject) {
       // An approved historical script remains readable, not writable scientific
@@ -198,6 +234,7 @@ async function handleSaveProjectRequest(
           persistedScript,
           candidateScript: candidateState.strategy.script ?? null,
           commandValue: body.creatorScriptMutation,
+          trustedContext,
         });
       } catch (error) {
         const code = error instanceof Error ? error.message : "CREATOR_SCRIPT_MUTATION_INVALID";
@@ -215,7 +252,8 @@ async function handleSaveProjectRequest(
       };
       if (persistedScript && authoritativeScript) {
         try {
-          assertCreatorScriptVerificationAuthority(persistedScript, authoritativeScript);
+          const mutation = body.creatorScriptMutation && typeof body.creatorScriptMutation === "object" ? body.creatorScriptMutation as Record<string, unknown> : null;
+          assertCreatorScriptVerificationAuthority(persistedScript, authoritativeScript, Boolean(trustedContext && mutation?.type === "section_regeneration"));
           assertCreatorScriptApprovalAuthority(persistedScript, authoritativeScript);
         } catch (error) {
           const approvalForged = error instanceof Error && error.message === "CREATOR_SCRIPT_APPROVAL_FORGED";
@@ -388,6 +426,7 @@ async function handleSaveProjectRequest(
           : {}),
         ...(shouldInvalidateCreatorProduction ? { scenes: [], refinedCreatorScenes: [], exportedMovieUrl: null, exportSignature: null } : {}),
         expectedUpdatedAt,
+        ...(expectedResearchAuthority ? { expectedResearchAuthority } : {}),
       });
 
     let mediaReferenceSync: "ok" | "deferred" = "ok";

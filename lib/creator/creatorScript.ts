@@ -1,6 +1,7 @@
 import { CREATOR_EDITORIAL_REVISION_CONTRACT } from "./creatorEditorialNarrativeReview.ts";
 import {
   normalizeScriptPlannerEditorialContext,
+  normalizeScriptPlannerEditorialContextForPreservation,
   type ScriptPlannerEditorialContext,
 } from "../research/scriptPlannerEditorialContext.ts";
 import { researchClaimRequiresEvidence, researchClaimRequiresPrimarySource } from "../research/claimEvidenceGraph.ts";
@@ -527,12 +528,17 @@ export function normalizeCreatorScriptWithTrustedContext(value: unknown, trusted
   return normalizeCreatorScriptInternal(value, false, trustedContext);
 }
 
-export function assertCreatorScriptVerificationAuthority(persisted: CreatorScript, candidate: CreatorScript) {
+export function assertCreatorScriptVerificationAuthority(persisted: CreatorScript, candidate: CreatorScript, allowUnchangedRevisionRebind = false) {
   const previousById = new Map(persisted.sections.map((section) => [section.id, section]));
   for (const section of candidate.sections) {
     const previous = previousById.get(section.id);
     if (!previous) continue;
-    if (section.humanVerification && JSON.stringify(section.humanVerification) !== JSON.stringify(previous.humanVerification)) {
+    const unchangedRebind = allowUnchangedRevisionRebind && previous.humanVerification && section.humanVerification &&
+      previous.humanVerification.scriptRevision === persisted.revision && candidate.revision === persisted.revision + 1 &&
+      section.humanVerification.scriptRevision === candidate.revision && section.humanVerification.verifiedAt === previous.humanVerification.verifiedAt &&
+      previous.text === section.text && JSON.stringify(previous.claimIds) === JSON.stringify(section.claimIds) &&
+      !previous.evidenceReviewRequired && !section.evidenceReviewRequired;
+    if (section.humanVerification && !unchangedRebind && JSON.stringify(section.humanVerification) !== JSON.stringify(previous.humanVerification)) {
       throw new Error("CREATOR_SCRIPT_VERIFICATION_FORGED");
     }
     const sameLineage = candidate.generatedAt === persisted.generatedAt;
@@ -553,7 +559,14 @@ export function normalizeHistoricalCreatorScript(value: unknown): CreatorScript 
   // parser intentionally refuses. Never route a valid current record through
   // that exception, or grant historical semantics to its review snapshot.
   try { return normalizeCreatorScript(value); }
-  catch { return normalizeCreatorScript(value, true); }
+  catch {
+    const grounding = record(record(value)?.grounding);
+    if (record(grounding?.context)?.counterEvidenceReview) {
+      const context = normalizeScriptPlannerEditorialContextForPreservation(grounding?.context);
+      return normalizeCreatorScriptInternal(value, false, context);
+    }
+    return normalizeCreatorScript(value, true);
+  }
 }
 
 export function isCreatorScriptHistoricalResearchOnly(value: unknown) {
@@ -1870,7 +1883,7 @@ export function acceptGeneratedCreatorScript<TScene>(input: {
     return null;
   }
   return {
-    script: normalizeCreatorScript(input.generatedScript),
+    script: normalizeHistoricalCreatorScript(input.generatedScript),
     workspaceStep: input.workspaceStep,
     scenes: input.scenes,
   };

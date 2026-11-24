@@ -117,6 +117,10 @@ export class SupabaseProjectRepository implements ProjectRepository {
       if (input.expectedUpdatedAt) {
         update = update.eq("updated_at", input.expectedUpdatedAt);
       }
+      if (input.expectedResearchAuthority) {
+        update = update.eq("research_revision", input.expectedResearchAuthority.revision)
+          .eq("active_research_snapshot_digest", input.expectedResearchAuthority.digest);
+      }
       const { data, error } = await update.select().maybeSingle();
 
       if (error) {

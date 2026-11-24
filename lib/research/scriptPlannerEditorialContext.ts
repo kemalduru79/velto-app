@@ -463,6 +463,33 @@ export function normalizeScriptPlannerEditorialContextForHistoricalRead(value: u
   return normalizeScriptPlannerEditorialContext(value, true, true);
 }
 
+/** Structural preservation only. The embedded audit is never evidence of
+ * current authority; server operations must independently revalidate it. */
+export function normalizeScriptPlannerEditorialContextForPreservation(value: unknown): ScriptPlannerEditorialContext {
+  const raw = asRecord(value);
+  const audit = asRecord(raw?.counterEvidenceReview);
+  if (!raw || !audit) throw new Error("COUNTER_REVIEW_PRESERVATION_INVALID");
+  const original = normalizeScriptPlannerEditorialContext(audit.originalContext, false);
+  if (!original) throw new Error("COUNTER_REVIEW_ORIGINAL_MISSING");
+  const decision = audit.decision as CounterEvidenceScopeDecision;
+  const review = createCounterEvidenceReview(original);
+  if (!decision || decision.confirmed !== true || decision.snapshotFingerprint !== review.snapshotFingerprint || !Array.isArray(decision.excludedClaimIds) || !decision.excludedClaimIds.length || new Set(decision.excludedClaimIds).size !== decision.excludedClaimIds.length || typeof decision.rationale !== "string" || decision.rationale.trim().length < 12 || decision.rationale.length > 1000) throw new Error("COUNTER_REVIEW_DECISION_INVALID");
+  for (const id of decision.excludedClaimIds) {
+    const item = review.claims.find((claim) => claim.claimId === id);
+    if (!item || !item.canExclude || !review.unresolvedClaimIds.includes(id)) throw new Error("COUNTER_REVIEW_EXCLUSION_NOT_UNRESOLVED");
+  }
+  const graph = createResearchClaimEvidenceGraph(audit.originalResearchSnapshot as ResearchClaimEvidenceGraph);
+  const initial = createResearchClaimEvidenceGraph(audit.initialResearchSnapshot as ResearchClaimEvidenceGraph);
+  if (JSON.stringify(graph) !== JSON.stringify(audit.originalResearchSnapshot) || JSON.stringify(initial) !== JSON.stringify(audit.initialResearchSnapshot)) throw new Error("COUNTER_REVIEW_RESEARCH_SNAPSHOT_INVALID");
+  const excluded = new Set(decision.excludedClaimIds);
+  const expected = { ...original, claims: original.claims.filter((claim) => !excluded.has(claim.claimId)) };
+  const projection = { ...raw }; delete projection.counterEvidenceReview;
+  const normalized = normalizeScriptPlannerEditorialContext(projection, false);
+  if (!normalized || JSON.stringify(normalized) !== JSON.stringify(expected) || JSON.stringify(projection) !== JSON.stringify(normalized) || JSON.stringify(audit.originalContext) !== JSON.stringify(original)) throw new Error("COUNTER_REVIEW_PROJECTION_MISMATCH");
+  if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 2_000_000) throw new Error("COUNTER_REVIEW_SNAPSHOT_TOO_LARGE");
+  return { ...normalized, counterEvidenceReview: audit as unknown as CounterEvidenceScopeReview };
+}
+
 /** Safe, content-free diagnostics for the script provider grounding gate. */
 export function createScriptPlannerGroundingDiagnostics(
   context: ScriptPlannerEditorialContext,

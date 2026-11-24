@@ -166,7 +166,8 @@ assert.match(sceneInvalidationHelper, /creatorSceneHydrationAuthorityRef\.curren
 assert.match(sceneInvalidationHelper, /setCreatorSceneHydrationAuthority\("hydrated_empty"\)/);
 assert.match(sceneInvalidationHelper, /setScenes\(\[\]\)/);
 assert.match(page, /type: "generated_script_replacement"/);
-assert.match(page, /key=\{`\$\{currentProjectId \|\| "unsaved"\}:\$\{creatorScript\.revision\}`\}/);
+const strategyPanel = await readFile(new URL("../components/create/CreatorStrategyPanel.tsx", import.meta.url), "utf8");
+assert.match(strategyPanel, /key=\{`\$\{currentProjectId \|\| "unsaved"\}:\$\{creatorScript\.revision\}`\}/);
 assert.match(page, /useState<CreatorSceneHydrationAuthority>\("unknown"\)/);
 assert.match(page, /useRef<CreatorSceneHydrationAuthority>\("unknown"\)/);
 assert.doesNotMatch(review, /useEffect\([\s\S]{0,300}setDraft\(canonicalDocument\)/);
