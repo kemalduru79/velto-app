@@ -98,6 +98,9 @@ export function evaluateCreatorScriptAcceptance(input: {
   narrationAuthority: string;
   // Opt-in for new live generation. Historical acceptance replays keep legacy behavior.
   qualityFirstDurationRepair?: boolean;
+  // Only server callers that independently verified the active snapshot and
+  // generation gate may supply this context; it is never read from a request.
+  validatedContext?: CreatorScript["grounding"]["context"];
 }): CreatorScriptAcceptanceReport {
   const { script, sectionPlan } = input;
   const duration = getCreatorScriptDurationContractForScript(script, input.language);
@@ -250,11 +253,18 @@ export function evaluateCreatorScriptAcceptance(input: {
     }
   }
 
-  if (creatorScriptHasGroundingBlocker(script)) {
+  if (input.validatedContext && JSON.stringify(script.grounding.context) !== JSON.stringify(input.validatedContext)) {
+    throw new Error("CREATOR_SCRIPT_GROUNDING_MISMATCH");
+  }
+  const contextBlocked = !input.validatedContext && script.grounding.context.readiness.status === "blocked";
+  const groundingBlocked = input.validatedContext
+    ? script.sections.some((section) => section.evidenceReviewRequired)
+    : creatorScriptHasGroundingBlocker(script);
+  if (groundingBlocked) {
     const blockedSections = script.sections
       .filter((section) => section.evidenceReviewRequired)
       .map((section) => section.id);
-    if (script.grounding.context.readiness.status === "blocked") {
+    if (contextBlocked) {
       violations.push({
         code: "GROUNDING_BLOCKED",
         severity: "hard",

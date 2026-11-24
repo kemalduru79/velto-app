@@ -14,7 +14,9 @@ import {
   normalizeCreatorTopicAuthority,
 } from "@/lib/creator/creatorWorkflowAuthority";
 import { createServerSupabaseClient } from "../../../lib/supabase/server";
-import { sourceAuthoritySnapshotDigest, validateOwnedSourceSnapshot, validateSourceAuthorityRecords, type SourceAuthorityRecord } from "../../../lib/research/sourceAuthorityBoundary";
+import { sourceAuthoritySnapshotDigest } from "../../../lib/research/sourceAuthorityBoundary";
+import { loadServerAuthoritativeResearchGraph } from "../../../lib/research/sourceAuthorityWorkflow.server";
+import { evaluateTrustedEvidence } from "../../../lib/research/trustedEvidenceEvaluation";
 import {
   createTimelineSyncPlan,
   normalizeVideoQualityTier,
@@ -81,6 +83,7 @@ import {
   mergeCreatorScriptSectionUnits,
   mergeCreatorScriptReplacementSections,
   normalizeCreatorScript,
+  normalizeCreatorScriptWithTrustedContext,
   regenerateCreatorScriptSection,
   shouldUseCreatorScriptSectionNativeGeneration,
   selectCreatorScriptExpansionCandidates,
@@ -695,6 +698,7 @@ async function reviseScenes({
 async function executeCreatorScriptOperation(input: {
   body: CreatorScriptPlanRequest;
   editorialContext: ScriptPlannerEditorialContext;
+  trustedGroundingGate?: ReturnType<typeof createScriptPlannerGenerationGroundingGate>;
 }) {
   const operation = input.body.operation;
   let requestedDurationSec: number | null = null;
@@ -714,7 +718,7 @@ async function executeCreatorScriptOperation(input: {
   const groundingDiagnostics = createScriptPlannerGroundingDiagnostics(
     input.editorialContext,
   );
-  const groundingGate = createScriptPlannerGenerationGroundingGate(input.editorialContext);
+  const groundingGate = input.trustedGroundingGate ?? createScriptPlannerGenerationGroundingGate(input.editorialContext);
   if (!groundingGate.eligible) {
     console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
       editorialAnalysisStatus: "accepted",
@@ -1038,7 +1042,7 @@ async function executeCreatorScriptOperation(input: {
         grounding: { context: input.editorialContext },
         generatedAt: now,
         updatedAt: now,
-      });
+      }, input.trustedGroundingGate ? input.editorialContext : undefined);
     };
     let firstActualWords: number | null = null;
     let firstDurationStatus: string | null = null;
@@ -1120,12 +1124,14 @@ async function executeCreatorScriptOperation(input: {
         sectionPlan: sectionBudgetPlan,
         language,
         narrationAuthority,
+        validatedContext: input.trustedGroundingGate?.eligible ? input.editorialContext : undefined,
         // New creator generations only; checkpoint replay remains on canonical defaults.
         qualityFirstDurationRepair: true,
       });
     const durationReviewCandidateRef: { current: ReturnType<typeof createCreatorScript> | null } = { current: null };
     try {
       const accepted = await acceptCreatorScriptWithAcceptanceRepair({
+        trustedContext: input.trustedGroundingGate ? input.editorialContext : undefined,
         allowRepair: true,
         maxRepairAttempts: 2,
         shouldRetryRepair: ({ previous, current }) =>
@@ -1412,7 +1418,7 @@ async function executeCreatorScriptOperation(input: {
                   const permittedClaimIds = new Set(createSectionNativeEditorialContext({ context: narrationEditorialContext, plan: sectionBudgetPlan, sectionIndex }).claims.map((claim) => claim.claimId));
                   if (claimIds.some((claimId) => !permittedClaimIds.has(claimId))) throw new Error("CREATOR_SCRIPT_EXPANSION_CLAIM_UNAUTHORIZED");
                   const replacement = { ...originalSection, text: applied.text, claimIds: [...new Set([...originalSection.claimIds, ...claimIds])] };
-                  const candidate = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: [replacement], plan: sectionBudgetPlan });
+                  const candidate = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: [replacement], plan: sectionBudgetPlan, trustedContext: input.trustedGroundingGate ? input.editorialContext : undefined });
                   afterWords = countCreatorScriptWords(replacement.text);
                   if (additionWords <= 0 || additionWords > target.maxAdditionalWords || afterWords <= target.currentWords) throw new Error("wrong_direction_expand");
                   const candidateReport = evaluateAcceptance(candidate);
@@ -1471,7 +1477,7 @@ async function executeCreatorScriptOperation(input: {
               ...repairedSectionIds,
               ...acceptedReplacements.map((replacement) => asString(replacement.id)),
             ]));
-            const expandedScript = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: acceptedReplacements, plan: sectionBudgetPlan });
+            const expandedScript = mergeCreatorScriptReplacementSections({ script: currentScript, replacements: acceptedReplacements, plan: sectionBudgetPlan, trustedContext: input.trustedGroundingGate ? input.editorialContext : undefined });
             postRepairSectionDiagnostics = getCreatorScriptSectionDiagnostics(expandedScript, sectionBudgetPlan);
             return expandedScript;
           }
@@ -1610,6 +1616,7 @@ async function executeCreatorScriptOperation(input: {
             script: currentScript,
             replacements: directionallyValidReplacements,
             plan: sectionBudgetPlan,
+            trustedContext: input.trustedGroundingGate ? input.editorialContext : undefined,
           });
           durationReviewCandidateRef.current = repairedScript;
           logDistinctivenessDiagnostics(`post_repair_${repairCallCount}`, evaluateAcceptance(repairedScript));
@@ -1744,7 +1751,9 @@ async function executeCreatorScriptOperation(input: {
   if (operation === "regenerate_section") {
     let script;
     try {
-      script = normalizeCreatorScript(input.body.creatorScript);
+      script = input.trustedGroundingGate
+        ? normalizeCreatorScriptWithTrustedContext(input.body.creatorScript, input.editorialContext)
+        : normalizeCreatorScript(input.body.creatorScript);
       validateCreatorScriptGenerationDuration(script.targetDurationSec);
     } catch (error) {
       return NextResponse.json({
@@ -1792,6 +1801,8 @@ async function executeCreatorScriptOperation(input: {
         script,
         targetSectionId,
         { ...((parsed.section || {}) as Record<string, unknown>), evidenceReviewRequired: false },
+        undefined,
+        input.trustedGroundingGate ? input.editorialContext : undefined,
       );
       assertCreatorScriptNarrationIsProductionSafe({
         sections: creatorScript.sections,
@@ -1878,87 +1889,38 @@ export async function POST(req: Request) {
       }
     }
 
-    let editorialContext: ScriptPlannerEditorialContext | null;
+    // The client context is only a selector/proposal. Resolve the original
+    // snapshot and every authority record from the authenticated server store.
+    const rawContext = body?.scriptContext;
+    const rawRecord = rawContext && typeof rawContext === "object" && !Array.isArray(rawContext) ? rawContext as Record<string, unknown> : null;
+    const audit = rawRecord?.counterEvidenceReview && typeof rawRecord.counterEvidenceReview === "object" && !Array.isArray(rawRecord.counterEvidenceReview) ? rawRecord.counterEvidenceReview as Record<string, unknown> : null;
+    let editorialContext: ScriptPlannerEditorialContext;
+    let trustedGroundingGate: ReturnType<typeof createScriptPlannerGenerationGroundingGate>;
     try {
-      editorialContext = normalizeScriptPlannerEditorialContext(body?.scriptContext);
-    } catch (error) {
-      return NextResponse.json(
-        {
-          error: "Editorial context is invalid.",
-          code: error instanceof Error ? error.message : "EDITORIAL_CONTEXT_INVALID",
-        },
-        { status: 400 },
-      );
-    }
-    if (editorialContext && body?.operation !== "generate_full_script" && body?.operation !== "regenerate_section") {
-      const groundingGate = createScriptPlannerGenerationGroundingGate(editorialContext);
-      if (!groundingGate.eligible) {
-        return NextResponse.json({ success: false, error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, nextActions: groundingGate.nextActions, unresolvedClaimIds: groundingGate.unresolvedCounterClaimIds }, { status: 422 });
-      }
-    }
-    if (editorialContext) {
-      // Project ownership and the exact normalized snapshot must both match a
-      // server-owned verification record; client readiness is not authority.
+      if (!rawRecord) throw new Error("EDITORIAL_CONTEXT_REQUIRED");
+      const selector = normalizeScriptPlannerEditorialContext(audit ? audit.originalContext : rawRecord, false);
+      if (!selector) throw new Error("EDITORIAL_CONTEXT_REQUIRED");
       const projectId = asString(body?.projectId);
-      const project = projectId ? await getPersistenceServices().projectRepository.getForOwner(projectId, user.id) : null;
-      if (!project || project.flow_type !== "creator_lab") {
-        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_PROJECT_INVALID" }, { status: 403 });
-      }
-      const snapshotDigest = sourceAuthoritySnapshotDigest(editorialContext);
-      if (project.active_research_snapshot_digest !== snapshotDigest || !Number.isSafeInteger(Number(project.research_revision)) || Number(project.research_revision) < 1) {
-        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_RESEARCH_NOT_ACTIVE" }, { status: 422 });
-      }
-      const { data: ownedSnapshot, error: snapshotError } = await supabase
-        .from("creator_source_authority_snapshots")
-        .select("owner_user_id,project_id,snapshot_digest,editorial_context,research_revision")
-        .eq("owner_user_id", user.id)
-        .eq("project_id", projectId)
-        .eq("snapshot_digest", snapshotDigest)
-        .maybeSingle();
-      if (snapshotError) return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNAVAILABLE" }, { status: 503 });
-      if (!validateOwnedSourceSnapshot({ ownerUserId: user.id, projectId, context: editorialContext, snapshot: ownedSnapshot }) || Number(ownedSnapshot?.research_revision) !== Number(project.research_revision)) {
-        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_SNAPSHOT_UNVERIFIED" }, { status: 422 });
-      }
-      const { data: authorityRecords, error: authorityError } = await supabase
-        .from("creator_source_authority_verifications")
-        .select("owner_user_id,project_id,snapshot_digest,source_id,claim_id,evidence_id,source_digest,passage_digest,passage_verification,authority_classification,expires_at")
-        .eq("owner_user_id", user.id)
-        .eq("project_id", projectId)
-        .eq("snapshot_digest", snapshotDigest);
-      if (authorityError) {
-        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNAVAILABLE", error: "Source verification is unavailable; script generation is blocked." }, { status: 503 });
-      }
-      const verification = validateSourceAuthorityRecords({ ownerUserId: user.id, projectId, context: editorialContext, records: (authorityRecords ?? []) as SourceAuthorityRecord[] });
-      if (!verification.ok) {
-        return NextResponse.json({ success: false, code: "CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED", reason: verification.reason, error: "Verified source passages and authority are required before script generation." }, { status: 422 });
-      }
+      if (!projectId) throw new Error("PROJECT_REQUIRED");
+      const authority = await loadServerAuthoritativeResearchGraph(user.id, projectId, sourceAuthoritySnapshotDigest(selector));
+      const evaluation = evaluateTrustedEvidence(audit
+        ? { authority, decision: audit.decision as import("../../../lib/research/scriptPlannerEditorialContext").CounterEvidenceScopeDecision, persistedContext: rawRecord }
+        : { authority });
+      editorialContext = evaluation.context;
+      trustedGroundingGate = evaluation.generation;
+    } catch {
+      return NextResponse.json({ success:false, code:"CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED", category:"GROUNDING", providerDispatched:false, error:"Current verified evidence could not be validated." }, { status:422 });
+    }
+    if (!trustedGroundingGate.eligible) {
+      return NextResponse.json({ success:false, error:trustedGroundingGate.message, code:"CREATOR_SCRIPT_GROUNDING_BLOCKED", category:"GROUNDING", providerDispatched:false, reasonCodes:trustedGroundingGate.reasonCodes, missingExcerptEvidenceIds:trustedGroundingGate.missingExcerptEvidenceIds, nextActions:trustedGroundingGate.nextActions, unresolvedClaimIds:trustedGroundingGate.unresolvedCounterClaimIds }, { status:422 });
     }
     if (body?.operation === "generate_full_script" || body?.operation === "regenerate_section") {
-      if (!editorialContext) {
-        return NextResponse.json({ error: "Grounded editorial context is required." }, { status: 422 });
-      }
-      return executeCreatorScriptOperation({ body, editorialContext });
+      return executeCreatorScriptOperation({ body, editorialContext, trustedGroundingGate });
     }
 
     const productionPackage = body?.productionPackage;
     if (!productionPackage || typeof productionPackage !== "object") {
-      return NextResponse.json(
-        { error: "productionPackage is required." },
-        { status: 400 },
-      );
-    }
-    // The source-scene adapter shares the same fail-closed grounding policy as
-    // canonical script operations whenever it carries editorial authority.
-    if (editorialContext) {
-      const groundingGate = createScriptPlannerGenerationGroundingGate(editorialContext);
-      if (!groundingGate.eligible) {
-        console.error("CREATOR_SCRIPT_GROUNDING_GATE_BLOCKED", {
-          ...createScriptPlannerGroundingDiagnostics(editorialContext),
-          exactBlockingCode: "CREATOR_SCRIPT_GROUNDING_BLOCKED",
-          scriptProviderDispatched: false,
-        });
-        return NextResponse.json({ success: false, error: groundingGate.message, code: "CREATOR_SCRIPT_GROUNDING_BLOCKED", category: "GROUNDING", reasonCodes: groundingGate.reasonCodes, nextActions: groundingGate.nextActions, unresolvedClaimIds: groundingGate.unresolvedCounterClaimIds }, { status: 422 });
-      }
+      return NextResponse.json({ error: "productionPackage is required." }, { status: 400 });
     }
     const allowedClaimIds = editorialContext
       ? new Set(editorialContext.claims.map((claim) => claim.claimId))

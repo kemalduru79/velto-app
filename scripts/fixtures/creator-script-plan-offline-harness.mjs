@@ -14,18 +14,22 @@ export async function createOfflineScriptPlanHarness(options = {}) {
   const jiti=createJiti(import.meta.url,{fsCache:false,alias:{'@':repo}});
   const calls=[],logs=[];
   const forbidden=()=>{throw Error('OFFLINE_AUTH_OR_DATABASE_FORBIDDEN');};
-  const context={Response,Request,URL,console:{info:(...args)=>logs.push(args),warn:(...args)=>logs.push(args),error:(...args)=>logs.push(args)},process:{env:{OPENAI_API_KEY:'offline-placeholder'}},fetch:forbidden,exports:{}};
+  const context={Response,Request,URL,Error,console:{info:(...args)=>logs.push(args),warn:(...args)=>logs.push(args),error:(...args)=>logs.push(args)},process:{env:{OPENAI_API_KEY:'offline-placeholder'}},fetch:forbidden,exports:{}};
   for(const node of ast.statements.filter(ts.isImportDeclaration)) {
     const spec=node.moduleSpecifier.text;let dependency;
     if(spec==='next/server') dependency={NextResponse:{json:(body,init)=>Response.json(body,init)}};
     else if(spec==='openai') dependency={default:class {responses={create:async request=>{
       const body=JSON.parse(request.input.find(item=>item.role==='user').content);calls.push({request,body});
       if(body.sourceScenes && options.sceneResponder)return options.sceneResponder(body);
+      if(body.targetSection && options.regenerationResponder)return options.regenerationResponder(body);
+      if(body.requestedSectionBudgets && options.initialResponder)return options.initialResponder(body);
+      if(body.sectionsToRepair && options.repairResponder)return options.repairResponder(body);
       if(!body.requestedSectionBudgets)throw Error('OFFLINE_STOP_AT_ACCEPTANCE_REPAIR');
       const sections=body.requestedSectionBudgets.map((budget,index)=>({heading:`Synthetic viewpoint ${calls.length+index}`,text:Array.from({length:budget.targetWords},(_,i)=>['The','documented','premise','remains','bounded','by','available','evidence.'][i%8]).join(' '),claimIds:body.allowedClaimIds.slice(0,1)}));
       return{status:'completed',output_text:JSON.stringify({title:'Synthetic documentary',sections})};
     }}}};
     else if(/economics/.test(spec))dependency={recordOpenAITextEconomics:async()=>{}};
+    else if(/sourceAuthorityWorkflow\.server/.test(spec)) dependency={loadServerAuthoritativeResearchGraph:options.loadAuthority || forbidden};
     else if(/supabase/.test(spec) && options.authenticatedUserId) dependency={createServerSupabaseClient:()=>({auth:{getUser:async()=>({data:{user:{id:options.authenticatedUserId}},error:null})},...(options.authorityQuery ? {from:options.authorityQuery} : {})})};
     else if(/persistence/.test(spec) && options.readProjectForOwner) dependency={getPersistenceServices:()=>({projectRepository:{getForOwner:options.readProjectForOwner}})};
     else if(/persistence|supabase/.test(spec))dependency=new Proxy({}, {get:()=>forbidden});

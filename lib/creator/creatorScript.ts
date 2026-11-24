@@ -434,12 +434,17 @@ function normalizeSection(
   };
 }
 
-export function normalizeCreatorScript(value: unknown, historicalReadOnly = false): CreatorScript {
+function normalizeCreatorScriptInternal(value: unknown, historicalReadOnly = false, trustedContext?: ScriptPlannerEditorialContext): CreatorScript {
   const script = record(value);
   const grounding = record(script?.grounding);
   let editorialContext: ScriptPlannerEditorialContext | null = null;
   try {
-    editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context, true, historicalReadOnly);
+    if (trustedContext) {
+      if (JSON.stringify(grounding?.context) !== JSON.stringify(trustedContext)) throw new Error("CREATOR_SCRIPT_GROUNDING_MISMATCH");
+      editorialContext = trustedContext;
+    } else {
+      editorialContext = normalizeScriptPlannerEditorialContext(grounding?.context, true, historicalReadOnly);
+    }
   } catch {
     editorialContext = null;
   }
@@ -511,6 +516,17 @@ export function normalizeCreatorScript(value: unknown, historicalReadOnly = fals
   };
 }
 
+export function normalizeCreatorScript(value: unknown, historicalReadOnly = false): CreatorScript {
+  return normalizeCreatorScriptInternal(value, historicalReadOnly);
+}
+
+/** Only an authenticated server caller that independently resolved the active
+ * research authority may pass its verified context. This does not confer any
+ * authority on a serialized script or on values supplied by a client. */
+export function normalizeCreatorScriptWithTrustedContext(value: unknown, trustedContext: ScriptPlannerEditorialContext): CreatorScript {
+  return normalizeCreatorScriptInternal(value, false, trustedContext);
+}
+
 export function assertCreatorScriptVerificationAuthority(persisted: CreatorScript, candidate: CreatorScript) {
   const previousById = new Map(persisted.sections.map((section) => [section.id, section]));
   for (const section of candidate.sections) {
@@ -559,8 +575,9 @@ export function isValidCreatorScript(value: unknown): value is CreatorScript {
   }
 }
 
-export function createCreatorScript(input: Omit<CreatorScript, "version" | "revision" | "approval"> & { revision?: number }): CreatorScript {
-  return normalizeCreatorScript({ ...input, version: CREATOR_SCRIPT_VERSION, revision: input.revision ?? 1, approval: null });
+export function createCreatorScript(input: Omit<CreatorScript, "version" | "revision" | "approval"> & { revision?: number }, trustedContext?: ScriptPlannerEditorialContext): CreatorScript {
+  const value = { ...input, version: CREATOR_SCRIPT_VERSION, revision: input.revision ?? 1, approval: null };
+  return trustedContext ? normalizeCreatorScriptWithTrustedContext(value, trustedContext) : normalizeCreatorScript(value);
 }
 
 export function getCreatorScriptStatus(script: CreatorScript, currentStrategyFingerprint: string): CreatorScriptStatus {
@@ -1334,6 +1351,7 @@ export function mergeCreatorScriptReplacementSections(input: {
   script: CreatorScript;
   replacements: unknown;
   plan?: CreatorScriptSectionBudget[];
+  trustedContext?: ScriptPlannerEditorialContext;
 }) {
   if (!Array.isArray(input.replacements) || input.replacements.length === 0) {
     throw new Error("CREATOR_SCRIPT_REPAIR_SECTIONS_REQUIRED");
@@ -1355,13 +1373,14 @@ export function mergeCreatorScriptReplacementSections(input: {
   if (sections.some((section) => !section)) {
     throw new Error("CREATOR_SCRIPT_REPAIR_SECTIONS_INCOMPLETE");
   }
-  return normalizeCreatorScript({
+  const value = {
     ...input.script,
     sections,
     revision: input.script.revision + 1,
     updatedAt: new Date().toISOString(),
     approval: null,
-  });
+  };
+  return input.trustedContext ? normalizeCreatorScriptWithTrustedContext(value, input.trustedContext) : normalizeCreatorScript(value);
 }
 
 export function filterCreatorScriptDistinctiveRepairReplacements(input: {
@@ -1594,6 +1613,7 @@ export async function acceptCreatorScriptWithAcceptanceRepair<
   TReport extends CreatorScriptAcceptanceDecision,
 >(input: {
   firstScript: CreatorScript;
+  trustedContext?: ScriptPlannerEditorialContext;
   evaluate: (script: CreatorScript) => TReport;
   repair: (
     report: TReport,
@@ -1608,7 +1628,8 @@ export async function acceptCreatorScriptWithAcceptanceRepair<
     attempt: number;
   }) => boolean;
 }) {
-  let currentScript = normalizeCreatorScript(input.firstScript);
+  const normalize = (value: unknown) => input.trustedContext ? normalizeCreatorScriptWithTrustedContext(value, input.trustedContext) : normalizeCreatorScript(value);
+  let currentScript = normalize(input.firstScript);
   let currentReport = input.evaluate(currentScript);
   if (currentReport.accepted) {
     return {
@@ -1625,7 +1646,7 @@ export async function acceptCreatorScriptWithAcceptanceRepair<
   const maxRepairAttempts = Math.max(1, Math.min(2, input.maxRepairAttempts ?? 1));
   for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
     const previousReport = currentReport;
-    currentScript = normalizeCreatorScript(
+    currentScript = normalize(
       await input.repair(previousReport, currentScript, attempt),
     );
     currentReport = input.evaluate(currentScript);
@@ -1875,14 +1896,15 @@ export function editCreatorScriptSection(script: CreatorScript, sectionId: strin
   return normalizeCreatorScript({ ...script, sections, revision: script.revision + 1, updatedAt, approval: null });
 }
 
-export function regenerateCreatorScriptSection(script: CreatorScript, sectionId: string, replacement: unknown, updatedAt = new Date().toISOString()) {
+export function regenerateCreatorScriptSection(script: CreatorScript, sectionId: string, replacement: unknown, updatedAt = new Date().toISOString(), trustedContext?: ScriptPlannerEditorialContext) {
   const allowedClaimIds = new Set(script.grounding.context.claims.map((claim) => claim.claimId));
   const currentIndex = script.sections.findIndex((section) => section.id === sectionId);
   if (currentIndex < 0) throw new Error("CREATOR_SCRIPT_SECTION_NOT_FOUND");
   const nextSection = normalizeSection(replacement, currentIndex, allowedClaimIds);
   if (nextSection.id !== sectionId || nextSection.kind !== script.sections[currentIndex].kind) throw new Error("CREATOR_SCRIPT_REGENERATION_TARGET_MISMATCH");
   const sections = script.sections.map((section, index) => index === currentIndex ? { ...nextSection, humanVerification: undefined } : section.humanVerification ? { ...section, humanVerification: { ...section.humanVerification, scriptRevision: script.revision + 1 } } : section);
-  return normalizeCreatorScript({ ...script, sections, revision: script.revision + 1, updatedAt, approval: null });
+  const result = { ...script, sections, revision: script.revision + 1, updatedAt, approval: null };
+  return trustedContext ? normalizeCreatorScriptWithTrustedContext(result, trustedContext) : normalizeCreatorScript(result);
 }
 
 const CREATOR_SCRIPT_SENTENCE_ABBREVIATIONS = new Set([

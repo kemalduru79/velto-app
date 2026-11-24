@@ -169,10 +169,12 @@ const blockedHarness=await createOfflineScriptPlanHarness();const blocked=await 
 const legacyHarness=await createOfflineScriptPlanHarness({includePost:true,authenticatedUserId:'synthetic-owner'});
 const legacyRequest=(scriptContext)=>new Request('http://offline.invalid/api/creator-script-plan',{method:'POST',headers:{authorization:'Bearer synthetic-never-sent','content-type':'application/json'},body:JSON.stringify({productionPackage:{title:'Synthetic package',scenes:[]},durationSec:600,scriptContext})});
 const legacyBlocked=await legacyHarness.post(legacyRequest(context));assert.equal(legacyBlocked.status,422);
-assert.deepEqual((await legacyBlocked.json()).unresolvedClaimIds,['claim-2','claim-3']);assert.equal(legacyHarness.calls.length,0);
-const primaryBlocked=await legacyHarness.post(legacyRequest(unverifiedStudy));assert.equal(primaryBlocked.status,422);assert((await primaryBlocked.json()).reasonCodes.includes('PRIMARY_SOURCE_COVERAGE_REQUIRED'));assert.equal(legacyHarness.calls.length,0);
+// No project-bound server snapshot was supplied: authority now fails before
+// claim-specific diagnostics can safely be derived from this client context.
+const legacyFailure=await legacyBlocked.json();assert.equal(legacyFailure.code,'CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED');assert.equal(legacyFailure.providerDispatched,false);assert.equal(legacyHarness.calls.length,0);
+const primaryBlocked=await legacyHarness.post(legacyRequest(unverifiedStudy));assert.equal(primaryBlocked.status,422);assert.equal((await primaryBlocked.json()).code,'CREATOR_SCRIPT_SOURCE_AUTHORITY_UNVERIFIED');assert.equal(legacyHarness.calls.length,0);
 const altered=structuredClone(scoped);altered.claims[0].text+=' Fabricated.';
-assert.equal((await legacyHarness.post(legacyRequest(altered))).status,400);assert.equal(legacyHarness.calls.length,0);
+assert.equal((await legacyHarness.post(legacyRequest(altered))).status,422);assert.equal(legacyHarness.calls.length,0);
 const regenHarness=await createOfflineScriptPlanHarness();
 const existingScript=createCreatorScript({title:'Synthetic existing draft',targetDurationSec:600,strategyFingerprint:request.strategyFingerprint,generatedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',grounding:{context},sections:['opening','body','conclusion'].map((kind,index)=>({id:`section-${index+1}`,kind,heading:'Synthetic',text:'A bounded synthetic statement.',claimIds:['claim-1'],evidenceReviewRequired:true}))});
 const regeneration=await regenHarness.execute({body:{...request,operation:'regenerate_section',targetSectionId:'section-2',creatorScript:existingScript},editorialContext:scoped});
