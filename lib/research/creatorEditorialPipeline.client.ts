@@ -43,7 +43,7 @@ export class CreatorEditorialPipelineError extends Error {
   }
 }
 
-export type ParentSourceReview = { projectId: string; snapshotDigest: string; researchRevision: number; requirements: Array<{ claimId: string; evidenceId: string; sourceId: string }> };
+export type ParentSourceReview = { stage: 'parent' | 'child'; projectId: string; snapshotDigest: string; researchRevision: number; requirements: Array<{ claimId: string; evidenceId: string; sourceId: string }> };
 
 export type CreatorEditorialPipelineInput = {
   accessToken: string;
@@ -399,19 +399,19 @@ export async function runCreatorEditorialScriptPipeline(
     if (payload.status !== 'REVIEW_REQUIRED' && payload.status !== 'REVIEW_COMPLETE') throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
     return { payload, revision };
   };
-  const ensureReview = async (snapshot: string, expectedRevision?: number) => {
+  const ensureReview = async (stage: ParentSourceReview['stage'], snapshot: string, expectedRevision?: number) => {
     const initial = await parentStatus(snapshot, expectedRevision);
     if (initial.payload.status === 'REVIEW_COMPLETE') return initial.revision;
     const requirements = asArray(initial.payload.requirements).map(asRecord);
     if (requirements.some(item => !item || typeof item.claimId !== 'string' || typeof item.evidenceId !== 'string' || typeof item.sourceId !== 'string')) throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
-    const pending: ParentSourceReview = { projectId:parentProjectId, snapshotDigest:snapshot, researchRevision:initial.revision, requirements:requirements as ParentSourceReview['requirements'] };
+    const pending: ParentSourceReview = { stage, projectId:parentProjectId, snapshotDigest:snapshot, researchRevision:initial.revision, requirements:requirements as ParentSourceReview['requirements'] };
     if (!input.onParentSourceReview) { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is required before continuing.'); error.parentReview = pending; throw error; }
     await input.onParentSourceReview(pending);
     const confirmed = await parentStatus(snapshot, initial.revision);
     if (confirmed.payload.status !== 'REVIEW_COMPLETE') { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is still required.'); error.parentReview = pending; throw error; }
     return confirmed.revision;
   };
-  const parentRevision = await ensureReview(parentSnapshotDigest);
+  const parentRevision = await ensureReview('parent', parentSnapshotDigest);
 
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(
@@ -662,7 +662,7 @@ export async function runCreatorEditorialScriptPipeline(
     }
 
     const childSnapshotDigest = typeof augmentedEditorial.sourceAuthoritySnapshotDigest === 'string' ? augmentedEditorial.sourceAuthoritySnapshotDigest : '';
-    await ensureReview(childSnapshotDigest, parentRevision);
+    await ensureReview('child', childSnapshotDigest, parentRevision);
     editorial = augmentedEditorial;
     const augmentedGraph = asRecord(editorial.graph);
     if (Array.isArray(augmentedGraph?.sources)) {

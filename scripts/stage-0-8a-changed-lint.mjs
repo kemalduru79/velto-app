@@ -61,6 +61,14 @@ const REVIEWED_CURRENT_PAGE_LINT = Object.freeze({
   warnings: 82,
 });
 
+// Owner-reviewed source authority UI candidate, exact bytes and report only.
+const REVIEWED_SOURCE_REVIEW_PAGE_LINT = Object.freeze({
+  sha256: "a06cd73219476612e64a79600806a40e000466ba5ac6a9d9418d23e991af3170",
+  diagnosticSha256: "d37bab23e50a5574bf9c73469d65253681e011f83f024a983a4f8d637e9f547f",
+  errors: 74,
+  warnings: 82,
+});
+
 function acceptsReviewedLegacyLint(file, result) {
   const historical = Object.hasOwn(REVIEWED_LEGACY_LINT, file) ? REVIEWED_LEGACY_LINT[file] : null;
   // Babel emits this informational note for the exact reviewed >500KB page.
@@ -75,7 +83,8 @@ function acceptsReviewedLegacyLint(file, result) {
     if (!fs.lstatSync(file).isFile()) return false;
     const sourceHash = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
     const approved = sourceHash === historical.sha256 ? historical :
-      file === "app/create/page.tsx" && sourceHash === REVIEWED_CURRENT_PAGE_LINT.sha256 ? REVIEWED_CURRENT_PAGE_LINT : null;
+      file === "app/create/page.tsx" && sourceHash === REVIEWED_CURRENT_PAGE_LINT.sha256 ? REVIEWED_CURRENT_PAGE_LINT :
+      file === "app/create/page.tsx" && sourceHash === REVIEWED_SOURCE_REVIEW_PAGE_LINT.sha256 ? REVIEWED_SOURCE_REVIEW_PAGE_LINT : null;
     if (!approved) return false;
 
     const reports = JSON.parse(result.stdout);

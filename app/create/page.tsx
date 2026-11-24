@@ -59,6 +59,7 @@ import { useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } fr
 import { toCreatorPublishingMetadataPackage } from "@/lib/creator/publishingMetadataPayload";
 import { useRouter } from "next/navigation";
 import { CreatorCounterEvidenceReview } from "@/components/create/CreatorCounterEvidenceReview";
+import { CreatorSourceAuthorityReview, useCreatorSourceAuthorityReview } from "@/components/create/CreatorSourceAuthorityReview";
 import type { CounterEvidenceScopeDecision, createCounterEvidenceReview } from "@/lib/research/scriptPlannerEditorialContext";
 import { supabase } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/useLanguage";
@@ -3887,6 +3888,8 @@ function hasCreatorProjectCardDisplayValue(value: unknown): value is CreatorProj
 }
 
 function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
+  const sourceAuthorityReview = useCreatorSourceAuthorityReview();
+  const cancelSourceReview = sourceAuthorityReview.cancel;
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
   const selectedFlow: ReturnType<typeof getFlowByKey> & Readonly<{ id?: unknown }> = getFlowByKey(selectedFlowKey);
@@ -14916,8 +14919,9 @@ const generateSceneImage = async (
       counterEvidenceReviewResolver.current?.(null);
       counterEvidenceReviewResolver.current = null;
       setCounterEvidenceReview(null);
+      cancelSourceReview();
     };
-  }, [creatorStrategyFingerprint, currentProjectId]);
+  }, [creatorStrategyFingerprint, currentProjectId, cancelSourceReview]);
   const creatorScriptIsCurrent = isCreatorScriptCurrentForStrategy({
     script: creatorScript,
     strategyFingerprint: creatorStrategyFingerprint,
@@ -14972,6 +14976,7 @@ const generateSceneImage = async (
           accessToken,
           topic,
       creatorProfile: creatorStrategyProfileSnapshot || creatorProfile,
+          onParentSourceReview: sourceAuthorityReview.request,
           onCounterEvidenceReview: requestCounterEvidenceReview,
           operationIsCurrent: reviewIsCurrent,
           scriptPlanRequest,
@@ -15650,6 +15655,7 @@ const generateSceneImage = async (
         topic: normalizeCreatorTopicAuthority(input),
         researchSubject: creatorMarketEvidenceSubject,
         creatorProfile,
+        onParentSourceReview: sourceAuthorityReview.request,
         onCounterEvidenceReview: requestCounterEvidenceReview,
         operationIsCurrent: () => operationIsActive() && creatorStrategyFingerprint === counterReviewStrategyRef.current,
         scriptPlanRequest: {
@@ -21238,6 +21244,7 @@ const generateSceneImage = async (
   return (
     <WorldProvider>
       <ActiveProductShell>
+        {sourceAuthorityReview.pending && <CreatorSourceAuthorityReview key={sourceAuthorityReview.pending.snapshotDigest} pending={sourceAuthorityReview.pending} onCancel={sourceAuthorityReview.cancel} onContinue={sourceAuthorityReview.complete} />}
         {editorialResearchReview && <CreatorCounterEvidenceReview key={editorialResearchReview.reviewId} review={editorialResearchReview.counterReview} editorialReview={editorialResearchReview} onDecision={()=>finishEditorialResearchReview(null)} onEditorialDecision={finishEditorialResearchReview} />}
         {creatorScriptDraftPreview && <CreatorScriptDraftPreview script={creatorScriptDraftPreview} onClose={()=>setCreatorScriptDraftPreview(null)} />}
         {counterEvidenceReview && <CreatorCounterEvidenceReview key={counterEvidenceReview.snapshotFingerprint} review={counterEvidenceReview} onDecision={finishCounterEvidenceReview} />}

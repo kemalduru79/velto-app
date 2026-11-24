@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+
+// Exercise the real component's event handlers with deterministic React hooks;
+// this does not substitute for browser or Supabase integration acceptance.
+let slots=[], cursor=0, allowed=true, issued=false, continued=false, dispatches=0, statusOverride='';
+const react={useState(initial){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],value=>{slots[i]=typeof value==='function'?value(slots[i]):value;}];},useRef(initial){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i];},useEffect(){cursor++;},useCallback(fn){cursor++;return fn;}};
+const element=(type,props)=>({type,props:props||{}});
+const supabase={auth:{getSession:async()=>({data:{session:{access_token:'reviewer-token'}}}),getUser:async()=>({data:{user:{id:'owner'}},error:null})}};
+const fakeFetch=async(url,init)=>{dispatches++;const body=JSON.parse(init.body);assert.equal(init.headers.Authorization,'Bearer reviewer-token');if(url.includes('creator-source-authority')){if(!allowed)return {ok:false,json:async()=>({})};if(body.operation==='inspect')return {ok:true,json:async()=>({documentDigest:'a'.repeat(64),sourceUrl:'https://example.org/study',documentContent:'RESTRICTED DOCUMENT',passage:'Test passage',claimText:'Test claim'})};assert.equal(body.operation,'issue');assert.equal(body.ownerId,'owner');assert.equal(body.decision.documentDigest,'a'.repeat(64));issued=true;return {ok:true,json:async()=>({})};}if(statusOverride==='STALE_RESEARCH')return {ok:false,json:async()=>({status:'STALE_RESEARCH'})};return {ok:true,json:async()=>({projectId:'project',snapshotDigest:'b'.repeat(64),researchRevision:1,status:statusOverride||(issued?'REVIEW_COMPLETE':'REVIEW_REQUIRED')})};};
+const source=fs.readFileSync('components/create/CreatorSourceAuthorityReview.tsx','utf8');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText;
+const ctx={exports:{},require(name){if(name==='react')return react;if(name==='react/jsx-runtime')return {jsx:element,jsxs:element,Fragment:'fragment'};if(name==='@/lib/supabase/client')return {supabase};throw Error(name);},fetch:fakeFetch,Date,Error,Promise};vm.createContext(ctx);vm.runInContext(compiled,ctx);
+const pending={stage:'parent',ownerId:'owner',projectId:'project',snapshotDigest:'b'.repeat(64),researchRevision:1,requirements:[{claimId:'claim',evidenceId:'evidence',sourceId:'source'}]};
+const nodes=node=>{if(!node||typeof node!=='object')return [];const c=node.props?.children;return [node,...(Array.isArray(c)?c.flatMap(nodes):nodes(c))]};
+const label=node=>{const c=node.props?.children;return typeof c==='string'?c:Array.isArray(c)?c.filter(x=>typeof x==='string').join(''):''};
+const render=()=>{cursor=0;return ctx.exports.CreatorSourceAuthorityReview({pending,onCancel(){},onContinue(){continued=true;}})};
+const button=(tree,text)=>nodes(tree).find(n=>n.type==='button'&&label(n)===text);
+let tree=render();assert.equal(label(nodes(tree).find(n=>n.type==='h2')),'parent source authority review');assert(!JSON.stringify(tree).includes('RESTRICTED DOCUMENT'));
+allowed=false;await button(tree,'Inspect as authorized reviewer').props.onClick();tree=render();assert(!JSON.stringify(tree).includes('RESTRICTED DOCUMENT'));assert.match(JSON.stringify(tree),/authorization or source inspection failed/);
+allowed=true;await button(tree,'Inspect as authorized reviewer').props.onClick();tree=render();assert.match(JSON.stringify(tree),/RESTRICTED DOCUMENT/);
+const textarea=nodes(tree).find(n=>n.type==='textarea');textarea.props.onChange({target:{value:'I reviewed the complete source.'}});const checks=nodes(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');checks.at(-1).props.onChange({target:{checked:true}});tree=render();assert.equal(button(tree,'Issue explicit reviewer decision').props.disabled,false);allowed=false;await button(tree,'Issue explicit reviewer decision').props.onClick();assert.equal(issued,false);allowed=true;await button(render(),'Issue explicit reviewer decision').props.onClick();assert.equal(issued,true);
+tree=render();await button(tree,'Recheck verification').props.onClick();tree=render();assert.equal(button(tree,'Continue').props.disabled,false);button(tree,'Continue').props.onClick();assert.equal(continued,true);
+slots=[];pending.stage='child';issued=false;tree=render();assert.equal(label(nodes(tree).find(n=>n.type==='h2')),'child source authority review');assert.equal(button(tree,'Continue').props.disabled,true);assert(dispatches>0);
+statusOverride='AUTHORITY_INVALID';await button(tree,'Recheck verification').props.onClick();tree=render();assert.match(JSON.stringify(tree),/Invalid Authority/);assert.equal(button(tree,'Continue').props.disabled,true);
+statusOverride='STALE_RESEARCH';await button(tree,'Recheck verification').props.onClick();tree=render();assert.match(JSON.stringify(tree),/Research Changed/);assert.equal(button(tree,'Continue').props.disabled,true);statusOverride='';
+slots=[];cursor=0;const hook=ctx.exports.useCreatorSourceAuthorityReview();const waiting=hook.request(pending);await Promise.resolve();await Promise.resolve();hook.cancel();await assert.rejects(waiting,/canceled/);
+console.log('SOURCE_AUTHORITY_UI_SYNTHETIC_HANDLERS=PASS');

@@ -25,7 +25,7 @@ async function exercise(mode) {
     if (url === '/api/creator-script-plan') return Response.json({success:true});
     throw Error(`unexpected ${url}`);
   };
-  const callback = mode === 'missing' ? undefined : async pending => { assert.equal(pending.projectId,'project'); assert.equal(pending.snapshotDigest,digest); assert.equal(pending.researchRevision,1); notify(); await release; };
+  const callback = mode === 'missing' ? undefined : async pending => { assert.equal(pending.stage,'parent'); assert.equal(pending.projectId,'project'); assert.equal(pending.snapshotDigest,digest); assert.equal(pending.researchRevision,1); notify(); await release; };
   const run = runCreatorEditorialScriptPipeline({accessToken:'synthetic',topic:'Synthetic',scriptPlanRequest:{projectId:'project'},operationIsCurrent:()=>true,fetchImpl,onParentSourceReview:callback});
   if (['ok','revision','unverified'].includes(mode)) {
     await paused;
@@ -69,7 +69,7 @@ async function childCase(mode) {
     if(url==='/api/creator-script-plan')return Response.json({success:true});
     throw Error(`unexpected ${url}`);
   };
-  const run=runCreatorEditorialScriptPipeline({accessToken:'synthetic',topic:'Synthetic',scriptPlanRequest:{projectId:'project'},operationIsCurrent:()=>true,fetchImpl,...(mode==='missing_child'?{}:{onParentSourceReview:async pending=>{assert.equal(pending.snapshotDigest,child);notify();await resume;}})});
+  const run=runCreatorEditorialScriptPipeline({accessToken:'synthetic',topic:'Synthetic',scriptPlanRequest:{projectId:'project'},operationIsCurrent:()=>true,fetchImpl,...(mode==='missing_child'?{}:{onParentSourceReview:async pending=>{assert.equal(pending.stage,'child');assert.equal(pending.snapshotDigest,child);notify();await resume;}})});
   if(['child_ok','child_unverified'].includes(mode)) {
     await paused;
     assert.equal(calls.filter(c=>c.url==='/api/creator-editorial-primary-coverage').length,1);
