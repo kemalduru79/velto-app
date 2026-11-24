@@ -37,6 +37,7 @@ globalThis.fetch = function contextSensitiveBrowserFetch(url, init) {
   if (url === "/api/creator-evidence-evaluation") {
     const body = JSON.parse(init.body);
     assert.equal(body.projectId, "fixture-project"); assert.equal(body.snapshotDigest, fixtureDigest);
+    if (body.operation === 'review_status') return Promise.resolve(response({success:true,projectId:'fixture-project',snapshotDigest:fixtureDigest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]}));
     return Promise.resolve(response({ success: true, projectId: "fixture-project", snapshotDigest: fixtureDigest, researchRevision: 1,
       readiness: { version: "0.10H-2B", status: "ready", editorialReadinessScore: 100, claimCount: 0, evidenceRequiredClaimCount: 0,
         supportedClaimCount: 0, unsupportedClaimIds: [], primarySourceRequiredClaimIds: [], primarySourceCoveredClaimIds: [],
@@ -71,15 +72,16 @@ try {
     operationIsCurrent: () => true,
   });
 
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 6);
   assert.deepEqual(calls.map((call) => call.url), [
     "/api/creator-script-plan",
     "/api/creator-research",
     "/api/creator-editorial-analysis",
     "/api/creator-evidence-evaluation",
+    "/api/creator-evidence-evaluation",
     "/api/creator-script-plan",
   ]);
-  const scriptPlanBody = JSON.parse(calls[4].init.body);
+  const scriptPlanBody = JSON.parse(calls[5].init.body);
   assert.equal(scriptPlanBody.qualityMode, "pro");
   assert.equal(scriptPlanBody.topic, "Approved strategy");
   assert.deepEqual(result.productionPackage, {

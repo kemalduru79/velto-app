@@ -38,6 +38,7 @@ async function runCreatorEditorialScriptPipeline(input) {
       if (url === "/api/creator-evidence-evaluation") {
         assert.equal(body.projectId, projectId);
         assert.equal(body.snapshotDigest, fixtureDigest);
+        if (body.operation === 'review_status') return jsonResponse({ success:true, projectId, snapshotDigest:fixtureDigest, researchRevision:1, status:'REVIEW_COMPLETE', requirements:[] });
         return jsonResponse({ success: true, projectId, snapshotDigest: fixtureDigest, researchRevision: 1,
           readiness: fixtureReadiness,
           verifiedLimitationClaimIds: [], review: fixtureReview,
@@ -111,7 +112,7 @@ const result = await runCreatorEditorialScriptPipeline({
 });
 
 assert.equal(calls.length, 4);
-assert.deepEqual(fixtureTrace[0].map((call) => call.url), ["/api/creator-script-plan", "/api/creator-research", "/api/creator-editorial-analysis", "/api/creator-evidence-evaluation", "/api/creator-script-plan"]);
+assert.deepEqual(fixtureTrace[0].map((call) => call.url), ["/api/creator-script-plan", "/api/creator-research", "/api/creator-editorial-analysis", "/api/creator-evidence-evaluation", "/api/creator-evidence-evaluation", "/api/creator-script-plan"]);
 assert.deepEqual(calls.map((call) => call.url), [
   "/api/creator-script-plan",
   "/api/creator-research",
@@ -156,6 +157,10 @@ for (const mode of ["missing_snapshot", "missing_evaluation", "project_mismatch"
       if (url === "/api/creator-research") return jsonResponse({ success: true, sources: [{ sourceId: "synthetic-source" }] });
       if (url === "/api/creator-editorial-analysis") return jsonResponse({ success: true, scriptContext, readiness: fixtureReadiness, ...(mode === "missing_snapshot" ? {} : { sourceAuthoritySnapshotDigest: fixtureDigest }) });
       if (url === "/api/creator-evidence-evaluation") {
+        if (body.operation === 'review_status') {
+          if (['missing_evaluation','unauthorized','expired_authority'].includes(mode)) return jsonResponse({success:false,status:'AUTHORITY_INVALID'},422);
+          return jsonResponse({success:true,projectId:mode==='project_mismatch'?'other-project':'security-project',snapshotDigest:mode==='snapshot_mismatch'?'b'.repeat(64):fixtureDigest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]});
+        }
         evaluationCount++;
         assert.equal(body.projectId, "security-project"); assert.equal(body.snapshotDigest, fixtureDigest);
         assert.equal(body.verifiedLimitationClaimIds, undefined); assert.equal(body.readiness, undefined);
@@ -171,7 +176,7 @@ for (const mode of ["missing_snapshot", "missing_evaluation", "project_mismatch"
           blockingReasons: unresolved ? ["MATERIAL_COUNTER_EVIDENCE_REVIEW"] : [], generationEligible: !unresolved });
       }
       throw Error("UNEXPECTED_ENDPOINT");
-    } }), (error) => error instanceof CreatorEditorialPipelineError && ["EDITORIAL_EVALUATION_UNAVAILABLE", "EDITORIAL_REVIEW_STALE", "EDITORIAL_REVIEW_UNRESOLVED"].includes(error.code), mode);
+    } }), (error) => error instanceof CreatorEditorialPipelineError && ["EDITORIAL_EVALUATION_UNAVAILABLE", "EDITORIAL_REVIEW_STALE", "EDITORIAL_REVIEW_UNRESOLVED", "STALE_RESEARCH", "AUTHORITY_INVALID"].includes(error.code), mode);
   assert.equal(generationCount, 0, `${mode} never dispatches generation`);
 }
 

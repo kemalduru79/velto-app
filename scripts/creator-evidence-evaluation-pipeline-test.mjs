@@ -24,6 +24,7 @@ async function run(config={}) {
   if(url==='/api/creator-research'){calls.research++;return Response.json({success:true,sources:fixture.sources});}
   if(url==='/api/creator-editorial-analysis')return Response.json({success:true,graph,readiness:raw.readiness,scriptContext:raw,sourceAuthoritySnapshotDigest:config.noSnapshot?null:digest});
   if(url==='/api/creator-evidence-evaluation'){
+   if(body.operation==='review_status')return Response.json({success:true,projectId:'project',snapshotDigest:digest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]});
    calls.eval++;if(config.stale){active=false;}if(config.projectChange)options.projectId='other';
    if(config.failure)return Response.json({success:false,code:'EVIDENCE_AUTHORITY_UNAVAILABLE'},{status:422});
    const scoped=Boolean(body.scopeDecision);const revised=scoped?{...context,claims:context.claims.filter(c=>c.claimId!=='claim-3')}:context;

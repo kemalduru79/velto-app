@@ -123,6 +123,7 @@ const supportedScope=apply(supported.context,{...decision,snapshotFingerprint:re
 const harness=await createOfflineScriptPlanHarness();let reviewCount=0;let handoff;
 const syntheticDigest='a'.repeat(64);
 const evaluationResponse=(ctx,body)=>{
+ if(body.operation==='review_status')return Response.json({success:true,projectId:request.projectId,snapshotDigest:syntheticDigest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]});
  try {
   const projected=body.scopeDecision?apply(ctx,body.scopeDecision):ctx;
   return Response.json({success:true,projectId:request.projectId,snapshotDigest:syntheticDigest,researchRevision:1,review:review(projected),blockingReasons:body.scopeDecision?[]:['MATERIAL_COUNTER_EVIDENCE_REVIEW'],...(body.scopeDecision?{proposedScope:projected}:{})});

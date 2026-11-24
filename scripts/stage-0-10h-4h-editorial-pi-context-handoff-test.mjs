@@ -115,6 +115,7 @@ const mockFetch = async (url, init) => {
   if (url === "/api/creator-evidence-evaluation") {
     const body = JSON.parse(String(init.body));
     assert.equal(body.projectId, "fixture-project"); assert.equal(body.snapshotDigest, fixtureDigest);
+    if (body.operation === 'review_status') return jsonResponse({success:true,projectId:'fixture-project',snapshotDigest:fixtureDigest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]});
     return jsonResponse(fixtureEvaluation);
   }
   if (url === "/api/creator-script-plan") {
@@ -162,14 +163,14 @@ await assert.rejects(
     topic: "Adoption",
     scriptPlanRequest: { projectId: "fixture-project" },
     operationIsCurrent: () => true,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, init) => {
       if (url === "/api/creator-research") {
         return jsonResponse({ success: true, sources: [source] });
       }
       if (url === "/api/creator-editorial-analysis") {
         return jsonResponse({ success: true, scriptContext, sourceAuthoritySnapshotDigest: fixtureDigest });
       }
-      if (url === "/api/creator-evidence-evaluation") return jsonResponse(fixtureEvaluation);
+      if (url === "/api/creator-evidence-evaluation") return JSON.parse(String(init.body)).operation === 'review_status' ? jsonResponse({success:true,projectId:'fixture-project',snapshotDigest:fixtureDigest,researchRevision:1,status:'REVIEW_COMPLETE',requirements:[]}) : jsonResponse(fixtureEvaluation);
       if (url === "/api/creator-script-plan") {
         return jsonResponse({
           success: true,

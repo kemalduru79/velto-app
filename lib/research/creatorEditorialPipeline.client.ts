@@ -27,6 +27,7 @@ export class CreatorEditorialPipelineError extends Error {
   code: string | null;
   // Ephemeral review-only payload; not an accepted script.
   reviewOnlyDraft: unknown | null = null;
+  parentReview: ParentSourceReview | null = null;
 
   constructor(input: {
     stage: CreatorEditorialPipelineStage;
@@ -42,6 +43,8 @@ export class CreatorEditorialPipelineError extends Error {
   }
 }
 
+export type ParentSourceReview = { projectId: string; snapshotDigest: string; researchRevision: number; requirements: Array<{ claimId: string; evidenceId: string; sourceId: string }> };
+
 export type CreatorEditorialPipelineInput = {
   accessToken: string;
   topic: string;
@@ -52,6 +55,7 @@ export type CreatorEditorialPipelineInput = {
   maxResultsPerLane?: number;
   fetchImpl?: typeof fetch;
   onCounterEvidenceReview?: (review: ReturnType<typeof createCounterEvidenceReview>) => Promise<CounterEvidenceScopeDecision | null>;
+  onParentSourceReview?: (review: ParentSourceReview) => Promise<void>;
   operationIsCurrent?: () => boolean;
 };
 
@@ -377,6 +381,33 @@ export async function runCreatorEditorialScriptPipeline(
       creatorProfile: input.creatorProfile ?? {},
     },
   });
+
+  const parentProjectId = clean(input.scriptPlanRequest.projectId, 200);
+  const parentSnapshotDigest = clean(editorial.sourceAuthoritySnapshotDigest, 64);
+  const parentCurrent = () => Boolean(input.operationIsCurrent?.()) && clean(input.scriptPlanRequest.projectId, 200) === parentProjectId && clean(input.accessToken, 8_000) === accessToken;
+  const parentFailure = (code: string, message: string) => new CreatorEditorialPipelineError({ stage: 'editorial_analysis', code, message });
+  if (!parentProjectId || !/^[0-9a-f]{64}$/.test(parentSnapshotDigest) || !parentCurrent()) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+  const parentStatus = async (expectedRevision?: number) => {
+    if (!parentCurrent()) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+    const response = await fetchImpl('/api/creator-evidence-evaluation', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${accessToken}` }, body:JSON.stringify({ operation:'review_status', projectId:parentProjectId, snapshotDigest:parentSnapshotDigest }) });
+    const payload = await parseJsonResponse(response);
+    if (!parentCurrent() || payload.status === 'STALE_RESEARCH') throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+    if (!response.ok || payload.success !== true || payload.status === 'AUTHORITY_INVALID') throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
+    const revision = asPositiveInteger(payload.researchRevision);
+    if (payload.projectId !== parentProjectId || payload.snapshotDigest !== parentSnapshotDigest || revision === null || (expectedRevision !== undefined && revision !== expectedRevision)) throw parentFailure('STALE_RESEARCH', 'The project or research changed. Restart the review.');
+    if (payload.status !== 'REVIEW_REQUIRED' && payload.status !== 'REVIEW_COMPLETE') throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
+    return { payload, revision };
+  };
+  const initialParent = await parentStatus();
+  if (initialParent.payload.status === 'REVIEW_REQUIRED') {
+    const requirements = asArray(initialParent.payload.requirements).map(asRecord);
+    if (requirements.some(item => !item || typeof item.claimId !== 'string' || typeof item.evidenceId !== 'string' || typeof item.sourceId !== 'string')) throw parentFailure('AUTHORITY_INVALID', 'Source authority could not be verified.');
+    const pending: ParentSourceReview = { projectId:parentProjectId, snapshotDigest:parentSnapshotDigest, researchRevision:initialParent.revision, requirements:requirements as ParentSourceReview['requirements'] };
+    if (!input.onParentSourceReview) { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is required before continuing.'); error.parentReview = pending; throw error; }
+    await input.onParentSourceReview(pending);
+    const confirmed = await parentStatus(initialParent.revision);
+    if (confirmed.payload.status !== 'REVIEW_COMPLETE') { const error = parentFailure('SOURCE_AUTHORITY_REVIEW_REQUIRED', 'Authorized source review is still required.'); error.parentReview = pending; throw error; }
+  }
 
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(

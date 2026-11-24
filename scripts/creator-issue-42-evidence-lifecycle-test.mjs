@@ -125,7 +125,7 @@ if(!baseline){
    if(body.operation==='validate_generation_authority')return Response.json({success:true});
    handoffs.push(body.scriptContext);
    return pipelineHarness.execute({body,editorialContext:normalizeScriptPlannerEditorialContext(body.scriptContext)});
- }}),error=>error.code==='EDITORIAL_EVALUATION_UNAVAILABLE');
+ }}),error=>error.code==='STALE_RESEARCH');
  assert.equal(handoffs.length,0,'missing server authority must block client handoff');
  assert.equal(pipelineHarness.calls.length,0);assert.equal(JSON.stringify(draft),originalDraft,'client failure never replaces the draft');
  console.log('ISSUE_42_GATE_CAPABILITIES_PRIMARY_SCENARIOS_AND_ACTUAL_GENERATION_HANDOFF=PASS');
