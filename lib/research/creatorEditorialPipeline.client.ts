@@ -1,7 +1,4 @@
-import {
-  normalizeScriptPlannerEditorialContext, createCounterEvidenceReview, applyCounterEvidenceScopeReview,
-  type CounterEvidenceScopeDecision,
-} from "./scriptPlannerEditorialContext.ts";
+import type { createCounterEvidenceReview, CounterEvidenceScopeDecision } from "./scriptPlannerEditorialContext.ts";
 import {
   normalizeCreatorDocumentarySourcePlanningContext,
   normalizeCreatorEvidenceVisualPlanningContext,
@@ -381,7 +378,6 @@ export async function runCreatorEditorialScriptPipeline(
     },
   });
 
-  const initialResearchSnapshot = structuredClone(editorial.graph) as ResearchClaimEvidenceGraph;
   const firstReadiness = asRecord(editorial.readiness);
   const firstPrimaryRequiredClaimIds = asArray(
     firstReadiness?.primarySourceRequiredClaimIds,
@@ -646,23 +642,45 @@ export async function runCreatorEditorialScriptPipeline(
     });
   }
 
-  const normalizedContext = input.onCounterEvidenceReview ? normalizeScriptPlannerEditorialContext(scriptContext) : null;
-  const counterReview = normalizedContext ? createCounterEvidenceReview(normalizedContext) : null;
-  if (normalizedContext && counterReview?.unresolvedClaimIds.length && input.onCounterEvidenceReview) {
-    if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
-    const decision = await input.onCounterEvidenceReview(counterReview);
-    if (!decision) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STOPPED", message: `Review stopped. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}. Obtain qualifying counter-evidence before retrying these assertions, or explicitly omit them from the script.` });
-    if (input.operationIsCurrent && !input.operationIsCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project changed. This review cannot be applied." });
+  const projectId = clean(input.scriptPlanRequest.projectId, 200);
+  const snapshotDigest = clean(editorial.sourceAuthoritySnapshotDigest, 64);
+  const isCurrent = () => Boolean(input.operationIsCurrent?.()) && clean(input.scriptPlanRequest.projectId, 200) === projectId && clean(input.accessToken, 8_000) === accessToken;
+  const stale = () => new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STALE", message: "The project or research changed. Refresh the evidence review." });
+  if (!projectId || !/^[0-9a-f]{64}$/.test(snapshotDigest) || !isCurrent()) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_EVALUATION_UNAVAILABLE", message: "Verified evidence evaluation is unavailable. Save or reload the project and retry." });
+  let revision: number | null = null;
+  const evaluate = async (scopeDecision?: CounterEvidenceScopeDecision) => {
+    if (!isCurrent()) throw stale();
+    let result: JsonRecord;
     try {
-      scriptContext = applyCounterEvidenceScopeReview(normalizedContext, decision, editorial.graph as ResearchClaimEvidenceGraph, initialResearchSnapshot) as unknown as JsonRecord;
-    } catch (error) {
-      throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_UNRESOLVED", message: error instanceof Error && error.message.startsWith("COUNTER_REVIEW_UNRESOLVED:")
-        ? `Claims ${error.message.split(":")[1]} remain unresolved. Explicitly omit them or obtain qualifying counter-evidence before retrying.`
-        : error instanceof Error && error.message === "COUNTER_REVIEW_NO_FACTUAL_SCRIPT_BASIS"
-          ? "No factual script basis remains. Obtain qualifying research or narrow the script before retrying."
-          : "The review snapshot or decision could not be validated. Stop and rerun editorial analysis before reviewing again; primary-source and scientific requirements remain in force." });
+      result = await postJson({ stage: "editorial_analysis", url: "/api/creator-evidence-evaluation", accessToken, fetchImpl, body: { projectId, snapshotDigest, ...(scopeDecision ? { scopeDecision } : {}) } });
+    } catch {
+      if (!isCurrent()) throw stale();
+      throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_EVALUATION_UNAVAILABLE", message: "Verified evidence evaluation is unavailable. Refresh the project and retry." });
     }
+    if (!isCurrent()) throw stale();
+    const currentRevision = asPositiveInteger(result.researchRevision);
+    if (result.projectId !== projectId || result.snapshotDigest !== snapshotDigest || currentRevision === null || (revision !== null && revision !== currentRevision)) throw stale();
+    revision = currentRevision;
+    const review = asRecord(result.review);
+    if (!review || typeof review.snapshotFingerprint !== "string" || !Array.isArray(review.claims) || !Array.isArray(review.unresolvedClaimIds) || !Array.isArray(result.blockingReasons)) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_EVALUATION_INVALID", message: "The verified evidence evaluation was incomplete. Retry the review." });
+    return { result, review: review as unknown as ReturnType<typeof createCounterEvidenceReview> };
+  };
+  const initialEvaluation = await evaluate();
+  const blockers = asArray(initialEvaluation.result.blockingReasons).map(value => clean(value, 120)).filter(code => code && code !== "MATERIAL_COUNTER_EVIDENCE_REVIEW");
+  if (blockers.length) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_EVIDENCE_BLOCKED", message: `Evidence review is blocked: ${blockers.join(", ")}. Resolve these requirements before generating.` });
+  const counterReview = initialEvaluation.review;
+  if (counterReview.unresolvedClaimIds.length) {
+    if (!input.onCounterEvidenceReview) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_UNRESOLVED", message: "Evidence review is required before generation." });
+    const decision = await input.onCounterEvidenceReview(counterReview);
+    if (!decision) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_STOPPED", message: `Review stopped. Unresolved claims: ${counterReview.unresolvedClaimIds.join(", ")}.` });
+    if (!isCurrent()) throw stale();
+    const scoped = await evaluate(decision);
+    const remaining = scoped.review.unresolvedClaimIds;
+    const scopeBlockers = asArray(scoped.result.blockingReasons).map(value => clean(value, 120)).filter(Boolean);
+    if (remaining.length || scopeBlockers.length || !asRecord(scoped.result.proposedScope)) throw new CreatorEditorialPipelineError({ stage: "editorial_analysis", code: "EDITORIAL_REVIEW_UNRESOLVED", message: `The reviewed scope remains blocked: ${[...remaining, ...scopeBlockers].join(", ") || "invalid scope"}.` });
+    scriptContext = asRecord(scoped.result.proposedScope)!;
   }
+  if (!isCurrent()) throw stale();
 
   const scriptPlan = await postJson({
     stage: "script_plan",

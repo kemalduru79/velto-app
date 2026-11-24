@@ -121,10 +121,18 @@ const supportedFixture=issue44SupportedScopeFixture();
 const supported=make(supportedFixture);
 const supportedScope=apply(supported.context,{...decision,snapshotFingerprint:review(supported.context).snapshotFingerprint});
 const harness=await createOfflineScriptPlanHarness();let reviewCount=0;let handoff;
+const syntheticDigest='a'.repeat(64);
+const evaluationResponse=(ctx,body)=>{
+ try {
+  const projected=body.scopeDecision?apply(ctx,body.scopeDecision):ctx;
+  return Response.json({success:true,projectId:request.projectId,snapshotDigest:syntheticDigest,researchRevision:1,review:review(projected),blockingReasons:body.scopeDecision?[]:['MATERIAL_COUNTER_EVIDENCE_REVIEW'],...(body.scopeDecision?{proposedScope:projected}:{})});
+ } catch {return Response.json({success:false,code:'EDITORIAL_REVIEW_UNRESOLVED'},{status:422});}
+};
 const fakeFetch=async(url,init)=>{
  const body=JSON.parse(init.body);
  if(url==='/api/creator-research')return Response.json({success:true,sources:supportedFixture.sources});
- if(url==='/api/creator-editorial-analysis')return Response.json({success:true,graph:supported.graph,readiness:supported.raw.readiness,scriptContext:supported.raw});
+ if(url==='/api/creator-editorial-analysis')return Response.json({success:true,graph:supported.graph,readiness:supported.raw.readiness,scriptContext:supported.raw,sourceAuthoritySnapshotDigest:syntheticDigest});
+ if(url==='/api/creator-evidence-evaluation')return evaluationResponse(supported.context,body);
  assert.equal(url,'/api/creator-script-plan');
  if(body.operation==='validate_generation_authority')return Response.json({success:true});
  handoff=body.scriptContext;
@@ -133,7 +141,7 @@ const fakeFetch=async(url,init)=>{
 // The existing deterministic provider stub is repetitive and deliberately fails
 // final prose acceptance. We inspect actual all-six section dispatches, not claim
 // authenticated production or accepted documentary prose.
-await runCreatorEditorialScriptPipeline({accessToken:'synthetic-never-sent',topic:request.topic,scriptPlanRequest:request,fetchImpl:fakeFetch,onCounterEvidenceReview:async r=>{reviewCount++;return{...decision,snapshotFingerprint:r.snapshotFingerprint};}}).catch(error=>assert.equal(error.stage,'script_plan'));
+await runCreatorEditorialScriptPipeline({accessToken:'synthetic-never-sent',topic:request.topic,scriptPlanRequest:request,fetchImpl:fakeFetch,operationIsCurrent:()=>true,onCounterEvidenceReview:async r=>{reviewCount++;return{...decision,snapshotFingerprint:r.snapshotFingerprint};}}).catch(error=>assert.equal(error.stage,'script_plan'));
 assert.equal(reviewCount,1);assert(handoff.counterEvidenceReview);assert.deepEqual(handoff.counterEvidenceReview.originalContext,supported.context);assert.deepEqual(handoff.counterEvidenceReview.originalResearchSnapshot,supported.graph);assert.deepEqual(handoff.counterEvidenceReview.initialResearchSnapshot,supported.graph);
 const calls=harness.calls.filter(call=>call.body.requestedSectionBudgets);assert.equal(calls.length,6);
 const narration=createCreatorScriptNarrationEditorialContext(supportedScope);assert.equal(narration.counterEvidenceReview,undefined);
@@ -151,8 +159,8 @@ const originalRequest=JSON.stringify(request);
 for(const mode of ['stop','stale','partial']){
  let dispatched=0;let active=true;let reviewCalls=0;
  await assert.rejects(()=>runCreatorEditorialScriptPipeline({accessToken:'synthetic',topic:request.topic,scriptPlanRequest:request,operationIsCurrent:()=>active,fetchImpl:async(url,init)=>{
-  const body=JSON.parse(init.body);if(url.endsWith('creator-research'))return Response.json({success:true,sources:f.sources});if(url.endsWith('creator-editorial-analysis'))return Response.json({success:true,graph,readiness:raw.readiness,scriptContext:raw});if(body.operation==='validate_generation_authority')return Response.json({success:true});dispatched++;throw Error('UNEXPECTED_SCRIPT_DISPATCH');
- },onCounterEvidenceReview:async r=>{reviewCalls++;if(mode==='stop')return null;if(mode==='stale')active=false;return{...decision,snapshotFingerprint:r.snapshotFingerprint,excludedClaimIds:mode==='partial'?['claim-2']:decision.excludedClaimIds};}}),error=>['EDITORIAL_REVIEW_STOPPED','EDITORIAL_REVIEW_STALE','EDITORIAL_REVIEW_UNRESOLVED'].includes(error.code));
+  const body=JSON.parse(init.body);if(url.endsWith('creator-research'))return Response.json({success:true,sources:f.sources});if(url.endsWith('creator-editorial-analysis'))return Response.json({success:true,graph,readiness:raw.readiness,scriptContext:raw,sourceAuthoritySnapshotDigest:syntheticDigest});if(url.endsWith('creator-evidence-evaluation'))return evaluationResponse(context,body);if(body.operation==='validate_generation_authority')return Response.json({success:true});dispatched++;throw Error('UNEXPECTED_SCRIPT_DISPATCH');
+ },onCounterEvidenceReview:async r=>{reviewCalls++;if(mode==='stop')return null;if(mode==='stale')active=false;return{...decision,snapshotFingerprint:r.snapshotFingerprint,excludedClaimIds:mode==='partial'?['claim-2']:decision.excludedClaimIds};}}),error=>['EDITORIAL_REVIEW_STOPPED','EDITORIAL_REVIEW_STALE','EDITORIAL_EVALUATION_UNAVAILABLE'].includes(error.code));
  assert.equal(dispatched,0);assert.equal(reviewCalls,1);assert.equal(JSON.stringify(request),originalRequest);
 }
 const blockedHarness=await createOfflineScriptPlanHarness();const blocked=await blockedHarness.execute({body:request,editorialContext:context});const blockedPayload=await blocked.json();assert.deepEqual(blockedPayload.unresolvedClaimIds,['claim-2','claim-3']);assert.equal(blockedHarness.calls.length,0);

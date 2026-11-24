@@ -125,8 +125,8 @@ if(!baseline){
    if(body.operation==='validate_generation_authority')return Response.json({success:true});
    handoffs.push(body.scriptContext);
    return pipelineHarness.execute({body,editorialContext:normalizeScriptPlannerEditorialContext(body.scriptContext)});
- }}),error=>error.code==='CREATOR_SCRIPT_GROUNDING_BLOCKED'&&error.message.includes('counter-evidence'));
- assert.equal(handoffs.length,1);assert.deepEqual(handoffs[0],raw,'real client handoff retains excerpts and review verbatim');
+ }}),error=>error.code==='EDITORIAL_EVALUATION_UNAVAILABLE');
+ assert.equal(handoffs.length,0,'missing server authority must block client handoff');
  assert.equal(pipelineHarness.calls.length,0);assert.equal(JSON.stringify(draft),originalDraft,'client failure never replaces the draft');
  console.log('ISSUE_42_GATE_CAPABILITIES_PRIMARY_SCENARIOS_AND_ACTUAL_GENERATION_HANDOFF=PASS');
  console.log('Offline provider responses exercise all section dispatches; synthetic repetitive prose is not claimed as an accepted production script. No auth, DB writes, external provider or media operations.');

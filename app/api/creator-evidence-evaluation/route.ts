@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const authority = await loadServerAuthoritativeResearchGraph(secured.context.user.id, projectId, snapshotDigest);
     const decision = body.scopeDecision === undefined || body.scopeDecision === null ? undefined : body.scopeDecision as CounterEvidenceScopeDecision;
     const result = evaluateTrustedEvidence({ authority, decision, ...(body.persistedContext === undefined ? {} : { persistedContext:body.persistedContext }) });
-    return NextResponse.json({ success:true, snapshotDigest:authority.snapshotDigest, researchRevision:authority.originalSnapshot.research_revision, readiness:result.readiness, verifiedLimitationClaimIds:result.verifiedLimitationClaimIds, review:result.review, blockingReasons:result.generation.reasonCodes, generationEligible:result.generation.eligible });
+    return NextResponse.json({ success:true, projectId:authority.projectId, snapshotDigest:authority.snapshotDigest, researchRevision:authority.originalSnapshot.research_revision, readiness:result.readiness, verifiedLimitationClaimIds:result.verifiedLimitationClaimIds, review:result.review, blockingReasons:result.generation.reasonCodes, generationEligible:result.generation.eligible, ...(decision ? { proposedScope:result.context } : {}) });
   } catch {
     return NextResponse.json({ success:false, code:'EVIDENCE_AUTHORITY_UNAVAILABLE', error:'Current verified evidence could not be validated.' }, { status:422 });
   }
