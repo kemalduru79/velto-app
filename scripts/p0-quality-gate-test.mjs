@@ -163,7 +163,7 @@ console.log(`P0_QUALITY_GATE_CONTRACTS=PASS (${checks} checks; real child/ESLint
 // No external baseline is read, no reviewed source is changed, no provider runs.
 const legacyStart = checks;
 const gateSource = fs.readFileSync("scripts/stage-0-8a-changed-lint.mjs", "utf8");
-const approvedGateSha256 = "599af54582e8ed362850565353a88de50b22ded24e43d2c7da30ee1b700a276c";
+const approvedGateSha256 = "4a1b3e92f5f40fe527fcea2b3ef257bb580fc53d50f71edc22d6d40b47bb145a";
 const gateDigest = (text) => createHash("sha256").update(text).digest("hex");
 const gateApproved = (text) => gateDigest(text) === approvedGateSha256;
 check("reviewed lint security gate bytes unchanged", () => assert(gateApproved(gateSource)));
@@ -299,6 +299,31 @@ if (currentPageHash === "ab431ae05d88ffb2333f2d846036629170ade376ea15789b736c91d
     assert.equal(createHash("sha256").update(earlier).digest("hex"), "ab431ae05d88ffb2333f2d846036629170ade376ea15789b736c91d388f56ce1");
     assert.equal(earlierReport.status, 1); assert.equal(loadGate(earlierReport, earlierFs).accept(currentPage, earlierReport), true);
   });
+} else if (currentPageHash === "c5c2836e9440550e3222a78662ecc2d11279ef09f5bc831c912bbd5f7d212581") {
+  const currentReport = spawnSync(process.execPath, ["--max-old-space-size=1536", "node_modules/eslint/bin/eslint.js", "--format", "json", "--", currentPage],
+    { encoding: "utf8", timeout: LINT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, killSignal: "SIGKILL" });
+  check("session interruption exact page and report accepted", () => {
+    assert.equal(currentReport.status, 1); assert.equal(loadGate(currentReport).accept(currentPage, currentReport), true);
+    assert.equal(loadGate(currentReport).lint(currentPage, [{ start: 1, end: Number.MAX_SAFE_INTEGER }]), true);
+  });
+  check("session interruption rejects altered source and diagnostics", () => {
+    const changedFs = { ...fs, readFileSync: (name, ...args) => name === currentPage ? Buffer.concat([fs.readFileSync(name, ...args), Buffer.from("\n// unauthorized")]) : fs.readFileSync(name, ...args) };
+    const changed = JSON.parse(currentReport.stdout); changed[0].messages[0].message += " altered";
+    const fatal = JSON.parse(currentReport.stdout); fatal[0].messages[0].fatal = true; fatal[0].fatalErrorCount = 1;
+    const added = JSON.parse(currentReport.stdout); added[0].messages.push({ ...added[0].messages[0], severity: 2 }); added[0].errorCount++;
+    assert.equal(loadGate(currentReport, changedFs).accept(currentPage, currentReport), false);
+    for (const result of [{ ...currentReport, stdout: JSON.stringify(changed) }, { ...currentReport, stdout: JSON.stringify(fatal) }, { ...currentReport, stdout: JSON.stringify(added) }, { ...currentReport, stdout: "" }, { ...currentReport, stderr: currentReport.stderr + "unexpected\n" }, { ...currentReport, status: 2 }]) assert.equal(loadGate(result).accept(currentPage, result), false);
+  });
+  for (const [commit, expected] of [["437ace33fc67ee96589424377363dc653fc494e4", "ab431ae05d88ffb2333f2d846036629170ade376ea15789b736c91d388f56ce1"], ["ab34d208ad1a6e9eaeae58d34a11b4e5c0f97e4e", "a06cd73219476612e64a79600806a40e000466ba5ac6a9d9418d23e991af3170"]]) {
+    const earlier = execFileSync("git", ["show", commit + ":" + currentPage], { maxBuffer: 16 * 1024 * 1024 });
+    const earlierFs = { ...fs, readFileSync: (name, ...args) => name === currentPage ? earlier : fs.readFileSync(name, ...args) };
+    const earlierReport = spawnSync(process.execPath, ["--max-old-space-size=1536", "node_modules/eslint/bin/eslint.js", "--format", "json", "--stdin", "--stdin-filename", currentPage],
+      { input: earlier, encoding: "utf8", timeout: LINT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, killSignal: "SIGKILL" });
+    check("prior exact page and real report remain accepted: " + commit.slice(0, 7), () => {
+      assert.equal(createHash("sha256").update(earlier).digest("hex"), expected);
+      assert.equal(earlierReport.status, 1); assert.equal(loadGate(earlierReport, earlierFs).accept(currentPage, earlierReport), true);
+    });
+  }
 } else {
   check("unreviewed page cannot use second variant", () => assert.equal(loadGate(success).accept(currentPage, { ...success, status: 1 }), false));
 }

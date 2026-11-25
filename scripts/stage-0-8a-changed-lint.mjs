@@ -69,6 +69,14 @@ const REVIEWED_SOURCE_REVIEW_PAGE_LINT = Object.freeze({
   warnings: 82,
 });
 
+// Owner-reviewed session interruption UI, exact source and report only.
+const REVIEWED_SESSION_INTERRUPTION_PAGE_LINT = Object.freeze({
+  sha256: "c5c2836e9440550e3222a78662ecc2d11279ef09f5bc831c912bbd5f7d212581",
+  diagnosticSha256: "7dd72e971f4b2cf8ccef9be8bd9b690447b476348e551a989ce1daee12d54592",
+  errors: 74,
+  warnings: 82,
+});
+
 function acceptsReviewedLegacyLint(file, result) {
   const historical = Object.hasOwn(REVIEWED_LEGACY_LINT, file) ? REVIEWED_LEGACY_LINT[file] : null;
   // Babel emits this informational note for the exact reviewed >500KB page.
@@ -84,7 +92,8 @@ function acceptsReviewedLegacyLint(file, result) {
     const sourceHash = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
     const approved = sourceHash === historical.sha256 ? historical :
       file === "app/create/page.tsx" && sourceHash === REVIEWED_CURRENT_PAGE_LINT.sha256 ? REVIEWED_CURRENT_PAGE_LINT :
-      file === "app/create/page.tsx" && sourceHash === REVIEWED_SOURCE_REVIEW_PAGE_LINT.sha256 ? REVIEWED_SOURCE_REVIEW_PAGE_LINT : null;
+      file === "app/create/page.tsx" && sourceHash === REVIEWED_SOURCE_REVIEW_PAGE_LINT.sha256 ? REVIEWED_SOURCE_REVIEW_PAGE_LINT :
+      file === "app/create/page.tsx" && sourceHash === REVIEWED_SESSION_INTERRUPTION_PAGE_LINT.sha256 ? REVIEWED_SESSION_INTERRUPTION_PAGE_LINT : null;
     if (!approved) return false;
 
     const reports = JSON.parse(result.stdout);

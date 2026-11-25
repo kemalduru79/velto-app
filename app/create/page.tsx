@@ -3888,8 +3888,6 @@ function hasCreatorProjectCardDisplayValue(value: unknown): value is CreatorProj
 }
 
 function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
-  const sourceAuthorityReview = useCreatorSourceAuthorityReview();
-  const cancelSourceReview = sourceAuthorityReview.cancel;
   const router = useRouter();
   const [selectedFlowKey, setSelectedFlowKey] = useState("storyverse");
   const selectedFlow: ReturnType<typeof getFlowByKey> & Readonly<{ id?: unknown }> = getFlowByKey(selectedFlowKey);
@@ -4266,6 +4264,8 @@ function CreateWorkspace({ onStartNewProject }: CreateWorkspaceProps) {
   const [isLoadingProject, setIsLoadingProject] = useState(false);
 
   const [currentProjectId, setCurrentProjectId] = useState<string>("");
+  const sourceAuthorityReview = useCreatorSourceAuthorityReview(currentProjectId);
+  const cancelSourceReview = sourceAuthorityReview.abandon;
 
   const [isBatchRendering, setIsBatchRendering] = useState(false);
   const [batchRenderItems, setBatchRenderItems] = useState<BatchRenderItem[]>([]);
@@ -21244,6 +21244,7 @@ const generateSceneImage = async (
   return (
     <WorldProvider>
       <ActiveProductShell>
+        {sourceAuthorityReview.interrupted && <div role="alert"><p>The previous source review was interrupted. Your generation workflow has not resumed.</p><button type="button" onClick={sourceAuthorityReview.dismissInterruption}>Dismiss and restart manually using Generate</button></div>}
         {sourceAuthorityReview.pending && <CreatorSourceAuthorityReview key={sourceAuthorityReview.pending.snapshotDigest} pending={sourceAuthorityReview.pending} onCancel={sourceAuthorityReview.cancel} onContinue={sourceAuthorityReview.complete} />}
         {editorialResearchReview && <CreatorCounterEvidenceReview key={editorialResearchReview.reviewId} review={editorialResearchReview.counterReview} editorialReview={editorialResearchReview} onDecision={()=>finishEditorialResearchReview(null)} onEditorialDecision={finishEditorialResearchReview} />}
         {creatorScriptDraftPreview && <CreatorScriptDraftPreview script={creatorScriptDraftPreview} onClose={()=>setCreatorScriptDraftPreview(null)} />}

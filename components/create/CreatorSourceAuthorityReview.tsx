@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { ParentSourceReview } from "@/lib/research/creatorEditorialPipeline.client";
+import { markSourceReviewInterrupted, hasSourceReviewInterruption, clearSourceReviewInterruption } from "@/lib/research/sourceReviewInterruption";
 
 type Pending = ParentSourceReview & { ownerId: string };
 type Inspection = { documentDigest: string; sourceUrl: string; documentContent: string; passage: string; claimText: string };
@@ -16,22 +17,37 @@ async function authenticatedRequest(url: string, body: object) {
   return result;
 }
 
-export function useCreatorSourceAuthorityReview() {
+export function useCreatorSourceAuthorityReview(projectId: string) {
   const [pending, setPending] = useState<Pending | null>(null);
+  const [interruptedProject, setInterruptedProject] = useState("");
   const resolver = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
+  const marker = useRef<{ownerId:string;projectId:string} | null>(null);
   const generation = useRef(0);
-  const cancel = useCallback(() => { generation.current++; const active = resolver.current; resolver.current = null; setPending(null); active?.reject(new Error("Source review canceled.")); }, []);
+  const clearMarker = useCallback(() => { const value = marker.current; if (value) { try { clearSourceReviewInterruption(localStorage, value.ownerId, value.projectId); } catch {} } marker.current = null; }, []);
+  const abandon = useCallback(() => { generation.current++; const active = resolver.current; resolver.current = null; setPending(null); active?.reject(new Error("Source review interrupted.")); }, []);
+  const cancel = useCallback(() => { clearMarker(); abandon(); }, [clearMarker, abandon]);
   useEffect(() => () => { generation.current++; const active = resolver.current; resolver.current = null; active?.reject(new Error("Source review canceled.")); }, []);
+  useEffect(() => {
+    let live = true;
+    let authVersion = 0;
+    void supabase.auth.getUser().then(({data}) => { if (!live || authVersion !== 0 || !data.user || !projectId) return; try { if (hasSourceReviewInterruption(localStorage, data.user.id, projectId)) { marker.current = {ownerId:data.user.id,projectId}; setInterruptedProject(projectId); } } catch {} });
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => { if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && marker.current && session?.user.id !== marker.current.ownerId)) { authVersion++; if (live) setInterruptedProject(''); marker.current = null; abandon(); } });
+    return () => { live = false; subscription.subscription.unsubscribe(); };
+  }, [projectId, abandon]);
   const begin = useCallback(() => { cancel(); }, [cancel]);
   const request = useCallback(async (review: ParentSourceReview) => {
     const current = generation.current;
     const { data, error } = await supabase.auth.getUser();
     if (current !== generation.current) throw new Error("Source review canceled.");
     if (error || !data.user) throw new Error("Authentication required.");
+    if (!projectId || review.projectId !== projectId) throw new Error("Source review project changed.");
+    markSourceReviewInterrupted(localStorage, data.user.id, projectId);
+    marker.current = {ownerId:data.user.id,projectId};
     return new Promise<void>((resolve, reject) => { resolver.current = { resolve, reject }; setPending({ ...review, ownerId: data.user.id }); });
-  }, []);
-  const complete = useCallback(() => { const active = resolver.current; resolver.current = null; setPending(null); active?.resolve(); }, []);
-  return { pending, begin, request, cancel, complete };
+  }, [projectId]);
+  const complete = useCallback(() => { clearMarker(); const active = resolver.current; resolver.current = null; setPending(null); active?.resolve(); }, [clearMarker]);
+  const dismissInterruption = useCallback(() => { clearMarker(); setInterruptedProject(''); }, [clearMarker]);
+  return { pending, begin, request, cancel, abandon, complete, interrupted: !!projectId && interruptedProject === projectId, dismissInterruption };
 }
 
 export function CreatorSourceAuthorityReview({ pending, onCancel, onContinue }: { pending: Pending; onCancel: () => void; onContinue: () => void }) {

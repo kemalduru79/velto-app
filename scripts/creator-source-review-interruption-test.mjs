@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { markSourceReviewInterrupted, hasSourceReviewInterruption, clearSourceReviewInterruption } from '../lib/research/sourceReviewInterruption.ts';
+const data = new Map();
+const store = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
+markSourceReviewInterrupted(store, 'owner', 'project');
+assert.equal(hasSourceReviewInterruption(store, 'owner', 'project'), true);
+assert.equal(hasSourceReviewInterruption(store, 'other', 'project'), false);
+assert.equal(hasSourceReviewInterruption(store, 'owner', 'other'), false);
+assert.deepEqual([...data.values()], ['pending']);
+clearSourceReviewInterruption(store, 'owner', 'project');
+assert.equal(hasSourceReviewInterruption(store, 'owner', 'project'), false);
+assert.throws(() => markSourceReviewInterrupted(store, '', 'project'), /IDENTITY_INVALID/);
+console.log('SOURCE_REVIEW_INTERRUPTION_MARKER=PASS (offline only)');
